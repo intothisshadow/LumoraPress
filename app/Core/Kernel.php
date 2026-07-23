@@ -1,0 +1,56 @@
+<?php
+
+declare(strict_types=1);
+
+namespace LumoraPress\Core;
+
+use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Errors\ErrorHandler;
+use LumoraPress\Core\Hooks\HookManager;
+use LumoraPress\Core\Http\Router;
+use LumoraPress\Core\Menus\MenuManager;
+use LumoraPress\Core\Security\Auth;
+use LumoraPress\Core\Security\LoginThrottle;
+use LumoraPress\Core\Security\RememberMeService;
+use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Theme\ThemeRenderer;
+use LumoraPress\Core\Widgets\WidgetManager;
+use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\MediaService;
+use LumoraPress\Services\PageService;
+use LumoraPress\Services\PostService;
+use LumoraPress\Services\TagService;
+use LumoraPress\Services\UpdateService;
+use LumoraPress\Services\UserService;
+
+/**
+ * The composition root. One Kernel instance is built during bootstrap and
+ * passed explicitly to entry scripts (index.php, admin/index.php) instead
+ * of relying on global state.
+ */
+final class Kernel
+{
+    public function __construct(
+        public readonly PressConfig $config,
+        public readonly Database $database,
+        public readonly ErrorHandler $errors,
+        public readonly HookManager $hooks,
+        public readonly PluginManager $plugins,
+        public readonly ThemeRenderer $theme,
+        public readonly WidgetManager $widgets,
+        public readonly MenuManager $menus,
+        public readonly SessionManager $sessions,
+        public readonly UserService $users,
+        public readonly Auth $auth,
+        public readonly LoginThrottle $loginThrottle,
+        public readonly RememberMeService $rememberMe,
+        public readonly MediaService $media,
+        public readonly PostService $posts,
+        public readonly PageService $pages,
+        public readonly CategoryService $categories,
+        public readonly TagService $tags,
+        public readonly UpdateService $updates,
+        public readonly Router $router,
+    ) {
+    }
+}

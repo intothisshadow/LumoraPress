@@ -1,0 +1,2 @@
+# Configuration contains database credentials and secrets — never publicly accessible.
+Require all denied

@@ -1,0 +1,7 @@
+# Theme templates render only through ThemeRenderer's require() — deny
+# direct execution while still allowing static assets (css/js/images).
+<FilesMatch "\.(php|php\d|phtml)$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes

@@ -1,0 +1,25 @@
+# Runtime-generated site configuration — contains real DB credentials
+# once installed. config.example.php stays tracked as the template.
+/config/config.php
+
+# Session, log, and cache files written at runtime. The .gitkeep
+# placeholders stay tracked so these directories still exist after a
+# fresh clone — RequirementsCheck expects them to already be present
+# and writable, it does not create them.
+/storage/sessions/*
+!/storage/sessions/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+/storage/cache/*
+!/storage/cache/.gitkeep
+
+# User-uploaded media. .htaccess stays tracked.
+/content/uploads/*
+!/content/uploads/.htaccess
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

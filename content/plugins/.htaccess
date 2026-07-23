@@ -1,0 +1,7 @@
+# Plugin PHP is loaded only via PluginManager's require_once() — deny
+# direct execution while still allowing static assets (css/js/images).
+<FilesMatch "\.(php|php\d|phtml)$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes

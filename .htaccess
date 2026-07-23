@@ -1,0 +1,31 @@
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # %{REQUEST_URI} is always the full URL path sent by the browser (e.g.
+    # "/lumorapress/install/" for a subdirectory install), so a
+    # root-anchored "^/install" pattern never matches once the app isn't
+    # installed at the domain root. %{REQUEST_FILENAME} is already an
+    # absolute filesystem path, so matching "/install/" or "/content/" as
+    # a path segment anywhere within it works regardless of where the app
+    # is installed. "admin" is deliberately excluded here, so a request to
+    # /admin/ always falls through to the catch-all rewrite below instead
+    # of being served directly — admin/ has no .htaccess of its own (see
+    # DECISIONS.md's "admin/ has no .htaccess of its own"); every file
+    # under admin/, including index.php, guards itself at the PHP level
+    # instead (an isset($kernel) check, since $kernel only exists when
+    # required from this front controller's router).
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteCond %{REQUEST_FILENAME} /(install|content)(/|$)
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+<FilesMatch "\.(ini|log|sh|sql|md)$">
+    Require all denied
+</FilesMatch>

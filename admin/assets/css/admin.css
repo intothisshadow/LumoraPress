@@ -1,0 +1,628 @@
+/* =========================================================
+   Lumora Press — Admin Stylesheet
+   ========================================================= */
+
+:root {
+    --lp-admin-bg: #f1f1f1;
+    --lp-admin-sidebar-bg: #23282d;
+    --lp-admin-sidebar-fg: #eee;
+    --lp-admin-sidebar-fg-muted: #b4b9be;
+    --lp-admin-accent: #2271b1;
+    --lp-admin-accent-hover: #135e96;
+    --lp-admin-text: #1d2327;
+    --lp-admin-border: #dcdcde;
+    --lp-admin-panel-bg: #ffffff;
+    --lp-admin-error-bg: #fcf0f1;
+    --lp-admin-error-border: #d63638;
+    --lp-admin-error-text: #7a1a1c;
+    --lp-admin-success-bg: #edfaef;
+    --lp-admin-success-border: #00a32a;
+    --lp-admin-success-text: #005c15;
+    --lp-admin-warning-bg: #fcf9e8;
+    --lp-admin-warning-border: #dba617;
+    --lp-admin-warning-text: #664d03;
+    --lp-admin-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --lp-admin-bg: #101214;
+        --lp-admin-sidebar-bg: #17191c;
+        --lp-admin-sidebar-fg: #e4e6e8;
+        --lp-admin-sidebar-fg-muted: #9aa0a6;
+        --lp-admin-accent: #4c9be8;
+        --lp-admin-accent-hover: #6cb0ef;
+        --lp-admin-text: #e4e6e8;
+        --lp-admin-border: #33383d;
+        --lp-admin-panel-bg: #1b1e21;
+        --lp-admin-error-bg: #3a1f20;
+        --lp-admin-error-border: #d63638;
+        --lp-admin-error-text: #f2b8b9;
+        --lp-admin-success-bg: #10281a;
+        --lp-admin-success-border: #2fb344;
+        --lp-admin-success-text: #8fe3a3;
+        --lp-admin-warning-bg: #332b0f;
+        --lp-admin-warning-border: #dba617;
+        --lp-admin-warning-text: #f0d68a;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body.lp-admin,
+body.lp-admin-login {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--lp-admin-text);
+    background: var(--lp-admin-bg);
+}
+
+.lp-skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--lp-admin-accent);
+    color: #fff;
+    padding: 0.5em 1em;
+    z-index: 100;
+}
+
+.lp-skip-link:focus {
+    left: 0;
+}
+
+/* Shell layout */
+
+.lp-admin__shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.lp-admin__sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--lp-admin-sidebar-bg);
+    color: var(--lp-admin-sidebar-fg);
+    display: flex;
+    flex-direction: column;
+}
+
+.lp-admin__brand {
+    padding: 1.25rem 1rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lp-admin__version {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-admin__nav {
+    flex: 1;
+}
+
+.lp-admin__nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0.5rem 0;
+}
+
+.lp-admin__nav-item a {
+    display: block;
+    padding: 0.65rem 1rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.lp-admin__nav-item a:hover,
+.lp-admin__nav-item a:focus {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.lp-admin__nav-item.is-active a {
+    color: #fff;
+    background: var(--lp-admin-accent);
+}
+
+.lp-admin__user {
+    padding: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.lp-admin__user-name {
+    color: var(--lp-admin-sidebar-fg);
+}
+
+.lp-admin__logout {
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-admin__content {
+    flex: 1;
+    padding: 2rem;
+    min-width: 0;
+}
+
+.lp-admin__title {
+    margin-top: 0;
+}
+
+/* Panels and widgets */
+
+.lp-admin__panel,
+.lp-admin__widget {
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 1.25rem;
+}
+
+.lp-admin__panel--welcome {
+    margin-bottom: 1.5rem;
+}
+
+.lp-admin__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+}
+
+.lp-admin__widget h2 {
+    margin-top: 0;
+    font-size: 1rem;
+}
+
+.lp-admin__widget-placeholder {
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-style: italic;
+}
+
+.lp-admin__meta-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-admin__meta-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--lp-admin-border);
+    font-size: 0.9rem;
+}
+
+.lp-admin__meta-list li:last-child {
+    border-bottom: none;
+}
+
+/* Forms */
+
+.lp-field {
+    margin: 0 0 1rem;
+}
+
+.lp-field label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.lp-field input,
+.lp-field textarea,
+.lp-field select {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+    font-size: 1rem;
+}
+
+.lp-field--checklist {
+    border: none;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+.lp-field--checklist legend {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0;
+}
+
+.lp-field--checklist .lp-field--checkbox {
+    margin-bottom: 0.35rem;
+}
+
+.lp-field--checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.lp-field--checkbox input {
+    width: auto;
+    margin: 0;
+}
+
+.lp-field--checkbox label {
+    display: inline;
+    margin-bottom: 0;
+    font-weight: 400;
+}
+
+.lp-field__hint {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.8rem;
+}
+
+.lp-field__hint code {
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 3px;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.8rem;
+}
+
+/* Tag input widget (progressive enhancement of a plain text field) */
+
+.lp-tag-input {
+    position: relative;
+}
+
+.lp-tag-input__box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+}
+
+.lp-tag-input__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-tag-input__chip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--lp-admin-accent);
+    color: #fff;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.lp-tag-input__chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2rem;
+    height: 1.2rem;
+    border: none;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 25%);
+    color: #fff;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.lp-tag-input__chip-remove:hover {
+    background: rgb(255 255 255 / 40%);
+}
+
+.lp-tag-input__typeahead {
+    flex: 1 1 8rem;
+    min-width: 8rem;
+    border: none;
+    padding: 0.25rem 0;
+    background: transparent;
+    color: var(--lp-admin-text);
+    font-size: 1rem;
+}
+
+.lp-tag-input__typeahead:focus {
+    outline: none;
+}
+
+.lp-tag-input__suggestions {
+    position: absolute;
+    z-index: 10;
+    left: 0;
+    right: 0;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+    max-height: 14rem;
+    overflow-y: auto;
+}
+
+.lp-tag-input__suggestion {
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.lp-tag-input__suggestion.is-active,
+.lp-tag-input__suggestion:hover {
+    background: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-button {
+    display: inline-block;
+    padding: 0.55rem 1.1rem;
+    border: 1px solid transparent;
+    border-radius: var(--lp-admin-radius);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.lp-button--primary {
+    background: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-button--primary:hover {
+    background: var(--lp-admin-accent-hover);
+}
+
+.lp-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.lp-admin__badge {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--lp-admin-accent);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+/* Alerts */
+
+.lp-alert {
+    padding: 0.75rem 1rem;
+    border-radius: var(--lp-admin-radius);
+    font-size: 0.9rem;
+}
+
+.lp-alert--error {
+    background: var(--lp-admin-error-bg);
+    border: 1px solid var(--lp-admin-error-border);
+    color: var(--lp-admin-error-text);
+}
+
+.lp-alert--success {
+    background: var(--lp-admin-success-bg);
+    border: 1px solid var(--lp-admin-success-border);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-alert--warning {
+    background: var(--lp-admin-warning-bg);
+    border: 1px solid var(--lp-admin-warning-border);
+    color: var(--lp-admin-warning-text);
+}
+
+/* Login screen */
+
+.lp-admin-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.lp-login {
+    width: 100%;
+    max-width: 360px;
+    padding: 2rem;
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-login__brand {
+    text-align: center;
+    margin-top: 0;
+}
+
+/* Installer */
+
+.lp-install {
+    max-width: 440px;
+}
+
+.lp-install__step {
+    text-align: center;
+    color: var(--lp-admin-sidebar-fg-muted);
+    margin-top: -0.5rem;
+    font-size: 0.9rem;
+}
+
+.lp-install__requirements {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Navigation menus rendered by themes via nav_menu() may also appear in
+   admin previews; keep a minimal, theme-overridable baseline here. */
+
+.lp-admin__filters {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+}
+
+.lp-admin__filters a {
+    color: var(--lp-admin-sidebar-fg-muted);
+    text-decoration: none;
+}
+
+.lp-admin__filters a.is-active {
+    color: var(--lp-admin-accent);
+    font-weight: 600;
+}
+
+/* Posts list table */
+
+.lp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.lp-table th,
+.lp-table td {
+    padding: 0.65rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-table th {
+    font-weight: 600;
+    color: var(--lp-admin-sidebar-fg-muted);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+}
+
+.lp-status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--lp-admin-border);
+    color: var(--lp-admin-text);
+}
+
+.lp-status-badge--published {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-status-badge--scheduled {
+    background: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-status-badge--success {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-status-badge--failed {
+    background: var(--lp-admin-error-bg);
+    color: var(--lp-admin-error-text);
+}
+
+.lp-status-badge--rolled_back {
+    background: var(--lp-admin-warning-bg);
+    color: var(--lp-admin-warning-text);
+}
+
+/* Updates page */
+
+.lp-admin__panel form + form {
+    margin-top: 0.5rem;
+}
+
+.lp-button--link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--lp-admin-error-text);
+    text-decoration: underline;
+    font-size: 0.85rem;
+}
+
+.lp-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+/* Pagination (shared with the Recent Posts-style admin lists) */
+
+.lp-pagination__list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    font-size: 0.9rem;
+}
+
+.lp-pagination__item a,
+.lp-pagination__item span {
+    display: inline-block;
+    min-width: 2rem;
+    padding: 0.35rem 0.6rem;
+    text-align: center;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    text-decoration: none;
+    color: var(--lp-admin-text);
+}
+
+.lp-pagination__item.is-current span {
+    background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-nav-menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 1rem;
+}

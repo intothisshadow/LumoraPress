@@ -1,0 +1,2 @@
+# Storage holds logs, cache, and session data — never publicly accessible.
+Require all denied

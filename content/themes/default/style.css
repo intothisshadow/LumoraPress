@@ -1,0 +1,359 @@
+/*
+Theme Name: Default
+Description: The lightweight, classic-blog default theme for Lumora Press.
+Version: 0.1.0
+*/
+
+/* =========================================================
+   Tokens
+   ========================================================= */
+
+:root {
+    --lp-bg: #ffffff;
+    --lp-bg-alt: #f7f7f8;
+    --lp-text: #1d2327;
+    --lp-text-muted: #646970;
+    --lp-border: #dcdcde;
+    --lp-accent: #2271b1;
+    --lp-accent-hover: #135e96;
+    --lp-radius: 4px;
+    --lp-max-width: 960px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --lp-bg: #15171a;
+        --lp-bg-alt: #1c1f22;
+        --lp-text: #e4e6e8;
+        --lp-text-muted: #9aa0a6;
+        --lp-border: #33383d;
+        --lp-accent: #4c9be8;
+        --lp-accent-hover: #6cb0ef;
+    }
+}
+
+/* =========================================================
+   Reset & base
+   ========================================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+body.lp-site {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    background: var(--lp-bg);
+    color: var(--lp-text);
+    line-height: 1.6;
+}
+
+a {
+    color: var(--lp-accent);
+}
+
+a:hover,
+a:focus {
+    color: var(--lp-accent-hover);
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+.lp-skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--lp-accent);
+    color: #fff;
+    padding: 0.5em 1em;
+    z-index: 100;
+}
+
+.lp-skip-link:focus {
+    left: 0;
+}
+
+/* =========================================================
+   Header
+   ========================================================= */
+
+.lp-site-header {
+    border-bottom: 1px solid var(--lp-border);
+    background: var(--lp-bg-alt);
+}
+
+.lp-site-header__inner {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.lp-site-header__brand a {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    text-decoration: none;
+    color: var(--lp-text);
+}
+
+/* =========================================================
+   Navigation menus
+   ========================================================= */
+
+.lp-nav-menu {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-nav-menu__item a {
+    text-decoration: none;
+    color: var(--lp-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.95rem;
+}
+
+.lp-nav-menu__item a:hover,
+.lp-nav-menu__item a:focus {
+    color: var(--lp-accent);
+}
+
+/* =========================================================
+   Layout
+   ========================================================= */
+
+.lp-layout {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 2.5rem;
+    align-items: start;
+}
+
+@media (max-width: 720px) {
+    .lp-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.lp-main {
+    min-width: 0;
+}
+
+.lp-page-title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 2rem;
+    margin-top: 0;
+}
+
+.lp-empty-state {
+    color: var(--lp-text-muted);
+    font-style: italic;
+}
+
+.lp-archive__description {
+    color: var(--lp-text-muted);
+    max-width: 68ch;
+    margin: -0.5rem 0 1.5rem;
+}
+
+.lp-post,
+.lp-page {
+    max-width: 68ch;
+}
+
+.lp-post__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 2rem;
+    margin-top: 0;
+}
+
+.lp-post__meta,
+.lp-post-list__meta {
+    color: var(--lp-text-muted);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+    margin: 0 0 1rem;
+}
+
+.lp-post__content {
+    max-width: 68ch;
+}
+
+/* =========================================================
+   Post list (homepage & archives)
+   ========================================================= */
+
+.lp-post-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.lp-post-list__item {
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-post-list__item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.lp-post-list__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.5rem;
+    margin: 0 0 0.35rem;
+}
+
+.lp-post-list__title a {
+    text-decoration: none;
+    color: var(--lp-text);
+}
+
+.lp-post-list__title a:hover,
+.lp-post-list__title a:focus {
+    color: var(--lp-accent);
+}
+
+.lp-post-list__excerpt {
+    margin: 0 0 0.75rem;
+}
+
+.lp-post-list__more {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+/* =========================================================
+   Pagination
+   ========================================================= */
+
+.lp-pagination {
+    margin-top: 2rem;
+}
+
+.lp-pagination__list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+}
+
+.lp-pagination__item a,
+.lp-pagination__item span {
+    display: inline-block;
+    min-width: 2rem;
+    padding: 0.35rem 0.6rem;
+    text-align: center;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    text-decoration: none;
+    color: var(--lp-text);
+}
+
+.lp-pagination__item a:hover,
+.lp-pagination__item a:focus {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
+}
+
+.lp-pagination__item.is-current span {
+    background: var(--lp-accent);
+    border-color: var(--lp-accent);
+    color: #fff;
+}
+
+/* =========================================================
+   Sidebar & widgets
+   ========================================================= */
+
+.lp-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.lp-widget {
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    padding: 1.25rem;
+}
+
+.lp-widget__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1rem;
+    margin-top: 0;
+}
+
+.lp-widget__content {
+    font-size: 0.95rem;
+    color: var(--lp-text-muted);
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+
+.lp-button {
+    display: inline-block;
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--lp-radius);
+    background: var(--lp-accent);
+    color: #fff;
+    text-decoration: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.95rem;
+}
+
+.lp-button:hover,
+.lp-button:focus {
+    background: var(--lp-accent-hover);
+    color: #fff;
+}
+
+/* =========================================================
+   Footer
+   ========================================================= */
+
+.lp-site-footer {
+    border-top: 1px solid var(--lp-border);
+    background: var(--lp-bg-alt);
+    margin-top: 2rem;
+}
+
+.lp-site-footer__inner {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+    text-align: center;
+}
+
+.lp-site-footer__copyright {
+    color: var(--lp-text-muted);
+    font-size: 0.85rem;
+    margin: 0;
+}
