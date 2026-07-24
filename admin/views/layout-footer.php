@@ -9,5 +9,6 @@ if (!isset($kernel)) {
     </main>
 </div>
 <script src="<?= esc_url(admin_asset_url('js/tag-input.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/thumbnail-bulk.js')) ?>" defer></script>
 </body>
 </html>

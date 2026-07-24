@@ -18,6 +18,12 @@ Version: 0.1.0
     --lp-accent-hover: #135e96;
     --lp-radius: 4px;
     --lp-max-width: 960px;
+    --lp-success-bg: #edfaef;
+    --lp-success-border: #00a32a;
+    --lp-success-text: #005c15;
+    --lp-error-bg: #fcf0f1;
+    --lp-error-border: #d63638;
+    --lp-error-text: #7a1a1c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +35,12 @@ Version: 0.1.0
         --lp-border: #33383d;
         --lp-accent: #4c9be8;
         --lp-accent-hover: #6cb0ef;
+        --lp-success-bg: #16281a;
+        --lp-success-border: #2fae4a;
+        --lp-success-text: #7fd996;
+        --lp-error-bg: #3a1f20;
+        --lp-error-border: #d63638;
+        --lp-error-text: #f2b8b9;
     }
 }
 
@@ -104,6 +116,12 @@ img {
     color: var(--lp-text);
 }
 
+.lp-site-header__logo {
+    display: block;
+    max-height: 48px;
+    width: auto;
+}
+
 /* =========================================================
    Navigation menus
    ========================================================= */
@@ -126,6 +144,50 @@ img {
 
 .lp-nav-menu__item a:hover,
 .lp-nav-menu__item a:focus {
+    color: var(--lp-accent);
+}
+
+/* =========================================================
+   Search form (site header)
+   ========================================================= */
+
+.lp-search-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.lp-search-form__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.lp-search-form__input {
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+    background: var(--lp-bg);
+    color: var(--lp-text);
+}
+
+.lp-search-form__button {
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+    background: var(--lp-bg-alt);
+    color: var(--lp-text);
+    cursor: pointer;
+}
+
+.lp-search-form__button:hover,
+.lp-search-form__button:focus {
+    border-color: var(--lp-accent);
     color: var(--lp-accent);
 }
 
@@ -168,6 +230,19 @@ img {
     color: var(--lp-text-muted);
     max-width: 68ch;
     margin: -0.5rem 0 1.5rem;
+}
+
+/* =========================================================
+   Maintenance mode
+   ========================================================= */
+
+.lp-maintenance__message {
+    max-width: 60ch;
+    font-size: 1.1rem;
+}
+
+.lp-maintenance__return-at {
+    color: var(--lp-text-muted);
 }
 
 .lp-post,
@@ -237,6 +312,69 @@ img {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 0.9rem;
     text-decoration: none;
+}
+
+/* =========================================================
+   Search results
+   ========================================================= */
+
+.lp-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.lp-search-results__item {
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-search-results__item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.lp-search-results__type {
+    color: var(--lp-text-muted);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 0.25rem;
+}
+
+.lp-search-results__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.5rem;
+    margin: 0 0 0.35rem;
+}
+
+.lp-search-results__title a {
+    text-decoration: none;
+    color: var(--lp-text);
+}
+
+.lp-search-results__title a:hover,
+.lp-search-results__title a:focus {
+    color: var(--lp-accent);
+}
+
+.lp-search-results__meta {
+    color: var(--lp-text-muted);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+    margin: 0 0 0.5rem;
+}
+
+.lp-search-results__excerpt {
+    margin: 0;
+}
+
+.lp-search-highlight {
+    background: color-mix(in srgb, var(--lp-accent) 30%, transparent);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 0.1em;
 }
 
 /* =========================================================
@@ -332,6 +470,160 @@ img {
 }
 
 /* =========================================================
+   Forms & alerts
+   ========================================================= */
+
+.lp-field {
+    margin: 0 0 1rem;
+}
+
+.lp-field label {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.lp-field input,
+.lp-field textarea {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg);
+    color: var(--lp-text);
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+.lp-field input:focus,
+.lp-field textarea:focus {
+    outline: 2px solid var(--lp-accent);
+    outline-offset: 1px;
+}
+
+.lp-field__hint {
+    color: var(--lp-text-muted);
+    font-size: 0.8rem;
+    font-weight: normal;
+}
+
+.lp-alert {
+    padding: 0.75rem 1rem;
+    border-radius: var(--lp-radius);
+    margin: 0 0 1.5rem;
+    font-size: 0.9rem;
+}
+
+.lp-alert--success {
+    background: var(--lp-success-bg);
+    border: 1px solid var(--lp-success-border);
+    color: var(--lp-success-text);
+}
+
+.lp-alert--error {
+    background: var(--lp-error-bg);
+    border: 1px solid var(--lp-error-border);
+    color: var(--lp-error-text);
+}
+
+/* =========================================================
+   Comments
+   ========================================================= */
+
+.lp-comments {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--lp-border);
+    max-width: 68ch;
+}
+
+.lp-comments__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.4rem;
+    margin: 0 0 1.5rem;
+}
+
+.lp-comments__form-title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.1rem;
+}
+
+.lp-comments__closed {
+    color: var(--lp-text-muted);
+    font-style: italic;
+}
+
+.lp-comment-list {
+    list-style: none;
+    margin: 0 0 2rem;
+    padding: 0;
+}
+
+.lp-comment-list--replies {
+    margin: 1rem 0 0 1.5rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--lp-border);
+}
+
+.lp-comment {
+    margin-bottom: 1.5rem;
+}
+
+.lp-comment__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: baseline;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+    margin: 0 0 0.35rem;
+}
+
+.lp-comment__author {
+    font-weight: 700;
+}
+
+.lp-comment__author a {
+    text-decoration: none;
+    color: var(--lp-text);
+}
+
+.lp-comment__date {
+    color: var(--lp-text-muted);
+}
+
+.lp-comment__content {
+    overflow-wrap: break-word;
+}
+
+.lp-comment__reply {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.lp-comment__reply summary {
+    cursor: pointer;
+    color: var(--lp-accent);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+}
+
+.lp-comment__reply .lp-comment-form {
+    margin-top: 0.75rem;
+}
+
+.lp-comment-form {
+    max-width: 60ch;
+}
+
+.lp-comment-form__honeypot {
+    position: absolute;
+    left: -9999px;
+}
+
+/* =========================================================
    Footer
    ========================================================= */
 
@@ -356,4 +648,16 @@ img {
     color: var(--lp-text-muted);
     font-size: 0.85rem;
     margin: 0;
+}
+
+.lp-site-footer__feed-link {
+    color: var(--lp-accent);
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.lp-site-footer__feed-link:hover,
+.lp-site-footer__feed-link:focus {
+    color: var(--lp-accent-hover);
+    text-decoration: underline;
 }

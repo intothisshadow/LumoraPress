@@ -1,5 +1,11 @@
 <?php
-/** @var \LumoraPress\Models\Post $post */
+/**
+ * @var \LumoraPress\Models\Post $post
+ * @var array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $comment_tree
+ * @var bool $comments_open
+ * @var int $comment_count
+ * @var \LumoraPress\Models\User|null $current_user
+ */
 get_header();
 ?>
 <div id="lp-content" class="lp-content lp-layout">
@@ -11,6 +17,7 @@ get_header();
             </p>
             <div class="lp-post__content"><?= nl2br(esc_html($post->content)) ?></div>
         </article>
+        <?php comments_template(['post' => $post, 'comment_tree' => $comment_tree, 'comments_open' => $comments_open, 'comment_count' => $comment_count, 'current_user' => $current_user]); ?>
     </main>
     <?php get_sidebar(); ?>
 </div>

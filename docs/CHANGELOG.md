@@ -2,10 +2,265 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased] — 2026-07-23
+## [Unreleased] — 2026-07-24
 
 ### Added
 
+- Media Manager (LP-005, first pass, renamed from "media library"):
+  broadened upload support beyond images/PDF to documents/archives (ZIP,
+  CSS, TXT, XML, JSON) and audio/video, via new extensions/MIME types in
+  `LumoraPress\Services\MediaService`'s allow-list (max upload size also
+  raised from 10MB to 100MB to accommodate audio/video). A new
+  `LumoraPress\Services\FolderService` backs a real, unlimited-depth
+  virtual folder tree (new `{prefix}media_folders` table, migration
+  `0012_add_media_folders_and_metadata.sql`, which also adds `folder_id`/
+  `alt_text`/`caption`/`description`/`notes`/`file_hash` columns to
+  `{prefix}media`) — unlike Categories'/Pages' existing `parent_id`
+  hierarchy, which only guards against a record becoming its own *direct*
+  parent, `FolderService::descendantIds()` walks the full tree so
+  `update()` can reject a folder being moved inside any of its own
+  descendants, not just itself. Folder assignment is purely
+  organizational: `MediaService::move()` only ever updates `folder_id`,
+  never `file_path`, so a file's public URL never changes when it's
+  reorganized (verified manually — moved a file between folders,
+  confirmed the download URL was byte-for-byte identical before and
+  after). `FolderService::delete()` refuses to delete a non-empty folder
+  (child folders or assigned media) rather than orphaning its contents,
+  per the ticket's explicit "delete **empty** folders" wording — a
+  deliberate difference from `CategoryService::delete()`'s
+  orphan-on-delete precedent. New `LumoraPress\Services\MediaUsageChecker`
+  warns before deleting a referenced file: it checks a post's featured
+  image (new `PostService::titlesByFeaturedImage()`, mirroring the
+  existing `countByAuthor()` "block because referenced" pattern used by
+  the admin Users screen) and the site logo/favicon options (LP-034),
+  and is extensible via a new `media_usage` filter for plugins or later
+  features (e.g. a page featured-image field) without editing the class
+  — the same extensibility pattern `FeedService`/`SearchService`/
+  `MaintenanceGate` already established. Deleting an in-use file requires
+  an explicit "Delete Anyway" confirmation after the warning is shown;
+  bulk delete never force-deletes — an in-use file is silently skipped
+  and reported rather than destroyed. `MediaService::browse()`/`search()`
+  were replaced with one filterable `query()` (folder — including
+  subfolders, search term, type category, upload date range). The new
+  admin Media Manager screen (`admin/views/media.php`, filling in the
+  `'media'` menu entry that has existed since the admin menu was defined
+  but fell through to `placeholder.php`) has a recursively-rendered
+  folder-tree sidebar, an upload form with a destination-folder picker, a
+  per-file edit screen (metadata, move, delete-with-usage-check), and the
+  app's first multi-select bulk-action UI (move/delete). Bundled
+  alongside this rework: `MediaService`'s file-move operation is now
+  injectable (`Closure`, defaulting to `move_uploaded_file()`), closing a
+  previously-documented test gap (`PHP-TEST-SUITE.md`'s "Known gaps") —
+  `upload()`'s success path (row insert, hash computation, folder
+  assignment) is now actually covered, not just its validation/rejection
+  branches. Bulk rename/replace/change-metadata, dimension/file-size
+  search filters, folder search, Smart Collections, and a future S3/
+  R2-compatible storage backend are deferred — see `TODO.md`'s LP-005
+  section for exact scope.
+- Appearance (LP-034, first pass): Theme Management, Branding, and Custom
+  CSS. `LumoraPress\Core\Theme\ThemeRegistry::discover()` scans
+  `content/themes/*` and parses each theme's `style.css` comment header
+  (`Theme Name:`/`Description:`/`Version:`/`Author:` — the convention
+  already existed in the default theme, but nothing parsed it before
+  now), falling back to a title-cased slug rather than hiding a theme
+  when its header is missing/malformed, plus a
+  `screenshot.{png,jpg,jpeg,webp}` if present. A new admin Appearance
+  screen (`admin/views/appearance.php`, filling in the `'appearance'`
+  menu entry that has existed since the admin menu was defined but fell
+  through to `placeholder.php`) lists every discovered theme as a card
+  with a one-click "Activate" button (`setOption('active_theme', ...)`).
+  New themes can be installed from a ZIP upload via
+  `LumoraPress\Services\ThemeInstaller`: it reads `style.css` straight out
+  of the still-open archive (so the theme's own name can drive its slug
+  and a missing header is rejected before anything touches the
+  filesystem), reuses the path-traversal/entry-count/size-cap safety
+  checks LP-026's `UpdatePackageValidator` established (smaller limits —
+  a theme isn't a whole application), and unwraps a GitHub-style wrapping
+  folder — but is otherwise deliberately much simpler than the core
+  update machinery, since installing a theme only ever adds one new,
+  independent `content/themes/{slug}/` directory and never overlays live
+  core files, so no staging/backup/rollback/migration ceremony is
+  needed. Branding: a site logo and favicon (both reuse
+  `MediaService::upload()`, storing the returned media ID in a new
+  `site_logo_media_id`/`favicon_media_id` option, the same "store an ID,
+  not a raw path" convention `Post::featuredImageId` already uses; `.ico`
+  plus `image/x-icon`/`image/vnd.microsoft.icon` were added to
+  `MediaService`'s allow-list alongside the already-supported PNG), and
+  the `site_name` option — saved by the installer since LP-028, but never
+  read back by anything until now — replaces the hardcoded "Lumora Press"
+  text in the theme's `<title>`, header brand, footer copyright, and
+  homepage heading. Since theme templates have no direct route to
+  `PressConfig`/`MediaService` (and threading the same page-independent
+  value through every one of `SiteController`'s render() calls would mean
+  touching every action), these render through a new static bridge,
+  `LumoraPress\Core\Theme\SiteBranding`, mirroring the existing
+  `SiteUrl`/`BasePath`/`ActiveTheme` pattern — set once in
+  `include/bootstrap.php`, exposed to themes via new `site_name()`/
+  `site_logo_url()`/`favicon_url()`/`custom_css()` helpers in
+  `include/helpers.php`. Custom Code: a single Custom CSS field (stored in
+  a new `custom_css` option — the options table's `option_value` column
+  is already `LONGTEXT`, so no migration was needed), rendered inside a
+  `<style>` tag in `<head>` on every public page; `</style` sequences are
+  stripped as a defensive measure against accidental markup breakage
+  (not a security boundary — only `manage_options`/`manage_themes`
+  administrators can set it, the same trust level arbitrary theme/plugin
+  PHP already assumes). The Theme Options API, Layout/Typography/Color
+  customization, Navigation/Footer content options, and Accessibility
+  settings are deferred — see `TODO.md`'s LP-034 section for exact scope.
+- Maintenance Mode (LP-033, first pass): a new
+  `LumoraPress\Core\Http\MaintenanceGate`, checked once in `index.php`
+  between BasePath stripping and `Router::dispatch()` — there is no
+  pre-dispatch hook in `Router` itself, so this was the earliest point
+  with access to config, auth, and the resolved request path. `/admin/*`
+  is always exempt (an Administrator must always be able to log in and
+  turn maintenance mode off); `/install/*` needed no special-casing since
+  it's a wholly separate front controller that never reaches this code
+  path. Maintenance mode can be switched on manually (a new "Maintenance
+  Mode" section in `admin/views/settings.php`, or a one-click button on
+  the dashboard) or scheduled via optional `maintenance_start_at`/
+  `maintenance_end_at` options, checked at request time — the same
+  "no background job" approach `PostService`/`PageService` already use
+  for scheduled content, so no cron integration was needed. Administrators
+  always bypass; an "Allow Editors to bypass" checkbox reuses the existing
+  `moderate_comments` capability as the bypass boundary (Editor has it,
+  Author/Contributor don't) rather than adding a new capability to
+  `UserRole`. A blocked request gets a real `503 Service Unavailable`,
+  `X-Robots-Tag: noindex`, and a `Retry-After` header (computed from the
+  scheduled end time when set and in the future, otherwise a configurable
+  `maintenance_retry_after_seconds`, `'0'` meaning omit it), then a
+  theme-rendered `content/themes/default/maintenance.php` page (title,
+  message, and a static estimated-return line — no JS countdown this
+  pass) via the same `get_header()`/`get_footer()` pattern `404.php`
+  already uses, so it's theme-customizable and picks up the site's
+  branding automatically. `admin/views/dashboard.php` gained a warning
+  banner (visible to `manage_options` users) while maintenance mode is
+  active, and `admin/views/settings.php`'s POST dispatch gained two more
+  branches (`maintenance_settings`, `maintenance_toggle` — the latter a
+  single global control, so unlike per-row buttons elsewhere it needs no
+  per-ID CSRF-action uniqueness) alongside LP-013/LP-014's existing
+  `feed_settings`/`search_settings`. Plugins can register their own
+  bypass rules via `apply_filters('maintenance_mode_bypass', bool
+  $bypasses, ?User $user)` and react to state changes via
+  `do_action('maintenance_mode_toggled', bool $enabled)` — `MaintenanceGate`
+  takes `HookManager` via constructor injection rather than calling the
+  global hook bridge directly, matching `UpdateService`'s/`FeedService`'s
+  existing convention. IP whitelisting, a secret bypass URL/cookie, and
+  email notifications are deferred — see `TODO.md`'s LP-033 section for
+  exact scope.
+- Search (LP-014, first pass): a unified, relevance-ranked search across
+  Posts and Pages, backed by a new `LumoraPress\Services\SearchService`
+  and real MySQL/MariaDB FULLTEXT indexes (new migration
+  `0011_add_fulltext_index_to_posts_and_pages.sql` — two indexes per
+  table, one on `title, content` and one on `title` alone, since MySQL
+  requires a `MATCH()` column list to exactly match a defined FULLTEXT
+  index; a single combined index can't also serve the title-only scoring
+  query). Title matches are weighted higher than body-only matches
+  (`MATCH(title, content) AGAINST(...) + MATCH(title) AGAINST(...) * 2`).
+  Posts and Pages are queried independently, each respecting the same
+  published/scheduled-and-due visibility rule as the homepage and
+  archives, then merged into one relevance-ordered, paginated result set
+  (`SearchService::paginateResults()`, a pure merge/sort/paginate step
+  factored out separately from the MySQL-only fetch so it stays
+  unit-testable). `SiteController::search()` (previously a stub that
+  always rendered "No results found.") now calls `SearchService` for
+  real. Matching terms are highlighted in results via a new
+  `highlight_terms()` helper (`include/helpers.php`); a missing excerpt
+  falls back to `make_excerpt()` (added in LP-013's Feeds work — same
+  fallback, reused as-is). The admin Settings screen
+  (`admin/views/settings.php`) gains a "Search" section controlling
+  `search_min_length` (default 3) and `search_max_results` (default 50,
+  combined across both content types) — this required retrofitting that
+  view's POST handling to the `admin/views/comments.php`-style
+  `form`-hidden-field dispatch pattern, since it previously assumed only
+  one settings form would ever exist on the page (the existing Feeds
+  section now also carries its own `form=feed_settings` field so the two
+  sections save independently). The default theme's header gained a real
+  search form (`role="search"`, plain GET, no JavaScript,
+  `.lp-search-form*` classes in `style.css`), and `search.php` was
+  rewritten from its "No results found." stub into a real, paginated
+  results listing (`.lp-search-results*` classes) mirroring `archive.php`'s
+  post-list markup. Categories/Tags/Authors/Comments/Media search,
+  filters, live search/AJAX, "did you mean" suggestions, and a
+  pluggable/filter-based Developer API are deferred — see `TODO.md`'s
+  LP-014 section for exact scope. Since MySQL's `NATURAL LANGUAGE MODE`
+  matches whole words only, exact-phrase, prefix, partial-substring, and
+  fuzzy matching are not supported this pass either.
+- RSS & Atom Feeds (LP-013, first pass): a single site-wide feed of
+  published posts, backed by a new `LumoraPress\Services\FeedService`.
+  `/feed` and `/feed/rss` serve RSS 2.0; `/feed/atom` serves Atom 1.0.
+  Both formats reuse `PostService::paginatePublished()`, so feed items
+  respect the same published/scheduled-and-due visibility rule as the
+  homepage and archives — drafts and not-yet-due scheduled posts never
+  appear. Each item includes title, permalink, publish date, author
+  (`dc:creator`/`<author><name>`), and either the stored excerpt or a new
+  `make_excerpt()`-generated one (55-word plain-text fallback, stripped of
+  tags) when none is stored; full post content can additionally be
+  included (`<content:encoded>`/`<content type="html">`) via a new
+  `feed_full_content` option. New admin Settings screen
+  (`admin/views/settings.php`, behind the existing `settings` menu entry,
+  which previously fell through to a placeholder page) controls
+  `feeds_enabled`, `feed_full_content`, `feed_item_limit` (clamped
+  1–100), `feed_cache_lifetime`, and `feed_description`. Responses set
+  `ETag`/`Last-Modified`/`Cache-Control` and honor conditional GET
+  (`If-None-Match` → `304`) so a feed reader's routine poll doesn't
+  regenerate the feed. Plugins can filter channel metadata and individual
+  items via `apply_filters('feed_channel', ...)` and
+  `apply_filters('feed_item', ...)` (`FeedService` takes `HookManager` via
+  constructor injection, matching `UpdateService`'s existing convention,
+  rather than calling the global hook bridge directly). The default theme
+  auto-discovers both feeds via `<link rel="alternate">` in `header.php`
+  and links to the RSS feed from the site footer
+  (`.lp-site-footer__feed-link`, `style.css`). Category/tag/author/comment
+  feeds, JSON Feed, page feeds, and enclosures are deferred — see
+  `TODO.md`'s LP-013 section for exact scope.
+- Comments (LP-012, first pass): a commenting system for Posts (Pages,
+  media, and albums are out of scope — media/albums belong to Lumora
+  Gallery, a separate application), backed by a new `{prefix}comments`
+  table (migration `0009_create_comments_table.sql`) and
+  `LumoraPress\Services\CommentService`. Guests can comment with a
+  name/email/optional website; any signed-in dashboard user (not just
+  Administrator/Editor) can comment as themselves without retyping their
+  details, reusing the existing admin session rather than a separate
+  public login system. Comments default to Pending unless the commenter
+  is trusted — either they hold `moderate_comments`, or (for guests)
+  their email has a prior Approved comment
+  (`CommentService::hasPreviouslyApprovedComment()`). Replies nest to
+  unlimited depth via a self-referencing `parent_id`; deleting a comment
+  orphans its replies (`parent_id` cleared) rather than cascading the
+  delete, the same trade-off `CategoryService::delete()` makes for child
+  categories — while deleting a post now cascades to its comments
+  (`PostService::delete()`). Basic spam protection: a honeypot field, 30
+  seconds minimum between comments from the same IP, and CSRF on every
+  form. Posts gained a `comment_status` (open/closed) column via
+  `0010_add_comment_status_to_posts.sql` — the project's first
+  `ALTER TABLE` migration, since every table until now shipped its full
+  schema in one `CREATE TABLE` — exposed as an "Allow Comments" checkbox
+  in the Post editor; there is also a site-wide "Allow comments
+  site-wide" toggle on the new admin Comments screen
+  (`admin/views/comments.php`, behind the `comments` menu entry, which
+  previously fell through to a placeholder page). Moderators can
+  approve/unapprove/mark spam/trash/permanently delete and edit a
+  comment's text from that screen, filtered by status; the Dashboard's
+  "Recent Comments" widget now shows real data instead of a placeholder.
+  URLs in comment content are auto-linked
+  (`format_comment_content()`, `rel="nofollow ugc noopener"`). Theme
+  integration follows the existing `get_header()`/`get_footer()`/
+  `get_sidebar()` pattern: a new `comments_template()` helper renders
+  `content/themes/default/comments.php`, called from `single.php`.
+  **A real bug was found and fixed during this feature's own browser
+  testing**: `Csrf::field()` overwrites the session token for a given
+  action name on every call, so any page rendering more than one form
+  under the same action — the admin moderation screen's Approve/Spam/
+  Trash buttons for one comment all shared `comment_moderate_{id}` —
+  leaves every button but the last-rendered one silently submitting an
+  already-invalidated token (the POST still redirects successfully, but
+  the change never applies). Every CSRF action name in this feature is
+  now scoped to be unique per form on the page (per comment *and* per
+  target status for moderation buttons; per post *and* per reply target
+  for public comment forms) — see `CommentService`'s and
+  `SiteController::submitComment()`'s docblocks for the full
+  explanation, since the same mistake is easy to reintroduce in future
+  admin screens with multiple same-purpose buttons per row.
 - User Management (LP-032, first pass): an admin Users screen
   (`admin/views/users.php`, mirroring Categories/Tags' list/create/edit/
   delete pattern) behind the `users` admin menu entry, which previously
@@ -115,8 +370,51 @@ All notable changes to Lumora Press are documented in this file.
   shows a short version label underneath it, visible on every admin page
   rather than only the Dashboard.
 
+- Thumbnail Generation (LP-001): new `LumoraPress\Services\ThumbnailService`
+  derives resized copies of image uploads using GD only (no Imagick
+  dependency). Three configurable sizes ship by default — small (150x150,
+  crop), medium (300x300, fit), large (1024x1024, fit) — each independently
+  adjustable (dimensions, crop-vs-fit mode, enabled/disabled) from a new
+  "Thumbnails" section on the Settings screen, alongside JPEG/WebP quality,
+  an optional fixed unsharp-style sharpen pass, and a maximum-source-pixels
+  safeguard that skips (and logs) images too large to safely decode. EXIF
+  orientation is corrected before resizing, upscaling is never allowed
+  (a size smaller than the source is simply skipped), and WebP/AVIF output
+  is only ever attempted when the running GD build actually supports it —
+  skipped with a logged notice otherwise, never a hard failure. New
+  `{prefix}media_thumbnails` table (migration
+  `0013_create_media_thumbnails_table.sql`). The admin Media Manager now
+  generates thumbnails automatically on upload, shows generated sizes with
+  a per-item "Regenerate thumbnails" button on the edit screen, uses the
+  small thumbnail (falling back to the original) in the file grid, and
+  gained a "Bulk regenerate thumbnails" tool (with a "missing only" option)
+  plus a "Clean up orphaned thumbnails" action — bulk regeneration
+  processes in batches of 10 per request with a progress bar, the same
+  "no queue/cron infrastructure" batch-per-request shape already used
+  elsewhere in this codebase, progressively enhanced by a new
+  `admin/assets/js/thumbnail-bulk.js` to auto-continue between batches
+  (still fully usable, one click per batch, with JavaScript disabled).
+  Deleting a file now cleans up its thumbnails alongside the original.
+  Extensible via a new `thumbnail_sizes` filter (register custom sizes),
+  `thumbnail_max_pixels` filter, and `thumbnail_generated`/
+  `thumbnail_generation_failed` actions — a corrupt or unsupported source
+  image is logged and skipped per-size rather than aborting the whole
+  upload or a bulk run.
+
 ### Fixed
 
+- Auto-linked URLs in comment content (LP-012) with more than one query
+  parameter rendered a broken link: `format_comment_content()` (see
+  `include/helpers.php`) escapes the raw comment text first, then
+  regex-matches URLs within the already-escaped text — but the matched
+  text was being passed through `esc_url()` a second time when building
+  the `href` attribute, which re-encoded the literal `&amp;` already
+  present in the escaped text into `&amp;amp;`, corrupting the URL for
+  any browser navigating it. Fixed by using the already-escaped matched
+  text directly for both the `href` and the visible link text, with no
+  second escaping pass. Caught while manually browser-testing the
+  Comments feature with a URL containing two query parameters; a new
+  `Unit/Core/HelpersTest.php` now covers this specifically.
 - Saving or editing a Page (LP-009) threw "An unexpected error occurred"
   on a real MySQL/MariaDB server: `PageService::listAllForParentSelect()`
   used the same named placeholder (`:id`) twice in one query. Real

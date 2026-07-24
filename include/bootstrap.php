@@ -9,6 +9,7 @@ use LumoraPress\Core\Errors\ErrorHandler;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Hooks\Hooks;
 use LumoraPress\Core\Http\BasePath;
+use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Kernel;
@@ -22,14 +23,23 @@ use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ActiveTheme;
+use LumoraPress\Core\Theme\SiteBranding;
+use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Core\Widgets\Widgets;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentService;
+use LumoraPress\Services\FeedService;
+use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\ThemeInstaller;
+use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateBackupService;
 use LumoraPress\Services\UpdatePackageValidator;
 use LumoraPress\Services\UpdateService;
@@ -113,14 +123,21 @@ $menus = new MenuManager();
 Menus::set($menus);
 require LUMORA_ROOT . '/include/menus.php';
 
+$themesPath = LUMORA_ROOT . '/content/themes';
+$themesUrl = BasePath::get() . '/content/themes';
+$activeThemeSlug = (string) $config->option('active_theme', 'default');
+
 $theme = new ThemeRenderer(
-    themesPath: LUMORA_ROOT . '/content/themes',
-    themesUrl: BasePath::get() . '/content/themes',
+    themesPath: $themesPath,
+    themesUrl: $themesUrl,
 );
-$theme->setActiveTheme((string) $config->option('active_theme', 'default'));
+$theme->setActiveTheme($activeThemeSlug);
 ActiveTheme::set($theme);
 require LUMORA_ROOT . '/include/theme.php';
 $theme->loadFunctions();
+
+$themes = new ThemeRegistry($themesPath, $themesUrl, $activeThemeSlug);
+$themeInstaller = new ThemeInstaller($themesPath, $themes);
 
 $users = new UserService($database, $tablePrefix);
 $auth = new Auth($users, $sessions);
@@ -134,10 +151,49 @@ $media = new MediaService(
     uploadsUrl: BasePath::get() . '/content/uploads',
 );
 
+/*
+ * site_name has been saved by the installer since LP-028, but nothing
+ * read it back until LP-034 (Branding) — themes have no route to
+ * PressConfig/MediaService of their own, hence the SiteBranding bridge.
+ */
+$resolveMediaUrl = static function (mixed $optionValue) use ($media): ?string {
+    $id = (int) $optionValue;
+
+    if ($id <= 0) {
+        return null;
+    }
+
+    $item = $media->find($id);
+
+    return $item !== null ? $media->url($item) : null;
+};
+
+SiteBranding::set(
+    siteName: (string) $config->option('site_name', 'Lumora Press'),
+    logoUrl: $resolveMediaUrl($config->option('site_logo_media_id', '')),
+    faviconUrl: $resolveMediaUrl($config->option('favicon_media_id', '')),
+    customCss: (string) $config->option('custom_css', ''),
+);
+
 $posts = new PostService($database, $tablePrefix);
 $pages = new PageService($database, $tablePrefix);
 $categories = new CategoryService($database, $tablePrefix);
 $tags = new TagService($database, $tablePrefix);
+$comments = new CommentService($database, $tablePrefix);
+$feeds = new FeedService($posts, $users, $config, $hooks);
+$search = new SearchService($database, $tablePrefix, $config);
+$folders = new FolderService($database, $tablePrefix);
+$mediaUsage = new MediaUsageChecker($posts, $config, $hooks);
+$thumbnails = new ThumbnailService(
+    database: $database,
+    tablePrefix: $tablePrefix,
+    uploadsPath: LUMORA_ROOT . '/content/uploads',
+    uploadsUrl: BasePath::get() . '/content/uploads',
+    config: $config,
+    hooks: $hooks,
+    media: $media,
+    logDirectory: LUMORA_ROOT . '/storage/logs',
+);
 
 /*
  * The fixed set of paths (relative to LUMORA_ROOT) that make up the core
@@ -188,6 +244,7 @@ $updates = new UpdateService(
 );
 
 $router = new Router();
+$maintenance = new MaintenanceGate($config, $auth, $theme, $hooks);
 
 $kernel = new Kernel(
     config: $config,
@@ -208,19 +265,31 @@ $kernel = new Kernel(
     pages: $pages,
     categories: $categories,
     tags: $tags,
+    comments: $comments,
+    feeds: $feeds,
+    search: $search,
     updates: $updates,
     router: $router,
+    maintenance: $maintenance,
+    themes: $themes,
+    themeInstaller: $themeInstaller,
+    folders: $folders,
+    mediaUsage: $mediaUsage,
+    thumbnails: $thumbnails,
 );
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);
 
 $router->get('/', fn (array $params) => $site->home($params));
 $router->get('/post/{slug}', fn (array $params) => $site->singlePost($params));
+$router->post('/post/{slug}/comment', fn (array $params) => $site->submitComment($params));
 $router->get('/category/{slug}', fn (array $params) => $site->category($params));
 $router->get('/tag/{slug}', fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/search', fn (array $params) => $site->search($params));
 $router->get('/page/{slug}', fn (array $params) => $site->page($params));
+$router->get('/feed', fn (array $params) => $site->feed($params));
+$router->get('/feed/{format}', fn (array $params) => $site->feed($params));
 
 $adminHandler = static function (array $params) use ($kernel): void {
     if (isset($params['page'])) {

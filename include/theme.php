@@ -38,3 +38,18 @@ if (!function_exists('theme_url')) {
         return ActiveTheme::instance()->themeUrl($path);
     }
 }
+
+if (!function_exists('comments_template')) {
+    /**
+     * Renders the active theme's comments.php partial, if it has one —
+     * silently does nothing otherwise, the same graceful-fallback
+     * behavior as get_sidebar() for themes with no sidebar.php.
+     *
+     * @param array<string, mixed> $vars
+     */
+    function comments_template(array $vars = []): void
+    {
+        do_action('comments_template');
+        ActiveTheme::instance()->renderPartial('comments', $vars);
+    }
+}

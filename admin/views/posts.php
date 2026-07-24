@@ -58,6 +58,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $excerpt = trim((string) ($_POST['excerpt'] ?? ''));
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PostStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PostStatus::Draft;
+        $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
 
         // Contributors and anyone else without publish_posts can only ever save as a draft.
         $status = $canPublish ? $requestedStatus : PostStatus::Draft;
@@ -78,8 +79,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = 'A title is required.';
         } else {
             $post = $existing === null
-                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, slug: $slug !== '' ? $slug : null)
-                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $existing->featuredImageId, $slug !== '' ? $slug : null);
+                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen)
+                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $existing->featuredImageId, $slug !== '' ? $slug : null, $commentsOpen);
 
             $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
             $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
@@ -204,6 +205,11 @@ if ($action === 'edit') {
                 >
                 <span class="lp-field__hint">Separate multiple tags with commas. New tags are created automatically.</span>
             </div>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="comments_open" value="1" <?= ($post->commentsOpen ?? true) ? 'checked' : '' ?>>
+                Allow comments on this post
+            </label>
 
             <?php if ($canPublish): ?>
                 <p class="lp-field">

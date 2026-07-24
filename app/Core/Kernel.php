@@ -7,19 +7,28 @@ namespace LumoraPress\Core;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Errors\ErrorHandler;
 use LumoraPress\Core\Hooks\HookManager;
+use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentService;
+use LumoraPress\Services\FeedService;
+use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\ThemeInstaller;
+use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateService;
 use LumoraPress\Services\UserService;
 
@@ -49,8 +58,17 @@ final class Kernel
         public readonly PageService $pages,
         public readonly CategoryService $categories,
         public readonly TagService $tags,
+        public readonly CommentService $comments,
+        public readonly FeedService $feeds,
+        public readonly SearchService $search,
         public readonly UpdateService $updates,
         public readonly Router $router,
+        public readonly MaintenanceGate $maintenance,
+        public readonly ThemeRegistry $themes,
+        public readonly ThemeInstaller $themeInstaller,
+        public readonly FolderService $folders,
+        public readonly MediaUsageChecker $mediaUsage,
+        public readonly ThumbnailService $thumbnails,
     ) {
     }
 }

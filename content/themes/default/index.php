@@ -5,7 +5,7 @@ get_header();
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
-        <h1 class="lp-page-title">Welcome to Lumora Press</h1>
+        <h1 class="lp-page-title">Welcome to <?= esc_html(site_name()) ?></h1>
 
         <?php if ($posts === []): ?>
             <p class="lp-empty-state">No posts have been published yet.</p>

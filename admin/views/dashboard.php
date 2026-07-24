@@ -11,14 +11,39 @@ if (!isset($kernel)) {
 
 $version = require LUMORA_ROOT . '/version.php';
 $installDirectoryExists = is_dir(LUMORA_ROOT . '/install');
+$maintenanceActive = $kernel->maintenance->isActive();
 ?>
 <h1 class="lp-admin__title">Dashboard</h1>
+
+<?php if (isset($_GET['saved'])): ?>
+    <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
 
 <?php if ($installDirectoryExists): ?>
     <div class="lp-alert lp-alert--error">
         The <code>install/</code> directory still exists on the server. It should be removed
         for security — it can be left over from a fresh install that couldn't delete itself,
         or restored by a manual update. Delete it via FTP/SFTP or your hosting file manager.
+    </div>
+<?php endif; ?>
+
+<?php if ($maintenanceActive && $currentUser->can('manage_options')): ?>
+    <div class="lp-alert lp-alert--warning">
+        Maintenance mode is currently <strong>ON</strong> — visitors see the maintenance page
+        instead of the site.
+        <form method="post" action="<?= esc_url(admin_url('settings')) ?>" class="lp-admin__inline-form">
+            <?= Csrf::field('maintenance_toggle') ?>
+            <input type="hidden" name="form" value="maintenance_toggle">
+            <button type="submit" class="lp-button">Turn Off Maintenance Mode</button>
+        </form>
+    </div>
+<?php elseif ($currentUser->can('manage_options')): ?>
+    <div class="lp-admin__panel lp-admin__panel--maintenance-toggle">
+        <form method="post" action="<?= esc_url(admin_url('settings')) ?>" class="lp-admin__inline-form">
+            <?= Csrf::field('maintenance_toggle') ?>
+            <input type="hidden" name="form" value="maintenance_toggle">
+            <button type="submit" class="lp-button">Turn On Maintenance Mode</button>
+        </form>
     </div>
 <?php endif; ?>
 
@@ -47,7 +72,23 @@ $installDirectoryExists = is_dir(LUMORA_ROOT . '/install');
 
     <section class="lp-admin__widget">
         <h2>Recent Comments</h2>
-        <p class="lp-admin__widget-placeholder">No comments yet.</p>
+        <?php $recentComments = $kernel->comments->recentForAdmin(5); ?>
+        <?php if ($recentComments === []): ?>
+            <p class="lp-admin__widget-placeholder">No comments yet.</p>
+        <?php else: ?>
+            <ul class="lp-admin__meta-list">
+                <?php foreach ($recentComments as $row): ?>
+                    <li>
+                        <span>
+                            <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $row['comment']->id ?>">
+                                <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['postTitle']) ?>&rdquo;
+                            </a>
+                        </span>
+                        <span><?= esc_html($row['comment']->status->label()) ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
     </section>
 
     <section class="lp-admin__widget">

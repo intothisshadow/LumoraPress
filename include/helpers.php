@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Http\SiteUrl;
+use LumoraPress\Core\Theme\SiteBranding;
 
 /**
  * General-purpose output escaping and localization helpers, available
@@ -123,6 +124,137 @@ if (!function_exists('site_url')) {
         $base = BasePath::get();
 
         return $path === '' ? ($base === '' ? '/' : $base . '/') : $base . '/' . $path;
+    }
+}
+
+if (!function_exists('format_comment_content')) {
+    /**
+     * Escapes raw comment text, then auto-links bare http(s) URLs and
+     * converts newlines to <br> — comments have no Markdown/BBCode/rich
+     * text support yet (see TODO.md's LP-012 "Future Enhancements"), just
+     * plain text with linked URLs. Escaping happens first, so the regex
+     * matches against already-entity-encoded text (e.g. a "&" inside a
+     * query string is already "&amp;" by the time the regex sees it) —
+     * the matched text is used as-is for both the href and the link text,
+     * NOT passed through esc_url() again: it is already valid, safe
+     * HTML-attribute content, and re-escaping it would double-encode
+     * "&amp;" into "&amp;amp;", corrupting the href of any linked URL
+     * with more than one query parameter (a real bug caught while
+     * testing this exact feature).
+     */
+    function format_comment_content(string $raw): string
+    {
+        $escaped = esc_html($raw);
+
+        $linked = preg_replace_callback(
+            '#(https?://[^\s<]+)#i',
+            static fn (array $matches): string => '<a href="' . $matches[1] . '" rel="nofollow ugc noopener" target="_blank">' . $matches[1] . '</a>',
+            $escaped,
+        ) ?? $escaped;
+
+        return nl2br($linked);
+    }
+}
+
+if (!function_exists('make_excerpt')) {
+    /**
+     * Builds a plain-text excerpt from raw (possibly HTML) content, for
+     * contexts with no stored excerpt to fall back on (currently: RSS/Atom
+     * feed items — see FeedService). Strips tags, collapses whitespace,
+     * then truncates to $wordCount words (55 matches the classic WordPress
+     * default). Returns unescaped plain text — callers must esc_html() it
+     * same as any other output, matching format_comment_content()'s
+     * escape-at-the-point-of-output convention.
+     */
+    function make_excerpt(string $content, int $wordCount = 55): string
+    {
+        $text = trim((string) preg_replace('/\s+/', ' ', strip_tags($content)));
+
+        if ($text === '') {
+            return '';
+        }
+
+        $words = preg_split('/\s+/', $text) ?: [];
+
+        if (count($words) <= $wordCount) {
+            return $text;
+        }
+
+        return implode(' ', array_slice($words, 0, $wordCount)) . '…';
+    }
+}
+
+if (!function_exists('highlight_terms')) {
+    /**
+     * Wraps case-insensitive matches of each query word in <mark> tags,
+     * for search results (LP-014). Takes already-esc_html()-escaped text
+     * and operates on it — same escape-first ordering as
+     * format_comment_content()/make_excerpt() callers — so it's safe to
+     * echo directly. Words shorter than 2 characters are skipped to avoid
+     * highlighting noise. Matching runs against the escaped text rather
+     * than the original, so a query term that happens to appear inside an
+     * HTML entity (e.g. searching "amp" against text containing "&amp;")
+     * can highlight part of the entity — an accepted first-pass edge case.
+     */
+    function highlight_terms(string $escapedText, string $query): string
+    {
+        $words = array_filter(
+            preg_split('/\s+/', trim($query)) ?: [],
+            static fn (string $word): bool => mb_strlen($word) >= 2,
+        );
+
+        if ($words === []) {
+            return $escapedText;
+        }
+
+        $pattern = '/(' . implode('|', array_map(
+            static fn (string $word): string => preg_quote($word, '/'),
+            $words,
+        )) . ')/iu';
+
+        return preg_replace($pattern, '<mark class="lp-search-highlight">$1</mark>', $escapedText) ?? $escapedText;
+    }
+}
+
+if (!function_exists('site_name')) {
+    /**
+     * The site's display name (LP-034 Branding), reads SiteBranding, set
+     * once at bootstrap from the "site_name" option — the installer has
+     * always saved it, but nothing read it back until this feature.
+     */
+    function site_name(): string
+    {
+        return SiteBranding::siteName();
+    }
+}
+
+if (!function_exists('site_logo_url')) {
+    function site_logo_url(): ?string
+    {
+        return SiteBranding::logoUrl();
+    }
+}
+
+if (!function_exists('favicon_url')) {
+    function favicon_url(): ?string
+    {
+        return SiteBranding::faviconUrl();
+    }
+}
+
+if (!function_exists('custom_css')) {
+    /**
+     * Admin-authored CSS (LP-034), meant to be echoed inside a <style>
+     * tag as-is — it's CSS, not HTML, so esc_html() would corrupt it.
+     * Only manage_options/manage_themes administrators can set this (the
+     * same trust level arbitrary theme/plugin PHP already assumes), so no
+     * sanitization beyond stripping a literal "</style" is needed — that
+     * strip is a defensive measure against accidental markup breakage,
+     * not a security boundary.
+     */
+    function custom_css(): string
+    {
+        return (string) preg_replace('/<\/style\s*>/i', '', SiteBranding::customCss());
     }
 }
 

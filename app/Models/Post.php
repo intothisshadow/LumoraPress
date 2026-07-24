@@ -20,6 +20,7 @@ final class Post
         public readonly ?DateTimeImmutable $publishedAt,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
+        public readonly bool $commentsOpen = true,
     ) {
     }
 

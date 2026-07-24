@@ -7,9 +7,9 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 ## Requirements
 
 - PHP 8.2, 8.3, or 8.4
-- MySQL/MariaDB
+- MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search)
 - The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip`
-  is required only for the manual ZIP update feature)
+  is required only for the manual core-update and theme-install features)
 - Apache with `mod_rewrite` (the shipped `.htaccess` files assume Apache)
 - `config/`, `storage/logs/`, `storage/sessions/`, `storage/cache/`, and
   `content/uploads/` writable by the web server user
@@ -157,8 +157,7 @@ them via FTP/SFTP or your hosting file manager).
 Phase 1 (Foundation) is implemented: project structure, installer, bootstrap,
 routing, the database layer, configuration service, authentication and user
 roles, the admin framework and dashboard, the classic theme system with a
-default theme, the plugin hook system, the widget and menu systems, and a
-basic media library.
+default theme, the plugin hook system, and the widget and menu systems.
 
 Phase 2 has begun with Posts: `LumoraPress\Services\PostService` provides
 creation, editing, deletion, automatic slug generation (with duplicate
@@ -203,6 +202,54 @@ to a plain text input if JavaScript is disabled. The admin Tags screen
 `/tag/{slug}` renders a real archive with the tag's description shown
 above the list.
 
+Comments are implemented as a first pass, scoped to Posts (Pages, media,
+and albums are out of scope — media/albums belong to Lumora Gallery, a
+separate application). `LumoraPress\Services\CommentService` provides
+threaded, unlimited-depth replies via a self-referencing `parent_id`.
+Guests can comment with a name/email/optional website; any signed-in
+dashboard user can comment as themselves without retyping their details.
+New comments default to Pending unless the commenter is trusted (holds
+`moderate_comments`, or a guest email has a prior Approved comment).
+Basic spam protection: a honeypot field, a 30-second minimum between
+comments from the same IP, and CSRF-protected forms. Each post has an
+"Allow Comments" toggle, and there is a site-wide "Allow comments
+site-wide" switch on the admin Comments screen
+(`admin/views/comments.php`), where moderators can approve/unapprove/
+mark spam/trash/permanently delete and edit comment text, filtered by
+status. URLs in comment content are auto-linked. Reactions,
+notifications, mentions, avatars, third-party spam services (Akismet,
+Turnstile, hCaptcha, reCAPTCHA), and GDPR export/deletion tooling are
+not yet implemented.
+
+RSS & Atom feeds are implemented as a first pass, scoped to a single
+site-wide feed of published posts (category/tag/author/comment feeds are
+not yet implemented). `LumoraPress\Services\FeedService` builds channel
+metadata and item data, filterable by plugins via `apply_filters
+('feed_channel', ...)` and `apply_filters('feed_item', ...)`; `/feed` and
+`/feed/rss` serve RSS 2.0, `/feed/atom` serves Atom 1.0. Feed items respect
+the same published/scheduled-and-due visibility rule as the homepage and
+archives. An admin Settings screen (`admin/views/settings.php`) controls
+whether feeds are enabled, full content vs. excerpts, item limit, cache
+lifetime, and a feed description. Responses include `ETag`/`Last-Modified`/
+`Cache-Control` headers with conditional GET (304) support. The default
+theme auto-discovers both feeds via `<link rel="alternate">` in `<head>`
+and links to the RSS feed from the site footer.
+
+Search is implemented as a first pass, scoped to Posts and Pages
+(Categories/Tags/Authors/Comments/Media are not yet searchable).
+`LumoraPress\Services\SearchService` ranks results by relevance using real
+MySQL/MariaDB FULLTEXT indexes and `MATCH(...) AGAINST(...)` — a title
+match is weighted higher than a body-only match — rather than a custom
+indexing pipeline; the index is maintained automatically by MySQL on every
+post/page save, so there is no rebuild step. Results from Posts and Pages
+are merged into one relevance-ordered, paginated list. Matching terms are
+highlighted in results (`highlight_terms()`); an admin Settings screen
+section controls the minimum query length and the maximum combined result
+count. The default theme's header includes a real search form (plain GET,
+no JavaScript). Exact-phrase, prefix, partial-substring, and fuzzy
+matching are not supported — MySQL's natural-language full-text mode
+matches whole words only.
+
 User Management is implemented as a first pass: the admin Users screen
 (`admin/views/users.php`) lets Administrators create, edit, and delete
 user accounts and assign a role (Administrator/Editor/Author/
@@ -218,5 +265,87 @@ screen are not yet implemented.
 Manual updates via ZIP upload are implemented (see "Updating" above);
 GitHub-based update checking/downloading is not yet built.
 
-Comments, RSS, and search are intentionally not yet implemented — see
-`TODO.md` for the full phase breakdown and remaining known gaps.
+Maintenance Mode is implemented as a first pass:
+`LumoraPress\Core\Http\MaintenanceGate` gates every public front-end
+request (checked in `index.php`, before routing) — `/admin/*` is always
+exempt so an Administrator can log in and turn it off. It can be switched
+on manually (a Settings screen section, or a one-click dashboard button)
+or scheduled (optional start/end times, checked per request — no cron
+job, the same "no background process" approach already used for
+scheduled posts/pages). Administrators always bypass; an "Allow Editors
+to bypass" option can extend that via the existing `moderate_comments`
+capability. Blocked requests get a real `503 Service Unavailable`,
+`X-Robots-Tag: noindex`, and (when a schedule or a configured seconds
+value applies) a `Retry-After` header, plus a theme-rendered maintenance
+page (title, message, and — when a scheduled end time is set — a static
+estimated-return line; no JS countdown). Plugins can register their own
+bypass rules via the `maintenance_mode_bypass` filter and react to state
+changes via the `maintenance_mode_toggled` action. IP whitelisting, a
+secret bypass URL/cookie, and email notifications are not yet
+implemented.
+
+Appearance is implemented as a first pass. Theme Management:
+`LumoraPress\Core\Theme\ThemeRegistry` discovers every theme under
+`content/themes/`, parsing each one's `style.css` comment header (the
+classic `Theme Name:`/`Description:`/`Version:`/`Author:` convention —
+already present in the default theme, but nothing read it before this)
+plus a `screenshot.{png,jpg,jpeg,webp}` if one exists. The new admin
+Appearance screen (`admin/views/appearance.php`) lists every discovered
+theme as a card with a one-click "Activate" button, and can install new
+themes from a ZIP upload (`LumoraPress\Services\ThemeInstaller` — reuses
+the path-traversal/size-cap safety checks LP-026's update-package
+validator established, but is otherwise much simpler: a theme install
+only ever adds one new, independent directory, never overlays live core
+files, so there's no staging/backup/rollback machinery). Branding: a site
+logo and favicon (both reuse `MediaService::upload()`; `.ico` was added
+to its allow-list alongside the already-supported PNG), and the
+`site_name` option (saved by the installer since LP-028, but until now
+never actually read anywhere) is finally wired into the theme. Since
+theme templates have no direct route to `PressConfig`/`MediaService`,
+these render through a new static bridge,
+`LumoraPress\Core\Theme\SiteBranding` (mirroring `SiteUrl`/`BasePath`),
+exposed to themes via `site_name()`/`site_logo_url()`/`favicon_url()`
+helpers. Custom Code: a single Custom CSS field, rendered inside a
+`<style>` tag on every public page. The Theme Options API (for
+themes/plugins to register their own controls), Layout/Typography/Color
+customization, Navigation/Footer content options, and Accessibility
+settings are not yet implemented.
+
+The Media Manager (renamed from "media library") is implemented as a
+first pass: uploads now support documents/archives (PDF, ZIP, CSS, TXT,
+XML, JSON) and audio/video, not just images, via an expanded
+`LumoraPress\Services\MediaService` allow-list. A real, unlimited-depth
+virtual folder system (`LumoraPress\Services\FolderService`) organizes
+files without ever touching where they physically live — a folder is a
+plain database row, and reassigning a file's folder never changes its
+stable public URL. Every file also gets alt text, caption, description,
+notes, and a SHA-256 hash, alongside the metadata already captured at
+upload (original/stored filename, MIME type, dimensions, size, upload
+date). Before deleting a file, `LumoraPress\Services\MediaUsageChecker`
+checks whether anything references it (a post's featured image, the site
+logo/favicon) and requires an explicit "Delete Anyway" confirmation if
+so; bulk delete never force-deletes a referenced file, it's skipped and
+reported instead. The admin Media Manager screen supports search/filter
+(filename, folder, type, upload date) and bulk move/delete. Bulk rename/
+replace/change-metadata, dimension/file-size search filters, Smart
+Collections, and a future S3/R2-compatible storage backend are not yet
+implemented.
+
+Thumbnail Generation is implemented: `LumoraPress\Services\ThumbnailService`
+generates resized copies of image uploads with GD (no Imagick dependency)
+in three configurable sizes (small/medium/large by default, each with its
+own dimensions and crop-vs-fit mode, adjustable from Settings), corrects
+EXIF orientation before resizing, never upscales, and strips metadata for
+free since GD's encoders don't carry it through. WebP/AVIF output is only
+attempted when the running GD build supports it. The Media Manager
+generates thumbnails automatically on upload, offers per-item and bulk
+regeneration (with a "missing only" option and a batch-per-request
+progress bar, progressively enhanced by JavaScript to auto-continue), an
+orphaned-thumbnail cleanup tool, and cleans up thumbnails when a file is
+deleted. Extensible via `thumbnail_sizes`/`thumbnail_max_pixels` filters
+and `thumbnail_generated`/`thumbnail_generation_failed` actions.
+
+Search beyond Posts/Pages (categories/tags/authors/comments/media), and
+RSS feeds beyond the site-wide posts feed described above (category/tag/
+author/comment feeds, JSON Feed), are not yet implemented —
+see `TODO.md` for the full phase breakdown and remaining known gaps.

@@ -29,4 +29,8 @@ $kernel = require $root . '/include/bootstrap.php';
  */
 $requestUri = \LumoraPress\Core\Http\BasePath::stripFrom($_SERVER['REQUEST_URI'] ?? '/');
 
-$kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
+if ($kernel->maintenance->shouldBlock($requestUri)) {
+    $kernel->maintenance->respond();
+} else {
+    $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
+}

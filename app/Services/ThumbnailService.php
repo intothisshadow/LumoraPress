@@ -1,0 +1,551 @@
+<?php
+
+declare(strict_types=1);
+
+namespace LumoraPress\Services;
+
+use Closure;
+use GdImage;
+use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
+use LumoraPress\Core\PressConfig;
+use RuntimeException;
+use Throwable;
+
+/**
+ * Thumbnail Generation (LP-001): derives resized copies of image uploads
+ * using GD only (no Imagick dependency, since GD ships on effectively all
+ * shared hosting — the audience this project targets). Deliberately a
+ * sibling of MediaService rather than logic bolted onto it: MediaService's
+ * own docblock scopes it to "validated uploads, folders, metadata,
+ * search", and thumbnailing is a distinct concern with its own storage
+ * table, exactly the "focused service classes" rule in CLAUDE.md.
+ *
+ * There is no upload/delete hook in this codebase yet (MediaUsageChecker
+ * and FolderService are also called explicitly from admin/views/media.php,
+ * not via do_action), so generate()/deleteForMedia() are likewise called
+ * explicitly from there rather than wired through a new event.
+ *
+ * WebP/AVIF are only ever produced when the running GD build actually
+ * supports them (checked via function_exists()) — skipped with a logged
+ * notice otherwise, never a hard failure. Metadata stripping needs no
+ * separate step: GD's image* encoders never carry EXIF/ICC chunks through
+ * from the source image, so every generated thumbnail is already clean.
+ */
+final class ThumbnailService
+{
+    /**
+     * @var array<string, array{width: int, height: int, mode: string, enabled: bool}>
+     */
+    private const DEFAULT_SIZES = [
+        'small' => ['width' => 150, 'height' => 150, 'mode' => 'crop', 'enabled' => true],
+        'medium' => ['width' => 300, 'height' => 300, 'mode' => 'fit', 'enabled' => true],
+        'large' => ['width' => 1024, 'height' => 1024, 'mode' => 'fit', 'enabled' => true],
+    ];
+
+    private const DEFAULT_MAX_PIXELS = 25_000_000;
+
+    private readonly Closure $readExif;
+
+    /**
+     * @param Closure(string): (array<string, mixed>|false)|null $readExif
+     *     Overrides EXIF reading — defaults to exif_read_data(). Exists so
+     *     tests can exercise orientation handling without needing a real
+     *     EXIF-embedded fixture file, the same DI-for-testability pattern
+     *     MediaService's $moveUploadedFile and RequirementsCheck's
+     *     $extensionLoaded use.
+     */
+    public function __construct(
+        private readonly Database $database,
+        private readonly string $tablePrefix,
+        private readonly string $uploadsPath,
+        private readonly string $uploadsUrl,
+        private readonly PressConfig $config,
+        private readonly HookManager $hooks,
+        private readonly MediaService $media,
+        private readonly string $logDirectory,
+        ?Closure $readExif = null,
+    ) {
+        $this->readExif = $readExif ?? static fn (string $path): array|false => @exif_read_data($path);
+    }
+
+    /**
+     * @return array<string, array{width: int, height: int, mode: string, enabled: bool}>
+     */
+    public function sizes(): array
+    {
+        $sizes = [];
+
+        foreach (self::DEFAULT_SIZES as $name => $defaults) {
+            $sizes[$name] = [
+                'width' => max(1, (int) $this->config->option("thumbnail_size_{$name}_width", (string) $defaults['width'])),
+                'height' => max(1, (int) $this->config->option("thumbnail_size_{$name}_height", (string) $defaults['height'])),
+                'mode' => $this->config->option("thumbnail_size_{$name}_mode", $defaults['mode']) === 'crop' ? 'crop' : 'fit',
+                'enabled' => $this->config->option("thumbnail_size_{$name}_enabled", '1') !== '0',
+            ];
+        }
+
+        /** @var array<string, array{width: int, height: int, mode: string, enabled: bool}> $sizes */
+        $sizes = $this->hooks->applyFilters('thumbnail_sizes', $sizes);
+
+        return $sizes;
+    }
+
+    /**
+     * No-ops for non-image media. Wraps every size in its own try/catch —
+     * a corrupt or unsupported source image is logged and recorded in
+     * `skipped`, never thrown, so one bad file can't abort a bulk run.
+     *
+     * @param array<string, mixed> $media
+     * @return array{generated: array<string, array{width: int, height: int, path: string}>, skipped: array<string, string>}
+     */
+    public function generate(array $media): array
+    {
+        $generated = [];
+        $skipped = [];
+
+        if (!str_starts_with((string) $media['mime_type'], 'image/')) {
+            return ['generated' => $generated, 'skipped' => $skipped];
+        }
+
+        $mediaId = (int) $media['id'];
+        $sourcePath = rtrim($this->uploadsPath, '/') . '/' . $media['file_path'];
+
+        if (!is_file($sourcePath)) {
+            return ['generated' => $generated, 'skipped' => $skipped];
+        }
+
+        $configuredMaxPixels = (int) $this->config->option('thumbnail_max_pixels', (string) self::DEFAULT_MAX_PIXELS);
+        $maxPixels = (int) $this->hooks->applyFilters('thumbnail_max_pixels', $configuredMaxPixels);
+        $dimensions = @getimagesize($sourcePath);
+
+        if ($dimensions === false) {
+            $this->log("Media #{$mediaId}: unable to read image dimensions, skipping all sizes.");
+
+            foreach ($this->sizes() as $name => $size) {
+                if ($size['enabled']) {
+                    $skipped[$name] = 'Unable to read image dimensions.';
+                }
+            }
+
+            return ['generated' => $generated, 'skipped' => $skipped];
+        }
+
+        [$sourceWidth, $sourceHeight] = $dimensions;
+
+        if ($sourceWidth * $sourceHeight > $maxPixels) {
+            $reason = "Source image ({$sourceWidth}x{$sourceHeight}) exceeds the {$maxPixels}-pixel safeguard.";
+            $this->log("Media #{$mediaId}: {$reason}");
+
+            foreach ($this->sizes() as $name => $size) {
+                if ($size['enabled']) {
+                    $skipped[$name] = $reason;
+                }
+            }
+
+            return ['generated' => $generated, 'skipped' => $skipped];
+        }
+
+        foreach ($this->sizes() as $sizeName => $size) {
+            if (!$size['enabled']) {
+                continue;
+            }
+
+            try {
+                $result = $this->generateOne($media, $sourcePath, $sourceWidth, $sourceHeight, $sizeName, $size);
+
+                if ($result === null) {
+                    $skipped[$sizeName] = 'Source image is smaller than the target size (upscaling is not allowed).';
+
+                    continue;
+                }
+
+                $generated[$sizeName] = $result;
+                $this->hooks->doAction('thumbnail_generated', $mediaId, $sizeName, $result['path']);
+            } catch (Throwable $exception) {
+                $skipped[$sizeName] = $exception->getMessage();
+                $this->log("Media #{$mediaId}, size \"{$sizeName}\": {$exception->getMessage()}");
+                $this->hooks->doAction('thumbnail_generation_failed', $mediaId, $sizeName, $exception->getMessage());
+            }
+        }
+
+        return ['generated' => $generated, 'skipped' => $skipped];
+    }
+
+    /**
+     * Deletes any existing thumbnails for this media id, then regenerates.
+     *
+     * @return array{generated: array<string, array{width: int, height: int, path: string}>, skipped: array<string, string>}
+     */
+    public function regenerate(int $mediaId): array
+    {
+        $media = $this->media->find($mediaId);
+
+        if ($media === null) {
+            return ['generated' => [], 'skipped' => []];
+        }
+
+        $this->deleteForMedia($mediaId);
+
+        return $this->generate($media);
+    }
+
+    public function deleteForMedia(int $mediaId): void
+    {
+        foreach ($this->thumbnailsFor($mediaId) as $thumbnail) {
+            $path = rtrim($this->uploadsPath, '/') . '/' . $thumbnail['file_path'];
+
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+
+        $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE media_id = :media_id', ['media_id' => $mediaId]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function thumbnailsFor(int $mediaId): array
+    {
+        return $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE media_id = :media_id ORDER BY size_name ASC',
+            ['media_id' => $mediaId],
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $media
+     */
+    public function url(array $media, string $size): ?string
+    {
+        $row = $this->database->fetchOne(
+            'SELECT file_path FROM ' . $this->table() . ' WHERE media_id = :media_id AND size_name = :size_name',
+            ['media_id' => (int) $media['id'], 'size_name' => $size],
+        );
+
+        return $row === null ? null : rtrim($this->uploadsUrl, '/') . '/' . $row['file_path'];
+    }
+
+    /**
+     * Removes `media_thumbnails` rows (and their files) whose parent media
+     * row no longer exists. DB-level reconciliation only — not a
+     * filesystem tree walk — since deleteForMedia() already keeps files
+     * and rows in lockstep on the normal delete path; this exists as a
+     * safety net, not the primary cleanup mechanism.
+     */
+    public function deleteOrphaned(): int
+    {
+        $orphans = $this->database->fetchAll(
+            'SELECT t.* FROM ' . $this->table() . ' t
+             LEFT JOIN ' . $this->mediaTable() . ' m ON m.id = t.media_id
+             WHERE m.id IS NULL',
+        );
+
+        foreach ($orphans as $orphan) {
+            $path = rtrim($this->uploadsPath, '/') . '/' . $orphan['file_path'];
+
+            if (is_file($path)) {
+                unlink($path);
+            }
+
+            $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => (int) $orphan['id']]);
+        }
+
+        return count($orphans);
+    }
+
+    /**
+     * Processes one batch of image media for bulk regeneration. Callers
+     * (the admin view) loop this across requests, incrementing $offset by
+     * $batchSize each time until `done` is true — no queue/cron
+     * infrastructure exists in this codebase, so this is the same
+     * "batch-per-request" shape as everything else here.
+     *
+     * @return array{processed: int, total: int, done: bool}
+     */
+    public function queueForBulkRegeneration(bool $missingOnly, int $offset, int $batchSize = 10): array
+    {
+        $result = $this->media->query(['type' => 'image'], $batchSize, $offset);
+        $total = $result['total'];
+        $processed = 0;
+
+        foreach ($result['items'] as $item) {
+            $mediaId = (int) $item['id'];
+
+            if ($missingOnly && $this->hasAllEnabledSizes($mediaId)) {
+                continue;
+            }
+
+            $this->regenerate($mediaId);
+            $processed++;
+        }
+
+        return [
+            'processed' => count($result['items']),
+            'total' => $total,
+            'done' => ($offset + $batchSize) >= $total,
+        ];
+    }
+
+    private function hasAllEnabledSizes(int $mediaId): bool
+    {
+        $existing = array_column($this->thumbnailsFor($mediaId), 'size_name');
+        $enabledNames = array_keys(array_filter($this->sizes(), static fn (array $size): bool => $size['enabled']));
+
+        return array_diff($enabledNames, $existing) === [];
+    }
+
+    /**
+     * @param array<string, mixed> $media
+     * @param array{width: int, height: int, mode: string, enabled: bool} $size
+     * @return array{width: int, height: int, path: string}|null null means
+     *     "correctly skipped" (upscale prevention), not a failure.
+     */
+    private function generateOne(array $media, string $sourcePath, int $sourceWidth, int $sourceHeight, string $sizeName, array $size): ?array
+    {
+        if ($sourceWidth <= $size['width'] && $sourceHeight <= $size['height']) {
+            return null;
+        }
+
+        $mimeType = (string) $media['mime_type'];
+        $source = $this->loadImage($sourcePath, $mimeType);
+
+        if ($this->isRotatedByExif($sourcePath, $mimeType)) {
+            $source = $this->applyExifOrientation($source, $sourcePath);
+            $sourceWidth = imagesx($source);
+            $sourceHeight = imagesy($source);
+        }
+
+        [$targetWidth, $targetHeight] = $this->targetDimensions($sourceWidth, $sourceHeight, $size);
+
+        if ($size['mode'] === 'crop') {
+            $canvas = $this->resizeCrop($source, $sourceWidth, $sourceHeight, $size['width'], $size['height']);
+            $targetWidth = $size['width'];
+            $targetHeight = $size['height'];
+        } else {
+            $canvas = $this->resizeFit($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight);
+        }
+
+        imagedestroy($source);
+
+        if ($this->config->option('thumbnail_sharpen', '0') === '1') {
+            $this->sharpen($canvas);
+        }
+
+        $extension = strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION));
+        $basename = pathinfo((string) $media['file_path'], PATHINFO_FILENAME);
+        $directory = dirname((string) $media['file_path']);
+        $relativePath = ($directory === '.' ? '' : $directory . '/') . "{$basename}-{$sizeName}.{$extension}";
+        $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
+
+        $this->encode($canvas, $destination, $mimeType);
+        imagedestroy($canvas);
+
+        // Delete-then-insert rather than an upsert: a previous row for
+        // this (media_id, size_name) may point at a differently-named
+        // file (e.g. the source extension changed on re-upload), and an
+        // UPDATE-only upsert would silently orphan that old file on disk
+        // while the DB moved on. Explicitly removing the old row+file
+        // first keeps them in lockstep, the same guarantee
+        // deleteForMedia() provides. Also keeps this portable to SQLite
+        // (no MySQL-only ON DUPLICATE KEY UPDATE), matching this
+        // codebase's SqliteDatabaseFactory-based unit test convention.
+        $existing = $this->database->fetchOne(
+            'SELECT file_path FROM ' . $this->table() . ' WHERE media_id = :media_id AND size_name = :size_name',
+            ['media_id' => (int) $media['id'], 'size_name' => $sizeName],
+        );
+
+        if ($existing !== null) {
+            $existingPath = rtrim($this->uploadsPath, '/') . '/' . $existing['file_path'];
+
+            if ($existingPath !== $destination && is_file($existingPath)) {
+                unlink($existingPath);
+            }
+
+            $this->database->execute(
+                'DELETE FROM ' . $this->table() . ' WHERE media_id = :media_id AND size_name = :size_name',
+                ['media_id' => (int) $media['id'], 'size_name' => $sizeName],
+            );
+        }
+
+        $this->database->execute(
+            'INSERT INTO ' . $this->table() . ' (media_id, size_name, file_path, width, height, created_at)
+             VALUES (:media_id, :size_name, :file_path, :width, :height, :created_at)',
+            [
+                'media_id' => (int) $media['id'],
+                'size_name' => $sizeName,
+                'file_path' => $relativePath,
+                'width' => $targetWidth,
+                'height' => $targetHeight,
+                'created_at' => date('Y-m-d H:i:s'),
+            ],
+        );
+
+        return ['width' => $targetWidth, 'height' => $targetHeight, 'path' => $relativePath];
+    }
+
+    /**
+     * @param array{width: int, height: int, mode: string, enabled: bool} $size
+     * @return array{0: int, 1: int}
+     */
+    private function targetDimensions(int $sourceWidth, int $sourceHeight, array $size): array
+    {
+        $ratio = min($size['width'] / $sourceWidth, $size['height'] / $sourceHeight);
+
+        return [
+            max(1, (int) round($sourceWidth * $ratio)),
+            max(1, (int) round($sourceHeight * $ratio)),
+        ];
+    }
+
+    private function resizeFit(GdImage $source, int $sourceWidth, int $sourceHeight, int $targetWidth, int $targetHeight): GdImage
+    {
+        $canvas = imagecreatetruecolor($targetWidth, $targetHeight);
+        $this->preserveTransparency($canvas);
+        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+
+        return $canvas;
+    }
+
+    private function resizeCrop(GdImage $source, int $sourceWidth, int $sourceHeight, int $targetWidth, int $targetHeight): GdImage
+    {
+        $sourceRatio = $sourceWidth / $sourceHeight;
+        $targetRatio = $targetWidth / $targetHeight;
+
+        if ($sourceRatio > $targetRatio) {
+            $cropHeight = $sourceHeight;
+            $cropWidth = (int) round($sourceHeight * $targetRatio);
+        } else {
+            $cropWidth = $sourceWidth;
+            $cropHeight = (int) round($sourceWidth / $targetRatio);
+        }
+
+        $cropX = (int) (($sourceWidth - $cropWidth) / 2);
+        $cropY = (int) (($sourceHeight - $cropHeight) / 2);
+
+        $canvas = imagecreatetruecolor($targetWidth, $targetHeight);
+        $this->preserveTransparency($canvas);
+        imagecopyresampled($canvas, $source, 0, 0, $cropX, $cropY, $targetWidth, $targetHeight, $cropWidth, $cropHeight);
+
+        return $canvas;
+    }
+
+    private function preserveTransparency(GdImage $canvas): void
+    {
+        imagealphablending($canvas, false);
+        imagesavealpha($canvas, true);
+        $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+
+        if ($transparent !== false) {
+            imagefill($canvas, 0, 0, $transparent);
+        }
+    }
+
+    /**
+     * A fixed unsharp-style convolution kernel — a toggle, not a
+     * configurable-strength filter, to keep this bounded.
+     */
+    private function sharpen(GdImage $canvas): void
+    {
+        $matrix = [
+            [-1, -1, -1],
+            [-1, 16, -1],
+            [-1, -1, -1],
+        ];
+        $divisor = 8;
+        imageconvolution($canvas, $matrix, $divisor, 0);
+    }
+
+    private function loadImage(string $path, string $mimeType): GdImage
+    {
+        $image = match ($mimeType) {
+            'image/jpeg' => imagecreatefromjpeg($path),
+            'image/png' => imagecreatefrompng($path),
+            'image/gif' => imagecreatefromgif($path),
+            'image/webp' => function_exists('imagecreatefromwebp') ? imagecreatefromwebp($path) : false,
+            'image/avif' => function_exists('imagecreatefromavif') ? imagecreatefromavif($path) : false,
+            default => false,
+        };
+
+        if ($image === false) {
+            throw new RuntimeException("Unsupported or corrupt image (\"{$mimeType}\").");
+        }
+
+        return $image;
+    }
+
+    private function isRotatedByExif(string $path, string $mimeType): bool
+    {
+        if ($mimeType !== 'image/jpeg' || !function_exists('exif_read_data')) {
+            return false;
+        }
+
+        $exif = ($this->readExif)($path);
+
+        return is_array($exif) && isset($exif['Orientation']) && (int) $exif['Orientation'] !== 1;
+    }
+
+    private function applyExifOrientation(GdImage $image, string $path): GdImage
+    {
+        $exif = ($this->readExif)($path);
+        $orientation = is_array($exif) ? (int) ($exif['Orientation'] ?? 1) : 1;
+
+        $rotated = match ($orientation) {
+            3 => imagerotate($image, 180, 0),
+            6 => imagerotate($image, -90, 0),
+            8 => imagerotate($image, 90, 0),
+            default => $image,
+        };
+
+        if ($rotated === false) {
+            return $image;
+        }
+
+        if ($rotated !== $image) {
+            imagedestroy($image);
+        }
+
+        return $rotated;
+    }
+
+    private function encode(GdImage $canvas, string $destination, string $mimeType): void
+    {
+        $jpegQuality = max(0, min(100, (int) $this->config->option('thumbnail_jpeg_quality', '82')));
+        $webpQuality = max(0, min(100, (int) $this->config->option('thumbnail_webp_quality', '80')));
+
+        $success = match ($mimeType) {
+            'image/jpeg' => imagejpeg($canvas, $destination, $jpegQuality),
+            'image/png' => imagepng($canvas, $destination),
+            'image/gif' => imagegif($canvas, $destination),
+            'image/webp' => function_exists('imagewebp') ? imagewebp($canvas, $destination, $webpQuality) : false,
+            'image/avif' => function_exists('imageavif') ? imageavif($canvas, $destination) : false,
+            default => false,
+        };
+
+        if ($success === false) {
+            throw new RuntimeException("Unable to write the generated thumbnail to \"{$destination}\".");
+        }
+    }
+
+    private function log(string $message): void
+    {
+        $logFile = rtrim($this->logDirectory, '/') . '/thumbnails.log';
+
+        if (!is_dir($this->logDirectory) || !is_writable($this->logDirectory)) {
+            return;
+        }
+
+        error_log('[' . date('Y-m-d H:i:s') . '] ' . $message . "\n", 3, $logFile);
+    }
+
+    private function table(): string
+    {
+        return $this->tablePrefix . 'media_thumbnails';
+    }
+
+    private function mediaTable(): string
+    {
+        return $this->tablePrefix . 'media';
+    }
+}

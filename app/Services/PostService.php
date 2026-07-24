@@ -36,14 +36,15 @@ final class PostService
         ?DateTimeImmutable $publishedAt = null,
         ?int $featuredImageId = null,
         ?string $slug = null,
+        bool $commentsOpen = true,
     ): Post {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, excerpt, status, author_id, featured_image_id, published_at, created_at, updated_at)
-             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :featured_image_id, :published_at, :created_at, :updated_at)',
+                (title, slug, content, excerpt, status, author_id, featured_image_id, published_at, comment_status, created_at, updated_at)
+             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :featured_image_id, :published_at, :comment_status, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -53,6 +54,7 @@ final class PostService
                 'author_id' => $authorId,
                 'featured_image_id' => $featuredImageId,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now)?->format('Y-m-d H:i:s'),
+                'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
             ],
@@ -76,6 +78,7 @@ final class PostService
         ?DateTimeImmutable $publishedAt = null,
         ?int $featuredImageId = null,
         ?string $slug = null,
+        bool $commentsOpen = true,
     ): Post {
         $existing = $this->findById($id);
 
@@ -90,7 +93,7 @@ final class PostService
             'UPDATE ' . $this->table() . '
                 SET title = :title, slug = :slug, content = :content, excerpt = :excerpt,
                     status = :status, featured_image_id = :featured_image_id,
-                    published_at = :published_at, updated_at = :updated_at
+                    published_at = :published_at, comment_status = :comment_status, updated_at = :updated_at
               WHERE id = :id',
             [
                 'title' => $title,
@@ -100,6 +103,7 @@ final class PostService
                 'status' => $status->value,
                 'featured_image_id' => $featuredImageId,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now, $existing->publishedAt)?->format('Y-m-d H:i:s'),
+                'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
             ],
@@ -124,6 +128,10 @@ final class PostService
         );
         $this->database->execute(
             'DELETE FROM ' . $this->tablePrefix . 'post_tags WHERE post_id = :post_id',
+            ['post_id' => $id],
+        );
+        $this->database->execute(
+            'DELETE FROM ' . $this->tablePrefix . 'comments WHERE post_id = :post_id',
             ['post_id' => $id],
         );
 
@@ -154,6 +162,24 @@ final class PostService
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE slug = :slug', ['slug' => $slug]);
 
         return $row === null ? null : $this->hydrate($row);
+    }
+
+    /**
+     * Titles of every post using $mediaId as its featured image — used by
+     * MediaUsageChecker to warn before deleting a referenced file, same
+     * "block/warn because referenced" purpose countByAuthor() serves for
+     * the admin Users screen.
+     *
+     * @return array<int, string>
+     */
+    public function titlesByFeaturedImage(int $mediaId): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT title FROM ' . $this->table() . ' WHERE featured_image_id = :featured_image_id',
+            ['featured_image_id' => $mediaId],
+        );
+
+        return array_map(static fn (array $row): string => (string) $row['title'], $rows);
     }
 
     /**
@@ -368,6 +394,7 @@ final class PostService
             publishedAt: $row['published_at'] !== null ? new DateTimeImmutable((string) $row['published_at']) : null,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+            commentsOpen: ($row['comment_status'] ?? 'open') === 'open',
         );
     }
 
