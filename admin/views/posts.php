@@ -183,8 +183,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = 'A title is required.';
         } elseif ($error === null) {
             $post = $existing === null
+<<<<<<< HEAD
                 ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen, contentFormat: $contentFormat)
                 : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen, $contentFormat);
+=======
+                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen)
+                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen);
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 
             $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
             $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
@@ -253,10 +258,13 @@ if ($action === 'edit') {
         : [];
     $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
     $currentFeaturedImage = $post?->featuredImageId !== null ? $kernel->media->find($post->featuredImageId) : null;
+<<<<<<< HEAD
     $editorMediaLibrary = array_map(
         static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
         $imageOptions,
     );
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('posts')) ?>" enctype="multipart/form-data">

@@ -581,6 +581,7 @@ body.lp-admin-login {
     font-size: 0.85rem;
 }
 
+<<<<<<< HEAD
 /* Content Editor (LP-015/LP-016) */
 
 .lp-content-editor textarea {
@@ -659,6 +660,8 @@ body.lp-admin-login {
     object-fit: cover;
 }
 
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 .lp-api-token__value {
     display: block;
     padding: 0.5rem 0.75rem;
