@@ -12,21 +12,28 @@ $results ??= [];
         <?php if ($results === []): ?>
             <p class="lp-empty-state">No results found.</p>
         <?php else: ?>
-            <div class="lp-search-results">
+            <div class="lp-search-results lp-gallery">
                 <?php foreach ($results as $result): ?>
                     <article class="lp-search-results__item">
-                        <p class="lp-search-results__type"><?= esc_html($result->type === 'page' ? 'Page' : 'Post') ?></p>
-                        <h2 class="lp-search-results__title">
-                            <a href="<?= esc_url(site_url(($result->type === 'page' ? 'page/' : 'post/') . $result->slug)) ?>">
-                                <?= highlight_terms(esc_html($result->title), $query) ?>
-                            </a>
-                        </h2>
-                        <?php if ($result->publishedAt !== null): ?>
-                            <p class="lp-search-results__meta"><?= esc_html($result->publishedAt->format('F j, Y')) ?></p>
+                        <?php if (has_post_thumbnail($result)): ?>
+                            <div class="lp-search-results__thumbnail">
+                                <?php the_post_thumbnail_lightbox($result, 'small'); ?>
+                            </div>
                         <?php endif; ?>
-                        <?php if ($result->excerpt !== ''): ?>
-                            <p class="lp-search-results__excerpt"><?= highlight_terms(esc_html($result->excerpt), $query) ?></p>
-                        <?php endif; ?>
+                        <div class="lp-search-results__body">
+                            <p class="lp-search-results__type"><?= esc_html($result->type === 'page' ? 'Page' : 'Post') ?></p>
+                            <h2 class="lp-search-results__title">
+                                <a href="<?= esc_url(site_url(($result->type === 'page' ? 'page/' : 'post/') . $result->slug)) ?>">
+                                    <?= highlight_terms(esc_html($result->title), $query) ?>
+                                </a>
+                            </h2>
+                            <?php if ($result->publishedAt !== null): ?>
+                                <p class="lp-search-results__meta"><?= esc_html($result->publishedAt->format('F j, Y')) ?></p>
+                            <?php endif; ?>
+                            <?php if ($result->excerpt !== ''): ?>
+                                <p class="lp-search-results__excerpt"><?= highlight_terms(esc_html($result->excerpt), $query) ?></p>
+                            <?php endif; ?>
+                        </div>
                     </article>
                 <?php endforeach; ?>
             </div>

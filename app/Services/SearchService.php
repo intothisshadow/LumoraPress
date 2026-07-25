@@ -7,6 +7,7 @@ namespace LumoraPress\Services;
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\SearchResult;
 
 /**
@@ -46,6 +47,7 @@ final class SearchService
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly PressConfig $config,
+        private readonly ContentRenderer $content,
     ) {
     }
 
@@ -125,7 +127,7 @@ final class SearchService
         // PageService::listAllForParentSelect()'s docblock for the
         // original regression this mirrors.
         $rows = $this->database->fetchAll(
-            "SELECT id, title, slug, content, excerpt, published_at,
+            "SELECT id, title, slug, content, content_format, excerpt, featured_image_id, published_at,
                     (MATCH(title, content) AGAINST(:query1 IN NATURAL LANGUAGE MODE)
                         + MATCH(title) AGAINST(:query2 IN NATURAL LANGUAGE MODE) * 2) AS relevance_score
              FROM {$table}
@@ -136,12 +138,18 @@ final class SearchService
         );
 
         return array_map(
-            static fn (array $row): SearchResult => new SearchResult(
+            fn (array $row): SearchResult => new SearchResult(
                 type: $type,
                 id: (int) $row['id'],
                 title: (string) $row['title'],
                 slug: (string) $row['slug'],
-                excerpt: ((string) ($row['excerpt'] ?? '')) !== '' ? (string) $row['excerpt'] : make_excerpt((string) $row['content']),
+                excerpt: ((string) ($row['excerpt'] ?? '')) !== ''
+                    ? (string) $row['excerpt']
+                    : make_excerpt($this->content->toPlainText(
+                        (string) $row['content'],
+                        ContentFormat::tryFrom((string) ($row['content_format'] ?? '')) ?? ContentFormat::Plain,
+                    )),
+                featuredImageId: $row['featured_image_id'] !== null ? (int) $row['featured_image_id'] : null,
                 publishedAt: $row['published_at'] !== null ? new DateTimeImmutable((string) $row['published_at']) : null,
                 score: (float) $row['relevance_score'],
             ),

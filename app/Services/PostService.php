@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
 use RuntimeException;
@@ -37,18 +38,20 @@ final class PostService
         ?int $featuredImageId = null,
         ?string $slug = null,
         bool $commentsOpen = true,
+        ContentFormat $contentFormat = ContentFormat::Markdown,
     ): Post {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, excerpt, status, author_id, featured_image_id, published_at, comment_status, created_at, updated_at)
-             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :featured_image_id, :published_at, :comment_status, :created_at, :updated_at)',
+                (title, slug, content, content_format, excerpt, status, author_id, featured_image_id, published_at, comment_status, created_at, updated_at)
+             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :featured_image_id, :published_at, :comment_status, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
                 'content' => $content,
+                'content_format' => $contentFormat->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
                 'author_id' => $authorId,
@@ -79,6 +82,7 @@ final class PostService
         ?int $featuredImageId = null,
         ?string $slug = null,
         bool $commentsOpen = true,
+        ?ContentFormat $contentFormat = null,
     ): Post {
         $existing = $this->findById($id);
 
@@ -91,7 +95,7 @@ final class PostService
 
         $this->database->execute(
             'UPDATE ' . $this->table() . '
-                SET title = :title, slug = :slug, content = :content, excerpt = :excerpt,
+                SET title = :title, slug = :slug, content = :content, content_format = :content_format, excerpt = :excerpt,
                     status = :status, featured_image_id = :featured_image_id,
                     published_at = :published_at, comment_status = :comment_status, updated_at = :updated_at
               WHERE id = :id',
@@ -99,6 +103,7 @@ final class PostService
                 'title' => $title,
                 'slug' => $slug,
                 'content' => $content,
+                'content_format' => ($contentFormat ?? $existing->contentFormat)->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
                 'featured_image_id' => $featuredImageId,
@@ -294,6 +299,44 @@ final class PostService
     }
 
     /**
+     * Posts visible to public site visitors written by $authorId (LP-021,
+     * for the REST API's ?author= filter) — no join needed, unlike
+     * paginateByCategory()/paginateByTag(), since author_id is a direct
+     * column on this table.
+     *
+     * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateByAuthor(int $authorId, int $page = 1, int $perPage = self::DEFAULT_PER_PAGE): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $where = "author_id = :author_id AND (status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+
+        $total = (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
+            ['now' => $now, 'author_id' => $authorId],
+        );
+
+        $offset = ($page - 1) * $perPage;
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE {$where}"
+                . " ORDER BY published_at DESC LIMIT {$perPage} OFFSET {$offset}",
+            ['now' => $now, 'author_id' => $authorId],
+        );
+
+        return [
+            'posts' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => (int) max(1, ceil($total / $perPage)),
+        ];
+    }
+
+    /**
      * All posts regardless of status, for the admin post list.
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
@@ -395,6 +438,7 @@ final class PostService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             commentsOpen: ($row['comment_status'] ?? 'open') === 'open',
+            contentFormat: ContentFormat::tryFrom((string) ($row['content_format'] ?? '')) ?? ContentFormat::Plain,
         );
     }
 

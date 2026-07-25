@@ -6,7 +6,7 @@
  * @var int $comment_count
  * @var \LumoraPress\Models\User|null $current_user
  */
-get_header();
+get_header(['post' => $post]);
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
@@ -15,7 +15,12 @@ get_header();
             <p class="lp-post__meta">
                 <?= $post->publishedAt !== null ? esc_html($post->publishedAt->format('F j, Y')) : '' ?>
             </p>
-            <div class="lp-post__content"><?= nl2br(esc_html($post->content)) ?></div>
+            <?php if (has_post_thumbnail($post)): ?>
+                <div class="lp-post__thumbnail lp-gallery">
+                    <?php the_post_thumbnail_lightbox($post, size: 'large', largeSize: 'large'); ?>
+                </div>
+            <?php endif; ?>
+            <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
         </article>
         <?php comments_template(['post' => $post, 'comment_tree' => $comment_tree, 'comments_open' => $comments_open, 'comment_count' => $comment_count, 'current_user' => $current_user]); ?>
     </main>

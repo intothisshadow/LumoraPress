@@ -3,12 +3,89 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
 
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
+}
+
+/*
+ * Editor image upload (LP-015/LP-016) and format-switch conversion are
+ * both JSON-responding sub-actions of this same POST handler rather than
+ * their own admin page/route — admin/index.php's $menu array doubles as
+ * both the sidebar nav and the capability allowlist (any page not listed
+ * there redirects to the dashboard), so a small AJAX-only endpoint has
+ * nowhere else to live without adding an unwanted visible nav entry.
+ * Handled before the CSRF-gated form dispatch below since these fire from
+ * JS on the *edit* screen, not the outer save form.
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_upload') {
+    // admin/index.php's ob_start() buffer already holds layout-header.php's
+    // HTML shell by the time this runs (views/{page}.php is required
+    // after layout-header.php unconditionally) — discard it before
+    // sending a JSON response, or that buffered HTML would still flush
+    // to the client ahead of/around this JSON on exit.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('upload_files') || !Csrf::verify('editor_upload', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Upload failed.']);
+        exit;
+    }
+
+    try {
+        $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
+        echo json_encode(['data' => ['filePath' => $kernel->media->url($uploaded)], 'url' => $kernel->media->url($uploaded)]);
+    } catch (\Throwable $exception) {
+        http_response_code(422);
+        echo json_encode(['error' => $exception->getMessage()]);
+    }
+
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'convert_content') {
+    // admin/index.php's ob_start() buffer already holds layout-header.php's
+    // HTML shell by the time this runs (views/{page}.php is required
+    // after layout-header.php unconditionally) — discard it before
+    // sending a JSON response, or that buffered HTML would still flush
+    // to the client ahead of/around this JSON on exit.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!Csrf::verify('convert_content', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
+        exit;
+    }
+
+    $from = ContentFormat::tryFrom((string) ($_POST['from'] ?? ''));
+    $to = ContentFormat::tryFrom((string) ($_POST['to'] ?? ''));
+
+    if ($from === null || $to === null) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Unknown format.']);
+        exit;
+    }
+
+    echo json_encode(['content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $from, $to)]);
+    exit;
 }
 
 $postService = $kernel->posts;
@@ -59,6 +136,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PostStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PostStatus::Draft;
         $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
+        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? ContentFormat::Markdown;
 
         // Contributors and anyone else without publish_posts can only ever save as a draft.
         $status = $canPublish ? $requestedStatus : PostStatus::Draft;
@@ -75,12 +153,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
+        // Featured image resolution (LP-040): upload wins over the
+        // existing-image select, which wins over "remove", which wins
+        // over just keeping the current value — same precedence
+        // admin/views/pages.php uses.
+        $featuredImageId = $existing?->featuredImageId;
+
+        if (($_POST['remove_featured_image'] ?? '') === '1') {
+            $featuredImageId = null;
+        }
+
+        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
+
+        if ($selectedFeaturedImageId > 0) {
+            $featuredImageId = $selectedFeaturedImageId;
+        }
+
+        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
+                $kernel->thumbnails->generate($uploadedFeaturedImage);
+                $featuredImageId = (int) $uploadedFeaturedImage['id'];
+            } catch (\Throwable $exception) {
+                $error = 'Featured image upload failed: ' . $exception->getMessage();
+            }
+        }
+
         if ($title === '') {
             $error = 'A title is required.';
-        } else {
+        } elseif ($error === null) {
             $post = $existing === null
-                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen)
-                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $existing->featuredImageId, $slug !== '' ? $slug : null, $commentsOpen);
+                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen, contentFormat: $contentFormat)
+                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen, $contentFormat);
 
             $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
             $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
@@ -147,9 +251,15 @@ if ($action === 'edit') {
     $assignedTagNames = $post !== null
         ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
         : [];
+    $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
+    $currentFeaturedImage = $post?->featuredImageId !== null ? $kernel->media->find($post->featuredImageId) : null;
+    $editorMediaLibrary = array_map(
+        static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
+        $imageOptions,
+    );
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('posts')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('posts')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('post_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($post !== null): ?>
@@ -168,14 +278,58 @@ if ($action === 'edit') {
             </p>
 
             <p class="lp-field">
+                <label for="post-content-format">Editor</label>
+                <select id="post-content-format" name="content_format" data-lp-content-format-select>
+                    <?php foreach (ContentFormat::cases() as $formatOption): ?>
+                        <option value="<?= esc_attr($formatOption->value) ?>" <?= ($post->contentFormat ?? ContentFormat::Markdown) === $formatOption ? 'selected' : '' ?>>
+                            <?= esc_html($formatOption->label()) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </p>
+
+            <div
+                class="lp-field lp-content-editor"
+                data-lp-content-editor
+                data-format="<?= esc_attr(($post->contentFormat ?? ContentFormat::Markdown)->value) ?>"
+                data-upload-url="<?= esc_url(admin_url('posts')) ?>"
+                data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
+                data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
+                data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
+                data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+            >
                 <label for="post-content">Content</label>
                 <textarea id="post-content" name="content" rows="12"><?= esc_html($post->content ?? '') ?></textarea>
-            </p>
+            </div>
 
             <p class="lp-field">
                 <label for="post-excerpt">Excerpt</label>
                 <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
             </p>
+
+            <fieldset class="lp-field">
+                <legend>Featured Image</legend>
+
+                <?php if ($currentFeaturedImage !== null): ?>
+                    <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
+                    </label>
+                <?php endif; ?>
+
+                <label for="post-featured-image-select">Choose from Media Manager</label>
+                <select id="post-featured-image-select" name="featured_image_id">
+                    <option value="0">(None)</option>
+                    <?php foreach ($imageOptions as $imageOption): ?>
+                        <option value="<?= (int) $imageOption['id'] ?>" <?= ($post?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                            <?= esc_html((string) $imageOption['file_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="post-featured-image-upload">Or upload a new image</label>
+                <input type="file" id="post-featured-image-upload" name="featured_image_upload" accept="image/*">
+            </fieldset>
 
             <?php if ($allCategories !== []): ?>
                 <fieldset class="lp-field lp-field--checklist">

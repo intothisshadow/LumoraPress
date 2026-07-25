@@ -67,7 +67,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'status' => $result['status']->value,
                 'message' => $result['message'],
             ]);
-            header('Location: ' . admin_url('updates') . '?' . $query);
+            header('Location: ' . admin_url('maintenance/updates') . '?' . $query);
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -81,7 +81,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // Nothing to clean up, or an already-expired token — safe to ignore.
         }
 
-        header('Location: ' . admin_url('updates'));
+        header('Location: ' . admin_url('maintenance/updates'));
         exit;
     }
 }
@@ -133,13 +133,13 @@ $recentLog = $updates->recentLog(10);
 
             <p>Lumora Press will automatically back up your files and database before installing this update.</p>
 
-            <form method="post" action="<?= esc_url(admin_url('updates')) ?>">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
                 <?= Csrf::field('update_install') ?>
                 <input type="hidden" name="form" value="install">
                 <input type="hidden" name="token" value="<?= esc_attr($checkResult['token']) ?>">
                 <button type="submit" class="lp-button lp-button--primary">Confirm &amp; Install</button>
             </form>
-            <form method="post" action="<?= esc_url(admin_url('updates')) ?>">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
                 <?= Csrf::field('update_cancel') ?>
                 <input type="hidden" name="form" value="cancel">
                 <input type="hidden" name="token" value="<?= esc_attr($checkResult['token']) ?>">
@@ -150,7 +150,7 @@ $recentLog = $updates->recentLog(10);
 <?php else: ?>
     <section class="lp-admin__panel">
         <h2>Upload Update Package</h2>
-        <form method="post" action="<?= esc_url(admin_url('updates')) ?>" enctype="multipart/form-data">
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('update_upload') ?>
             <input type="hidden" name="form" value="upload">
 

@@ -36,6 +36,24 @@ final class ThemeInstaller
     ) {
     }
 
+    /**
+     * Removes an installed theme's directory entirely (LP-044's "Delete
+     * inactive themes" action). Whether the theme is currently active is
+     * the caller's concern — this class only knows about the filesystem,
+     * not which theme is active — so callers must check ThemeInfo::$isActive
+     * themselves before calling this.
+     */
+    public function delete(string $slug): void
+    {
+        $destination = rtrim($this->themesPath, '/') . '/' . $slug;
+
+        if ($slug === '' || !is_dir($destination)) {
+            throw new RuntimeException('That theme could not be found.');
+        }
+
+        $this->removeDirectory($destination);
+    }
+
     public function install(string $zipPath): ThemeInfo
     {
         if (!is_file($zipPath)) {

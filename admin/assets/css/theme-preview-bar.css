@@ -1,0 +1,51 @@
+/* =========================================================
+   Lumora Press — Theme Preview Bar (LP-044)
+
+   Injected on the public front end only while an admin is previewing a
+   not-yet-activated theme (see LumoraPress\Core\Theme\ThemePreview).
+   Deliberately its own small stylesheet rather than living in the active
+   theme's style.css: this bar has to look and work identically no matter
+   which theme is being previewed, so it can't depend on that theme's own
+   tokens/rules at all.
+   ========================================================= */
+
+:root {
+    --lp-preview-bar-bg: #1d2327;
+    --lp-preview-bar-fg: #ffffff;
+    --lp-preview-bar-accent: #4c9be8;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --lp-preview-bar-bg: #101214;
+        --lp-preview-bar-fg: #e4e6e8;
+        --lp-preview-bar-accent: #6cb0ef;
+    }
+}
+
+.lp-theme-preview-bar {
+    position: relative;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    background: var(--lp-preview-bar-bg);
+    color: var(--lp-preview-bar-fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.9rem;
+}
+
+.lp-theme-preview-bar__label strong {
+    color: var(--lp-preview-bar-accent);
+}
+
+.lp-theme-preview-bar__exit {
+    color: var(--lp-preview-bar-fg);
+    text-decoration: underline;
+}
+
+.lp-theme-preview-bar__exit:hover {
+    color: var(--lp-preview-bar-accent);
+}

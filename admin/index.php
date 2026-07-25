@@ -132,6 +132,13 @@ if (!$kernel->auth->check()) {
 
 $currentUser = $kernel->auth->user();
 
+$subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
+
+/*
+ * LP-042/LP-043: Settings and Maintenance are two-level menus — each has
+ * 'children' keyed the same way as top-level entries. Everything else
+ * stays flat, unchanged from before this reorganization.
+ */
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'capability' => null],
     'posts' => ['label' => 'Posts', 'capability' => 'edit_posts'],
@@ -142,17 +149,82 @@ $menu = [
     'comments' => ['label' => 'Comments', 'capability' => 'moderate_comments'],
     'appearance' => ['label' => 'Appearance', 'capability' => 'manage_themes'],
     'plugins' => ['label' => 'Plugins', 'capability' => 'manage_plugins'],
+    'settings' => [
+        'label' => 'Settings',
+        'capability' => 'manage_options',
+        'default_child' => 'general',
+        'children' => [
+            'general' => ['label' => 'General', 'capability' => 'manage_options'],
+            'media' => ['label' => 'Media', 'capability' => 'manage_options'],
+            'cache' => ['label' => 'Cache', 'capability' => 'manage_options'],
+            'maintenance-mode' => ['label' => 'Maintenance Mode', 'capability' => 'manage_options'],
+            'security' => ['label' => 'Security', 'capability' => 'manage_options'],
+        ],
+    ],
+    'maintenance' => [
+        'label' => 'Maintenance',
+        'capability' => 'manage_options',
+        'default_child' => 'updates',
+        'children' => [
+            'updates' => ['label' => 'Updates', 'capability' => 'manage_options'],
+            'import' => ['label' => 'Import', 'capability' => 'manage_options'],
+            'export' => ['label' => 'Export', 'capability' => 'manage_options'],
+            'tools' => ['label' => 'Tools', 'capability' => 'manage_options'],
+            'system-information' => ['label' => 'System Information', 'capability' => 'manage_options'],
+            'logs' => ['label' => 'Logs', 'capability' => 'manage_options'],
+        ],
+    ],
     'users' => ['label' => 'Users', 'capability' => 'manage_users'],
-    'tools' => ['label' => 'Tools', 'capability' => 'manage_options'],
-    'updates' => ['label' => 'Updates', 'capability' => 'manage_options'],
-    'settings' => ['label' => 'Settings', 'capability' => 'manage_options'],
+    // No capability requirement (LP-021): every authenticated role,
+    // including Subscriber, manages their own API tokens — the page
+    // itself only ever operates on $currentUser->id, never another
+    // user's tokens.
+    'api-tokens' => ['label' => 'API Tokens', 'capability' => null],
 ];
+
+/*
+ * LP-043: preserve bookmarked/linked URLs from before Settings/Maintenance
+ * existed as parent menus — /admin/updates and /admin/tools used to be
+ * complete pages on their own, not children of Maintenance.
+ */
+$legacyRedirects = [
+    'updates' => 'maintenance/updates',
+    'tools' => 'maintenance/tools',
+];
+
+if ($subpage === null && isset($legacyRedirects[$page])) {
+    header('Location: ' . admin_url($legacyRedirects[$page]));
+    exit;
+}
 
 if (!array_key_exists($page, $menu)) {
     $page = 'dashboard';
 }
 
-$requiredCapability = $menu[$page]['capability'];
+$menuEntry = $menu[$page];
+$breadcrumbs = [['label' => 'Dashboard', 'url' => admin_url('dashboard')]];
+
+if (isset($menuEntry['children'])) {
+    if ($subpage === null || !array_key_exists($subpage, $menuEntry['children'])) {
+        header('Location: ' . admin_url("{$page}/{$menuEntry['default_child']}"));
+        exit;
+    }
+
+    $activeEntry = $menuEntry['children'][$subpage];
+    $viewFile = __DIR__ . "/views/{$page}/{$subpage}.php";
+
+    $breadcrumbs[] = ['label' => $menuEntry['label'], 'url' => admin_url("{$page}/{$menuEntry['default_child']}")];
+    $breadcrumbs[] = ['label' => $activeEntry['label'], 'url' => null];
+} else {
+    $activeEntry = $menuEntry;
+    $viewFile = __DIR__ . "/views/{$page}.php";
+
+    if ($page !== 'dashboard') {
+        $breadcrumbs[] = ['label' => $activeEntry['label'], 'url' => null];
+    }
+}
+
+$requiredCapability = $activeEntry['capability'];
 
 if ($requiredCapability !== null && !$currentUser->can($requiredCapability)) {
     http_response_code(403);
@@ -163,7 +235,6 @@ if ($requiredCapability !== null && !$currentUser->can($requiredCapability)) {
 
 require __DIR__ . '/views/layout-header.php';
 
-$viewFile = __DIR__ . "/views/{$page}.php";
 require is_file($viewFile) ? $viewFile : __DIR__ . '/views/placeholder.php';
 
 require __DIR__ . '/views/layout-footer.php';

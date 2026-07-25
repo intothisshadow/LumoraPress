@@ -3,12 +3,78 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
 
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
+}
+
+/*
+ * Editor image upload and format-switch conversion — see the identical
+ * block's docblock in admin/views/posts.php for why these live here as
+ * JSON sub-actions rather than their own admin page/route.
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_upload') {
+    // See the identical comment in admin/views/posts.php's matching
+    // block for why the output buffer must be discarded here.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('upload_files') || !Csrf::verify('editor_upload', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Upload failed.']);
+        exit;
+    }
+
+    try {
+        $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
+        echo json_encode(['data' => ['filePath' => $kernel->media->url($uploaded)], 'url' => $kernel->media->url($uploaded)]);
+    } catch (\Throwable $exception) {
+        http_response_code(422);
+        echo json_encode(['error' => $exception->getMessage()]);
+    }
+
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'convert_content') {
+    // See the identical comment in admin/views/posts.php's matching
+    // block for why the output buffer must be discarded here.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!Csrf::verify('convert_content', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
+        exit;
+    }
+
+    $from = ContentFormat::tryFrom((string) ($_POST['from'] ?? ''));
+    $to = ContentFormat::tryFrom((string) ($_POST['to'] ?? ''));
+
+    if ($from === null || $to === null) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Unknown format.']);
+        exit;
+    }
+
+    echo json_encode(['content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $from, $to)]);
+    exit;
 }
 
 $pageService = $kernel->pages;
@@ -43,6 +109,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PageStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PageStatus::Draft;
         $parentId = (int) ($_POST['parent_id'] ?? 0);
+        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? ContentFormat::Markdown;
 
         // Contributors and anyone else without publish_posts can only ever save as a draft.
         $status = $canPublish ? $requestedStatus : PageStatus::Draft;
@@ -59,12 +126,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
+        // Featured image resolution (LP-040): upload wins over the
+        // existing-image select, which wins over "remove", which wins
+        // over just keeping the current value — same precedence
+        // admin/views/posts.php uses.
+        $featuredImageId = $existing?->featuredImageId;
+
+        if (($_POST['remove_featured_image'] ?? '') === '1') {
+            $featuredImageId = null;
+        }
+
+        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
+
+        if ($selectedFeaturedImageId > 0) {
+            $featuredImageId = $selectedFeaturedImageId;
+        }
+
+        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
+                $kernel->thumbnails->generate($uploadedFeaturedImage);
+                $featuredImageId = (int) $uploadedFeaturedImage['id'];
+            } catch (\Throwable $exception) {
+                $error = 'Featured image upload failed: ' . $exception->getMessage();
+            }
+        }
+
         if ($title === '') {
             $error = 'A title is required.';
-        } else {
+        } elseif ($error === null) {
             $page = $existing === null
-                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null)
-                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null);
+                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat)
+                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat);
 
             header('Location: ' . admin_url('pages') . '?action=edit&id=' . $page->id . '&saved=1');
             exit;
@@ -121,9 +214,15 @@ if ($action === 'edit') {
     $page = $editingPage;
     $statusOptions = [PageStatus::Draft, PageStatus::Published, PageStatus::Scheduled];
     $parentOptions = $pageService->listAllForParentSelect($page?->id);
+    $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
+    $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
+    $editorMediaLibrary = array_map(
+        static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
+        $imageOptions,
+    );
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('pages')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('pages')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('page_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($page !== null): ?>
@@ -142,14 +241,58 @@ if ($action === 'edit') {
             </p>
 
             <p class="lp-field">
+                <label for="page-content-format">Editor</label>
+                <select id="page-content-format" name="content_format" data-lp-content-format-select>
+                    <?php foreach (ContentFormat::cases() as $formatOption): ?>
+                        <option value="<?= esc_attr($formatOption->value) ?>" <?= ($page->contentFormat ?? ContentFormat::Markdown) === $formatOption ? 'selected' : '' ?>>
+                            <?= esc_html($formatOption->label()) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </p>
+
+            <div
+                class="lp-field lp-content-editor"
+                data-lp-content-editor
+                data-format="<?= esc_attr(($page->contentFormat ?? ContentFormat::Markdown)->value) ?>"
+                data-upload-url="<?= esc_url(admin_url('pages')) ?>"
+                data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
+                data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
+                data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
+                data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+            >
                 <label for="page-content">Content</label>
                 <textarea id="page-content" name="content" rows="12"><?= esc_html($page->content ?? '') ?></textarea>
-            </p>
+            </div>
 
             <p class="lp-field">
                 <label for="page-excerpt">Excerpt</label>
                 <textarea id="page-excerpt" name="excerpt" rows="3"><?= esc_html($page->excerpt ?? '') ?></textarea>
             </p>
+
+            <fieldset class="lp-field">
+                <legend>Featured Image</legend>
+
+                <?php if ($currentFeaturedImage !== null): ?>
+                    <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
+                    </label>
+                <?php endif; ?>
+
+                <label for="page-featured-image-select">Choose from Media Manager</label>
+                <select id="page-featured-image-select" name="featured_image_id">
+                    <option value="0">(None)</option>
+                    <?php foreach ($imageOptions as $imageOption): ?>
+                        <option value="<?= (int) $imageOption['id'] ?>" <?= ($page?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                            <?= esc_html((string) $imageOption['file_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="page-featured-image-upload">Or upload a new image</label>
+                <input type="file" id="page-featured-image-upload" name="featured_image_upload" accept="image/*">
+            </fieldset>
 
             <p class="lp-field">
                 <label for="page-parent">Parent Page</label>

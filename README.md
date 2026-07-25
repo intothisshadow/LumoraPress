@@ -122,7 +122,7 @@ loaded through PHP `require`.
 ## Updating
 
 Administrators can update Lumora Press from the admin panel under
-**Updates** (`/admin/updates`), without FTP or SSH access:
+**Maintenance &rsaquo; Updates** (`/admin/maintenance/updates`), without FTP or SSH access:
 
 1. Upload an official Lumora Press release ZIP. The package is validated
    (integrity, structure, version number) and checked for compatibility
@@ -178,6 +178,74 @@ view, drag-and-drop ordering, or hierarchical URLs yet. The admin Pages
 screen (`admin/views/pages.php`) reuses the Posts capabilities, and
 `/page/{slug}` renders the full page.
 
+The Markdown Editor (LP-015) and WYSIWYG Editor (LP-016) replace the
+original plain `<textarea>` content field with a real authoring
+experience. Each post/page has a `content_format` column — `markdown`
+(the default for new content), `html`, or `plain` (the default for rows
+that predate this column, matching their original nl2br(escaped-text)
+rendering exactly) — chosen from an "Editor" dropdown on the post/page
+screen. Markdown format loads
+[EasyMDE](https://github.com/Ionaru/easy-markdown-editor); HTML/Visual
+format loads [TinyMCE](https://www.tiny.cloud/) (self-hosted, GPL,
+no cloud account needed); both load from jsDelivr at a pinned version
+rather than being bundled, the same approach already used for the
+PhotoSwipe lightbox. Switching formats asks for confirmation, then
+round-trips the current content through a best-effort converter rather
+than silently rewriting it.
+
+Behind both editors is a single, dependency-free rendering pipeline —
+Lumora Press avoids Composer/npm (see below), so this is plain PHP with
+no vendored Markdown library:
+
+- `LumoraPress\Core\Content\MarkdownParser` — headings, bold/italic/
+  strikethrough, inline code, fenced code blocks (tagged
+  `language-xxx` for a future syntax highlighter to consume), GFM
+  tables, blockquotes, horizontal rules, ordered/unordered/task lists,
+  links, images, footnotes, and a `[[toc]]` table-of-contents marker.
+  Deliberately does not pass raw HTML typed in Markdown source through
+  to the output (it's escaped as literal text instead) — a narrower
+  behaviour than CommonMark, chosen so the parser's own output can
+  never itself be a script-injection vector.
+- `LumoraPress\Core\Content\HtmlSanitizer` — a DOMDocument-based
+  allowlist sanitizer (tags, attributes, and URL schemes), the single
+  XSS boundary every format's output passes through: Markdown's
+  generated HTML, hand-typed HTML-mode content, and TinyMCE's
+  submitted HTML are all equally untrusted by the time they reach it.
+- `LumoraPress\Core\Content\HtmlToMarkdownConverter` — the reverse
+  direction, used only when an author switches a post from Visual/HTML
+  to Markdown; round-trips exactly the tag set `HtmlSanitizer` allows,
+  since that's the only HTML this application ever produces.
+- `LumoraPress\Services\ContentRenderer` (a Kernel service, plus a
+  `render_content()`/`content_plain_text()` theme-template bridge
+  mirroring `SiteBranding`/`ThemePreview`) — the one place a format +
+  raw content becomes final, safe HTML. Every place content is shown
+  (post/page templates, RSS/Atom feeds, search excerpts, the REST
+  API's `content_html` field) goes through this, not the raw column.
+
+Both editors share one JS orchestrator, `admin/assets/js/
+content-editor.js`: it keeps the real `<textarea>` in sync (content
+still submits even if a CDN library fails to load), and a lightweight
+media picker/upload button, built from the same data already fetched
+for the post/page's Featured Image field, backs "insert image" in both.
+Word count, character count, and an estimated reading time are shown
+live under the editor. Loading EasyMDE/TinyMCE from jsDelivr — and
+EasyMDE's Font Awesome 4 toolbar icons, loaded the same way rather than
+via EasyMDE's own less predictable auto-download — required one addition
+to the site's Content-Security-Policy: `include/bootstrap.php` registers
+a `csp_directives` filter allowing `cdn.jsdelivr.net` for `script-src`/
+`style-src`/`font-src` — the class's own same-origin-by-default policy
+explicitly documents this filter as the correct way to loosen it, rather
+than editing the policy class itself.
+
+Deferred from both tickets: inserting galleries or non-image files from
+the Media Manager, real syntax-highlighted code block *preview* (the
+parser tags the language but nothing renders it yet outside TinyMCE's
+own `codesample` plugin), a filterable/admin-configurable toolbar,
+Lumora "shortcodes" (no shortcode engine exists in the app yet), and
+server-side draft autosave (both editors' built-in client-side
+autosave already covers browser-crash recovery). See `TODO.md`'s
+LP-015/LP-016 sections for the complete, itemized list.
+
 Categories are implemented as a first pass:
 `LumoraPress\Services\CategoryService` provides a hierarchical taxonomy
 for Posts with a real many-to-many relationship (a post can have any
@@ -228,8 +296,8 @@ metadata and item data, filterable by plugins via `apply_filters
 ('feed_channel', ...)` and `apply_filters('feed_item', ...)`; `/feed` and
 `/feed/rss` serve RSS 2.0, `/feed/atom` serves Atom 1.0. Feed items respect
 the same published/scheduled-and-due visibility rule as the homepage and
-archives. An admin Settings screen (`admin/views/settings.php`) controls
-whether feeds are enabled, full content vs. excerpts, item limit, cache
+archives. An admin Settings &rsaquo; General screen (`admin/views/settings/general.php`)
+controls whether feeds are enabled, full content vs. excerpts, item limit, cache
 lifetime, and a feed description. Responses include `ETag`/`Last-Modified`/
 `Cache-Control` headers with conditional GET (304) support. The default
 theme auto-discovers both feeds via `<link rel="alternate">` in `<head>`
@@ -243,8 +311,8 @@ match is weighted higher than a body-only match — rather than a custom
 indexing pipeline; the index is maintained automatically by MySQL on every
 post/page save, so there is no rebuild step. Results from Posts and Pages
 are merged into one relevance-ordered, paginated list. Matching terms are
-highlighted in results (`highlight_terms()`); an admin Settings screen
-section controls the minimum query length and the maximum combined result
+highlighted in results (`highlight_terms()`); the Settings &rsaquo; General screen
+controls the minimum query length and the maximum combined result
 count. The default theme's header includes a real search form (plain GET,
 no JavaScript). Exact-phrase, prefix, partial-substring, and fuzzy
 matching are not supported — MySQL's natural-language full-text mode
@@ -269,7 +337,7 @@ Maintenance Mode is implemented as a first pass:
 `LumoraPress\Core\Http\MaintenanceGate` gates every public front-end
 request (checked in `index.php`, before routing) — `/admin/*` is always
 exempt so an Administrator can log in and turn it off. It can be switched
-on manually (a Settings screen section, or a one-click dashboard button)
+on manually (Settings &rsaquo; Maintenance Mode, or a one-click dashboard button)
 or scheduled (optional start/end times, checked per request — no cron
 job, the same "no background process" approach already used for
 scheduled posts/pages). Administrators always bypass; an "Allow Editors
@@ -284,19 +352,43 @@ changes via the `maintenance_mode_toggled` action. IP whitelisting, a
 secret bypass URL/cookie, and email notifications are not yet
 implemented.
 
-Appearance is implemented as a first pass. Theme Management:
-`LumoraPress\Core\Theme\ThemeRegistry` discovers every theme under
-`content/themes/`, parsing each one's `style.css` comment header (the
-classic `Theme Name:`/`Description:`/`Version:`/`Author:` convention —
-already present in the default theme, but nothing read it before this)
-plus a `screenshot.{png,jpg,jpeg,webp}` if one exists. The new admin
-Appearance screen (`admin/views/appearance.php`) lists every discovered
-theme as a card with a one-click "Activate" button, and can install new
-themes from a ZIP upload (`LumoraPress\Services\ThemeInstaller` — reuses
-the path-traversal/size-cap safety checks LP-026's update-package
-validator established, but is otherwise much simpler: a theme install
-only ever adds one new, independent directory, never overlays live core
-files, so there's no staging/backup/rollback machinery). Branding: a site
+Appearance is implemented as a first pass, with a modern Theme Browser
+(LP-044) on top. Theme Management: `LumoraPress\Core\Theme\ThemeRegistry`
+discovers every theme under `content/themes/`, parsing each one's
+`style.css` comment header — the classic `Theme Name:`/`Description:`/
+`Version:`/`Author:`/`Theme URI:`/`Author URI:`/`License:`/`License URI:`/
+`Requires at least:`/`Requires PHP:`/`Tags:` convention — plus every
+`preview.*`/`thumbnail.*`/`screenshot.*` image present (JPG, PNG, WebP, or
+AVIF; numbered variants like `screenshot-2.png` build a multi-screenshot
+gallery) and a `README`/`CHANGELOG` file if included. The admin Appearance
+screen (`admin/views/appearance.php`) lists every discovered theme as a
+card — with a live search box, the active theme highlighted, a
+placeholder shown when no preview image exists, and preview thumbnails
+capped at `max-width: 250px` with `height: auto` (no `object-fit`) so an
+image is scaled down proportionally, never cropped or stretched — and a
+"Details" button opens a details panel (a native `<dialog>`,
+progressively enhanced by `admin/assets/js/theme-browser.js`) showing the
+full parsed metadata, the screenshot gallery, README/CHANGELOG contents,
+and Activate/Delete actions; a `lp_theme_details_panel` action hook lets
+plugins extend that panel. A "Preview" link (card and details panel, on
+any inactive theme) opens the real front end with
+`?lp_preview_theme={slug}`: `index.php` checks the requester is logged in
+with `manage_themes` before honouring it, then swaps `ThemeRenderer`'s
+active theme for that request only — the site-wide `active_theme` option
+is never touched, so no other visitor is affected — while
+`LumoraPress\Core\Theme\ThemePreview` (a static bridge, mirroring
+`SiteBranding`/`FeaturedImages`) marks the request so a "Previewing
+theme… Exit Preview" bar gets injected right after the rendered page's
+`<body>` tag, styled by its own stylesheet
+(`admin/assets/css/theme-preview-bar.css`) so it works unmodified with
+every theme, including custom ones with no knowledge of preview mode at
+all. New themes install from a ZIP upload
+(`LumoraPress\Services\ThemeInstaller` — reuses the path-traversal/size-cap
+safety checks LP-026's update-package validator established, but is
+otherwise much simpler: a theme install only ever adds one new,
+independent directory, never overlays live core files, so there's no
+staging/backup/rollback machinery); the same class's `delete()` removes an
+inactive theme's directory entirely. Branding: a site
 logo and favicon (both reuse `MediaService::upload()`; `.ico` was added
 to its allow-list alongside the already-supported PNG), and the
 `site_name` option (saved by the installer since LP-028, but until now
@@ -334,7 +426,7 @@ implemented.
 Thumbnail Generation is implemented: `LumoraPress\Services\ThumbnailService`
 generates resized copies of image uploads with GD (no Imagick dependency)
 in three configurable sizes (small/medium/large by default, each with its
-own dimensions and crop-vs-fit mode, adjustable from Settings), corrects
+own dimensions and crop-vs-fit mode, adjustable from Settings &rsaquo; Media), corrects
 EXIF orientation before resizing, never upscales, and strips metadata for
 free since GD's encoders don't carry it through. WebP/AVIF output is only
 attempted when the running GD build supports it. The Media Manager
@@ -344,6 +436,72 @@ progress bar, progressively enhanced by JavaScript to auto-continue), an
 orphaned-thumbnail cleanup tool, and cleans up thumbnails when a file is
 deleted. Extensible via `thumbnail_sizes`/`thumbnail_max_pixels` filters
 and `thumbnail_generated`/`thumbnail_generation_failed` actions.
+
+Featured Images are implemented for both Posts and Pages: a "Featured
+Image" meta box in each editor lets you pick an existing image or upload
+a new one (no modal picker — a plain existing-image `<select>`, matching
+this project's low-tech admin UI elsewhere), with automatic thumbnail
+generation and `MediaUsageChecker` protection against deleting an in-use
+image. Themes get a small, WordPress-inspired API — `has_post_thumbnail()`,
+`post_thumbnail_url()`, `the_post_thumbnail()` (real `srcset`/`sizes`,
+falling back through original → configurable default image → nothing),
+`post_thumbnail_caption()` — and the default theme uses it on single
+posts/pages and in the homepage/archive post list. Single post/page pages
+now render Open Graph and Twitter Card meta tags, and feed items can
+optionally include the featured image as an RSS/Atom enclosure. Bulk
+assign/remove is not yet implemented (listed as optional in the ticket).
+
+FTP Media Import is implemented: `LumoraPress\Services\MediaImportService`
+registers media files already sitting on the server's filesystem (dropped
+there via FTP/SFTP/a hosting file manager) into the Media Manager without
+a browser upload round-trip. Administrators configure one or more allowed
+server directories on the Settings &rsaquo; Media page; every scan and import is
+restricted to a `realpath()`-resolved descendant of one of those
+directories, re-checked immediately before each filesystem operation.
+The "Import from Server" screen (inside Media Manager) scans a chosen
+directory (recursively or not), previews what it found — already-imported
+files are detected via the same SHA-256 hash `MediaService` already
+stores and shown as duplicates, unchecked by default — lets you pick a
+destination folder or mirror the scanned directory structure into new
+folders automatically, and optionally uses each file's modification time
+as its stored upload date. Imported images get thumbnails generated the
+same as an upload. Large imports process in batches of 10 with a
+progress bar (the same pattern as bulk thumbnail regeneration). Bulk
+category/tag assignment during import and CLI/API support are not
+implemented (media has no category/tag fields in this app, and there is
+no CLI entrypoint in this codebase).
+
+The Media Viewer & Lightbox is implemented: a PhotoSwipe 5 lightbox
+(loaded from the jsDelivr CDN at a pinned version, not vendored locally)
+for images, with prev/next navigation across whichever list-view page
+you're on — homepage, archive, category, tag, or search results (search
+results gained their own featured-image thumbnail for this). A single
+post/page's featured image is a lightbox of one. The theme API is
+`the_post_thumbnail_lightbox()` (`include/media-functions.php`), which
+wraps the existing `the_post_thumbnail()` output in the anchor PhotoSwipe
+needs and shows a caption from the media's caption/alt text. A new
+`MediaViewer` flag ensures the PhotoSwipe assets only load on pages that
+actually used the lightbox. The admin Media Manager's edit page also
+lightboxes its image preview and gained native inline video/audio/PDF
+viewers. Album/Favorites/Most-viewed/Custom-collections navigation are
+not applicable — none of those concepts exist in Lumora Press (that's
+Lumora Gallery's domain).
+
+A versioned REST API is implemented under `/api/v1/...`
+(`LumoraPress\Controllers\ApiController`), covering Posts, Pages,
+Categories, Tags, Comments, and Search. Reads are always public
+(published/approved content only); writes require a named, revocable API
+token (`Authorization: Bearer {selector}:{validator}`, generated and
+managed by every user on a new "API Tokens" admin page) and repeat the
+same capability/ownership rules the admin UI already enforces. Every
+response uses a consistent JSON envelope with real pagination and
+filtering. A "REST API" section on Settings &rsaquo; General lets an administrator
+disable the whole API, individual resources, or just anonymous comment
+submission, each rejected with a clean JSON error rather than an HTML
+page — with `rest_api_enabled`/`rest_api_resource_enabled` filters and a
+`rest_api_request` action for plugins. Authenticated reads of your own
+drafts and API rate limiting are not implemented (recorded as
+out-of-scope in `TODO.md`, not silently missing).
 
 Search beyond Posts/Pages (categories/tags/authors/comments/media), and
 RSS feeds beyond the site-wide posts feed described above (category/tag/

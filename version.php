@@ -3,6 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'version' => '0.2.0',
-    'codename' => 'Posts',
+    'version' => '0.3.0',
+    'codename' => 'Admin',
 ];

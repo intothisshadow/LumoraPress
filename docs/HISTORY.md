@@ -458,4 +458,83 @@ After a successful installation or upgrade, offer to automatically remove the `i
 - [x] If automatic deletion fails, display clear instructions reminding the administrator to remove the directory manually. — shown inline on the success page.
 - [x] Never prevent the installation from completing if deletion is unsuccessful. — cleanup is attempted only after config generation, admin account creation, and options are already fully committed; a cleanup failure only changes the message shown, never the outcome.
 
+---
+
+## 0.3.0 — Admin (2026-07-25)
+
+### LP-043. Reorganize Admin Navigation
+
+#### Goal
+
+Improve the overall organization of the administration panel by separating configuration from maintenance tasks and grouping related functionality together.
+
+**2026-07-25 update:** Implemented. `admin/index.php` now supports two-level
+menus (`children` + `default_child` per top-level entry) via a second
+`/admin/{page}/{subpage}` route registered in `include/bootstrap.php`
+alongside the existing single-segment one — `Router` itself needed no
+changes, it already matches patterns generically. Old bookmarks to
+`/admin/settings`, `/admin/updates`, and `/admin/tools` 302-redirect to their
+new nested location. Categories/Tags/Users/API Tokens were **not** restructured
+(mockup's "My Account"/"Roles" sub-nav under Users has no backing page —
+`Roles` doesn't exist as its own screen and there's no separate "My Account"
+profile screen — left as a follow-up, not required by the Tasks checklist
+below). `admin/views/maintenance/{tools,import,export,logs}.php` don't exist
+as files — they fall through to the existing `placeholder.php`, same
+established pattern the old flat `tools` menu entry already used before this
+change.
+
+#### Proposed Navigation
+
+```
+Dashboard
+
+Posts
+Pages
+Media
+Comments
+
+Appearance
+Plugins
+
+Settings
+    General
+    Media
+    Cache
+    Maintenance Mode
+    Security
+
+Maintenance
+    Updates
+    Import
+    Export
+    Tools
+    System Information
+    Logs
+
+Users
+    My Account
+    Users
+    Roles
+```
+
+#### Tasks
+
+- [x] Add a **"View Site"** link to the Admin navigation beneath the version information
+- [x] Create the new **Settings** parent menu
+- [x] Move configuration pages under **Settings**
+- [x] Keep maintenance utilities under **Maintenance**
+- [x] Ensure menu highlights remain correct
+- [x] Preserve backward compatibility for existing admin URLs where possible
+- [x] Add breadcrumbs to all admin pages
+- [x] Verify user permissions continue to work correctly — checked with a non-`manage_options` role (Author): Settings/Maintenance don't render in the sidebar, and direct URLs to their sub-pages 403 correctly
+- [x] Update documentation and screenshots — README/CHANGELOG updated; this project has never included doc screenshots for any ticket, so none were added here either
+
+#### Design Goals
+
+- Configuration lives under **Settings**
+- Administrative actions live under **Maintenance**
+- Consistent naming throughout the admin
+- Easy for new users to discover features
+- Scalable navigation for future additions
+
 This reduces the chance of leaving the installer accessible after deployment.

@@ -269,6 +269,162 @@ img {
 }
 
 /* =========================================================
+   Rendered post/page content (LP-015/LP-016) — typography for
+   everything MarkdownParser/HtmlSanitizer can produce: headings,
+   code, blockquotes, tables, task lists, footnotes, and the
+   [[toc]] table of contents.
+   ========================================================= */
+
+.lp-post__content :is(h1, h2, h3, h4, h5, h6) {
+    margin: 1.5em 0 0.5em;
+    line-height: 1.3;
+}
+
+.lp-post__content :is(h1, h2, h3, h4, h5, h6):first-child {
+    margin-top: 0;
+}
+
+.lp-post__content p {
+    margin: 0 0 1em;
+}
+
+.lp-post__content a {
+    color: var(--lp-accent);
+}
+
+.lp-post__content a:hover {
+    color: var(--lp-accent-hover);
+}
+
+.lp-post__content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--lp-radius);
+}
+
+.lp-post__content code {
+    padding: 0.15em 0.4em;
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+}
+
+.lp-post__content pre {
+    padding: 1em;
+    margin: 0 0 1em;
+    overflow-x: auto;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+}
+
+.lp-post__content pre code {
+    padding: 0;
+    background: none;
+    font-size: 0.85em;
+}
+
+.lp-post__content blockquote {
+    margin: 0 0 1em;
+    padding: 0.25em 1em;
+    border-left: 4px solid var(--lp-border);
+    color: var(--lp-text-muted);
+}
+
+.lp-post__content hr {
+    margin: 2em 0;
+    border: none;
+    border-top: 1px solid var(--lp-border);
+}
+
+.lp-post__content :is(ul, ol) {
+    margin: 0 0 1em;
+    padding-left: 1.5em;
+}
+
+.lp-post__content li {
+    margin: 0.25em 0;
+}
+
+.lp-post__content .lp-task-list-item {
+    list-style: none;
+    margin-left: -1.5em;
+}
+
+.lp-post__content .lp-task-list-item input[type="checkbox"] {
+    margin-right: 0.4em;
+}
+
+.lp-post__content table {
+    width: 100%;
+    margin: 0 0 1em;
+    border-collapse: collapse;
+}
+
+.lp-post__content :is(th, td) {
+    padding: 0.5em 0.75em;
+    border: 1px solid var(--lp-border);
+    text-align: left;
+}
+
+.lp-post__content th {
+    background: var(--lp-bg-alt);
+}
+
+.lp-post__content .lp-align-center {
+    text-align: center;
+}
+
+.lp-post__content .lp-align-right {
+    text-align: right;
+}
+
+.lp-post__content .lp-toc {
+    padding: 1em 1.25em;
+    margin: 0 0 1.5em;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+}
+
+.lp-post__content .lp-toc ol {
+    margin: 0.5em 0 0;
+    padding-left: 1.25em;
+    list-style: decimal;
+}
+
+.lp-post__content .lp-toc__level-2 { margin-left: 1em; }
+.lp-post__content .lp-toc__level-3 { margin-left: 2em; }
+.lp-post__content .lp-toc__level-4 { margin-left: 3em; }
+.lp-post__content .lp-toc__level-5 { margin-left: 4em; }
+.lp-post__content .lp-toc__level-6 { margin-left: 5em; }
+
+.lp-post__content .lp-footnotes {
+    margin-top: 2em;
+    padding-top: 1em;
+    border-top: 1px solid var(--lp-border);
+    font-size: 0.9em;
+    color: var(--lp-text-muted);
+}
+
+.lp-post__content .lp-footnote-backref {
+    margin-left: 0.35em;
+    text-decoration: none;
+}
+
+.lp-post__thumbnail {
+    margin: 0 0 1.5rem;
+}
+
+.lp-post__thumbnail img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+/* =========================================================
    Post list (homepage & archives)
    ========================================================= */
 
@@ -279,6 +435,8 @@ img {
 }
 
 .lp-post-list__item {
+    display: flex;
+    gap: 1.25rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--lp-border);
 }
@@ -286,6 +444,24 @@ img {
 .lp-post-list__item:last-child {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+.lp-post-list__thumbnail {
+    flex-shrink: 0;
+    display: block;
+}
+
+.lp-post-list__thumbnail img {
+    display: block;
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.lp-post-list__body {
+    flex: 1;
+    min-width: 0;
 }
 
 .lp-post-list__title {
@@ -325,6 +501,8 @@ img {
 }
 
 .lp-search-results__item {
+    display: flex;
+    gap: 1.25rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--lp-border);
 }
@@ -332,6 +510,23 @@ img {
 .lp-search-results__item:last-child {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+.lp-search-results__thumbnail {
+    flex-shrink: 0;
+}
+
+.lp-search-results__thumbnail img {
+    display: block;
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.lp-search-results__body {
+    flex: 1;
+    min-width: 0;
 }
 
 .lp-search-results__type {
@@ -660,4 +855,26 @@ img {
 .lp-site-footer__feed-link:focus {
     color: var(--lp-accent-hover);
     text-decoration: underline;
+}
+
+/* =========================================================
+   Media Viewer & Lightbox (LP-031)
+   ========================================================= */
+
+/*
+ * .lp-gallery is a pure grouping marker for media-viewer.js — no visual
+ * style needed. .lp-pswp-caption is the custom caption bar registered
+ * into PhotoSwipe's own dark UI chrome, so it's styled to match that
+ * chrome directly rather than this theme's light/dark tokens.
+ */
+.lp-pswp-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.9rem;
+    text-align: center;
 }

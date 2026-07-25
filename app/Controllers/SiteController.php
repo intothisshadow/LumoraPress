@@ -373,7 +373,7 @@ final class SiteController
 
     /**
      * @param array{title: string, description: string} $channel
-     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string}> $items
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
      */
     private function renderRss2(array $channel, array $items): string
     {
@@ -410,6 +410,12 @@ final class SiteController
                 $xml .= '<pubDate>' . $post->publishedAt->format('r') . '</pubDate>' . "\n";
             }
 
+            if (($item['thumbnailUrl'] ?? null) !== null) {
+                $xml .= '<enclosure url="' . esc_url($item['thumbnailUrl'])
+                    . '" length="' . (int) ($item['thumbnailLength'] ?? 0)
+                    . '" type="' . esc_attr((string) ($item['thumbnailType'] ?? 'image/jpeg')) . '"/>' . "\n";
+            }
+
             $xml .= '</item>' . "\n";
         }
 
@@ -421,7 +427,7 @@ final class SiteController
 
     /**
      * @param array{title: string, description: string} $channel
-     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string}> $items
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
      */
     private function renderAtom(array $channel, array $items): string
     {
@@ -460,6 +466,11 @@ final class SiteController
 
             if ($item['content'] !== null) {
                 $xml .= '<content type="html">' . esc_html($item['content']) . '</content>' . "\n";
+            }
+
+            if (($item['thumbnailUrl'] ?? null) !== null) {
+                $xml .= '<link rel="enclosure" href="' . esc_url($item['thumbnailUrl'])
+                    . '" type="' . esc_attr((string) ($item['thumbnailType'] ?? 'image/jpeg')) . '"/>' . "\n";
             }
 
             $xml .= '</entry>' . "\n";

@@ -21,6 +21,7 @@ final class Post
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly bool $commentsOpen = true,
+        public readonly ContentFormat $contentFormat = ContentFormat::Plain,
     ) {
     }
 

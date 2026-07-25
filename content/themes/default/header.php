@@ -1,5 +1,23 @@
 <?php
 /** @var string|null $page_title */
+/** @var \LumoraPress\Models\Post|null $post */
+/** @var \LumoraPress\Models\Page|null $page */
+
+/*
+ * Open Graph / Twitter Card meta tags (LP-040) — only rendered for a
+ * single post/page view, the only views with one canonical "primary
+ * image". $post/$page only arrive here because single.php/page.php now
+ * call get_header(['post' => $post]) / get_header(['page' => $page]) —
+ * see get_header()'s docblock in include/theme.php for why every other
+ * caller (index/archive/search/404) still works unchanged calling it bare.
+ */
+$og_item = $post ?? $page ?? null;
+$og_url = $og_item instanceof \LumoraPress\Models\Post
+    ? home_url('post/' . $og_item->slug)
+    : ($og_item instanceof \LumoraPress\Models\Page ? home_url('page/' . $og_item->slug) : null);
+$og_description = $og_item !== null
+    ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt(content_plain_text($og_item->content, $og_item->contentFormat)))
+    : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -12,6 +30,24 @@
     <link rel="alternate" type="application/atom+xml" title="<?= esc_attr(site_name()) ?> &raquo; Atom Feed" href="<?= esc_url(home_url('feed/atom')) ?>">
     <?php if (favicon_url() !== null): ?>
         <link rel="icon" href="<?= esc_url(favicon_url()) ?>">
+    <?php endif; ?>
+    <?php if ($og_item !== null): ?>
+        <meta property="og:type" content="article">
+        <meta property="og:site_name" content="<?= esc_attr(site_name()) ?>">
+        <meta property="og:title" content="<?= esc_attr($og_item->title) ?>">
+        <?php if ($og_url !== null): ?>
+            <meta property="og:url" content="<?= esc_url($og_url) ?>">
+        <?php endif; ?>
+        <?php if ($og_description !== ''): ?>
+            <meta property="og:description" content="<?= esc_attr($og_description) ?>">
+        <?php endif; ?>
+        <?php if (has_post_thumbnail($og_item)): ?>
+            <meta property="og:image" content="<?= esc_url((string) post_thumbnail_url($og_item, 'large', absolute: true)) ?>">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:image" content="<?= esc_url((string) post_thumbnail_url($og_item, 'large', absolute: true)) ?>">
+        <?php else: ?>
+            <meta name="twitter:card" content="summary">
+        <?php endif; ?>
     <?php endif; ?>
     <?php if (custom_css() !== ''): ?>
         <style><?= custom_css() ?></style>
