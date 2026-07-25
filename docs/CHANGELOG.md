@@ -2,51 +2,10 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-<<<<<<< HEAD
-## [Unreleased]
-
-## [0.3.0] — 2026-07-25 — "Admin"
-
-### Added
-
-- Markdown Editor (LP-015) and WYSIWYG Editor (LP-016): posts and pages
-  gained a real content-authoring pipeline in place of the old plain
-  `<textarea>` — an "Editor" dropdown (Markdown / Visual-HTML / Plain
-  text, backed by a new `content_format` column, migration `0016`) now
-  swaps in either EasyMDE (Markdown) or TinyMCE (Visual/HTML), both
-  self-hosted via jsDelivr at a pinned version rather than bundled
-  (matching the existing PhotoSwipe precedent), with a shared media
-  picker and upload button, live word/character/reading-time stats, and
-  autosave/crash-recovery built into each library. Switching between
-  Markdown and Visual/HTML round-trips the current content through a
-  best-effort converter and asks for confirmation first, rather than
-  silently mutating it. Behind both editors sits a new, dependency-free
-  Markdown-to-HTML parser and an allowlist HTML sanitizer
-  (`LumoraPress\Core\Content\{MarkdownParser,HtmlSanitizer,
-  HtmlToMarkdownConverter}`) — the single XSS boundary for every format,
-  wired through a new `ContentRenderer` service that replaces the old
-  `nl2br(esc_html($content))` render path everywhere content is shown
-  (single/page templates, RSS/Atom feeds, search excerpts, the REST
-  API's new `content_format`/`content_html` fields). Existing posts and
-  pages keep rendering exactly as before (`content_format` defaults to
-  `plain` for rows that predate this column); new content defaults to
-  Markdown. The site's Content-Security-Policy gained a `csp_directives`
-  filter registration allowing jsDelivr for `script-src`/`style-src`/
-  `font-src` — without it, EasyMDE/TinyMCE (and the pre-existing
-  PhotoSwipe lightbox) fail to load silently, and EasyMDE's toolbar
-  icons — Font Awesome 4 glyphs, loaded from jsDelivr alongside EasyMDE
-  itself rather than via its own less predictable auto-download — render
-  blank without the actual font file; both are easy-to-miss bugs this
-  surfaced and fixed along the way. Supported Markdown: headings, bold/italic/
-  strikethrough, inline code, fenced code blocks, GFM tables,
-  blockquotes, horizontal rules, ordered/unordered/task lists, links,
-  images, footnotes, and a `[[toc]]` table-of-contents marker.
-=======
 ## [Unreleased] — 2026-07-25
 
 ### Added
 
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 - Theme Browser (LP-044): modernized the Appearance → Themes screen with
   visual previews and a details panel before activation.
   `LumoraPress\Core\Theme\ThemeRegistry` now parses the rest of the
@@ -613,7 +572,6 @@ All notable changes to Lumora Press are documented in this file.
   override either toggle programmatically. Blocked requests are logged
   via a single `error_log()` line, the same ephemeral-logging choice
   LP-001/LP-041 already made rather than a new database table.
-<<<<<<< HEAD
 
 ### Changed
 
@@ -639,8 +597,6 @@ All notable changes to Lumora Press are documented in this file.
   expands or collapses that section's sub-items independently of which
   page is active, with `aria-expanded` kept in sync and the open/closed
   choice remembered across page loads via `localStorage`.
-=======
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 
 ### Fixed
 
@@ -677,6 +633,43 @@ All notable changes to Lumora Press are documented in this file.
   Dashboard alert warns about. `UpdateService::install()` now removes
   `install/` (best-effort, via the same `InstallerCleanup` the installer
   itself uses) immediately after a successful update.
+
+## [0.3.0] — 2026-07-25 — "Admin"
+
+### Added
+
+- Markdown Editor (LP-015) and WYSIWYG Editor (LP-016): posts and pages
+  gained a real content-authoring pipeline in place of the old plain
+  `<textarea>` — an "Editor" dropdown (Markdown / Visual-HTML / Plain
+  text, backed by a new `content_format` column, migration `0016`) now
+  swaps in either EasyMDE (Markdown) or TinyMCE (Visual/HTML), both
+  self-hosted via jsDelivr at a pinned version rather than bundled
+  (matching the existing PhotoSwipe precedent), with a shared media
+  picker and upload button, live word/character/reading-time stats, and
+  autosave/crash-recovery built into each library. Switching between
+  Markdown and Visual/HTML round-trips the current content through a
+  best-effort converter and asks for confirmation first, rather than
+  silently mutating it. Behind both editors sits a new, dependency-free
+  Markdown-to-HTML parser and an allowlist HTML sanitizer
+  (`LumoraPress\Core\Content\{MarkdownParser,HtmlSanitizer,
+  HtmlToMarkdownConverter}`) — the single XSS boundary for every format,
+  wired through a new `ContentRenderer` service that replaces the old
+  `nl2br(esc_html($content))` render path everywhere content is shown
+  (single/page templates, RSS/Atom feeds, search excerpts, the REST
+  API's new `content_format`/`content_html` fields). Existing posts and
+  pages keep rendering exactly as before (`content_format` defaults to
+  `plain` for rows that predate this column); new content defaults to
+  Markdown. The site's Content-Security-Policy gained a `csp_directives`
+  filter registration allowing jsDelivr for `script-src`/`style-src`/
+  `font-src` — without it, EasyMDE/TinyMCE (and the pre-existing
+  PhotoSwipe lightbox) fail to load silently, and EasyMDE's toolbar
+  icons — Font Awesome 4 glyphs, loaded from jsDelivr alongside EasyMDE
+  itself rather than via its own less predictable auto-download — render
+  blank without the actual font file; both are easy-to-miss bugs this
+  surfaced and fixed along the way. Supported Markdown: headings, bold/italic/
+  strikethrough, inline code, fenced code blocks, GFM tables,
+  blockquotes, horizontal rules, ordered/unordered/task lists, links,
+  images, footnotes, and a `[[toc]]` table-of-contents marker.
 
 ## [0.2.0] — 2026-07-21 — "Posts"
 

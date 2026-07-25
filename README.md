@@ -455,11 +455,7 @@ FTP Media Import is implemented: `LumoraPress\Services\MediaImportService`
 registers media files already sitting on the server's filesystem (dropped
 there via FTP/SFTP/a hosting file manager) into the Media Manager without
 a browser upload round-trip. Administrators configure one or more allowed
-<<<<<<< HEAD
 server directories on the Settings &rsaquo; Media page; every scan and import is
-=======
-server directories on the Settings page; every scan and import is
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 restricted to a `realpath()`-resolved descendant of one of those
 directories, re-checked immediately before each filesystem operation.
 The "Import from Server" screen (inside Media Manager) scans a chosen
@@ -499,11 +495,7 @@ token (`Authorization: Bearer {selector}:{validator}`, generated and
 managed by every user on a new "API Tokens" admin page) and repeat the
 same capability/ownership rules the admin UI already enforces. Every
 response uses a consistent JSON envelope with real pagination and
-<<<<<<< HEAD
 filtering. A "REST API" section on Settings &rsaquo; General lets an administrator
-=======
-filtering. A new "REST API" Settings section lets an administrator
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 disable the whole API, individual resources, or just anonymous comment
 submission, each rejected with a clean JSON error rather than an HTML
 page — with `rest_api_enabled`/`rest_api_resource_enabled` filters and a

@@ -224,11 +224,7 @@ $pages = new PageService($database, $tablePrefix);
 $categories = new CategoryService($database, $tablePrefix);
 $tags = new TagService($database, $tablePrefix);
 $comments = new CommentService($database, $tablePrefix);
-<<<<<<< HEAD
 $search = new SearchService($database, $tablePrefix, $config, $content);
-=======
-$search = new SearchService($database, $tablePrefix, $config);
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 $api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
@@ -242,11 +238,7 @@ $thumbnails = new ThumbnailService(
     media: $media,
     logDirectory: LUMORA_ROOT . '/storage/logs',
 );
-<<<<<<< HEAD
 $feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content);
-=======
-$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails);
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 $mediaImport = new MediaImportService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -348,10 +340,7 @@ $kernel = new Kernel(
     thumbnails: $thumbnails,
     mediaImport: $mediaImport,
     apiTokens: $apiTokens,
-<<<<<<< HEAD
     content: $content,
-=======
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);

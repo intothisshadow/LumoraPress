@@ -16,11 +16,7 @@ $og_url = $og_item instanceof \LumoraPress\Models\Post
     ? home_url('post/' . $og_item->slug)
     : ($og_item instanceof \LumoraPress\Models\Page ? home_url('page/' . $og_item->slug) : null);
 $og_description = $og_item !== null
-<<<<<<< HEAD
     ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt(content_plain_text($og_item->content, $og_item->contentFormat)))
-=======
-    ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt($og_item->content))
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     : '';
 ?>
 <!DOCTYPE html>

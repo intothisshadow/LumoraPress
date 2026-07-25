@@ -20,11 +20,7 @@ get_header(['post' => $post]);
                     <?php the_post_thumbnail_lightbox($post, size: 'large', largeSize: 'large'); ?>
                 </div>
             <?php endif; ?>
-<<<<<<< HEAD
             <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
-=======
-            <div class="lp-post__content"><?= nl2br(esc_html($post->content)) ?></div>
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         </article>
         <?php comments_template(['post' => $post, 'comment_tree' => $comment_tree, 'comments_open' => $comments_open, 'comment_count' => $comment_count, 'current_user' => $current_user]); ?>
     </main>

@@ -46,13 +46,8 @@ final class PageService
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-<<<<<<< HEAD
                 (title, slug, content, content_format, excerpt, status, author_id, parent_id, featured_image_id, published_at, created_at, updated_at)
              VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :published_at, :created_at, :updated_at)',
-=======
-                (title, slug, content, excerpt, status, author_id, parent_id, featured_image_id, published_at, created_at, updated_at)
-             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :published_at, :created_at, :updated_at)',
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -118,11 +113,7 @@ final class PageService
 
         $this->database->execute(
             'UPDATE ' . $this->table() . '
-<<<<<<< HEAD
                 SET title = :title, slug = :slug, content = :content, content_format = :content_format, excerpt = :excerpt,
-=======
-                SET title = :title, slug = :slug, content = :content, excerpt = :excerpt,
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
                     status = :status, parent_id = :parent_id, featured_image_id = :featured_image_id,
                     published_at = :published_at, updated_at = :updated_at
               WHERE id = :id',

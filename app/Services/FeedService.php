@@ -40,10 +40,7 @@ final class FeedService
         private readonly HookManager $hooks,
         private readonly MediaService $media,
         private readonly ThumbnailService $thumbnails,
-<<<<<<< HEAD
         private readonly ContentRenderer $content,
-=======
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     ) {
     }
 
@@ -115,13 +112,8 @@ final class FeedService
         $item = [
             'post' => $post,
             'authorName' => $author?->displayName,
-<<<<<<< HEAD
             'description' => $post->excerpt !== '' ? $post->excerpt : make_excerpt($this->content->toPlainText($post->content, $post->contentFormat)),
             'content' => $fullContent ? $this->content->render($post->content, $post->contentFormat) : null,
-=======
-            'description' => $post->excerpt !== '' ? $post->excerpt : make_excerpt($post->content),
-            'content' => $fullContent ? $post->content : null,
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
             'thumbnailUrl' => $thumbnailUrl,
             'thumbnailType' => $thumbnailType,
             'thumbnailLength' => $thumbnailLength,

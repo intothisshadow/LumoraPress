@@ -74,10 +74,7 @@ final class Kernel
         public readonly ThumbnailService $thumbnails,
         public readonly MediaImportService $mediaImport,
         public readonly ApiTokenService $apiTokens,
-<<<<<<< HEAD
         public readonly ContentRenderer $content,
-=======
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     ) {
     }
 }

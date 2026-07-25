@@ -175,12 +175,6 @@ $menu = [
         ],
     ],
     'users' => ['label' => 'Users', 'capability' => 'manage_users'],
-<<<<<<< HEAD
-=======
-    'tools' => ['label' => 'Tools', 'capability' => 'manage_options'],
-    'updates' => ['label' => 'Updates', 'capability' => 'manage_options'],
-    'settings' => ['label' => 'Settings', 'capability' => 'manage_options'],
->>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     // No capability requirement (LP-021): every authenticated role,
     // including Subscriber, manages their own API tokens — the page
     // itself only ever operates on $currentUser->id, never another
