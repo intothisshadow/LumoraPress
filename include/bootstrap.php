@@ -224,7 +224,11 @@ $pages = new PageService($database, $tablePrefix);
 $categories = new CategoryService($database, $tablePrefix);
 $tags = new TagService($database, $tablePrefix);
 $comments = new CommentService($database, $tablePrefix);
+<<<<<<< HEAD
 $search = new SearchService($database, $tablePrefix, $config, $content);
+=======
+$search = new SearchService($database, $tablePrefix, $config);
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 $api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
@@ -238,7 +242,11 @@ $thumbnails = new ThumbnailService(
     media: $media,
     logDirectory: LUMORA_ROOT . '/storage/logs',
 );
+<<<<<<< HEAD
 $feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content);
+=======
+$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails);
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 $mediaImport = new MediaImportService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -340,7 +348,10 @@ $kernel = new Kernel(
     thumbnails: $thumbnails,
     mediaImport: $mediaImport,
     apiTokens: $apiTokens,
+<<<<<<< HEAD
     content: $content,
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);
@@ -377,6 +388,38 @@ $router->get('/admin/{page}/{subpage}', $adminHandler);
 $router->post('/admin', $adminHandler);
 $router->post('/admin/{page}', $adminHandler);
 $router->post('/admin/{page}/{subpage}', $adminHandler);
+
+// REST API (LP-021), versioned under /api/v1.
+$router->get('/api/v1/posts', fn (array $params) => $api->postsIndex($params));
+$router->get('/api/v1/posts/{slug}', fn (array $params) => $api->postsShow($params));
+$router->post('/api/v1/posts', fn (array $params) => $api->postsStore($params));
+$router->patch('/api/v1/posts/{id}', fn (array $params) => $api->postsUpdate($params));
+$router->delete('/api/v1/posts/{id}', fn (array $params) => $api->postsDestroy($params));
+
+$router->get('/api/v1/pages', fn (array $params) => $api->pagesIndex($params));
+$router->get('/api/v1/pages/{slug}', fn (array $params) => $api->pagesShow($params));
+$router->post('/api/v1/pages', fn (array $params) => $api->pagesStore($params));
+$router->patch('/api/v1/pages/{id}', fn (array $params) => $api->pagesUpdate($params));
+$router->delete('/api/v1/pages/{id}', fn (array $params) => $api->pagesDestroy($params));
+
+$router->get('/api/v1/categories', fn (array $params) => $api->categoriesIndex($params));
+$router->get('/api/v1/categories/{slug}', fn (array $params) => $api->categoriesShow($params));
+$router->post('/api/v1/categories', fn (array $params) => $api->categoriesStore($params));
+$router->patch('/api/v1/categories/{id}', fn (array $params) => $api->categoriesUpdate($params));
+$router->delete('/api/v1/categories/{id}', fn (array $params) => $api->categoriesDestroy($params));
+
+$router->get('/api/v1/tags', fn (array $params) => $api->tagsIndex($params));
+$router->get('/api/v1/tags/{slug}', fn (array $params) => $api->tagsShow($params));
+$router->post('/api/v1/tags', fn (array $params) => $api->tagsStore($params));
+$router->patch('/api/v1/tags/{id}', fn (array $params) => $api->tagsUpdate($params));
+$router->delete('/api/v1/tags/{id}', fn (array $params) => $api->tagsDestroy($params));
+
+$router->get('/api/v1/comments', fn (array $params) => $api->commentsIndex($params));
+$router->post('/api/v1/comments', fn (array $params) => $api->commentsStore($params));
+$router->patch('/api/v1/comments/{id}', fn (array $params) => $api->commentsUpdate($params));
+$router->delete('/api/v1/comments/{id}', fn (array $params) => $api->commentsDestroy($params));
+
+$router->get('/api/v1/search', fn (array $params) => $api->searchIndex($params));
 
 // REST API (LP-021), versioned under /api/v1.
 $router->get('/api/v1/posts', fn (array $params) => $api->postsIndex($params));

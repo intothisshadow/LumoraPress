@@ -2,6 +2,7 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+<<<<<<< HEAD
 ## [Unreleased]
 
 ## [0.3.0] — 2026-07-25 — "Admin"
@@ -40,6 +41,12 @@ All notable changes to Lumora Press are documented in this file.
   strikethrough, inline code, fenced code blocks, GFM tables,
   blockquotes, horizontal rules, ordered/unordered/task lists, links,
   images, footnotes, and a `[[toc]]` table-of-contents marker.
+=======
+## [Unreleased] — 2026-07-25
+
+### Added
+
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 - Theme Browser (LP-044): modernized the Appearance → Themes screen with
   visual previews and a details panel before activation.
   `LumoraPress\Core\Theme\ThemeRegistry` now parses the rest of the
@@ -606,6 +613,7 @@ All notable changes to Lumora Press are documented in this file.
   override either toggle programmatically. Blocked requests are logged
   via a single `error_log()` line, the same ephemeral-logging choice
   LP-001/LP-041 already made rather than a new database table.
+<<<<<<< HEAD
 
 ### Changed
 
@@ -631,6 +639,8 @@ All notable changes to Lumora Press are documented in this file.
   expands or collapses that section's sub-items independently of which
   page is active, with `aria-expanded` kept in sync and the open/closed
   choice remembered across page loads via `localStorage`.
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 
 ### Fixed
 

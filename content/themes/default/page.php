@@ -11,7 +11,11 @@ get_header(['page' => $page]);
                     <?php the_post_thumbnail_lightbox($page, size: 'large', largeSize: 'large'); ?>
                 </div>
             <?php endif; ?>
+<<<<<<< HEAD
             <div class="lp-post__content"><?= render_content($page->content, $page->contentFormat) ?></div>
+=======
+            <div class="lp-post__content"><?= nl2br(esc_html($page->content)) ?></div>
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         </article>
     </main>
     <?php get_sidebar(); ?>

@@ -516,7 +516,11 @@ $allFolders = $folderService->listAll();
         <?php if ($allowedImportDirectories === []): ?>
             <p class="lp-admin__widget-placeholder">
                 No import directories are configured. An administrator can add one or more absolute server paths on the
+<<<<<<< HEAD
                 <a href="<?= esc_url(admin_url('settings/media')) ?>">Settings &rsaquo; Media</a> page under "Media Import".
+=======
+                <a href="<?= esc_url(admin_url('settings')) ?>">Settings</a> page under "Media Import".
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
             </p>
         <?php elseif (is_array($importState)): ?>
             <?php

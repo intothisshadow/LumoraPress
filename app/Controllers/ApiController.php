@@ -6,8 +6,11 @@ namespace LumoraPress\Controllers;
 
 use Closure;
 use DateTimeImmutable;
+<<<<<<< HEAD
 use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\ApiResponse;
 use LumoraPress\Core\PressConfig;
@@ -15,7 +18,10 @@ use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
+<<<<<<< HEAD
 use LumoraPress\Models\ContentFormat;
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
 use LumoraPress\Models\Post;
@@ -24,7 +30,10 @@ use LumoraPress\Models\Tag;
 use LumoraPress\Models\User;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
+<<<<<<< HEAD
 use LumoraPress\Services\ContentRenderer;
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\SearchService;
@@ -57,8 +66,11 @@ final class ApiController
 
     private readonly Closure $rawInput;
 
+<<<<<<< HEAD
     private readonly ContentRenderer $content;
 
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     /**
      * @param Closure(): string|null $rawInput Overrides reading the raw
      *     request body — defaults to `file_get_contents('php://input')`.
@@ -77,10 +89,15 @@ final class ApiController
         private readonly PressConfig $config,
         private readonly HookManager $hooks,
         ?Closure $rawInput = null,
+<<<<<<< HEAD
         ?ContentRenderer $content = null,
     ) {
         $this->rawInput = $rawInput ?? static fn (): string|false => file_get_contents('php://input');
         $this->content = $content ?? new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), $hooks);
+=======
+    ) {
+        $this->rawInput = $rawInput ?? static fn (): string|false => file_get_contents('php://input');
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     }
 
     // =================================================================
@@ -169,8 +186,11 @@ final class ApiController
             'title' => $post->title,
             'slug' => $post->slug,
             'content' => $post->content,
+<<<<<<< HEAD
             'content_format' => $post->contentFormat->value,
             'content_html' => $this->content->render($post->content, $post->contentFormat),
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
             'excerpt' => $post->excerpt,
             'status' => $post->status->value,
             'author_id' => $post->authorId,
@@ -192,8 +212,11 @@ final class ApiController
             'title' => $page->title,
             'slug' => $page->slug,
             'content' => $page->content,
+<<<<<<< HEAD
             'content_format' => $page->contentFormat->value,
             'content_html' => $this->content->render($page->content, $page->contentFormat),
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
             'excerpt' => $page->excerpt,
             'status' => $page->status->value,
             'author_id' => $page->authorId,
@@ -380,7 +403,10 @@ final class ApiController
             featuredImageId: isset($body['featured_image_id']) ? (int) $body['featured_image_id'] : null,
             slug: isset($body['slug']) ? (string) $body['slug'] : null,
             commentsOpen: (bool) ($body['comments_open'] ?? true),
+<<<<<<< HEAD
             contentFormat: ContentFormat::tryFrom((string) ($body['content_format'] ?? '')) ?? ContentFormat::Markdown,
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         );
 
         $this->assignTaxonomies($post->id, $body);
@@ -438,7 +464,10 @@ final class ApiController
             featuredImageId: array_key_exists('featured_image_id', $body) ? ($body['featured_image_id'] !== null ? (int) $body['featured_image_id'] : null) : $existing->featuredImageId,
             slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
             commentsOpen: (bool) ($body['comments_open'] ?? $existing->commentsOpen),
+<<<<<<< HEAD
             contentFormat: isset($body['content_format']) ? ContentFormat::tryFrom((string) $body['content_format']) : null,
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         );
 
         $this->assignTaxonomies($post->id, $body);
@@ -570,7 +599,10 @@ final class ApiController
             parentId: isset($body['parent_id']) ? (int) $body['parent_id'] : null,
             featuredImageId: isset($body['featured_image_id']) ? (int) $body['featured_image_id'] : null,
             slug: isset($body['slug']) ? (string) $body['slug'] : null,
+<<<<<<< HEAD
             contentFormat: ContentFormat::tryFrom((string) ($body['content_format'] ?? '')) ?? ContentFormat::Markdown,
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         );
 
         ApiResponse::json($this->pageToArray($page), 201);
@@ -626,7 +658,10 @@ final class ApiController
             parentId: array_key_exists('parent_id', $body) ? ($body['parent_id'] !== null ? (int) $body['parent_id'] : null) : $existing->parentId,
             featuredImageId: array_key_exists('featured_image_id', $body) ? ($body['featured_image_id'] !== null ? (int) $body['featured_image_id'] : null) : $existing->featuredImageId,
             slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
+<<<<<<< HEAD
             contentFormat: isset($body['content_format']) ? ContentFormat::tryFrom((string) $body['content_format']) : null,
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
         );
 
         ApiResponse::json($this->pageToArray($page));

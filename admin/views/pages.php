@@ -156,8 +156,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = 'A title is required.';
         } elseif ($error === null) {
             $page = $existing === null
+<<<<<<< HEAD
                 ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat)
                 : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat);
+=======
+                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null)
+                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null);
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
 
             header('Location: ' . admin_url('pages') . '?action=edit&id=' . $page->id . '&saved=1');
             exit;
@@ -216,10 +221,13 @@ if ($action === 'edit') {
     $parentOptions = $pageService->listAllForParentSelect($page?->id);
     $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
     $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
+<<<<<<< HEAD
     $editorMediaLibrary = array_map(
         static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
         $imageOptions,
     );
+=======
+>>>>>>> cb58e001bd90c864ec6db29592e9bed2dbd11055
     ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('pages')) ?>" enctype="multipart/form-data">
