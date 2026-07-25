@@ -50,6 +50,7 @@ if ($form === 'feed_settings' && Csrf::verify('feed_settings', is_string($_POST[
     $kernel->config->setOption('feed_item_limit', (string) max(1, min(100, (int) ($_POST['feed_item_limit'] ?? 10))));
     $kernel->config->setOption('feed_cache_lifetime', (string) max(0, (int) ($_POST['feed_cache_lifetime'] ?? 900)));
     $kernel->config->setOption('feed_description', trim((string) ($_POST['feed_description'] ?? '')));
+    $kernel->config->setOption('feed_featured_images', ($_POST['feed_featured_images'] ?? '') === '1' ? '1' : '0');
 
     header('Location: ' . admin_url('settings') . '?saved=1');
     exit;
@@ -87,6 +88,25 @@ if ($form === 'feed_settings' && Csrf::verify('feed_settings', is_string($_POST[
     $kernel->config->setOption('thumbnail_webp_quality', (string) max(0, min(100, (int) ($_POST['thumbnail_webp_quality'] ?? 80))));
     $kernel->config->setOption('thumbnail_sharpen', ($_POST['thumbnail_sharpen'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('thumbnail_max_pixels', (string) max(1, (int) ($_POST['thumbnail_max_pixels'] ?? 25_000_000)));
+    $kernel->config->setOption('default_featured_image_media_id', (string) max(0, (int) ($_POST['default_featured_image_media_id'] ?? 0)));
+
+    header('Location: ' . admin_url('settings') . '?saved=1');
+    exit;
+} elseif ($form === 'media_import_settings' && Csrf::verify('media_import_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $lines = preg_split('/\r\n|\r|\n/', (string) ($_POST['media_import_allowed_directories'] ?? '')) ?: [];
+    $directories = array_values(array_unique(array_filter(array_map('trim', $lines), static fn (string $line): bool => $line !== '')));
+    $kernel->config->setOption('media_import_allowed_directories', json_encode($directories));
+
+    header('Location: ' . admin_url('settings') . '?saved=1');
+    exit;
+} elseif ($form === 'rest_api_settings' && Csrf::verify('rest_api_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $kernel->config->setOption('rest_api_enabled', ($_POST['rest_api_enabled'] ?? '') === '1' ? '1' : '0');
+
+    foreach (['posts', 'pages', 'categories', 'tags', 'comments', 'search'] as $resource) {
+        $kernel->config->setOption("rest_api_resource_{$resource}_enabled", ($_POST["rest_api_resource_{$resource}_enabled"] ?? '') === '1' ? '1' : '0');
+    }
+
+    $kernel->config->setOption('rest_api_comments_public_submission_enabled', ($_POST['rest_api_comments_public_submission_enabled'] ?? '') === '1' ? '1' : '0');
 
     header('Location: ' . admin_url('settings') . '?saved=1');
     exit;
@@ -120,6 +140,11 @@ if ($form === 'feed_settings' && Csrf::verify('feed_settings', is_string($_POST[
         <label class="lp-field--checkbox">
             <input type="checkbox" name="feed_full_content" value="1" <?= $kernel->config->option('feed_full_content', '1') !== '0' ? 'checked' : '' ?>>
             Include full post content in feeds (unchecked shows excerpts only)
+        </label>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="feed_featured_images" value="1" <?= $kernel->config->option('feed_featured_images', '1') !== '0' ? 'checked' : '' ?>>
+            Include featured images in feed items (as an enclosure)
         </label>
 
         <p class="lp-field">
@@ -210,6 +235,68 @@ if ($form === 'feed_settings' && Csrf::verify('feed_settings', is_string($_POST[
             <input type="number" id="thumbnail-max-pixels" name="thumbnail_max_pixels" min="1" value="<?= esc_attr((string) $kernel->config->option('thumbnail_max_pixels', '25000000')) ?>">
             <span class="lp-field__hint">Images larger than this are skipped (logged) rather than generating thumbnails for them.</span>
         </p>
+
+        <p class="lp-field">
+            <label for="default-featured-image">Default featured image (LP-040)</label>
+            <select id="default-featured-image" name="default_featured_image_media_id">
+                <option value="0">(None)</option>
+                <?php foreach ($kernel->media->query(['type' => 'image'], 500, 0)['items'] as $imageOption): ?>
+                    <option value="<?= (int) $imageOption['id'] ?>" <?= (int) $kernel->config->option('default_featured_image_media_id', '0') === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                        <?= esc_html((string) $imageOption['file_name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">Used as the featured image (and Open Graph/Twitter Card image) for posts/pages that don't have one of their own.</span>
+        </p>
+
+        <button type="submit" class="lp-button">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Media Import</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings')) ?>">
+        <?= Csrf::field('media_import_settings') ?>
+        <input type="hidden" name="form" value="media_import_settings">
+
+        <p class="lp-field">
+            <label for="media-import-directories">Allowed import directories (one absolute path per line)</label>
+            <textarea id="media-import-directories" name="media_import_allowed_directories" rows="4"><?= esc_html(implode("\n", (array) (json_decode((string) $kernel->config->option('media_import_allowed_directories', '[]'), true) ?: []))) ?></textarea>
+            <span class="lp-field__hint">Only these directories (and their subdirectories) can be scanned from Media Manager &rarr; Import from Server. Leave empty to disable server import entirely.</span>
+        </p>
+
+        <button type="submit" class="lp-button">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>REST API</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings')) ?>">
+        <?= Csrf::field('rest_api_settings') ?>
+        <input type="hidden" name="form" value="rest_api_settings">
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="rest_api_enabled" value="1" <?= $kernel->config->option('rest_api_enabled', '1') !== '0' ? 'checked' : '' ?>>
+            Enable the REST API (<code>/api/v1/...</code>)
+        </label>
+
+        <fieldset class="lp-field">
+            <legend>Enabled resources</legend>
+            <?php foreach (['posts' => 'Posts', 'pages' => 'Pages', 'categories' => 'Categories', 'tags' => 'Tags', 'comments' => 'Comments', 'search' => 'Search'] as $resource => $label): ?>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="rest_api_resource_<?= esc_attr($resource) ?>_enabled" value="1" <?= $kernel->config->option("rest_api_resource_{$resource}_enabled", '1') !== '0' ? 'checked' : '' ?>>
+                    <?= esc_html($label) ?>
+                </label>
+            <?php endforeach; ?>
+        </fieldset>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="rest_api_comments_public_submission_enabled" value="1" <?= $kernel->config->option('rest_api_comments_public_submission_enabled', '1') !== '0' ? 'checked' : '' ?>>
+            Allow public (no API token) comment submission via the API
+        </label>
+        <span class="lp-field__hint">Reading and moderating comments via the API is controlled by the "Comments" resource toggle above; this only affects anonymous submissions.</span>
+
+        <p class="lp-field__hint">Manage your own API tokens on the <a href="<?= esc_url(admin_url('api-tokens')) ?>">API Tokens</a> page.</p>
 
         <button type="submit" class="lp-button">Save</button>
     </form>

@@ -59,12 +59,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
+        // Featured image resolution (LP-040): upload wins over the
+        // existing-image select, which wins over "remove", which wins
+        // over just keeping the current value — same precedence
+        // admin/views/posts.php uses.
+        $featuredImageId = $existing?->featuredImageId;
+
+        if (($_POST['remove_featured_image'] ?? '') === '1') {
+            $featuredImageId = null;
+        }
+
+        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
+
+        if ($selectedFeaturedImageId > 0) {
+            $featuredImageId = $selectedFeaturedImageId;
+        }
+
+        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
+                $kernel->thumbnails->generate($uploadedFeaturedImage);
+                $featuredImageId = (int) $uploadedFeaturedImage['id'];
+            } catch (\Throwable $exception) {
+                $error = 'Featured image upload failed: ' . $exception->getMessage();
+            }
+        }
+
         if ($title === '') {
             $error = 'A title is required.';
-        } else {
+        } elseif ($error === null) {
             $page = $existing === null
-                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null)
-                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null);
+                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null)
+                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null);
 
             header('Location: ' . admin_url('pages') . '?action=edit&id=' . $page->id . '&saved=1');
             exit;
@@ -121,9 +147,11 @@ if ($action === 'edit') {
     $page = $editingPage;
     $statusOptions = [PageStatus::Draft, PageStatus::Published, PageStatus::Scheduled];
     $parentOptions = $pageService->listAllForParentSelect($page?->id);
+    $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
+    $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('pages')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('pages')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('page_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($page !== null): ?>
@@ -150,6 +178,30 @@ if ($action === 'edit') {
                 <label for="page-excerpt">Excerpt</label>
                 <textarea id="page-excerpt" name="excerpt" rows="3"><?= esc_html($page->excerpt ?? '') ?></textarea>
             </p>
+
+            <fieldset class="lp-field">
+                <legend>Featured Image</legend>
+
+                <?php if ($currentFeaturedImage !== null): ?>
+                    <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
+                    </label>
+                <?php endif; ?>
+
+                <label for="page-featured-image-select">Choose from Media Manager</label>
+                <select id="page-featured-image-select" name="featured_image_id">
+                    <option value="0">(None)</option>
+                    <?php foreach ($imageOptions as $imageOption): ?>
+                        <option value="<?= (int) $imageOption['id'] ?>" <?= ($page?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                            <?= esc_html((string) $imageOption['file_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="page-featured-image-upload">Or upload a new image</label>
+                <input type="file" id="page-featured-image-upload" name="featured_image_upload" accept="image/*">
+            </fieldset>
 
             <p class="lp-field">
                 <label for="page-parent">Parent Page</label>

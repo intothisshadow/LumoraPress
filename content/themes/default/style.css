@@ -268,6 +268,17 @@ img {
     max-width: 68ch;
 }
 
+.lp-post__thumbnail {
+    margin: 0 0 1.5rem;
+}
+
+.lp-post__thumbnail img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
 /* =========================================================
    Post list (homepage & archives)
    ========================================================= */
@@ -279,6 +290,8 @@ img {
 }
 
 .lp-post-list__item {
+    display: flex;
+    gap: 1.25rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--lp-border);
 }
@@ -286,6 +299,24 @@ img {
 .lp-post-list__item:last-child {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+.lp-post-list__thumbnail {
+    flex-shrink: 0;
+    display: block;
+}
+
+.lp-post-list__thumbnail img {
+    display: block;
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.lp-post-list__body {
+    flex: 1;
+    min-width: 0;
 }
 
 .lp-post-list__title {
@@ -325,6 +356,8 @@ img {
 }
 
 .lp-search-results__item {
+    display: flex;
+    gap: 1.25rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--lp-border);
 }
@@ -332,6 +365,23 @@ img {
 .lp-search-results__item:last-child {
     border-bottom: none;
     padding-bottom: 0;
+}
+
+.lp-search-results__thumbnail {
+    flex-shrink: 0;
+}
+
+.lp-search-results__thumbnail img {
+    display: block;
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.lp-search-results__body {
+    flex: 1;
+    min-width: 0;
 }
 
 .lp-search-results__type {
@@ -660,4 +710,26 @@ img {
 .lp-site-footer__feed-link:focus {
     color: var(--lp-accent-hover);
     text-decoration: underline;
+}
+
+/* =========================================================
+   Media Viewer & Lightbox (LP-031)
+   ========================================================= */
+
+/*
+ * .lp-gallery is a pure grouping marker for media-viewer.js — no visual
+ * style needed. .lp-pswp-caption is the custom caption bar registered
+ * into PhotoSwipe's own dark UI chrome, so it's styled to match that
+ * chrome directly rather than this theme's light/dark tokens.
+ */
+.lp-pswp-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.9rem;
+    text-align: center;
 }

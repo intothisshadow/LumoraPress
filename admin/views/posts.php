@@ -75,12 +75,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
+        // Featured image resolution (LP-040): upload wins over the
+        // existing-image select, which wins over "remove", which wins
+        // over just keeping the current value — same precedence
+        // admin/views/pages.php uses.
+        $featuredImageId = $existing?->featuredImageId;
+
+        if (($_POST['remove_featured_image'] ?? '') === '1') {
+            $featuredImageId = null;
+        }
+
+        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
+
+        if ($selectedFeaturedImageId > 0) {
+            $featuredImageId = $selectedFeaturedImageId;
+        }
+
+        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
+                $kernel->thumbnails->generate($uploadedFeaturedImage);
+                $featuredImageId = (int) $uploadedFeaturedImage['id'];
+            } catch (\Throwable $exception) {
+                $error = 'Featured image upload failed: ' . $exception->getMessage();
+            }
+        }
+
         if ($title === '') {
             $error = 'A title is required.';
-        } else {
+        } elseif ($error === null) {
             $post = $existing === null
-                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen)
-                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $existing->featuredImageId, $slug !== '' ? $slug : null, $commentsOpen);
+                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen)
+                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen);
 
             $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
             $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
@@ -147,9 +173,11 @@ if ($action === 'edit') {
     $assignedTagNames = $post !== null
         ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
         : [];
+    $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
+    $currentFeaturedImage = $post?->featuredImageId !== null ? $kernel->media->find($post->featuredImageId) : null;
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('posts')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('posts')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('post_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($post !== null): ?>
@@ -176,6 +204,30 @@ if ($action === 'edit') {
                 <label for="post-excerpt">Excerpt</label>
                 <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
             </p>
+
+            <fieldset class="lp-field">
+                <legend>Featured Image</legend>
+
+                <?php if ($currentFeaturedImage !== null): ?>
+                    <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
+                    </label>
+                <?php endif; ?>
+
+                <label for="post-featured-image-select">Choose from Media Manager</label>
+                <select id="post-featured-image-select" name="featured_image_id">
+                    <option value="0">(None)</option>
+                    <?php foreach ($imageOptions as $imageOption): ?>
+                        <option value="<?= (int) $imageOption['id'] ?>" <?= ($post?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                            <?= esc_html((string) $imageOption['file_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="post-featured-image-upload">Or upload a new image</label>
+                <input type="file" id="post-featured-image-upload" name="featured_image_upload" accept="image/*">
+            </fieldset>
 
             <?php if ($allCategories !== []): ?>
                 <fieldset class="lp-field lp-field--checklist">

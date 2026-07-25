@@ -241,15 +241,25 @@ body.lp-admin-login {
     border-color: var(--lp-admin-accent);
 }
 
+.lp-theme-card__screenshot-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--lp-admin-sidebar-bg);
+    padding: 0.75rem;
+}
+
 .lp-theme-card__screenshot {
     display: block;
+    max-width: 250px;
     width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    background: var(--lp-admin-sidebar-bg);
+    height: auto;
 }
 
 .lp-theme-card__screenshot--placeholder {
+    width: 100%;
+    max-width: 250px;
+    aspect-ratio: 4 / 3;
     background: repeating-linear-gradient(
         45deg,
         var(--lp-admin-sidebar-bg),
@@ -296,6 +306,140 @@ body.lp-admin-login {
     margin: 0 0 0.75rem;
 }
 
+.lp-theme-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.lp-theme-card__actions form {
+    margin: 0;
+}
+
+/* Appearance: theme search */
+
+.lp-theme-search input {
+    max-width: 320px;
+}
+
+.lp-theme-grid__empty {
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-style: italic;
+}
+
+/* Appearance: theme details dialog */
+
+.lp-theme-dialog {
+    width: min(640px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+}
+
+.lp-theme-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-theme-details__gallery {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.lp-theme-details__gallery img {
+    max-height: 220px;
+    border-radius: var(--lp-admin-radius);
+    flex-shrink: 0;
+}
+
+.lp-theme-details__gallery--placeholder {
+    height: 160px;
+    border-radius: var(--lp-admin-radius);
+    background: repeating-linear-gradient(
+        45deg,
+        var(--lp-admin-sidebar-bg),
+        var(--lp-admin-sidebar-bg) 10px,
+        var(--lp-admin-border) 10px,
+        var(--lp-admin-border) 20px
+    );
+}
+
+.lp-theme-details__name {
+    margin: 0 0 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.lp-theme-details__description {
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-theme-details__facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.9rem;
+    margin: 1rem 0;
+}
+
+.lp-theme-details__facts dt {
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-theme-details__facts dd {
+    margin: 0;
+    word-break: break-word;
+}
+
+.lp-theme-details__tags {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 1rem;
+    padding: 0;
+}
+
+.lp-theme-details__tags li {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+}
+
+.lp-theme-details__document {
+    margin-bottom: 1rem;
+}
+
+.lp-theme-details__document pre {
+    max-height: 280px;
+    overflow: auto;
+    padding: 0.75rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.lp-theme-details__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.lp-theme-details__actions form {
+    margin: 0;
+}
+
 /* Appearance: branding */
 
 .lp-branding-preview {
@@ -312,6 +456,19 @@ body.lp-admin-login {
 .lp-code-textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.85rem;
+}
+
+.lp-api-token__value {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+    background: var(--lp-admin-sidebar-bg);
+    color: var(--lp-admin-sidebar-fg);
+    border-radius: var(--lp-admin-radius);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    overflow-wrap: break-word;
+    word-break: break-all;
 }
 
 /* Media Manager */
@@ -458,6 +615,35 @@ body.lp-admin-login {
     border-radius: var(--lp-admin-radius);
 }
 
+.lp-media-edit__video,
+.lp-media-edit__audio,
+.lp-media-edit__pdf {
+    display: block;
+    max-width: 480px;
+    margin-bottom: 1rem;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-media-edit__pdf {
+    width: 100%;
+    max-width: 640px;
+    height: 480px;
+    border: 1px solid var(--lp-admin-border);
+}
+
+/* Media Viewer & Lightbox (LP-031) — matches the theme's own caption bar. */
+.lp-pswp-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
 .lp-thumbnails {
     margin-bottom: 1rem;
 }
@@ -484,6 +670,25 @@ body.lp-admin-login {
 .lp-thumbnails__progress-bar {
     height: 100%;
     background: var(--lp-admin-accent);
+}
+
+.lp-import-scan__list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-import-scan__list li {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-import-scan__list li:last-child {
+    border-bottom: none;
 }
 
 /* Forms */
@@ -677,6 +882,17 @@ body.lp-admin-login {
 
 .lp-button--primary:hover {
     background: var(--lp-admin-accent-hover);
+}
+
+.lp-button--secondary {
+    background: transparent;
+    border-color: var(--lp-admin-border);
+    color: var(--lp-admin-text);
+}
+
+.lp-button--secondary:hover {
+    border-color: var(--lp-admin-accent);
+    color: var(--lp-admin-accent);
 }
 
 .lp-button--danger {

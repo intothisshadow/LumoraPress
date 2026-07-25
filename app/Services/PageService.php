@@ -13,10 +13,10 @@ use RuntimeException;
 /**
  * Page CRUD, slug generation, and the queries behind the frontend page
  * route and admin list view. Mirrors PostService closely — same
- * scheduled-visibility mechanism, same slug generation — with a nullable
- * parent_id in place of a featured image for a basic, flat parent/child
- * relationship (no tree view, no drag-and-drop ordering, no hierarchical
- * URLs yet).
+ * scheduled-visibility mechanism, same slug generation, same nullable
+ * featured_image_id (LP-040) — plus a nullable parent_id for a basic, flat
+ * parent/child relationship (no tree view, no drag-and-drop ordering, no
+ * hierarchical URLs yet).
  */
 final class PageService
 {
@@ -36,6 +36,7 @@ final class PageService
         PageStatus $status,
         ?DateTimeImmutable $publishedAt = null,
         ?int $parentId = null,
+        ?int $featuredImageId = null,
         ?string $slug = null,
     ): Page {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
@@ -43,8 +44,8 @@ final class PageService
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, excerpt, status, author_id, parent_id, published_at, created_at, updated_at)
-             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :parent_id, :published_at, :created_at, :updated_at)',
+                (title, slug, content, excerpt, status, author_id, parent_id, featured_image_id, published_at, created_at, updated_at)
+             VALUES (:title, :slug, :content, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :published_at, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -53,6 +54,7 @@ final class PageService
                 'status' => $status->value,
                 'author_id' => $authorId,
                 'parent_id' => $parentId,
+                'featured_image_id' => $featuredImageId,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now)?->format('Y-m-d H:i:s'),
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
@@ -88,6 +90,7 @@ final class PageService
         PageStatus $status,
         ?DateTimeImmutable $publishedAt = null,
         ?int $parentId = null,
+        ?int $featuredImageId = null,
         ?string $slug = null,
     ): Page {
         $existing = $this->findById($id);
@@ -107,7 +110,7 @@ final class PageService
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET title = :title, slug = :slug, content = :content, excerpt = :excerpt,
-                    status = :status, parent_id = :parent_id,
+                    status = :status, parent_id = :parent_id, featured_image_id = :featured_image_id,
                     published_at = :published_at, updated_at = :updated_at
               WHERE id = :id',
             [
@@ -117,6 +120,7 @@ final class PageService
                 'excerpt' => $excerpt,
                 'status' => $status->value,
                 'parent_id' => $parentId,
+                'featured_image_id' => $featuredImageId,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now, $existing->publishedAt)?->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
@@ -161,6 +165,23 @@ final class PageService
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE slug = :slug', ['slug' => $slug]);
 
         return $row === null ? null : $this->hydrate($row);
+    }
+
+    /**
+     * Titles of every page using $mediaId as its featured image — used by
+     * MediaUsageChecker to warn before deleting a referenced file, mirrors
+     * PostService::titlesByFeaturedImage().
+     *
+     * @return array<int, string>
+     */
+    public function titlesByFeaturedImage(int $mediaId): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT title FROM ' . $this->table() . ' WHERE featured_image_id = :featured_image_id',
+            ['featured_image_id' => $mediaId],
+        );
+
+        return array_map(static fn (array $row): string => (string) $row['title'], $rows);
     }
 
     /**
@@ -330,6 +351,7 @@ final class PageService
             status: PageStatus::from((string) $row['status']),
             authorId: (int) $row['author_id'],
             parentId: $row['parent_id'] !== null ? (int) $row['parent_id'] : null,
+            featuredImageId: $row['featured_image_id'] !== null ? (int) $row['featured_image_id'] : null,
             publishedAt: $row['published_at'] !== null ? new DateTimeImmutable((string) $row['published_at']) : null,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),

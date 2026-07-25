@@ -9,10 +9,17 @@ use LumoraPress\Core\Theme\ActiveTheme;
  */
 
 if (!function_exists('get_header')) {
-    function get_header(): void
+    /**
+     * @param array<string, mixed> $vars Passed through to header.php — e.g.
+     *     ['post' => $post] so it can render per-item Open Graph/Twitter
+     *     Card tags (LP-040). Optional: every other caller keeps working
+     *     unchanged, same "extra vars, default empty" shape as
+     *     comments_template().
+     */
+    function get_header(array $vars = []): void
     {
         do_action('get_header');
-        ActiveTheme::instance()->renderPartial('header');
+        ActiveTheme::instance()->renderPartial('header', $vars);
     }
 }
 

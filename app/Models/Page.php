@@ -17,6 +17,7 @@ final class Page
         public readonly PageStatus $status,
         public readonly int $authorId,
         public readonly ?int $parentId,
+        public readonly ?int $featuredImageId,
         public readonly ?DateTimeImmutable $publishedAt,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,

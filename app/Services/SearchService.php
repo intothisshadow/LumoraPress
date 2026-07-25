@@ -125,7 +125,7 @@ final class SearchService
         // PageService::listAllForParentSelect()'s docblock for the
         // original regression this mirrors.
         $rows = $this->database->fetchAll(
-            "SELECT id, title, slug, content, excerpt, published_at,
+            "SELECT id, title, slug, content, excerpt, featured_image_id, published_at,
                     (MATCH(title, content) AGAINST(:query1 IN NATURAL LANGUAGE MODE)
                         + MATCH(title) AGAINST(:query2 IN NATURAL LANGUAGE MODE) * 2) AS relevance_score
              FROM {$table}
@@ -142,6 +142,7 @@ final class SearchService
                 title: (string) $row['title'],
                 slug: (string) $row['slug'],
                 excerpt: ((string) ($row['excerpt'] ?? '')) !== '' ? (string) $row['excerpt'] : make_excerpt((string) $row['content']),
+                featuredImageId: $row['featured_image_id'] !== null ? (int) $row['featured_image_id'] : null,
                 publishedAt: $row['published_at'] !== null ? new DateTimeImmutable((string) $row['published_at']) : null,
                 score: (float) $row['relevance_score'],
             ),

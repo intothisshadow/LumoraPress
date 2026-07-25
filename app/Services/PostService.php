@@ -294,6 +294,44 @@ final class PostService
     }
 
     /**
+     * Posts visible to public site visitors written by $authorId (LP-021,
+     * for the REST API's ?author= filter) — no join needed, unlike
+     * paginateByCategory()/paginateByTag(), since author_id is a direct
+     * column on this table.
+     *
+     * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateByAuthor(int $authorId, int $page = 1, int $perPage = self::DEFAULT_PER_PAGE): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $where = "author_id = :author_id AND (status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+
+        $total = (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
+            ['now' => $now, 'author_id' => $authorId],
+        );
+
+        $offset = ($page - 1) * $perPage;
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE {$where}"
+                . " ORDER BY published_at DESC LIMIT {$perPage} OFFSET {$offset}",
+            ['now' => $now, 'author_id' => $authorId],
+        );
+
+        return [
+            'posts' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => (int) max(1, ceil($total / $perPage)),
+        ];
+    }
+
+    /**
      * All posts regardless of status, for the admin post list.
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}

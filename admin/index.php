@@ -146,6 +146,11 @@ $menu = [
     'tools' => ['label' => 'Tools', 'capability' => 'manage_options'],
     'updates' => ['label' => 'Updates', 'capability' => 'manage_options'],
     'settings' => ['label' => 'Settings', 'capability' => 'manage_options'],
+    // No capability requirement (LP-021): every authenticated role,
+    // including Subscriber, manages their own API tokens — the page
+    // itself only ever operates on $currentUser->id, never another
+    // user's tokens.
+    'api-tokens' => ['label' => 'API Tokens', 'capability' => null],
 ];
 
 if (!array_key_exists($page, $menu)) {

@@ -10,6 +10,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Menus\MenuManager;
+use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\RememberMeService;
@@ -21,6 +22,7 @@ use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
+use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
@@ -69,6 +71,8 @@ final class Kernel
         public readonly FolderService $folders,
         public readonly MediaUsageChecker $mediaUsage,
         public readonly ThumbnailService $thumbnails,
+        public readonly MediaImportService $mediaImport,
+        public readonly ApiTokenService $apiTokens,
     ) {
     }
 }

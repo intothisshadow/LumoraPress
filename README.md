@@ -284,19 +284,43 @@ changes via the `maintenance_mode_toggled` action. IP whitelisting, a
 secret bypass URL/cookie, and email notifications are not yet
 implemented.
 
-Appearance is implemented as a first pass. Theme Management:
-`LumoraPress\Core\Theme\ThemeRegistry` discovers every theme under
-`content/themes/`, parsing each one's `style.css` comment header (the
-classic `Theme Name:`/`Description:`/`Version:`/`Author:` convention —
-already present in the default theme, but nothing read it before this)
-plus a `screenshot.{png,jpg,jpeg,webp}` if one exists. The new admin
-Appearance screen (`admin/views/appearance.php`) lists every discovered
-theme as a card with a one-click "Activate" button, and can install new
-themes from a ZIP upload (`LumoraPress\Services\ThemeInstaller` — reuses
-the path-traversal/size-cap safety checks LP-026's update-package
-validator established, but is otherwise much simpler: a theme install
-only ever adds one new, independent directory, never overlays live core
-files, so there's no staging/backup/rollback machinery). Branding: a site
+Appearance is implemented as a first pass, with a modern Theme Browser
+(LP-044) on top. Theme Management: `LumoraPress\Core\Theme\ThemeRegistry`
+discovers every theme under `content/themes/`, parsing each one's
+`style.css` comment header — the classic `Theme Name:`/`Description:`/
+`Version:`/`Author:`/`Theme URI:`/`Author URI:`/`License:`/`License URI:`/
+`Requires at least:`/`Requires PHP:`/`Tags:` convention — plus every
+`preview.*`/`thumbnail.*`/`screenshot.*` image present (JPG, PNG, WebP, or
+AVIF; numbered variants like `screenshot-2.png` build a multi-screenshot
+gallery) and a `README`/`CHANGELOG` file if included. The admin Appearance
+screen (`admin/views/appearance.php`) lists every discovered theme as a
+card — with a live search box, the active theme highlighted, a
+placeholder shown when no preview image exists, and preview thumbnails
+capped at `max-width: 250px` with `height: auto` (no `object-fit`) so an
+image is scaled down proportionally, never cropped or stretched — and a
+"Details" button opens a details panel (a native `<dialog>`,
+progressively enhanced by `admin/assets/js/theme-browser.js`) showing the
+full parsed metadata, the screenshot gallery, README/CHANGELOG contents,
+and Activate/Delete actions; a `lp_theme_details_panel` action hook lets
+plugins extend that panel. A "Preview" link (card and details panel, on
+any inactive theme) opens the real front end with
+`?lp_preview_theme={slug}`: `index.php` checks the requester is logged in
+with `manage_themes` before honouring it, then swaps `ThemeRenderer`'s
+active theme for that request only — the site-wide `active_theme` option
+is never touched, so no other visitor is affected — while
+`LumoraPress\Core\Theme\ThemePreview` (a static bridge, mirroring
+`SiteBranding`/`FeaturedImages`) marks the request so a "Previewing
+theme… Exit Preview" bar gets injected right after the rendered page's
+`<body>` tag, styled by its own stylesheet
+(`admin/assets/css/theme-preview-bar.css`) so it works unmodified with
+every theme, including custom ones with no knowledge of preview mode at
+all. New themes install from a ZIP upload
+(`LumoraPress\Services\ThemeInstaller` — reuses the path-traversal/size-cap
+safety checks LP-026's update-package validator established, but is
+otherwise much simpler: a theme install only ever adds one new,
+independent directory, never overlays live core files, so there's no
+staging/backup/rollback machinery); the same class's `delete()` removes an
+inactive theme's directory entirely. Branding: a site
 logo and favicon (both reuse `MediaService::upload()`; `.ico` was added
 to its allow-list alongside the already-supported PNG), and the
 `site_name` option (saved by the installer since LP-028, but until now
@@ -344,6 +368,72 @@ progress bar, progressively enhanced by JavaScript to auto-continue), an
 orphaned-thumbnail cleanup tool, and cleans up thumbnails when a file is
 deleted. Extensible via `thumbnail_sizes`/`thumbnail_max_pixels` filters
 and `thumbnail_generated`/`thumbnail_generation_failed` actions.
+
+Featured Images are implemented for both Posts and Pages: a "Featured
+Image" meta box in each editor lets you pick an existing image or upload
+a new one (no modal picker — a plain existing-image `<select>`, matching
+this project's low-tech admin UI elsewhere), with automatic thumbnail
+generation and `MediaUsageChecker` protection against deleting an in-use
+image. Themes get a small, WordPress-inspired API — `has_post_thumbnail()`,
+`post_thumbnail_url()`, `the_post_thumbnail()` (real `srcset`/`sizes`,
+falling back through original → configurable default image → nothing),
+`post_thumbnail_caption()` — and the default theme uses it on single
+posts/pages and in the homepage/archive post list. Single post/page pages
+now render Open Graph and Twitter Card meta tags, and feed items can
+optionally include the featured image as an RSS/Atom enclosure. Bulk
+assign/remove is not yet implemented (listed as optional in the ticket).
+
+FTP Media Import is implemented: `LumoraPress\Services\MediaImportService`
+registers media files already sitting on the server's filesystem (dropped
+there via FTP/SFTP/a hosting file manager) into the Media Manager without
+a browser upload round-trip. Administrators configure one or more allowed
+server directories on the Settings page; every scan and import is
+restricted to a `realpath()`-resolved descendant of one of those
+directories, re-checked immediately before each filesystem operation.
+The "Import from Server" screen (inside Media Manager) scans a chosen
+directory (recursively or not), previews what it found — already-imported
+files are detected via the same SHA-256 hash `MediaService` already
+stores and shown as duplicates, unchecked by default — lets you pick a
+destination folder or mirror the scanned directory structure into new
+folders automatically, and optionally uses each file's modification time
+as its stored upload date. Imported images get thumbnails generated the
+same as an upload. Large imports process in batches of 10 with a
+progress bar (the same pattern as bulk thumbnail regeneration). Bulk
+category/tag assignment during import and CLI/API support are not
+implemented (media has no category/tag fields in this app, and there is
+no CLI entrypoint in this codebase).
+
+The Media Viewer & Lightbox is implemented: a PhotoSwipe 5 lightbox
+(loaded from the jsDelivr CDN at a pinned version, not vendored locally)
+for images, with prev/next navigation across whichever list-view page
+you're on — homepage, archive, category, tag, or search results (search
+results gained their own featured-image thumbnail for this). A single
+post/page's featured image is a lightbox of one. The theme API is
+`the_post_thumbnail_lightbox()` (`include/media-functions.php`), which
+wraps the existing `the_post_thumbnail()` output in the anchor PhotoSwipe
+needs and shows a caption from the media's caption/alt text. A new
+`MediaViewer` flag ensures the PhotoSwipe assets only load on pages that
+actually used the lightbox. The admin Media Manager's edit page also
+lightboxes its image preview and gained native inline video/audio/PDF
+viewers. Album/Favorites/Most-viewed/Custom-collections navigation are
+not applicable — none of those concepts exist in Lumora Press (that's
+Lumora Gallery's domain).
+
+A versioned REST API is implemented under `/api/v1/...`
+(`LumoraPress\Controllers\ApiController`), covering Posts, Pages,
+Categories, Tags, Comments, and Search. Reads are always public
+(published/approved content only); writes require a named, revocable API
+token (`Authorization: Bearer {selector}:{validator}`, generated and
+managed by every user on a new "API Tokens" admin page) and repeat the
+same capability/ownership rules the admin UI already enforces. Every
+response uses a consistent JSON envelope with real pagination and
+filtering. A new "REST API" Settings section lets an administrator
+disable the whole API, individual resources, or just anonymous comment
+submission, each rejected with a clean JSON error rather than an HTML
+page — with `rest_api_enabled`/`rest_api_resource_enabled` filters and a
+`rest_api_request` action for plugins. Authenticated reads of your own
+drafts and API rate limiting are not implemented (recorded as
+out-of-scope in `TODO.md`, not silently missing).
 
 Search beyond Posts/Pages (categories/tags/authors/comments/media), and
 RSS feeds beyond the site-wide posts feed described above (category/tag/

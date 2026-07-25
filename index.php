@@ -29,8 +29,43 @@ $kernel = require $root . '/include/bootstrap.php';
  */
 $requestUri = \LumoraPress\Core\Http\BasePath::stripFrom($_SERVER['REQUEST_URI'] ?? '/');
 
+/*
+ * Theme preview (LP-044's optional "Preview theme" action): lets an admin
+ * see a not-yet-activated theme rendered on the real front end without
+ * touching the site-wide active_theme option, so no other visitor is
+ * affected. Gated on the requester actually being logged in with
+ * manage_themes — the query param alone must never be enough, since it's
+ * otherwise just an anonymous, attacker-controlled input.
+ */
+$previewSlug = is_string($_GET['lp_preview_theme'] ?? null) ? trim($_GET['lp_preview_theme']) : '';
+
+if ($previewSlug !== '') {
+    $previewUser = $kernel->auth->user();
+
+    if ($previewUser !== null && $previewUser->can('manage_themes')) {
+        $previewInfo = $kernel->themes->infoFor($previewSlug);
+
+        if ($previewInfo !== null) {
+            $kernel->theme->setActiveTheme($previewInfo->slug);
+            $kernel->theme->loadFunctions();
+            \LumoraPress\Core\Theme\ThemePreview::activate($previewInfo);
+        }
+    }
+}
+
 if ($kernel->maintenance->shouldBlock($requestUri)) {
     $kernel->maintenance->respond();
+} elseif (\LumoraPress\Core\Theme\ThemePreview::isActive()) {
+    $exitQuery = $_GET;
+    unset($exitQuery['lp_preview_theme']);
+    $exitPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '/');
+    $exitUrl = site_url($exitPath) . ($exitQuery === [] ? '' : '?' . http_build_query($exitQuery));
+
+    ob_start();
+    $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
+    $output = ob_get_clean();
+
+    echo \LumoraPress\Core\Theme\ThemePreview::injectBanner((string) $output, $exitUrl);
 } else {
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
 }

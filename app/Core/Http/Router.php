@@ -32,6 +32,21 @@ final class Router
         $this->add('POST', $pattern, $handler, $name);
     }
 
+    public function put(string $pattern, callable $handler, ?string $name = null): void
+    {
+        $this->add('PUT', $pattern, $handler, $name);
+    }
+
+    public function patch(string $pattern, callable $handler, ?string $name = null): void
+    {
+        $this->add('PATCH', $pattern, $handler, $name);
+    }
+
+    public function delete(string $pattern, callable $handler, ?string $name = null): void
+    {
+        $this->add('DELETE', $pattern, $handler, $name);
+    }
+
     public function add(string $method, string $pattern, callable $handler, ?string $name = null): void
     {
         $this->routes[] = [

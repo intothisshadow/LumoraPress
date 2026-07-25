@@ -2,10 +2,49 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased] — 2026-07-24
+## [Unreleased] — 2026-07-25
 
 ### Added
 
+- Theme Browser (LP-044): modernized the Appearance → Themes screen with
+  visual previews and a details panel before activation.
+  `LumoraPress\Core\Theme\ThemeRegistry` now parses the rest of the
+  classic style.css header block — `Theme URI:`, `Author URI:`,
+  `License:`, `License URI:`, `Requires at least:`, `Requires PHP:`, and
+  `Tags:` — and detects `preview.*`/`thumbnail.*`/`screenshot.*` preview
+  images (now including AVIF, alongside the existing PNG/JPG/WebP), with
+  numbered variants (`screenshot-2.png`, `screenshot-3.png`, ...)
+  collected into a multi-screenshot gallery; the first match by basename
+  priority becomes the card thumbnail, and a placeholder renders when
+  none exists. A theme's `README`/`CHANGELOG` file (if present) is
+  detected too, and its contents are readable from the new details
+  panel via `ThemeRegistry::documentContent()`. The Appearance screen
+  (`admin/views/appearance.php`) gained a live search box (client-side,
+  `admin/assets/js/theme-browser.js`) and a "Details" button per card
+  that opens a native `<dialog>` showing the full parsed metadata,
+  screenshot gallery, README/CHANGELOG contents, and Activate/Delete
+  actions; a new `lp_theme_details_panel` action hook lets plugins
+  extend that panel. `LumoraPress\Services\ThemeInstaller::delete()`
+  backs the new "Delete inactive themes" action — the active theme
+  can't be deleted, guarded both in the admin view and left to the
+  caller in `ThemeInstaller` itself, which only knows about the
+  filesystem. Card and details-panel preview thumbnails are capped at
+  `max-width: 250px` with `height: auto` and no `object-fit`, so a
+  theme's preview image is never cropped or stretched to fill a fixed
+  box — only scaled down, proportionally, to fit. "Preview theme" opens
+  the real front end in a new tab (`?lp_preview_theme={slug}`, "Preview"
+  link on inactive themes): `index.php` checks the requester is logged
+  in with `manage_themes` before honouring it, then swaps
+  `ThemeRenderer`'s active theme for that request only — the site-wide
+  `active_theme` option is never touched, so no other visitor is
+  affected — and a new static bridge, `LumoraPress\Core\Theme\ThemePreview`
+  (mirrors `SiteBranding`/`FeaturedImages`), marks the request so
+  `index.php` can inject a "Previewing theme: {name} · Exit Preview" bar
+  right after the rendered page's `<body>` tag, styled by its own
+  stylesheet (`admin/assets/css/theme-preview-bar.css`) rather than the
+  previewed theme's, so it works unmodified with every theme including
+  custom ones. "List bundled theme options" is deferred — see `TODO.md`'s
+  LP-044 section.
 - Media Manager (LP-005, first pass, renamed from "media library"):
   broadened upload support beyond images/PDF to documents/archives (ZIP,
   CSS, TXT, XML, JSON) and audio/video, via new extensions/MIME types in
@@ -400,6 +439,139 @@ All notable changes to Lumora Press are documented in this file.
   `thumbnail_generation_failed` actions — a corrupt or unsupported source
   image is logged and skipped per-size rather than aborting the whole
   upload or a bulk run.
+- Featured Images (LP-040): Posts and Pages can now have a designated
+  featured image — Pages gained a `featured_image_id` column (migration
+  `0014_add_featured_image_to_pages.sql`); Posts already had one from an
+  earlier session but nothing used it until now. Both editors gained a
+  "Featured Image" meta box (choose from an existing image via a
+  `<select>`, or upload a new one — a real modal media picker is
+  explicitly out of scope, no precedent for one exists in this codebase),
+  and `MediaUsageChecker` now also checks Pages before allowing a
+  referenced image to be deleted. A new Theme API
+  (`include/media-functions.php`): `has_post_thumbnail()`,
+  `post_thumbnail_url()`, `the_post_thumbnail()` (real `srcset`/`sizes`
+  built from whichever LP-001 thumbnail sizes actually exist for that
+  image, falling back to the original then a configurable default
+  featured image then nothing), and `post_thumbnail_caption()` — backed
+  by a new `LumoraPress\Core\Theme\FeaturedImages` static bridge (same
+  "hold the live service" shape `ActiveTheme` uses, unlike `SiteBranding`'s
+  snapshot-value shape, since featured images need a fresh per-post
+  lookup every time). `get_header()` now accepts an optional vars array
+  (`comments_template()`'s existing shape) so `header.php` can render
+  Open Graph (`og:title`/`og:description`/`og:url`/`og:image`) and Twitter
+  Card meta tags for the current single post/page — previously
+  impossible, since `get_header()` had no way to see the calling
+  template's `$post`/`$page`. The default theme now shows the featured
+  image on single posts/pages and as a thumbnail in the homepage/archive
+  post list. `FeedService` optionally includes a featured image as an
+  RSS2 `<enclosure>` / Atom `<link rel="enclosure">`, gated by a new
+  "Include featured images in feed items" setting (default on). Bulk
+  assign/remove featured images is explicitly deferred (the ticket lists
+  it as optional).
+- FTP Media Import (LP-041): new `LumoraPress\Services\MediaImportService`
+  registers media files that already exist on the server's filesystem
+  (dropped there via FTP/SFTP/a hosting file manager) into the Media
+  Manager, without a browser upload round-trip. Administrators configure
+  one or more allowed absolute server directories on the Settings page;
+  scanning/importing is only ever permitted inside a `realpath()`-resolved
+  descendant of one of those directories, re-validated immediately before
+  every filesystem operation (never trusting a path round-tripped through
+  the preview form) — the same "prevent directory traversal" posture
+  `ThemeInstaller` already established for ZIP entries, adapted for real
+  paths. A new "Import from Server" screen (`admin/views/media.php?action=import`,
+  reusing the existing action-based dispatch rather than adding a new
+  top-level admin page) lets you pick a directory, scan it (recursively
+  or not), preview the files found (already-imported duplicates flagged
+  and unchecked by default via the existing SHA-256 `file_hash` column —
+  the same mechanism doubles as "detect moved or renamed files", since a
+  rename doesn't change the hash), pick a destination folder or mirror
+  the scanned directory structure into new folders automatically, and
+  optionally use each file's modification time as its stored upload date.
+  Import reuses `MediaService`'s allow-list/filename-sanitizing (now
+  exposed as public `isAllowedExtension()`/`isAllowedMimeType()`/
+  `sanitizeFilename()` methods, rather than being duplicated) and
+  `ThumbnailService::generate()`, so imported images get thumbnails the
+  same as an upload. Large imports process in batches of 10 with a
+  progress bar, the same batch-per-request/redirect-loop/auto-continuing-
+  JavaScript pattern LP-001 built for bulk thumbnail regeneration (no
+  queue/cron infrastructure exists in this codebase) — an interrupted run
+  can simply be restarted, since duplicate detection makes it naturally
+  skip everything already imported. Bulk assign/remove of categories/tags
+  during import and CLI/API support are out of scope: media has no
+  category/tag fields in this app, and this codebase has no CLI
+  entrypoint to build the latter on (both were listed as optional/not
+  applicable in the ticket).
+- Media Viewer & Lightbox (LP-031): a PhotoSwipe 5 lightbox for images,
+  loaded from the jsDelivr CDN at a pinned version (5.4.4) rather than
+  vendored locally, per explicit decision. `SearchResult` gained its own
+  `featuredImageId` (mirroring Post/Page from LP-040) specifically so
+  search results are a real navigable gallery rather than an empty one.
+  Every list-view page — homepage, archive, category, tag, search
+  results — groups its post thumbnails into one lightbox with prev/next
+  navigation across that page's items (clicking a thumbnail now opens the
+  lightbox instead of navigating to the post; the post title link still
+  does that); a single post/page's featured image is a lightbox "gallery"
+  of one. New theme API: `the_post_thumbnail_lightbox()`
+  (`include/media-functions.php`) wraps `the_post_thumbnail()`'s existing
+  output in an anchor carrying the `data-pswp-*` attributes PhotoSwipe
+  needs, and shows a caption (from the media's `caption`/`alt_text`)
+  via a small custom PhotoSwipe UI element — no extra plugin needed. A
+  new `LumoraPress\Core\Theme\MediaViewer` static flag (same "bridge"
+  shape as `FeaturedImages`/`ActiveTheme`) tracks whether the current
+  request actually rendered a lightbox-wrapped image, so the PhotoSwipe
+  `<script>`/`<link>` tags are only emitted on pages that need them — the
+  ticket's own "load viewer JavaScript only on pages containing media"
+  requirement. The admin Media Manager's edit/preview page gained the
+  same lightbox treatment for its image preview, plus native inline
+  MP4/WebM video, MP3/OGG/WAV/M4A audio, and PDF viewers (all via plain
+  HTML5 `<video>`/`<audio>`/`<iframe>`, no extra JavaScript) — the grid
+  view itself keeps its existing thumbnail → edit-page click target
+  rather than gaining a competing lightbox click target. Album/Favorites/
+  Most-viewed/Custom-collections navigation from the ticket's own wording
+  are explicitly out of scope: none of those concepts exist anywhere in
+  Lumora Press (that's Lumora Gallery's domain, and CLAUDE.md requires
+  Lumora Press stay independent of it).
+- REST API (LP-021): a new, versioned JSON REST API under `/api/v1/...`
+  (`LumoraPress\Controllers\ApiController`) covering Posts, Pages,
+  Categories, Tags, Comments, and Search — reads are always public and
+  only ever return published/approved content; writes require a new
+  bearer-token authentication scheme (`Authorization: Bearer
+  {selector}:{validator}`, `LumoraPress\Core\Security\ApiTokenService`,
+  structurally mirroring `RememberMeService`'s selector/validator/SHA-256
+  shape but non-rotating, since an API token needs to stay stable across
+  many requests rather than being single-use) and repeat the exact same
+  capability + ownership checks the admin UI already enforces (e.g. a
+  Contributor's post always saves as a draft via the API too, exactly
+  like the admin editor). Tokens are named, revocable, and self-managed
+  by every authenticated role (including Subscriber) on a new "API
+  Tokens" admin page. Every response goes through a new `ApiResponse`
+  helper for a consistent `{"data": ...}` / `{"data": [...], "meta":
+  {...}}` / `{"error": {"message": ..., "code": ...}}` envelope, with
+  real pagination (`meta.page`/`perPage`/`total`/`totalPages`, built from
+  each service's existing `paginate*()` methods — a new
+  `PostService::paginateByAuthor()` was the only new query needed) and
+  filtering (`?category=`/`?tag=`/`?author=` on Posts). Authenticated
+  reads of your own drafts and API rate limiting are explicitly out of
+  scope for this pass (see LP-039 below for the latter).
+- REST API Access Controls (LP-039 retargeted — see `DECISIONS.md`: this
+  ticket used to be "XML-RPC API Controls", but Lumora Press has no
+  XML-RPC endpoint and isn't getting one, so it was pivoted to apply the
+  same access-control spirit to the REST API LP-021 just added): a new
+  "REST API" Settings section with a global enable/disable toggle
+  (default **on** — a first-party feature this project is actively
+  building, unlike legacy XML-RPC's "off by default" advice), independent
+  per-resource toggles (posts/pages/categories/tags/comments/search), and
+  a dedicated "allow public comment submission via the API" toggle (the
+  closest analog to XML-RPC's "remote publishing" concern, since
+  anonymous comment POSTs are the only API write reachable with no
+  token). Disabled resources return a clean JSON 403
+  (`api_disabled`/`resource_disabled`/`public_submission_disabled`) via
+  the same `ApiResponse` envelope, never an HTML page or PHP error, and
+  every request (blocked or not) fires a new `rest_api_request` action;
+  `rest_api_enabled`/`rest_api_resource_enabled` filters let a plugin
+  override either toggle programmatically. Blocked requests are logged
+  via a single `error_log()` line, the same ephemeral-logging choice
+  LP-001/LP-041 already made rather than a new database table.
 
 ### Fixed
 

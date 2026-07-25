@@ -18,6 +18,11 @@ use RuntimeException;
  * location) and the public URL built from it are never touched by move(),
  * so moving a file between folders can never change its stable URL. See
  * FolderService for the folder tree itself.
+ *
+ * isAllowedExtension()/isAllowedMimeType()/sanitizeFilename() are public
+ * so MediaImportService (LP-041, importing existing server files without
+ * a browser upload) can validate and name files exactly the same way
+ * upload() does, without duplicating this class's allow-lists.
  */
 final class MediaService
 {
@@ -92,13 +97,13 @@ final class MediaService
 
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
-        if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
+        if (!$this->isAllowedExtension($extension)) {
             throw new RuntimeException('File type is not allowed.');
         }
 
         $mimeType = mime_content_type($file['tmp_name']) ?: '';
 
-        if (!in_array($mimeType, self::ALLOWED_MIME_TYPES, true)) {
+        if (!$this->isAllowedMimeType($mimeType)) {
             throw new RuntimeException('File type could not be verified.');
         }
 
@@ -158,6 +163,22 @@ final class MediaService
         }
 
         return $media;
+    }
+
+    /**
+     * Whether $extension clears the allow-list gate — exposed publicly
+     * (alongside isAllowedMimeType()) so MediaImportService (LP-041) can
+     * validate scanned server files against the exact same allow-list
+     * upload() uses, rather than duplicating it.
+     */
+    public function isAllowedExtension(string $extension): bool
+    {
+        return in_array($extension, self::ALLOWED_EXTENSIONS, true);
+    }
+
+    public function isAllowedMimeType(string $mimeType): bool
+    {
+        return in_array($mimeType, self::ALLOWED_MIME_TYPES, true);
     }
 
     /**
@@ -308,7 +329,11 @@ final class MediaService
         return rtrim($this->uploadsUrl, '/') . '/' . $media['file_path'];
     }
 
-    private function sanitizeFilename(string $name): string
+    /**
+     * Public so MediaImportService (LP-041) builds destination filenames
+     * the same way upload() does, rather than duplicating this logic.
+     */
+    public function sanitizeFilename(string $name): string
     {
         $sanitized = preg_replace('/[^a-zA-Z0-9\-_]+/', '-', $name) ?? '';
         $sanitized = trim($sanitized, '-');
