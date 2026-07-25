@@ -268,7 +268,10 @@ require LUMORA_ROOT . '/include/media-functions.php';
  * application, as distributed in an official release ZIP. Everything
  * else under LUMORA_ROOT — config/, content/uploads, content/plugins,
  * custom themes other than "default", and storage/ — is user data and is
- * never touched by a manual update.
+ * never touched by a manual update. docs/ (CHANGELOG.md/HISTORY.md/
+ * TROUBLESHOOTING.md) belongs here alongside README.md/LICENSE.md — it
+ * ships with every release, unlike the user-data paths above — but was
+ * missing until this fix, so a manual update never overlaid it.
  */
 $updateCorePaths = [
     'app',
@@ -281,6 +284,7 @@ $updateCorePaths = [
     '.htaccess',
     'README.md',
     'LICENSE.md',
+    'docs',
 ];
 
 $updateValidator = new UpdatePackageValidator(

@@ -624,6 +624,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Manual ZIP updates (LP-026) never overlaid `docs/` (`CHANGELOG.md`,
+  `HISTORY.md`, `TROUBLESHOOTING.md`) onto the live install:
+  `include/bootstrap.php`'s `$updateCorePaths` list — which both
+  `UpdatePackageValidator` and `UpdateService` use to decide what a
+  release ZIP is allowed to touch — included `README.md`/`LICENSE.md`
+  but omitted `docs/`, even though it ships with every release the same
+  way. A site's local docs were silently frozen at whatever version
+  they were first installed with, no matter how many updates followed.
+  Added `docs` to the list.
 - Unresolved git merge conflict markers had been committed straight to
   `main` across sixteen files, several of them (`app/Core/Kernel.php`,
   `include/bootstrap.php`, `app/Controllers/ApiController.php`, the

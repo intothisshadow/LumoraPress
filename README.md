@@ -138,9 +138,10 @@ Administrators can update Lumora Press from the admin panel under
 
 Every attempt (success, failure, or rollback) is recorded in the
 `{prefix}update_log` table and listed on the Updates page. Only `app/`,
-`admin/`, `include/`, `install/`, the default theme, and the root PHP files
-are ever replaced — `config/`, `content/uploads/`, `content/plugins/`,
-any theme other than the default, and `storage/` are never touched.
+`admin/`, `include/`, `install/`, `docs/`, the default theme, and the root
+PHP files are ever replaced — `config/`, `content/uploads/`,
+`content/plugins/`, any theme other than the default, and `storage/` are
+never touched.
 `install/` is deleted again automatically once the update succeeds (the
 same best-effort cleanup the installer itself performs), so a package that
 ships it doesn't leave it lying around on disk.
