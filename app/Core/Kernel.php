@@ -10,6 +10,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Menus\MenuManager;
+use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\LoginThrottle;
@@ -27,6 +28,7 @@ use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
@@ -75,6 +77,8 @@ final class Kernel
         public readonly MediaImportService $mediaImport,
         public readonly ApiTokenService $apiTokens,
         public readonly ContentRenderer $content,
+        public readonly PluginRegistry $pluginRegistry,
+        public readonly PluginInstaller $pluginInstaller,
     ) {
     }
 }

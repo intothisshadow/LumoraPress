@@ -2,10 +2,34 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased] — 2026-07-25
+## [Unreleased] — 2026-07-26
 
 ### Added
 
+- Plugin Browser (LP-045): modernized the Plugins screen with the same
+  visual-card treatment the Theme Browser (LP-044) brought to Appearance
+  — search, an Active/Inactive/Update Available/All filter, a details
+  panel, and `preview.*`/`thumbnail.*`/`screenshot.*` detection (JPG,
+  PNG, WebP, AVIF, numbered variants collected into a gallery). Plugin
+  metadata is read from the classic WordPress plugin header — Plugin
+  Name/Description/Version/Author/Author URI/Plugin URI/License/License
+  URI/Requires at least/Requires PHP/Requires Plugins/Tags — in the
+  plugin's own main file (`content/plugins/{slug}/{slug}.php`) via a new
+  `LumoraPress\Core\Plugin\PluginRegistry`; a plugin whose declared PHP
+  requirement exceeds this server's is shown as Disabled and cannot be
+  activated. Plugins install from an uploaded ZIP through a two-step
+  review flow (`LumoraPress\Services\PluginInstaller`): the archive is
+  validated and staged first, and the admin is shown exactly what's
+  about to be installed — including a Replace/Cancel choice whenever the
+  archive's slug collides with an already-installed plugin — before
+  anything is committed to disk. A collision's replacement extracts into
+  a temporary directory first and only removes the previous installation
+  once extraction succeeds, so a bad upload never destroys a working
+  plugin. README/CHANGELOG detection and a `lp_plugin_details_panel`
+  action hook mirror the Theme Browser's equivalents exactly.
+  "Check for updates"/"Update plugin"/"Update Available" filtering are
+  deferred — no per-plugin update-source concept exists yet, unlike
+  core's own GitHub-release updater (LP-024/LP-027).
 - Theme Browser (LP-044): modernized the Appearance → Themes screen with
   visual previews and a details panel before activation.
   `LumoraPress\Core\Theme\ThemeRegistry` now parses the rest of the
@@ -600,6 +624,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Unresolved git merge conflict markers had been committed straight to
+  `main` across sixteen files, several of them (`app/Core/Kernel.php`,
+  `include/bootstrap.php`, `app/Controllers/ApiController.php`, the
+  Posts/Pages admin views, and the affected services) fatal PHP parse
+  errors — the entire application, front end and admin alike, was
+  non-functional. Resolved each conflict by hand, cross-checked against
+  a clean pre-corruption backup where one was available.
 - Auto-linked URLs in comment content (LP-012) with more than one query
   parameter rendered a broken link: `format_comment_content()` (see
   `include/helpers.php`) escapes the raw comment text first, then

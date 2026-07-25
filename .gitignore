@@ -13,6 +13,11 @@
 /storage/cache/*
 !/storage/cache/.gitkeep
 
+# Plugin ZIP uploads staged between "review before installing" and
+# "confirm" (LP-045) — created on demand by PluginInstaller::stage(),
+# never meant to persist.
+/storage/plugin-installs/*
+
 # User-uploaded media. .htaccess stays tracked.
 /content/uploads/*
 !/content/uploads/.htaccess

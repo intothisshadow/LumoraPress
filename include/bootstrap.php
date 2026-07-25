@@ -19,6 +19,7 @@ use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Kernel;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\Menus\Menus;
+use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\PluginManager;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\ApiTokenService;
@@ -43,6 +44,7 @@ use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
@@ -157,6 +159,10 @@ $plugins = new PluginManager(LUMORA_ROOT . '/content/plugins');
 $activePlugins = $config->option('active_plugins', '[]');
 $activePlugins = is_string($activePlugins) ? (json_decode($activePlugins, true) ?: []) : (array) $activePlugins;
 $plugins->loadActive($activePlugins);
+
+$pluginsPath = LUMORA_ROOT . '/content/plugins';
+$pluginRegistry = new PluginRegistry($pluginsPath, BasePath::get() . '/content/plugins', $activePlugins);
+$pluginInstaller = new PluginInstaller($pluginsPath, LUMORA_ROOT . '/storage/plugin-installs', $pluginRegistry);
 
 $widgets = new WidgetManager();
 Widgets::set($widgets);
@@ -341,6 +347,8 @@ $kernel = new Kernel(
     mediaImport: $mediaImport,
     apiTokens: $apiTokens,
     content: $content,
+    pluginRegistry: $pluginRegistry,
+    pluginInstaller: $pluginInstaller,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);

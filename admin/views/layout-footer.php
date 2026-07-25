@@ -12,6 +12,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/tag-input.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/thumbnail-bulk.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/theme-browser.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/plugin-browser.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/content-editor.js')) ?>" defer></script>
 <?php if (\LumoraPress\Core\Theme\MediaViewer::isUsed()): ?>
     <!-- Media Viewer & Lightbox (LP-031) — see content/themes/default/footer.php's identical block for why this is CDN-loaded and conditional. -->

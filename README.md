@@ -403,6 +403,31 @@ themes/plugins to register their own controls), Layout/Typography/Color
 customization, Navigation/Footer content options, and Accessibility
 settings are not yet implemented.
 
+The Plugins screen has a modern Plugin Browser (LP-045) on top, mirroring
+the Theme Browser above. `LumoraPress\Core\Plugin\PluginRegistry`
+discovers every plugin under `content/plugins/`, parsing the classic
+WordPress plugin header — `Plugin Name:`/`Description:`/`Version:`/
+`Author:`/`Author URI:`/`Plugin URI:`/`License:`/`License URI:`/
+`Requires at least:`/`Requires PHP:`/`Requires Plugins:`/`Tags:` — out of
+the plugin's own main file (`content/plugins/{slug}/{slug}.php`, since a
+plugin's main file — unlike a theme's fixed `style.css` — is named
+identically to its own directory) plus the same
+`preview.*`/`thumbnail.*`/`screenshot.*` and `README`/`CHANGELOG`
+detection the Theme Browser already established. A plugin whose declared
+PHP requirement exceeds the server's is shown as Disabled and cannot be
+activated. New plugins install from an uploaded ZIP through
+`LumoraPress\Services\PluginInstaller`, via a two-step stage/confirm flow:
+the archive is validated and staged first, and the admin always sees what
+is about to be installed — with an explicit Replace/Cancel choice
+whenever the archive's slug collides with an already-installed plugin —
+before anything is committed; a collision's replacement extracts into a
+temporary directory and only removes the previous installation once that
+succeeds, so a bad upload never destroys a working plugin. A
+`lp_plugin_details_panel` action hook mirrors the Theme Browser's
+`lp_theme_details_panel`. Per-plugin update checking is not yet
+implemented — unlike core's own GitHub-release updater (LP-024/LP-027),
+a plugin has nowhere to declare where its updates come from.
+
 The Media Manager (renamed from "media library") is implemented as a
 first pass: uploads now support documents/archives (PDF, ZIP, CSS, TXT,
 XML, JSON) and audio/video, not just images, via an expanded
