@@ -30,6 +30,55 @@ All notable changes to Lumora Press are documented in this file.
   "Check for updates"/"Update plugin"/"Update Available" filtering are
   deferred — no per-plugin update-source concept exists yet, unlike
   core's own GitHub-release updater (LP-024/LP-027).
+
+### Fixed
+
+- Manual ZIP updates (LP-026) never overlaid `docs/` (`CHANGELOG.md`,
+  `HISTORY.md`, `TROUBLESHOOTING.md`) onto the live install:
+  `include/bootstrap.php`'s `$updateCorePaths` list — which both
+  `UpdatePackageValidator` and `UpdateService` use to decide what a
+  release ZIP is allowed to touch — included `README.md`/`LICENSE.md`
+  but omitted `docs/`, even though it ships with every release the same
+  way. A site's local docs were silently frozen at whatever version
+  they were first installed with, no matter how many updates followed.
+  Added `docs` to the list.
+
+## [0.3.0] — 2026-07-25 — "Admin"
+
+### Added
+
+- Markdown Editor (LP-015) and WYSIWYG Editor (LP-016): posts and pages
+  gained a real content-authoring pipeline in place of the old plain
+  `<textarea>` — an "Editor" dropdown (Markdown / Visual-HTML / Plain
+  text, backed by a new `content_format` column, migration `0016`) now
+  swaps in either EasyMDE (Markdown) or TinyMCE (Visual/HTML), both
+  self-hosted via jsDelivr at a pinned version rather than bundled
+  (matching the existing PhotoSwipe precedent), with a shared media
+  picker and upload button, live word/character/reading-time stats, and
+  autosave/crash-recovery built into each library. Switching between
+  Markdown and Visual/HTML round-trips the current content through a
+  best-effort converter and asks for confirmation first, rather than
+  silently mutating it. Behind both editors sits a new, dependency-free
+  Markdown-to-HTML parser and an allowlist HTML sanitizer
+  (`LumoraPress\Core\Content\{MarkdownParser,HtmlSanitizer,
+  HtmlToMarkdownConverter}`) — the single XSS boundary for every format,
+  wired through a new `ContentRenderer` service that replaces the old
+  `nl2br(esc_html($content))` render path everywhere content is shown
+  (single/page templates, RSS/Atom feeds, search excerpts, the REST
+  API's new `content_format`/`content_html` fields). Existing posts and
+  pages keep rendering exactly as before (`content_format` defaults to
+  `plain` for rows that predate this column); new content defaults to
+  Markdown. The site's Content-Security-Policy gained a `csp_directives`
+  filter registration allowing jsDelivr for `script-src`/`style-src`/
+  `font-src` — without it, EasyMDE/TinyMCE (and the pre-existing
+  PhotoSwipe lightbox) fail to load silently, and EasyMDE's toolbar
+  icons — Font Awesome 4 glyphs, loaded from jsDelivr alongside EasyMDE
+  itself rather than via its own less predictable auto-download — render
+  blank without the actual font file; both are easy-to-miss bugs this
+  surfaced and fixed along the way. Supported Markdown: headings, bold/italic/
+  strikethrough, inline code, fenced code blocks, GFM tables,
+  blockquotes, horizontal rules, ordered/unordered/task lists, links,
+  images, footnotes, and a `[[toc]]` table-of-contents marker.
 - Theme Browser (LP-044): modernized the Appearance → Themes screen with
   visual previews and a details panel before activation.
   `LumoraPress\Core\Theme\ThemeRegistry` now parses the rest of the
@@ -432,7 +481,6 @@ All notable changes to Lumora Press are documented in this file.
   "0.2.0 (Posts)"), and the admin sidebar's "Lumora Press" brand now
   shows a short version label underneath it, visible on every admin page
   rather than only the Dashboard.
-
 - Thumbnail Generation (LP-001): new `LumoraPress\Services\ThumbnailService`
   derives resized copies of image uploads using GD only (no Imagick
   dependency). Three configurable sizes ship by default — small (150x150,
@@ -624,22 +672,6 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
-- Manual ZIP updates (LP-026) never overlaid `docs/` (`CHANGELOG.md`,
-  `HISTORY.md`, `TROUBLESHOOTING.md`) onto the live install:
-  `include/bootstrap.php`'s `$updateCorePaths` list — which both
-  `UpdatePackageValidator` and `UpdateService` use to decide what a
-  release ZIP is allowed to touch — included `README.md`/`LICENSE.md`
-  but omitted `docs/`, even though it ships with every release the same
-  way. A site's local docs were silently frozen at whatever version
-  they were first installed with, no matter how many updates followed.
-  Added `docs` to the list.
-- Unresolved git merge conflict markers had been committed straight to
-  `main` across sixteen files, several of them (`app/Core/Kernel.php`,
-  `include/bootstrap.php`, `app/Controllers/ApiController.php`, the
-  Posts/Pages admin views, and the affected services) fatal PHP parse
-  errors — the entire application, front end and admin alike, was
-  non-functional. Resolved each conflict by hand, cross-checked against
-  a clean pre-corruption backup where one was available.
 - Auto-linked URLs in comment content (LP-012) with more than one query
   parameter rendered a broken link: `format_comment_content()` (see
   `include/helpers.php`) escapes the raw comment text first, then
@@ -673,43 +705,6 @@ All notable changes to Lumora Press are documented in this file.
   Dashboard alert warns about. `UpdateService::install()` now removes
   `install/` (best-effort, via the same `InstallerCleanup` the installer
   itself uses) immediately after a successful update.
-
-## [0.3.0] — 2026-07-25 — "Admin"
-
-### Added
-
-- Markdown Editor (LP-015) and WYSIWYG Editor (LP-016): posts and pages
-  gained a real content-authoring pipeline in place of the old plain
-  `<textarea>` — an "Editor" dropdown (Markdown / Visual-HTML / Plain
-  text, backed by a new `content_format` column, migration `0016`) now
-  swaps in either EasyMDE (Markdown) or TinyMCE (Visual/HTML), both
-  self-hosted via jsDelivr at a pinned version rather than bundled
-  (matching the existing PhotoSwipe precedent), with a shared media
-  picker and upload button, live word/character/reading-time stats, and
-  autosave/crash-recovery built into each library. Switching between
-  Markdown and Visual/HTML round-trips the current content through a
-  best-effort converter and asks for confirmation first, rather than
-  silently mutating it. Behind both editors sits a new, dependency-free
-  Markdown-to-HTML parser and an allowlist HTML sanitizer
-  (`LumoraPress\Core\Content\{MarkdownParser,HtmlSanitizer,
-  HtmlToMarkdownConverter}`) — the single XSS boundary for every format,
-  wired through a new `ContentRenderer` service that replaces the old
-  `nl2br(esc_html($content))` render path everywhere content is shown
-  (single/page templates, RSS/Atom feeds, search excerpts, the REST
-  API's new `content_format`/`content_html` fields). Existing posts and
-  pages keep rendering exactly as before (`content_format` defaults to
-  `plain` for rows that predate this column); new content defaults to
-  Markdown. The site's Content-Security-Policy gained a `csp_directives`
-  filter registration allowing jsDelivr for `script-src`/`style-src`/
-  `font-src` — without it, EasyMDE/TinyMCE (and the pre-existing
-  PhotoSwipe lightbox) fail to load silently, and EasyMDE's toolbar
-  icons — Font Awesome 4 glyphs, loaded from jsDelivr alongside EasyMDE
-  itself rather than via its own less predictable auto-download — render
-  blank without the actual font file; both are easy-to-miss bugs this
-  surfaced and fixed along the way. Supported Markdown: headings, bold/italic/
-  strikethrough, inline code, fenced code blocks, GFM tables,
-  blockquotes, horizontal rules, ordered/unordered/task lists, links,
-  images, footnotes, and a `[[toc]]` table-of-contents marker.
 
 ## [0.2.0] — 2026-07-21 — "Posts"
 
