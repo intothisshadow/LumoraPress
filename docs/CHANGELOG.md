@@ -2,47 +2,6 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased] — 2026-07-26
-
-### Added
-
-- Plugin Browser (LP-045): modernized the Plugins screen with the same
-  visual-card treatment the Theme Browser (LP-044) brought to Appearance
-  — search, an Active/Inactive/Update Available/All filter, a details
-  panel, and `preview.*`/`thumbnail.*`/`screenshot.*` detection (JPG,
-  PNG, WebP, AVIF, numbered variants collected into a gallery). Plugin
-  metadata is read from the classic WordPress plugin header — Plugin
-  Name/Description/Version/Author/Author URI/Plugin URI/License/License
-  URI/Requires at least/Requires PHP/Requires Plugins/Tags — in the
-  plugin's own main file (`content/plugins/{slug}/{slug}.php`) via a new
-  `LumoraPress\Core\Plugin\PluginRegistry`; a plugin whose declared PHP
-  requirement exceeds this server's is shown as Disabled and cannot be
-  activated. Plugins install from an uploaded ZIP through a two-step
-  review flow (`LumoraPress\Services\PluginInstaller`): the archive is
-  validated and staged first, and the admin is shown exactly what's
-  about to be installed — including a Replace/Cancel choice whenever the
-  archive's slug collides with an already-installed plugin — before
-  anything is committed to disk. A collision's replacement extracts into
-  a temporary directory first and only removes the previous installation
-  once extraction succeeds, so a bad upload never destroys a working
-  plugin. README/CHANGELOG detection and a `lp_plugin_details_panel`
-  action hook mirror the Theme Browser's equivalents exactly.
-  "Check for updates"/"Update plugin"/"Update Available" filtering are
-  deferred — no per-plugin update-source concept exists yet, unlike
-  core's own GitHub-release updater (LP-024/LP-027).
-
-### Fixed
-
-- Manual ZIP updates (LP-026) never overlaid `docs/` (`CHANGELOG.md`,
-  `HISTORY.md`, `TROUBLESHOOTING.md`) onto the live install:
-  `include/bootstrap.php`'s `$updateCorePaths` list — which both
-  `UpdatePackageValidator` and `UpdateService` use to decide what a
-  release ZIP is allowed to touch — included `README.md`/`LICENSE.md`
-  but omitted `docs/`, even though it ships with every release the same
-  way. A site's local docs were silently frozen at whatever version
-  they were first installed with, no matter how many updates followed.
-  Added `docs` to the list.
-
 ## [0.3.0] — 2026-07-25 — "Admin"
 
 ### Added
