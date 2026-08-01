@@ -24,6 +24,7 @@ use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
+use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaUsageChecker;
@@ -69,6 +70,7 @@ final class Kernel
         public readonly FeedService $feeds,
         public readonly SearchService $search,
         public readonly UpdateService $updates,
+        public readonly GitHubReleaseProvider $githubUpdates,
         public readonly Router $router,
         public readonly MaintenanceGate $maintenance,
         public readonly ThemeRegistry $themes,

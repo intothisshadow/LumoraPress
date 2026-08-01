@@ -41,6 +41,7 @@ use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
+use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaUsageChecker;
@@ -393,6 +394,8 @@ $updates = new UpdateService(
     corePaths: $updateCorePaths,
 );
 
+$githubUpdates = new GitHubReleaseProvider($config);
+
 $router = new Router();
 $maintenance = new MaintenanceGate($config, $auth, $theme, $hooks);
 
@@ -419,6 +422,7 @@ $kernel = new Kernel(
     feeds: $feeds,
     search: $search,
     updates: $updates,
+    githubUpdates: $githubUpdates,
     router: $router,
     maintenance: $maintenance,
     themes: $themes,

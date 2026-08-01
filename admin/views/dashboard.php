@@ -12,6 +12,15 @@ if (!isset($kernel)) {
 $version = require LUMORA_ROOT . '/version.php';
 $installDirectoryExists = is_dir(LUMORA_ROOT . '/install');
 $maintenanceActive = $kernel->maintenance->isActive();
+
+$updateStatus = ['available' => false, 'latest_version' => null, 'changelog_url' => null];
+
+if ($currentUser->can('manage_options')) {
+    // Cron-free "scheduled" check (LP-027) — see GitHubReleaseProvider::maybeCheckForUpdates()'s
+    // docblock. Throttled internally, so this is safe on every Dashboard load.
+    $kernel->githubUpdates->maybeCheckForUpdates();
+    $updateStatus = $kernel->githubUpdates->cachedUpdateStatus((string) $version['version']);
+}
 ?>
 <h1 class="lp-admin__title">Dashboard</h1>
 
@@ -24,6 +33,14 @@ $maintenanceActive = $kernel->maintenance->isActive();
         The <code>install/</code> directory still exists on the server. It should be removed
         for security — it can be left over from a fresh install that couldn't delete itself,
         or restored by a manual update. Delete it via FTP/SFTP or your hosting file manager.
+    </div>
+<?php endif; ?>
+
+<?php if ($updateStatus['available']): ?>
+    <div class="lp-alert lp-alert--warning">
+        Lumora Press <strong><?= esc_html((string) $updateStatus['latest_version']) ?></strong> is available
+        (you're running <?= esc_html((string) $version['version']) ?>).
+        <a href="<?= esc_url(admin_url('maintenance/updates')) ?>">View Update</a>
     </div>
 <?php endif; ?>
 
@@ -120,6 +137,11 @@ $maintenanceActive = $kernel->maintenance->isActive();
     <section class="lp-admin__widget">
         <h2>Update Status</h2>
         <p>Running Lumora Press <?= esc_html((string) $version['version']) ?>.</p>
+        <?php if ($updateStatus['available']): ?>
+            <p><span class="lp-status-badge lp-status-badge--warning">Update available: <?= esc_html((string) $updateStatus['latest_version']) ?></span></p>
+        <?php elseif ($currentUser->can('manage_options')): ?>
+            <p>You're up to date.</p>
+        <?php endif; ?>
         <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates')) ?>">Manage Updates</a></p>
     </section>
 </div>

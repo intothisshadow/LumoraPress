@@ -64,6 +64,89 @@ final class UpdateBackupService
         return $path;
     }
 
+    /**
+     * Lists every backup pair on disk (a files-*.zip and/or its matching
+     * db-*.sql), newest first, for the admin Backups panel. Pairs are
+     * matched by their shared "{version}-{Ymd-His}" filename suffix, not
+     * by reading file contents.
+     *
+     * @return array<int, array{
+     *     version: string,
+     *     created_at: int,
+     *     files_filename: ?string,
+     *     files_size: ?int,
+     *     database_filename: ?string,
+     *     database_size: ?int,
+     * }>
+     */
+    public function listBackups(): array
+    {
+        $entries = [];
+
+        foreach (glob(rtrim($this->backupsPath, '/') . '/files-*.zip') ?: [] as $path) {
+            $key = $this->backupKey($path, 'files-', '.zip');
+
+            if ($key === null) {
+                continue;
+            }
+
+            $entries[$key]['version'] ??= $this->versionFromKey($key);
+            $entries[$key]['created_at'] ??= filemtime($path) ?: 0;
+            $entries[$key]['files_filename'] = basename($path);
+            $entries[$key]['files_size'] = filesize($path) ?: 0;
+        }
+
+        foreach (glob(rtrim($this->backupsPath, '/') . '/db-*.sql') ?: [] as $path) {
+            $key = $this->backupKey($path, 'db-', '.sql');
+
+            if ($key === null) {
+                continue;
+            }
+
+            $entries[$key]['version'] ??= $this->versionFromKey($key);
+            $entries[$key]['created_at'] ??= filemtime($path) ?: 0;
+            $entries[$key]['database_filename'] = basename($path);
+            $entries[$key]['database_size'] = filesize($path) ?: 0;
+        }
+
+        $result = [];
+
+        foreach ($entries as $entry) {
+            $result[] = [
+                'version' => $entry['version'],
+                'created_at' => $entry['created_at'],
+                'files_filename' => $entry['files_filename'] ?? null,
+                'files_size' => $entry['files_size'] ?? null,
+                'database_filename' => $entry['database_filename'] ?? null,
+                'database_size' => $entry['database_size'] ?? null,
+            ];
+        }
+
+        usort($result, static fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
+
+        return $result;
+    }
+
+    /**
+     * Restores a files backup identified only by its basename (never a
+     * full path an admin form could tamper with into an arbitrary
+     * filesystem location) — resolved against $backupsPath and validated
+     * to actually live there before restoreFiles() ever sees it.
+     */
+    public function restoreFilesByFilename(string $filename): void
+    {
+        $this->restoreFiles($this->validatedBackupPath($filename, 'files-', '.zip'));
+    }
+
+    /**
+     * Same filename-only safety as restoreFilesByFilename(), for the
+     * database backup half of a pair.
+     */
+    public function restoreDatabaseByFilename(string $filename): void
+    {
+        $this->restoreDatabase($this->validatedBackupPath($filename, 'db-', '.sql'));
+    }
+
     public function restoreFiles(string $backupZipPath): void
     {
         if (!is_file($backupZipPath)) {
@@ -247,5 +330,65 @@ final class UpdateBackupService
     private function safeVersion(string $version): string
     {
         return preg_replace('/[^a-zA-Z0-9.\-]+/', '-', $version) ?? 'unknown';
+    }
+
+    /**
+     * Extracts the "{version}-{Ymd-His}" key shared by a files/db backup
+     * pair from a full path, or null if it doesn't match the expected
+     * prefix/suffix at all.
+     */
+    private function backupKey(string $path, string $prefix, string $suffix): ?string
+    {
+        $basename = basename($path);
+
+        if (!str_starts_with($basename, $prefix) || !str_ends_with($basename, $suffix)) {
+            return null;
+        }
+
+        return substr($basename, strlen($prefix), -strlen($suffix));
+    }
+
+    /**
+     * The timestamp suffix backupFiles()/backupDatabase() append is always
+     * exactly 15 characters ("Ymd-His"), so it can be split off the end of
+     * the key regardless of dashes already present in the version string
+     * itself (e.g. "1.2.0-beta").
+     */
+    private function versionFromKey(string $key): string
+    {
+        $timestampLength = 15;
+
+        if (strlen($key) <= $timestampLength) {
+            return $key;
+        }
+
+        return rtrim(substr($key, 0, -$timestampLength), '-');
+    }
+
+    /**
+     * Resolves a backup filename (never a full path) against
+     * $backupsPath, rejecting anything that isn't a plain basename
+     * matching the expected files-/db- naming convention or that doesn't
+     * actually exist there.
+     */
+    private function validatedBackupPath(string $filename, string $prefix, string $suffix): string
+    {
+        $basename = basename($filename);
+
+        if (
+            $basename !== $filename
+            || !str_starts_with($basename, $prefix)
+            || !str_ends_with($basename, $suffix)
+        ) {
+            throw new RuntimeException('Invalid backup filename.');
+        }
+
+        $path = rtrim($this->backupsPath, '/') . '/' . $basename;
+
+        if (!is_file($path)) {
+            throw new RuntimeException('Backup file not found.');
+        }
+
+        return $path;
     }
 }

@@ -54,7 +54,7 @@ final class UpdateService
      *     token: string,
      * }
      */
-    public function checkUpload(string $uploadedZipPath, bool $allowDowngrade): array
+    public function checkUpload(string $uploadedZipPath, bool $allowDowngrade, string $source = 'manual'): array
     {
         $installedVersion = $this->installedVersion();
 
@@ -67,6 +67,7 @@ final class UpdateService
                 'from_version' => $result['from_version'],
                 'to_version' => $result['to_version'],
                 'root_prefix' => $result['root_prefix'],
+                'source' => $source,
                 'created_at' => time(),
             ], JSON_THROW_ON_ERROR));
         }
@@ -95,6 +96,7 @@ final class UpdateService
         $fromVersion = $pending['from_version'];
         $toVersion = $pending['to_version'];
         $rootPrefix = $pending['root_prefix'];
+        $source = $pending['source'];
 
         $this->acquireLock();
 
@@ -140,7 +142,7 @@ final class UpdateService
             (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
 
             $this->removeDirectory($stagingPath);
-            $this->logAttempt($fromVersion, $toVersion, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
+            $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, UpdateStatus::Success);
 
             return [
@@ -172,7 +174,7 @@ final class UpdateService
             }
 
             $this->removeDirectory($stagingPath);
-            $this->logAttempt($fromVersion, $toVersion, $status, $message, $filesBackupPath, $databaseBackupPath, $performedByUserId);
+            $this->logAttempt($fromVersion, $toVersion, $source, $status, $message, $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, $status);
 
             return [
@@ -196,6 +198,49 @@ final class UpdateService
         return $this->database->fetchAll(
             'SELECT * FROM ' . $this->tablePrefix . "update_log ORDER BY created_at DESC LIMIT {$limit}",
         );
+    }
+
+    /**
+     * @return array<int, array{
+     *     version: string,
+     *     created_at: int,
+     *     files_filename: ?string,
+     *     files_size: ?int,
+     *     database_filename: ?string,
+     *     database_size: ?int,
+     * }>
+     */
+    public function listBackups(): array
+    {
+        return $this->backups->listBackups();
+    }
+
+    /**
+     * Restores a backup pair, taking the same update lock install() does
+     * so a restore can never run concurrently with an in-progress update.
+     * $filesFilename/$databaseFilename are basenames only (see
+     * UpdateBackupService::restoreFilesByFilename()'s docblock) — never
+     * full paths an admin form could tamper with.
+     */
+    public function restoreBackup(string $filesFilename, ?string $databaseFilename): void
+    {
+        $this->acquireLock();
+
+        try {
+            $this->backups->restoreFilesByFilename($filesFilename);
+
+            if ($databaseFilename !== null) {
+                $this->backups->restoreDatabaseByFilename($databaseFilename);
+            }
+
+            if (function_exists('opcache_reset')) {
+                opcache_reset();
+            }
+
+            $this->clearCache();
+        } finally {
+            $this->releaseLock();
+        }
     }
 
     public function installedVersion(): string
@@ -299,7 +344,7 @@ final class UpdateService
     }
 
     /**
-     * @return array{from_version: string, to_version: string, root_prefix: string, created_at: int}
+     * @return array{from_version: string, to_version: string, root_prefix: string, source: string, created_at: int}
      */
     private function readPending(string $stagingPath): array
     {
@@ -326,6 +371,7 @@ final class UpdateService
             'from_version' => (string) $pending['from_version'],
             'to_version' => (string) $pending['to_version'],
             'root_prefix' => (string) $pending['root_prefix'],
+            'source' => is_string($pending['source'] ?? null) ? $pending['source'] : 'manual',
             'created_at' => (int) $pending['created_at'],
         ];
     }
@@ -359,6 +405,7 @@ final class UpdateService
     private function logAttempt(
         string $fromVersion,
         string $toVersion,
+        string $source,
         UpdateStatus $status,
         string $message,
         ?string $filesBackupPath,
@@ -367,11 +414,12 @@ final class UpdateService
     ): void {
         $this->database->execute(
             'INSERT INTO ' . $this->tablePrefix . 'update_log
-                (from_version, to_version, status, message, backup_files_path, backup_database_path, performed_by, created_at)
-             VALUES (:from_version, :to_version, :status, :message, :backup_files_path, :backup_database_path, :performed_by, :created_at)',
+                (from_version, to_version, source, status, message, backup_files_path, backup_database_path, performed_by, created_at)
+             VALUES (:from_version, :to_version, :source, :status, :message, :backup_files_path, :backup_database_path, :performed_by, :created_at)',
             [
                 'from_version' => $fromVersion,
                 'to_version' => $toVersion,
+                'source' => $source,
                 'status' => $status->value,
                 'message' => $message,
                 'backup_files_path' => $filesBackupPath,
