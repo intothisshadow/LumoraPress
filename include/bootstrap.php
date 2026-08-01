@@ -316,11 +316,37 @@ CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments);
  */
 $widgetsConfig = json_decode((string) $config->option('widgets_config', '{}'), true);
 $widgetsConfig = is_array($widgetsConfig) ? $widgetsConfig : [];
+$widgetsConfigNeedsBackfill = false;
 
 foreach (array_keys($widgets->sidebars()) as $sidebarId) {
     if (isset($widgetsConfig[$sidebarId]) && is_array($widgetsConfig[$sidebarId])) {
         $widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
+
+        /*
+         * setWidgets() generates an id in memory for any entry that
+         * doesn't already carry one, but that generated id only lives
+         * for this request — if it isn't written back into the
+         * persisted option here, every widget saved before ids existed
+         * (or added through a code path that forgot to persist one)
+         * gets a *different* random id on the next request, so the id
+         * embedded in the admin Widgets form no longer matches by the
+         * time it's submitted and every Save/Move/Remove for that
+         * widget fails with "That widget no longer exists."
+         */
+        foreach ($widgetsConfig[$sidebarId] as $widget) {
+            if (!isset($widget['id'])) {
+                $widgetsConfigNeedsBackfill = true;
+
+                break;
+            }
+        }
+
+        $widgetsConfig[$sidebarId] = $widgets->widgetsFor($sidebarId);
     }
+}
+
+if ($widgetsConfigNeedsBackfill) {
+    $config->setOption('widgets_config', json_encode($widgetsConfig));
 }
 
 /*

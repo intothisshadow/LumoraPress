@@ -2,6 +2,24 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Widget saves silently failed with "That widget no longer exists"; Custom
+  HTML/Text widget content never persisted (LP-048).** A newly added widget
+  was saved into the persisted `widgets_config` option without an `id`.
+  `WidgetManager::setWidgets()` generates one for any entry missing it, but
+  only in memory for that request — since `include/bootstrap.php` reloads
+  `widgets_config` and calls `setWidgets()` fresh on every request, an
+  id-less widget got a *different* random id every page load, so the hidden
+  `widget_id` field baked into the admin Widgets form never matched by the
+  time it was submitted. `admin/views/appearance/widgets.php`'s `add_widget`
+  handler now reads the generated id back before persisting, and
+  `bootstrap.php` backfills and persists ids for any already-saved widget
+  missing one, so widgets created before this fix self-heal on the next
+  request.
+
 ## [0.4.0] — 2026-08-01 — "Updates"
 
 ### Added

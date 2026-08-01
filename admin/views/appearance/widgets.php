@@ -103,8 +103,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
             $widgetsConfig = $loadWidgetsConfig();
             $widgetsConfig[$sidebarId] ??= [];
             $widgetsConfig[$sidebarId][] = ['type' => $widgetType, 'settings' => []];
-            $saveWidgetsConfig($widgetsConfig);
             $kernel->widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
+            $widgetsConfig[$sidebarId] = $kernel->widgets->widgetsFor($sidebarId);
+            $saveWidgetsConfig($widgetsConfig);
 
             header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
             exit;
