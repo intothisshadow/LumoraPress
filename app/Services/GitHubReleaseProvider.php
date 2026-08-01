@@ -147,37 +147,123 @@ final class GitHubReleaseProvider
             return;
         }
 
+        $this->checkNow();
+    }
+
+    /**
+     * Checks GitHub immediately, ignoring the throttle interval, and
+     * caches the result the same way maybeCheckForUpdates() does — used by
+     * the Updates page's manual "Check for Updates Now" button.
+     *
+     * @return array{
+     *     latest_version: string,
+     *     release_date: ?string,
+     *     release_notes: ?string,
+     *     release_name: ?string,
+     *     changelog_url: ?string,
+     *     sha256: ?string,
+     *     prerelease: bool,
+     *     download: array{type: string, url: string, name: string, size: ?int},
+     * }|null
+     */
+    public function checkNow(): ?array
+    {
         $this->config->setOption('update_last_checked_at', (string) time());
 
         $release = $this->fetchLatestRelease();
 
         if ($release !== null) {
-            $this->config->setOption('update_last_known_version', $release['latest_version']);
-            $this->config->setOption('update_last_known_changelog_url', (string) ($release['changelog_url'] ?? ''));
+            $this->cacheRelease($release);
         }
+
+        return $release;
     }
 
     /**
-     * Reads back the result of the most recent check (manual or via
-     * maybeCheckForUpdates()) without making a network call itself — safe
-     * to call on every admin page load.
+     * @param array{
+     *     latest_version: string,
+     *     release_date: ?string,
+     *     release_notes: ?string,
+     *     release_name: ?string,
+     *     changelog_url: ?string,
+     *     prerelease: bool,
+     *     download: array{type: string, url: string, name: string, size: ?int},
+     * } $release
+     */
+    private function cacheRelease(array $release): void
+    {
+        $this->config->setOption('update_last_known_version', $release['latest_version']);
+        $this->config->setOption('update_last_known_release_date', (string) ($release['release_date'] ?? ''));
+        $this->config->setOption('update_last_known_release_name', (string) ($release['release_name'] ?? ''));
+        $this->config->setOption('update_last_known_release_notes', (string) ($release['release_notes'] ?? ''));
+        $this->config->setOption('update_last_known_changelog_url', (string) ($release['changelog_url'] ?? ''));
+        $this->config->setOption('update_last_known_prerelease', $release['prerelease'] ? '1' : '0');
+        $this->config->setOption('update_last_known_download_name', $release['download']['name']);
+        $this->config->setOption('update_last_known_download_size', (string) ($release['download']['size'] ?? ''));
+    }
+
+    /**
+     * Reads back the result of the most recent check (manual, via
+     * checkNow(), or via maybeCheckForUpdates()) without making a network
+     * call itself — safe to call on every admin page load. Only
+     * `available`/`latest_version` are compared against the currently
+     * installed version; everything else is display-only — actually
+     * downloading a release always goes through fetchLatestRelease()
+     * again rather than trusting this cache, since GitHub asset URLs can
+     * go stale between checks.
      *
-     * @return array{available: bool, latest_version: ?string, changelog_url: ?string}
+     * @return array{
+     *     available: bool,
+     *     latest_version: ?string,
+     *     release_date: ?string,
+     *     release_name: ?string,
+     *     release_notes: ?string,
+     *     changelog_url: ?string,
+     *     prerelease: bool,
+     *     download_name: ?string,
+     *     download_size: ?int,
+     *     last_checked_at: ?int,
+     * }
      */
     public function cachedUpdateStatus(string $installedVersion): array
     {
         $latestVersion = trim((string) $this->config->option('update_last_known_version', ''));
+        $lastCheckedAt = (int) $this->config->option('update_last_checked_at', '0');
 
         if ($latestVersion === '') {
-            return ['available' => false, 'latest_version' => null, 'changelog_url' => null];
+            return [
+                'available' => false,
+                'latest_version' => null,
+                'release_date' => null,
+                'release_name' => null,
+                'release_notes' => null,
+                'changelog_url' => null,
+                'prerelease' => false,
+                'download_name' => null,
+                'download_size' => null,
+                'last_checked_at' => $lastCheckedAt > 0 ? $lastCheckedAt : null,
+            ];
         }
 
-        $changelogUrl = trim((string) $this->config->option('update_last_known_changelog_url', ''));
+        $nullableOption = function (string $key): ?string {
+            $value = trim((string) $this->config->option($key, ''));
+
+            return $value !== '' ? $value : null;
+        };
+
+        $downloadSize = $nullableOption('update_last_known_download_size');
 
         return [
             'available' => version_compare($latestVersion, $installedVersion, '>'),
             'latest_version' => $latestVersion,
-            'changelog_url' => $changelogUrl !== '' ? $changelogUrl : null,
+            'release_date' => $nullableOption('update_last_known_release_date'),
+            'release_name' => $nullableOption('update_last_known_release_name'),
+            'release_notes' => $nullableOption('update_last_known_release_notes'),
+            'changelog_url' => $nullableOption('update_last_known_changelog_url'),
+            'prerelease' => ((string) $this->config->option('update_last_known_prerelease', '0')) === '1',
+            'download_name' => $nullableOption('update_last_known_download_name'),
+            'download_size' => $downloadSize !== null ? (int) $downloadSize : null,
+            'last_checked_at' => $lastCheckedAt > 0 ? $lastCheckedAt : null,
         ];
     }
 

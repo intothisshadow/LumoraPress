@@ -13,8 +13,6 @@ if (!isset($kernel)) {
 $updates = $kernel->updates;
 $error = null;
 $checkResult = null;
-$githubRelease = null;
-$githubChecked = false;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -86,17 +84,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('maintenance/updates'));
         exit;
     } elseif ($form === 'github_check' && Csrf::verify('github_check', $token)) {
-        $githubChecked = true;
-
         try {
-            $githubRelease = $kernel->githubUpdates->fetchLatestRelease();
-            $kernel->config->setOption('update_last_checked_at', (string) time());
-
-            if ($githubRelease === null) {
+            if ($kernel->githubUpdates->checkNow() === null) {
                 $error = 'Could not reach GitHub, or the configured repository has no releases yet. Check the repository setting below and try again.';
-            } else {
-                $kernel->config->setOption('update_last_known_version', $githubRelease['latest_version']);
-                $kernel->config->setOption('update_last_known_changelog_url', (string) ($githubRelease['changelog_url'] ?? ''));
             }
         } catch (\Throwable $exception) {
             $error = 'Could not check for updates: ' . $exception->getMessage();
@@ -106,7 +96,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $downloadPath = null;
 
         try {
-            $release = $kernel->githubUpdates->fetchLatestRelease();
+            $release = $kernel->githubUpdates->checkNow();
 
             if ($release === null) {
                 throw new \RuntimeException('Could not reach GitHub to download the release.');
@@ -157,17 +147,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $error = $exception->getMessage();
             }
         }
+    } elseif ($form === 'delete_backup' && Csrf::verify('delete_backup', $token)) {
+        $filesFilename = is_string($_POST['files_filename'] ?? null) && $_POST['files_filename'] !== '' ? $_POST['files_filename'] : null;
+        $databaseFilename = is_string($_POST['database_filename'] ?? null) && $_POST['database_filename'] !== '' ? $_POST['database_filename'] : null;
+
+        try {
+            $updates->deleteBackup($filesFilename, $databaseFilename);
+            header('Location: ' . admin_url('maintenance/updates') . '?deleted=1');
+            exit;
+        } catch (\Throwable $exception) {
+            $error = $exception->getMessage();
+        }
+    } elseif ($form === 'backup_now' && Csrf::verify('backup_now', $token)) {
+        try {
+            $updates->createBackupNow();
+            header('Location: ' . admin_url('maintenance/updates') . '?backed_up=1');
+            exit;
+        } catch (\Throwable $exception) {
+            $error = $exception->getMessage();
+        }
     }
 }
 
 $installedVersion = $updates->installedVersion();
 $recentLog = $updates->recentLog(10);
 $backups = $updates->listBackups();
+$migrationStatus = $updates->migrationStatus();
+$systemStatus = $updates->systemStatus();
 $githubRepo = (string) $kernel->config->option('update_github_repo', 'intothisshadow/LumoraPress');
 $githubToken = (string) $kernel->config->option('update_github_token', '');
 $githubChannel = (string) $kernel->config->option('update_channel', 'stable');
 $githubAutoCheckEnabled = ((string) $kernel->config->option('update_auto_check_enabled', '1')) === '1';
 $githubCheckInterval = (string) $kernel->config->option('update_check_interval', '86400');
+$updateStatus = $kernel->githubUpdates->cachedUpdateStatus($installedVersion);
+$releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
 ?>
 <h1 class="lp-admin__title">Updates</h1>
 
@@ -190,9 +203,46 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
     <div class="lp-alert lp-alert--success">Backup restored successfully.</div>
 <?php endif; ?>
 
-<section class="lp-admin__panel">
-    <h2>Current Version</h2>
-    <p>Lumora Press <strong><?= esc_html($installedVersion) ?></strong></p>
+<?php if (($_GET['deleted'] ?? null) === '1'): ?>
+    <div class="lp-alert lp-alert--success">Backup deleted.</div>
+<?php endif; ?>
+
+<?php if (($_GET['backed_up'] ?? null) === '1'): ?>
+    <div class="lp-alert lp-alert--success">Backup created.</div>
+<?php endif; ?>
+
+<section class="lp-admin__panel lp-update__status-bar">
+    <div class="lp-update__status-group">
+        <p class="lp-update__status-label">Installed Version</p>
+        <p class="lp-update__status-value"><?= esc_html($installedVersion) ?></p>
+        <p class="lp-update__status-label">Database Schema</p>
+        <p class="lp-update__status-value">
+            v<?= esc_html((string) $migrationStatus['applied']) ?>
+            (<?= $migrationStatus['up_to_date'] ? 'up to date' : ($migrationStatus['total'] - $migrationStatus['applied']) . ' pending' ?>)
+        </p>
+        <p class="lp-update__status-label">Installed At</p>
+        <p class="lp-update__status-value"><?= esc_html(rtrim(LUMORA_ROOT, '/')) ?></p>
+    </div>
+    <div class="lp-update__status-group">
+        <p class="lp-update__status-label">Update Status</p>
+        <p>
+            <span class="lp-status-badge <?= $updateStatus['available'] ? 'lp-status-badge--warning' : 'lp-status-badge--success' ?>">
+                <?= $updateStatus['available'] ? 'Update available' : 'Up to date' ?>
+            </span>
+        </p>
+        <p class="lp-update__status-label">Release Channel</p>
+        <p class="lp-update__status-value"><?= $githubChannel === 'prerelease' ? 'Stable + Pre-releases' : 'Stable' ?></p>
+        <p class="lp-update__status-label">Last Checked</p>
+        <p class="lp-update__status-value">
+            <?= $updateStatus['last_checked_at'] !== null ? esc_html(date('M j, Y g:i A T', $updateStatus['last_checked_at'])) : 'Never' ?>
+        </p>
+    </div>
+    <div class="lp-update__status-group">
+        <p class="lp-update__status-label">Update Source</p>
+        <p class="lp-update__status-value">Provider: <strong>GitHub Releases</strong></p>
+        <p class="lp-update__status-value">Repository: <code><?= esc_html($githubRepo) ?></code></p>
+        <p><a href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View all releases &#8599;</a></p>
+    </div>
 </section>
 
 <?php if ($checkResult !== null): ?>
@@ -209,7 +259,7 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
                     <li class="lp-alert lp-alert--error"><?= esc_html($problem) ?></li>
                 <?php endforeach; ?>
             </ul>
-            <p>Resolve the issues above, then upload the package again.</p>
+            <p>Resolve the issues above, then try again.</p>
         <?php else: ?>
             <?php if ($checkResult['warnings'] !== []): ?>
                 <ul class="lp-install__requirements">
@@ -236,69 +286,164 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
         <?php endif; ?>
     </section>
 <?php else: ?>
-    <section class="lp-admin__panel">
-        <h2>Check for Updates (GitHub)</h2>
 
-        <?php if ($githubChecked && $githubRelease !== null): ?>
-            <?php $updateAvailable = version_compare($githubRelease['latest_version'], $installedVersion, '>'); ?>
-
-            <?php if (!$updateAvailable): ?>
-                <p>You're running the latest <?= $githubRelease['prerelease'] ? 'pre-release' : 'stable' ?> version available on GitHub (<strong><?= esc_html($githubRelease['latest_version']) ?></strong>).</p>
-            <?php else: ?>
-                <p>
-                    A new version is available: <strong><?= esc_html($githubRelease['latest_version']) ?></strong>
-                    <?php if ($githubRelease['release_date'] !== null): ?>
-                        (released <?= esc_html($githubRelease['release_date']) ?>)
-                    <?php endif; ?>
-                    <?php if ($githubRelease['prerelease']): ?>
-                        <span class="lp-status-badge lp-status-badge--warning">Pre-release</span>
-                    <?php endif; ?>
-                </p>
-
-                <?php if ($githubRelease['changelog_url'] !== null): ?>
-                    <p><a href="<?= esc_url($githubRelease['changelog_url']) ?>" target="_blank" rel="noopener noreferrer">View release notes on GitHub</a></p>
-                <?php endif; ?>
-
-                <?php if ($githubRelease['download']['size'] !== null): ?>
-                    <p class="lp-field__hint">Download size: <?= esc_html(number_format($githubRelease['download']['size'] / 1024 / 1024, 1)) ?> MB</p>
-                <?php endif; ?>
-
-                <?php if ($githubRelease['release_notes'] !== null): ?>
-                    <details class="lp-admin__panel">
-                        <summary><?= esc_html($githubRelease['release_name'] ?? ('Release notes for ' . $githubRelease['latest_version'])) ?></summary>
-                        <pre class="lp-update__release-notes"><?= esc_html($githubRelease['release_notes']) ?></pre>
-                    </details>
-                <?php endif; ?>
-
-                <?php if ($githubRelease['sha256'] === null): ?>
-                    <div class="lp-alert lp-alert--warning">This release has no published checksum — the download will be installed without checksum verification.</div>
-                <?php endif; ?>
-
-                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
-                    <?= Csrf::field('github_download') ?>
-                    <input type="hidden" name="form" value="github_download">
-
-                    <p class="lp-field lp-field--checkbox">
-                        <input type="checkbox" id="github-allow-downgrade" name="allow_downgrade" value="1">
-                        <label for="github-allow-downgrade">Allow installing an older version than what is currently installed</label>
-                    </p>
-
-                    <button type="submit" class="lp-button lp-button--primary">Download &amp; Check</button>
-                </form>
+    <?php if ($updateStatus['latest_version'] !== null): ?>
+        <section class="lp-admin__panel">
+            <h2>Latest release</h2>
+            <p>
+                Lumora Press <?= esc_html($updateStatus['release_name'] ?? ('v' . $updateStatus['latest_version'])) ?>
+                — version <strong><?= esc_html($updateStatus['latest_version']) ?></strong>
+                <span class="lp-status-badge <?= $updateStatus['prerelease'] ? 'lp-status-badge--warning' : 'lp-status-badge--success' ?>">
+                    <?= $updateStatus['prerelease'] ? 'Pre-release' : 'Stable' ?>
+                </span>
+            </p>
+            <?php if ($updateStatus['release_date'] !== null): ?>
+                <p class="lp-field__hint">Published <?= esc_html($updateStatus['release_date']) ?></p>
             <?php endif; ?>
-        <?php else: ?>
-            <p>Lumora Press <strong><?= esc_html($installedVersion) ?></strong> is currently installed. Check GitHub for a newer release.</p>
+            <?php if ($updateStatus['download_size'] !== null): ?>
+                <p class="lp-field__hint">Download size: <?= esc_html(number_format($updateStatus['download_size'] / 1024 / 1024, 1)) ?> MB</p>
+            <?php endif; ?>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
-                <?= Csrf::field('github_check') ?>
-                <input type="hidden" name="form" value="github_check">
-                <button type="submit" class="lp-button lp-button--primary">Check for Updates</button>
-            </form>
+            <p class="lp-admin__inline-form">
+                <a class="lp-button" href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View release notes on GitHub</a>
+
+                <?php if ($updateStatus['available']): ?>
+                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
+                        <?= Csrf::field('github_download') ?>
+                        <input type="hidden" name="form" value="github_download">
+                        <button type="submit" class="lp-button lp-button--primary">Download &amp; Install</button>
+                    </form>
+                <?php endif; ?>
+            </p>
+
+            <?php if ($updateStatus['release_notes'] !== null): ?>
+                <div class="lp-update__release-notes">
+                    <p><strong><?= esc_html($updateStatus['release_name'] ?? ('Release notes for ' . $updateStatus['latest_version'])) ?></strong></p>
+                    <pre><?= esc_html($updateStatus['release_notes']) ?></pre>
+                </div>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
+    <section class="lp-admin__panel">
+        <h2>Database Updates</h2>
+        <table class="lp-table">
+            <tbody>
+                <tr>
+                    <td>Schema status</td>
+                    <td>
+                        <span class="lp-status-badge <?= $migrationStatus['up_to_date'] ? 'lp-status-badge--pass' : 'lp-status-badge--fail' ?>">
+                            <?= $migrationStatus['up_to_date'] ? 'Up to date' : 'Pending' ?>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Applied</td>
+                    <td><?= esc_html((string) $migrationStatus['applied']) ?> migration(s)</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="lp-admin__panel">
+        <h2>Check for Updates</h2>
+        <p>Checks the configured release source for a new Lumora Press release. No site content, user data, or identifying information is ever transmitted — only a plain GET request is made to the release API.</p>
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
+            <?= Csrf::field('github_check') ?>
+            <input type="hidden" name="form" value="github_check">
+            <button type="submit" class="lp-button lp-button--primary">Check for Updates Now</button>
+        </form>
+    </section>
+
+    <section class="lp-admin__panel">
+        <h2>Backups</h2>
+        <p>A backup is a snapshot of the application's own code and configuration — not your uploaded media, which a backup or update never touches.</p>
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
+            <?= Csrf::field('backup_now') ?>
+            <input type="hidden" name="form" value="backup_now">
+            <button type="submit" class="lp-button">Back up now</button>
+        </form>
+
+        <?php if ($backups === []): ?>
+            <p class="lp-admin__widget-placeholder">No backups have been created yet — one is made automatically before every update.</p>
+        <?php else: ?>
+            <table class="lp-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Date</th>
+                        <th scope="col">Version</th>
+                        <th scope="col">Files</th>
+                        <th scope="col">Database</th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($backups as $backup): ?>
+                        <tr>
+                            <td><?= esc_html(date('Y-m-d H:i:s', $backup['created_at'])) ?></td>
+                            <td><?= esc_html($backup['version']) ?></td>
+                            <td><?= $backup['files_size'] !== null ? esc_html(number_format($backup['files_size'] / 1024 / 1024, 1)) . ' MB' : '—' ?></td>
+                            <td><?= $backup['database_size'] !== null ? esc_html(number_format($backup['database_size'] / 1024, 0)) . ' KB' : '—' ?></td>
+                            <td class="lp-admin__row-actions">
+                                <?php if ($backup['files_filename'] !== null): ?>
+                                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Restore Lumora Press to this backup? Everything since it was taken will be lost.');">
+                                        <?= Csrf::field('restore_backup') ?>
+                                        <input type="hidden" name="form" value="restore_backup">
+                                        <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">
+                                        <?php if ($backup['database_filename'] !== null): ?>
+                                            <input type="hidden" name="database_filename" value="<?= esc_attr($backup['database_filename']) ?>">
+                                        <?php endif; ?>
+                                        <button type="submit" class="lp-button">Restore</button>
+                                    </form>
+                                <?php endif; ?>
+                                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this backup permanently?');">
+                                    <?= Csrf::field('delete_backup') ?>
+                                    <input type="hidden" name="form" value="delete_backup">
+                                    <?php if ($backup['files_filename'] !== null): ?>
+                                        <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">
+                                    <?php endif; ?>
+                                    <?php if ($backup['database_filename'] !== null): ?>
+                                        <input type="hidden" name="database_filename" value="<?= esc_attr($backup['database_filename']) ?>">
+                                    <?php endif; ?>
+                                    <button type="submit" class="lp-button lp-button--danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         <?php endif; ?>
     </section>
 
     <section class="lp-admin__panel">
-        <h2>GitHub Update Settings</h2>
+        <h2>System status</h2>
+        <p class="lp-field__hint">These reflect this server's current environment — they can change independently of anything above (e.g. if a host changes a PHP setting or free disk space runs low).</p>
+        <table class="lp-table">
+            <thead>
+                <tr>
+                    <th scope="col">Check</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($systemStatus as $check): ?>
+                    <tr>
+                        <td><?= esc_html($check['label']) ?></td>
+                        <td>
+                            <span class="lp-status-badge <?= $check['ok'] ? 'lp-status-badge--pass' : 'lp-status-badge--fail' ?>">
+                                <?= $check['ok'] ? 'Pass' : 'Fail' ?>
+                            </span>
+                        </td>
+                        <td><?= esc_html($check['detail']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="lp-admin__panel">
+        <h2>Update settings</h2>
         <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
             <?= Csrf::field('github_settings') ?>
             <input type="hidden" name="form" value="github_settings">
@@ -310,23 +455,21 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
             </p>
 
             <p class="lp-field">
-                <label for="update-github-token">Personal access token (optional)</label>
-                <input type="password" id="update-github-token" name="update_github_token" value="<?= esc_attr($githubToken) ?>" autocomplete="off">
-                <span class="lp-field__hint">Only needed for a private repository, or to raise GitHub's unauthenticated API rate limit. Never required for the public Lumora Press repository under normal use.</span>
-            </p>
-
-            <p class="lp-field">
                 <label for="update-channel">Release channel</label>
                 <select id="update-channel" name="update_channel">
-                    <option value="stable" <?= $githubChannel === 'stable' ? 'selected' : '' ?>>Stable only</option>
-                    <option value="prerelease" <?= $githubChannel === 'prerelease' ? 'selected' : '' ?>>Include pre-releases</option>
+                    <option value="stable" <?= $githubChannel === 'stable' ? 'selected' : '' ?>>Stable (only stable releases)</option>
+                    <option value="prerelease" <?= $githubChannel === 'prerelease' ? 'selected' : '' ?>>Stable + Pre-releases</option>
                 </select>
+                <span class="lp-field__hint">Stable checks GitHub's latest full release only. Pre-release also considers beta/pre-release tags.</span>
             </p>
 
             <p class="lp-field lp-field--checkbox">
-                <input type="checkbox" id="update-auto-check-enabled" name="update_auto_check_enabled" value="1" <?= $githubAutoCheckEnabled ? 'checked' : '' ?>>
-                <label for="update-auto-check-enabled">Automatically check for updates when visiting the Dashboard</label>
-                <span class="lp-field__hint">This only checks — it never downloads or installs anything automatically. A notice appears on the Dashboard when a newer version is found.</span>
+                <label class="lp-toggle">
+                    <input type="checkbox" id="update-auto-check-enabled" name="update_auto_check_enabled" value="1" <?= $githubAutoCheckEnabled ? 'checked' : '' ?>>
+                    <span class="lp-toggle__track" aria-hidden="true"></span>
+                </label>
+                <label for="update-auto-check-enabled">Automatically check for updates</label>
+                <span class="lp-field__hint">There's no cron available on typical shared hosting, so this checks opportunistically — the next time this admin page loads a check is due, rather than on a fixed schedule.</span>
             </p>
 
             <p class="lp-field">
@@ -338,12 +481,18 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
                 </select>
             </p>
 
-            <button type="submit" class="lp-button">Save Settings</button>
+            <p class="lp-field">
+                <label for="update-github-token">GitHub token (optional)</label>
+                <input type="password" id="update-github-token" name="update_github_token" value="<?= esc_attr($githubToken) ?>" placeholder="Not set" autocomplete="off">
+                <span class="lp-field__hint">Only needed if update checks start hitting GitHub's unauthenticated rate limit. A fine-grained personal access token with no permissions (public read access only) is sufficient. Leave blank to keep the current token unchanged.</span>
+            </p>
+
+            <button type="submit" class="lp-button lp-button--primary">Save settings</button>
         </form>
     </section>
 
     <section class="lp-admin__panel">
-        <h2>Upload Update Package</h2>
+        <h2>Manual Update (ZIP Upload)</h2>
         <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('update_upload') ?>
             <input type="hidden" name="form" value="upload">
@@ -365,7 +514,7 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
 <?php endif; ?>
 
 <section class="lp-admin__panel">
-    <h2>Recent Updates</h2>
+    <h2>Update History</h2>
     <?php if ($recentLog === []): ?>
         <p class="lp-admin__widget-placeholder">No updates have been applied yet.</p>
     <?php else: ?>
@@ -402,43 +551,14 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
 </section>
 
 <section class="lp-admin__panel">
-    <h2>Backups</h2>
-    <?php if ($backups === []): ?>
-        <p class="lp-admin__widget-placeholder">No backups have been created yet — one is made automatically before every update.</p>
-    <?php else: ?>
-        <table class="lp-table">
-            <thead>
-                <tr>
-                    <th scope="col">Date</th>
-                    <th scope="col">Version</th>
-                    <th scope="col">Files</th>
-                    <th scope="col">Database</th>
-                    <th scope="col"></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($backups as $backup): ?>
-                    <tr>
-                        <td><?= esc_html(date('Y-m-d H:i:s', $backup['created_at'])) ?></td>
-                        <td><?= esc_html($backup['version']) ?></td>
-                        <td><?= $backup['files_size'] !== null ? esc_html(number_format($backup['files_size'] / 1024 / 1024, 1)) . ' MB' : '—' ?></td>
-                        <td><?= $backup['database_size'] !== null ? esc_html(number_format($backup['database_size'] / 1024, 0)) . ' KB' : '—' ?></td>
-                        <td>
-                            <?php if ($backup['files_filename'] !== null): ?>
-                                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Restore Lumora Press to this backup? Everything since it was taken will be lost.');">
-                                    <?= Csrf::field('restore_backup') ?>
-                                    <input type="hidden" name="form" value="restore_backup">
-                                    <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">
-                                    <?php if ($backup['database_filename'] !== null): ?>
-                                        <input type="hidden" name="database_filename" value="<?= esc_attr($backup['database_filename']) ?>">
-                                    <?php endif; ?>
-                                    <button type="submit" class="lp-button lp-button--danger">Restore</button>
-                                </form>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
+    <h2>About Updates</h2>
+    <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
+        <li>Update check results are cached; use the button above to force a refresh, or adjust the check frequency in Update settings.</li>
+        <li>No site content, media, or user data is ever transmitted during an update check.</li>
+        <li>Release source: GitHub Releases (<code><?= esc_html($githubRepo) ?></code>), or a manually uploaded ZIP.</li>
+        <li>Themes and plugins other than the default theme are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, and the root PHP files are replaced.</li>
+        <li>An automatic file and database backup is created before any update is applied. Use the Backups panel above to create one on demand, or restore/delete an existing one.</li>
+        <li>If the <code>install/</code> directory is present when an update completes, it is automatically removed during cleanup.</li>
+        <li>SHA-256 checksum verification is used when the release source provides one.</li>
+    </ul>
 </section>

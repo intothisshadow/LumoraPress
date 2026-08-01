@@ -48,6 +48,19 @@ final class Migrator
     }
 
     /**
+     * @return array{applied: int, total: int, up_to_date: bool}
+     */
+    public function status(): array
+    {
+        $this->ensureMigrationsTable();
+
+        $applied = count($this->appliedMigrations());
+        $total = count(glob(rtrim($this->migrationsPath, '/') . '/*.sql') ?: []);
+
+        return ['applied' => $applied, 'total' => $total, 'up_to_date' => $applied >= $total];
+    }
+
+    /**
      * @return array<int, string> names of migrations that were executed
      */
     public function migrate(): array

@@ -243,6 +243,107 @@ final class UpdateService
         }
     }
 
+    /**
+     * Deletes a backup pair from disk (no lock needed — unlike restore,
+     * this touches nothing the running application depends on).
+     */
+    public function deleteBackup(?string $filesFilename, ?string $databaseFilename): void
+    {
+        $this->backups->deleteBackup($filesFilename, $databaseFilename);
+    }
+
+    /**
+     * On-demand backup, independent of the update pipeline — for an
+     * administrator who wants a restore point before touching anything
+     * else. Takes the same lock install()/restoreBackup() do, since a
+     * database dump mid-migration would be inconsistent.
+     *
+     * @return array{files_path: string, database_path: string}
+     */
+    public function createBackupNow(): array
+    {
+        $this->acquireLock();
+
+        try {
+            $version = $this->installedVersion();
+
+            return [
+                'files_path' => $this->backups->backupFiles($version),
+                'database_path' => $this->backups->backupDatabase($version),
+            ];
+        } finally {
+            $this->releaseLock();
+        }
+    }
+
+    /**
+     * @return array{applied: int, total: int, up_to_date: bool}
+     */
+    public function migrationStatus(): array
+    {
+        return (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->status();
+    }
+
+    /**
+     * Runtime environment checks shown on the Updates page — distinct
+     * from UpdatePackageValidator's compatibility checks, which run
+     * against a specific uploaded/downloaded package rather than the
+     * server's general readiness to apply *some* future update.
+     *
+     * @return array<int, array{label: string, ok: bool, detail: string}>
+     */
+    public function systemStatus(): array
+    {
+        $diskFree = @disk_free_space($this->installRoot);
+        $hasZip = class_exists('ZipArchive');
+        $hasCurl = function_exists('curl_init');
+        $installRootWritable = is_writable($this->installRoot);
+        $stagingParent = is_dir($this->stagingRoot) ? $this->stagingRoot : dirname($this->stagingRoot);
+        $stagingWritable = is_writable($stagingParent);
+        $diskOk = $diskFree === false || $diskFree > 100 * 1024 * 1024;
+
+        return [
+            [
+                'label' => 'PHP version',
+                'ok' => version_compare(PHP_VERSION, '8.2.0', '>='),
+                'detail' => 'Running PHP ' . PHP_VERSION . ' (minimum 8.2.0).',
+            ],
+            [
+                'label' => 'ZIP extension',
+                'ok' => $hasZip,
+                'detail' => $hasZip ? 'The PHP zip extension is loaded.' : 'The PHP zip extension is required but not loaded.',
+            ],
+            [
+                'label' => 'cURL availability',
+                'ok' => $hasCurl,
+                'detail' => $hasCurl
+                    ? 'The cURL extension is loaded.'
+                    : 'cURL is not available — GitHub requests fall back to allow_url_fopen if enabled.',
+            ],
+            [
+                'label' => 'File permissions',
+                'ok' => $installRootWritable,
+                'detail' => $installRootWritable
+                    ? 'The installation directory is writable.'
+                    : 'The installation directory is not writable by the web server.',
+            ],
+            [
+                'label' => 'Available disk space',
+                'ok' => $diskOk,
+                'detail' => $diskFree !== false
+                    ? number_format($diskFree / 1024 / 1024 / 1024, 2) . ' GB free.'
+                    : 'Unable to determine free disk space.',
+            ],
+            [
+                'label' => 'Temporary directory',
+                'ok' => $stagingWritable,
+                'detail' => $stagingWritable
+                    ? 'The update staging directory is writable.'
+                    : 'The update staging directory is not writable.',
+            ],
+        ];
+    }
+
     public function installedVersion(): string
     {
         $manifest = require $this->versionFilePath;

@@ -160,9 +160,13 @@ same best-effort cleanup the installer itself performs), so a package that
 ships it doesn't leave it lying around on disk.
 
 Every backup pair is also listed in a **Backups** panel on the Updates
-page, with a one-click "Restore" per backup (behind a confirmation prompt)
-for undoing an update yourself later without touching the filesystem
-directly.
+page — "Back up now" creates one on demand, independent of running an
+actual update — with one-click "Restore" and "Delete" per backup (both
+behind a confirmation prompt). The Updates page also shows the database
+schema's migration status and a System status panel (PHP version, ZIP/cURL
+availability, file permissions, disk space, and the update staging
+directory), reflecting this server's current environment independent of
+anything else on the page.
 
 If a newer version is available on GitHub, a notice appears on the
 **Dashboard** as well as the Updates page — Lumora Press checks

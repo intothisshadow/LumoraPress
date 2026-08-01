@@ -1628,8 +1628,6 @@ body.lp-admin-login {
 }
 
 .lp-update__release-notes {
-    white-space: pre-wrap;
-    word-break: break-word;
     max-height: 20rem;
     overflow-y: auto;
     padding: 0.75rem;
@@ -1637,6 +1635,100 @@ body.lp-admin-login {
     background: var(--lp-admin-border);
     border-radius: 4px;
     font-size: 0.85rem;
+}
+
+.lp-update__release-notes pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.5rem 0 0;
+    font-family: inherit;
+}
+
+/* Updates page status bar (LP-027) */
+
+.lp-update__status-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+}
+
+.lp-update__status-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.65;
+    margin: 0.75rem 0 0.15rem;
+}
+
+.lp-update__status-label:first-child {
+    margin-top: 0;
+}
+
+.lp-update__status-value {
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Toggle switch (Update settings > Automatically check for updates) */
+
+.lp-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 0.5rem;
+}
+
+.lp-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.lp-toggle__track {
+    display: inline-block;
+    width: 2.5rem;
+    height: 1.4rem;
+    background: var(--lp-admin-border);
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.15s ease;
+}
+
+.lp-toggle__track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(1.4rem - 4px);
+    height: calc(1.4rem - 4px);
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.15s ease;
+}
+
+.lp-toggle input:checked + .lp-toggle__track {
+    background: var(--lp-admin-accent);
+}
+
+.lp-toggle input:checked + .lp-toggle__track::after {
+    transform: translateX(1.1rem);
+}
+
+.lp-toggle input:focus-visible + .lp-toggle__track {
+    outline: 2px solid var(--lp-admin-accent);
+    outline-offset: 2px;
+}
+
+.lp-status-badge--pass {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-status-badge--fail {
+    background: var(--lp-admin-error-bg);
+    color: var(--lp-admin-error-text);
 }
 
 .lp-status-badge--spam,

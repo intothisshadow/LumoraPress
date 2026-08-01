@@ -147,6 +147,22 @@ final class UpdateBackupService
         $this->restoreDatabase($this->validatedBackupPath($filename, 'db-', '.sql'));
     }
 
+    /**
+     * Deletes a backup pair (or just its files half, if $databaseFilename
+     * is null) from disk, with the same filename-only safety as the
+     * restore-by-filename methods.
+     */
+    public function deleteBackup(?string $filesFilename, ?string $databaseFilename): void
+    {
+        if ($filesFilename !== null) {
+            unlink($this->validatedBackupPath($filesFilename, 'files-', '.zip'));
+        }
+
+        if ($databaseFilename !== null) {
+            unlink($this->validatedBackupPath($databaseFilename, 'db-', '.sql'));
+        }
+    }
+
     public function restoreFiles(string $backupZipPath): void
     {
         if (!is_file($backupZipPath)) {

@@ -644,6 +644,24 @@ not re-verified via the Docker matrix this session (host PHP 8.4 +
 container, plus `composer stan`/`composer cs-check`, all clean) — worth
 doing before the next release.
 
+**Updates page redesigned (2026-08-01)** to match Lumora Gallery's admin
+Updates page layout (Ariane provided a screenshot for reference), while
+keeping the manual ZIP upload path Gallery's page doesn't have. New: a
+status-bar panel (installed version, database schema status, update
+status/channel/last-checked, and the configured GitHub source with a
+"View all releases" link); a persistent "Latest release" panel driven by
+`GitHubReleaseProvider::cachedUpdateStatus()`'s now-expanded cache
+(release date/name/notes/prerelease flag/download size, not just the
+version and changelog URL); a Database Updates panel and a System status
+panel (PHP version, ZIP/cURL availability, file permissions, disk space,
+staging directory — `UpdateService::systemStatus()`, new); "Back up now"
+and per-backup "Delete" (`UpdateService::createBackupNow()`/`deleteBackup()`,
+`UpdateBackupService::deleteBackup()`, all new) alongside the existing
+Restore; and `Migrator::status()` (new) backing the schema-status display.
+`GitHubReleaseProvider::checkNow()` (new) is what "Check for Updates Now"
+calls — same caching as the throttled auto-check, but always fetches
+immediately regardless of the interval.
+
 #### Goal
 
 Implement a GitHub Releases integration that allows administrators to check for, download, and install official Lumora Press releases directly from GitHub.
