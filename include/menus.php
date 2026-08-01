@@ -23,23 +23,49 @@ if (!function_exists('has_nav_menu')) {
 }
 
 if (!function_exists('nav_menu')) {
+    /**
+     * Renders $location as a (possibly nested — LP-049) <ul>. A location
+     * with no items assigned (no menu, and nothing set via the legacy
+     * assign()) renders nothing at all, same as before named menus
+     * existed.
+     */
     function nav_menu(string $location, string $menuClass = 'lp-nav-menu'): void
     {
-        $items = Menus::instance()->items($location);
+        $tree = Menus::instance()->itemTree($location);
 
-        if ($items === []) {
+        if ($tree === []) {
             return;
         }
 
         echo '<ul class="' . esc_attr($menuClass) . '">';
-
-        foreach ($items as $item) {
-            $target = $item['target'] === '_blank' ? ' target="_blank" rel="noopener noreferrer"' : '';
-            echo '<li class="lp-nav-menu__item">'
-                . '<a href="' . esc_url($item['url']) . '"' . $target . '>' . esc_html($item['label']) . '</a>'
-                . '</li>';
-        }
-
+        lp_render_nav_menu_branch($tree);
         echo '</ul>';
+    }
+}
+
+if (!function_exists('lp_render_nav_menu_branch')) {
+    /**
+     * @param array<int, array{item: array<string, mixed>, children: array<mixed>}> $branch
+     */
+    function lp_render_nav_menu_branch(array $branch): void
+    {
+        foreach ($branch as $node) {
+            $item = $node['item'];
+            $target = ($item['target'] ?? '_self') === '_blank' ? ' target="_blank" rel="' . esc_attr(trim('noopener noreferrer ' . (string) ($item['rel'] ?? ''))) . '"' : (($item['rel'] ?? '') !== '' ? ' rel="' . esc_attr((string) $item['rel']) . '"' : '');
+            $titleAttribute = ($item['titleAttribute'] ?? '') !== '' ? ' title="' . esc_attr((string) $item['titleAttribute']) . '"' : '';
+            $itemClass = 'lp-nav-menu__item' . (($item['cssClass'] ?? '') !== '' ? ' ' . esc_attr((string) $item['cssClass']) : '');
+            $hasChildren = $node['children'] !== [];
+
+            echo '<li class="' . $itemClass . ($hasChildren ? ' lp-nav-menu__item--has-children' : '') . '">'
+                . '<a href="' . esc_url((string) $item['url']) . '"' . $target . $titleAttribute . '>' . esc_html((string) $item['label']) . '</a>';
+
+            if ($hasChildren) {
+                echo '<ul class="lp-nav-menu__submenu">';
+                lp_render_nav_menu_branch($node['children']);
+                echo '</ul>';
+            }
+
+            echo '</li>';
+        }
     }
 }

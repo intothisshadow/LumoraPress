@@ -22,7 +22,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $existing = $id > 0 ? $categoryService->findById($id) : null;
 
         if ($id > 0 && $existing === null) {
-            header('Location: ' . admin_url('categories') . '?error=forbidden');
+            header('Location: ' . admin_url('posts/categories') . '?error=forbidden');
             exit;
         }
 
@@ -38,7 +38,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null)
                 : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null);
 
-            header('Location: ' . admin_url('categories') . '?action=edit&id=' . $category->id . '&saved=1');
+            header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
             exit;
         }
     } elseif ($form === 'delete') {
@@ -46,7 +46,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
         if (!Csrf::verify('category_delete_' . $id, $token)) {
-            header('Location: ' . admin_url('categories'));
+            header('Location: ' . admin_url('posts/categories'));
             exit;
         }
 
@@ -54,7 +54,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $categoryService->delete($id);
         }
 
-        header('Location: ' . admin_url('categories'));
+        header('Location: ' . admin_url('posts/categories'));
         exit;
     }
 }
@@ -67,7 +67,7 @@ if ($action === 'edit') {
     $editingCategory = $editingId !== null ? $categoryService->findById($editingId) : null;
 
     if ($editingCategory === null) {
-        header('Location: ' . admin_url('categories') . '?error=forbidden');
+        header('Location: ' . admin_url('posts/categories') . '?error=forbidden');
         exit;
     }
 }
@@ -92,7 +92,7 @@ if ($action === 'edit') {
     $parentOptions = $categoryService->listAllForParentSelect($category?->id);
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('categories')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>">
             <?= Csrf::field('category_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($category !== null): ?>
@@ -128,11 +128,11 @@ if ($action === 'edit') {
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Category</button>
-            <a class="lp-button" href="<?= esc_url(admin_url('categories')) ?>">Cancel</a>
+            <a class="lp-button" href="<?= esc_url(admin_url('posts/categories')) ?>">Cancel</a>
         </form>
     </section>
 <?php else: ?>
-    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('categories')) ?>?action=new">Add New Category</a></p>
+    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('posts/categories')) ?>?action=new">Add New Category</a></p>
 
     <?php $rows = $categoryService->listAllWithPostCounts(); ?>
 
@@ -158,14 +158,14 @@ if ($action === 'edit') {
                         ?>
                         <tr>
                             <td>
-                                <a href="<?= esc_url(admin_url('categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
+                                <a href="<?= esc_url(admin_url('posts/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
                             </td>
                             <td><?= esc_html($listedCategory->slug) ?></td>
                             <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
                             <td><?= (int) $row['postCount'] ?></td>
                             <td>
                                 <?php if ($canDeleteCategories): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('categories')) ?>" onsubmit="return confirm('Delete this category permanently? Child categories will be kept but become top-level.');">
+                                    <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" onsubmit="return confirm('Delete this category permanently? Child categories will be kept but become top-level.');">
                                         <?= Csrf::field('category_delete_' . $listedCategory->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>">

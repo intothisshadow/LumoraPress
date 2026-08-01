@@ -22,7 +22,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $existing = $id > 0 ? $tagService->findById($id) : null;
 
         if ($id > 0 && $existing === null) {
-            header('Location: ' . admin_url('tags') . '?error=forbidden');
+            header('Location: ' . admin_url('posts/tags') . '?error=forbidden');
             exit;
         }
 
@@ -37,7 +37,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ? $tagService->create($name, $description, $slug !== '' ? $slug : null)
                 : $tagService->update($id, $name, $description, $slug !== '' ? $slug : null);
 
-            header('Location: ' . admin_url('tags') . '?action=edit&id=' . $tag->id . '&saved=1');
+            header('Location: ' . admin_url('posts/tags') . '?action=edit&id=' . $tag->id . '&saved=1');
             exit;
         }
     } elseif ($form === 'delete') {
@@ -45,7 +45,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
         if (!Csrf::verify('tag_delete_' . $id, $token)) {
-            header('Location: ' . admin_url('tags'));
+            header('Location: ' . admin_url('posts/tags'));
             exit;
         }
 
@@ -53,7 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $tagService->delete($id);
         }
 
-        header('Location: ' . admin_url('tags'));
+        header('Location: ' . admin_url('posts/tags'));
         exit;
     }
 }
@@ -66,7 +66,7 @@ if ($action === 'edit') {
     $editingTag = $editingId !== null ? $tagService->findById($editingId) : null;
 
     if ($editingTag === null) {
-        header('Location: ' . admin_url('tags') . '?error=forbidden');
+        header('Location: ' . admin_url('posts/tags') . '?error=forbidden');
         exit;
     }
 }
@@ -88,7 +88,7 @@ if ($action === 'edit') {
 <?php if ($action === 'edit' || $action === 'new'): ?>
     <?php $tag = $editingTag; ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('tags')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('posts/tags')) ?>">
             <?= Csrf::field('tag_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($tag !== null): ?>
@@ -112,11 +112,11 @@ if ($action === 'edit') {
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Tag</button>
-            <a class="lp-button" href="<?= esc_url(admin_url('tags')) ?>">Cancel</a>
+            <a class="lp-button" href="<?= esc_url(admin_url('posts/tags')) ?>">Cancel</a>
         </form>
     </section>
 <?php else: ?>
-    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('tags')) ?>?action=new">Add New Tag</a></p>
+    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('posts/tags')) ?>?action=new">Add New Tag</a></p>
 
     <?php $rows = $tagService->listAllWithPostCounts(); ?>
 
@@ -138,13 +138,13 @@ if ($action === 'edit') {
                         <?php $listedTag = $row['tag']; ?>
                         <tr>
                             <td>
-                                <a href="<?= esc_url(admin_url('tags')) ?>?action=edit&id=<?= (int) $listedTag->id ?>"><?= esc_html($listedTag->name) ?></a>
+                                <a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $listedTag->id ?>"><?= esc_html($listedTag->name) ?></a>
                             </td>
                             <td><?= esc_html($listedTag->slug) ?></td>
                             <td><?= (int) $row['postCount'] ?></td>
                             <td>
                                 <?php if ($canDeleteTags): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('tags')) ?>" onsubmit="return confirm('Delete this tag permanently?');">
+                                    <form method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" onsubmit="return confirm('Delete this tag permanently?');">
                                         <?= Csrf::field('tag_delete_' . $listedTag->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>">

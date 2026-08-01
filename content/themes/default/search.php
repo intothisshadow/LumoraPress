@@ -28,7 +28,7 @@ $results ??= [];
                                 </a>
                             </h2>
                             <?php if ($result->publishedAt !== null): ?>
-                                <p class="lp-search-results__meta"><?= esc_html($result->publishedAt->format('F j, Y')) ?></p>
+                                <p class="lp-search-results__meta"><?= esc_html(the_date($result->publishedAt)) ?></p>
                             <?php endif; ?>
                             <?php if ($result->excerpt !== ''): ?>
                                 <p class="lp-search-results__excerpt"><?= highlight_terms(esc_html($result->excerpt), $query) ?></p>

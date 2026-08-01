@@ -22,6 +22,9 @@ final class Post
         public readonly DateTimeImmutable $updatedAt,
         public readonly bool $commentsOpen = true,
         public readonly ContentFormat $contentFormat = ContentFormat::Plain,
+        public readonly ?DateTimeImmutable $trashedAt = null,
+        /** @var array{x: int, y: int, width: int, height: int}|null */
+        public readonly ?array $featuredImageCrop = null,
     ) {
     }
 

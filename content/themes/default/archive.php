@@ -31,7 +31,7 @@ $archive_description ??= null;
                                 <a href="<?= esc_url(site_url('post/' . $post->slug)) ?>"><?= esc_html($post->title) ?></a>
                             </h2>
                             <p class="lp-post-list__meta">
-                                <?= $post->publishedAt !== null ? esc_html($post->publishedAt->format('F j, Y')) : '' ?>
+                                <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
                             </p>
                             <?php if ($post->excerpt !== ''): ?>
                                 <p class="lp-post-list__excerpt"><?= esc_html($post->excerpt) ?></p>

@@ -228,6 +228,109 @@ final class ThumbnailService
     }
 
     /**
+     * Manually-cropped featured image (LP-040) — a distinct concern from
+     * the automatic per-size thumbnails above: this is keyed by the exact
+     * crop rectangle requested (a post/page's own editorial choice), not a
+     * named size, and deliberately produces a single output only, with no
+     * responsive srcset variants (see media-functions.php's
+     * post_thumbnail_url()) — a manual crop is a one-off decision, not a
+     * systematic size like "medium"/"large". Not tracked in
+     * `media_thumbnails` (that table is keyed by (media_id, size_name),
+     * one row per named size — a crop has neither) — deterministic,
+     * content-addressed file naming is used instead: the output filename
+     * is derived from the crop rectangle itself, so two posts cropping the
+     * same image identically naturally share one file, a changed crop
+     * produces a new file, and an existing file for the same rectangle is
+     * reused rather than regenerated. Changing or clearing a crop leaves
+     * its old output file on disk (no reference-counting to know it's
+     * safe to delete) — an accepted, documented gap, the same class of
+     * disk-cleanup debt this project already accepts elsewhere (e.g.
+     * ThemeFileEditor's backup pruning is time/count-based, not exact).
+     *
+     * @param array<string, mixed> $media
+     * @param array{x: int, y: int, width: int, height: int} $crop Pixel
+     *     rectangle against the media's original (post-EXIF-rotation)
+     *     dimensions — out-of-bounds values are clamped, never rejected
+     *     outright, so a stale crop against a since-replaced image with
+     *     different dimensions still produces *something* sane rather
+     *     than silently doing nothing.
+     * @return array{url: string, width: int, height: int}|null
+     */
+    public function generateFeaturedCrop(array $media, array $crop): ?array
+    {
+        if (!str_starts_with((string) $media['mime_type'], 'image/')) {
+            return null;
+        }
+
+        $mediaId = (int) $media['id'];
+        $sourcePath = rtrim($this->uploadsPath, '/') . '/' . $media['file_path'];
+
+        if (!is_file($sourcePath)) {
+            return null;
+        }
+
+        $dimensions = @getimagesize($sourcePath);
+
+        if ($dimensions === false) {
+            return null;
+        }
+
+        [$sourceWidth, $sourceHeight] = $dimensions;
+
+        $x = max(0, min((int) $crop['x'], $sourceWidth - 1));
+        $y = max(0, min((int) $crop['y'], $sourceHeight - 1));
+        $width = max(1, min((int) $crop['width'], $sourceWidth - $x));
+        $height = max(1, min((int) $crop['height'], $sourceHeight - $y));
+
+        $hash = substr(sha1("{$mediaId}:{$x},{$y},{$width},{$height}"), 0, 12);
+        $extension = strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION));
+        $basename = pathinfo((string) $media['file_path'], PATHINFO_FILENAME);
+        $directory = dirname((string) $media['file_path']);
+        $relativePath = ($directory === '.' ? '' : $directory . '/') . "{$basename}-featured-{$hash}.{$extension}";
+        $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
+        $url = rtrim($this->uploadsUrl, '/') . '/' . $relativePath;
+
+        if (is_file($destination)) {
+            $existingDimensions = @getimagesize($destination);
+
+            if ($existingDimensions !== false) {
+                return ['url' => $url, 'width' => $existingDimensions[0], 'height' => $existingDimensions[1]];
+            }
+        }
+
+        $mimeType = (string) $media['mime_type'];
+
+        try {
+            $source = $this->loadImage($sourcePath, $mimeType);
+
+            if ($this->isRotatedByExif($sourcePath, $mimeType)) {
+                $source = $this->applyExifOrientation($source, $sourcePath);
+            }
+
+            // Capped to the "large" size's configured width so a crop of a
+            // huge source image doesn't produce an equally huge featured
+            // image file — never upscaled beyond the crop's own size.
+            $maxWidth = max(1, $this->sizes()['large']['width'] ?? 1024);
+            $outputWidth = min($width, $maxWidth);
+            $outputHeight = max(1, (int) round($outputWidth * ($height / $width)));
+
+            $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
+            $this->preserveTransparency($canvas);
+            imagecopyresampled($canvas, $source, 0, 0, $x, $y, $outputWidth, $outputHeight, $width, $height);
+            imagedestroy($source);
+
+            $this->encode($canvas, $destination, $mimeType);
+            imagedestroy($canvas);
+        } catch (Throwable $exception) {
+            $this->log("Media #{$mediaId}: failed to generate manual featured-image crop: {$exception->getMessage()}");
+
+            return null;
+        }
+
+        return ['url' => $url, 'width' => $outputWidth, 'height' => $outputHeight];
+    }
+
+    /**
      * Removes `media_thumbnails` rows (and their files) whose parent media
      * row no longer exists. DB-level reconciliation only — not a
      * filesystem tree walk — since deleteForMedia() already keeps files

@@ -242,6 +242,81 @@ if (!function_exists('favicon_url')) {
     }
 }
 
+if (!function_exists('site_tagline')) {
+    /**
+     * The site's tagline/description (LP-042 General settings), e.g. for
+     * display under the site name/logo in a theme's header.
+     */
+    function site_tagline(): string
+    {
+        return SiteBranding::tagline();
+    }
+}
+
+if (!function_exists('meta_description')) {
+    /**
+     * The site-wide fallback meta description (LP-042 General settings).
+     * A single post/page view should prefer its own excerpt/content over
+     * this — see header.php's $og_description, which already does that
+     * for Open Graph — this exists for views with no natural excerpt
+     * (homepage, archives) and as the final fallback everywhere else.
+     */
+    function meta_description(): string
+    {
+        return SiteBranding::metaDescription();
+    }
+}
+
+if (!function_exists('footer_copyright_text')) {
+    /**
+     * Admin-configured footer copyright text (LP-042 General settings).
+     * Empty by default, in which case a theme's own footer keeps
+     * rendering its existing auto-generated "© {year} {site name}." line
+     * unchanged rather than showing nothing.
+     */
+    function footer_copyright_text(): string
+    {
+        return SiteBranding::footerCopyrightText();
+    }
+}
+
+if (!function_exists('the_date')) {
+    /**
+     * Formats $date using the admin-configured "date_format" option
+     * (LP-042 General settings, default 'F j, Y' — PHP's date() format
+     * syntax, same as the hardcoded strings this replaces throughout the
+     * default theme) rather than a hardcoded format string per template.
+     */
+    function the_date(\DateTimeInterface $date): string
+    {
+        return $date->format(SiteBranding::dateFormat());
+    }
+}
+
+if (!function_exists('the_time')) {
+    /**
+     * Formats $date using the admin-configured "time_format" option
+     * (LP-042 General settings, default 'g:i a').
+     */
+    function the_time(\DateTimeInterface $date): string
+    {
+        return $date->format(SiteBranding::timeFormat());
+    }
+}
+
+if (!function_exists('default_og_image_url')) {
+    /**
+     * Site-wide fallback Open Graph/Twitter Card image (LP-042 General
+     * settings), used by a theme's header when the item being rendered
+     * has no featured image of its own (see LP-040's
+     * has_post_thumbnail()/post_thumbnail_url()).
+     */
+    function default_og_image_url(): ?string
+    {
+        return SiteBranding::defaultOgImageUrl();
+    }
+}
+
 if (!function_exists('custom_css')) {
     /**
      * Admin-authored CSS (LP-034), meant to be echoed inside a <style>

@@ -11,7 +11,7 @@ get_header();
 
         <?php if ($return_at !== null): ?>
             <p class="lp-maintenance__return-at">
-                We expect to be back around <?= esc_html($return_at->format('F j, Y g:i A')) ?>.
+                We expect to be back around <?= esc_html(the_date($return_at)) ?> at <?= esc_html(the_time($return_at)) ?>.
             </p>
         <?php endif; ?>
     </main>

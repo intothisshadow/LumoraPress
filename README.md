@@ -159,17 +159,48 @@ Phase 1 (Foundation) is implemented: project structure, installer, bootstrap,
 routing, the database layer, configuration service, authentication and user
 roles, the admin framework and dashboard, the classic theme system with a
 default theme, the plugin hook system, and the widget and menu systems.
+The admin sidebar (LP-053) shows an emoji icon next to every nav item and
+sub-page, matching Lumora Gallery's admin sidebar style — purely
+decorative (`aria-hidden`), so screen readers still just hear the label.
 
 Phase 2 has begun with Posts: `LumoraPress\Services\PostService` provides
 creation, editing, deletion, automatic slug generation (with duplicate
 resolution), and draft/published/scheduled status handling — a scheduled
 post becomes visible automatically once its publish date passes, with no
-background job required. The admin Posts screen (`admin/views/posts.php`)
-supports the full CRUD flow, respecting each role's capabilities (a
-Contributor can only save drafts of their own posts; an Author can publish
-their own; an Editor/Administrator can edit and publish anyone's). The
-homepage and `/archive` route list published posts with pagination, and
-`/post/{slug}` renders the full post.
+background job required. The admin Posts area (LP-054) is a proper
+WordPress-style submenu — Posts &rsaquo; All Posts (`admin/views/posts/all-posts.php`),
+New Post (`admin/views/posts/new.php`, also handles editing an existing
+post via `?id=`), Categories, and Tags (`admin/views/posts/categories.php`/`tags.php`)
+— rather than three separate top-level nav entries, respecting each
+role's capabilities throughout (a Contributor can only save drafts of
+their own posts; an Author can publish their own; an Editor/Administrator
+can edit and publish anyone's). The homepage and `/archive` route list
+published posts with pagination, and `/post/{slug}` renders the full post.
+
+The Posts admin screen also has Trash with restore: deleting a post
+(`PostService::trash()`) moves it to a `Trashed` status rather than
+removing it outright, tracked by a `trashed_at` column; restoring
+(`PostService::restore()`) always returns a post to Draft rather than its
+prior status — a deliberate safety choice against silently resurfacing
+previously-published content — and "Delete Permanently" is only reachable
+from within the Trash view itself. The post list has checkbox-based bulk
+actions (Move to Trash/Restore/Delete Permanently/Publish/Mark as Draft)
+and status tabs with live counts (`All (12)`, `Draft (3)`, `Trash (1)`,
+...). "Duplicate" clones a post as a new Draft titled "{title} (Copy)",
+carrying over its categories and tags. The REST API (LP-021) never accepts
+"trashed" as a settable `status` value through either its create or update
+endpoints — trashing/restoring/permanently deleting stay admin-UI-only for
+now (see `ApiController::canSetStatus()`'s docblock).
+
+The post editor can also create categories inline: a "+ Add New Category"
+disclosure under the Categories checklist posts to a small JSON sub-action
+(the same pattern already used for the content editor's image upload and
+format-conversion endpoints) and appends the new, already-checked category
+to the list without a page reload — so adding a category never loses
+whatever else is currently typed into the post. `CategoryService::findOrCreateByName()`
+mirrors `TagService::findOrCreateByName()`'s case-insensitive reuse, so
+typing an existing category's name (in a different case) reuses it rather
+than creating a near-duplicate.
 
 Pages are implemented as a first pass: `LumoraPress\Services\PageService`
 mirrors `PostService` (creation, editing, deletion, slug generation,
@@ -362,7 +393,7 @@ discovers every theme under `content/themes/`, parsing each one's
 `preview.*`/`thumbnail.*`/`screenshot.*` image present (JPG, PNG, WebP, or
 AVIF; numbered variants like `screenshot-2.png` build a multi-screenshot
 gallery) and a `README`/`CHANGELOG` file if included. The admin Appearance
-screen (`admin/views/appearance.php`) lists every discovered theme as a
+screen (`admin/views/appearance/themes.php`) lists every discovered theme as a
 card — with a live search box, the active theme highlighted, a
 placeholder shown when no preview image exists, and preview thumbnails
 capped at `max-width: 250px` with `height: auto` (no `object-fit`) so an
@@ -477,6 +508,24 @@ now render Open Graph and Twitter Card meta tags, and feed items can
 optionally include the featured image as an RSS/Atom enclosure. Bulk
 assign/remove is not yet implemented (listed as optional in the ticket).
 
+Manual cropping of the featured image is also implemented: once a
+featured image is saved, an "Edit Crop"/"Add Crop" control reveals a
+draggable, movable, corner-resizable selection rectangle over it
+(`admin/assets/js/featured-image-crop.js` — a small plain-DOM
+implementation, deliberately not a new CDN cropping library; see
+`docs/THIRD-PARTY.md`). The rectangle (in the original image's pixel
+coordinates) is stored per post/page as `featured_image_crop`, a JSON
+column alongside `featured_image_id`. `ThumbnailService::generateFeaturedCrop()`
+renders one content-addressed derivative image per crop rectangle —
+distinct from the named-size thumbnails LP-001 generates, since a manual
+crop is a one-off editorial choice, not a systematic size — and
+`post_thumbnail_url()`/`the_post_thumbnail()` use it automatically
+whenever a crop is set for that item's own featured image, falling back
+to the normal centered thumbnail otherwise. A manual crop renders as a
+single fixed-size image with no responsive `srcset`. Editing a crop is
+only offered for an already-saved featured image, matching WordPress's
+own two-step "save, then crop" flow.
+
 FTP Media Import is implemented: `LumoraPress\Services\MediaImportService`
 registers media files already sitting on the server's filesystem (dropped
 there via FTP/SFTP/a hosting file manager) into the Media Manager without
@@ -528,6 +577,106 @@ page — with `rest_api_enabled`/`rest_api_resource_enabled` filters and a
 `rest_api_request` action for plugins. Authenticated reads of your own
 drafts and API rate limiting are not implemented (recorded as
 out-of-scope in `TODO.md`, not silently missing).
+
+Revision history is implemented: every time a Post or Page is updated from
+the admin editor, the content it's about to overwrite is saved as a
+revision (`LumoraPress\Services\RevisionService`, a new `{prefix}revisions`
+table). The post/page editor shows a "Revision History" panel listing each
+past version by date and author, a line-based "Compare to current" diff
+(no external diff library — `LumoraPress\Core\Content\TextDiff`), and a
+"Restore" action; restoring first snapshots the current state too, so a
+restore is itself undoable. How many revisions to keep per post/page is
+configurable on Settings &rsaquo; General (default 25; 0 keeps every revision).
+
+Settings &rsaquo; General (LP-042) gained a real Site section: Website URL,
+Administration email address, Tagline, and Timezone are all editable
+post-install now (previously only settable by the installer or, for
+timezone, not really editable at all — `include/bootstrap.php` read the
+install-time file-config copy rather than the DB option a settings field
+would write to; that's fixed as part of this). Date & Time, Footer, and
+SEO & Social Sharing sections cover a configurable date/time display
+format (`the_date()`/`the_time()` theme helpers, replacing hardcoded
+`->format('F j, Y')`-style strings throughout the default theme), footer
+copyright text, a site-wide meta description, and a default Open Graph/
+Twitter Card image (used when a shared post/page has none of its own).
+User registration, its default role, default language, and first day of
+week remain deferred — each needs real infrastructure (a sign-up flow, an
+i18n string system, a calendar widget) that doesn't exist in this app yet,
+not just a settings field.
+
+Classic Widgets (LP-048) are implemented: `LumoraPress\Core\Widgets\
+WidgetManager` — Phase 1 scaffolding until now, in-memory only, with a
+single ad-hoc "text" widget the default theme registered itself — gained
+real persistence (a `widgets_config` JSON option, the same
+"structured value as JSON in the options table" approach `active_plugins`
+already used) and ten built-in widget types
+(`LumoraPress\Core\Widgets\CoreWidgets`): Text, Custom HTML, Search,
+Navigation Menu, Pages, Categories, Recent Posts, Recent Comments,
+Archives, Tag Cloud, and Meta. A new Appearance &rsaquo; Widgets admin
+screen (`admin/views/appearance/widgets.php` — Appearance is now a
+two-level menu, Themes/Widgets, the same pattern Settings/Maintenance
+already established) lets an administrator add/configure/reorder/remove
+widgets per sidebar, each collapsible via a native `<details>` element.
+Reordering is Move Up/Move Down buttons rather than drag-and-drop (no JS
+drag library exists in this codebase to build on). The Archives widget's
+monthly links go to a real new `/archive/{year}/{month}` route
+(`PostService::paginateByMonth()`/`monthlyArchiveCounts()`), and Recent
+Comments only ever shows approved comments
+(`CommentService::recentApproved()` — unlike the admin-only
+`recentForAdmin()`, which intentionally includes every status for
+moderators). An Image widget, a Calendar widget, and a classic
+external-feed-URL "RSS Feed" widget are deferred — the last would add a
+server-side-request-to-an-admin-supplied-URL surface this app doesn't
+otherwise have (Meta's own feed link only ever points at this site's own
+feed).
+
+Navigation Menus (LP-049) are implemented: `LumoraPress\Core\Menus\
+MenuManager` — also Phase 1 scaffolding until now, with items assigned
+directly to a location and no persistence — gained a real, WordPress-
+classic two-level model. Named, reusable menus (create/rename/duplicate/
+delete) are assigned to theme-registered locations independently of each
+other, persisted as two JSON options (`nav_menus`/`nav_menu_locations`,
+the same approach `widgets_config` established) and edited on a new
+Appearance &rsaquo; Menus screen (`admin/views/appearance/menus.php` —
+Appearance's third child, alongside Themes/Widgets). Menu items can be
+added from Pages, Posts, Categories, Tags, or as a Custom Link, each with
+a navigation label, title attribute, "open in new tab," CSS class, and
+link relationship (`rel`); a "Parent Item" `<select>` lets an item nest
+under any other item in the same menu to unlimited depth, and
+`nav_menu()` (`include/menus.php`) now renders real nested `<ul>`
+submenus (hover/focus-reveal dropdowns in the default theme's header,
+inline-indented in the sidebar widget) instead of a single flat list.
+Reordering is Move Up/Move Down rather than drag-and-drop, the same
+scope narrowing as LP-048's widgets screen. Search-across-menus,
+import/export, and per-item description/icon/disable-without-deleting
+are deferred.
+
+The Theme File Editor (LP-050) is implemented as Appearance's fourth
+child screen, `admin/views/appearance/editor.php` (alongside Themes/
+Widgets/Menus): a built-in browser and editor for a theme's own source
+files. `LumoraPress\Services\ThemeFileEditor` is pure filesystem (no
+database) and re-resolves every path with `realpath()` immediately before
+each read/write, confirming it's still contained inside the one theme
+directory being edited — the same posture `MediaImportService::isPathAllowed()`
+documents — so neither a tampered relative-path form field nor a symlink
+planted inside a theme can escape it. Editing is restricted to a
+plain-text allow-list (PHP/CSS/JS/HTML/Markdown/JSON/XML/TXT/SVG); a
+theme's images and other binary assets never appear in the tree.
+`admin/assets/js/theme-file-editor.js` progressively enhances the save
+form's `<textarea>` into a real CodeMirror 5 editor (syntax highlighting,
+line numbers, code folding, bracket matching/auto-closing, find &
+replace, go-to-line, word wrap and dark-theme toggles) — loaded from
+jsDelivr at a pinned version, the same CDN convention EasyMDE/TinyMCE/
+PhotoSwipe already use (see `docs/THIRD-PARTY.md`). Every save takes an
+automatic timestamped backup (up to 10 kept per file) with one-click
+restore; a PHP file's syntax is checked before saving via
+`token_get_all($contents, TOKEN_PARSE)` — a real tokenizer-level syntax
+check with no shell/subprocess dependency, since this project deliberately
+avoids `shell_exec`/`exec` anywhere (see `UpdateBackupService`'s
+docblock) — with a "Save Anyway" override if the administrator wants to
+save through it. Access is gated on the `manage_themes` capability
+(Administrator-only today, same as the other three Appearance children).
+Uploading files to a theme through this screen is deferred.
 
 Search beyond Posts/Pages (categories/tags/authors/comments/media), and
 RSS feeds beyond the site-wide posts feed described above (category/tag/

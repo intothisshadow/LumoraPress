@@ -33,6 +33,7 @@ use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
+use LumoraPress\Core\Widgets\CoreWidgets;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Core\Widgets\Widgets;
 use LumoraPress\Services\CategoryService;
@@ -46,8 +47,10 @@ use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
 use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateBackupService;
@@ -77,8 +80,6 @@ $config = new PressConfig(LUMORA_ROOT . '/config/config.php');
 $errorHandler = new ErrorHandler(LUMORA_ROOT . '/storage/logs', (bool) $config->get('debug', false));
 $errorHandler->register();
 
-date_default_timezone_set((string) $config->get('timezone', 'UTC'));
-
 $database = Database::connect(
     host: (string) $config->get('db_host', '127.0.0.1'),
     database: (string) $config->get('db_name', ''),
@@ -89,6 +90,15 @@ $database = Database::connect(
 );
 
 $config->bindDatabase($database);
+
+/*
+ * LP-042: the "timezone" DB option (editable on Settings > General) is
+ * only readable once bindDatabase() above has run — before this fix,
+ * date_default_timezone_set() ran on the install-time file-config copy
+ * only (set once by the installer and never re-read), so changing the
+ * Settings > General timezone field had no runtime effect at all.
+ */
+date_default_timezone_set((string) $config->option('timezone', $config->get('timezone', 'UTC')));
 
 BasePath::set((string) $config->get('base_path', ''));
 
@@ -187,6 +197,7 @@ $theme->loadFunctions();
 
 $themes = new ThemeRegistry($themesPath, $themesUrl, $activeThemeSlug);
 $themeInstaller = new ThemeInstaller($themesPath, $themes);
+$themeFileEditor = new ThemeFileEditor($themesPath, LUMORA_ROOT . '/storage/theme-file-backups');
 
 $users = new UserService($database, $tablePrefix);
 $auth = new Auth($users, $sessions);
@@ -223,13 +234,80 @@ SiteBranding::set(
     logoUrl: $resolveMediaUrl($config->option('site_logo_media_id', '')),
     faviconUrl: $resolveMediaUrl($config->option('favicon_media_id', '')),
     customCss: (string) $config->option('custom_css', ''),
+    tagline: (string) $config->option('site_tagline', ''),
+    metaDescription: (string) $config->option('meta_description', ''),
+    footerCopyrightText: (string) $config->option('footer_copyright_text', ''),
+    defaultOgImageUrl: $resolveMediaUrl($config->option('default_og_image_media_id', '')),
+    dateFormat: (string) $config->option('date_format', 'F j, Y'),
+    timeFormat: (string) $config->option('time_format', 'g:i a'),
 );
 
 $posts = new PostService($database, $tablePrefix);
 $pages = new PageService($database, $tablePrefix);
+$revisions = new RevisionService($database, $tablePrefix, $config);
 $categories = new CategoryService($database, $tablePrefix);
 $tags = new TagService($database, $tablePrefix);
 $comments = new CommentService($database, $tablePrefix);
+
+/*
+ * LP-048: core widget types need PostService/PageService/CategoryService/
+ * TagService/CommentService, all of which are only just constructed above
+ * — registered here rather than alongside $widgets/require widgets.php
+ * earlier in this file. Order relative to the active theme's own
+ * register_widget() calls (loadFunctions(), already run by this point)
+ * doesn't matter: registerWidget() only populates a lookup map queried
+ * later at render time.
+ */
+CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments);
+
+/*
+ * Persisted widget assignments (LP-048) — one JSON option keyed by
+ * sidebar id, the same "structured value as JSON in the options table"
+ * approach already used for active_plugins. Loaded only for sidebars a
+ * theme actually registered (loadFunctions() above), so a sidebar
+ * removed by switching themes doesn't resurrect stale widgets if that
+ * theme is switched back to later with an old copy of the option still
+ * on file.
+ */
+$widgetsConfig = json_decode((string) $config->option('widgets_config', '{}'), true);
+$widgetsConfig = is_array($widgetsConfig) ? $widgetsConfig : [];
+
+foreach (array_keys($widgets->sidebars()) as $sidebarId) {
+    if (isset($widgetsConfig[$sidebarId]) && is_array($widgetsConfig[$sidebarId])) {
+        $widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
+    }
+}
+
+/*
+ * Persisted navigation menus (LP-049) — two JSON options, the same
+ * pattern LP-048 uses for widgets_config: "nav_menus" holds every named
+ * menu (id => {name, items}), "nav_menu_locations" holds which menu id
+ * (if any) is assigned to each theme-registered location. Loaded after
+ * the theme's own register_nav_menu() calls (loadFunctions() above) so
+ * every registered location is already known, though menus themselves
+ * don't depend on that — a menu can exist unassigned to any location.
+ */
+$navMenusConfig = json_decode((string) $config->option('nav_menus', '{}'), true);
+$navMenusConfig = is_array($navMenusConfig) ? $navMenusConfig : [];
+
+foreach ($navMenusConfig as $menuId => $menuData) {
+    if (!is_array($menuData) || !is_string($menuId)) {
+        continue;
+    }
+
+    $menus->createMenu((string) ($menuData['name'] ?? ''), $menuId);
+    $menus->setMenuItems($menuId, is_array($menuData['items'] ?? null) ? $menuData['items'] : []);
+}
+
+$navMenuLocationsConfig = json_decode((string) $config->option('nav_menu_locations', '{}'), true);
+$navMenuLocationsConfig = is_array($navMenuLocationsConfig) ? $navMenuLocationsConfig : [];
+
+foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
+    if (is_string($locationSlug) && is_string($menuId) && array_key_exists($locationSlug, $menus->locations())) {
+        $menus->assignMenuToLocation($locationSlug, $menuId);
+    }
+}
+
 $search = new SearchService($database, $tablePrefix, $config, $content);
 $api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks);
 $folders = new FolderService($database, $tablePrefix);
@@ -353,6 +431,8 @@ $kernel = new Kernel(
     content: $content,
     pluginRegistry: $pluginRegistry,
     pluginInstaller: $pluginInstaller,
+    revisions: $revisions,
+    themeFileEditor: $themeFileEditor,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);
@@ -363,6 +443,7 @@ $router->post('/post/{slug}/comment', fn (array $params) => $site->submitComment
 $router->get('/category/{slug}', fn (array $params) => $site->category($params));
 $router->get('/tag/{slug}', fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));
+$router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));
 $router->get('/page/{slug}', fn (array $params) => $site->page($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));

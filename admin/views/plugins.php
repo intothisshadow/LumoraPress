@@ -10,7 +10,7 @@ if (!isset($kernel)) {
 }
 
 /*
- * LP-045: Plugin Browser. Mirrors admin/views/appearance.php's Theme
+ * LP-045: Plugin Browser. Mirrors admin/views/appearance/themes.php's Theme
  * Management section — same "form" + CSRF-action-per-operation dispatch
  * pattern — extended with a two-step install flow (stage → confirm/
  * cancel) so an upload that collides with an already-installed plugin

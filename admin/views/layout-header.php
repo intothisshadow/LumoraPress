@@ -1,6 +1,6 @@
 <?php
 /** @var \LumoraPress\Core\Kernel $kernel */
-/** @var array<string, array{label: string, capability: string|null, default_child?: string, children?: array<string, array{label: string, capability: string|null}>}> $menu */
+/** @var array<string, array{label: string, icon: string, capability: string|null, default_child?: string, children?: array<string, array{label: string, icon: string, capability: string|null}>}> $menu */
 /** @var string $page */
 /** @var string|null $subpage */
 /** @var array{label: string, capability: string|null} $activeEntry */
@@ -43,7 +43,7 @@ $version = require LUMORA_ROOT . '/version.php';
                     <?php if (isset($item['children'])): ?>
                         <li class="lp-admin__nav-item lp-admin__nav-item--parent<?= $isParentActive ? ' is-active is-open' : '' ?>" data-menu-slug="<?= esc_attr($slug) ?>">
                             <span class="lp-admin__nav-parent-row">
-                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>"><?= esc_html($item['label']) ?></a>
+                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><?= esc_html($item['label']) ?></a>
                                 <button
                                     type="button"
                                     class="lp-admin__nav-toggle"
@@ -60,14 +60,14 @@ $version = require LUMORA_ROOT . '/version.php';
                                         continue;
                                     } ?>
                                     <li class="lp-admin__nav-item<?= $isParentActive && $childSlug === $subpage ? ' is-active' : '' ?>">
-                                        <a href="<?= esc_url(admin_url("{$slug}/{$childSlug}")) ?>"><?= esc_html($child['label']) ?></a>
+                                        <a href="<?= esc_url(admin_url("{$slug}/{$childSlug}")) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($child['icon']) ?></span><?= esc_html($child['label']) ?></a>
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
                         </li>
                     <?php else: ?>
                         <li class="lp-admin__nav-item<?= $isParentActive ? ' is-active' : '' ?>">
-                            <a href="<?= esc_url(admin_url($slug)) ?>"><?= esc_html($item['label']) ?></a>
+                            <a href="<?= esc_url(admin_url($slug)) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><?= esc_html($item['label']) ?></a>
                         </li>
                     <?php endif; ?>
                 <?php endforeach; ?>

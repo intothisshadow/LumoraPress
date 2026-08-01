@@ -62,7 +62,7 @@ $maintenanceActive = $kernel->maintenance->isActive();
             <ul class="lp-admin__meta-list">
                 <?php foreach ($recentPosts as $recentPost): ?>
                     <li>
-                        <span><a href="<?= esc_url(admin_url('posts')) ?>?action=edit&id=<?= (int) $recentPost->id ?>"><?= esc_html($recentPost->title) ?></a></span>
+                        <span><a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $recentPost->id ?>"><?= esc_html($recentPost->title) ?></a></span>
                         <span><?= esc_html($recentPost->status->label()) ?></span>
                     </li>
                 <?php endforeach; ?>
@@ -93,7 +93,7 @@ $maintenanceActive = $kernel->maintenance->isActive();
 
     <section class="lp-admin__widget">
         <h2>Quick Draft</h2>
-        <form class="lp-admin__quick-draft" method="post" action="<?= esc_url(admin_url('posts')) ?>">
+        <form class="lp-admin__quick-draft" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>">
             <?= Csrf::field('quick_draft') ?>
             <input type="hidden" name="form" value="quick_draft">
             <p class="lp-field">

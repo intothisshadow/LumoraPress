@@ -141,6 +141,13 @@ final class ApiController
      * admin/views/posts.php's "Contributors can only ever save as a
      * draft" rule: publishing (Published or Scheduled) needs
      * publish_posts, Draft never needs any extra capability.
+     *
+     * Deliberately does not special-case Trashed here — this is also
+     * called with a post's *existing* status when a PATCH body doesn't
+     * include "status" at all (see postsUpdate()), and an already-trashed
+     * post must stay trashed through an unrelated field edit. Callers that
+     * resolve a *new* status from request input reject "trashed" before
+     * ever calling this method — see postsStore()/postsUpdate().
      */
     public function canSetStatus(User $user, PostStatus|PageStatus $status): bool
     {
@@ -366,7 +373,10 @@ final class ApiController
 
         $status = PostStatus::tryFrom((string) ($body['status'] ?? 'draft')) ?? PostStatus::Draft;
 
-        if (!$this->canSetStatus($user, $status)) {
+        // A brand-new post can never be created pre-trashed — "trashed" is
+        // only ever reached by later trashing an existing post (see
+        // canSetStatus()'s docblock for why this isn't handled there).
+        if ($status === PostStatus::Trashed || !$this->canSetStatus($user, $status)) {
             $status = PostStatus::Draft;
         }
 
@@ -420,9 +430,13 @@ final class ApiController
         }
 
         $body = $this->requestBody();
-        $status = isset($body['status'])
-            ? (PostStatus::tryFrom((string) $body['status']) ?? $existing->status)
-            : $existing->status;
+        $requestedStatus = isset($body['status']) ? PostStatus::tryFrom((string) $body['status']) : null;
+
+        // An explicit "trashed" request is ignored (falls back to whatever
+        // the post's status already was) rather than accepted — see
+        // canSetStatus()'s docblock for why "trashed" isn't reachable
+        // through this field at all.
+        $status = ($requestedStatus !== null && $requestedStatus !== PostStatus::Trashed) ? $requestedStatus : $existing->status;
 
         if (!$this->canSetStatus($user, $status)) {
             $status = PostStatus::Draft;

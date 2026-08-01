@@ -147,6 +147,28 @@ final class CategoryService
     }
 
     /**
+     * Case-insensitive lookup, falling back to create() — mirrors
+     * TagService::findOrCreateByName(), the same "don't let 'Sci-Fi' and
+     * 'sci-fi' become two different terms" guard. Backs the post editor's
+     * "Create categories while editing" affordance (LP-008): typing a name
+     * that already exists reuses that category instead of creating a
+     * near-duplicate with a numeric-suffixed slug.
+     */
+    public function findOrCreateByName(string $name, ?int $parentId = null): Category
+    {
+        $row = $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . ' WHERE LOWER(name) = LOWER(:name)',
+            ['name' => $name],
+        );
+
+        if ($row !== null) {
+            return $this->hydrate($row);
+        }
+
+        return $this->create($name, '', $parentId);
+    }
+
+    /**
      * @return array<int, Category>
      */
     public function listAll(): array

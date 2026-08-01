@@ -83,7 +83,7 @@ if (!function_exists('lp_render_comment_thread')) {
                                 ? '<a href="' . esc_url($comment->guestUrl) . '" rel="nofollow ugc noopener" target="_blank">' . esc_html($comment->guestName) . '</a>'
                                 : esc_html($comment->guestName) ?></span>
                             <time class="lp-comment__date" datetime="<?= esc_attr($comment->createdAt->format(DATE_ATOM)) ?>">
-                                <?= esc_html($comment->createdAt->format('F j, Y \a\t g:i a')) ?>
+                                <?= esc_html(the_date($comment->createdAt)) ?> at <?= esc_html(the_time($comment->createdAt)) ?>
                             </time>
                         </p>
                         <div class="lp-comment__content"><?= format_comment_content($comment->content) ?></div>

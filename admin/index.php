@@ -139,57 +139,86 @@ $subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
  * 'children' keyed the same way as top-level entries. Everything else
  * stays flat, unchanged from before this reorganization.
  */
+// Icons (LP-053) are purely decorative — see layout-header.php's
+// aria-hidden treatment — so they're plain emoji, no icon font/SVG sprite
+// dependency, matching Lumora Gallery's admin sidebar.
 $menu = [
-    'dashboard' => ['label' => 'Dashboard', 'capability' => null],
-    'posts' => ['label' => 'Posts', 'capability' => 'edit_posts'],
-    'categories' => ['label' => 'Categories', 'capability' => 'edit_posts'],
-    'tags' => ['label' => 'Tags', 'capability' => 'edit_posts'],
-    'media' => ['label' => 'Media', 'capability' => 'upload_files'],
-    'pages' => ['label' => 'Pages', 'capability' => 'edit_posts'],
-    'comments' => ['label' => 'Comments', 'capability' => 'moderate_comments'],
-    'appearance' => ['label' => 'Appearance', 'capability' => 'manage_themes'],
-    'plugins' => ['label' => 'Plugins', 'capability' => 'manage_plugins'],
+    'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
+    'posts' => [
+        'label' => 'Posts',
+        'icon' => '📝',
+        'capability' => 'edit_posts',
+        'default_child' => 'all-posts',
+        'children' => [
+            'all-posts' => ['label' => 'All Posts', 'icon' => '📋', 'capability' => 'edit_posts'],
+            'new' => ['label' => 'New Post', 'icon' => '➕', 'capability' => 'edit_posts'],
+            'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'edit_posts'],
+            'tags' => ['label' => 'Tags', 'icon' => '🏷️', 'capability' => 'edit_posts'],
+        ],
+    ],
+    'media' => ['label' => 'Media', 'icon' => '🖼️', 'capability' => 'upload_files'],
+    'pages' => ['label' => 'Pages', 'icon' => '📄', 'capability' => 'edit_posts'],
+    'comments' => ['label' => 'Comments', 'icon' => '💬', 'capability' => 'moderate_comments'],
+    'appearance' => [
+        'label' => 'Appearance',
+        'icon' => '🎨',
+        'capability' => 'manage_themes',
+        'default_child' => 'themes',
+        'children' => [
+            'themes' => ['label' => 'Themes', 'icon' => '🖌️', 'capability' => 'manage_themes'],
+            'widgets' => ['label' => 'Widgets', 'icon' => '🧩', 'capability' => 'manage_themes'],
+            'menus' => ['label' => 'Menus', 'icon' => '🧭', 'capability' => 'manage_themes'],
+            'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes'],
+        ],
+    ],
+    'plugins' => ['label' => 'Plugins', 'icon' => '🔌', 'capability' => 'manage_plugins'],
     'settings' => [
         'label' => 'Settings',
+        'icon' => '⚙️',
         'capability' => 'manage_options',
         'default_child' => 'general',
         'children' => [
-            'general' => ['label' => 'General', 'capability' => 'manage_options'],
-            'media' => ['label' => 'Media', 'capability' => 'manage_options'],
-            'cache' => ['label' => 'Cache', 'capability' => 'manage_options'],
-            'maintenance-mode' => ['label' => 'Maintenance Mode', 'capability' => 'manage_options'],
-            'security' => ['label' => 'Security', 'capability' => 'manage_options'],
+            'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options'],
+            'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
+            'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
+            'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
+            'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options'],
         ],
     ],
     'maintenance' => [
         'label' => 'Maintenance',
+        'icon' => '🧰',
         'capability' => 'manage_options',
         'default_child' => 'updates',
         'children' => [
-            'updates' => ['label' => 'Updates', 'capability' => 'manage_options'],
-            'import' => ['label' => 'Import', 'capability' => 'manage_options'],
-            'export' => ['label' => 'Export', 'capability' => 'manage_options'],
-            'tools' => ['label' => 'Tools', 'capability' => 'manage_options'],
-            'system-information' => ['label' => 'System Information', 'capability' => 'manage_options'],
-            'logs' => ['label' => 'Logs', 'capability' => 'manage_options'],
+            'updates' => ['label' => 'Updates', 'icon' => '🔔', 'capability' => 'manage_options'],
+            'import' => ['label' => 'Import', 'icon' => '📥', 'capability' => 'manage_options'],
+            'export' => ['label' => 'Export', 'icon' => '📤', 'capability' => 'manage_options'],
+            'tools' => ['label' => 'Tools', 'icon' => '🪛', 'capability' => 'manage_options'],
+            'system-information' => ['label' => 'System Information', 'icon' => '🖥️', 'capability' => 'manage_options'],
+            'logs' => ['label' => 'Logs', 'icon' => '📋', 'capability' => 'manage_options'],
         ],
     ],
-    'users' => ['label' => 'Users', 'capability' => 'manage_users'],
+    'users' => ['label' => 'Users', 'icon' => '👥', 'capability' => 'manage_users'],
     // No capability requirement (LP-021): every authenticated role,
     // including Subscriber, manages their own API tokens — the page
     // itself only ever operates on $currentUser->id, never another
     // user's tokens.
-    'api-tokens' => ['label' => 'API Tokens', 'capability' => null],
+    'api-tokens' => ['label' => 'API Tokens', 'icon' => '🔑', 'capability' => null],
 ];
 
 /*
  * LP-043: preserve bookmarked/linked URLs from before Settings/Maintenance
  * existed as parent menus — /admin/updates and /admin/tools used to be
- * complete pages on their own, not children of Maintenance.
+ * complete pages on their own, not children of Maintenance. LP-054 adds
+ * the same for /admin/categories and /admin/tags, from before Posts
+ * gained All Posts/New Post/Categories/Tags children.
  */
 $legacyRedirects = [
     'updates' => 'maintenance/updates',
     'tools' => 'maintenance/tools',
+    'categories' => 'posts/categories',
+    'tags' => 'posts/tags',
 ];
 
 if ($subpage === null && isset($legacyRedirects[$page])) {

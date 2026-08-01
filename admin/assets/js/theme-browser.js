@@ -1,7 +1,7 @@
 /**
  * Theme Browser (LP-044), Appearance page progressive enhancement.
  *
- * Markup contract (see admin/views/appearance.php):
+ * Markup contract (see admin/views/appearance/themes.php):
  *   <input data-lp-theme-search>                      — live search box
  *   <div data-lp-theme-grid>                           — card container
  *     <div data-lp-theme-card data-theme-search="...">  — one per theme

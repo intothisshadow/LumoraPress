@@ -17,9 +17,28 @@ if (!isset($kernel)) {
  */
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
+$postedSlug = trim((string) ($_POST['slug'] ?? ''));
 
-if ($form === 'activate_theme' && Csrf::verify('activate_theme', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = trim((string) ($_POST['slug'] ?? ''));
+/*
+ * Every theme card (and its details-template counterpart) renders its own
+ * Activate/Delete form, so this page has many forms sharing the page at
+ * once. Csrf::field()/verify() are keyed by action *name*, and
+ * Csrf::field() overwrites the session's token for a given name on every
+ * call, so a bare 'activate_theme'/'delete_theme' name shared across all
+ * of them would leave every form but the last-rendered one silently
+ * submitting an already-invalidated token (see widgets.php's/menus.php's
+ * own docblocks for the LP-012 incident this exact mistake caused). Each
+ * action name below is scoped to the specific theme slug it acts on
+ * instead.
+ */
+$csrfAction = match ($form) {
+    'activate_theme' => 'activate_theme_' . $postedSlug,
+    'delete_theme' => 'delete_theme_' . $postedSlug,
+    default => $form,
+};
+
+if ($form === 'activate_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $slug = $postedSlug;
     $known = array_filter($kernel->themes->discover(), static fn ($info): bool => $info->slug === $slug);
 
     if ($known === []) {
@@ -27,11 +46,11 @@ if ($form === 'activate_theme' && Csrf::verify('activate_theme', is_string($_POS
     } else {
         $kernel->config->setOption('active_theme', $slug);
 
-        header('Location: ' . admin_url('appearance') . '?saved=1');
+        header('Location: ' . admin_url('appearance/themes') . '?saved=1');
         exit;
     }
-} elseif ($form === 'delete_theme' && Csrf::verify('delete_theme', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = trim((string) ($_POST['slug'] ?? ''));
+} elseif ($form === 'delete_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $slug = $postedSlug;
     $target = null;
 
     foreach ($kernel->themes->discover() as $info) {
@@ -50,7 +69,7 @@ if ($form === 'activate_theme' && Csrf::verify('activate_theme', is_string($_POS
         try {
             $kernel->themeInstaller->delete($slug);
 
-            header('Location: ' . admin_url('appearance') . '?deleted=1');
+            header('Location: ' . admin_url('appearance/themes') . '?deleted=1');
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -65,7 +84,7 @@ if ($form === 'activate_theme' && Csrf::verify('activate_theme', is_string($_POS
         try {
             $installed = $kernel->themeInstaller->install($_FILES['theme_zip']['tmp_name']);
 
-            header('Location: ' . admin_url('appearance') . '?installed=' . urlencode($installed->name));
+            header('Location: ' . admin_url('appearance/themes') . '?installed=' . urlencode($installed->name));
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -97,13 +116,13 @@ if ($form === 'activate_theme' && Csrf::verify('activate_theme', is_string($_POS
     }
 
     if ($error === null) {
-        header('Location: ' . admin_url('appearance') . '?saved=1');
+        header('Location: ' . admin_url('appearance/themes') . '?saved=1');
         exit;
     }
 } elseif ($form === 'custom_css' && Csrf::verify('custom_css', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('custom_css', (string) ($_POST['custom_css'] ?? ''));
 
-    header('Location: ' . admin_url('appearance') . '?saved=1');
+    header('Location: ' . admin_url('appearance/themes') . '?saved=1');
     exit;
 }
 
@@ -174,8 +193,8 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                         <button type="button" class="lp-button lp-button--secondary" data-lp-theme-details-trigger data-theme-template="<?= esc_attr($templateId) ?>">Details</button>
                         <?php if (!$info->isActive): ?>
                             <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
-                            <form method="post" action="<?= esc_url(admin_url('appearance')) ?>" class="lp-admin__inline-form">
-                                <?= Csrf::field('activate_theme') ?>
+                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
+                                <?= Csrf::field('activate_theme_' . $info->slug) ?>
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button">Activate</button>
@@ -250,14 +269,14 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                     <div class="lp-theme-details__actions">
                         <?php if (!$info->isActive): ?>
                             <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
-                            <form method="post" action="<?= esc_url(admin_url('appearance')) ?>" class="lp-admin__inline-form">
-                                <?= Csrf::field('activate_theme') ?>
+                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
+                                <?= Csrf::field('activate_theme_' . $info->slug) ?>
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--primary">Activate</button>
                             </form>
-                            <form method="post" action="<?= esc_url(admin_url('appearance')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this theme permanently? This cannot be undone.');">
-                                <?= Csrf::field('delete_theme') ?>
+                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this theme permanently? This cannot be undone.');">
+                                <?= Csrf::field('delete_theme_' . $info->slug) ?>
                                 <input type="hidden" name="form" value="delete_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--danger">Delete</button>
@@ -274,7 +293,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
     <dialog class="lp-theme-dialog" data-lp-theme-dialog aria-label="Theme details"></dialog>
 
     <h3>Install a Theme</h3>
-    <form method="post" action="<?= esc_url(admin_url('appearance')) ?>" enctype="multipart/form-data">
+    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" enctype="multipart/form-data">
         <?= Csrf::field('install_theme') ?>
         <input type="hidden" name="form" value="install_theme">
 
@@ -289,7 +308,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
 
 <section class="lp-admin__panel">
     <h2>Branding</h2>
-    <form method="post" action="<?= esc_url(admin_url('appearance')) ?>" enctype="multipart/form-data">
+    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" enctype="multipart/form-data">
         <?= Csrf::field('branding') ?>
         <input type="hidden" name="form" value="branding">
 
@@ -322,7 +341,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
 
 <section class="lp-admin__panel">
     <h2>Custom CSS</h2>
-    <form method="post" action="<?= esc_url(admin_url('appearance')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>">
         <?= Csrf::field('custom_css') ?>
         <input type="hidden" name="form" value="custom_css">
 

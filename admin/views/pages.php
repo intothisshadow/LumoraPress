@@ -2,10 +2,12 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Core\Content\TextDiff;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
+use LumoraPress\Models\RevisionableType;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -152,12 +154,51 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
+        // Manual crop (LP-040) — see the identical block in
+        // admin/views/posts/new.php for the full rationale.
+        $featuredImageCrop = null;
+        $cropForId = (int) ($_POST['featured_image_crop_for_id'] ?? 0);
+
+        if ($cropForId > 0 && $cropForId === $featuredImageId) {
+            $cropX = $_POST['featured_image_crop_x'] ?? '';
+            $cropY = $_POST['featured_image_crop_y'] ?? '';
+            $cropWidth = $_POST['featured_image_crop_width'] ?? '';
+            $cropHeight = $_POST['featured_image_crop_height'] ?? '';
+
+            if (
+                is_numeric($cropX) && is_numeric($cropY) && is_numeric($cropWidth) && is_numeric($cropHeight)
+                && (int) $cropWidth > 0 && (int) $cropHeight > 0
+            ) {
+                $featuredImageCrop = [
+                    'x' => max(0, (int) $cropX),
+                    'y' => max(0, (int) $cropY),
+                    'width' => (int) $cropWidth,
+                    'height' => (int) $cropHeight,
+                ];
+            }
+        }
+
         if ($title === '') {
             $error = 'A title is required.';
         } elseif ($error === null) {
+            // LP-017: snapshot the pre-update content as a revision before
+            // it's overwritten — see the identical block in
+            // admin/views/posts.php for the full rationale.
+            if ($existing !== null) {
+                $kernel->revisions->save(
+                    RevisionableType::Page,
+                    $existing->id,
+                    $existing->title,
+                    $existing->content,
+                    $existing->excerpt,
+                    $existing->contentFormat,
+                    $currentUser->id,
+                );
+            }
+
             $page = $existing === null
-                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat)
-                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat);
+                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop)
+                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop);
 
             header('Location: ' . admin_url('pages') . '?action=edit&id=' . $page->id . '&saved=1');
             exit;
@@ -174,10 +215,62 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $existing = $id > 0 ? $pageService->findById($id) : null;
 
         if ($existing !== null && $canDeletePages && $canEditPage($existing)) {
+            // Revisions live outside PageService (see RevisionService's
+            // docblock) — clean them up here before the page itself is gone.
+            $kernel->revisions->deleteAllFor(RevisionableType::Page, $id);
             $pageService->delete($id);
         }
 
         header('Location: ' . admin_url('pages'));
+        exit;
+    } elseif ($form === 'restore_revision') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $revisionId = (int) ($_POST['revision_id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('page_restore_revision_' . $id, $token)) {
+            header('Location: ' . admin_url('pages') . '?action=edit&id=' . $id);
+            exit;
+        }
+
+        $existing = $id > 0 ? $pageService->findById($id) : null;
+        $revision = $revisionId > 0 ? $kernel->revisions->find($revisionId) : null;
+
+        if (
+            $existing !== null
+            && $canEditPage($existing)
+            && $revision !== null
+            && $revision->contentType === RevisionableType::Page
+            && $revision->contentId === $existing->id
+        ) {
+            // Snapshot the current (pre-restore) state too, so restoring is
+            // itself undoable.
+            $kernel->revisions->save(
+                RevisionableType::Page,
+                $existing->id,
+                $existing->title,
+                $existing->content,
+                $existing->excerpt,
+                $existing->contentFormat,
+                $currentUser->id,
+            );
+
+            $pageService->update(
+                $existing->id,
+                $revision->title,
+                $revision->content,
+                $revision->excerpt,
+                $existing->status,
+                $existing->publishedAt,
+                $existing->parentId,
+                $existing->featuredImageId,
+                $existing->slug,
+                $revision->contentFormat,
+                featuredImageCrop: $existing->featuredImageCrop,
+            );
+        }
+
+        header('Location: ' . admin_url('pages') . '?action=edit&id=' . $id . '&restored=1');
         exit;
     }
 }
@@ -203,6 +296,10 @@ if ($action === 'edit') {
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Page saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['restored'])): ?>
+    <div class="lp-alert lp-alert--success">Revision restored.</div>
 <?php endif; ?>
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
@@ -278,6 +375,29 @@ if ($action === 'edit') {
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
                     </label>
+
+                    <div class="lp-featured-crop" data-lp-featured-crop>
+                        <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>
+                            <?= ($page->featuredImageCrop ?? null) !== null ? 'Edit Crop' : 'Add Crop' ?>
+                        </button>
+
+                        <div class="lp-featured-crop__editor" data-lp-featured-crop-editor hidden>
+                            <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
+                                <img src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="" data-lp-featured-crop-image>
+                                <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
+                                    <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
+                                </div>
+                            </div>
+                            <p class="lp-field__hint">Drag to select the area to use as the featured image. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
+                            <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear Crop</button>
+                        </div>
+
+                        <input type="hidden" name="featured_image_crop_for_id" value="<?= (int) $currentFeaturedImage['id'] ?>">
+                        <input type="hidden" name="featured_image_crop_x" data-lp-featured-crop-x value="<?= esc_attr((string) ($page->featuredImageCrop['x'] ?? '')) ?>">
+                        <input type="hidden" name="featured_image_crop_y" data-lp-featured-crop-y value="<?= esc_attr((string) ($page->featuredImageCrop['y'] ?? '')) ?>">
+                        <input type="hidden" name="featured_image_crop_width" data-lp-featured-crop-width value="<?= esc_attr((string) ($page->featuredImageCrop['width'] ?? '')) ?>">
+                        <input type="hidden" name="featured_image_crop_height" data-lp-featured-crop-height value="<?= esc_attr((string) ($page->featuredImageCrop['height'] ?? '')) ?>">
+                    </div>
                 <?php endif; ?>
 
                 <label for="page-featured-image-select">Choose from Media Manager</label>
@@ -335,6 +455,64 @@ if ($action === 'edit') {
             <a class="lp-button" href="<?= esc_url(admin_url('pages')) ?>">Cancel</a>
         </form>
     </section>
+
+    <?php if ($page !== null): ?>
+        <?php
+        $pageRevisions = $kernel->revisions->listFor(RevisionableType::Page, $page->id);
+        $compareRevisionId = isset($_GET['compare_revision']) ? (int) $_GET['compare_revision'] : null;
+        $compareRevision = $compareRevisionId !== null ? $kernel->revisions->find($compareRevisionId) : null;
+
+        if ($compareRevision !== null && ($compareRevision->contentType !== RevisionableType::Page || $compareRevision->contentId !== $page->id)) {
+            $compareRevision = null;
+        }
+        ?>
+        <section class="lp-admin__panel lp-revisions">
+            <h2>Revision History</h2>
+
+            <?php if ($compareRevision !== null): ?>
+                <div class="lp-revisions__compare">
+                    <h3>Comparing revision from <?= esc_html($compareRevision->createdAt->format('M j, Y g:i A')) ?> to the current version</h3>
+                    <p class="lp-field__hint">Title: “<?= esc_html($compareRevision->title) ?>” → “<?= esc_html($page->title) ?>”</p>
+                    <pre class="lp-revisions__diff"><?php foreach (TextDiff::compare($compareRevision->content, $page->content) as $diffLine): ?><span class="lp-revisions__diff-line lp-revisions__diff-line--<?= esc_attr($diffLine['type']) ?>"><?= esc_html($diffLine['line']) ?>
+</span><?php endforeach; ?></pre>
+                    <a class="lp-button" href="<?= esc_url(admin_url('pages')) ?>?action=edit&id=<?= (int) $page->id ?>">Close comparison</a>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($pageRevisions === []): ?>
+                <p class="lp-admin__widget-placeholder">No earlier revisions yet — one is saved automatically each time this page is updated.</p>
+            <?php else: ?>
+                <table class="lp-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Author</th>
+                            <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pageRevisions as $pageRevision): ?>
+                            <?php $revisionAuthor = $kernel->users->findById($pageRevision->authorId); ?>
+                            <tr>
+                                <td><?= esc_html($pageRevision->createdAt->format('M j, Y g:i A')) ?></td>
+                                <td><?= esc_html($revisionAuthor?->displayName ?? 'Unknown') ?></td>
+                                <td class="lp-revisions__actions">
+                                    <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('pages')) ?>?action=edit&id=<?= (int) $page->id ?>&compare_revision=<?= (int) $pageRevision->id ?>">Compare to current</a>
+                                    <form method="post" action="<?= esc_url(admin_url('pages')) ?>" onsubmit="return confirm('Restore this revision? The current content will be saved as a new revision first.');">
+                                        <?= Csrf::field('page_restore_revision_' . $page->id) ?>
+                                        <input type="hidden" name="form" value="restore_revision">
+                                        <input type="hidden" name="id" value="<?= (int) $page->id ?>">
+                                        <input type="hidden" name="revision_id" value="<?= (int) $pageRevision->id ?>">
+                                        <button type="submit" class="lp-button lp-button--link">Restore</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
 <?php else: ?>
     <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('pages')) ?>?action=new">Add New Page</a></p>
 

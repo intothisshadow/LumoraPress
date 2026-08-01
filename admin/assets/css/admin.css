@@ -131,11 +131,25 @@ body.lp-admin-login {
 }
 
 .lp-admin__nav-item a {
-    display: block;
+    display: flex;
+    align-items: center;
     padding: 0.65rem 1rem;
     color: var(--lp-admin-sidebar-fg-muted);
     text-decoration: none;
     font-size: 0.95rem;
+}
+
+/*
+ * Icons (LP-053) are plain emoji, not an icon font/SVG sprite — see
+ * admin/index.php's $menu array — so this rule is just spacing/alignment,
+ * nothing to theme for light/dark mode.
+ */
+.lp-admin__nav-icon {
+    display: inline-block;
+    width: 1.25rem;
+    margin-right: 0.6rem;
+    text-align: center;
+    flex-shrink: 0;
 }
 
 .lp-admin__nav-item a:hover,
@@ -833,6 +847,53 @@ body.lp-admin-login {
     max-height: 32px;
 }
 
+/* Manual featured-image crop (LP-040) */
+
+.lp-featured-crop {
+    margin: 0.5rem 0;
+}
+
+.lp-featured-crop__editor {
+    margin-top: 0.5rem;
+}
+
+.lp-featured-crop__stage {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    line-height: 0;
+    user-select: none;
+    touch-action: none;
+}
+
+.lp-featured-crop__stage img {
+    display: block;
+    max-width: 100%;
+    max-height: 480px;
+    width: auto;
+    height: auto;
+}
+
+.lp-featured-crop__rect {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px dashed var(--lp-admin-accent);
+    background: rgba(34, 113, 177, 0.15);
+    cursor: move;
+}
+
+.lp-featured-crop__handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--lp-admin-accent);
+    border: 2px solid var(--lp-admin-panel-bg);
+    cursor: nwse-resize;
+}
+
 .lp-code-textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.85rem;
@@ -1192,6 +1253,23 @@ body.lp-admin-login {
     margin-bottom: 0.35rem;
 }
 
+.lp-category-quick-add {
+    margin-top: 0.5rem;
+}
+
+.lp-category-quick-add summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--lp-admin-accent);
+}
+
+.lp-category-quick-add .lp-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0;
+}
+
 .lp-field--checkbox {
     display: flex;
     align-items: center;
@@ -1531,6 +1609,18 @@ body.lp-admin-login {
     color: var(--lp-admin-success-text);
 }
 
+.lp-status-badge--trashed {
+    background: var(--lp-admin-error-bg);
+    color: var(--lp-admin-error-text);
+}
+
+.lp-admin__bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
 .lp-status-badge--pending {
     background: var(--lp-admin-warning-bg);
     color: var(--lp-admin-warning-text);
@@ -1619,4 +1709,309 @@ body.lp-admin-login {
     padding: 0;
     display: flex;
     gap: 1rem;
+}
+
+/* LP-017 Revisions */
+
+.lp-revisions {
+    margin-top: 1.5rem;
+}
+
+.lp-revisions__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.lp-revisions__actions form {
+    display: inline;
+}
+
+.lp-revisions__compare {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-revisions__diff {
+    max-height: 24rem;
+    overflow: auto;
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    font-family: monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.lp-revisions__diff-line {
+    display: block;
+}
+
+.lp-revisions__diff-line--added {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-revisions__diff-line--removed {
+    background: var(--lp-admin-error-bg);
+    color: var(--lp-admin-error-text);
+    text-decoration: line-through;
+}
+
+/* LP-048 Widgets */
+
+.lp-widgets-area {
+    margin-bottom: 1.5rem;
+}
+
+.lp-widgets-list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.lp-widgets-list__item {
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-widgets-list__summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.lp-widgets-list__instance-title {
+    font-weight: 400;
+    opacity: 0.75;
+}
+
+.lp-widgets-list__settings {
+    padding: 0 1rem 1rem;
+}
+
+.lp-widgets-list__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0 1rem 1rem;
+}
+
+.lp-widgets-list__actions form {
+    display: inline;
+}
+
+.lp-widgets-add-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* LP-049 Menus */
+
+.lp-menus-select-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.lp-menus-create-form,
+.lp-menus-manage-form {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 1rem 0.75rem 0;
+}
+
+.lp-menus-editor {
+    display: grid;
+    grid-template-columns: minmax(16rem, 1fr) 2fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 782px) {
+    .lp-menus-editor {
+        grid-template-columns: 1fr;
+    }
+}
+
+.lp-menus-add-panel {
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.lp-menus-add-panel__list {
+    list-style: none;
+    margin: 0.5rem 0;
+    padding: 0;
+    max-height: 16rem;
+    overflow-y: auto;
+}
+
+.lp-menus-structure-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Theme Editor (LP-050) */
+
+.lp-theme-editor__theme-select {
+    margin-bottom: 1rem;
+}
+
+.lp-theme-editor {
+    display: grid;
+    grid-template-columns: minmax(16rem, 1fr) 3fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 782px) {
+    .lp-theme-editor {
+        grid-template-columns: 1fr;
+    }
+}
+
+.lp-theme-editor__search {
+    margin-bottom: 0.5rem;
+}
+
+.lp-theme-editor__tree {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    max-height: 32rem;
+    overflow-y: auto;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 0.5rem 0.75rem;
+}
+
+.lp-theme-editor__tree ul {
+    list-style: none;
+    margin: 0.25rem 0 0.25rem 1rem;
+    padding: 0;
+}
+
+.lp-theme-editor__node {
+    padding: 0.15rem 0;
+}
+
+.lp-theme-editor__node-label {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+}
+
+.lp-theme-editor__node-label--file {
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+}
+
+.lp-theme-editor__node-label--file:hover {
+    text-decoration: underline;
+}
+
+.lp-theme-editor__node-label--current {
+    font-weight: 600;
+}
+
+.lp-theme-editor__lock {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+}
+
+.lp-theme-editor__node-actions {
+    display: inline-flex;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.lp-theme-editor__rename {
+    display: inline-block;
+}
+
+.lp-theme-editor__rename summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.lp-theme-editor__create {
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.lp-theme-editor__create-form {
+    margin-bottom: 0.75rem;
+}
+
+.lp-theme-editor__create-form:last-child {
+    margin-bottom: 0;
+}
+
+.lp-theme-editor__shortcuts {
+    display: flex;
+    gap: 1rem;
+}
+
+.lp-theme-editor__meta {
+    color: var(--lp-admin-text);
+    font-size: 0.85rem;
+}
+
+.lp-theme-editor__file-meta {
+    color: var(--lp-admin-text);
+    font-size: 0.85rem;
+}
+
+.lp-theme-editor__toolbar {
+    margin: 0.5rem 0;
+}
+
+.lp-theme-editor__cm-toolbar {
+    display: flex;
+    gap: 1rem;
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+}
+
+.lp-theme-editor .CodeMirror {
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-theme-editor__backups {
+    margin-top: 1rem;
+}
+
+.lp-theme-editor__backup-list {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }

@@ -22,6 +22,8 @@ final class Page
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ContentFormat $contentFormat = ContentFormat::Plain,
+        /** @var array{x: int, y: int, width: int, height: int}|null */
+        public readonly ?array $featuredImageCrop = null,
     ) {
     }
 

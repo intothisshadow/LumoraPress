@@ -18,6 +18,15 @@ $og_url = $og_item instanceof \LumoraPress\Models\Post
 $og_description = $og_item !== null
     ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt(content_plain_text($og_item->content, $og_item->contentFormat)))
     : '';
+
+/*
+ * Site-wide meta description (LP-042) — a single post/page's own
+ * excerpt/content ($og_description above) always wins when there is one;
+ * this is only the fallback for views with nothing of their own to
+ * describe (homepage, archives) and for a single post/page that has
+ * neither an excerpt nor any content to derive one from.
+ */
+$meta_description = $og_description !== '' ? $og_description : meta_description();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -25,6 +34,9 @@ $og_description = $og_item !== null
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= isset($page_title) && $page_title !== null && $page_title !== '' ? esc_html($page_title) . ' ‹ ' : '' ?><?= esc_html(site_name()) ?></title>
+    <?php if ($meta_description !== ''): ?>
+        <meta name="description" content="<?= esc_attr($meta_description) ?>">
+    <?php endif; ?>
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">
     <link rel="alternate" type="application/rss+xml" title="<?= esc_attr(site_name()) ?> &raquo; Feed" href="<?= esc_url(home_url('feed')) ?>">
     <link rel="alternate" type="application/atom+xml" title="<?= esc_attr(site_name()) ?> &raquo; Atom Feed" href="<?= esc_url(home_url('feed/atom')) ?>">
@@ -45,6 +57,10 @@ $og_description = $og_item !== null
             <meta property="og:image" content="<?= esc_url((string) post_thumbnail_url($og_item, 'large', absolute: true)) ?>">
             <meta name="twitter:card" content="summary_large_image">
             <meta name="twitter:image" content="<?= esc_url((string) post_thumbnail_url($og_item, 'large', absolute: true)) ?>">
+        <?php elseif (default_og_image_url() !== null): ?>
+            <meta property="og:image" content="<?= esc_url((string) default_og_image_url()) ?>">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:image" content="<?= esc_url((string) default_og_image_url()) ?>">
         <?php else: ?>
             <meta name="twitter:card" content="summary">
         <?php endif; ?>
@@ -65,6 +81,9 @@ $og_description = $og_item !== null
                     <?= esc_html(site_name()) ?>
                 <?php endif; ?>
             </a>
+            <?php if (site_tagline() !== ''): ?>
+                <span class="lp-site-header__tagline"><?= esc_html(site_tagline()) ?></span>
+            <?php endif; ?>
         </p>
         <nav class="lp-site-header__nav" aria-label="Primary">
             <?php nav_menu('primary'); ?>

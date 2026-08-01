@@ -8,7 +8,7 @@ Completed work is moved here from `TODO.md` at release time.
 
 ### PHP Test Suite
 
-- [x] Plan and implement a PHP test suite for Lumora Press, using the FanUpdate Redux test suite as a reference for structure, configuration, and conventions: `/mnt/Winterfell/Coding/Github/Scripts/FanUpdateRedux/PHP Test Suite`. (`/mnt/Winterfell/Coding/Github/Scripts/Lumora/PHP Test Suite` was named as a reference too but was outside this session's accessible directories — FanUpdate Redux's suite, explicitly named as a reference in the line above, was used instead.)
+- [x] Plan and implement a PHP test suite for Lumora Press, using the FanUpdate Redux test suite as a reference for structure, configuration, and conventions: `/mnt/Winterfell/Coding/Github/Scripts/FanUpdateRedux/PHP Test Suite`. (`/mnt/Winterfell/Coding/Github/Scripts/Lumora Gallery/PHP Test Suite` was named as a reference too but was outside this session's accessible directories — FanUpdate Redux's suite, explicitly named as a reference in the line above, was used instead.)
 - [x] Adapt and customize the test suite to fit Lumora Press's codebase, architecture, and functionality.
 - [x] Document the plan in `PHP-TEST-SUITE.md`.
 - [x] Store all test suite files and directories within: `/mnt/Winterfell/Coding/Github/Scripts/Lumora Press/PHP Test Suite`.
@@ -75,7 +75,7 @@ Keep the structure clean and future-proof without overengineering.
 
 #### Phase 1.2 — Installer
 
-Create a modern installer similar in quality to Lumora Gallery `/mnt/Winterfell/Coding/Github/Scripts/Lumora`.
+Create a modern installer similar in quality to Lumora Gallery `/mnt/Winterfell/Coding/Github/Scripts/Lumora Gallery`.
 
 Support:
 

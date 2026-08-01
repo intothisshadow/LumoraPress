@@ -14,6 +14,7 @@ enum PostStatus: string
     case Draft = 'draft';
     case Published = 'published';
     case Scheduled = 'scheduled';
+    case Trashed = 'trashed';
 
     public function label(): string
     {
@@ -21,6 +22,7 @@ enum PostStatus: string
             self::Draft => 'Draft',
             self::Published => 'Published',
             self::Scheduled => 'Scheduled',
+            self::Trashed => 'Trash',
         };
     }
 }

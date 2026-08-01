@@ -30,8 +30,10 @@ use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
 use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateService;
@@ -79,6 +81,8 @@ final class Kernel
         public readonly ContentRenderer $content,
         public readonly PluginRegistry $pluginRegistry,
         public readonly PluginInstaller $pluginInstaller,
+        public readonly RevisionService $revisions,
+        public readonly ThemeFileEditor $themeFileEditor,
     ) {
     }
 }

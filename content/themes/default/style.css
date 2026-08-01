@@ -122,6 +122,14 @@ img {
     width: auto;
 }
 
+.lp-site-header__tagline {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--lp-text-muted);
+}
+
 /* =========================================================
    Navigation menus
    ========================================================= */
@@ -145,6 +153,57 @@ img {
 .lp-nav-menu__item a:hover,
 .lp-nav-menu__item a:focus {
     color: var(--lp-accent);
+}
+
+/* Nested submenus (LP-049) — hidden by default and revealed on hover/focus
+   of their parent item, the classic dropdown pattern; positioned relative
+   to the parent <li> so it doesn't disturb the top-level menu's own
+   layout (flex row in the header, stacked list in the sidebar/footer). */
+
+.lp-nav-menu__item {
+    position: relative;
+}
+
+.lp-nav-menu__submenu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    list-style: none;
+    margin: 0;
+    padding: 0.5rem 0;
+    min-width: 12rem;
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+}
+
+.lp-nav-menu__item--has-children:hover > .lp-nav-menu__submenu,
+.lp-nav-menu__item--has-children:focus-within > .lp-nav-menu__submenu {
+    display: block;
+}
+
+.lp-nav-menu__submenu .lp-nav-menu__item a {
+    display: block;
+    padding: 0.4rem 1rem;
+}
+
+.lp-nav-menu__submenu .lp-nav-menu__submenu {
+    top: 0;
+    left: 100%;
+}
+
+/* Inside the sidebar widget (.lp-widget__nav-menu, LP-048) the top-level
+   list stacks vertically rather than flowing horizontally, so a dropdown
+   position doesn't apply — submenus expand inline, indented, instead. */
+
+.lp-widget__nav-menu .lp-nav-menu__submenu {
+    display: block;
+    position: static;
+    border: none;
+    padding: 0.35rem 0 0 1rem;
+    background: none;
 }
 
 /* =========================================================
@@ -652,6 +711,53 @@ img {
 .lp-widget__content {
     font-size: 0.95rem;
     color: var(--lp-text-muted);
+}
+
+/* Core widgets (LP-048): Pages, Categories, Recent Posts, Recent
+   Comments, Archives, and the Navigation Menu widget all render a plain
+   link list; Tag Cloud and Meta reuse the same list/count building
+   blocks. */
+
+.lp-widget__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.lp-widget__count {
+    color: var(--lp-text-muted);
+    font-size: 0.85em;
+}
+
+.lp-widget__nav-menu {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.lp-widget__tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+}
+
+.lp-widget__tag-cloud-item {
+    color: var(--lp-text);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+.lp-widget__tag-cloud-item:hover {
+    border-bottom-color: currentColor;
 }
 
 /* =========================================================

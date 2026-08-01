@@ -274,8 +274,35 @@ final class SiteController
     }
 
     /**
+     * Posts published in a given calendar month (LP-048, behind the
+     * Archives widget's monthly links). Reuses archive.php, same as the
+     * plain date archive above and category()/tag() below.
+     *
      * @param array<string, string> $params
      */
+    public function archiveByMonth(array $params): void
+    {
+        $year = (int) ($params['year'] ?? 0);
+        $month = (int) ($params['month'] ?? 0);
+
+        if ($year < 1000 || $year > 9999 || $month < 1 || $month > 12) {
+            $this->notFound();
+
+            return;
+        }
+
+        $page = max(1, (int) ($_GET['paged'] ?? 1));
+        $pagination = $this->posts->paginateByMonth($year, $month, $page);
+        $monthName = (new DateTimeImmutable())->setDate($year, $month, 1)->format('F Y');
+
+        $this->theme->render('archive.php', [
+            'page_title' => $monthName,
+            'archive_type' => 'date',
+            'posts' => $pagination['posts'],
+            'pagination' => $pagination,
+        ]);
+    }
+
     /**
      * @param array<string, string> $params
      */

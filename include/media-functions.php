@@ -51,6 +51,34 @@ if (!function_exists('post_thumbnail_media')) {
     }
 }
 
+if (!function_exists('post_thumbnail_crop')) {
+    /**
+     * $item's manual crop rectangle (LP-040), if one applies to $media —
+     * only ever the item's own featured image, never the site-wide
+     * default fallback image post_thumbnail_media() may have returned
+     * instead: the crop was drawn against that one specific image, so
+     * applying it to a different image (the default, or a stale value
+     * left over after the featured image was changed) could produce a
+     * nonsensical result. SearchResult (LP-031) has no crop of its own —
+     * only Post/Page do — so it always returns null here.
+     *
+     * @param array<string, mixed> $media
+     * @return array{x: int, y: int, width: int, height: int}|null
+     */
+    function post_thumbnail_crop(Post|Page|SearchResult $item, array $media): ?array
+    {
+        if (!($item instanceof Post || $item instanceof Page)) {
+            return null;
+        }
+
+        if ($item->featuredImageCrop === null || $item->featuredImageId === null) {
+            return null;
+        }
+
+        return $item->featuredImageId === (int) $media['id'] ? $item->featuredImageCrop : null;
+    }
+}
+
 if (!function_exists('has_post_thumbnail')) {
     function has_post_thumbnail(Post|Page|SearchResult $item): bool
     {
@@ -67,6 +95,12 @@ if (!function_exists('post_thumbnail_url')) {
      * default (matches MediaService::url()'s convention); pass
      * $absolute = true for contexts that need a fully-qualified URL (Open
      * Graph tags, RSS/Atom enclosures — neither can be root-relative).
+     *
+     * If $item has a manual crop (LP-040) for this exact image, that
+     * cropped image is returned instead of $size's named thumbnail — a
+     * manual crop always wins over the automatic centered one, regardless
+     * of which $size was requested, since there is only ever one manual
+     * crop per item (not one per named size).
      */
     function post_thumbnail_url(Post|Page|SearchResult $item, string $size = 'medium', bool $absolute = false): ?string
     {
@@ -74,6 +108,20 @@ if (!function_exists('post_thumbnail_url')) {
 
         if ($media === null) {
             return null;
+        }
+
+        $crop = post_thumbnail_crop($item, $media);
+
+        if ($crop !== null) {
+            $cropped = FeaturedImages::thumbnails()->generateFeaturedCrop($media, $crop);
+
+            if ($cropped !== null) {
+                $url = $cropped['url'];
+
+                return $absolute && !str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')
+                    ? SiteUrl::get() . '/' . ltrim($url, '/')
+                    : $url;
+            }
         }
 
         $url = FeaturedImages::thumbnails()->url($media, $size) ?? FeaturedImages::media()->url($media);
@@ -101,6 +149,11 @@ if (!function_exists('the_post_thumbnail')) {
      * plus the original as the largest candidate. Does nothing if there is
      * no featured image and no default configured.
      *
+     * If $item has a manual crop (LP-040) for this exact image, a single
+     * fixed-size <img> for that crop is echoed instead — no srcset, since
+     * a manual crop has no responsive variants (see
+     * ThumbnailService::generateFeaturedCrop()'s docblock).
+     *
      * @param array<string, string> $attrs Extra attributes (e.g. "class")
      *     merged onto the <img> tag, the same "let the theme extend it"
      *     idea as nav_menu()'s $menuClass param.
@@ -110,6 +163,36 @@ if (!function_exists('the_post_thumbnail')) {
         $media = post_thumbnail_media($item);
 
         if ($media === null) {
+            return;
+        }
+
+        $crop = post_thumbnail_crop($item, $media);
+        $cropped = $crop !== null ? FeaturedImages::thumbnails()->generateFeaturedCrop($media, $crop) : null;
+
+        if ($cropped !== null) {
+            $alt = ($media['alt_text'] ?? '') !== '' ? (string) $media['alt_text'] : $item->title;
+
+            $attributes = [
+                'src' => $cropped['url'],
+                'alt' => $alt,
+                'loading' => 'lazy',
+                'width' => (string) $cropped['width'],
+                'height' => (string) $cropped['height'],
+                ...$attrs,
+            ];
+
+            echo '<img';
+
+            foreach ($attributes as $name => $value) {
+                if ($value === '') {
+                    continue;
+                }
+
+                echo ' ' . esc_attr($name) . '="' . ($name === 'src' ? esc_url($value) : esc_attr($value)) . '"';
+            }
+
+            echo '>';
+
             return;
         }
 
@@ -219,19 +302,32 @@ if (!function_exists('the_post_thumbnail_lightbox')) {
 
         MediaViewer::markUsed();
 
-        $thumbnails = FeaturedImages::thumbnails();
-        $largeRow = null;
+        // If a manual crop (LP-040) applies, $href above already points
+        // at the cropped image — its own dimensions must be used here
+        // too, not $largeSize's named-thumbnail row, or the data-pswp-*
+        // attributes would describe a different image than the one the
+        // link actually opens.
+        $crop = post_thumbnail_crop($item, $media);
+        $cropped = $crop !== null ? FeaturedImages::thumbnails()->generateFeaturedCrop($media, $crop) : null;
 
-        foreach ($thumbnails->thumbnailsFor((int) $media['id']) as $row) {
-            if ($row['size_name'] === $largeSize) {
-                $largeRow = $row;
+        if ($cropped !== null) {
+            $width = $cropped['width'];
+            $height = $cropped['height'];
+        } else {
+            $thumbnails = FeaturedImages::thumbnails();
+            $largeRow = null;
 
-                break;
+            foreach ($thumbnails->thumbnailsFor((int) $media['id']) as $row) {
+                if ($row['size_name'] === $largeSize) {
+                    $largeRow = $row;
+
+                    break;
+                }
             }
-        }
 
-        $width = $largeRow !== null ? (int) $largeRow['width'] : (int) ($media['width'] ?? 0);
-        $height = $largeRow !== null ? (int) $largeRow['height'] : (int) ($media['height'] ?? 0);
+            $width = $largeRow !== null ? (int) $largeRow['width'] : (int) ($media['width'] ?? 0);
+            $height = $largeRow !== null ? (int) $largeRow['height'] : (int) ($media['height'] ?? 0);
+        }
         $caption = post_thumbnail_caption($item) ?? (($media['alt_text'] ?? '') !== '' ? (string) $media['alt_text'] : '');
 
         echo '<a href="' . esc_url($href) . '"'

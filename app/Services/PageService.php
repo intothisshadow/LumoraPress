@@ -29,6 +29,9 @@ final class PageService
     ) {
     }
 
+    /**
+     * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     */
     public function create(
         string $title,
         string $content,
@@ -40,14 +43,15 @@ final class PageService
         ?int $featuredImageId = null,
         ?string $slug = null,
         ContentFormat $contentFormat = ContentFormat::Markdown,
+        ?array $featuredImageCrop = null,
     ): Page {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, content_format, excerpt, status, author_id, parent_id, featured_image_id, published_at, created_at, updated_at)
-             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :published_at, :created_at, :updated_at)',
+                (title, slug, content, content_format, excerpt, status, author_id, parent_id, featured_image_id, featured_image_crop, published_at, created_at, updated_at)
+             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :featured_image_crop, :published_at, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -58,6 +62,7 @@ final class PageService
                 'author_id' => $authorId,
                 'parent_id' => $parentId,
                 'featured_image_id' => $featuredImageId,
+                'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now)?->format('Y-m-d H:i:s'),
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
@@ -85,6 +90,9 @@ final class PageService
         return $page;
     }
 
+    /**
+     * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     */
     public function update(
         int $id,
         string $title,
@@ -96,6 +104,7 @@ final class PageService
         ?int $featuredImageId = null,
         ?string $slug = null,
         ?ContentFormat $contentFormat = null,
+        ?array $featuredImageCrop = null,
     ): Page {
         $existing = $this->findById($id);
 
@@ -114,7 +123,7 @@ final class PageService
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET title = :title, slug = :slug, content = :content, content_format = :content_format, excerpt = :excerpt,
-                    status = :status, parent_id = :parent_id, featured_image_id = :featured_image_id,
+                    status = :status, parent_id = :parent_id, featured_image_id = :featured_image_id, featured_image_crop = :featured_image_crop,
                     published_at = :published_at, updated_at = :updated_at
               WHERE id = :id',
             [
@@ -126,6 +135,7 @@ final class PageService
                 'status' => $status->value,
                 'parent_id' => $parentId,
                 'featured_image_id' => $featuredImageId,
+                'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now, $existing->publishedAt)?->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
@@ -293,6 +303,24 @@ final class PageService
         );
     }
 
+    /**
+     * A flat {id, title, slug} list for the admin Menus screen's "Add
+     * Pages" checkbox list (LP-049) — separate from
+     * listAllForParentSelect() above since that method's shape/exclusion
+     * rules are specific to the parent-page picker, not menu building.
+     *
+     * @return array<int, array{id: int, title: string, slug: string}>
+     */
+    public function listAllForMenuSelect(): array
+    {
+        $rows = $this->database->fetchAll('SELECT id, title, slug FROM ' . $this->table() . ' ORDER BY title ASC');
+
+        return array_map(
+            static fn (array $row): array => ['id' => (int) $row['id'], 'title' => (string) $row['title'], 'slug' => (string) $row['slug']],
+            $rows,
+        );
+    }
+
     private function resolvePublishedAt(
         PageStatus $status,
         ?DateTimeImmutable $publishedAt,
@@ -361,7 +389,47 @@ final class PageService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             contentFormat: ContentFormat::tryFrom((string) ($row['content_format'] ?? '')) ?? ContentFormat::Plain,
+            featuredImageCrop: self::decodeCrop($row['featured_image_crop'] ?? null),
         );
+    }
+
+    /**
+     * Decodes the `featured_image_crop` column — see
+     * PostService::decodeCrop()'s identical docblock; duplicated rather
+     * than shared since these two services don't otherwise share a base
+     * class and this is a handful of lines, the same trade-off
+     * slugify()/generateUniqueSlug() already make in both services.
+     *
+     * @return array{x: int, y: int, width: int, height: int}|null
+     */
+    private static function decodeCrop(mixed $raw): ?array
+    {
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        foreach (['x', 'y', 'width', 'height'] as $key) {
+            if (!isset($decoded[$key]) || !is_numeric($decoded[$key]) || (int) $decoded[$key] < 0) {
+                return null;
+            }
+        }
+
+        if ((int) $decoded['width'] < 1 || (int) $decoded['height'] < 1) {
+            return null;
+        }
+
+        return [
+            'x' => (int) $decoded['x'],
+            'y' => (int) $decoded['y'],
+            'width' => (int) $decoded['width'],
+            'height' => (int) $decoded['height'],
+        ];
     }
 
     private function table(): string

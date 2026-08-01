@@ -207,6 +207,29 @@ final class CommentService
     }
 
     /**
+     * The most recent approved comments site-wide (LP-048, for the Recent
+     * Comments widget) — unlike recentForAdmin(), which intentionally
+     * includes every status for moderators, this must never surface a
+     * pending/spam/trashed comment to public site visitors.
+     *
+     * @return array<int, array{comment: Comment, postTitle: string, postSlug: string}>
+     */
+    public function recentApproved(int $limit = 5): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT c.*, p.title AS post_title, p.slug AS post_slug
+               FROM ' . $this->table() . ' c
+               INNER JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+              WHERE c.status = :status
+              ORDER BY c.created_at DESC, c.id DESC
+              LIMIT ' . (int) $limit,
+            ['status' => CommentStatus::Approved->value],
+        );
+
+        return array_map($this->hydrateWithPost(...), $rows);
+    }
+
+    /**
      * Approved comments for a post, built into a nested reply tree.
      * Oldest first within each level, matching the classic default
      * comment order.
