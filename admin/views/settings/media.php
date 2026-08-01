@@ -39,6 +39,11 @@ if ($form === 'thumbnail_settings' && Csrf::verify('thumbnail_settings', is_stri
 
     header('Location: ' . admin_url('settings/media') . '?saved=1');
     exit;
+} elseif ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $kernel->config->setOption('media_track_downloads', ($_POST['media_track_downloads'] ?? '') === '1' ? '1' : '0');
+
+    header('Location: ' . admin_url('settings/media') . '?saved=1');
+    exit;
 }
 ?>
 <h1 class="lp-admin__title">Media</h1>
@@ -125,6 +130,22 @@ if ($form === 'thumbnail_settings' && Csrf::verify('thumbnail_settings', is_stri
             <textarea id="media-import-directories" name="media_import_allowed_directories" rows="4"><?= esc_html(implode("\n", (array) (json_decode((string) $kernel->config->option('media_import_allowed_directories', '[]'), true) ?: []))) ?></textarea>
             <span class="lp-field__hint">Only these directories (and their subdirectories) can be scanned from Media Manager &rarr; Import from Server. Leave empty to disable server import entirely.</span>
         </p>
+
+        <button type="submit" class="lp-button">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Statistics</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings/media')) ?>">
+        <?= Csrf::field('media_stats_settings') ?>
+        <input type="hidden" name="form" value="media_stats_settings">
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="media_track_downloads" value="1" <?= $kernel->config->option('media_track_downloads', '1') !== '0' ? 'checked' : '' ?>>
+            Track file downloads
+        </label>
+        <span class="lp-field__hint">Counts a download each time a document, archive, audio, or video file is fetched through its <code>/media/{id}/download</code> link, shown on that file's Media Manager details page. Image "views" aren't tracked &mdash; see <a href="<?= esc_url(admin_url('media')) ?>">Media Manager</a>'s built-in views for what's available.</span>
 
         <button type="submit" class="lp-button">Save</button>
     </form>

@@ -7,14 +7,15 @@ namespace LumoraPress\Core\Theme;
 /**
  * Static bridge exposing site identity (name, tagline, logo, favicon,
  * custom CSS — LP-034; meta description, footer copyright text, default
- * Open Graph image, date/time display format — LP-042) to the procedural
- * site_name()/site_tagline()/site_logo_url()/favicon_url()/custom_css()/
- * meta_description()/footer_copyright_text()/default_og_image_url()/
- * the_date()/the_time() helpers used by themes. Mirrors SiteUrl/BasePath:
- * themes have no other route to PressConfig/MediaService, and these
- * values are identical on every page, so threading them through every
- * SiteController render() call would mean touching every action for one
- * request-scoped, set-once-at-bootstrap value.
+ * Open Graph image, date/time display format — LP-042; search engine
+ * visibility — LP-046) to the procedural site_name()/site_tagline()/
+ * site_logo_url()/favicon_url()/custom_css()/meta_description()/
+ * footer_copyright_text()/default_og_image_url()/the_date()/the_time()/
+ * search_engines_discouraged() helpers used by themes. Mirrors SiteUrl/
+ * BasePath: themes have no other route to PressConfig/MediaService, and
+ * these values are identical on every page, so threading them through
+ * every SiteController render() call would mean touching every action
+ * for one request-scoped, set-once-at-bootstrap value.
  */
 final class SiteBranding
 {
@@ -38,6 +39,8 @@ final class SiteBranding
 
     private static string $timeFormat = 'g:i a';
 
+    private static bool $discourageSearchEngines = false;
+
     public static function set(
         string $siteName,
         ?string $logoUrl,
@@ -49,6 +52,7 @@ final class SiteBranding
         ?string $defaultOgImageUrl = null,
         string $dateFormat = 'F j, Y',
         string $timeFormat = 'g:i a',
+        bool $discourageSearchEngines = false,
     ): void {
         self::$siteName = $siteName !== '' ? $siteName : 'Lumora Press';
         self::$logoUrl = $logoUrl;
@@ -60,6 +64,7 @@ final class SiteBranding
         self::$defaultOgImageUrl = $defaultOgImageUrl;
         self::$dateFormat = $dateFormat !== '' ? $dateFormat : 'F j, Y';
         self::$timeFormat = $timeFormat !== '' ? $timeFormat : 'g:i a';
+        self::$discourageSearchEngines = $discourageSearchEngines;
     }
 
     public static function siteName(): string
@@ -110,5 +115,10 @@ final class SiteBranding
     public static function timeFormat(): string
     {
         return self::$timeFormat;
+    }
+
+    public static function discourageSearchEngines(): bool
+    {
+        return self::$discourageSearchEngines;
     }
 }

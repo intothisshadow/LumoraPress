@@ -65,7 +65,44 @@ if ($kernel->maintenance->shouldBlock($requestUri)) {
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
     $output = ob_get_clean();
 
+    // Previewing a theme always requires a logged-in manage_themes user
+    // (see the gate above), so CacheManager::isCacheable() is already
+    // false here regardless — applyHeaders() is still called for the
+    // explicit `Cache-Control: no-store, private` it sends in that case,
+    // rather than leaving this response with no cache header at all.
+    $kernel->cache->applyHeaders((string) $output);
     echo \LumoraPress\Core\Theme\ThemePreview::injectBanner((string) $output, $exitUrl);
-} else {
+} elseif ((string) (parse_url($requestUri, PHP_URL_PATH) ?? '') === '/admin' || str_starts_with((string) (parse_url($requestUri, PHP_URL_PATH) ?? ''), '/admin/')) {
+    /*
+     * LP-037's output-buffer wrapping below is skipped for /admin: that
+     * route requires admin/index.php, which already opens its own,
+     * never-explicitly-closed ob_start() (see that file's docblock —
+     * "flushed automatically at script end"). Nesting a second buffer
+     * around it would make ob_get_clean() here pop admin's inner buffer
+     * instead of this one, leaving this one dangling. Not a concern for
+     * caching anyway — SiteController never marks an admin response
+     * cacheable, there's nothing for CacheManager to do here.
+     */
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
+} else {
+    /*
+     * LP-037: buffered (rather than letting the router's dispatched
+     * action echo straight through, as before) so CacheManager can
+     * compute a content-hash ETag and decide on a 304 only after the
+     * full response is known — see CacheManager::applyHeaders()'s
+     * docblock. Every non-admin route goes through this, not just
+     * SiteController's cacheable ones: API/POST/other responses simply
+     * never opted in (SiteController::markCacheableForGuests()), so they
+     * still get a safe default (applyHeaders() only skips the body for a
+     * genuinely cacheable, conditionally-matched request) and any header
+     * a route already sent for itself (e.g. SiteController::feed()'s own
+     * Cache-Control/ETag) is left alone, never overwritten.
+     */
+    ob_start();
+    $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
+    $output = ob_get_clean();
+
+    if ($kernel->cache->applyHeaders((string) $output)) {
+        echo $output;
+    }
 }

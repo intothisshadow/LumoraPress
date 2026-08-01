@@ -25,6 +25,14 @@ final class Post
         public readonly ?DateTimeImmutable $trashedAt = null,
         /** @var array{x: int, y: int, width: int, height: int}|null */
         public readonly ?array $featuredImageCrop = null,
+        /**
+         * LP-022 SEO overrides — null means "use $title"/"derive from
+         * $excerpt or $content" respectively; see the_seo_title()/
+         * the_seo_description() in include/helpers.php for that fallback
+         * chain.
+         */
+        public readonly ?string $metaTitle = null,
+        public readonly ?string $metaDescription = null,
     ) {
     }
 

@@ -24,6 +24,13 @@ final class Page
         public readonly ContentFormat $contentFormat = ContentFormat::Plain,
         /** @var array{x: int, y: int, width: int, height: int}|null */
         public readonly ?array $featuredImageCrop = null,
+        /**
+         * LP-022 SEO overrides — see Post's identical fields for the
+         * fallback chain (the_seo_title()/the_seo_description() in
+         * include/helpers.php).
+         */
+        public readonly ?string $metaTitle = null,
+        public readonly ?string $metaDescription = null,
     ) {
     }
 

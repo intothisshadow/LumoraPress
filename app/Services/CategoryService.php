@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\Category;
 use RuntimeException;
 
@@ -21,12 +22,15 @@ use RuntimeException;
  * "SQLSTATE[HY093]: Invalid parameter number" if a named placeholder
  * repeats within one query — the exact bug fixed in PageService's
  * listAllForParentSelect() (see PHP-TEST-SUITE.md's "Known gaps").
+ *
+ * $hooks is optional (LP-037) — see PostService's docblock for why.
  */
 final class CategoryService
 {
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -63,6 +67,8 @@ final class CategoryService
         if ($category === null) {
             throw new RuntimeException('Failed to load the category that was just created.');
         }
+
+        $this->hooks?->doAction('category_saved', $category);
 
         return $category;
     }
@@ -104,6 +110,8 @@ final class CategoryService
             throw new RuntimeException('Failed to load the category that was just updated.');
         }
 
+        $this->hooks?->doAction('category_saved', $category);
+
         return $category;
     }
 
@@ -114,7 +122,7 @@ final class CategoryService
      */
     public function delete(int $id): bool
     {
-        return (bool) $this->database->transaction(function () use ($id): int {
+        $deleted = (bool) $this->database->transaction(function () use ($id): int {
             $this->database->execute(
                 'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE parent_id = :parent_id',
                 ['parent_id' => $id],
@@ -130,6 +138,12 @@ final class CategoryService
                 ['id' => $id],
             );
         });
+
+        if ($deleted) {
+            $this->hooks?->doAction('category_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     public function findById(int $id): ?Category

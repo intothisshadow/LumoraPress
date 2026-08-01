@@ -20,6 +20,9 @@ if (!isset($kernel)) {
 <body class="lp-admin-login">
     <main class="lp-login">
         <h1 class="lp-login__brand">Lumora Press</h1>
+        <?php if (($_GET['reset'] ?? null) === 'success'): ?>
+            <p class="lp-alert lp-alert--success" role="status">Your password has been reset. Please log in.</p>
+        <?php endif; ?>
         <?php if ($error !== null): ?>
             <p class="lp-alert lp-alert--error" role="alert"><?= esc_html($error) ?></p>
         <?php endif; ?>
@@ -41,6 +44,9 @@ if (!isset($kernel)) {
                 <button type="submit" class="lp-button lp-button--primary">Log In</button>
             </p>
         </form>
+        <p class="lp-login__links">
+            <a href="<?= esc_url(admin_url('forgot-password')) ?>">Forgot password?</a>
+        </p>
     </main>
 </body>
 </html>

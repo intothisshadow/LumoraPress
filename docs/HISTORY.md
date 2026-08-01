@@ -539,6 +539,286 @@ Users
 
 This reduces the chance of leaving the installer accessible after deployment.
 
+### LP-001. Thumbnail Generation
+
+**Note:** this was fully implemented before 0.3.0 was cut (confirmed via
+`git log` — `ThumbnailService.php` already existed at the 0.3.0 release
+commit) and shipped as part of that release, but was never migrated out
+of `TODO.md` at the time — a bookkeeping gap, not new 0.4.0 work. Filed
+here retroactively; 0.3.0's own `CHANGELOG.md` entry is left as originally
+published rather than rewritten after the fact.
+
+#### Goal
+
+Automatically generate and manage thumbnails for uploaded media.
+
+#### Features
+
+- [x] Generate thumbnails automatically on upload
+- [x] Configurable thumbnail dimensions
+- [x] Crop or resize modes
+- [x] Preserve aspect ratio when resizing
+- [x] Generate multiple thumbnail sizes (e.g. small, medium, large)
+- [x] Support JPEG, PNG, GIF, WebP, and AVIF where available — GD only (no
+      Imagick); WebP/AVIF are generated only when the running GD build
+      supports them, skipped otherwise. AVIF is moot in practice today
+      since `MediaService`'s upload allow-list doesn't accept `image/avif`
+      yet — the code path exists for when/if that's added.
+- [x] Respect EXIF orientation before generating thumbnails
+- [x] Configurable image quality/compression — JPEG/WebP quality settings;
+      no separate AVIF quality setting (same reason as above).
+- [x] Strip unnecessary metadata from generated thumbnails — free: GD's
+      encoders never carry EXIF/ICC through from the source image.
+- [x] Prevent upscaling of images smaller than the target size
+- [x] Regenerate thumbnails for individual media items
+- [x] Bulk thumbnail regeneration tool
+- [x] Regenerate only missing thumbnails
+- [x] Delete orphaned thumbnails — DB-level reconciliation (thumbnail rows
+      whose parent media no longer exists), not a filesystem tree walk;
+      `deleteForMedia()` already keeps files/rows in lockstep on the
+      normal delete path, so this is a safety net, not the primary path.
+- [x] Background/batch processing for large libraries — synchronous
+      batch-per-request loop with a redirect/offset (no queue/cron
+      infrastructure exists anywhere in this codebase yet).
+- [x] Progress indicator for bulk regeneration
+- [x] Gracefully skip unsupported or corrupted images while logging errors
+- [x] Optional sharpening after resizing — fixed unsharp-style kernel,
+      on/off toggle only (no configurable strength).
+- [x] Developer hooks for custom thumbnail sizes and generation logic —
+      `thumbnail_sizes`/`thumbnail_max_pixels` filters,
+      `thumbnail_generated`/`thumbnail_generation_failed` actions.
+
+#### Settings
+
+- [x] Thumbnail dimensions
+- [x] Crop vs. fit mode
+- [x] JPEG/WebP/AVIF quality — JPEG/WebP only, see note above
+- [x] Enable/disable additional thumbnail sizes
+- [x] Maximum processing memory/time safeguards — max source-pixel-count
+      safeguard; no separate wall-clock time limit setting.
+
+#### Deliverables
+
+- Automatic thumbnail generation integrated into media uploads
+- Thumbnail regeneration tools in the admin panel
+- Efficient storage and cleanup of generated thumbnails
+- Updated documentation and configuration options
+
+### LP-021. REST API
+
+**Note:** also shipped as part of 0.3.0, documented in `CHANGELOG.md`'s
+0.3.0 entry ("REST API (LP-021): a new, versioned JSON REST API...") at
+the time, but — like LP-001 above — the ticket itself was never migrated
+out of `TODO.md`. Filed here retroactively.
+
+#### Goal
+
+Create a versioned REST API.
+
+#### Initial Endpoints
+
+All under `/api/v1/...` (`ApiController`, wired in `include/bootstrap.php`).
+Reads are always public and only ever return published/approved content;
+writes require an API token (see Authentication below) plus the same
+capability/ownership rules the admin UI already enforces.
+
+- [x] Posts — `GET /posts` (filter: `category`, `tag`, `author`, `page`,
+      `per_page`), `GET /posts/{slug}`, `POST /posts`, `PATCH /posts/{id}`,
+      `DELETE /posts/{id}`.
+- [x] Pages — same shape as Posts.
+- [x] Categories — `GET /categories`, `GET /categories/{slug}`, `POST`/
+      `PATCH`/`DELETE` (create/update: `edit_posts`; delete: `delete_posts`
+      — matches the existing admin convention that category/tag deletion
+      is gated on the *post* capability, not a dedicated one).
+- [x] Tags — same shape as Categories.
+- [x] Comments — `GET /comments?post_id=` (approved tree), `POST /comments`
+      (public, mirrors `SiteController::submitComment()`'s pending/
+      auto-approve/flood-control rules), `PATCH`/`DELETE /comments/{id}`
+      (moderation, `moderate_comments`).
+- [x] Search — `GET /search?q=&page=`, thin wrapper over
+      `SearchService::search()`.
+
+#### Features
+
+- [x] Authentication — new `ApiTokenService` (`app/Core/Security/`):
+      named, revocable, non-rotating bearer tokens
+      (`Authorization: Bearer {selector}:{validator}`), structurally
+      mirroring `RememberMeService`'s selector/validator/SHA-256 shape but
+      without rotation (an API token must stay stable across many
+      requests, unlike a single-use remember-me cookie). Self-service
+      management at `admin/views/api-tokens.php` (every authenticated
+      role, including Subscriber, manages their own tokens — no
+      cross-user token oversight view yet, deferred not dropped).
+- [x] Permissions — every write endpoint repeats the exact capability +
+      ownership checks (`canManagePost()`/`canDeletePost()` and Page
+      equivalents) already encoded in `admin/views/posts.php`/`pages.php`,
+      not a new permission model.
+- [x] Pagination — `meta: {page, perPage, total, totalPages}` on every
+      collection response, built from each service's existing
+      `paginate*()` return shape.
+- [x] Filtering — `category`/`tag`/`author` on Posts (`author` needed a
+      small new `PostService::paginateByAuthor()`, mirroring
+      `paginateByCategory()`).
+- [x] JSON responses — new `ApiResponse` helper (`app/Core/Http/`):
+      `{"data": ...}` / `{"data": [...], "meta": {...}}` /
+      `{"error": {"message": ..., "code": ...}}`, consistent across every
+      endpoint.
+
+Explicitly out of scope, recorded rather than silently dropped:
+authenticated reads of your own drafts/scheduled content (every GET is
+published-only regardless of the bearer token — no second visibility
+model on top of `isPubliclyVisible()`); rate limiting/abuse throttling on
+the API itself (pushed to LP-039 below); Media endpoints (not in the
+ticket's own "Initial Endpoints" list).
+
+### LP-029. Show Version Number in Admin UI
+
+**Implemented (2026-07-21).**
+
+#### Goal
+
+Make the running version visible in the admin area, both at a glance on every page and in more detail on the Dashboard.
+
+#### Requirements
+
+- [x] Show the version number (and codename) in the Dashboard's System Information widget (`admin/views/dashboard.php`) — was already showing the bare version number; added the codename alongside it (e.g. "0.2.0 (Posts)").
+- [x] Show a short version label under the "Lumora Press" brand in the admin sidebar (`admin/views/layout-header.php`), visible on every admin page, not just the Dashboard.
+
+### LP-030. Leftover Installer Directory Warning
+
+**Implemented (2026-07-21).** Manually verified on a live install: the
+`install/` directory is now actually removed after a successful manual
+ZIP update (LP-026's `UpdateService::install()` fix), and the Dashboard
+alert correctly reflects its absence.
+
+#### Goal
+
+Warn the administrator on the Dashboard if `install/` is still present on
+disk, so a leftover installer doesn't go unnoticed. `InstallerCleanup`
+already best-effort-deletes `install/` right after a successful install,
+but a locked-down host may not allow PHP to delete its own files, and
+`install/` is one of LP-026's `CORE_PATHS` — meaning a manual ZIP update
+re-extracts and resurrects it even on a site where the administrator had
+already deleted it by hand after installing. `install/index.php` itself
+already refuses to run once `config/config.php` exists (shows
+"already installed"), so this isn't an active reinstall risk, but leaving
+unnecessary installer code reachable is still worth flagging and cleaning
+up.
+
+#### Requirements
+
+- [x] Dashboard checks whether `install/` exists on every load and shows a
+  prominent alert if it does, naming the directory and instructing the
+  administrator to delete it.
+- [x] The same check/alert fires after both a fresh install (cleanup
+  failed) and after a manual ZIP update (LP-026) that reintroduced
+  `install/`.
+- [x] No change to `install/index.php`'s own already-installed guard —
+  this is a hygiene reminder, not a new security boundary.
+
+### LP-040. Featured Images
+
+**Note:** also shipped as part of 0.3.0, documented in `CHANGELOG.md`'s
+0.3.0 entry at the time, but the ticket itself was never migrated out of
+`TODO.md`. Filed here retroactively.
+
+#### Goal
+
+Allow posts and pages to have a designated featured image for use in themes, listings, feeds, and social sharing.
+
+#### Features
+
+- [x] Set, change, or remove a featured image
+
+- [x] Select from the Media Manager — a `<select>` of existing images
+      (mirrors the folder-select pattern already used in the Media
+      Manager), not a modal/JS picker — explicit scope narrowing, no
+      existing precedent for a modal picker anywhere in this codebase.
+
+- [x] Upload a new image while selecting
+
+- [x] Display featured image in post/page editor
+
+- [x] Optional featured images for posts and pages
+
+- [x] Theme API for retrieving featured images — `has_post_thumbnail()`,
+      `post_thumbnail_url()`, `the_post_thumbnail()`,
+      `post_thumbnail_caption()` (`include/media-functions.php`).
+
+- [x] Automatic thumbnail generation for featured images — re-uses
+      LP-001's `ThumbnailService::generate()` on upload.
+
+- [x] Responsive image support (`srcset`/`sizes`)
+
+- [x] Configurable default featured image
+
+- [x] Fallback when no featured image is assigned
+
+- [x] Include featured images in RSS/Atom feeds (optional) — RSS2
+      `<enclosure>` / Atom `<link rel="enclosure">`, gated by a
+      `feed_featured_images` setting (default on).
+
+- [x] Open Graph image support
+
+- [x] X (Twitter) Card image support
+
+- [x] Support WebP and AVIF where available — inherited for free from
+      LP-001's `ThumbnailService`/`MediaService`, no new format-handling
+      code needed here.
+
+- [x] Alt text support for accessibility
+
+- [x] Image captions and descriptions available to themes —
+      `post_thumbnail_caption()`.
+
+- [x] Replace or crop featured image after upload — "replace" via the
+      Media Manager/re-upload; "crop" is now a real interactive
+      rectangle-drag cropper (see "Manual cropping" below), superseding
+      the earlier scope note about only picking a different crop-mode
+      thumbnail size.
+
+- [x] Prevent deletion of images currently used as featured images without confirmation —
+      `MediaUsageChecker` now also checks Pages, not just Posts.
+
+- [x] Manual cropping of featured image on Post and Page — a per-item
+      crop rectangle (`featured_image_crop` column on `{prefix}posts`/
+      `{prefix}pages`, JSON `{x,y,width,height}` in the original image's
+      pixel coordinates), editable via a plain vanilla-JS drag-to-select/
+      move/resize-by-corner rectangle overlaid on the current featured
+      image (`admin/assets/js/featured-image-crop.js`) — deliberately no
+      new cropping library/CDN dependency, since a single rectangle is
+      implementable directly and this project only reaches for a CDN
+      library when plain DOM code genuinely can't do the job (see
+      `docs/THIRD-PARTY.md`). `ThumbnailService::generateFeaturedCrop()`
+      renders one deterministically-named, content-addressed derivative
+      image per crop rectangle (not tracked in `media_thumbnails`, which
+      is keyed by named size, not by arbitrary rectangle) and
+      `post_thumbnail_url()`/`the_post_thumbnail()` use it in place of
+      the automatic centered thumbnail whenever a crop is set for that
+      item's own featured image. Scope notes:
+  - Cropping is only offered for an *already-saved* featured image, not
+    a file just chosen in the same still-unsaved form — save first
+    (matches classic WordPress's own two-step flow).
+  - A manual crop produces one fixed-size image, not a responsive
+    `srcset` — a deliberate simplification; `the_post_thumbnail()`
+    documents this in its own docblock.
+  - Changing or clearing a crop leaves its previous derivative file on
+    disk (no reference-counted cleanup) — an accepted, documented gap.
+  - The REST API (LP-021) has no endpoint to read or write a crop
+    rectangle; it's admin-UI-only for now, the same scope line already
+    drawn around LP-008's Trash/Restore/Delete-Permanently actions.
+
+#### Theme API
+
+Provide a standardized Featured Image API for themes and plugins.
+
+#### Deliverables
+
+- Featured image support integrated into posts and pages
+- Theme API and template helpers
+- Social sharing metadata integration
+- Updated documentation
+
 ## 0.4.0 — Updates (2026-08-01)
 
 ### LP-017. Revisions
@@ -1288,4 +1568,46 @@ Restructure the admin sidebar so Categories and Tags become sub-pages of Posts, 
 - `admin/views/posts/categories.php` and `admin/views/posts/tags.php` (moved).
 - Updated `admin/views/dashboard.php` links.
 - Full `composer test`/`composer stan` pass with no regressions.
+
+
+### LP-051. Third-Party Asset Registry
+
+- [x] Create `/mnt/Winterfell/Coding/Github/Scripts/Lumora Press/LumoraPress/docs/THIRD-PARTY.md` to maintain an inventory of all bundled and externally referenced third-party assets.
+
+#### For Each Asset, Record
+
+- [x] Library/package name
+- [x] Purpose
+- [x] Current version
+- [x] Date added
+- [x] Date last updated
+- [x] Whether it is:
+  - [x] Bundled locally
+  - [x] Loaded from a CDN
+- [x] Source URL (official project/repository)
+- [x] License
+- [x] Local installation path (if bundled)
+- [x] Homepage/Documentation URL
+- [x] Notes (custom modifications, patches, configuration, etc.)
+
+#### Initial Entries
+
+- [x] TinyMCE
+- [x] EasyMDE
+- [x] PhotoSwipe
+- [x] CodeMirror — initially recorded as not applicable (only bundled transitively inside EasyMDE); now loaded directly and independently too, as of LP-050's Theme File Editor (`admin/assets/js/theme-file-editor.js`, CodeMirror 5.65.16) — entry updated in `docs/THIRD-PARTY.md`
+- [x] Any future JavaScript libraries — none currently beyond the three above; entry documents the process for adding one
+- [x] Any bundled CSS frameworks — none (hand-written CSS throughout)
+- [x] Any bundled PHP libraries — none (no runtime Composer dependency)
+- [x] Any bundled icon libraries — none beyond CDN-loaded Font Awesome 4 (EasyMDE toolbar only)
+- [x] Any bundled fonts — none (system font stack only)
+
+Also recorded Font Awesome 4.7.0, an asset the ticket didn't name explicitly
+but which the codebase already CDN-loads (for EasyMDE's toolbar icons) —
+in scope under "Initial Entries" as an actual bundled/referenced asset.
+
+#### Deliverables
+
+- `/mnt/Winterfell/Coding/Github/Scripts/Lumora Press/LumoraPress/docs/THIRD-PARTY.md`
+- Keep the document updated whenever a third-party asset is added, removed, or updated as part of a release.
 

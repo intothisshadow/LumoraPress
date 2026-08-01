@@ -39,7 +39,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $newStatus = CommentStatus::tryFrom((string) ($_POST['status'] ?? ''));
 
         if ($newStatus !== null && Csrf::verify('comment_moderate_' . $id . '_' . $newStatus->value, $token)) {
+            $previousComment = $commentService->findById($id);
             $commentService->updateStatus($id, $newStatus);
+
+            // Akismet moderator feedback (LP-025): tells Akismet when a
+            // human overturned its (or the local trust signal's) original
+            // call, so its model improves — best-effort, never blocks
+            // moderation if Akismet is unreachable.
+            if ($previousComment !== null && $kernel->akismet->isEnabled() && $previousComment->status !== $newStatus) {
+                $post = $kernel->posts->findById($previousComment->postId);
+                $akismetComment = [
+                    'comment_type' => 'comment',
+                    'comment_author' => $previousComment->guestName,
+                    'comment_author_email' => $previousComment->guestEmail,
+                    'comment_author_url' => $previousComment->guestUrl,
+                    'comment_content' => $previousComment->content,
+                    'user_ip' => $previousComment->ipAddress ?? '0.0.0.0',
+                    'user_agent' => $previousComment->userAgent,
+                    'referrer' => null,
+                    'permalink' => $post !== null ? home_url('post/' . $post->slug) : home_url(),
+                ];
+
+                if ($newStatus === CommentStatus::Spam) {
+                    $kernel->akismet->submitSpam($akismetComment);
+                } elseif ($newStatus === CommentStatus::Approved && $previousComment->status === CommentStatus::Spam) {
+                    $kernel->akismet->submitHam($akismetComment);
+                }
+            }
         }
 
         header('Location: ' . admin_url('comments') . (isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : ''));

@@ -134,6 +134,25 @@ if ($currentUser->can('manage_options')) {
         </ul>
     </section>
 
+    <?php if ($currentUser->can('upload_files')): ?>
+        <?php $popularDownloads = $kernel->mediaStats->mostDownloaded(5); ?>
+        <section class="lp-admin__widget">
+            <h2>Popular Downloads</h2>
+            <?php if ($popularDownloads === []): ?>
+                <p class="lp-admin__widget-placeholder">No downloads recorded yet.</p>
+            <?php else: ?>
+                <ul class="lp-admin__meta-list">
+                    <?php foreach ($popularDownloads as $downloadItem): ?>
+                        <li>
+                            <span><a href="<?= esc_url(admin_url('media')) ?>?action=edit&id=<?= (int) $downloadItem['id'] ?>"><?= esc_html((string) $downloadItem['file_name']) ?></a></span>
+                            <span><?= (int) $downloadItem['downloads'] ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
+
     <section class="lp-admin__widget">
         <h2>Update Status</h2>
         <p>Running Lumora Press <?= esc_html((string) $version['version']) ?>.</p>

@@ -16,6 +16,7 @@ $folderService = $kernel->folders;
 $usageChecker = $kernel->mediaUsage;
 $thumbnailService = $kernel->thumbnails;
 $importService = $kernel->mediaImport;
+$mediaStats = $kernel->mediaStats;
 $allowedImportDirectories = (array) (json_decode((string) $kernel->config->option('media_import_allowed_directories', '[]'), true) ?: []);
 
 $error = null;
@@ -430,6 +431,21 @@ $allFolders = $folderService->listAll();
             <iframe class="lp-media-edit__pdf" src="<?= esc_url($mediaService->url($editingMedia)) ?>" title="<?= esc_attr((string) $editingMedia['file_name']) ?>"></iframe>
         <?php endif; ?>
 
+        <?php if (!str_starts_with((string) $editingMedia['mime_type'], 'image/')): ?>
+            <?php $editingStats = $mediaStats->get((int) $editingMedia['id']); ?>
+            <ul class="lp-admin__meta-list">
+                <li><span>Downloads</span> <strong><?= (int) $editingStats['downloads'] ?></strong></li>
+                <li>
+                    <span>Last downloaded</span>
+                    <strong><?= $editingStats['lastDownloadedAt'] !== null ? esc_html($editingStats['lastDownloadedAt']->format('M j, Y g:i A')) : 'Never' ?></strong>
+                </li>
+            </ul>
+            <p class="lp-field__hint">
+                Download link (counts a download, then serves the file):
+                <code><?= esc_html(home_url('media/' . (int) $editingMedia['id'] . '/download')) ?></code>
+            </p>
+        <?php endif; ?>
+
         <form method="post" action="<?= esc_url(admin_url('media')) ?>">
             <?= Csrf::field('update_metadata') ?>
             <input type="hidden" name="form" value="update_metadata">
@@ -635,25 +651,60 @@ $allFolders = $folderService->listAll();
     $type = (string) ($_GET['type'] ?? '');
     $dateFrom = (string) ($_GET['date_from'] ?? '');
     $dateTo = (string) ($_GET['date_to'] ?? '');
+    $view = (string) ($_GET['view'] ?? '');
 
-    $filters = [
-        'term' => $term,
-        'type' => $type,
-        'dateFrom' => $dateFrom,
-        'dateTo' => $dateTo,
-    ];
+    /*
+     * LP-006's built-in views (Unused / Most Downloaded / Recently
+     * Downloaded / Never Downloaded) — unpaginated, capped lists rather
+     * than folded into the regular filter+pagination query() above, the
+     * same "quick, capped listing" precedent already used elsewhere for
+     * picker dropdowns (e.g. settings/general.php's OG image select,
+     * `$kernel->media->query(['type' => 'image'], 500, 0)`). "Unused"
+     * specifically only knows about the structured references
+     * MediaUsageChecker checks (featured images, site logo/favicon/
+     * default OG image) — see that class's docblock — not media embedded
+     * in post/page body content.
+     */
+    if ($view === 'unused') {
+        $usedIds = $usageChecker->usedMediaIds();
+        $items = array_values(array_filter(
+            $mediaService->query([], 500, 0)['items'],
+            static fn (array $item): bool => !in_array((int) $item['id'], $usedIds, true),
+        ));
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'most_downloaded') {
+        $items = $mediaStats->mostDownloaded(100);
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'recently_downloaded') {
+        $items = $mediaStats->recentlyDownloaded(100);
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'never_downloaded') {
+        $items = $mediaStats->neverDownloaded(100);
+        $totalPages = 1;
+        $page = 1;
+    } else {
+        $filters = [
+            'term' => $term,
+            'type' => $type,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+        ];
 
-    if ($currentFolderRaw === '0') {
-        $filters['unassignedOnly'] = true;
-    } elseif ($currentFolderId !== null) {
-        $filters['folderIds'] = [$currentFolderId, ...$folderService->descendantIds($currentFolderId)];
+        if ($currentFolderRaw === '0') {
+            $filters['unassignedOnly'] = true;
+        } elseif ($currentFolderId !== null) {
+            $filters['folderIds'] = [$currentFolderId, ...$folderService->descendantIds($currentFolderId)];
+        }
+
+        $page = max(1, (int) ($_GET['paged'] ?? 1));
+        $perPage = 40;
+        $result = $mediaService->query($filters, $perPage, ($page - 1) * $perPage);
+        $items = $result['items'];
+        $totalPages = (int) max(1, ceil($result['total'] / $perPage));
     }
-
-    $page = max(1, (int) ($_GET['paged'] ?? 1));
-    $perPage = 40;
-    $result = $mediaService->query($filters, $perPage, ($page - 1) * $perPage);
-    $items = $result['items'];
-    $totalPages = (int) max(1, ceil($result['total'] / $perPage));
 
     /**
      * @param array<int, Folder> $allFolders
@@ -701,6 +752,21 @@ $allFolders = $folderService->listAll();
 
     <div class="lp-media-manager">
         <aside class="lp-media-manager__sidebar">
+            <h2>Views</h2>
+            <ul class="lp-folder-tree">
+                <?php foreach ([
+                    '' => 'All Files',
+                    'unused' => 'Unused Media',
+                    'most_downloaded' => 'Most Downloaded',
+                    'recently_downloaded' => 'Recently Downloaded',
+                    'never_downloaded' => 'Never Downloaded',
+                ] as $viewValue => $viewLabel): ?>
+                    <li class="lp-folder-tree__item<?= $view === $viewValue ? ' is-active' : '' ?>">
+                        <a href="<?= esc_url(admin_url('media') . ($viewValue !== '' ? '?view=' . $viewValue : '')) ?>"><?= esc_html($viewLabel) ?></a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+
             <h2>Folders</h2>
             <ul class="lp-folder-tree">
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '' ? ' is-active' : '' ?>">
@@ -825,6 +891,9 @@ $allFolders = $folderService->listAll();
                                             <span class="lp-media-grid__thumb lp-media-grid__thumb--file" aria-hidden="true"><?= esc_html(strtoupper($mediaService->typeCategory((string) $item['mime_type']))) ?></span>
                                         <?php endif; ?>
                                         <span class="lp-media-grid__name"><?= esc_html((string) $item['file_name']) ?></span>
+                                        <?php if (array_key_exists('downloads', $item)): ?>
+                                            <span class="lp-status-badge"><?= (int) $item['downloads'] ?> download<?= (int) $item['downloads'] === 1 ? '' : 's' ?></span>
+                                        <?php endif; ?>
                                     </a>
                                 </div>
                             <?php endforeach; ?>

@@ -1,8 +1,31 @@
 <?php
 /** @var array<int, \LumoraPress\Models\Post> $posts */
 /** @var array{page: int, totalPages: int} $pagination */
+/** @var string|null $page_title */
 get_header();
 ?>
+<?php if ($page_title === null): ?>
+    <?php
+    /*
+     * LP-022: WebSite structured data — only on the genuine homepage
+     * (this template is shared with LP-046's "Posts page" at its own
+     * /page/{slug} URL, which always passes a non-null $page_title, so
+     * that check is what distinguishes the two here).
+     */
+    $websiteJsonLd = [
+        '@context' => 'https://schema.org',
+        '@type' => 'WebSite',
+        'name' => site_name(),
+        'url' => home_url(),
+        'potentialAction' => [
+            '@type' => 'SearchAction',
+            'target' => home_url('search') . '?q={search_term_string}',
+            'query-input' => 'required name=search_term_string',
+        ],
+    ];
+    ?>
+    <script type="application/ld+json"><?= json_encode($websiteJsonLd) ?></script>
+<?php endif; ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <h1 class="lp-page-title">Welcome to <?= esc_html(site_name()) ?></h1>

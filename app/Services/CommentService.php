@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
 use RuntimeException;
@@ -25,12 +26,19 @@ use RuntimeException;
  * when binding the same value twice — see CategoryService's docblock and
  * PHP-TEST-SUITE.md's "Known gaps" for why this matters against a real
  * MySQL connection.
+ *
+ * $hooks is optional (LP-037) — see PostService's docblock for why.
+ * create() deliberately does not fire a hook itself:
+ * SiteController::submitComment() already fires 'comment_posted' after
+ * calling it, and firing a second, redundant action here would double up
+ * every listener a plugin (or LP-037's own cache invalidation) attaches.
  */
 final class CommentService
 {
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -106,6 +114,8 @@ final class CommentService
             throw new RuntimeException('Failed to load the comment that was just updated.');
         }
 
+        $this->hooks?->doAction('comment_status_changed', $comment);
+
         return $comment;
     }
 
@@ -116,7 +126,7 @@ final class CommentService
      */
     public function delete(int $id): bool
     {
-        return (bool) $this->database->transaction(function () use ($id): int {
+        $deleted = (bool) $this->database->transaction(function () use ($id): int {
             $this->database->execute(
                 'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE parent_id = :parent_id',
                 ['parent_id' => $id],
@@ -124,6 +134,12 @@ final class CommentService
 
             return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
         });
+
+        if ($deleted) {
+            $this->hooks?->doAction('comment_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     public function findById(int $id): ?Comment

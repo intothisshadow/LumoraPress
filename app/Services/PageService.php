@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
@@ -17,7 +18,8 @@ use RuntimeException;
  * scheduled-visibility mechanism, same slug generation, same nullable
  * featured_image_id (LP-040) — plus a nullable parent_id for a basic, flat
  * parent/child relationship (no tree view, no drag-and-drop ordering, no
- * hierarchical URLs yet).
+ * hierarchical URLs yet). $hooks is optional (LP-037) — see
+ * PostService's docblock for why.
  */
 final class PageService
 {
@@ -26,6 +28,7 @@ final class PageService
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -86,6 +89,8 @@ final class PageService
         if ($page === null) {
             throw new RuntimeException('Failed to load the page that was just created.');
         }
+
+        $this->hooks?->doAction('page_saved', $page);
 
         return $page;
     }
@@ -148,12 +153,43 @@ final class PageService
             throw new RuntimeException('Failed to load the page that was just updated.');
         }
 
+        $this->hooks?->doAction('page_saved', $page);
+
         return $page;
+    }
+
+    /**
+     * LP-022 SEO title/description overrides — mirrors PostService::
+     * updateSeo(), see its docblock for why this is a dedicated method.
+     */
+    public function updateSeo(int $id, ?string $metaTitle, ?string $metaDescription): void
+    {
+        $metaTitle = $metaTitle !== null && trim($metaTitle) !== '' ? $metaTitle : null;
+        $metaDescription = $metaDescription !== null && trim($metaDescription) !== '' ? $metaDescription : null;
+
+        $updated = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET meta_title = :meta_title, meta_description = :meta_description WHERE id = :id',
+            ['meta_title' => $metaTitle, 'meta_description' => $metaDescription, 'id' => $id],
+        ) > 0;
+
+        if ($updated) {
+            $page = $this->findById($id);
+
+            if ($page !== null) {
+                $this->hooks?->doAction('page_saved', $page);
+            }
+        }
     }
 
     public function delete(int $id): bool
     {
-        return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+        $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        if ($deleted) {
+            $this->hooks?->doAction('page_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     public function findById(int $id): ?Page
@@ -197,6 +233,20 @@ final class PageService
         );
 
         return array_map(static fn (array $row): string => (string) $row['title'], $rows);
+    }
+
+    /**
+     * Mirrors PostService::featuredImageIdsInUse() — see its docblock.
+     *
+     * @return array<int, int>
+     */
+    public function featuredImageIdsInUse(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT DISTINCT featured_image_id FROM ' . $this->table() . ' WHERE featured_image_id IS NOT NULL',
+        );
+
+        return array_map(static fn (array $row): int => (int) $row['featured_image_id'], $rows);
     }
 
     /**
@@ -390,6 +440,8 @@ final class PageService
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             contentFormat: ContentFormat::tryFrom((string) ($row['content_format'] ?? '')) ?? ContentFormat::Plain,
             featuredImageCrop: self::decodeCrop($row['featured_image_crop'] ?? null),
+            metaTitle: isset($row['meta_title']) && $row['meta_title'] !== '' ? (string) $row['meta_title'] : null,
+            metaDescription: isset($row['meta_description']) && $row['meta_description'] !== '' ? (string) $row['meta_description'] : null,
         );
     }
 

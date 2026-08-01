@@ -43,7 +43,7 @@ $version = require LUMORA_ROOT . '/version.php';
                     <?php if (isset($item['children'])): ?>
                         <li class="lp-admin__nav-item lp-admin__nav-item--parent<?= $isParentActive ? ' is-active is-open' : '' ?>" data-menu-slug="<?= esc_attr($slug) ?>">
                             <span class="lp-admin__nav-parent-row">
-                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><?= esc_html($item['label']) ?></a>
+                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>"><?= esc_html($item['label']) ?></a>
                                 <button
                                     type="button"
                                     class="lp-admin__nav-toggle"
@@ -67,7 +67,7 @@ $version = require LUMORA_ROOT . '/version.php';
                         </li>
                     <?php else: ?>
                         <li class="lp-admin__nav-item<?= $isParentActive ? ' is-active' : '' ?>">
-                            <a href="<?= esc_url(admin_url($slug)) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><?= esc_html($item['label']) ?></a>
+                            <a href="<?= esc_url(admin_url($slug)) ?>"><?= esc_html($item['label']) ?></a>
                         </li>
                     <?php endif; ?>
                 <?php endforeach; ?>

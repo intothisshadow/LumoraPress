@@ -6,17 +6,24 @@ namespace LumoraPress\Controllers;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use LumoraPress\Core\Cache\CacheManager;
+use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\Post;
+use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\FeedService;
+use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
 
@@ -44,6 +51,11 @@ final class SiteController
         private readonly PressConfig $config,
         private readonly FeedService $feeds,
         private readonly SearchService $search,
+        private readonly MediaService $media,
+        private readonly MediaStatsService $mediaStats,
+        private readonly CacheManager $cache,
+        private readonly RedirectService $redirects,
+        private readonly AkismetClient $akismet,
     ) {
     }
 
@@ -52,14 +64,80 @@ final class SiteController
      */
     public function home(array $params): void
     {
-        $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $pagination = $this->posts->paginatePublished($page);
+        if ($this->config->option('homepage_display', 'posts') === 'page') {
+            $homepagePageId = (int) $this->config->option('homepage_page_id', '0');
+            $homepagePage = $homepagePageId > 0 ? $this->pages->findById($homepagePageId) : null;
 
+            if ($homepagePage !== null && $homepagePage->isPubliclyVisible()) {
+                $this->markCacheableForGuests(['page_' . $homepagePage->id]);
+                $this->theme->render('page.php', [
+                    'page_title' => $homepagePage->title,
+                    'page' => $homepagePage,
+                ]);
+
+                return;
+            }
+        }
+
+        $this->renderPostsListing(null);
+    }
+
+    /**
+     * The configured "Blog pages show at most" size (LP-046 Reading
+     * settings), shared by the homepage post listing and every archive
+     * view (category/tag/date/month) below — mirrors how feed_item_limit
+     * already centralizes the equivalent RSS/Atom setting in FeedService.
+     */
+    private function postsPerPage(): int
+    {
+        return max(1, (int) $this->config->option('posts_per_page', '10'));
+    }
+
+    /**
+     * Opts the current response into HTTP caching (LP-037) — only for a
+     * guest; a logged-in visitor's response is never marked cacheable, so
+     * they always get a fresh render (and never risk being served
+     * another visitor's cached copy of an admin-bar-less guest page, or
+     * vice versa). Every route that calls this renders identically for
+     * every guest with the same URL — no embedded CSRF form, no
+     * per-visitor content — see CacheManager::markPageCacheable()'s
+     * docblock for why singlePost() deliberately never does.
+     *
+     * @param array<int, string> $tags
+     */
+    private function markCacheableForGuests(array $tags = []): void
+    {
+        if (!$this->auth->check()) {
+            $this->cache->markPageCacheable($tags);
+        }
+    }
+
+    private function renderPostsListing(?string $pageTitle): void
+    {
+        $page = max(1, (int) ($_GET['paged'] ?? 1));
+        $pagination = $this->posts->paginatePublished($page, $this->postsPerPage());
+
+        $this->markCacheableForGuests(['posts']);
         $this->theme->render('index.php', [
-            'page_title' => null,
+            'page_title' => $pageTitle,
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
         ]);
+    }
+
+    /**
+     * Whether $pageId is the configured "Posts page" (LP-046) — the page
+     * whose own URL shows the latest-posts listing instead of that page's
+     * stored content, the same "static homepage + separate posts page"
+     * combination WordPress's Reading settings offer. Only meaningful
+     * while a static homepage is configured; with the default "latest
+     * posts" homepage there's no separate posts page to redirect to.
+     */
+    private function isConfiguredPostsPage(int $pageId): bool
+    {
+        return $pageId > 0
+            && $this->config->option('homepage_display', 'posts') === 'page'
+            && (int) $this->config->option('homepage_posts_page_id', '0') === $pageId;
     }
 
     /**
@@ -135,6 +213,17 @@ final class SiteController
             exit;
         }
 
+        // Submission timing (LP-025): a real visitor takes at least a few
+        // seconds to fill in the form, so an instant submission is a bot
+        // signal. Same "fail silently" treatment as the honeypot above.
+        $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
+        $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
+
+        if (!FormTiming::verify($formTime, $formTimeHmac)) {
+            header('Location: ' . $redirectTo . '#comment-form');
+            exit;
+        }
+
         $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
         $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
 
@@ -170,6 +259,28 @@ final class SiteController
             || $this->comments->hasPreviouslyApprovedComment($userId, $guestEmail)
             ? CommentStatus::Approved
             : CommentStatus::Pending;
+
+        // Akismet (LP-025), when enabled, can only push a comment toward
+        // Spam — never away from it — so this is strictly additive on top
+        // of the trust-signal decision above. A null result (Akismet
+        // unreachable/misconfigured) leaves that decision untouched.
+        if ($this->akismet->isEnabled()) {
+            $isSpam = $this->akismet->checkComment([
+                'comment_type' => 'comment',
+                'comment_author' => $guestName,
+                'comment_author_email' => $guestEmail,
+                'comment_author_url' => $guestUrl,
+                'comment_content' => $content,
+                'user_ip' => $ipAddress,
+                'user_agent' => $userAgent,
+                'referrer' => is_string($_SERVER['HTTP_REFERER'] ?? null) ? $_SERVER['HTTP_REFERER'] : null,
+                'permalink' => $redirectTo,
+            ]);
+
+            if ($isSpam === true) {
+                $status = CommentStatus::Spam;
+            }
+        }
 
         $comment = $this->comments->create(
             postId: $post->id,
@@ -220,8 +331,9 @@ final class SiteController
         }
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $pagination = $this->posts->paginateByCategory($category->id, $page);
+        $pagination = $this->posts->paginateByCategory($category->id, $page, $this->postsPerPage());
 
+        $this->markCacheableForGuests(['posts', 'category_' . $category->id]);
         $this->theme->render('archive.php', [
             'page_title' => $category->name,
             'archive_type' => 'category',
@@ -246,8 +358,9 @@ final class SiteController
         }
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $pagination = $this->posts->paginateByTag($tag->id, $page);
+        $pagination = $this->posts->paginateByTag($tag->id, $page, $this->postsPerPage());
 
+        $this->markCacheableForGuests(['posts', 'tag_' . $tag->id]);
         $this->theme->render('archive.php', [
             'page_title' => $tag->name,
             'archive_type' => 'tag',
@@ -263,8 +376,9 @@ final class SiteController
     public function archive(array $params): void
     {
         $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $pagination = $this->posts->paginatePublished($page);
+        $pagination = $this->posts->paginatePublished($page, $this->postsPerPage());
 
+        $this->markCacheableForGuests(['posts']);
         $this->theme->render('archive.php', [
             'page_title' => 'Archive',
             'archive_type' => 'date',
@@ -292,9 +406,10 @@ final class SiteController
         }
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $pagination = $this->posts->paginateByMonth($year, $month, $page);
+        $pagination = $this->posts->paginateByMonth($year, $month, $page, $this->postsPerPage());
         $monthName = (new DateTimeImmutable())->setDate($year, $month, 1)->format('F Y');
 
+        $this->markCacheableForGuests(['posts']);
         $this->theme->render('archive.php', [
             'page_title' => $monthName,
             'archive_type' => 'date',
@@ -312,6 +427,7 @@ final class SiteController
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $results = $this->search->search($query, $page);
 
+        $this->markCacheableForGuests(['search']);
         $this->theme->render('search.php', [
             'page_title' => 'Search',
             'query' => $results['query'],
@@ -334,6 +450,18 @@ final class SiteController
             return;
         }
 
+        // LP-046: with a static homepage configured, the designated
+        // "Posts page" shows the latest-posts listing at its own URL
+        // instead of its own stored content — mirroring how visiting that
+        // same page ID as the homepage already renders it as a static
+        // page above, this is the other half of that pairing.
+        if ($this->isConfiguredPostsPage($page->id)) {
+            $this->renderPostsListing($page->title);
+
+            return;
+        }
+
+        $this->markCacheableForGuests(['page_' . $page->id]);
         $this->theme->render('page.php', [
             'page_title' => $page->title,
             'page' => $page,
@@ -508,9 +636,134 @@ final class SiteController
         return $xml;
     }
 
+    /**
+     * Virtual /robots.txt (LP-046 Reading settings > Search Engine
+     * Visibility) — there's no physical robots.txt file in the app root
+     * (see .htaccess's "serve existing files directly" rule), so this
+     * route is what actually answers the request. Mirrors the two states
+     * classic WordPress's own "Discourage search engines" option
+     * produces: a blanket Disallow when discouraged, otherwise just the
+     * admin area kept out of search results.
+     *
+     * @param array<string, string> $params
+     */
+    public function robotsTxt(array $params): void
+    {
+        header('Content-Type: text/plain; charset=UTF-8');
+
+        if ($this->config->option('discourage_search_engines', '0') === '1') {
+            echo "User-agent: *\nDisallow: /\n";
+
+            return;
+        }
+
+        echo "User-agent: *\n";
+        echo 'Disallow: ' . site_url('admin') . "\n";
+        echo 'Sitemap: ' . home_url('sitemap.xml') . "\n";
+    }
+
+    /**
+     * Explicit "download this file" link target (LP-006 Media Statistics)
+     * — counts a download for document/archive/audio/video media, then
+     * redirects to the real static file URL. Images pass through
+     * uncounted: this ticket deliberately doesn't track image "views",
+     * since every `<img>` on every page would otherwise need to route
+     * through PHP to be countable (see MediaStatsService's docblock) —
+     * this route only exists at all because a distinct, explicit download
+     * click is a request PHP already gets to see.
+     *
+     * @param array<string, string> $params
+     */
+    public function mediaDownload(array $params): void
+    {
+        $id = (int) ($params['id'] ?? 0);
+        $item = $id > 0 ? $this->media->find($id) : null;
+
+        if ($item === null) {
+            $this->notFound();
+
+            return;
+        }
+
+        $isImage = str_starts_with((string) $item['mime_type'], 'image/');
+
+        if (!$isImage && $this->config->option('media_track_downloads', '1') !== '0') {
+            $this->mediaStats->recordDownload($id);
+        }
+
+        header('Location: ' . $this->media->url($item));
+        exit;
+    }
+
+    /**
+     * Checks for an admin-configured redirect (LP-022) before actually
+     * answering 404 — the same request-path normalization
+     * canonical_url() (include/helpers.php) uses, so a redirect saved
+     * against "old-page" matches a request for "/old-page" regardless of
+     * how it was entered.
+     */
     public function notFound(): void
     {
+        $requestPath = (string) (parse_url(BasePath::stripFrom($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $redirect = $this->redirects->findBySourcePath($requestPath);
+
+        if ($redirect !== null) {
+            $this->redirects->recordHit((int) $redirect['id']);
+            header('Location: ' . (string) $redirect['target_url'], true, (int) $redirect['status_code']);
+            exit;
+        }
+
         http_response_code(404);
         $this->theme->render('404.php', ['page_title' => 'Page Not Found']);
+    }
+
+    /**
+     * XML sitemap (LP-022, sitemaps.org protocol) — every published
+     * post/page plus every category/tag archive URL. Single flat file,
+     * capped at the protocol's own 50,000-URL limit per sitemap; a large
+     * blog beyond that would need splitting into a sitemap index, not
+     * built here (see TODO.md's LP-022 entry). Not run through
+     * CacheManager — infrequent crawler traffic, not worth the added
+     * complexity for this first pass.
+     *
+     * @param array<string, string> $params
+     */
+    public function sitemap(array $params): void
+    {
+        header('Content-Type: application/xml; charset=UTF-8');
+
+        $urls = [['loc' => home_url(), 'lastmod' => null]];
+
+        foreach ($this->posts->paginatePublished(1, 50000)['posts'] as $sitemapPost) {
+            $urls[] = ['loc' => home_url('post/' . $sitemapPost->slug), 'lastmod' => $sitemapPost->updatedAt];
+        }
+
+        foreach ($this->pages->paginatePublished(1, 50000)['pages'] as $sitemapPage) {
+            $urls[] = ['loc' => home_url('page/' . $sitemapPage->slug), 'lastmod' => $sitemapPage->updatedAt];
+        }
+
+        foreach ($this->categories->listAll() as $category) {
+            $urls[] = ['loc' => home_url('category/' . $category->slug), 'lastmod' => null];
+        }
+
+        foreach ($this->tags->listAll() as $tag) {
+            $urls[] = ['loc' => home_url('tag/' . $tag->slug), 'lastmod' => null];
+        }
+
+        echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+
+        foreach ($urls as $url) {
+            echo '<url>' . "\n";
+            echo '<loc>' . esc_url((string) $url['loc']) . '</loc>' . "\n";
+
+            if ($url['lastmod'] instanceof DateTimeImmutable) {
+                echo '<lastmod>' . $url['lastmod']->format('c') . '</lastmod>' . "\n";
+            }
+
+            echo '</url>' . "\n";
+        }
+
+        echo '</urlset>' . "\n";
     }
 }

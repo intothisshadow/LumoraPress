@@ -317,6 +317,21 @@ if (!function_exists('default_og_image_url')) {
     }
 }
 
+if (!function_exists('search_engines_discouraged')) {
+    /**
+     * Whether the admin has asked search engines not to index this site
+     * (LP-046 Reading settings, Settings &rsaquo; Reading &rsaquo; Search
+     * Engine Visibility). Themes use this to decide whether to print
+     * <meta name="robots" content="noindex,nofollow">; the actual
+     * /robots.txt response is generated server-side by
+     * SiteController::robotsTxt(), not by themes.
+     */
+    function search_engines_discouraged(): bool
+    {
+        return SiteBranding::discourageSearchEngines();
+    }
+}
+
 if (!function_exists('custom_css')) {
     /**
      * Admin-authored CSS (LP-034), meant to be echoed inside a <style>
@@ -345,5 +360,36 @@ if (!function_exists('home_url')) {
         $base = SiteUrl::get();
 
         return $path === '' ? $base : $base . '/' . $path;
+    }
+}
+
+if (!function_exists('canonical_url')) {
+    /**
+     * The current request's canonical URL (LP-022) — self-referencing,
+     * the simplest correct default for a site with no query-string-driven
+     * content variants other than pagination (?paged=) and a search query
+     * (?q=). Every other query parameter (tracking params like utm_*, the
+     * one-time ?comment=posted flash flag, ...) is deliberately dropped:
+     * none of them represent a genuinely different version of the page
+     * that search engines should index separately.
+     */
+    function canonical_url(): string
+    {
+        $requestPath = (string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+        $path = BasePath::stripFrom($requestPath);
+
+        $query = [];
+
+        if (isset($_GET['paged'])) {
+            $query['paged'] = $_GET['paged'];
+        }
+
+        if (isset($_GET['q'])) {
+            $query['q'] = $_GET['q'];
+        }
+
+        $url = home_url(ltrim($path, '/'));
+
+        return $query === [] ? $url : $url . '?' . http_build_query($query);
     }
 }

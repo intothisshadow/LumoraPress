@@ -41,6 +41,16 @@ final class UserService
         return $row === null ? null : $this->hydrate($row);
     }
 
+    public function findByEmail(string $email): ?User
+    {
+        $row = $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . ' WHERE LOWER(email) = LOWER(:email)',
+            ['email' => $email],
+        );
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
     public function usernameOrEmailExists(string $username, string $email): bool
     {
         $row = $this->database->fetchOne(

@@ -181,6 +181,14 @@ $githubAutoCheckEnabled = ((string) $kernel->config->option('update_auto_check_e
 $githubCheckInterval = (string) $kernel->config->option('update_check_interval', '86400');
 $updateStatus = $kernel->githubUpdates->cachedUpdateStatus($installedVersion);
 $releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
+
+// LP-057: default to the Manual Update tab when the current request is the
+// result of a manual-upload error or a manual checkResult, so a validation
+// error on upload doesn't get hidden behind the GitHub tab.
+$activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 'manual')
+    || (($form ?? '') === 'upload' && $error !== null)
+    ? 'manual'
+    : 'github';
 ?>
 <h1 class="lp-admin__title">Updates</h1>
 
@@ -287,44 +295,6 @@ $releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
     </section>
 <?php else: ?>
 
-    <?php if ($updateStatus['latest_version'] !== null): ?>
-        <section class="lp-admin__panel">
-            <h2>Latest release</h2>
-            <p>
-                Lumora Press <?= esc_html($updateStatus['release_name'] ?? ('v' . $updateStatus['latest_version'])) ?>
-                — version <strong><?= esc_html($updateStatus['latest_version']) ?></strong>
-                <span class="lp-status-badge <?= $updateStatus['prerelease'] ? 'lp-status-badge--warning' : 'lp-status-badge--success' ?>">
-                    <?= $updateStatus['prerelease'] ? 'Pre-release' : 'Stable' ?>
-                </span>
-            </p>
-            <?php if ($updateStatus['release_date'] !== null): ?>
-                <p class="lp-field__hint">Published <?= esc_html($updateStatus['release_date']) ?></p>
-            <?php endif; ?>
-            <?php if ($updateStatus['download_size'] !== null): ?>
-                <p class="lp-field__hint">Download size: <?= esc_html(number_format($updateStatus['download_size'] / 1024 / 1024, 1)) ?> MB</p>
-            <?php endif; ?>
-
-            <p class="lp-admin__inline-form">
-                <a class="lp-button" href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View release notes on GitHub</a>
-
-                <?php if ($updateStatus['available']): ?>
-                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
-                        <?= Csrf::field('github_download') ?>
-                        <input type="hidden" name="form" value="github_download">
-                        <button type="submit" class="lp-button lp-button--primary">Download &amp; Install</button>
-                    </form>
-                <?php endif; ?>
-            </p>
-
-            <?php if ($updateStatus['release_notes'] !== null): ?>
-                <div class="lp-update__release-notes">
-                    <p><strong><?= esc_html($updateStatus['release_name'] ?? ('Release notes for ' . $updateStatus['latest_version'])) ?></strong></p>
-                    <pre><?= esc_html($updateStatus['release_notes']) ?></pre>
-                </div>
-            <?php endif; ?>
-        </section>
-    <?php endif; ?>
-
     <section class="lp-admin__panel">
         <h2>Database Updates</h2>
         <table class="lp-table">
@@ -345,15 +315,85 @@ $releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
         </table>
     </section>
 
-    <section class="lp-admin__panel">
-        <h2>Check for Updates</h2>
-        <p>Checks the configured release source for a new Lumora Press release. No site content, user data, or identifying information is ever transmitted — only a plain GET request is made to the release API.</p>
-        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
-            <?= Csrf::field('github_check') ?>
-            <input type="hidden" name="form" value="github_check">
-            <button type="submit" class="lp-button lp-button--primary">Check for Updates Now</button>
-        </form>
-    </section>
+    <div class="lp-tabs">
+        <div class="lp-tabs__list" role="tablist" aria-label="Update method">
+            <button type="button" class="lp-tabs__tab" id="lp-tab-github" role="tab" aria-selected="<?= $activeTab === 'github' ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-github" tabindex="<?= $activeTab === 'github' ? '0' : '-1' ?>">GitHub</button>
+            <button type="button" class="lp-tabs__tab" id="lp-tab-manual" role="tab" aria-selected="<?= $activeTab === 'manual' ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-manual" tabindex="<?= $activeTab === 'manual' ? '0' : '-1' ?>">Manual Update</button>
+        </div>
+
+        <div class="lp-tabs__panel" id="lp-tabpanel-github" role="tabpanel" aria-labelledby="lp-tab-github"<?= $activeTab === 'github' ? '' : ' hidden' ?>>
+            <?php if ($updateStatus['latest_version'] !== null): ?>
+                <section class="lp-admin__panel">
+                    <h2>Latest release</h2>
+                    <p>
+                        Lumora Press <?= esc_html($updateStatus['release_name'] ?? ('v' . $updateStatus['latest_version'])) ?>
+                        — version <strong><?= esc_html($updateStatus['latest_version']) ?></strong>
+                        <span class="lp-status-badge <?= $updateStatus['prerelease'] ? 'lp-status-badge--warning' : 'lp-status-badge--success' ?>">
+                            <?= $updateStatus['prerelease'] ? 'Pre-release' : 'Stable' ?>
+                        </span>
+                    </p>
+                    <?php if ($updateStatus['release_date'] !== null): ?>
+                        <p class="lp-field__hint">Published <?= esc_html($updateStatus['release_date']) ?></p>
+                    <?php endif; ?>
+                    <?php if ($updateStatus['download_size'] !== null): ?>
+                        <p class="lp-field__hint">Download size: <?= esc_html(number_format($updateStatus['download_size'] / 1024 / 1024, 1)) ?> MB</p>
+                    <?php endif; ?>
+
+                    <p class="lp-admin__inline-form">
+                        <a class="lp-button" href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View release notes on GitHub</a>
+
+                        <?php if ($updateStatus['available']): ?>
+                            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
+                                <?= Csrf::field('github_download') ?>
+                                <input type="hidden" name="form" value="github_download">
+                                <button type="submit" class="lp-button lp-button--primary">Download &amp; Install</button>
+                            </form>
+                        <?php endif; ?>
+                    </p>
+
+                    <?php if ($updateStatus['release_notes'] !== null): ?>
+                        <div class="lp-update__release-notes">
+                            <p><strong><?= esc_html($updateStatus['release_name'] ?? ('Release notes for ' . $updateStatus['latest_version'])) ?></strong></p>
+                            <pre><?= esc_html($updateStatus['release_notes']) ?></pre>
+                        </div>
+                    <?php endif; ?>
+                </section>
+            <?php endif; ?>
+
+            <section class="lp-admin__panel">
+                <h2>Check for Updates</h2>
+                <p>Checks the configured release source for a new Lumora Press release. No site content, user data, or identifying information is ever transmitted — only a plain GET request is made to the release API.</p>
+                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
+                    <?= Csrf::field('github_check') ?>
+                    <input type="hidden" name="form" value="github_check">
+                    <button type="submit" class="lp-button lp-button--primary">Check for Updates Now</button>
+                </form>
+            </section>
+        </div>
+
+        <div class="lp-tabs__panel" id="lp-tabpanel-manual" role="tabpanel" aria-labelledby="lp-tab-manual"<?= $activeTab === 'manual' ? '' : ' hidden' ?>>
+            <section class="lp-admin__panel">
+                <h2>Manual Update (ZIP Upload)</h2>
+                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
+                    <?= Csrf::field('update_upload') ?>
+                    <input type="hidden" name="form" value="upload">
+
+                    <p class="lp-field">
+                        <label for="update-package">Release ZIP file</label>
+                        <input type="file" id="update-package" name="package" accept=".zip" required>
+                        <span class="lp-field__hint">Only official Lumora Press release packages should be uploaded here.</span>
+                    </p>
+
+                    <p class="lp-field lp-field--checkbox">
+                        <input type="checkbox" id="update-allow-downgrade" name="allow_downgrade" value="1">
+                        <label for="update-allow-downgrade">Allow installing an older version than what is currently installed</label>
+                    </p>
+
+                    <button type="submit" class="lp-button lp-button--primary">Upload &amp; Check</button>
+                </form>
+            </section>
+        </div>
+    </div>
 
     <section class="lp-admin__panel">
         <h2>Backups</h2>
@@ -488,27 +528,6 @@ $releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save settings</button>
-        </form>
-    </section>
-
-    <section class="lp-admin__panel">
-        <h2>Manual Update (ZIP Upload)</h2>
-        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
-            <?= Csrf::field('update_upload') ?>
-            <input type="hidden" name="form" value="upload">
-
-            <p class="lp-field">
-                <label for="update-package">Release ZIP file</label>
-                <input type="file" id="update-package" name="package" accept=".zip" required>
-                <span class="lp-field__hint">Only official Lumora Press release packages should be uploaded here.</span>
-            </p>
-
-            <p class="lp-field lp-field--checkbox">
-                <input type="checkbox" id="update-allow-downgrade" name="allow_downgrade" value="1">
-                <label for="update-allow-downgrade">Allow installing an older version than what is currently installed</label>
-            </p>
-
-            <button type="submit" class="lp-button lp-button--primary">Upload &amp; Check</button>
         </form>
     </section>
 <?php endif; ?>

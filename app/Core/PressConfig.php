@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumoraPress\Core;
 
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use RuntimeException;
 
 /**
@@ -30,6 +31,8 @@ final class PressConfig
 
     private ?Database $database = null;
 
+    private ?HookManager $hooks = null;
+
     public function __construct(private readonly string $configFile)
     {
     }
@@ -37,6 +40,21 @@ final class PressConfig
     public function bindDatabase(Database $database): void
     {
         $this->database = $database;
+    }
+
+    /**
+     * Bound after construction (include/bootstrap.php, right after
+     * HookManager itself is built — PressConfig exists before it, the
+     * same reason bindDatabase() above is a separate call rather than a
+     * constructor param), the same "bind once, use everywhere" pattern.
+     * Backs LP-037's generic 'option_changed' invalidation hook in
+     * setOption() below — the one choke point every settings/widget/menu/
+     * theme-activation write already shares, since all of them are
+     * options.
+     */
+    public function bindHooks(HookManager $hooks): void
+    {
+        $this->hooks = $hooks;
     }
 
     public function get(string $key, mixed $default = null): mixed
@@ -87,17 +105,22 @@ final class PressConfig
 
         $this->options[$key] = $serialized;
 
-        if ($this->database === null) {
-            return;
+        if ($this->database !== null) {
+            $table = $this->optionsTable();
+
+            $this->database->execute(
+                "INSERT INTO {$table} (option_name, option_value) VALUES (:name, :value)
+                 ON DUPLICATE KEY UPDATE option_value = VALUES(option_value)",
+                ['name' => $key, 'value' => $serialized],
+            );
         }
 
-        $table = $this->optionsTable();
-
-        $this->database->execute(
-            "INSERT INTO {$table} (option_name, option_value) VALUES (:name, :value)
-             ON DUPLICATE KEY UPDATE option_value = VALUES(option_value)",
-            ['name' => $key, 'value' => $serialized],
-        );
+        // Fires regardless of whether a database is bound — setOption()
+        // already works in-memory-only without one (see
+        // PressConfigTest::testOptionAndSetOptionWorkInMemoryWithoutABoundDatabase()),
+        // so 'option_changed' should behave the same way rather than
+        // silently never firing in that mode.
+        $this->hooks?->doAction('option_changed', $key, $serialized);
     }
 
     /**

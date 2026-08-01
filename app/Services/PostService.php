@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
@@ -17,6 +18,16 @@ use RuntimeException;
  * published_at and become visible automatically once that time passes
  * (see the "published OR due" clause in publicWhereClause()) — nothing
  * needs to run a background job to flip their status.
+ *
+ * $hooks is optional (LP-037) so every existing `new PostService($db,
+ * $prefix)` call site — dozens across the PHP Test Suite — keeps
+ * compiling unchanged; only include/bootstrap.php's real instance passes
+ * one. Firing 'post_saved'/'post_deleted' here rather than from the admin
+ * views that call these methods (the pattern general_settings_saved/
+ * comment_posted already use) is deliberate: posts are also written by
+ * ApiController's REST endpoints and the Dashboard's Quick Draft form,
+ * not just admin/views/posts/new.php, so this is the one choke point
+ * every caller actually shares.
  */
 final class PostService
 {
@@ -25,6 +36,7 @@ final class PostService
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -73,6 +85,8 @@ final class PostService
         if ($post === null) {
             throw new RuntimeException('Failed to load the post that was just created.');
         }
+
+        $this->hooks?->doAction('post_saved', $post);
 
         return $post;
     }
@@ -130,7 +144,36 @@ final class PostService
             throw new RuntimeException('Failed to load the post that was just updated.');
         }
 
+        $this->hooks?->doAction('post_saved', $post);
+
         return $post;
+    }
+
+    /**
+     * LP-022 SEO title/description overrides — a dedicated method rather
+     * than two more params on create()/update() (already long), the same
+     * "metadata is its own call" split MediaService::updateMetadata()
+     * uses apart from upload(). Empty strings are stored as NULL so
+     * the_seo_title()/the_seo_description() fall back correctly rather
+     * than treating "" as a deliberate empty override.
+     */
+    public function updateSeo(int $id, ?string $metaTitle, ?string $metaDescription): void
+    {
+        $metaTitle = $metaTitle !== null && trim($metaTitle) !== '' ? $metaTitle : null;
+        $metaDescription = $metaDescription !== null && trim($metaDescription) !== '' ? $metaDescription : null;
+
+        $updated = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET meta_title = :meta_title, meta_description = :meta_description WHERE id = :id',
+            ['meta_title' => $metaTitle, 'meta_description' => $metaDescription, 'id' => $id],
+        ) > 0;
+
+        if ($updated) {
+            $post = $this->findById($id);
+
+            if ($post !== null) {
+                $this->hooks?->doAction('post_saved', $post);
+            }
+        }
     }
 
     /**
@@ -146,10 +189,16 @@ final class PostService
      */
     public function trash(int $id): bool
     {
-        return $this->database->execute(
+        $trashed = $this->database->execute(
             'UPDATE ' . $this->table() . " SET status = 'trashed', trashed_at = :trashed_at WHERE id = :id",
             ['trashed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
         ) > 0;
+
+        if ($trashed) {
+            $this->hooks?->doAction('post_deleted', $id);
+        }
+
+        return $trashed;
     }
 
     /**
@@ -187,7 +236,7 @@ final class PostService
         $now = new DateTimeImmutable();
         $publishedAt = $this->resolvePublishedAt($status, null, $now, $existing->publishedAt);
 
-        return $this->database->execute(
+        $changed = $this->database->execute(
             'UPDATE ' . $this->table() . ' SET status = :status, published_at = :published_at, updated_at = :updated_at WHERE id = :id',
             [
                 'status' => $status->value,
@@ -196,6 +245,16 @@ final class PostService
                 'id' => $id,
             ],
         ) > 0;
+
+        if ($changed) {
+            $post = $this->findById($id);
+
+            if ($post !== null) {
+                $this->hooks?->doAction('post_saved', $post);
+            }
+        }
+
+        return $changed;
     }
 
     /**
@@ -247,7 +306,13 @@ final class PostService
             ['post_id' => $id],
         );
 
-        return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+        $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        if ($deleted) {
+            $this->hooks?->doAction('post_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     public function findById(int $id): ?Post
@@ -305,6 +370,24 @@ final class PostService
         );
 
         return array_map(static fn (array $row): string => (string) $row['title'], $rows);
+    }
+
+    /**
+     * Every distinct media id currently set as a post's featured image
+     * (LP-006's "Unused Media" admin view, via MediaUsageChecker::
+     * usedMediaIds()) — one bounded query rather than a per-media-id
+     * lookup, so it scales with the number of posts that have a featured
+     * image rather than the number of media items in the library.
+     *
+     * @return array<int, int>
+     */
+    public function featuredImageIdsInUse(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT DISTINCT featured_image_id FROM ' . $this->table() . ' WHERE featured_image_id IS NOT NULL',
+        );
+
+        return array_map(static fn (array $row): int => (int) $row['featured_image_id'], $rows);
     }
 
     /**
@@ -661,6 +744,8 @@ final class PostService
             contentFormat: ContentFormat::tryFrom((string) ($row['content_format'] ?? '')) ?? ContentFormat::Plain,
             trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
             featuredImageCrop: self::decodeCrop($row['featured_image_crop'] ?? null),
+            metaTitle: isset($row['meta_title']) && $row['meta_title'] !== '' ? (string) $row['meta_title'] : null,
+            metaDescription: isset($row['meta_description']) && $row['meta_description'] !== '' ? (string) $row['meta_description'] : null,
         );
     }
 

@@ -138,6 +138,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $title = trim((string) ($_POST['title'] ?? ''));
         $content = (string) ($_POST['content'] ?? '');
         $excerpt = trim((string) ($_POST['excerpt'] ?? ''));
+        $metaTitle = trim((string) ($_POST['meta_title'] ?? ''));
+        $metaDescription = trim((string) ($_POST['meta_description'] ?? ''));
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PostStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PostStatus::Draft;
         $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
@@ -236,6 +238,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
             $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
+            $postService->updateSeo($post->id, $metaTitle, $metaDescription);
 
             header('Location: ' . admin_url('posts/new') . '?id=' . $post->id . '&saved=1');
             exit;
@@ -389,6 +392,18 @@ $editorMediaLibrary = array_map(
             <label for="post-excerpt">Excerpt</label>
             <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
         </p>
+
+        <fieldset class="lp-field">
+            <legend>SEO (optional)</legend>
+
+            <label for="post-meta-title">SEO title</label>
+            <input type="text" id="post-meta-title" name="meta_title" value="<?= esc_attr($post->metaTitle ?? '') ?>" placeholder="Defaults to the title above">
+            <span class="lp-field__hint">Overrides the browser tab title and search-result headline only — the title above is unchanged everywhere else on the site.</span>
+
+            <label for="post-meta-description">Meta description</label>
+            <textarea id="post-meta-description" name="meta_description" rows="2" placeholder="Defaults to the excerpt above"><?= esc_html($post->metaDescription ?? '') ?></textarea>
+            <span class="lp-field__hint">Shown in search results and social share previews. Leave blank to use the excerpt.</span>
+        </fieldset>
 
         <fieldset class="lp-field">
             <legend>Featured Image</legend>

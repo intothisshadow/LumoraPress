@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\FormTiming;
 
 /** @var \LumoraPress\Core\Kernel $kernel */
 if (!isset($kernel)) {
@@ -119,6 +120,125 @@ if ($page === 'logout') {
     exit;
 }
 
+if ($page === 'forgot-password') {
+    if ($kernel->auth->check()) {
+        header('Location: ' . admin_url());
+        exit;
+    }
+
+    $sent = false;
+    $error = null;
+    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $secondsLocked = $kernel->passwordResetThrottle->secondsUntilUnlocked($clientIp);
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $token = $_POST['csrf_token'] ?? null;
+
+        if ($secondsLocked > 0) {
+            $error = sprintf(
+                'Too many requests. Please try again in %d minute%s.',
+                (int) ceil($secondsLocked / 60),
+                ceil($secondsLocked / 60) === 1.0 ? '' : 's',
+            );
+        } elseif (!Csrf::verify('password_reset_request', is_string($token) ? $token : null)) {
+            $error = 'Your session expired. Please try again.';
+        } else {
+            $email = trim((string) ($_POST['email'] ?? ''));
+
+            // Counted here — once per verified submission, regardless of
+            // outcome — so an attacker can't dodge the IP-wide quota by
+            // only ever probing addresses they expect not to exist. See
+            // PasswordResetThrottle's docblock for why this exists: it
+            // caps the volume available to exploit PasswordResetService's
+            // own documented timing side-channel, without closing it.
+            $kernel->passwordResetThrottle->recordAttempt($clientIp, $email === '' ? null : $email);
+
+            // Honeypot + submission timing (LP-025's public-form pattern):
+            // a bot signal here still produces the same generic "sent"
+            // response as a real success — never reveal detection to a
+            // bot, and never reveal via any other signal whether an email
+            // is actually registered.
+            $isHoneypotFilled = trim((string) ($_POST['reset_website'] ?? '')) !== '';
+            $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
+            $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
+
+            if (!$isHoneypotFilled && FormTiming::verify($formTime, $formTimeHmac)) {
+                if (filter_var($email, FILTER_VALIDATE_EMAIL) !== false) {
+                    $user = $kernel->users->findByEmail($email);
+
+                    if ($user !== null) {
+                        // See PasswordResetService's docblock: a found
+                        // account does strictly more work here (DB insert
+                        // + mail()) than a not-found one — a known, accepted
+                        // timing side-channel, not fixed in this pass.
+                        $resetToken = $kernel->passwordResets->issueToken($user->id);
+
+                        if ($resetToken !== null) {
+                            $resetUrl = admin_url('reset-password') . '?token=' . urlencode($resetToken);
+                            $body = "Someone requested a password reset for your Lumora Press account.\n\n"
+                                . "Reset your password: {$resetUrl}\n\n"
+                                . "This link expires in 1 hour. If you didn't request this, you can safely ignore this email.";
+
+                            $kernel->mailer->send($user->email, 'Reset your Lumora Press password', $body);
+                        }
+                    }
+                }
+            }
+
+            $sent = true;
+        }
+    }
+
+    require __DIR__ . '/views/forgot-password.php';
+
+    return;
+}
+
+if ($page === 'reset-password') {
+    if ($kernel->auth->check()) {
+        header('Location: ' . admin_url());
+        exit;
+    }
+
+    $token = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+    $tokenUserId = $token !== '' ? $kernel->passwordResets->findValidToken($token) : null;
+    $error = null;
+
+    if ($tokenUserId !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $csrfToken = $_POST['csrf_token'] ?? null;
+        $password = (string) ($_POST['password'] ?? '');
+        $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
+
+        if (!Csrf::verify('password_reset_confirm', is_string($csrfToken) ? $csrfToken : null)) {
+            $error = 'Your session expired. Please try again.';
+        } elseif (strlen($password) < 8) {
+            $error = 'Password must be at least 8 characters.';
+        } elseif ($password !== $passwordConfirm) {
+            $error = 'Passwords do not match.';
+        } else {
+            $confirmedUserId = $kernel->passwordResets->consume($token);
+
+            if ($confirmedUserId === null) {
+                $tokenUserId = null;
+                $error = 'This link has expired or was already used. Please request a new one.';
+            } else {
+                $kernel->users->changePassword($confirmedUserId, $password);
+                $kernel->passwordResets->invalidateForUser($confirmedUserId);
+                // A password change ends other persistent "Remember Me"
+                // sessions too, not just the current one.
+                $kernel->rememberMe->forgetUserTokens($confirmedUserId);
+
+                header('Location: ' . admin_url('login') . '?reset=success');
+                exit;
+            }
+        }
+    }
+
+    require __DIR__ . '/views/reset-password.php';
+
+    return;
+}
+
 if (!$kernel->auth->check()) {
     $rememberedUser = $kernel->rememberMe->attemptFromCookie();
 
@@ -151,7 +271,7 @@ $menu = [
         'default_child' => 'all-posts',
         'children' => [
             'all-posts' => ['label' => 'All Posts', 'icon' => '📋', 'capability' => 'edit_posts'],
-            'new' => ['label' => 'New Post', 'icon' => '➕', 'capability' => 'edit_posts'],
+            'new' => ['label' => 'New Post', 'icon' => "➕\u{FE0F}", 'capability' => 'edit_posts'],
             'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'edit_posts'],
             'tags' => ['label' => 'Tags', 'icon' => '🏷️', 'capability' => 'edit_posts'],
         ],
@@ -179,8 +299,10 @@ $menu = [
         'default_child' => 'general',
         'children' => [
             'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options'],
+            'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options'],
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
+            'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
             'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
             'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options'],
         ],

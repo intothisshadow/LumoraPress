@@ -22,6 +22,7 @@ use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
 use LumoraPress\Models\Tag;
 use LumoraPress\Models\User;
+use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
@@ -59,6 +60,8 @@ final class ApiController
 
     private readonly ContentRenderer $content;
 
+    private readonly AkismetClient $akismet;
+
     /**
      * @param Closure(): string|null $rawInput Overrides reading the raw
      *     request body — defaults to `file_get_contents('php://input')`.
@@ -78,9 +81,11 @@ final class ApiController
         private readonly HookManager $hooks,
         ?Closure $rawInput = null,
         ?ContentRenderer $content = null,
+        ?AkismetClient $akismet = null,
     ) {
         $this->rawInput = $rawInput ?? static fn (): string|false => file_get_contents('php://input');
         $this->content = $content ?? new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), $hooks);
+        $this->akismet = $akismet ?? new AkismetClient($config, '');
     }
 
     // =================================================================
@@ -1062,6 +1067,27 @@ final class ApiController
             || $this->comments->hasPreviouslyApprovedComment($user?->id, $guestEmail)
             ? CommentStatus::Approved
             : CommentStatus::Pending;
+
+        // Akismet (LP-025) — see SiteController::submitComment()'s
+        // identical block for why this can only push toward Spam, never
+        // away from it.
+        if ($this->akismet->isEnabled()) {
+            $isSpam = $this->akismet->checkComment([
+                'comment_type' => 'comment',
+                'comment_author' => $guestName,
+                'comment_author_email' => $guestEmail,
+                'comment_author_url' => $guestUrl,
+                'comment_content' => $content,
+                'user_ip' => $ipAddress,
+                'user_agent' => is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null,
+                'referrer' => is_string($_SERVER['HTTP_REFERER'] ?? null) ? $_SERVER['HTTP_REFERER'] : null,
+                'permalink' => home_url('post/' . $post->slug),
+            ]);
+
+            if ($isSpam === true) {
+                $status = CommentStatus::Spam;
+            }
+        }
 
         $comment = $this->comments->create(
             postId: $post->id,

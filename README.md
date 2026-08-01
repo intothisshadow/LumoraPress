@@ -84,12 +84,20 @@ Lumora Press follows a small service-oriented architecture rather than a full fr
   **`LumoraPress\Core\Menus\MenuManager`** — sidebar/widget and nav-menu
   registration and rendering, exposed procedurally for theme authors.
 - **`LumoraPress\Core\Security\Auth`**, **`SessionManager`**, **`Csrf`**,
-  **`LoginThrottle`**, **`RememberMeService`**, **`ContentSecurityPolicy`** —
-  session-based authentication with session-fixation protection, secure
-  cookie defaults, per-action CSRF tokens, database-backed login attempt
-  throttling by IP address, an optional "Remember Me" persistent login via
-  a rotating, single-use selector/validator cookie, and a strict,
-  same-origin-only Content-Security-Policy header sent on every response.
+  **`LoginThrottle`**, **`RememberMeService`**, **`ContentSecurityPolicy`**,
+  **`FormTiming`**, **`PasswordResetService`** — session-based authentication
+  with session-fixation protection, secure cookie defaults, per-action CSRF
+  tokens, database-backed login attempt throttling by IP address (thresholds
+  configurable on Settings &rsaquo; Security), an optional "Remember Me"
+  persistent login via a rotating, single-use selector/validator cookie, a
+  strict, same-origin-only Content-Security-Policy header sent on every
+  response, an HMAC-signed submission-timing check that rejects scripted
+  instant form submissions, and self-service password reset via a
+  single-use, one-hour-expiring emailed link (Log In &rsaquo; "Forgot
+  password?").
+- **`LumoraPress\Core\Mail\Mailer`** — a minimal outbound-email interface,
+  backed by `NativeMailer` (PHP's built-in `mail()`, no external mail
+  library) — used today for password-reset emails.
 - **`LumoraPress\Core\Http\Router`** — a small, dependency-free router with
   `{param}` placeholders; no third-party routing library.
 - **`LumoraPress\Core\Http\BasePath`** — holds the install's base path
@@ -123,7 +131,8 @@ loaded through PHP `require`.
 
 Administrators can update Lumora Press from the admin panel under
 **Maintenance &rsaquo; Updates** (`/admin/maintenance/updates`), without FTP or SSH access,
-either of two ways:
+either of two ways, each on its own tab (**GitHub**, the default tab, and
+**Manual Update**):
 
 - **Check for Updates (GitHub)** — click "Check for Updates" to query the
   GitHub Releases API (configurable repository, optional personal access
@@ -198,8 +207,9 @@ them via FTP/SFTP or your hosting file manager).
   best-effort conversion between formats.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages.
-- **Comments** — threaded discussion with moderation and basic spam
-  protection.
+- **Comments** — threaded discussion with moderation, honeypot/CSRF/
+  submission-timing spam protection, and optional Akismet spam-checking
+  (Settings &rsaquo; Security — off by default, never required).
 - **RSS & Atom feeds** — a site-wide feed of published posts.
 - **Search** — full-text search across posts and pages.
 - **User management** — admin-managed accounts and roles.
@@ -212,7 +222,9 @@ them via FTP/SFTP or your hosting file manager).
   navigation menus, and a built-in theme file editor.
 - **Plugin browser** — install and manage plugins from the admin panel.
 - **Media Manager** — uploads, virtual folders, metadata, thumbnail
-  generation, and a lightbox viewer.
+  generation, a lightbox viewer, download statistics for document/
+  archive/audio/video files, and usage tracking with delete-time
+  warnings.
 - **Featured images** — per-post/page featured images with manual
   cropping.
 - **FTP media import** — bring in files already on the server without a
@@ -221,5 +233,16 @@ them via FTP/SFTP or your hosting file manager).
   categories, tags, comments, and search.
 - **Settings** — site info, date/time formatting, SEO/social sharing
   defaults, and more.
+- **Reading settings** — choose a "latest posts" or static-page homepage
+  (with an optional separate posts page), set how many posts each
+  listing page shows, and discourage search engines from indexing the
+  site (a virtual `robots.txt` plus a `noindex` meta tag).
+- **Caching** — HTTP cache headers and conditional `304` responses on
+  cacheable public pages, first-class LiteSpeed Cache purge integration
+  (auto-detected, with a manual override), and automatic cache
+  invalidation whenever content or settings change.
+- **SEO tools** — per-post/page SEO title and meta description overrides,
+  canonical URLs, an XML sitemap, JSON-LD structured data, and
+  admin-managed URL redirects.
 
 See `TODO.md` for planned work and known gaps.

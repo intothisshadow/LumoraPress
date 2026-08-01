@@ -8,6 +8,7 @@
  */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\FormTiming;
 
 if (!function_exists('lp_render_comment_form')) {
     function lp_render_comment_form(
@@ -32,6 +33,7 @@ if (!function_exists('lp_render_comment_form')) {
                 <label for="<?= esc_attr($formId) ?>-trap">Leave this field blank</label>
                 <input type="text" id="<?= esc_attr($formId) ?>-trap" name="comment_website" tabindex="-1" autocomplete="off">
             </p>
+            <?= FormTiming::field() ?>
 
             <?php if ($currentUser !== null): ?>
                 <p class="lp-field__hint">Commenting as <?= esc_html($currentUser->displayName) ?>.</p>

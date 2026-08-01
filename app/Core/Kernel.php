@@ -4,21 +4,26 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core;
 
+use LumoraPress\Core\Cache\CacheManager;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Errors\ErrorHandler;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
+use LumoraPress\Core\Mail\Mailer;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\LoginThrottle;
+use LumoraPress\Core\Security\PasswordResetService;
+use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
+use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
@@ -27,10 +32,12 @@ use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
@@ -85,6 +92,13 @@ final class Kernel
         public readonly PluginInstaller $pluginInstaller,
         public readonly RevisionService $revisions,
         public readonly ThemeFileEditor $themeFileEditor,
+        public readonly MediaStatsService $mediaStats,
+        public readonly CacheManager $cache,
+        public readonly RedirectService $redirects,
+        public readonly AkismetClient $akismet,
+        public readonly PasswordResetService $passwordResets,
+        public readonly PasswordResetThrottle $passwordResetThrottle,
+        public readonly Mailer $mailer,
     ) {
     }
 }

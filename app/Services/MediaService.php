@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use Closure;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use RuntimeException;
 
 /**
@@ -70,6 +71,9 @@ final class MediaService
      *     is_uploaded_file() (which move_uploaded_file() depends on) can
      *     only ever pass for a file that arrived via a real HTTP upload,
      *     never from a CLI test process.
+     * @param ?HookManager $hooks Optional (LP-037) — see PostService's
+     *     docblock for why; fires 'media_saved'/'media_deleted' for cache
+     *     invalidation.
      */
     public function __construct(
         private readonly Database $database,
@@ -77,6 +81,7 @@ final class MediaService
         private readonly string $uploadsPath,
         private readonly string $uploadsUrl,
         ?Closure $moveUploadedFile = null,
+        private readonly ?HookManager $hooks = null,
     ) {
         $this->moveUploadedFile = $moveUploadedFile ?? static fn (string $from, string $to): bool => move_uploaded_file($from, $to);
     }
@@ -161,6 +166,8 @@ final class MediaService
         if ($media === null) {
             throw new RuntimeException('Failed to load the media item that was just uploaded.');
         }
+
+        $this->hooks?->doAction('media_saved', $media);
 
         return $media;
     }
@@ -318,7 +325,13 @@ final class MediaService
             unlink($path);
         }
 
-        return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+        $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        if ($deleted) {
+            $this->hooks?->doAction('media_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     /**

@@ -22,6 +22,10 @@
     --lp-admin-warning-border: #dba617;
     --lp-admin-warning-text: #664d03;
     --lp-admin-radius: 4px;
+    --lp-admin-panel-radius: 10px;
+    --lp-admin-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+    --lp-admin-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 4px 10px rgba(16, 24, 40, 0.08);
+    --lp-admin-focus-ring: rgba(34, 113, 177, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +48,9 @@
         --lp-admin-warning-bg: #332b0f;
         --lp-admin-warning-border: #dba617;
         --lp-admin-warning-text: #f0d68a;
+        --lp-admin-shadow: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 3px rgba(0, 0, 0, 0.3);
+        --lp-admin-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.35);
+        --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
     }
 }
 
@@ -137,6 +144,19 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
     text-decoration: none;
     font-size: 0.95rem;
+}
+
+/*
+ * Top-level nav rows (LP-056) drop their icon and go uppercase to read as
+ * section headings; only sub-nav rows (.lp-admin__nav-submenu) keep icons
+ * and normal casing, so this is scoped to direct children of .lp-admin__nav
+ * only, not the submenu list.
+ */
+.lp-admin__nav > ul > li > a,
+.lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a {
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.85rem;
 }
 
 /*
@@ -235,7 +255,13 @@ body.lp-admin-login {
 }
 
 .lp-admin__breadcrumbs {
-    margin-bottom: 1.25rem;
+    display: inline-flex;
+    margin-bottom: 1.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 999px;
+    box-shadow: var(--lp-admin-shadow);
 }
 
 .lp-admin__breadcrumbs ol {
@@ -243,31 +269,41 @@ body.lp-admin-login {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.35rem;
     margin: 0;
     padding: 0;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 500;
     color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-admin__breadcrumbs li {
+    display: flex;
+    align-items: center;
 }
 
 .lp-admin__breadcrumbs li:not(:last-child)::after {
     content: "\203A";
-    margin-left: 0.35rem;
+    margin: 0 0.55rem;
     color: var(--lp-admin-border);
+    font-weight: 700;
 }
 
 .lp-admin__breadcrumbs a {
     color: var(--lp-admin-accent);
+    font-weight: 600;
     text-decoration: none;
+    transition: color 0.15s ease;
 }
 
 .lp-admin__breadcrumbs a:hover,
 .lp-admin__breadcrumbs a:focus {
+    color: var(--lp-admin-accent-hover);
     text-decoration: underline;
 }
 
 .lp-admin__breadcrumbs [aria-current="page"] {
     color: var(--lp-admin-text);
+    font-weight: 700;
 }
 
 .lp-admin__user {
@@ -294,17 +330,58 @@ body.lp-admin-login {
 }
 
 .lp-admin__title {
-    margin-top: 0;
+    margin: 0 0 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
 }
 
 /* Panels and widgets */
+
+.lp-admin__content > section,
+.lp-admin__content > form,
+.lp-admin__content > .lp-admin__panel,
+.lp-admin__content > .lp-admin__widget {
+    margin-bottom: 1.5rem;
+}
+
+.lp-admin__content > section:last-child,
+.lp-admin__content > .lp-admin__panel:last-child,
+.lp-admin__content > .lp-admin__widget:last-child {
+    margin-bottom: 0;
+}
 
 .lp-admin__panel,
 .lp-admin__widget {
     background: var(--lp-admin-panel-bg);
     border: 1px solid var(--lp-admin-border);
-    border-radius: var(--lp-admin-radius);
-    padding: 1.25rem;
+    border-radius: var(--lp-admin-panel-radius);
+    box-shadow: var(--lp-admin-shadow);
+    padding: 1.5rem;
+    transition: box-shadow 0.15s ease;
+}
+
+.lp-admin__panel > h2:first-child,
+.lp-admin__widget > h2:first-child {
+    margin-top: 0;
+    margin-bottom: 1.1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+
+.lp-admin__panel > h2:first-child::before,
+.lp-admin__widget > h2:first-child::before {
+    content: "";
+    display: inline-block;
+    width: 0.3rem;
+    height: 0.3rem;
+    margin-right: 0.55rem;
+    border-radius: 50%;
+    background: var(--lp-admin-accent);
+    vertical-align: middle;
 }
 
 .lp-admin__panel--welcome {
@@ -349,13 +426,24 @@ body.lp-admin-login {
 .lp-admin__meta-list li {
     display: flex;
     justify-content: space-between;
-    padding: 0.35rem 0;
+    gap: 1rem;
+    padding: 0.55rem 0;
     border-bottom: 1px solid var(--lp-admin-border);
     font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 .lp-admin__meta-list li:last-child {
     border-bottom: none;
+    padding-bottom: 0;
+}
+
+.lp-admin__meta-list li:first-child {
+    padding-top: 0;
+}
+
+.lp-admin__meta-list--stacked li {
+    display: list-item;
 }
 
 /* Appearance: theme grid */
@@ -369,9 +457,16 @@ body.lp-admin-login {
 
 .lp-theme-card {
     border: 1px solid var(--lp-admin-border);
-    border-radius: var(--lp-admin-radius);
+    border-radius: var(--lp-admin-panel-radius);
     overflow: hidden;
     background: var(--lp-admin-panel-bg);
+    box-shadow: var(--lp-admin-shadow);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.lp-theme-card:hover {
+    box-shadow: var(--lp-admin-shadow-hover);
+    transform: translateY(-2px);
 }
 
 .lp-theme-card--active {
@@ -603,9 +698,16 @@ body.lp-admin-login {
 
 .lp-plugin-card {
     border: 1px solid var(--lp-admin-border);
-    border-radius: var(--lp-admin-radius);
+    border-radius: var(--lp-admin-panel-radius);
     overflow: hidden;
     background: var(--lp-admin-panel-bg);
+    box-shadow: var(--lp-admin-shadow);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.lp-plugin-card:hover {
+    box-shadow: var(--lp-admin-shadow-hover);
+    transform: translateY(-2px);
 }
 
 .lp-plugin-card--active {
@@ -1227,12 +1329,21 @@ body.lp-admin-login {
 .lp-field textarea,
 .lp-field select {
     width: 100%;
-    padding: 0.5rem 0.65rem;
+    padding: 0.55rem 0.7rem;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
     background: var(--lp-admin-panel-bg);
     color: var(--lp-admin-text);
     font-size: 1rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lp-field input:focus,
+.lp-field textarea:focus,
+.lp-field select:focus {
+    outline: none;
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
 }
 
 .lp-field--checklist {
@@ -1405,19 +1516,37 @@ body.lp-admin-login {
 .lp-button {
     display: inline-block;
     padding: 0.55rem 1.1rem;
-    border: 1px solid transparent;
+    border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
     font-size: 0.95rem;
+    font-weight: 500;
     cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.lp-button:hover {
+    border-color: var(--lp-admin-accent);
+    color: var(--lp-admin-accent);
+}
+
+.lp-button:active {
+    transform: translateY(1px);
 }
 
 .lp-button--primary {
     background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
     color: #fff;
+    box-shadow: 0 1px 2px rgba(34, 113, 177, 0.25);
 }
 
 .lp-button--primary:hover {
     background: var(--lp-admin-accent-hover);
+    border-color: var(--lp-admin-accent-hover);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(34, 113, 177, 0.3);
 }
 
 .lp-button--secondary {
@@ -1433,16 +1562,20 @@ body.lp-admin-login {
 
 .lp-button--danger {
     background: var(--lp-admin-error-border);
+    border-color: var(--lp-admin-error-border);
     color: #fff;
 }
 
 .lp-button--danger:hover {
     background: var(--lp-admin-error-text);
+    border-color: var(--lp-admin-error-text);
+    color: #fff;
 }
 
 .lp-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+    transform: none;
 }
 
 .lp-admin__badge {
@@ -1459,26 +1592,32 @@ body.lp-admin-login {
 /* Alerts */
 
 .lp-alert {
-    padding: 0.75rem 1rem;
+    padding: 0.85rem 1.1rem;
+    margin-bottom: 1.5rem;
     border-radius: var(--lp-admin-radius);
+    border-left-width: 4px;
     font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 .lp-alert--error {
     background: var(--lp-admin-error-bg);
     border: 1px solid var(--lp-admin-error-border);
+    border-left-width: 4px;
     color: var(--lp-admin-error-text);
 }
 
 .lp-alert--success {
     background: var(--lp-admin-success-bg);
     border: 1px solid var(--lp-admin-success-border);
+    border-left-width: 4px;
     color: var(--lp-admin-success-text);
 }
 
 .lp-alert--warning {
     background: var(--lp-admin-warning-bg);
     border: 1px solid var(--lp-admin-warning-border);
+    border-left-width: 4px;
     color: var(--lp-admin-warning-text);
 }
 
@@ -1503,6 +1642,27 @@ body.lp-admin-login {
 .lp-login__brand {
     text-align: center;
     margin-top: 0;
+}
+
+.lp-login__links {
+    margin: 1rem 0 0;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.lp-login__links a {
+    color: var(--lp-admin-accent);
+}
+
+/*
+ * Forgot-password honeypot (LP-058) — same off-screen-positioning
+ * technique as the public comment form's .lp-comment-form__honeypot
+ * (content/themes/default/style.css), duplicated here since admin pages
+ * never load the active theme's stylesheet.
+ */
+.lp-login__honeypot {
+    position: absolute;
+    left: -9999px;
 }
 
 /* Installer */
@@ -1552,11 +1712,14 @@ body.lp-admin-login {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    overflow: hidden;
 }
 
 .lp-table th,
 .lp-table td {
-    padding: 0.65rem 0.75rem;
+    padding: 0.7rem 0.85rem;
     text-align: left;
     border-bottom: 1px solid var(--lp-admin-border);
 }
@@ -1565,8 +1728,17 @@ body.lp-admin-login {
     font-weight: 600;
     color: var(--lp-admin-sidebar-fg-muted);
     text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.03em;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    background: var(--lp-admin-bg);
+}
+
+.lp-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.lp-table tbody tr:hover {
+    background: var(--lp-admin-bg);
 }
 
 .lp-status-badge {
@@ -1644,6 +1816,52 @@ body.lp-admin-login {
     font-family: inherit;
 }
 
+/*
+ * Generic tab component (LP-057), first used on the Updates page to split
+ * GitHub vs. Manual Update, but not scoped to it — any admin page can use
+ * .lp-tabs. Built from existing tokens so dark mode is automatic. Works
+ * without JS (the non-active panel starts with the `hidden` attribute set
+ * server-side); admin-tabs.js progressively enhances click/keyboard
+ * switching, mirroring nav-toggle.js's approach for the sidebar submenu.
+ */
+.lp-tabs {
+    margin-bottom: 1.5rem;
+}
+
+.lp-tabs__list {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+    margin-bottom: 1.5rem;
+}
+
+.lp-tabs__tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.65rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--lp-admin-sidebar-fg-muted);
+    cursor: pointer;
+}
+
+.lp-tabs__tab:hover,
+.lp-tabs__tab:focus-visible {
+    color: var(--lp-admin-text);
+}
+
+.lp-tabs__tab[aria-selected="true"] {
+    color: var(--lp-admin-accent);
+    border-bottom-color: var(--lp-admin-accent);
+}
+
+.lp-tabs__panel > *:last-child {
+    margin-bottom: 0;
+}
+
 /* Updates page status bar (LP-027) */
 
 .lp-update__status-bar {
@@ -1652,12 +1870,19 @@ body.lp-admin-login {
     gap: 1.5rem;
 }
 
+.lp-update__status-group {
+    padding-left: 1rem;
+    border-left: 3px solid var(--lp-admin-border);
+}
+
 .lp-update__status-label {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    opacity: 0.65;
-    margin: 0.75rem 0 0.15rem;
+    letter-spacing: 0.05em;
+    color: var(--lp-admin-sidebar-fg-muted);
+    opacity: 1;
+    margin: 0.85rem 0 0.2rem;
 }
 
 .lp-update__status-label:first-child {
@@ -1666,6 +1891,7 @@ body.lp-admin-login {
 
 .lp-update__status-value {
     font-weight: 600;
+    font-size: 1rem;
     margin: 0;
 }
 

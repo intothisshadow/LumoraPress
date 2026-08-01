@@ -5,6 +5,10 @@ declare(strict_types=1);
 use LumoraPress\Controllers\ApiController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\Autoloader;
+use LumoraPress\Core\Cache\CacheDriverInterface;
+use LumoraPress\Core\Cache\CacheManager;
+use LumoraPress\Core\Cache\LiteSpeedCacheDriver;
+use LumoraPress\Core\Cache\NullCacheDriver;
 use LumoraPress\Core\Content\ActiveContentRenderer;
 use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
@@ -15,6 +19,7 @@ use LumoraPress\Core\Hooks\Hooks;
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
+use LumoraPress\Core\Mail\NativeMailer;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Kernel;
 use LumoraPress\Core\Menus\MenuManager;
@@ -25,7 +30,10 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
+use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\LoginThrottle;
+use LumoraPress\Core\Security\PasswordResetService;
+use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ActiveTheme;
@@ -36,6 +44,7 @@ use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\CoreWidgets;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Core\Widgets\Widgets;
+use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
@@ -44,10 +53,12 @@ use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
+use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
@@ -77,6 +88,8 @@ $autoloader->addNamespace('LumoraPress', LUMORA_ROOT . '/app');
 $autoloader->register();
 
 $config = new PressConfig(LUMORA_ROOT . '/config/config.php');
+
+FormTiming::setSecretKey((string) $config->get('secret_key', ''));
 
 $errorHandler = new ErrorHandler(LUMORA_ROOT . '/storage/logs', (bool) $config->get('debug', false));
 $errorHandler->register();
@@ -128,6 +141,7 @@ require LUMORA_ROOT . '/include/helpers.php';
 $hooks = new HookManager();
 Hooks::set($hooks);
 require LUMORA_ROOT . '/include/hooks.php';
+$config->bindHooks($hooks);
 
 /*
  * Content rendering (LP-015/LP-016) — set up early, right after hooks,
@@ -202,15 +216,42 @@ $themeFileEditor = new ThemeFileEditor($themesPath, LUMORA_ROOT . '/storage/them
 
 $users = new UserService($database, $tablePrefix);
 $auth = new Auth($users, $sessions);
-$loginThrottle = new LoginThrottle($database, $tablePrefix);
+
+/*
+ * LP-025: thresholds are configurable on Settings > Security, previously
+ * hardcoded to LoginThrottle's own defaults (5 attempts / 15 min window /
+ * 15 min lockout) — those same values are still the fallback for a site
+ * that hasn't saved a Security settings value yet.
+ */
+$loginThrottle = new LoginThrottle(
+    $database,
+    $tablePrefix,
+    maxAttempts: max(1, (int) $config->option('login_max_attempts', '5')),
+    windowSeconds: max(60, (int) $config->option('login_window_seconds', '900')),
+    lockoutSeconds: max(60, (int) $config->option('login_lockout_seconds', '900')),
+);
 $rememberMe = new RememberMeService($database, $users, $tablePrefix, $secureCookies);
 $apiTokens = new ApiTokenService($database, $users, $tablePrefix);
+
+$passwordResets = new PasswordResetService($database, $tablePrefix);
+$passwordResetThrottle = new PasswordResetThrottle($database, $tablePrefix);
+
+// LP-058: the "From" address for password-reset emails. admin_email is the
+// only email address Lumora Press already knows about (set at install time,
+// editable on Settings > General) — falls back to a noreply@ address on
+// this site's own host when it's never been set.
+$adminEmail = trim((string) $config->option('admin_email', ''));
+$mailFromAddress = $adminEmail !== ''
+    ? $adminEmail
+    : 'noreply@' . ((string) (parse_url(home_url(), PHP_URL_HOST) ?: 'localhost'));
+$mailer = new NativeMailer($mailFromAddress);
 
 $media = new MediaService(
     database: $database,
     tablePrefix: $tablePrefix,
     uploadsPath: LUMORA_ROOT . '/content/uploads',
     uploadsUrl: BasePath::get() . '/content/uploads',
+    hooks: $hooks,
 );
 
 /*
@@ -241,14 +282,16 @@ SiteBranding::set(
     defaultOgImageUrl: $resolveMediaUrl($config->option('default_og_image_media_id', '')),
     dateFormat: (string) $config->option('date_format', 'F j, Y'),
     timeFormat: (string) $config->option('time_format', 'g:i a'),
+    discourageSearchEngines: ((string) $config->option('discourage_search_engines', '0')) === '1',
 );
 
-$posts = new PostService($database, $tablePrefix);
-$pages = new PageService($database, $tablePrefix);
+$posts = new PostService($database, $tablePrefix, $hooks);
+$pages = new PageService($database, $tablePrefix, $hooks);
 $revisions = new RevisionService($database, $tablePrefix, $config);
-$categories = new CategoryService($database, $tablePrefix);
-$tags = new TagService($database, $tablePrefix);
-$comments = new CommentService($database, $tablePrefix);
+$categories = new CategoryService($database, $tablePrefix, $hooks);
+$tags = new TagService($database, $tablePrefix, $hooks);
+$comments = new CommentService($database, $tablePrefix, $hooks);
+$redirects = new RedirectService($database, $tablePrefix);
 
 /*
  * LP-048: core widget types need PostService/PageService/CategoryService/
@@ -310,9 +353,11 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
 }
 
 $search = new SearchService($database, $tablePrefix, $config, $content);
-$api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks);
+$akismet = new AkismetClient($config, home_url());
+$api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks, akismet: $akismet);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
+$mediaStats = new MediaStatsService($database, $tablePrefix);
 $thumbnails = new ThumbnailService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -396,6 +441,50 @@ $updates = new UpdateService(
 
 $githubUpdates = new GitHubReleaseProvider($config);
 
+/*
+ * LP-037: driver auto-detection, with a manual override option (Settings
+ * > Cache) for a host where detection guesses wrong. LiteSpeedCacheDriver
+ * is only actually used when it reports itself available; otherwise the
+ * inert Null driver keeps every CacheManager call a safe no-op.
+ */
+$cacheDriverOverride = (string) $config->option('cache_driver', 'auto');
+$cacheDriver = match ($cacheDriverOverride) {
+    'litespeed' => new LiteSpeedCacheDriver(),
+    'null' => new NullCacheDriver(),
+    default => (static function (): CacheDriverInterface {
+        $liteSpeed = new LiteSpeedCacheDriver();
+
+        return $liteSpeed->isAvailable() ? $liteSpeed : new NullCacheDriver();
+    })(),
+};
+$cache = new CacheManager($config, $cacheDriver, LUMORA_ROOT);
+
+/*
+ * Automatic invalidation (LP-037): every content-change action fired
+ * from the service layer above (PostService/PageService/
+ * CategoryService/TagService/CommentService — each optionally
+ * HookManager-aware, see PostService's docblock) plus the generic
+ * 'option_changed' PressConfig::setOption() now fires (covering
+ * settings/widgets/menus/theme activation/theme options, all stored as
+ * options) purges the whole cache. A blanket purgeAll() rather than
+ * per-tag targeting is a deliberate simplicity trade-off for this first
+ * pass — always correct, just not maximally efficient; see TODO.md's
+ * LP-037 entry.
+ */
+foreach ([
+    'post_saved', 'post_deleted',
+    'page_saved', 'page_deleted',
+    'category_saved', 'category_deleted',
+    'tag_saved', 'tag_deleted',
+    'comment_posted', 'comment_status_changed', 'comment_deleted',
+    'media_saved', 'media_deleted',
+    'option_changed',
+] as $cachePurgeAction) {
+    $hooks->addAction($cachePurgeAction, static function () use ($cache): void {
+        $cache->purgeAll();
+    });
+}
+
 $router = new Router();
 $maintenance = new MaintenanceGate($config, $auth, $theme, $hooks);
 
@@ -437,9 +526,16 @@ $kernel = new Kernel(
     pluginInstaller: $pluginInstaller,
     revisions: $revisions,
     themeFileEditor: $themeFileEditor,
+    mediaStats: $mediaStats,
+    cache: $cache,
+    redirects: $redirects,
+    akismet: $akismet,
+    passwordResets: $passwordResets,
+    passwordResetThrottle: $passwordResetThrottle,
+    mailer: $mailer,
 );
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet);
 
 $router->get('/', fn (array $params) => $site->home($params));
 $router->get('/post/{slug}', fn (array $params) => $site->singlePost($params));
@@ -452,6 +548,9 @@ $router->get('/search', fn (array $params) => $site->search($params));
 $router->get('/page/{slug}', fn (array $params) => $site->page($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));
 $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
+$router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
+$router->get('/sitemap.xml', fn (array $params) => $site->sitemap($params));
+$router->get('/media/{id}/download', fn (array $params) => $site->mediaDownload($params));
 
 $adminHandler = static function (array $params) use ($kernel): void {
     if (isset($params['page'])) {

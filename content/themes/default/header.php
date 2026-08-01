@@ -20,23 +20,29 @@ $og_description = $og_item !== null
     : '';
 
 /*
- * Site-wide meta description (LP-042) — a single post/page's own
- * excerpt/content ($og_description above) always wins when there is one;
- * this is only the fallback for views with nothing of their own to
- * describe (homepage, archives) and for a single post/page that has
- * neither an excerpt nor any content to derive one from.
+ * LP-022: a post/page's own meta_title/meta_description override (set on
+ * its editor screen) always wins when present. Falls through to the
+ * excerpt/content-derived description above, then the site-wide default
+ * (LP-042) — same three-tier chain meta_description() already
+ * documented, just with the new per-item override slotted in first.
  */
-$meta_description = $og_description !== '' ? $og_description : meta_description();
+$seo_title = $og_item?->metaTitle ?? $page_title ?? null;
+$seo_description = $og_item?->metaDescription ?? ($og_description !== '' ? $og_description : null);
+$meta_description = $seo_description ?? meta_description();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= isset($page_title) && $page_title !== null && $page_title !== '' ? esc_html($page_title) . ' ‹ ' : '' ?><?= esc_html(site_name()) ?></title>
+    <title><?= $seo_title !== null && $seo_title !== '' ? esc_html($seo_title) . ' ‹ ' : '' ?><?= esc_html(site_name()) ?></title>
     <?php if ($meta_description !== ''): ?>
         <meta name="description" content="<?= esc_attr($meta_description) ?>">
     <?php endif; ?>
+    <?php if (search_engines_discouraged()): ?>
+        <meta name="robots" content="noindex,nofollow">
+    <?php endif; ?>
+    <link rel="canonical" href="<?= esc_url(canonical_url()) ?>">
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">
     <link rel="alternate" type="application/rss+xml" title="<?= esc_attr(site_name()) ?> &raquo; Feed" href="<?= esc_url(home_url('feed')) ?>">
     <link rel="alternate" type="application/atom+xml" title="<?= esc_attr(site_name()) ?> &raquo; Atom Feed" href="<?= esc_url(home_url('feed/atom')) ?>">
@@ -46,12 +52,12 @@ $meta_description = $og_description !== '' ? $og_description : meta_description(
     <?php if ($og_item !== null): ?>
         <meta property="og:type" content="article">
         <meta property="og:site_name" content="<?= esc_attr(site_name()) ?>">
-        <meta property="og:title" content="<?= esc_attr($og_item->title) ?>">
+        <meta property="og:title" content="<?= esc_attr($og_item->metaTitle ?? $og_item->title) ?>">
         <?php if ($og_url !== null): ?>
             <meta property="og:url" content="<?= esc_url($og_url) ?>">
         <?php endif; ?>
-        <?php if ($og_description !== ''): ?>
-            <meta property="og:description" content="<?= esc_attr($og_description) ?>">
+        <?php if ($seo_description !== null): ?>
+            <meta property="og:description" content="<?= esc_attr($seo_description) ?>">
         <?php endif; ?>
         <?php if (has_post_thumbnail($og_item)): ?>
             <meta property="og:image" content="<?= esc_url((string) post_thumbnail_url($og_item, 'large', absolute: true)) ?>">
@@ -64,6 +70,45 @@ $meta_description = $og_description !== '' ? $og_description : meta_description(
         <?php else: ?>
             <meta name="twitter:card" content="summary">
         <?php endif; ?>
+    <?php endif; ?>
+    <?php if ($og_item instanceof \LumoraPress\Models\Post): ?>
+        <?php
+        /*
+         * LP-022 structured data — BlogPosting for a single post only
+         * (the one view with a clear author-less-but-dated "article"
+         * shape; pages/archives/search have no equivalent schema.org type
+         * worth forcing). Author name is deliberately omitted: there is
+         * no author-display-name helper bridged to themes yet (unlike
+         * SiteBranding/FeaturedImages), and inventing one is out of scope
+         * for this ticket — schema.org's `author` property is
+         * recommended, not required.
+         */
+        $jsonLd = [
+            '@context' => 'https://schema.org',
+            '@type' => 'BlogPosting',
+            'headline' => $og_item->metaTitle ?? $og_item->title,
+            'url' => $og_url,
+            'mainEntityOfPage' => $og_url,
+        ];
+
+        if ($seo_description !== null) {
+            $jsonLd['description'] = $seo_description;
+        }
+
+        if ($og_item->publishedAt !== null) {
+            $jsonLd['datePublished'] = $og_item->publishedAt->format('c');
+        }
+
+        $jsonLd['dateModified'] = $og_item->updatedAt->format('c');
+
+        if (has_post_thumbnail($og_item)) {
+            $jsonLd['image'] = [post_thumbnail_url($og_item, 'large', absolute: true)];
+        }
+
+        $jsonLd['publisher'] = ['@type' => 'Organization', 'name' => site_name()];
+        ?>
+        <?php // Slashes deliberately left escaped (json_encode's default) so a title/description containing the literal text "</script>" can never break out of this tag. ?>
+        <script type="application/ld+json"><?= json_encode($jsonLd) ?></script>
     <?php endif; ?>
     <?php if (custom_css() !== ''): ?>
         <style><?= custom_css() ?></style>

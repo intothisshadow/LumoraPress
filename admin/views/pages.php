@@ -108,6 +108,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $title = trim((string) ($_POST['title'] ?? ''));
         $content = (string) ($_POST['content'] ?? '');
         $excerpt = trim((string) ($_POST['excerpt'] ?? ''));
+        $metaTitle = trim((string) ($_POST['meta_title'] ?? ''));
+        $metaDescription = trim((string) ($_POST['meta_description'] ?? ''));
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PageStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PageStatus::Draft;
         $parentId = (int) ($_POST['parent_id'] ?? 0);
@@ -199,6 +201,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $page = $existing === null
                 ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop)
                 : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop);
+
+            $pageService->updateSeo($page->id, $metaTitle, $metaDescription);
 
             header('Location: ' . admin_url('pages') . '?action=edit&id=' . $page->id . '&saved=1');
             exit;
@@ -366,6 +370,18 @@ if ($action === 'edit') {
                 <label for="page-excerpt">Excerpt</label>
                 <textarea id="page-excerpt" name="excerpt" rows="3"><?= esc_html($page->excerpt ?? '') ?></textarea>
             </p>
+
+            <fieldset class="lp-field">
+                <legend>SEO (optional)</legend>
+
+                <label for="page-meta-title">SEO title</label>
+                <input type="text" id="page-meta-title" name="meta_title" value="<?= esc_attr($page->metaTitle ?? '') ?>" placeholder="Defaults to the title above">
+                <span class="lp-field__hint">Overrides the browser tab title and search-result headline only — the title above is unchanged everywhere else on the site.</span>
+
+                <label for="page-meta-description">Meta description</label>
+                <textarea id="page-meta-description" name="meta_description" rows="2" placeholder="Defaults to the excerpt above"><?= esc_html($page->metaDescription ?? '') ?></textarea>
+                <span class="lp-field__hint">Shown in search results and social share previews. Leave blank to use the excerpt.</span>
+            </fieldset>
 
             <fieldset class="lp-field">
                 <legend>Featured Image</legend>

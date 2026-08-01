@@ -6,6 +6,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\Tag;
 use RuntimeException;
 
@@ -20,12 +21,15 @@ use RuntimeException;
  * when binding the same value twice — see CategoryService's docblock and
  * PHP-TEST-SUITE.md's "Known gaps" for why this matters against a real
  * MySQL connection.
+ *
+ * $hooks is optional (LP-037) — see PostService's docblock for why.
  */
 final class TagService
 {
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -52,6 +56,8 @@ final class TagService
         if ($tag === null) {
             throw new RuntimeException('Failed to load the tag that was just created.');
         }
+
+        $this->hooks?->doAction('tag_saved', $tag);
 
         return $tag;
     }
@@ -86,12 +92,14 @@ final class TagService
             throw new RuntimeException('Failed to load the tag that was just updated.');
         }
 
+        $this->hooks?->doAction('tag_saved', $tag);
+
         return $tag;
     }
 
     public function delete(int $id): bool
     {
-        return (bool) $this->database->transaction(function () use ($id): int {
+        $deleted = (bool) $this->database->transaction(function () use ($id): int {
             $this->database->execute(
                 'DELETE FROM ' . $this->postTagsTable() . ' WHERE tag_id = :tag_id',
                 ['tag_id' => $id],
@@ -102,6 +110,12 @@ final class TagService
                 ['id' => $id],
             );
         });
+
+        if ($deleted) {
+            $this->hooks?->doAction('tag_deleted', $id);
+        }
+
+        return $deleted;
     }
 
     public function findById(int $id): ?Tag
