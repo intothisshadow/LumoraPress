@@ -85,16 +85,17 @@ Lumora Press follows a small service-oriented architecture rather than a full fr
   registration and rendering, exposed procedurally for theme authors.
 - **`LumoraPress\Core\Security\Auth`**, **`SessionManager`**, **`Csrf`**,
   **`LoginThrottle`**, **`RememberMeService`**, **`ContentSecurityPolicy`**,
-  **`FormTiming`**, **`PasswordResetService`** — session-based authentication
-  with session-fixation protection, secure cookie defaults, per-action CSRF
-  tokens, database-backed login attempt throttling by IP address (thresholds
-  configurable on Settings &rsaquo; Security), an optional "Remember Me"
-  persistent login via a rotating, single-use selector/validator cookie, a
-  strict, same-origin-only Content-Security-Policy header sent on every
-  response, an HMAC-signed submission-timing check that rejects scripted
-  instant form submissions, and self-service password reset via a
-  single-use, one-hour-expiring emailed link (Log In &rsaquo; "Forgot
-  password?").
+  **`FormTiming`**, **`PasswordResetService`**, **`PasswordResetThrottle`** —
+  session-based authentication with session-fixation protection, secure
+  cookie defaults, per-action CSRF tokens, database-backed login attempt
+  throttling by IP address (thresholds configurable on Settings &rsaquo;
+  Security), an optional "Remember Me" persistent login via a rotating,
+  single-use selector/validator cookie, a strict, same-origin-only
+  Content-Security-Policy header sent on every response, an HMAC-signed
+  submission-timing check that rejects scripted instant form submissions,
+  and self-service password reset via a single-use, one-hour-expiring
+  emailed link (Log In &rsaquo; "Forgot password?"), itself IP-rate-limited
+  the same way login attempts are.
 - **`LumoraPress\Core\Mail\Mailer`** — a minimal outbound-email interface,
   backed by `NativeMailer` (PHP's built-in `mail()`, no external mail
   library) — used today for password-reset emails.

@@ -22,15 +22,17 @@ use Throwable;
  * tokens for that user before inserting a fresh one, so a new request
  * supersedes an old, unused link rather than leaving both valid.
  *
- * Known, accepted trade-off (not fixed here): a forgot-password request
- * for a registered email does strictly more work (a database INSERT plus
- * a mail() call) than one for an unregistered email, which is a timing
- * side-channel an attacker could use to enumerate registered addresses.
- * Eliminating it cleanly needs async/queued mail delivery, which this
- * codebase has no infrastructure for (no cron/queue exists — see
- * GitHubReleaseProvider's own "cron-free" docblock). Documented rather
- * than engineered around, the same treatment LoginThrottle's "fails open"
- * trade-off gets.
+ * Known, accepted trade-off (not fully fixed here): a forgot-password
+ * request for a registered email does strictly more work (a database
+ * INSERT plus a mail() call) than one for an unregistered email, which is
+ * a timing side-channel an attacker could use to enumerate registered
+ * addresses. Eliminating it cleanly needs async/queued mail delivery,
+ * which this codebase has no infrastructure for (no cron/queue exists —
+ * see GitHubReleaseProvider's own "cron-free" docblock). PasswordResetThrottle
+ * caps how many requests one IP can make, which bounds how much of this
+ * side-channel an attacker can practically exploit, but does not close it
+ * outright — the remaining gap is documented rather than engineered
+ * around, the same treatment LoginThrottle's "fails open" trade-off gets.
  */
 final class PasswordResetService
 {
