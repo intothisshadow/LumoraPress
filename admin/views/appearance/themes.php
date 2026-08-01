@@ -335,7 +335,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
             <input type="file" id="site-favicon" name="favicon" accept="image/png,image/x-icon,.ico">
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -350,6 +350,6 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
             <textarea id="custom-css" name="custom_css" rows="12" class="lp-code-textarea"><?= esc_html((string) $kernel->config->option('custom_css', '')) ?></textarea>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>

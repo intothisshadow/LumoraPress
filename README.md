@@ -167,7 +167,11 @@ PHP files are ever replaced — `config/`, `content/uploads/`,
 never touched.
 `install/` is deleted again automatically once the update succeeds (the
 same best-effort cleanup the installer itself performs), so a package that
-ships it doesn't leave it lying around on disk.
+ships it doesn't leave it lying around on disk. If a future release drops
+one of those top-level core paths entirely, the old one is automatically
+removed too — tracked via a small on-disk manifest, scoped so it can only
+ever act on Lumora Press's own core paths, never anything else on the
+server.
 
 Every backup pair is also listed in a **Backups** panel on the Updates
 page — "Back up now" creates one on demand, independent of running an

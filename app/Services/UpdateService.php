@@ -42,6 +42,7 @@ final class UpdateService
         private readonly string $stagingRoot,
         private readonly string $lockFilePath,
         private readonly array $corePaths,
+        private readonly UpdateManifest $manifest,
     ) {
     }
 
@@ -140,6 +141,8 @@ final class UpdateService
              * directory alert (LP-030) still catches it either way.
              */
             (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
+
+            $this->removeObsoleteCorePaths();
 
             $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
@@ -368,19 +371,52 @@ final class UpdateService
         }
     }
 
+    /**
+     * Removes top-level `corePaths` entries that were part of a previous
+     * install/restore but aren't part of the current `$corePaths`
+     * configuration — the only case a corePath entry can go stale, since
+     * $corePaths is a value only ever set by this codebase's own
+     * bootstrap.php, never derived from an uploaded release ZIP or
+     * touched by an admin, a plugin, or any file outside the fixed
+     * corePaths list. Deliberately compares against the *configured*
+     * corePaths, not "what this specific release happened to contain" —
+     * see UpdateManifest's own docblock for why.
+     *
+     * A missing/never-written manifest reads back as [], so the very
+     * first run after this exists is always a safe no-op: nothing is
+     * removed, tracking simply begins from that point on.
+     */
+    private function removeObsoleteCorePaths(): void
+    {
+        $obsolete = array_diff($this->manifest->read(), $this->corePaths);
+
+        foreach ($obsolete as $relativePath) {
+            $this->deletePath(rtrim($this->installRoot, '/') . '/' . $relativePath);
+        }
+
+        $this->manifest->write($this->corePaths);
+    }
+
+    private function deletePath(string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        if (is_dir($path) && !is_link($path)) {
+            $this->removeDirectory($path);
+        } else {
+            unlink($path);
+        }
+    }
+
     private function overlayPath(string $source, string $target): void
     {
         if (!file_exists($source)) {
             return;
         }
 
-        if (file_exists($target)) {
-            if (is_dir($target) && !is_link($target)) {
-                $this->removeDirectory($target);
-            } else {
-                unlink($target);
-            }
-        }
+        $this->deletePath($target);
 
         $parent = dirname($target);
 

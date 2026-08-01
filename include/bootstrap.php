@@ -66,6 +66,7 @@ use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
 use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateBackupService;
+use LumoraPress\Services\UpdateManifest;
 use LumoraPress\Services\UpdatePackageValidator;
 use LumoraPress\Services\UpdateService;
 use LumoraPress\Services\UserService;
@@ -417,12 +418,15 @@ $updateValidator = new UpdatePackageValidator(
     corePaths: $updateCorePaths,
 );
 
+$updateManifest = new UpdateManifest(LUMORA_ROOT);
+
 $updateBackups = new UpdateBackupService(
     database: $database,
     tablePrefix: $tablePrefix,
     installRoot: LUMORA_ROOT,
     backupsPath: LUMORA_ROOT . '/storage/backups',
     corePaths: $updateCorePaths,
+    manifest: $updateManifest,
 );
 
 $updates = new UpdateService(
@@ -437,6 +441,7 @@ $updates = new UpdateService(
     stagingRoot: LUMORA_ROOT . '/storage/updates/staging',
     lockFilePath: LUMORA_ROOT . '/storage/updates/update.lock',
     corePaths: $updateCorePaths,
+    manifest: $updateManifest,
 );
 
 $githubUpdates = new GitHubReleaseProvider($config);

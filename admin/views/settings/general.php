@@ -179,7 +179,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             </select>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -204,7 +204,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <span class="lp-field__hint">Currently: <?= esc_html(the_time(new \DateTimeImmutable())) ?></span>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -220,7 +220,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <span class="lp-field__hint">Leave blank to keep the theme's default "&copy; <?= esc_html((string) date('Y')) ?> <?= esc_html(site_name()) ?>." line.</span>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -266,7 +266,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <span class="lp-field__hint">Used when a shared post or page has no featured image of its own.</span>
         </fieldset>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -306,7 +306,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <input type="text" id="feed-description" name="feed_description" value="<?= esc_attr((string) $kernel->config->option('feed_description', '')) ?>">
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -326,7 +326,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <input type="number" id="search-max-results" name="search_max_results" min="1" max="500" value="<?= esc_attr((string) $kernel->config->option('search_max_results', '50')) ?>">
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -342,7 +342,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <span class="lp-field__hint">A new revision is saved automatically each time a post or page is updated. Set to 0 to keep every revision (unlimited).</span>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -375,7 +375,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 
         <p class="lp-field__hint">Manage your own API tokens on the <a href="<?= esc_url(admin_url('api-tokens')) ?>">API Tokens</a> page.</p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 

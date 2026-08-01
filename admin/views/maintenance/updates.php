@@ -578,6 +578,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <li>Themes and plugins other than the default theme are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, and the root PHP files are replaced.</li>
         <li>An automatic file and database backup is created before any update is applied. Use the Backups panel above to create one on demand, or restore/delete an existing one.</li>
         <li>If the <code>install/</code> directory is present when an update completes, it is automatically removed during cleanup.</li>
+        <li>If a folder or file that made up an older release is no longer part of a newer one, it's automatically removed once the update finishes — this only ever applies to Lumora Press's own core paths (<code>app/</code>, <code>admin/</code>, <code>include/</code>, etc.); themes other than the default theme, plugins, uploads, and <code>config/</code> are never touched.</li>
         <li>SHA-256 checksum verification is used when the release source provides one.</li>
     </ul>
 </section>

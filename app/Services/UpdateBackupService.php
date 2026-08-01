@@ -13,6 +13,11 @@ use ZipArchive;
  * before/after a manual update, using only ZipArchive and PDO — no
  * mysqldump or shell_exec, since either may be unavailable on shared
  * hosting.
+ *
+ * Restore is purely additive: restoreFiles() only ever extracts a backup
+ * archive over the installation, re-adding/overwriting files — it never
+ * deletes anything first or after. Only UpdateService's install() ever
+ * removes files (see its removeObsoleteCorePaths()).
  */
 final class UpdateBackupService
 {
@@ -30,6 +35,7 @@ final class UpdateBackupService
         private readonly string $installRoot,
         private readonly string $backupsPath,
         private readonly array $corePaths,
+        private readonly UpdateManifest $manifest,
     ) {
     }
 
@@ -182,6 +188,13 @@ final class UpdateBackupService
         }
 
         $zip->close();
+
+        // Restore never deletes anything (see this class's docblock), so
+        // rewriting the manifest here can only ever cause a later
+        // Install to under-remove a stale leftover, never to remove
+        // something it shouldn't — keeps the manifest from describing a
+        // version that a restore just moved away from.
+        $this->manifest->write($this->corePaths);
     }
 
     public function backupDatabase(string $version): string

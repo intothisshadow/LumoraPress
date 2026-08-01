@@ -115,7 +115,7 @@ if ($form === 'thumbnail_settings' && Csrf::verify('thumbnail_settings', is_stri
             <span class="lp-field__hint">Used as the featured image (and Open Graph/Twitter Card image) for posts/pages that don't have one of their own.</span>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -131,7 +131,7 @@ if ($form === 'thumbnail_settings' && Csrf::verify('thumbnail_settings', is_stri
             <span class="lp-field__hint">Only these directories (and their subdirectories) can be scanned from Media Manager &rarr; Import from Server. Leave empty to disable server import entirely.</span>
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 
@@ -147,6 +147,6 @@ if ($form === 'thumbnail_settings' && Csrf::verify('thumbnail_settings', is_stri
         </label>
         <span class="lp-field__hint">Counts a download each time a document, archive, audio, or video file is fetched through its <code>/media/{id}/download</code> link, shown on that file's Media Manager details page. Image "views" aren't tracked &mdash; see <a href="<?= esc_url(admin_url('media')) ?>">Media Manager</a>'s built-in views for what's available.</span>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>

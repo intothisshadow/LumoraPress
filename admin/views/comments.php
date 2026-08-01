@@ -140,7 +140,7 @@ if ($action === 'edit') {
                 <input type="checkbox" name="comments_enabled" value="1" <?= $kernel->config->option('comments_enabled', '1') !== '0' ? 'checked' : '' ?>>
                 Allow comments site-wide
             </label>
-            <button type="submit" class="lp-button">Save</button>
+            <button type="submit" class="lp-button lp-button--primary">Save</button>
         </form>
     </section>
 

@@ -123,6 +123,6 @@ if ($form === 'maintenance_settings' && Csrf::verify('maintenance_settings', is_
             <input type="number" id="maintenance-retry-after" name="maintenance_retry_after_seconds" min="0" value="<?= esc_attr((string) $kernel->config->option('maintenance_retry_after_seconds', '3600')) ?>">
         </p>
 
-        <button type="submit" class="lp-button">Save</button>
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
