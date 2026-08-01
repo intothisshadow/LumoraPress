@@ -181,7 +181,7 @@ them via FTP/SFTP or your hosting file manager).
 
 ## Current Status
 
-**Version 0.3.0 "Admin"**
+**Version 0.4.0 "Updates"**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme

@@ -2,6 +2,66 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [0.4.0] — 2026-08-01 — "Updates"
+
+### Added
+
+- GitHub Releases updater (LP-027): the Maintenance &rsaquo; Updates page can
+  now check GitHub directly for new releases, alongside the existing
+  manual-ZIP-upload path. "Check for Updates" queries the GitHub Releases
+  API (configurable repository, optional personal access token for
+  private forks/higher rate limits, and a stable/pre-release channel
+  setting); "Download & Check" downloads the release — preferring the
+  curated `LumoraPress-v{version}.zip` release asset and verifying its
+  SHA-256 checksum when the release publishes one, falling back to
+  GitHub's `zipball` archive otherwise — and feeds it straight into the
+  same validate/backup/migrate/rollback pipeline manual uploads already
+  use, so the confirm/install/cancel screen is identical either way.
+  `{prefix}update_log` gained a `source` column (`github`/`manual`) shown
+  on the update history table. A **Backups** panel lists every automatic
+  backup pair with a confirm-gated "Restore" button. Since this codebase
+  has no queue/cron infrastructure, "scheduled" checking is instead
+  triggered opportunistically from the Dashboard page (throttled to an
+  admin-configurable hourly/daily/weekly interval, or disabled entirely),
+  which also surfaces a Dashboard notice when a newer version is found —
+  this only ever checks, never downloads or installs anything on its own.
+- Revisions (LP-017): editing a Post or Page from the admin now
+  automatically snapshots the previous state to a new `{prefix}revisions`
+  table before saving — no separate "save revision" action, no cron job.
+  A "Revision History" panel on the edit screen lists every snapshot,
+  shows a line-based diff against the current content, and can restore
+  one (which itself snapshots the current state first, so a restore is
+  always undoable). Retention is configurable under Settings &rsaquo; General
+  (default 25 revisions per post/page, 0 = unlimited).
+- Theme File Editor (LP-050): a fourth Appearance sub-page for browsing
+  and editing a theme's files directly from the admin — CodeMirror 5
+  syntax highlighting, find/replace, PHP syntax checking before save,
+  automatic per-file backups with restore, and a warning banner when
+  editing the currently-active theme. Every path is re-resolved and
+  containment-checked before use, so a tampered path or a symlink planted
+  inside a theme directory can't be used to read or write outside it.
+- Plugin Browser (LP-045): the Plugins page now shows installed plugins
+  as visual cards (preview image, active/inactive status, search, and
+  filtering) with a details panel, mirroring the Theme Browser's design.
+  Plugins can be uploaded, installed, replaced/updated, activated,
+  deactivated, or deleted entirely from the browser, with rollback on a
+  failed installation.
+- Posts admin navigation (LP-054): Categories and Tags are now children
+  of a Posts submenu (All Posts / New Post / Categories / Tags), matching
+  classic WordPress, instead of three separate top-level entries. Old
+  bookmarked `/admin/categories` and `/admin/tags` links still redirect
+  to their new locations.
+- Admin sidebar icons (LP-053): every sidebar navigation entry and
+  sub-page now has a leading icon, purely decorative to screen readers.
+
+### Fixed
+
+- Manual and GitHub-sourced updates could leave a release's `docs/`
+  contents (`CHANGELOG.md`/`HISTORY.md`/`TROUBLESHOOTING.md`) frozen at
+  whatever version was installed originally: `docs/` was missing from the
+  set of paths an update overlays, even though it ships with every
+  release the same way `README.md`/`LICENSE.md` do.
+
 ## [0.3.0] — 2026-07-25 — "Admin"
 
 ### Added
