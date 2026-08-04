@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\User;
 use LumoraPress\Models\UserRole;
 
@@ -201,6 +202,19 @@ final class UserService
         );
     }
 
+    /**
+     * LP-066/LP-067: $format = null means "use the site default editor"
+     * (the profile page's "Use site default" option) — stored as SQL NULL,
+     * not an empty string, so it's unambiguous from "never set."
+     */
+    public function updateEditorPreference(int $id, ?ContentFormat $format): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET preferred_editor = :preferred_editor WHERE id = :id',
+            ['preferred_editor' => $format?->value, 'id' => $id],
+        );
+    }
+
     public function delete(int $id): bool
     {
         return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -239,6 +253,9 @@ final class UserService
             email: (string) $row['email'],
             displayName: (string) ($row['display_name'] ?? $row['username']),
             role: UserRole::from((string) $row['role']),
+            preferredEditor: isset($row['preferred_editor'])
+                ? ContentFormat::tryFrom((string) $row['preferred_editor'])
+                : null,
         );
     }
 

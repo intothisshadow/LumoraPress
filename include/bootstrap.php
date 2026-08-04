@@ -5,6 +5,7 @@ declare(strict_types=1);
 use LumoraPress\Controllers\ApiController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\ActiveConfig;
+use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Autoloader;
 use LumoraPress\Core\Cache\CacheDriverInterface;
 use LumoraPress\Core\Cache\CacheManager;
@@ -53,6 +54,8 @@ use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
+use LumoraPress\Services\EditorPreferenceService;
+use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
@@ -252,6 +255,8 @@ $themeFileEditor = new ThemeFileEditor($themesPath, LUMORA_ROOT . '/storage/them
 
 $users = new UserService($database, $tablePrefix);
 $auth = new Auth($users, $sessions);
+$editorPreferences = new EditorPreferenceService($config, $users, $hooks);
+ActiveEditorPreference::set($editorPreferences);
 
 /*
  * LP-025: thresholds are configurable on Settings > Security, previously
@@ -328,6 +333,17 @@ $categories = new CategoryService($database, $tablePrefix, $hooks);
 $tags = new TagService($database, $tablePrefix, $hooks);
 $comments = new CommentService($database, $tablePrefix, $hooks);
 $redirects = new RedirectService($database, $tablePrefix);
+
+/*
+ * LP-023: auto-embed. Registered as a plain procedural add_filter() call
+ * here, the same convention 'csp_directives' itself already uses just
+ * above, rather than the service registering its own hooks in its
+ * constructor — 'content_html' has no existing subscriber to follow as
+ * precedent, so this matches the closest one that does.
+ */
+$embeds = new EmbedService($config, $hooks);
+add_filter('content_html', [$embeds, 'render']);
+add_filter('csp_directives', [$embeds, 'filterCsp']);
 
 /*
  * LP-048: core widget types need PostService/PageService/CategoryService/
@@ -460,12 +476,22 @@ require LUMORA_ROOT . '/include/author-functions.php';
 /*
  * The fixed set of paths (relative to LUMORA_ROOT) that make up the core
  * application, as distributed in an official release ZIP. Everything
- * else under LUMORA_ROOT — config/, content/uploads, content/plugins,
- * custom themes other than "default", and storage/ — is user data and is
- * never touched by a manual update. docs/ (CHANGELOG.md/HISTORY.md/
- * TROUBLESHOOTING.md) belongs here alongside README.md/LICENSE.md — it
- * ships with every release, unlike the user-data paths above — but was
- * missing until this fix, so a manual update never overlaid it.
+ * else under LUMORA_ROOT — config/, content/uploads, the rest of
+ * content/plugins (i.e. any plugin the administrator installed
+ * themselves), custom themes other than "default", and storage/ — is
+ * user data and is never touched by a manual update. docs/
+ * (CHANGELOG.md/HISTORY.md/TROUBLESHOOTING.md) belongs here alongside
+ * README.md/LICENSE.md — it ships with every release, unlike the
+ * user-data paths above — but was missing until this fix, so a manual
+ * update never overlaid it.
+ *
+ * content/plugins/font-awesome (LPP-002) is listed explicitly, the same
+ * "bundled first-party, not user-installed" treatment content/themes/
+ * default already gets — without this, the plugin's own file updates
+ * would never reach an existing install, and a site that upgraded from
+ * a release before this plugin existed would never receive it at all.
+ * A user-installed plugin (anything else under content/plugins/) is
+ * still never touched.
  */
 $updateCorePaths = [
     'app',
@@ -473,6 +499,7 @@ $updateCorePaths = [
     'include',
     'install',
     'content/themes/default',
+    'content/plugins/font-awesome',
     'index.php',
     'version.php',
     '.htaccess',
@@ -608,6 +635,8 @@ $kernel = new Kernel(
     passwordResetThrottle: $passwordResetThrottle,
     mailer: $mailer,
     themeOptions: $themeOptions,
+    embeds: $embeds,
+    editorPreferences: $editorPreferences,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users);

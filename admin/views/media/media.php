@@ -444,7 +444,7 @@ $allFolders = $folderService->listAll();
                         <li><?= esc_html($usage) ?></li>
                     <?php endforeach; ?>
                 </ul>
-                <form method="post" action="<?= esc_url(admin_url('media/media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" onsubmit="return confirm('Delete this file anyway? This cannot be undone.');">
+                <form method="post" action="<?= esc_url(admin_url('media/media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" data-lp-confirm="Delete this file anyway? This cannot be undone.">
                     <?= Csrf::field('delete_file') ?>
                     <input type="hidden" name="form" value="delete_file">
                     <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
@@ -569,7 +569,11 @@ $allFolders = $folderService->listAll();
         if ($currentFolderRaw === '0') {
             $filters['unassignedOnly'] = true;
         } elseif ($currentFolderId !== null) {
-            $filters['folderIds'] = [$currentFolderId, ...$folderService->descendantIds($currentFolderId)];
+            // Strictly this folder's own files — not descendant
+            // subfolders' — so a parent folder's view never shows what's
+            // actually filed under a child folder. Only "All Files"
+            // shows every file regardless of folder.
+            $filters['folderIds'] = [$currentFolderId];
         }
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
@@ -594,10 +598,10 @@ $allFolders = $folderService->listAll();
         foreach ($children as $folder) {
             $isActive = $currentFolderRaw === (string) $folder->id;
             echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . '">';
-            echo '<a href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '">' . esc_html($folder->name) . '</a> ';
+            echo '<a href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" draggable="true" data-lp-folder-drag data-folder-id="' . (int) $folder->id . '">' . esc_html($folder->name) . '</a> ';
 
-            echo '<details class="lp-folder-tree__manage"><summary>Manage</summary>';
-            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '">';
+            echo '<details class="lp-folder-tree__manage lp-folder-actions"><summary>Manage</summary>';
+            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-folder-move-form data-folder-id="' . (int) $folder->id . '">';
             echo Csrf::field('rename_folder_' . $folder->id);
             echo '<input type="hidden" name="form" value="rename_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
@@ -606,7 +610,7 @@ $allFolders = $folderService->listAll();
             echo '<input type="text" name="name" value="' . esc_attr($folder->name) . '">';
             echo '<button type="submit" class="lp-button">Rename</button>';
             echo '</form>';
-            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" onsubmit="return confirm(\'Delete this folder? It must be empty.\');">';
+            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-confirm="Delete this folder? It must be empty.">';
             echo Csrf::field('delete_folder_' . $folder->id);
             echo '<input type="hidden" name="form" value="delete_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
@@ -645,7 +649,7 @@ $allFolders = $folderService->listAll();
                 <?php endforeach; ?>
             </ul>
 
-            <h2>Folders</h2>
+            <h2 data-lp-folder-root-drop>Folders</h2>
             <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
                 <p class="lp-field">
                     <label for="folder-q">Search folders</label>
@@ -669,7 +673,7 @@ $allFolders = $folderService->listAll();
             </ul>
             <?php $renderFolderTree($folderTreeFolders); ?>
 
-            <details class="lp-folder-tree__manage">
+            <details class="lp-folder-tree__manage lp-folder-actions lp-folder-actions--primary">
                 <summary>New Folder</summary>
                 <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
                     <?= Csrf::field('create_folder') ?>
@@ -695,50 +699,54 @@ $allFolders = $folderService->listAll();
 
         <div class="lp-media-manager__main">
             <section class="lp-admin__panel">
-                <h2>Search &amp; Filter</h2>
-                <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__filter-form">
-                    <?php if ($currentFolderRaw !== ''): ?>
-                        <input type="hidden" name="folder" value="<?= esc_attr($currentFolderRaw) ?>">
-                    <?php endif; ?>
-                    <p class="lp-field">
-                        <label for="media-q">Search filename</label>
-                        <input type="text" id="media-q" name="q" value="<?= esc_attr($term) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-type">Type</label>
-                        <select id="media-type" name="type">
-                            <option value="">All types</option>
-                            <?php foreach (['image' => 'Images', 'document' => 'Documents', 'archive' => 'Archives', 'audio' => 'Audio', 'video' => 'Video'] as $value => $label): ?>
-                                <option value="<?= esc_attr($value) ?>" <?= $type === $value ? 'selected' : '' ?>><?= esc_html($label) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-date-from">Uploaded from</label>
-                        <input type="date" id="media-date-from" name="date_from" value="<?= esc_attr($dateFrom) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-date-to">Uploaded to</label>
-                        <input type="date" id="media-date-to" name="date_to" value="<?= esc_attr($dateTo) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-width-min">Width (px)</label>
-                        <input type="number" id="media-width-min" name="width_min" min="0" placeholder="Min" value="<?= esc_attr($widthMin) ?>">
-                        <input type="number" name="width_max" min="0" placeholder="Max" value="<?= esc_attr($widthMax) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-height-min">Height (px)</label>
-                        <input type="number" id="media-height-min" name="height_min" min="0" placeholder="Min" value="<?= esc_attr($heightMin) ?>">
-                        <input type="number" name="height_max" min="0" placeholder="Max" value="<?= esc_attr($heightMax) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="media-size-min">File size (KB)</label>
-                        <input type="number" id="media-size-min" name="size_min" min="0" placeholder="Min" value="<?= esc_attr($sizeMinKb) ?>">
-                        <input type="number" name="size_max" min="0" placeholder="Max" value="<?= esc_attr($sizeMaxKb) ?>">
-                    </p>
-                    <p class="lp-field__hint">Width/height filters only match images (other file types have no dimensions).</p>
-                    <button type="submit" class="lp-button">Filter</button>
-                </form>
+                <details class="lp-admin__collapsible">
+                    <summary>Search &amp; Filter</summary>
+                    <div class="lp-admin__collapsible__body">
+                        <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__filter-form">
+                            <?php if ($currentFolderRaw !== ''): ?>
+                                <input type="hidden" name="folder" value="<?= esc_attr($currentFolderRaw) ?>">
+                            <?php endif; ?>
+                            <p class="lp-field">
+                                <label for="media-q">Search filename</label>
+                                <input type="text" id="media-q" name="q" value="<?= esc_attr($term) ?>">
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-type">Type</label>
+                                <select id="media-type" name="type">
+                                    <option value="">All types</option>
+                                    <?php foreach (['image' => 'Images', 'document' => 'Documents', 'archive' => 'Archives', 'audio' => 'Audio', 'video' => 'Video'] as $value => $label): ?>
+                                        <option value="<?= esc_attr($value) ?>" <?= $type === $value ? 'selected' : '' ?>><?= esc_html($label) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-date-from">Uploaded from</label>
+                                <input type="date" id="media-date-from" name="date_from" value="<?= esc_attr($dateFrom) ?>">
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-date-to">Uploaded to</label>
+                                <input type="date" id="media-date-to" name="date_to" value="<?= esc_attr($dateTo) ?>">
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-width-min">Width (px)</label>
+                                <input type="number" id="media-width-min" name="width_min" min="0" placeholder="Min" value="<?= esc_attr($widthMin) ?>">
+                                <input type="number" name="width_max" min="0" placeholder="Max" value="<?= esc_attr($widthMax) ?>">
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-height-min">Height (px)</label>
+                                <input type="number" id="media-height-min" name="height_min" min="0" placeholder="Min" value="<?= esc_attr($heightMin) ?>">
+                                <input type="number" name="height_max" min="0" placeholder="Max" value="<?= esc_attr($heightMax) ?>">
+                            </p>
+                            <p class="lp-field">
+                                <label for="media-size-min">File size (KB)</label>
+                                <input type="number" id="media-size-min" name="size_min" min="0" placeholder="Min" value="<?= esc_attr($sizeMinKb) ?>">
+                                <input type="number" name="size_max" min="0" placeholder="Max" value="<?= esc_attr($sizeMaxKb) ?>">
+                            </p>
+                            <p class="lp-field__hint">Width/height filters only match images (other file types have no dimensions).</p>
+                            <button type="submit" class="lp-button">Filter</button>
+                        </form>
+                    </div>
+                </details>
             </section>
 
             <section class="lp-admin__panel">
@@ -749,6 +757,13 @@ $allFolders = $folderService->listAll();
                         <?= Csrf::field('bulk_action') ?>
                         <input type="hidden" name="form" value="bulk_action">
                         <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
+
+                        <div class="lp-media-grid__toolbar">
+                            <label class="lp-field--checkbox lp-media-grid__select-all">
+                                <input type="checkbox" id="media-select-all" data-lp-select-all="ids[]">
+                                Select all
+                            </label>
+                        </div>
 
                         <div class="lp-media-grid">
                             <?php foreach ($items as $item): ?>

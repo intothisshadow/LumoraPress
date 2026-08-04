@@ -1,0 +1,97 @@
+<?php
+/** @var \LumoraPress\Core\Kernel $kernel */
+/** @var \LumoraPress\Models\User $currentUser */
+
+use LumoraPress\Core\Security\Csrf;
+
+if (!isset($kernel)) {
+    http_response_code(403);
+    exit('Direct access is not permitted.');
+}
+
+/*
+ * LP-023: Settings > Embeds. A bare provider URL alone on its own line in
+ * a post/page automatically expands into an embedded player when the
+ * matching toggle below is on — see EmbedService's own docblock for the
+ * detection rules and why this never makes an outbound HTTP request.
+ */
+$embeds = $kernel->embeds;
+$errors = [];
+$form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+
+if ($form === 'embed_settings' && Csrf::verify('embed_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $maxWidth = trim((string) ($_POST['max_width'] ?? ''));
+
+    $providers = [];
+
+    foreach (['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen'] as $providerKey) {
+        $providers[$providerKey] = isset($_POST['provider_' . $providerKey]);
+    }
+
+    $embeds->saveSettings([
+        'enabled' => isset($_POST['enabled']),
+        'providers' => $providers,
+        'max_width' => $maxWidth,
+    ]);
+
+    header('Location: ' . admin_url('settings/embeds') . '?saved=1');
+    exit;
+}
+
+$settings = $embeds->settings();
+
+$providerLabels = [
+    'youtube' => 'YouTube',
+    'vimeo' => 'Vimeo',
+    'soundcloud' => 'SoundCloud',
+    'spotify' => 'Spotify',
+    'codepen' => 'CodePen',
+];
+?>
+<h1 class="lp-admin__title">Embeds</h1>
+
+<?php if (isset($_GET['saved']) && $errors === []): ?>
+    <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
+
+<section class="lp-admin__panel">
+    <h2>Settings</h2>
+    <p class="lp-field__hint">
+        When on, pasting a supported link alone on its own line in a post or
+        page automatically turns it into an embedded player &mdash; no HTML
+        editing required. A link inline within a sentence is always left as
+        a plain link. No provider is ever contacted over the network to
+        build the embed; only the pasted link's own text is used.
+    </p>
+
+    <form method="post" action="<?= esc_url(admin_url('settings/embeds')) ?>">
+        <?= Csrf::field('embed_settings') ?>
+        <input type="hidden" name="form" value="embed_settings">
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="enabled" value="1" <?= $settings['enabled'] ? 'checked' : '' ?>>
+                Enable auto-embed
+            </label>
+        </p>
+
+        <fieldset class="lp-field">
+            <legend>Providers</legend>
+            <?php foreach ($providerLabels as $providerKey => $providerLabel): ?>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="provider_<?= esc_attr($providerKey) ?>" value="1" <?= ($settings['providers'][$providerKey] ?? false) ? 'checked' : '' ?>>
+                    <?= esc_html($providerLabel) ?>
+                </label>
+            <?php endforeach; ?>
+            <span class="lp-field__hint">Twitter/X isn't supported yet &mdash; it has no plain-iframe embed, only a script-based one. Other providers can be added by a plugin via the <code>embed_providers</code> filter without touching core.</span>
+        </fieldset>
+
+        <p class="lp-field">
+            <label for="embed-max-width">Maximum embed width</label>
+            <input type="text" id="embed-max-width" name="max_width" value="<?= esc_attr($settings['max_width']) ?>" placeholder="640px">
+            <span class="lp-field__hint">Any CSS width value (e.g. <code>640px</code> or <code>100%</code>). The embed itself always scales down to fit its container.</span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+    </form>
+</section>

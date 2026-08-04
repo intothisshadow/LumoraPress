@@ -271,7 +271,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--primary">Activate</button>
                             </form>
-                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this theme permanently? This cannot be undone.');">
+                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this theme permanently? This cannot be undone.">
                                 <?= Csrf::field('delete_theme_' . $info->slug) ?>
                                 <input type="hidden" name="form" value="delete_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">

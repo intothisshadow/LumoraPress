@@ -217,7 +217,7 @@ if ($action === 'edit') {
                                         </form>
                                     <?php endif; ?>
                                 <?php endforeach; ?>
-                                <form method="post" action="<?= esc_url(admin_url('comments')) ?>" onsubmit="return confirm('Delete this comment permanently? Replies will be kept but become top-level.');">
+                                <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-confirm="Delete this comment permanently? Replies will be kept but become top-level.">
                                     <?= Csrf::field('comment_delete_' . $comment->id) ?>
                                     <input type="hidden" name="form" value="delete">
                                     <input type="hidden" name="id" value="<?= (int) $comment->id ?>">

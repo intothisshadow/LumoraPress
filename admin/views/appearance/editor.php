@@ -212,7 +212,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
 <?php else: ?>
     <form method="get" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-theme-editor__theme-select">
         <label class="lp-visually-hidden" for="tfe-theme-select">Theme</label>
-        <select id="tfe-theme-select" name="theme" onchange="this.form.submit()">
+        <select id="tfe-theme-select" name="theme" data-lp-auto-submit>
             <?php foreach ($themeList as $info): ?>
                 <option value="<?= esc_attr($info->slug) ?>" <?= $info->slug === $slug ? 'selected' : '' ?>>
                     <?= esc_html($info->name) ?><?= $info->isActive ? ' (Active)' : '' ?>
@@ -279,7 +279,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                                     <button type="submit" class="lp-button lp-button--secondary">Rename</button>
                                 </form>
                             </details>
-                            <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('<?= $node['type'] === 'dir' ? 'Delete this folder and everything in it? This cannot be undone.' : 'Delete this file? This cannot be undone.' ?>');">
+                            <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-admin__inline-form" data-lp-confirm="<?= esc_attr($node['type'] === 'dir' ? 'Delete this folder and everything in it? This cannot be undone.' : 'Delete this file? This cannot be undone.') ?>">
                                 <input type="hidden" name="theme" value="<?= esc_attr($slug) ?>">
                                 <?= Csrf::field('tfe_delete_' . sha1($slug . '|' . $node['path'])) ?>
                                 <input type="hidden" name="form" value="delete">
@@ -360,7 +360,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                     <a class="lp-button lp-button--secondary" href="<?= esc_url($editorUrl(['file' => $relativePath, 'download' => '1'])) ?>">Download</a>
                 </p>
 
-                <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" data-lp-file-editor-form onsubmit="<?= str_ends_with($relativePath, '.php') ? "return confirm('Save changes to this PHP file?');" : '' ?>">
+                <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" data-lp-file-editor-form <?= str_ends_with($relativePath, '.php') ? 'data-lp-confirm="Save changes to this PHP file?"' : '' ?>>
                     <input type="hidden" name="theme" value="<?= esc_attr($slug) ?>">
                     <?= Csrf::field('tfe_save') ?>
                     <input type="hidden" name="form" value="save_file">
@@ -387,7 +387,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                                 <li>
                                     <?= esc_html(date('Y-m-d H:i:s', $backup['createdAt'])) ?>
                                     (<?= number_format($backup['size']) ?> bytes)
-                                    <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Restore this version? The current content will be backed up first.');">
+                                    <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-admin__inline-form" data-lp-confirm="Restore this version? The current content will be backed up first.">
                                         <input type="hidden" name="theme" value="<?= esc_attr($slug) ?>">
                                         <?= Csrf::field('tfe_restore_' . sha1($slug . '|' . $relativePath . '|' . $backup['id'])) ?>
                                         <input type="hidden" name="form" value="restore_backup">

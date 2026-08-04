@@ -96,6 +96,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $userService->changePassword($existing->id, $password);
             }
 
+            if (!$kernel->editorPreferences->isLockedToDefault() && isset($_POST['preferred_editor'])) {
+                $preferredEditorInput = trim((string) $_POST['preferred_editor']);
+                $userService->updateEditorPreference(
+                    $user->id,
+                    $preferredEditorInput === '' ? null : \LumoraPress\Models\ContentFormat::tryFrom($preferredEditorInput),
+                );
+            }
+
             header('Location: ' . admin_url('users') . '?action=edit&id=' . $user->id . '&saved=1');
             exit;
         }
@@ -184,6 +192,22 @@ if ($action === 'edit') {
                 </select>
             </p>
 
+            <?php $editorLocked = $kernel->editorPreferences->isLockedToDefault(); ?>
+            <p class="lp-field">
+                <label for="user-preferred-editor">Default editor</label>
+                <select id="user-preferred-editor" name="preferred_editor" <?= $editorLocked ? 'disabled' : '' ?>>
+                    <option value="">Use site default (<?= esc_html($kernel->editorPreferences->defaultEditor()->label()) ?>)</option>
+                    <?php foreach ($kernel->editorPreferences->registeredEditors() as $editorOption): ?>
+                        <option value="<?= esc_attr($editorOption['value']) ?>" <?= $user?->preferredEditor?->value === $editorOption['value'] ? 'selected' : '' ?>>
+                            <?= esc_html($editorOption['label']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if ($editorLocked): ?>
+                    <span class="lp-field__hint">Every account is currently locked to the site default editor (Settings &rsaquo; General).</span>
+                <?php endif; ?>
+            </p>
+
             <p class="lp-field">
                 <label for="user-password"><?= $user === null ? 'Password' : 'New Password' ?></label>
                 <input type="password" id="user-password" name="password" autocomplete="new-password" minlength="10" <?= $user === null ? 'required' : '' ?>>
@@ -231,7 +255,7 @@ if ($action === 'edit') {
                             <td><?= esc_html($listedUser->role->label()) ?></td>
                             <td>
                                 <?php if ($blockReason === null): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('users')) ?>" onsubmit="return confirm('Delete this user permanently?');">
+                                    <form method="post" action="<?= esc_url(admin_url('users')) ?>" data-lp-confirm="Delete this user permanently?">
                                         <?= Csrf::field('user_delete_' . $listedUser->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedUser->id ?>">

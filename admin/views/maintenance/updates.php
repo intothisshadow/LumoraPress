@@ -427,7 +427,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                             <td><?= $backup['database_size'] !== null ? esc_html(number_format($backup['database_size'] / 1024, 0)) . ' KB' : '—' ?></td>
                             <td class="lp-admin__row-actions">
                                 <?php if ($backup['files_filename'] !== null): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Restore Lumora Press to this backup? Everything since it was taken will be lost.');">
+                                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-confirm="Restore Lumora Press to this backup? Everything since it was taken will be lost.">
                                         <?= Csrf::field('restore_backup') ?>
                                         <input type="hidden" name="form" value="restore_backup">
                                         <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">
@@ -437,7 +437,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                                         <button type="submit" class="lp-button">Restore</button>
                                     </form>
                                 <?php endif; ?>
-                                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this backup permanently?');">
+                                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this backup permanently?">
                                     <?= Csrf::field('delete_backup') ?>
                                     <input type="hidden" name="form" value="delete_backup">
                                     <?php if ($backup['files_filename'] !== null): ?>

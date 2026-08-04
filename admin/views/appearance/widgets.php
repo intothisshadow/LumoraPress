@@ -291,7 +291,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                                         <button type="submit" class="lp-button lp-button--secondary">Move Down</button>
                                     </form>
                                 <?php endif; ?>
-                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Remove this widget?');">
+                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form" data-lp-confirm="Remove this widget?">
                                     <?= Csrf::field('widget_remove_' . $widget['id']) ?>
                                     <input type="hidden" name="form" value="remove_widget">
                                     <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">

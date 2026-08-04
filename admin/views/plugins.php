@@ -394,7 +394,7 @@ $pluginList = $kernel->pluginRegistry->discover();
                                         <button type="submit" class="lp-button lp-button--primary">Activate</button>
                                     </form>
                                 <?php endif; ?>
-                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this plugin permanently? This cannot be undone.');">
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this plugin permanently? This cannot be undone.">
                                     <?= Csrf::field('delete_plugin_' . $info->slug) ?>
                                     <input type="hidden" name="form" value="delete_plugin">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">

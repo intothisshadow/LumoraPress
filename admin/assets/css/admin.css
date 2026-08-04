@@ -392,6 +392,65 @@ body.lp-admin-login {
     vertical-align: middle;
 }
 
+/*
+ * Collapsible "Search & Filter" panels (LP-068), collapsed by default —
+ * a <details>/<summary> disclosure standing in for the plain <h2> these
+ * panels used to open with, restyled to match that h2's existing look
+ * (the accent dot, the border-bottom) plus a chevron toggle indicator.
+ */
+.lp-admin__panel > details.lp-admin__collapsible:first-child {
+    margin: 0;
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    cursor: pointer;
+    list-style: none;
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child > summary::-webkit-details-marker {
+    display: none;
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child > summary::before {
+    content: "";
+    display: inline-block;
+    width: 0.3rem;
+    height: 0.3rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--lp-admin-accent);
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child > summary::after {
+    content: "\25B8";
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--lp-admin-text);
+    transition: transform 0.15s ease;
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child[open] > summary::after {
+    transform: rotate(90deg);
+}
+
+.lp-admin__panel > details.lp-admin__collapsible:first-child[open] > summary {
+    margin-bottom: 1.1rem;
+}
+
+.lp-admin__collapsible__body {
+    padding-top: 0.25rem;
+}
+
 .lp-admin__panel--welcome {
     margin-bottom: 1.5rem;
 }
@@ -1168,6 +1227,8 @@ body.lp-admin-login {
 }
 
 .lp-folder-tree__children {
+    box-sizing: border-box;
+    max-width: 100%;
     margin-left: 1rem;
     padding-left: 0.5rem;
     border-left: 1px solid var(--lp-admin-border);
@@ -1185,20 +1246,154 @@ body.lp-admin-login {
 
 .lp-folder-tree__manage {
     display: inline-block;
+    max-width: 100%;
     font-size: 0.8rem;
 }
 
 .lp-folder-tree__manage form {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.35rem;
+    max-width: 100%;
     margin: 0.35rem 0.35rem 0 0;
 }
 
 .lp-folder-tree__manage input[type="text"] {
-    width: auto;
+    width: 8rem;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 0.25rem 0.4rem;
     font-size: 0.8rem;
+}
+
+/*
+ * Folder action buttons (LP-068): the "Manage" and "New Folder" <details>
+ * toggles in the Virtual Folder System previously looked like bare text
+ * links. This restyles their <summary> as a clear, clickable button while
+ * leaving .lp-folder-tree__manage's layout/overflow rules (above) intact,
+ * since bulk-bar disclosure panels reuse that same base class.
+ */
+.lp-folder-actions > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+    font-size: 0.8rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    list-style: none;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lp-folder-actions > summary::-webkit-details-marker {
+    display: none;
+}
+
+.lp-folder-actions > summary::before {
+    content: "\25B8";
+    font-size: 0.7rem;
+    transition: transform 0.15s ease;
+}
+
+.lp-folder-actions[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.lp-folder-actions > summary:hover,
+.lp-folder-actions > summary:focus-visible {
+    border-color: var(--lp-admin-accent);
+    color: var(--lp-admin-accent);
+}
+
+.lp-folder-actions[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+.lp-folder-actions--primary > summary {
+    background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-folder-actions--primary > summary:hover,
+.lp-folder-actions--primary > summary:focus-visible {
+    background: var(--lp-admin-accent-hover);
+    border-color: var(--lp-admin-accent-hover);
+    color: #fff;
+}
+
+/*
+ * Virtual folder drag-and-drop (LP-068): the folder links themselves
+ * (as opposed to the static "Views"/"All Files"/"General Uploads" links
+ * above them, which aren't draggable and stay plain text) always carry a
+ * folder glyph and a bordered chip background, so they read as folders
+ * — a distinct kind of row — rather than plain links, even at rest. On
+ * hover/focus the chip switches to the accent-tinted color and a grip
+ * glyph fades in, as an affordance that the folder can be dragged onto
+ * another to move it.
+ */
+[data-lp-folder-drag] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    cursor: grab;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+[data-lp-folder-drag]::before {
+    content: "\1F4C1";
+    font-size: 0.85rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+[data-lp-folder-drag]::after {
+    content: "\28FF";
+    font-size: 0.85rem;
+    line-height: 1;
+    color: var(--lp-admin-border);
+    opacity: 0;
+    transform: translateX(-2px);
+    transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+[data-lp-folder-drag]:hover,
+[data-lp-folder-drag]:focus-visible {
+    background: var(--lp-admin-chip-bg);
+    border-color: var(--lp-admin-chip-border);
+}
+
+[data-lp-folder-drag]:hover::after,
+[data-lp-folder-drag]:focus-visible::after {
+    opacity: 1;
+    transform: translateX(0);
+    color: var(--lp-admin-accent);
+}
+
+[data-lp-folder-drag]:active {
+    cursor: grabbing;
+}
+
+[data-lp-folder-drag].is-drop-target,
+[data-lp-folder-root-drop].is-drop-target {
+    outline: 2px dashed var(--lp-admin-accent);
+    outline-offset: 2px;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-media-grid__toolbar {
+    margin-bottom: 0.75rem;
 }
 
 .lp-media-grid {

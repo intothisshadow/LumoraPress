@@ -113,7 +113,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PageStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PageStatus::Draft;
         $parentId = (int) ($_POST['parent_id'] ?? 0);
-        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? ContentFormat::Markdown;
+        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
 
         // Contributors and anyone else without publish_posts can only ever save as a draft.
         $status = $canPublish ? $requestedStatus : PageStatus::Draft;
@@ -341,11 +341,12 @@ if ($action === 'edit') {
                 <span class="lp-field__hint">Leave blank to generate one automatically from the title.</span>
             </p>
 
+            <?php $activeContentFormat = $page->contentFormat ?? get_active_editor($currentUser->id); ?>
             <p class="lp-field">
                 <label for="page-content-format">Editor</label>
                 <select id="page-content-format" name="content_format" data-lp-content-format-select>
                     <?php foreach (ContentFormat::cases() as $formatOption): ?>
-                        <option value="<?= esc_attr($formatOption->value) ?>" <?= ($page->contentFormat ?? ContentFormat::Markdown) === $formatOption ? 'selected' : '' ?>>
+                        <option value="<?= esc_attr($formatOption->value) ?>" <?= $activeContentFormat === $formatOption ? 'selected' : '' ?>>
                             <?= esc_html($formatOption->label()) ?>
                         </option>
                     <?php endforeach; ?>
@@ -355,12 +356,13 @@ if ($action === 'edit') {
             <div
                 class="lp-field lp-content-editor"
                 data-lp-content-editor
-                data-format="<?= esc_attr(($page->contentFormat ?? ContentFormat::Markdown)->value) ?>"
+                data-format="<?= esc_attr($activeContentFormat->value) ?>"
                 data-upload-url="<?= esc_url(admin_url('pages')) ?>"
                 data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
                 data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                 data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+                data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
             >
                 <label for="page-content">Content</label>
                 <textarea id="page-content" name="content" rows="12"><?= esc_html($page->content ?? '') ?></textarea>
@@ -514,7 +516,7 @@ if ($action === 'edit') {
                                 <td><?= esc_html($revisionAuthor?->displayName ?? 'Unknown') ?></td>
                                 <td class="lp-revisions__actions">
                                     <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('pages')) ?>?action=edit&id=<?= (int) $page->id ?>&compare_revision=<?= (int) $pageRevision->id ?>">Compare to current</a>
-                                    <form method="post" action="<?= esc_url(admin_url('pages')) ?>" onsubmit="return confirm('Restore this revision? The current content will be saved as a new revision first.');">
+                                    <form method="post" action="<?= esc_url(admin_url('pages')) ?>" data-lp-confirm="Restore this revision? The current content will be saved as a new revision first.">
                                         <?= Csrf::field('page_restore_revision_' . $page->id) ?>
                                         <input type="hidden" name="form" value="restore_revision">
                                         <input type="hidden" name="id" value="<?= (int) $page->id ?>">
@@ -582,7 +584,7 @@ if ($action === 'edit') {
                             <td><?= esc_html($listedPage->updatedAt->format('M j, Y')) ?></td>
                             <td>
                                 <?php if ($canDeletePages && $canEditPage($listedPage)): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('pages')) ?>" onsubmit="return confirm('Delete this page permanently?');">
+                                    <form method="post" action="<?= esc_url(admin_url('pages')) ?>" data-lp-confirm="Delete this page permanently?">
                                         <?= Csrf::field('page_delete_' . $listedPage->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedPage->id ?>">

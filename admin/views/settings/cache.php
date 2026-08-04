@@ -125,7 +125,7 @@ $recentPurges = $cache->recentPurges();
 <section class="lp-admin__panel">
     <h2>Manual Purge</h2>
     <p>Purges immediately, whether or not a driver is active — harmless with the Null driver (nothing to purge), and clears LiteSpeed's cache instantly when it is.</p>
-    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>" onsubmit="return confirm('Purge the entire cache?');">
+    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>" data-lp-confirm="Purge the entire cache?">
         <?= Csrf::field('purge_all') ?>
         <input type="hidden" name="form" value="purge_all">
         <button type="submit" class="lp-button lp-button--danger">Purge Entire Cache</button>

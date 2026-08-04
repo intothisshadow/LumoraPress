@@ -279,52 +279,56 @@ $allTagsForFilter = $kernel->tags->listAll();
 </p>
 
 <section class="lp-admin__panel">
-    <h2>Search &amp; Filter</h2>
-    <form method="get" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__filter-form">
-        <?php if ($statusFilter !== null): ?>
-            <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
-        <?php endif; ?>
-        <p class="lp-field">
-            <label for="posts-q">Search title</label>
-            <input type="text" id="posts-q" name="q" value="<?= esc_attr($termFilter) ?>">
-        </p>
-        <p class="lp-field">
-            <label for="posts-author-filter">Author</label>
-            <select id="posts-author-filter" name="author">
-                <option value="0">All authors</option>
-                <?php foreach ($allUsersForFilter as $filterUser): ?>
-                    <option value="<?= (int) $filterUser->id ?>" <?= $authorFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </p>
-        <p class="lp-field">
-            <label for="posts-category-filter">Category</label>
-            <select id="posts-category-filter" name="category">
-                <option value="0">All categories</option>
-                <?php foreach ($allCategoriesForFilter as $filterCategory): ?>
-                    <option value="<?= (int) $filterCategory->id ?>" <?= $categoryFilter === $filterCategory->id ? 'selected' : '' ?>><?= esc_html($filterCategory->name) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </p>
-        <p class="lp-field">
-            <label for="posts-tag-filter">Tag</label>
-            <select id="posts-tag-filter" name="tag">
-                <option value="0">All tags</option>
-                <?php foreach ($allTagsForFilter as $filterTag): ?>
-                    <option value="<?= (int) $filterTag->id ?>" <?= $tagFilter === $filterTag->id ? 'selected' : '' ?>><?= esc_html($filterTag->name) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </p>
-        <p class="lp-field">
-            <label for="posts-date-from">Created from</label>
-            <input type="date" id="posts-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
-        </p>
-        <p class="lp-field">
-            <label for="posts-date-to">Created to</label>
-            <input type="date" id="posts-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
-        </p>
-        <button type="submit" class="lp-button">Filter</button>
-    </form>
+    <details class="lp-admin__collapsible">
+        <summary>Search &amp; Filter</summary>
+        <div class="lp-admin__collapsible__body">
+            <form method="get" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__filter-form">
+                <?php if ($statusFilter !== null): ?>
+                    <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+                <?php endif; ?>
+                <p class="lp-field">
+                    <label for="posts-q">Search title</label>
+                    <input type="text" id="posts-q" name="q" value="<?= esc_attr($termFilter) ?>">
+                </p>
+                <p class="lp-field">
+                    <label for="posts-author-filter">Author</label>
+                    <select id="posts-author-filter" name="author">
+                        <option value="0">All authors</option>
+                        <?php foreach ($allUsersForFilter as $filterUser): ?>
+                            <option value="<?= (int) $filterUser->id ?>" <?= $authorFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </p>
+                <p class="lp-field">
+                    <label for="posts-category-filter">Category</label>
+                    <select id="posts-category-filter" name="category">
+                        <option value="0">All categories</option>
+                        <?php foreach ($allCategoriesForFilter as $filterCategory): ?>
+                            <option value="<?= (int) $filterCategory->id ?>" <?= $categoryFilter === $filterCategory->id ? 'selected' : '' ?>><?= esc_html($filterCategory->name) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </p>
+                <p class="lp-field">
+                    <label for="posts-tag-filter">Tag</label>
+                    <select id="posts-tag-filter" name="tag">
+                        <option value="0">All tags</option>
+                        <?php foreach ($allTagsForFilter as $filterTag): ?>
+                            <option value="<?= (int) $filterTag->id ?>" <?= $tagFilter === $filterTag->id ? 'selected' : '' ?>><?= esc_html($filterTag->name) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </p>
+                <p class="lp-field">
+                    <label for="posts-date-from">Created from</label>
+                    <input type="date" id="posts-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                </p>
+                <p class="lp-field">
+                    <label for="posts-date-to">Created to</label>
+                    <input type="date" id="posts-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                </p>
+                <button type="submit" class="lp-button">Filter</button>
+            </form>
+        </div>
+    </details>
 </section>
 
 <section class="lp-admin__panel">
@@ -378,7 +382,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                     <tr>
                         <th scope="col">
                             <label class="lp-visually-hidden" for="posts-select-all">Select all</label>
-                            <input type="checkbox" id="posts-select-all" onclick="this.closest('table').querySelectorAll('input[name=&quot;post_ids[]&quot;]').forEach(function (box) { box.checked = this.checked; }, this)">
+                            <input type="checkbox" id="posts-select-all" data-lp-select-all="post_ids[]" data-lp-select-all-scope="table">
                         </th>
                         <th scope="col">Title</th>
                         <th scope="col">Status</th>
@@ -411,34 +415,38 @@ $allTagsForFilter = $kernel->tags->listAll();
                             <td class="lp-admin__row-actions">
                                 <?php if ($canEditPost($listedPost)): ?>
                                     <?php if ($isTrashView): ?>
-                                        <form method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__inline-form">
-                                            <?= Csrf::field('post_restore_post_' . $listedPost->id) ?>
-                                            <input type="hidden" name="form" value="restore_post">
-                                            <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                            <button type="submit" class="lp-button lp-button--link">Restore</button>
-                                        </form>
+                                        <?php $restoreFormId = 'post-restore-form-' . $listedPost->id; ?>
+                                        <span class="lp-admin__inline-form">
+                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_restore_post_' . $listedPost->id)) ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                            <input type="hidden" name="form" value="restore_post" form="<?= esc_attr($restoreFormId) ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                            <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($restoreFormId) ?>">Restore</button>
+                                        </span>
                                         <?php if ($canDeletePosts): ?>
-                                            <form method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Permanently delete this post? This cannot be undone.');">
-                                                <?= Csrf::field('post_delete_permanently_' . $listedPost->id) ?>
-                                                <input type="hidden" name="form" value="delete_permanently">
-                                                <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete Permanently</button>
-                                            </form>
+                                            <?php $deletePermFormId = 'post-delete-permanently-form-' . $listedPost->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_delete_permanently_' . $listedPost->id)) ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="form" value="delete_permanently" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deletePermFormId) ?>" data-lp-confirm="Permanently delete this post? This cannot be undone.">Delete Permanently</button>
+                                            </span>
                                         <?php endif; ?>
                                     <?php else: ?>
-                                        <form method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__inline-form">
-                                            <?= Csrf::field('post_duplicate_' . $listedPost->id) ?>
-                                            <input type="hidden" name="form" value="duplicate">
-                                            <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                            <button type="submit" class="lp-button lp-button--link">Duplicate</button>
-                                        </form>
+                                        <?php $duplicateFormId = 'post-duplicate-form-' . $listedPost->id; ?>
+                                        <span class="lp-admin__inline-form">
+                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_duplicate_' . $listedPost->id)) ?>" form="<?= esc_attr($duplicateFormId) ?>">
+                                            <input type="hidden" name="form" value="duplicate" form="<?= esc_attr($duplicateFormId) ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>" form="<?= esc_attr($duplicateFormId) ?>">
+                                            <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($duplicateFormId) ?>">Duplicate</button>
+                                        </span>
                                         <?php if ($canDeletePosts): ?>
-                                            <form method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Move this post to the Trash?');">
-                                                <?= Csrf::field('post_trash_' . $listedPost->id) ?>
-                                                <input type="hidden" name="form" value="trash">
-                                                <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Trash</button>
-                                            </form>
+                                            <?php $trashFormId = 'post-trash-form-' . $listedPost->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_trash_' . $listedPost->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="form" value="trash" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($trashFormId) ?>" data-lp-confirm="Move this post to the Trash?">Trash</button>
+                                            </span>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -448,6 +456,46 @@ $allTagsForFilter = $kernel->tags->listAll();
                 </tbody>
             </table>
         </form>
+
+        <?php
+        /*
+         * Out-of-band target forms for each row action button above
+         * (LP-068): a <form> nested inside another <form> is invalid
+         * HTML — the browser's parse-error recovery silently closes the
+         * *outer* form (the bulk-action form above) as soon as it hits
+         * the first inner </form> tag, which was merging every row's
+         * hidden name="form"/name="id" fields into the bulk-action
+         * form's own POST body. Since same-named fields keep only their
+         * last value, every "Apply" click was actually being processed
+         * server-side as whichever row-action form happened to close the
+         * outer form first (in practice, the first row's Duplicate/
+         * Restore action) — regardless of which bulk action or posts
+         * were actually selected. Each button/hidden-input above now
+         * targets one of these standalone forms via the HTML `form=""`
+         * attribute instead of being a descendant of it.
+         */
+        foreach ($pagination['posts'] as $listedPost):
+            if (!$canEditPost($listedPost)) {
+                continue;
+            }
+
+            if ($isTrashView):
+                ?>
+                <form id="post-restore-form-<?= (int) $listedPost->id ?>" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>"></form>
+                <?php if ($canDeletePosts): ?>
+                    <form id="post-delete-permanently-form-<?= (int) $listedPost->id ?>" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>"></form>
+                <?php endif; ?>
+                <?php
+            else:
+                ?>
+                <form id="post-duplicate-form-<?= (int) $listedPost->id ?>" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>"></form>
+                <?php if ($canDeletePosts): ?>
+                    <form id="post-trash-form-<?= (int) $listedPost->id ?>" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>"></form>
+                <?php endif; ?>
+                <?php
+            endif;
+        endforeach;
+        ?>
 
         <?php render_pagination($pagination); ?>
     <?php endif; ?>

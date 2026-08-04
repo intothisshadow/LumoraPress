@@ -343,7 +343,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
     <?php else: ?>
         <form method="get" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-menus-select-form">
             <label for="menu-select">Select a menu to edit</label>
-            <select id="menu-select" name="menu_id" onchange="this.form.submit()">
+            <select id="menu-select" name="menu_id" data-lp-auto-submit>
                 <?php foreach ($allMenus as $menuId => $menu): ?>
                     <option value="<?= esc_attr($menuId) ?>" <?= $menuId === $currentMenuId ? 'selected' : '' ?>><?= esc_html($menu['name']) ?></option>
                 <?php endforeach; ?>
@@ -383,7 +383,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
             <button type="submit" class="lp-button lp-button--secondary">Duplicate</button>
         </form>
 
-        <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-menus-manage-form" onsubmit="return confirm('Delete this menu permanently?');">
+        <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-menus-manage-form" data-lp-confirm="Delete this menu permanently?">
             <?= Csrf::field('menu_delete_' . $currentMenuId) ?>
             <input type="hidden" name="form" value="delete_menu">
             <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
@@ -550,7 +550,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                                         <input type="hidden" name="direction" value="down">
                                         <button type="submit" class="lp-button lp-button--secondary">Move Down</button>
                                     </form>
-                                    <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Remove this menu item?');">
+                                    <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-admin__inline-form" data-lp-confirm="Remove this menu item?">
                                         <?= Csrf::field('menu_remove_item_' . $item['id']) ?>
                                         <input type="hidden" name="form" value="remove_item">
                                         <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">

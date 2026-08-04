@@ -165,7 +165,7 @@ if ($action === 'edit') {
                             <td><?= (int) $row['postCount'] ?></td>
                             <td>
                                 <?php if ($canDeleteCategories): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" onsubmit="return confirm('Delete this category permanently? Child categories will be kept but become top-level.');">
+                                    <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" data-lp-confirm="Delete this category permanently? Child categories will be kept but become top-level.">
                                         <?= Csrf::field('category_delete_' . $listedCategory->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>">

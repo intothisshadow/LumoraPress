@@ -999,3 +999,49 @@ img {
     font-size: 0.9rem;
     text-align: center;
 }
+
+/* =========================================================
+   Embeds (LP-023)
+   ========================================================= */
+
+/*
+ * .lp-embed wraps every auto-embedded iframe (EmbedService::wrap()) —
+ * max-width is the one admin-configurable, per-request value (Settings >
+ * Embeds), set as an inline style at render time; everything else here is
+ * static and themeable. .lp-embed__frame provides the responsive
+ * container: video/code providers get a fixed aspect ratio so the iframe
+ * scales with its column width without letterboxing; audio providers
+ * (SoundCloud, Spotify) use a provider-typical fixed height instead,
+ * since their own players are short and wide, not a video-shaped rectangle.
+ */
+.lp-embed {
+    margin: 1.5em 0;
+}
+
+.lp-embed__frame {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+}
+
+.lp-embed--youtube .lp-embed__frame,
+.lp-embed--vimeo .lp-embed__frame,
+.lp-embed--codepen .lp-embed__frame {
+    aspect-ratio: 16 / 9;
+}
+
+.lp-embed--soundcloud .lp-embed__frame {
+    height: 166px;
+}
+
+.lp-embed--spotify .lp-embed__frame {
+    height: 352px;
+}
+
+.lp-embed__frame iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}

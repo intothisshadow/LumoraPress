@@ -121,7 +121,7 @@ $tokens = $kernel->apiTokens->listForUser($currentUser->id);
                         <td><?= esc_html($tokenRow['createdAt']) ?></td>
                         <td>
                             <?php if (!$tokenRow['revoked']): ?>
-                                <form method="post" action="<?= esc_url(admin_url('api-tokens')) ?>" onsubmit="return confirm('Revoke this token? Anything using it will stop working immediately.');">
+                                <form method="post" action="<?= esc_url(admin_url('api-tokens')) ?>" data-lp-confirm="Revoke this token? Anything using it will stop working immediately.">
                                     <?= Csrf::field('revoke_token_' . $tokenRow['id']) ?>
                                     <input type="hidden" name="form" value="revoke_token">
                                     <input type="hidden" name="id" value="<?= (int) $tokenRow['id'] ?>">

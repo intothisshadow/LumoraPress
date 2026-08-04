@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
+use LumoraPress\Models\ContentFormat;
 
 /**
  * General-purpose output escaping and localization helpers, available
@@ -499,5 +501,37 @@ if (!function_exists('lp_register_icon_pack')) {
     function lp_register_icon_pack(string $key, array $config): void
     {
         do_action('lp_register_icon_pack', $key, $config);
+    }
+}
+
+/*
+ * LP-066/LP-067 (Default Editor). See EditorPreferenceService's own
+ * docblock for the site-default/per-user/lock-toggle precedence these
+ * wrap — a plain static-bridge facade, the same shape as theme_option()/
+ * csp_style_nonce() above, since a theme/plugin has no constructor-
+ * injection route to Kernel-wired services of its own.
+ */
+
+if (!function_exists('registered_editors')) {
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    function registered_editors(): array
+    {
+        return ActiveEditorPreference::instance()->registeredEditors();
+    }
+}
+
+if (!function_exists('get_default_editor')) {
+    function get_default_editor(): ContentFormat
+    {
+        return ActiveEditorPreference::instance()->defaultEditor();
+    }
+}
+
+if (!function_exists('get_active_editor')) {
+    function get_active_editor(?int $userId): ContentFormat
+    {
+        return ActiveEditorPreference::instance()->activeEditor($userId);
     }
 }

@@ -106,7 +106,7 @@ foreach ($kernel->themeOptions->sections() as $section) {
                             id="<?= esc_attr($fieldId) ?>"
                             name="opt_<?= esc_attr($field->key) ?>"
                             value="<?= esc_attr($currentValue !== '' ? $currentValue : (string) $field->previewDefault) ?>"
-                            oninput="document.getElementById('<?= esc_attr($fieldId) ?>-reset').checked = false;"
+                            data-lp-color-reset-target="<?= esc_attr($fieldId) ?>-reset"
                         >
                         <label class="lp-field--checkbox">
                             <input type="checkbox" id="<?= esc_attr($fieldId) ?>-reset" name="reset_<?= esc_attr($field->key) ?>" value="1" <?= $currentValue === '' ? 'checked' : '' ?>>
@@ -146,7 +146,7 @@ foreach ($kernel->themeOptions->sections() as $section) {
             <?php endforeach; ?>
 
             <button type="submit" name="submit_action" value="save" class="lp-button lp-button--primary">Save <?= esc_html($section->label) ?></button>
-            <button type="submit" name="submit_action" value="reset" class="lp-button lp-button--secondary" onclick="return confirm('Reset every <?= esc_attr(strtolower($section->label)) ?> option back to its default?');">Reset to Defaults</button>
+            <button type="submit" name="submit_action" value="reset" class="lp-button lp-button--secondary" data-lp-confirm="Reset every <?= esc_attr(strtolower($section->label)) ?> option back to its default?">Reset to Defaults</button>
         </form>
     </section>
 <?php endforeach; ?>
@@ -154,7 +154,7 @@ foreach ($kernel->themeOptions->sections() as $section) {
 <section class="lp-admin__panel">
     <h2>Reset Everything</h2>
     <p class="lp-field__hint">Resets every Theme Option above back to its default in one step.</p>
-    <form method="post" action="<?= esc_url(admin_url('appearance/theme-options')) ?>" onsubmit="return confirm('Reset every Theme Option back to its default? This cannot be undone.');">
+    <form method="post" action="<?= esc_url(admin_url('appearance/theme-options')) ?>" data-lp-confirm="Reset every Theme Option back to its default? This cannot be undone.">
         <?= Csrf::field('theme_options_reset_all') ?>
         <input type="hidden" name="form" value="theme_options_reset_all">
         <button type="submit" class="lp-button lp-button--secondary">Reset All Theme Options</button>

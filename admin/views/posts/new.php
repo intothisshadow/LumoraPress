@@ -144,7 +144,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $slug = trim((string) ($_POST['slug'] ?? ''));
         $requestedStatus = PostStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PostStatus::Draft;
         $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
-        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? ContentFormat::Markdown;
+        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
 
         // Contributors and anyone else without publish_posts can save as a
         // Draft or submit for review (Pending Review, LP-008), but never
@@ -426,11 +426,12 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
             <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html(site_url('post/' . ($post->slug ?? ''))) ?></code></span>
         </p>
 
+        <?php $activeContentFormat = $post->contentFormat ?? get_active_editor($currentUser->id); ?>
         <p class="lp-field">
             <label for="post-content-format">Editor</label>
             <select id="post-content-format" name="content_format" data-lp-content-format-select>
                 <?php foreach (ContentFormat::cases() as $formatOption): ?>
-                    <option value="<?= esc_attr($formatOption->value) ?>" <?= ($post->contentFormat ?? ContentFormat::Markdown) === $formatOption ? 'selected' : '' ?>>
+                    <option value="<?= esc_attr($formatOption->value) ?>" <?= $activeContentFormat === $formatOption ? 'selected' : '' ?>>
                         <?= esc_html($formatOption->label()) ?>
                     </option>
                 <?php endforeach; ?>
@@ -440,12 +441,13 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
         <div
             class="lp-field lp-content-editor"
             data-lp-content-editor
-            data-format="<?= esc_attr(($post->contentFormat ?? ContentFormat::Markdown)->value) ?>"
+            data-format="<?= esc_attr($activeContentFormat->value) ?>"
             data-upload-url="<?= esc_url(admin_url('posts/new')) ?>"
             data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
             data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
             data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
             data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+            data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
         >
             <label for="post-content">Content</label>
             <textarea id="post-content" name="content" rows="12"><?= esc_html($post->content ?? '') ?></textarea>
@@ -699,7 +701,7 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
                             <td><?= esc_html($revisionAuthor?->displayName ?? 'Unknown') ?></td>
                             <td class="lp-revisions__actions">
                                 <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $post->id ?>&compare_revision=<?= (int) $postRevision->id ?>">Compare to current</a>
-                                <form method="post" action="<?= esc_url(admin_url('posts/new')) ?>" onsubmit="return confirm('Restore this revision? The current content will be saved as a new revision first.');">
+                                <form method="post" action="<?= esc_url(admin_url('posts/new')) ?>" data-lp-confirm="Restore this revision? The current content will be saved as a new revision first.">
                                     <?= Csrf::field('post_restore_revision_' . $post->id) ?>
                                     <input type="hidden" name="form" value="restore_revision">
                                     <input type="hidden" name="id" value="<?= (int) $post->id ?>">

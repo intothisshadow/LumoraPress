@@ -4,6 +4,23 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
+## Compatibility
+
+Lumora Press is inspired by classic WordPress (circa 2012–2015) in
+philosophy and workflow — traditional PHP theme templates, a familiar
+`add_action()`/`do_action()`/`add_filter()`/`apply_filters()` hook API —
+but it is an independent, from-scratch codebase, not a WordPress fork or
+compatibility layer. **Actual WordPress themes and plugins will not work
+unmodified.** Themes call WordPress-specific template tags and globals
+(`wp_head()`, `get_header()`, `$wp_query`, ...) that don't exist here;
+plugins call WordPress-specific APIs (`WP_Query`, `wpdb`,
+`wp_enqueue_script()`, ...) that Lumora Press doesn't implement, even
+where its own hook names or theme file names look similar. A developer
+familiar with classic WordPress theme/plugin development will recognize
+the shape of both systems immediately, but existing WordPress themes and
+plugins need to be rewritten against Lumora Press's own APIs (see
+Architecture below), not simply dropped in.
+
 ## Requirements
 
 - PHP 8.2, 8.3, or 8.4
@@ -174,10 +191,11 @@ disk space, writable directories) before anything is touched:
 Every attempt (success, failure, or rollback) is recorded in the
 `{prefix}update_log` table, tagged with its source (`github` or `manual`),
 and listed on the Updates page. Only `app/`,
-`admin/`, `include/`, `install/`, `docs/`, the default theme, and the root
-PHP files are ever replaced — `config/`, `content/uploads/`,
-`content/plugins/`, any theme other than the default, and `storage/` are
-never touched.
+`admin/`, `include/`, `install/`, `docs/`, the default theme, the bundled
+Font Awesome plugin (`content/plugins/font-awesome`), and the root PHP
+files are ever replaced — `config/`, `content/uploads/`, any
+user-installed plugin, any theme other than the default, and `storage/`
+are never touched.
 `install/` is deleted again automatically once the update succeeds (the
 same best-effort cleanup the installer itself performs), so a package that
 ships it doesn't leave it lying around on disk. If a future release drops
@@ -270,5 +288,14 @@ them via FTP/SFTP or your hosting file manager).
 - **SEO tools** — per-post/page SEO title and meta description overrides,
   canonical URLs, an XML sitemap, JSON-LD structured data, and
   admin-managed URL redirects.
+- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify, or
+  CodePen link on its own line in a post/page and it automatically
+  becomes an embedded player, with no outbound request made to build it
+  (Settings &rsaquo; Embeds). Themes and plugins can register additional
+  providers via `apply_filters('embed_providers', ...)`.
+- **Default Editor** — a site-wide default content editor (Settings
+  &rsaquo; General), with a per-user override on each user's own "My
+  Profile" page (or set for them by an administrator) and an optional
+  toggle to lock everyone to the site default.
 
 See `TODO.md` for planned work and known gaps.

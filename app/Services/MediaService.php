@@ -428,8 +428,11 @@ final class MediaService
      * Filterable listing, replacing the old browse()/search() split.
      *
      * @param array{folderIds?: array<int, int>, unassignedOnly?: bool, term?: string, type?: string, dateFrom?: string, dateTo?: string, widthMin?: int, widthMax?: int, heightMin?: int, heightMax?: int, sizeMin?: int, sizeMax?: int} $filters
-     *     folderIds: restrict to these folder ids (e.g. a folder plus its
-     *     descendants — see FolderService::descendantIds()). unassignedOnly:
+     *     folderIds: restrict to these folder ids — callers pass exactly
+     *     the folder(s) they mean (e.g. admin/views/media/media.php's
+     *     folder view passes only the current folder's own id, not its
+     *     descendants, so a parent folder's view never shows what's
+     *     filed under a child folder). unassignedOnly:
      *     restrict to files with no folder ("General Uploads"); ignored if
      *     folderIds is set. term: matches file_name. type: one of
      *     TYPE_CATEGORY_MIME_TYPES's keys. dateFrom/dateTo: 'Y-m-d' strings.

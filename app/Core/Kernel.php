@@ -28,6 +28,8 @@ use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
+use LumoraPress\Services\EditorPreferenceService;
+use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
@@ -101,6 +103,8 @@ final class Kernel
         public readonly PasswordResetThrottle $passwordResetThrottle,
         public readonly Mailer $mailer,
         public readonly ThemeOptions $themeOptions,
+        public readonly EmbedService $embeds,
+        public readonly EditorPreferenceService $editorPreferences,
     ) {
     }
 }

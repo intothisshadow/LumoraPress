@@ -6,6 +6,55 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Media Manager improvements (LP-068): a "Select all" checkbox above the
+  media grid toggles every item's checkbox in the bulk-actions form. The
+  Virtual Folder System's "Manage" and "New Folder" toggles now render as
+  clear, styled buttons instead of bare text links (`New Folder` visually
+  distinguished as the primary action). Folders can now be reordered by
+  dragging one folder onto another to reparent it, or onto the "Folders"
+  heading to move it back to top level — implemented client-side with
+  native HTML5 drag-and-drop, reusing each folder's existing rename form
+  and the same server-side cycle-prevention `FolderService::update()`
+  already enforced for manual renames — folder links now always show a
+  folder glyph and a bordered chip background (rather than only on
+  hover), so they read as folders at rest and not just plain links, with
+  a grip glyph fading in on hover/focus as an affordance that they can be
+  dragged. The "Search & Filter" panels on
+  the All Posts and Media Manager screens are now collapsible (a native
+  `<details>`/`<summary>` disclosure restyled to match the panel header
+  it replaces) and collapsed by default.
+- Default Editor (LP-066/LP-067, merged from LP-065 — see `DECISIONS.md`):
+  administrators can now set a site-wide default content editor (Plain
+  Text, Markdown, or WYSIWYG) on Settings &rsaquo; General, which every
+  brand-new post/page opens in unless a user has their own preference.
+  A new "My Profile" admin page lets any signed-in user (regardless of
+  role) set their own editor preference, with a "Use site default"
+  option; administrators can also set it for another user from the
+  existing Users edit screen. An optional "lock every user to the
+  default" toggle disables per-user overrides without deleting them —
+  turning it back off restores whatever each user had chosen. New
+  `get_default_editor()`/`get_active_editor($userId)`/
+  `registered_editors()` helpers centralize the selection logic, and the
+  editor list itself is extensible via `apply_filters('registered_editors',
+  ...)` so a plugin can add one without modifying core.
+- Auto-Embed (LP-023): pasting a bare YouTube, Vimeo, SoundCloud, Spotify,
+  or CodePen link alone on its own line in a post or page now
+  automatically expands into an embedded player when rendered — no manual
+  `<iframe>` copy-pasting required. A link inline within a sentence is
+  always left as a plain link, and an unrecognized or malformed link is
+  never modified. Implemented as a fixed, developer-maintained provider
+  allowlist with regex-based ID extraction from the URL — never the
+  oEmbed HTTP discovery protocol, so this makes no outbound network
+  request at any point. New Settings &rsaquo; Embeds admin page
+  (site-wide toggle, per-provider toggles, max embed width). Hooks into
+  `ContentRenderer`'s existing `content_html` filter, which already runs
+  after `HtmlSanitizer::clean()`, so comments (which never pass through
+  that filter) are unaffected and no new tag needed adding to the
+  sanitizer's allowlist. Extensible via two new filters,
+  `apply_filters('embed_providers', ...)` (register additional providers)
+  and `apply_filters('embed_html', ...)` (adjust generated markup).
+  Twitter/X is deliberately not included in this pass — see
+  `TODO.md`'s LP-023 for why.
 - Font Awesome (LPP-002), Lumora Press's first bundled first-party plugin
   (`content/plugins/font-awesome`) — first-pass "core plugin foundation"
   scope. A new Settings &rsaquo; Appearance &rsaquo; Font Awesome admin
@@ -29,7 +78,14 @@ All notable changes to Lumora Press are documented in this file.
   didn't exist anywhere in this codebase before now. See `TODO-PLUGINS.md`'s
   LPP-002 for exactly what's deferred (Pro/Kit support, SVG rendering, the
   icon picker, the admin diagnostics page, icon metadata caching,
-  localization).
+  localization). `content/plugins/font-awesome` is included in the
+  manual/GitHub update overlay path (`include/bootstrap.php`'s
+  `$updateCorePaths`), the same "bundled first-party, not user-installed"
+  treatment `content/themes/default` already gets — a site updating from
+  a release before this plugin existed receives it, and its own file
+  updates reach an existing install, the same as core. Any other,
+  user-installed plugin under `content/plugins/` is still never touched
+  by an update.
 - Theme Options (LP-034, originally scoped as LP-023 — see DECISIONS.md's
   "LP-023 merged into LP-034" entry): a new Appearance &rsaquo; Theme Options
   admin page lets administrators customize the active theme's colors,
@@ -278,6 +334,72 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- **Media Manager: viewing a folder also showed every file filed under
+  its subfolders, not just files filed directly in that folder.**
+  `admin/views/media/media.php` built its folder-view filter as the
+  current folder plus every descendant id
+  (`FolderService::descendantIds()`), so e.g. viewing "Wallpapers" showed
+  its own files mixed in with everything under "Wallpapers &rsaquo; Game
+  of Thrones" and "Wallpapers &rsaquo; Battlestar Galactica" too, with no
+  way to tell which folder a given file actually belonged to. Now scoped
+  to just the current folder's own id — only "All Files" shows every
+  file regardless of folder.
+- **All Posts: any bulk action (Publish, Mark as Draft, Move to Trash,
+  Add category, etc.) actually duplicated whichever post was listed
+  first instead, landing on "Post duplicated as a new draft." (LP-068).**
+  Root cause: the bulk-action `<form>` wrapped the posts `<table>`, whose
+  rows each had their own per-row Duplicate/Trash/Restore/Delete
+  Permanently `<form>` nested inside it — invalid HTML. Browsers drop
+  the inner `<form>` start tag but still close the *outer* form on the
+  first inner `</form>`, so every row's hidden `name="form"`/`name="id"`
+  fields ended up merged into the bulk-action form's own POST body;
+  since same-named fields keep only their last value, every "Apply"
+  click was actually processed as whichever row-action form happened to
+  close the outer form first. Fixed by moving each row's hidden
+  inputs/button out of a nested `<form>` and associating them with a
+  standalone form via the HTML `form=""` attribute instead
+  (`admin/views/posts/all-posts.php`).
+- **Add New Post/Page: the Markdown (and, more narrowly, WYSIWYG) editor
+  could open pre-filled with whatever was last typed into a *different*
+  post's or page's editor (LP-068).** EasyMDE's autosave `uniqueId` was
+  derived from the content `<textarea>`'s `id`, which is a static string
+  (`post-content`/`page-content`) shared by every post/page, so its
+  localStorage-backed autosave restored the last-saved draft from
+  *any* post/page — including into a brand-new, never-saved one. Now
+  keyed by a real per-post/per-page id and disabled entirely when
+  there's no id yet to key it by. The WYSIWYG (TinyMCE) editor had a
+  narrower version of the same bug — its default autosave key already
+  includes the page URL, which differs per *existing* post/page, but
+  "Add New Post"/"Add New Page" is the same URL every time — fixed the
+  same way (`admin/assets/js/content-editor.js`, `admin/views/posts/new.php`,
+  `admin/views/pages.php`).
+- **Every remaining inline `onclick=`/`onsubmit=`/`onchange=`/`oninput=`
+  attribute across the admin was silently blocked by the
+  Content-Security-Policy header (LP-069), meaning most delete/restore/
+  reset actions submitted with no browser confirmation prompt at all.**
+  17 admin views affected (theme options, cache, users, menus, API
+  tokens, post/page editing and listings, widgets, plugins, comments,
+  redirects, themes, media, tags, categories, theme file editor,
+  maintenance backups), each with one or more `onsubmit="return
+  confirm(...)"` delete/restore/reset confirmations, plus two
+  `onchange="this.form.submit()"` auto-submitting selects and one
+  `oninput` pair unchecking a paired "use theme default" checkbox. Fixed
+  with three new generic, CSP-compliant scripts registered in
+  `admin/views/layout-footer.php`: `confirm-submit.js`
+  (`data-lp-confirm="message"` on a form or a specific submit button),
+  `auto-submit.js` (`data-lp-auto-submit` on a select), and
+  `color-field-reset.js` (`data-lp-color-reset-target="checkbox-id"` on
+  a color input) — replacing every bespoke inline handler rather than
+  writing a one-off script per view.
+- **The Content-Security-Policy header silently blocked the Media
+  Manager's new "Select all" checkbox, and an identical pre-existing bug
+  on the All Posts screen's own "select all" checkbox (LP-068/LP-069).**
+  `script-src 'self'` (no `'unsafe-inline'`) blocks inline `onclick="..."`
+  attributes with no console error or other visible failure — the
+  checkbox still toggled its own checked state (native browser behavior),
+  but the handler that was meant to cascade that to every other checkbox
+  never ran. Both now use a new external, CSP-compliant
+  `admin/assets/js/select-all.js` instead.
 - **The Content-Security-Policy header silently blocked every inline
   `<style>` tag**, including the pre-existing Custom CSS field — not just
   the new Theme Options CSS. `style-src 'self'` allows no inline styles
@@ -336,6 +458,15 @@ All notable changes to Lumora Press are documented in this file.
   `bootstrap.php` backfills and persists ids for any already-saved widget
   missing one, so widgets created before this fix self-heal on the next
   request.
+- **Media Manager: folder rename box ran off the sidebar's edge on nested
+  folders (LP-068).** The Virtual Folder System's "Manage" panel rename
+  `<input>` had `width: auto` (browser default ~20 characters) with no
+  max-width, so at deeper nesting levels (each level adds indentation via
+  `.lp-folder-tree__children`'s `margin-left`/`padding-left`) the input
+  pushed past the sidebar's visible boundary. `admin/assets/css/admin.css`
+  now caps the input at a fixed width with `max-width: 100%` and
+  `box-sizing: border-box`, and the containing form wraps instead of
+  forcing a single line.
 
 ## [0.4.0] — 2026-08-01 — "Updates"
 

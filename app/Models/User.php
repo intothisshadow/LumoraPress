@@ -12,6 +12,11 @@ final class User
         public readonly string $email,
         public readonly string $displayName,
         public readonly UserRole $role,
+        /**
+         * LP-066/LP-067: null means "use the site default editor" — see
+         * EditorPreferenceService::activeEditor().
+         */
+        public readonly ?ContentFormat $preferredEditor = null,
     ) {
     }
 

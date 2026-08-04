@@ -144,7 +144,7 @@ if ($action === 'edit') {
                             <td><?= (int) $row['postCount'] ?></td>
                             <td>
                                 <?php if ($canDeleteTags): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" onsubmit="return confirm('Delete this tag permanently?');">
+                                    <form method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" data-lp-confirm="Delete this tag permanently?">
                                         <?= Csrf::field('tag_delete_' . $listedTag->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>">

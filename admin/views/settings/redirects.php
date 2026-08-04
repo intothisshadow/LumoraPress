@@ -113,7 +113,7 @@ $allRedirects = $redirects->listAll();
                         <td><?= (int) $redirect['status_code'] ?></td>
                         <td><?= (int) $redirect['hit_count'] ?></td>
                         <td>
-                            <form method="post" action="<?= esc_url(admin_url('settings/redirects')) ?>" class="lp-admin__inline-form" onsubmit="return confirm('Delete this redirect?');">
+                            <form method="post" action="<?= esc_url(admin_url('settings/redirects')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this redirect?">
                                 <?= Csrf::field('delete_redirect_' . (int) $redirect['id']) ?>
                                 <input type="hidden" name="form" value="delete_redirect">
                                 <input type="hidden" name="id" value="<?= (int) $redirect['id'] ?>">

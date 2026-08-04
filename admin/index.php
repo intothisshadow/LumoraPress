@@ -334,6 +334,7 @@ $menu = [
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
             'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
+            'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options'],
             'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
             'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options'],
         ],
@@ -358,6 +359,11 @@ $menu = [
     // itself only ever operates on $currentUser->id, never another
     // user's tokens.
     'api-tokens' => ['label' => 'API Tokens', 'icon' => '🔑', 'capability' => null],
+    // No capability requirement (LP-066/LP-067): every authenticated
+    // role manages their own editor preference here, the same
+    // "operates only on $currentUser->id" reasoning api-tokens above
+    // already uses.
+    'profile' => ['label' => 'My Profile', 'icon' => '🙍', 'capability' => null],
 ];
 
 /*

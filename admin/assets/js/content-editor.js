@@ -180,6 +180,7 @@
         return loadScript(EASYMDE_JS).then(function () {
             var EasyMDE = window.EasyMDE;
             var library = JSON.parse(container.dataset.mediaLibrary || '[]');
+            var autosaveId = container.dataset.autosaveId || '';
 
             var editor = new EasyMDE({
                 element: textarea,
@@ -195,11 +196,23 @@
                         onError(error.message || 'Upload failed.');
                     });
                 },
-                autosave: {
+                // uniqueId keys off data-autosave-id (post-{id}/page-{id}
+                // from admin/views/posts/new.php / pages.php) rather than
+                // textarea.id, which is a static "post-content"/
+                // "page-content" shared by every post/page — using it as
+                // the autosave key meant every post's (or every brand-new,
+                // never-saved post's) EasyMDE instance shared the exact
+                // same localStorage slot, so a fresh "Add New Post" could
+                // silently restore whatever content was last autosaved
+                // anywhere else (LP-068). Autosave is disabled outright
+                // for a not-yet-saved post/page (no id to key it by yet)
+                // rather than risk the same collision between two
+                // different unsaved drafts.
+                autosave: autosaveId !== '' ? {
                     enabled: true,
-                    uniqueId: 'lp-editor-' + (textarea.id || 'draft'),
+                    uniqueId: 'lp-autosave-' + autosaveId,
                     delay: 15000,
-                },
+                } : { enabled: false },
                 toolbar: [
                     'bold', 'italic', 'strikethrough', '|',
                     'heading-1', 'heading-2', 'heading-3', '|',
@@ -250,6 +263,8 @@
         return loadScript(TINYMCE_JS).then(function () {
             var tinymce = window.tinymce;
             var library = JSON.parse(container.dataset.mediaLibrary || '[]');
+            var autosaveId = container.dataset.autosaveId || '';
+            var basePlugins = 'lists link image table code codesample searchreplace fullscreen wordcount help';
 
             return new Promise(function (resolve) {
                 tinymce.init({
@@ -257,7 +272,16 @@
                     license_key: 'gpl',
                     height: 420,
                     menubar: false,
-                    plugins: 'lists link image table code codesample searchreplace fullscreen autosave wordcount help',
+                    // Only enabled (and only added to the plugin list) once
+                    // there's a real post/page id to key the storage slot
+                    // by — TinyMCE's default autosave_prefix already
+                    // includes the page URL, which is enough to keep
+                    // different *existing* posts/pages from colliding, but
+                    // "Add New Post"/"Add New Page" is the same URL for
+                    // every brand-new, never-saved draft, so it would
+                    // otherwise still hit the same bug EasyMDE's autosave
+                    // had (LP-068).
+                    plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough | '
                         + 'bullist numlist | blockquote hr | link image lumoraMedia table codesample | '
                         + 'searchreplace fullscreen code help',
@@ -268,6 +292,7 @@
                         return uploadFile(container, blobInfo.blob());
                     },
                     autosave_interval: '15s',
+                    autosave_prefix: 'lp-tinymce-autosave-' + autosaveId + '-',
                     setup: function (editor) {
                         editor.ui.registry.addButton('lumoraMedia', {
                             icon: 'image',

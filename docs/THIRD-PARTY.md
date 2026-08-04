@@ -155,6 +155,32 @@ version.
   since `cdn.jsdelivr.net` is already allow-listed for the reasons
   documented throughout this file.
 
+## Auto-Embed provider origins (iframes, no JS/CSS loaded)
+
+- **Purpose:** LP-023's Auto-Embed feature (`app/Services/EmbedService.php`)
+  turns a bare provider URL, alone on its own line in a post/page, into an
+  `<iframe>` pointing at that provider's own embed endpoint. Unlike every
+  other entry in this file, nothing is downloaded or executed from these
+  origins by Lumora Press itself — the browser loads the iframe directly,
+  the same as it would any `<img>`/`<a>` a visitor's browser follows.
+  Listed here anyway because each origin is added to the
+  Content-Security-Policy's `frame-src` directive at runtime
+  (`EmbedService::filterCsp()`), the same "why is this origin reachable at
+  all" question this file otherwise answers for CDN-loaded scripts/styles.
+- **Origins (one per enabled provider, added only while Settings &rsaquo;
+  Embeds' matching toggle is on):**
+  - YouTube — `https://www.youtube.com`
+  - Vimeo — `https://player.vimeo.com`
+  - SoundCloud — `https://w.soundcloud.com`
+  - Spotify — `https://open.spotify.com`
+  - CodePen — `https://codepen.io`
+- **Date added:** 2026-08-04
+- **Notes:** Twitter/X is deliberately not supported — see `TODO.md`'s
+  LP-023 — because it has no plain-iframe embed, only a script-based one
+  (`platform.twitter.com/widgets.js`), which is a materially different
+  (and heavier) third-party dependency than the other five and was left
+  for a follow-up rather than folded into this first pass.
+
 ## CSS frameworks
 
 None. The admin UI and every bundled theme (`content/themes/*/style.css`)
