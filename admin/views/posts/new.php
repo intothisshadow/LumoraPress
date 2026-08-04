@@ -7,6 +7,7 @@ use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
+use LumoraPress\Models\PostVisibility;
 use LumoraPress\Models\RevisionableType;
 
 if (!isset($kernel)) {
@@ -145,8 +146,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
         $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? ContentFormat::Markdown;
 
-        // Contributors and anyone else without publish_posts can only ever save as a draft.
-        $status = $canPublish ? $requestedStatus : PostStatus::Draft;
+        // Contributors and anyone else without publish_posts can save as a
+        // Draft or submit for review (Pending Review, LP-008), but never
+        // set Published/Scheduled/Trashed themselves.
+        $status = $canPublish
+            ? $requestedStatus
+            : ($requestedStatus === PostStatus::PendingReview ? PostStatus::PendingReview : PostStatus::Draft);
 
         $publishedAt = null;
 
@@ -157,6 +162,35 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $publishedAt = $rawPublishedAt !== '' ? new DateTimeImmutable($rawPublishedAt) : null;
             } catch (\Exception) {
                 $publishedAt = null;
+            }
+        }
+
+        // Visibility/Sticky (LP-008) are publish-time decisions, same
+        // gate as Status/Schedule above.
+        $visibility = $canPublish
+            ? (PostVisibility::tryFrom((string) ($_POST['visibility'] ?? '')) ?? PostVisibility::Public)
+            : ($existing?->visibility ?? PostVisibility::Public);
+        $isSticky = $canPublish ? ($_POST['is_sticky'] ?? null) !== null : ($existing?->isSticky ?? false);
+
+        // Schedule unpublishing (LP-008) — same gate; a blank field means
+        // "no scheduled unpublish", not "leave the existing one alone",
+        // since the field always round-trips the current value back
+        // through the form (see the edit form below).
+        $unpublishAt = null;
+        $clearUnpublishAt = false;
+
+        if ($canPublish) {
+            $rawUnpublishAt = trim((string) ($_POST['unpublish_at'] ?? ''));
+
+            if ($rawUnpublishAt === '') {
+                $clearUnpublishAt = true;
+            } else {
+                try {
+                    $unpublishAt = new DateTimeImmutable($rawUnpublishAt);
+                } catch (\Exception) {
+                    $unpublishAt = null;
+                    $clearUnpublishAt = true;
+                }
             }
         }
 
@@ -214,34 +248,60 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        if ($title === '') {
-            $error = 'A title is required.';
-        } elseif ($error === null) {
-            // LP-017: snapshot the pre-update content as a revision before
-            // it's overwritten. Nothing to snapshot on create — there is no
-            // prior state yet.
-            if ($existing !== null) {
-                $kernel->revisions->save(
-                    RevisionableType::Post,
-                    $existing->id,
-                    $existing->title,
-                    $existing->content,
-                    $existing->excerpt,
-                    $existing->contentFormat,
-                    $currentUser->id,
-                );
+        if ($error === null) {
+            try {
+                // LP-017: snapshot the pre-update content as a revision
+                // before it's overwritten. Nothing to snapshot on create —
+                // there is no prior state yet.
+                if ($existing !== null) {
+                    $kernel->revisions->save(
+                        RevisionableType::Post,
+                        $existing->id,
+                        $existing->title,
+                        $existing->content,
+                        $existing->excerpt,
+                        $existing->contentFormat,
+                        $currentUser->id,
+                    );
+                }
+
+                $post = $existing === null
+                    ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen, contentFormat: $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, isSticky: $isSticky, unpublishAt: $unpublishAt)
+                    : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, isSticky: $isSticky, unpublishAt: $unpublishAt, clearUnpublishAt: $clearUnpublishAt);
+
+                $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
+                $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
+                $postService->updateSeo($post->id, $metaTitle, $metaDescription);
+
+                // Author reassignment (LP-008) — Editor/Administrator only,
+                // same edit_others_posts gate that already lets them edit
+                // another author's post at all.
+                if ($canEditOthersPosts) {
+                    $reassignAuthorId = (int) ($_POST['author_id'] ?? 0);
+
+                    if ($reassignAuthorId > 0) {
+                        $postService->reassignAuthor($post->id, $reassignAuthorId);
+                    }
+                }
+
+                // Custom fields (LP-008) — a repeatable key/value row
+                // editor; meta_keys[]/meta_values[] are parallel arrays
+                // built by the same index client-side.
+                $metaKeys = is_array($_POST['meta_keys'] ?? null) ? $_POST['meta_keys'] : [];
+                $metaValues = is_array($_POST['meta_values'] ?? null) ? $_POST['meta_values'] : [];
+                $metaPairs = [];
+
+                foreach ($metaKeys as $metaIndex => $metaKey) {
+                    $metaPairs[] = ['key' => (string) $metaKey, 'value' => (string) ($metaValues[$metaIndex] ?? '')];
+                }
+
+                $postService->replaceMetaForPost($post->id, $metaPairs);
+
+                header('Location: ' . admin_url('posts/new') . '?id=' . $post->id . '&saved=1');
+                exit;
+            } catch (\InvalidArgumentException $exception) {
+                $error = $exception->getMessage();
             }
-
-            $post = $existing === null
-                ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen, contentFormat: $contentFormat, featuredImageCrop: $featuredImageCrop)
-                : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen, $contentFormat, featuredImageCrop: $featuredImageCrop);
-
-            $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
-            $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
-            $postService->updateSeo($post->id, $metaTitle, $metaDescription);
-
-            header('Location: ' . admin_url('posts/new') . '?id=' . $post->id . '&saved=1');
-            exit;
         }
     } elseif ($form === 'restore_revision') {
         $id = (int) ($_POST['id'] ?? 0);
@@ -343,6 +403,8 @@ $editorMediaLibrary = array_map(
     static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
     $imageOptions,
 );
+$postMeta = $post !== null ? $postService->metaForPost($post->id) : [];
+$allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
 ?>
 <section class="lp-admin__panel">
     <form method="post" action="<?= esc_url(admin_url('posts/new')) ?>" enctype="multipart/form-data">
@@ -357,10 +419,11 @@ $editorMediaLibrary = array_map(
             <input type="text" id="post-title" name="title" value="<?= esc_attr($post->title ?? '') ?>" required>
         </p>
 
-        <p class="lp-field">
+        <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url(site_url('post/')) ?>">
             <label for="post-slug">Slug</label>
             <input type="text" id="post-slug" name="slug" value="<?= esc_attr($post->slug ?? '') ?>">
             <span class="lp-field__hint">Leave blank to generate one automatically from the title.</span>
+            <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html(site_url('post/' . ($post->slug ?? ''))) ?></code></span>
         </p>
 
         <p class="lp-field">
@@ -498,6 +561,34 @@ $editorMediaLibrary = array_map(
             Allow comments on this post
         </label>
 
+        <fieldset class="lp-field" data-lp-custom-fields>
+            <legend>Custom Fields</legend>
+            <div data-lp-custom-fields-rows>
+                <?php foreach ([...$postMeta, ['key' => '', 'value' => '']] as $metaPair): ?>
+                    <div class="lp-custom-fields__row">
+                        <input type="text" name="meta_keys[]" value="<?= esc_attr($metaPair['key']) ?>" placeholder="Field name">
+                        <input type="text" name="meta_values[]" value="<?= esc_attr($metaPair['value']) ?>" placeholder="Value">
+                        <button type="button" class="lp-button lp-button--link" data-lp-custom-fields-remove>Remove</button>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" class="lp-button lp-button--secondary" data-lp-custom-fields-add>Add Custom Field</button>
+            <span class="lp-field__hint">Simple key/value data a theme or plugin can read against this post.</span>
+        </fieldset>
+
+        <?php if ($canEditOthersPosts && $post !== null): ?>
+            <p class="lp-field">
+                <label for="post-author">Author</label>
+                <select id="post-author" name="author_id">
+                    <?php foreach ($allUsers as $userOption): ?>
+                        <option value="<?= (int) $userOption->id ?>" <?= $post->authorId === $userOption->id ? 'selected' : '' ?>>
+                            <?= esc_html($userOption->displayName) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </p>
+        <?php endif; ?>
+
         <?php if ($canPublish): ?>
             <p class="lp-field">
                 <label for="post-status">Status</label>
@@ -519,11 +610,49 @@ $editorMediaLibrary = array_map(
                     value="<?= esc_attr($post?->publishedAt?->format('Y-m-d\TH:i') ?? '') ?>"
                 >
             </p>
+
+            <p class="lp-field">
+                <label for="post-visibility">Visibility</label>
+                <select id="post-visibility" name="visibility">
+                    <?php foreach (PostVisibility::cases() as $visibilityOption): ?>
+                        <option value="<?= esc_attr($visibilityOption->value) ?>" <?= ($post?->visibility ?? PostVisibility::Public) === $visibilityOption ? 'selected' : '' ?>>
+                            <?= esc_html($visibilityOption->label()) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <span class="lp-field__hint">Private posts are only visible to logged-in staff (the author, or anyone who can edit posts).</span>
+            </p>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="is_sticky" value="1" <?= ($post->isSticky ?? false) ? 'checked' : '' ?>>
+                Stick this post to the top of the homepage
+            </label>
+
+            <p class="lp-field">
+                <label for="post-unpublish-at">Unpublish date (optional)</label>
+                <input
+                    type="datetime-local"
+                    id="post-unpublish-at"
+                    name="unpublish_at"
+                    value="<?= esc_attr($post?->unpublishAt?->format('Y-m-d\TH:i') ?? '') ?>"
+                >
+                <span class="lp-field__hint">Leave blank to keep this post published indefinitely. Once this time passes, the post is automatically no longer publicly visible — the stored status is unchanged, so republishing just means clearing or moving this date.</span>
+            </p>
         <?php else: ?>
-            <p class="lp-field__hint">Your role can save drafts only; an editor or administrator can publish this post.</p>
+            <p class="lp-field">
+                <label for="post-status">Status</label>
+                <select id="post-status" name="status">
+                    <option value="<?= esc_attr(PostStatus::Draft->value) ?>" <?= ($post?->status ?? PostStatus::Draft) !== PostStatus::PendingReview ? 'selected' : '' ?>>Draft</option>
+                    <option value="<?= esc_attr(PostStatus::PendingReview->value) ?>" <?= ($post?->status ?? PostStatus::Draft) === PostStatus::PendingReview ? 'selected' : '' ?>>Submit for Review</option>
+                </select>
+                <span class="lp-field__hint">An editor or administrator can publish this post once it's submitted for review.</span>
+            </p>
         <?php endif; ?>
 
         <button type="submit" class="lp-button lp-button--primary">Save Post</button>
+        <?php if ($post !== null): ?>
+            <a class="lp-button" href="<?= esc_url(site_url('preview/' . $post->id)) ?>" target="_blank" rel="noopener">Preview</a>
+        <?php endif; ?>
         <a class="lp-button" href="<?= esc_url(admin_url('posts/all-posts')) ?>">Cancel</a>
     </form>
 </section>

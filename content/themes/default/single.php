@@ -13,6 +13,7 @@ get_header(['post' => $post]);
         <article class="lp-post">
             <h1 class="lp-post__title"><?= esc_html($post->title) ?></h1>
             <p class="lp-post__meta">
+                <?php the_author_link($post); ?>
                 <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
             </p>
             <?php if (has_post_thumbnail($post)): ?>

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use DateTimeImmutable;
+use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
+use LumoraPress\Models\PostVisibility;
 use RuntimeException;
 
 /**
@@ -33,6 +35,13 @@ final class PostService
 {
     private const DEFAULT_PER_PAGE = 10;
 
+    /**
+     * Matches the `title` column's VARCHAR(191) width (install/migrations/
+     * 0004_create_posts_table.sql) — validated here so an overlong title
+     * fails with a clear message instead of a raw truncation/DB error.
+     */
+    public const MAX_TITLE_LENGTH = 191;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -42,6 +51,7 @@ final class PostService
 
     /**
      * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     * @throws \InvalidArgumentException if $title is empty or exceeds MAX_TITLE_LENGTH
      */
     public function create(
         string $title,
@@ -55,14 +65,19 @@ final class PostService
         bool $commentsOpen = true,
         ContentFormat $contentFormat = ContentFormat::Markdown,
         ?array $featuredImageCrop = null,
+        PostVisibility $visibility = PostVisibility::Public,
+        bool $isSticky = false,
+        ?DateTimeImmutable $unpublishAt = null,
     ): Post {
+        $this->validateTitle($title);
+        $content = $this->sanitizeStoredContent($content, $contentFormat);
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, content_format, excerpt, status, author_id, featured_image_id, featured_image_crop, published_at, comment_status, created_at, updated_at)
-             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :featured_image_id, :featured_image_crop, :published_at, :comment_status, :created_at, :updated_at)',
+                (title, slug, content, content_format, excerpt, status, visibility, is_sticky, author_id, featured_image_id, featured_image_crop, published_at, unpublish_at, comment_status, created_at, updated_at)
+             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :visibility, :is_sticky, :author_id, :featured_image_id, :featured_image_crop, :published_at, :unpublish_at, :comment_status, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -70,10 +85,13 @@ final class PostService
                 'content_format' => $contentFormat->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
+                'visibility' => $visibility->value,
+                'is_sticky' => $isSticky ? 1 : 0,
                 'author_id' => $authorId,
                 'featured_image_id' => $featuredImageId,
                 'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now)?->format('Y-m-d H:i:s'),
+                'unpublish_at' => $unpublishAt?->format('Y-m-d H:i:s'),
                 'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
@@ -93,6 +111,7 @@ final class PostService
 
     /**
      * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     * @throws \InvalidArgumentException if $title is empty or exceeds MAX_TITLE_LENGTH
      */
     public function update(
         int $id,
@@ -106,6 +125,10 @@ final class PostService
         bool $commentsOpen = true,
         ?ContentFormat $contentFormat = null,
         ?array $featuredImageCrop = null,
+        ?PostVisibility $visibility = null,
+        ?bool $isSticky = null,
+        ?DateTimeImmutable $unpublishAt = null,
+        bool $clearUnpublishAt = false,
     ): Post {
         $existing = $this->findById($id);
 
@@ -113,25 +136,31 @@ final class PostService
             throw new RuntimeException("Post {$id} does not exist.");
         }
 
+        $this->validateTitle($title);
+        $resolvedContentFormat = $contentFormat ?? $existing->contentFormat;
+        $content = $this->sanitizeStoredContent($content, $resolvedContentFormat);
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title, ignoreId: $id);
         $now = new DateTimeImmutable();
 
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET title = :title, slug = :slug, content = :content, content_format = :content_format, excerpt = :excerpt,
-                    status = :status, featured_image_id = :featured_image_id, featured_image_crop = :featured_image_crop,
-                    published_at = :published_at, comment_status = :comment_status, updated_at = :updated_at
+                    status = :status, visibility = :visibility, is_sticky = :is_sticky, featured_image_id = :featured_image_id, featured_image_crop = :featured_image_crop,
+                    published_at = :published_at, unpublish_at = :unpublish_at, comment_status = :comment_status, updated_at = :updated_at
               WHERE id = :id',
             [
                 'title' => $title,
                 'slug' => $slug,
                 'content' => $content,
-                'content_format' => ($contentFormat ?? $existing->contentFormat)->value,
+                'content_format' => $resolvedContentFormat->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
+                'visibility' => ($visibility ?? $existing->visibility)->value,
+                'is_sticky' => ($isSticky ?? $existing->isSticky) ? 1 : 0,
                 'featured_image_id' => $featuredImageId,
                 'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now, $existing->publishedAt)?->format('Y-m-d H:i:s'),
+                'unpublish_at' => $clearUnpublishAt ? null : ($unpublishAt ?? $existing->unpublishAt)?->format('Y-m-d H:i:s'),
                 'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
@@ -255,6 +284,158 @@ final class PostService
         }
 
         return $changed;
+    }
+
+    /**
+     * LP-008's "Sticky posts" — pins/unpins a post at the top of the
+     * homepage listing (see paginatePublished()'s sticky-first ordering).
+     * A distinct method rather than another update() param toggled
+     * per-save, matching setStatus()'s "one field, one method" precedent
+     * for the admin list's per-row/bulk actions.
+     */
+    public function setSticky(int $id, bool $isSticky): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET is_sticky = :is_sticky WHERE id = :id',
+            ['is_sticky' => $isSticky ? 1 : 0, 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * LP-008's "Private posts" — see PostVisibility's docblock and
+     * Post::isVisibleToViewer().
+     */
+    public function setVisibility(int $id, PostVisibility $visibility): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET visibility = :visibility WHERE id = :id',
+            ['visibility' => $visibility->value, 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * LP-008's "Author assignment" — reassigns a post to a different
+     * existing user. Gated by edit_others_posts in the admin UI (the same
+     * capability that already gates seeing/editing another author's post
+     * at all), not enforced here since PostService has no notion of "the
+     * current user."
+     */
+    public function reassignAuthor(int $id, int $authorId): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET author_id = :author_id WHERE id = :id',
+            ['author_id' => $authorId, 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Bulk form of reassignAuthor() — LP-008's Bulk Actions "Change
+     * author".
+     *
+     * @param array<int, int> $ids
+     * @return int how many posts were reassigned
+     */
+    public function bulkReassignAuthor(array $ids, int $authorId): int
+    {
+        $reassigned = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->reassignAuthor($id, $authorId)) {
+                $reassigned++;
+            }
+        }
+
+        return $reassigned;
+    }
+
+    /**
+     * Bulk form of setVisibility() — LP-008's Bulk Actions "Change
+     * visibility".
+     *
+     * @param array<int, int> $ids
+     * @return int how many posts were updated
+     */
+    public function bulkSetVisibility(array $ids, PostVisibility $visibility): int
+    {
+        $updated = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->setVisibility($id, $visibility)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
+     * LP-008's Custom Fields — every meta_key/meta_value pair stored
+     * against $postId, in insertion order. A plain array<string, string>
+     * rather than a richer type: this is deliberately the "simple
+     * key/value list" scope (see TODO.md's LP-008 entry), not a typed
+     * custom-fields schema.
+     *
+     * @return array<int, array{key: string, value: string}>
+     */
+    public function metaForPost(int $postId): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT meta_key, meta_value FROM ' . $this->postMetaTable() . ' WHERE post_id = :post_id ORDER BY id ASC',
+            ['post_id' => $postId],
+        );
+
+        return array_map(
+            static fn (array $row): array => ['key' => (string) $row['meta_key'], 'value' => (string) ($row['meta_value'] ?? '')],
+            $rows,
+        );
+    }
+
+    /**
+     * Replaces every custom field on $postId with $pairs — the same
+     * "delete then re-insert" approach CategoryService::assignToPost()
+     * uses for post_categories, so the admin edit screen's repeatable
+     * key/value row editor doesn't need to diff against what was there
+     * before. Rows with a blank key are silently dropped (an empty
+     * trailing row from the UI, not a deliberate field).
+     *
+     * @param array<int, array{key: string, value: string}> $pairs
+     */
+    public function replaceMetaForPost(int $postId, array $pairs): void
+    {
+        $this->database->transaction(function () use ($postId, $pairs): void {
+            $this->database->execute(
+                'DELETE FROM ' . $this->postMetaTable() . ' WHERE post_id = :post_id',
+                ['post_id' => $postId],
+            );
+
+            foreach ($pairs as $pair) {
+                $key = trim((string) ($pair['key'] ?? ''));
+
+                if ($key === '') {
+                    continue;
+                }
+
+                $this->database->execute(
+                    'INSERT INTO ' . $this->postMetaTable() . ' (post_id, meta_key, meta_value) VALUES (:post_id, :meta_key, :meta_value)',
+                    ['post_id' => $postId, 'meta_key' => $key, 'meta_value' => (string) ($pair['value'] ?? '')],
+                );
+            }
+        });
+    }
+
+    /**
+     * A single custom field's value, for theme use (e.g. a plugin or
+     * template reading one known key) — null if $postId has no field
+     * named $key.
+     */
+    public function metaValue(int $postId, string $key): ?string
+    {
+        $row = $this->database->fetchOne(
+            'SELECT meta_value FROM ' . $this->postMetaTable() . ' WHERE post_id = :post_id AND meta_key = :meta_key',
+            ['post_id' => $postId, 'meta_key' => $key],
+        );
+
+        return $row !== null ? (string) ($row['meta_value'] ?? '') : null;
     }
 
     /**
@@ -392,8 +573,16 @@ final class PostService
 
     /**
      * Posts visible to public site visitors: published outright, or
-     * scheduled with a published_at time that has already passed. Ordered
-     * newest-first by published_at.
+     * scheduled with a published_at time that has already passed; never
+     * Private (LP-008), never past their unpublish_at time (LP-008). LP-008
+     * "Sticky posts" are ordered first (is_sticky DESC), then
+     * newest-first by published_at among both the sticky and non-sticky
+     * groups — the same "pinned to the top of the front page only"
+     * behavior classic WordPress uses; paginateByCategory()/
+     * paginateByTag()/paginateByAuthor()/paginateByMonth() below
+     * deliberately don't apply sticky ordering, since a sticky post is
+     * meant to stay visible on the front page, not follow it into every
+     * archive.
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -403,19 +592,20 @@ final class PostService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+        $where = $this->publicWhereClause();
+        $params = ['now' => $now, 'now_unpublish' => $now];
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
-            ['now' => $now],
+            $params,
         );
 
         $offset = ($page - 1) * $perPage;
 
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " WHERE {$where}"
-                . " ORDER BY published_at DESC LIMIT {$perPage} OFFSET {$offset}",
-            ['now' => $now],
+                . " ORDER BY is_sticky DESC, published_at DESC LIMIT {$perPage} OFFSET {$offset}",
+            $params,
         );
 
         return [
@@ -440,12 +630,13 @@ final class PostService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now))";
+        $where = $this->publicWhereClause('p');
         $join = 'INNER JOIN ' . $this->tablePrefix . 'post_categories pc ON pc.post_id = p.id AND pc.category_id = :category_id';
+        $params = ['now' => $now, 'now_unpublish' => $now, 'category_id' => $categoryId];
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " p {$join} WHERE {$where}",
-            ['now' => $now, 'category_id' => $categoryId],
+            $params,
         );
 
         $offset = ($page - 1) * $perPage;
@@ -453,7 +644,7 @@ final class PostService
         $rows = $this->database->fetchAll(
             'SELECT p.* FROM ' . $this->table() . " p {$join} WHERE {$where}"
                 . " ORDER BY p.published_at DESC LIMIT {$perPage} OFFSET {$offset}",
-            ['now' => $now, 'category_id' => $categoryId],
+            $params,
         );
 
         return [
@@ -476,12 +667,13 @@ final class PostService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now))";
+        $where = $this->publicWhereClause('p');
         $join = 'INNER JOIN ' . $this->tablePrefix . 'post_tags pt ON pt.post_id = p.id AND pt.tag_id = :tag_id';
+        $params = ['now' => $now, 'now_unpublish' => $now, 'tag_id' => $tagId];
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " p {$join} WHERE {$where}",
-            ['now' => $now, 'tag_id' => $tagId],
+            $params,
         );
 
         $offset = ($page - 1) * $perPage;
@@ -489,7 +681,7 @@ final class PostService
         $rows = $this->database->fetchAll(
             'SELECT p.* FROM ' . $this->table() . " p {$join} WHERE {$where}"
                 . " ORDER BY p.published_at DESC LIMIT {$perPage} OFFSET {$offset}",
-            ['now' => $now, 'tag_id' => $tagId],
+            $params,
         );
 
         return [
@@ -515,11 +707,12 @@ final class PostService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "author_id = :author_id AND (status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+        $where = 'author_id = :author_id AND ' . $this->publicWhereClause();
+        $params = ['now' => $now, 'now_unpublish' => $now, 'author_id' => $authorId];
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
-            ['now' => $now, 'author_id' => $authorId],
+            $params,
         );
 
         $offset = ($page - 1) * $perPage;
@@ -527,7 +720,7 @@ final class PostService
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " WHERE {$where}"
                 . " ORDER BY published_at DESC LIMIT {$perPage} OFFSET {$offset}",
-            ['now' => $now, 'author_id' => $authorId],
+            $params,
         );
 
         return [
@@ -552,9 +745,9 @@ final class PostService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now))"
+        $where = $this->publicWhereClause()
             . ' AND YEAR(published_at) = :year AND MONTH(published_at) = :month';
-        $params = ['now' => $now, 'year' => $year, 'month' => $month];
+        $params = ['now' => $now, 'now_unpublish' => $now, 'year' => $year, 'month' => $month];
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
@@ -588,7 +781,7 @@ final class PostService
     public function monthlyArchiveCounts(int $limit = 12): array
     {
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
-        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now)) AND published_at IS NOT NULL";
+        $where = $this->publicWhereClause() . ' AND published_at IS NOT NULL';
         $limit = max(1, $limit);
 
         $rows = $this->database->fetchAll(
@@ -597,7 +790,7 @@ final class PostService
               GROUP BY y, m
               ORDER BY y DESC, m DESC
               LIMIT {$limit}",
-            ['now' => $now],
+            ['now' => $now, 'now_unpublish' => $now],
         );
 
         return array_map(
@@ -637,31 +830,72 @@ final class PostService
      * old trashed posts from cluttering every other view forever. Pass
      * PostStatus::Trashed explicitly to see the Trash list itself.
      *
+     * @param array{term?: string, authorId?: int, categoryId?: int, tagId?: int, dateFrom?: string, dateTo?: string} $filters
+     *     term: matches title (LIKE). authorId/categoryId/tagId: exact
+     *     match. dateFrom/dateTo: 'Y-m-d' strings against created_at —
+     *     admin-list filters (LP-008), same "quick, capped listing"
+     *     `array $filters` shape MediaService::query() already uses.
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
      */
-    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PostStatus $statusFilter = null): array
+    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PostStatus $statusFilter = null, array $filters = []): array
     {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
 
+        $conditions = [];
+        $params = [];
+
         if ($statusFilter !== null) {
-            $where = 'WHERE status = :status';
-            $params = ['status' => $statusFilter->value];
+            $conditions[] = 'p.status = :status';
+            $params['status'] = $statusFilter->value;
         } else {
-            $where = "WHERE status != 'trashed'";
-            $params = [];
+            $conditions[] = "p.status != 'trashed'";
         }
 
+        $joins = '';
+
+        if (($filters['term'] ?? '') !== '') {
+            $conditions[] = 'p.title LIKE :term';
+            $params['term'] = '%' . $filters['term'] . '%';
+        }
+
+        if (($filters['authorId'] ?? 0) > 0) {
+            $conditions[] = 'p.author_id = :author_id';
+            $params['author_id'] = (int) $filters['authorId'];
+        }
+
+        if (($filters['categoryId'] ?? 0) > 0) {
+            $joins .= ' INNER JOIN ' . $this->tablePrefix . 'post_categories pc ON pc.post_id = p.id AND pc.category_id = :category_id';
+            $params['category_id'] = (int) $filters['categoryId'];
+        }
+
+        if (($filters['tagId'] ?? 0) > 0) {
+            $joins .= ' INNER JOIN ' . $this->tablePrefix . 'post_tags pt ON pt.post_id = p.id AND pt.tag_id = :tag_id';
+            $params['tag_id'] = (int) $filters['tagId'];
+        }
+
+        if (($filters['dateFrom'] ?? '') !== '') {
+            $conditions[] = 'p.created_at >= :date_from';
+            $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
+        }
+
+        if (($filters['dateTo'] ?? '') !== '') {
+            $conditions[] = 'p.created_at <= :date_to';
+            $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
+        }
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
+
         $total = (int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->table() . " {$where}",
+            'SELECT COUNT(*) FROM ' . $this->table() . " p{$joins} {$where}",
             $params,
         );
 
         $offset = ($page - 1) * $perPage;
 
         $rows = $this->database->fetchAll(
-            'SELECT * FROM ' . $this->table() . " {$where}"
-                . " ORDER BY created_at DESC LIMIT {$perPage} OFFSET {$offset}",
+            'SELECT p.* FROM ' . $this->table() . " p{$joins} {$where}"
+                . " ORDER BY p.created_at DESC LIMIT {$perPage} OFFSET {$offset}",
             $params,
         );
 
@@ -674,6 +908,33 @@ final class PostService
         ];
     }
 
+    /**
+     * "Published outright, or due (scheduled with a past published_at),
+     * AND publicly Visible, AND not past its unpublish_at time" — the
+     * exact set of conditions that makes a post visible to an anonymous
+     * guest anywhere on the public site. Referenced by this class's own
+     * docblock; every paginate*() method above builds its WHERE clause
+     * from this rather than repeating the three conditions inline, so
+     * LP-008's Private-posts/Schedule-unpublishing additions only needed
+     * to land in one place. $columnPrefix is the table alias to qualify
+     * each column with (e.g. 'p' for the joined paginateByCategory()/
+     * paginateByTag() queries), or '' for an unaliased single-table query.
+     * Every caller must bind both ':now' and ':now_unpublish' to the same
+     * current-time string — two distinct placeholder names for the same
+     * value, not one reused twice, because Database::connect() disables
+     * emulated prepares and MySQL's native protocol rejects a repeated
+     * named placeholder in one query (see PHP-TEST-SUITE.md's "Known
+     * gaps" — CategoryService/PageService hit this exact bug before).
+     */
+    private function publicWhereClause(string $columnPrefix = ''): string
+    {
+        $prefix = $columnPrefix !== '' ? $columnPrefix . '.' : '';
+
+        return "({$prefix}status = 'published' OR ({$prefix}status = 'scheduled' AND {$prefix}published_at <= :now))"
+            . " AND {$prefix}visibility = 'public'"
+            . " AND ({$prefix}unpublish_at IS NULL OR {$prefix}unpublish_at > :now_unpublish)";
+    }
+
     private function resolvePublishedAt(
         PostStatus $status,
         ?DateTimeImmutable $publishedAt,
@@ -681,10 +942,42 @@ final class PostService
         ?DateTimeImmutable $existingPublishedAt = null,
     ): ?DateTimeImmutable {
         return match ($status) {
-            PostStatus::Draft, PostStatus::Trashed => null,
+            PostStatus::Draft, PostStatus::PendingReview, PostStatus::Trashed => null,
             PostStatus::Published => $publishedAt ?? $existingPublishedAt ?? $now,
             PostStatus::Scheduled => $publishedAt ?? $existingPublishedAt,
         };
+    }
+
+    /**
+     * @throws \InvalidArgumentException if $title is empty or too long
+     */
+    private function validateTitle(string $title): void
+    {
+        if (trim($title) === '') {
+            throw new \InvalidArgumentException('A title is required.');
+        }
+
+        if (mb_strlen($title) > self::MAX_TITLE_LENGTH) {
+            throw new \InvalidArgumentException('The title cannot be longer than ' . self::MAX_TITLE_LENGTH . ' characters.');
+        }
+    }
+
+    /**
+     * Runs Html-format content through HtmlSanitizer before it's ever
+     * stored — defense in depth on top of ContentRenderer already
+     * sanitizing at render time (see that class's docblock): the REST API
+     * (ApiController) exposes the raw `content` column directly, not just
+     * the rendered `content_html`, so an unsanitized stored value would
+     * still be a stored-XSS vector for any API consumer even though no
+     * themed page would ever render it unsafely. A plain `new
+     * HtmlSanitizer()` here is deliberate, not a missing DI wire-up — see
+     * include/bootstrap.php's note that it's dependency-free pure
+     * computation, same as MarkdownParser. Markdown/Plain content isn't
+     * executable HTML in its stored form, so both pass through untouched.
+     */
+    private function sanitizeStoredContent(string $content, ContentFormat $format): string
+    {
+        return $format === ContentFormat::Html ? (new HtmlSanitizer())->clean($content) : $content;
     }
 
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string
@@ -746,6 +1039,9 @@ final class PostService
             featuredImageCrop: self::decodeCrop($row['featured_image_crop'] ?? null),
             metaTitle: isset($row['meta_title']) && $row['meta_title'] !== '' ? (string) $row['meta_title'] : null,
             metaDescription: isset($row['meta_description']) && $row['meta_description'] !== '' ? (string) $row['meta_description'] : null,
+            visibility: PostVisibility::tryFrom((string) ($row['visibility'] ?? '')) ?? PostVisibility::Public,
+            isSticky: (bool) ($row['is_sticky'] ?? false),
+            unpublishAt: isset($row['unpublish_at']) ? new DateTimeImmutable((string) $row['unpublish_at']) : null,
         );
     }
 
@@ -792,5 +1088,10 @@ final class PostService
     private function table(): string
     {
         return $this->tablePrefix . 'posts';
+    }
+
+    private function postMetaTable(): string
+    {
+        return $this->tablePrefix . 'post_meta';
     }
 }

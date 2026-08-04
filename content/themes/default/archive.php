@@ -31,6 +31,7 @@ $archive_description ??= null;
                                 <a href="<?= esc_url(site_url('post/' . $post->slug)) ?>"><?= esc_html($post->title) ?></a>
                             </h2>
                             <p class="lp-post-list__meta">
+                                <?php the_author_link($post); ?>
                                 <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
                             </p>
                             <?php if ($post->excerpt !== ''): ?>

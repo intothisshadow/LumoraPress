@@ -12,6 +12,7 @@ namespace LumoraPress\Models;
 enum PostStatus: string
 {
     case Draft = 'draft';
+    case PendingReview = 'pending_review';
     case Published = 'published';
     case Scheduled = 'scheduled';
     case Trashed = 'trashed';
@@ -20,6 +21,7 @@ enum PostStatus: string
     {
         return match ($this) {
             self::Draft => 'Draft',
+            self::PendingReview => 'Pending Review',
             self::Published => 'Published',
             self::Scheduled => 'Scheduled',
             self::Trashed => 'Trash',

@@ -5,6 +5,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
+use LumoraPress\Models\PostVisibility;
 use LumoraPress\Models\RevisionableType;
 
 if (!isset($kernel)) {
@@ -125,6 +126,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $duplicate->id,
                     array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($existing->id)),
                 );
+                $postService->replaceMetaForPost($duplicate->id, $postService->metaForPost($existing->id));
 
                 header('Location: ' . admin_url('posts/new') . '?id=' . $duplicate->id . '&duplicated=1');
                 exit;
@@ -135,12 +137,51 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('posts_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
-        $ids = array_filter(array_map('intval', is_array($_POST['post_ids'] ?? null) ? $_POST['post_ids'] : []));
-
-        foreach ($ids as $id) {
+        $ids = array_values(array_filter(array_map('intval', is_array($_POST['post_ids'] ?? null) ? $_POST['post_ids'] : [])));
+        $editableIds = array_values(array_filter($ids, static function (int $id) use ($postService, $canEditPost): bool {
             $existing = $postService->findById($id);
 
-            if ($existing === null || !$canEditPost($existing)) {
+            return $existing !== null && $canEditPost($existing);
+        }));
+
+        // Change author/Change category/Change visibility (LP-008) act on
+        // the whole editable selection in one PostService/CategoryService
+        // call rather than per-id inside the loop below, since they're not
+        // gated per-post the way trash/publish/etc. already are one row at
+        // a time.
+        if ($bulkAction === 'change_author' && $canEditOthersPosts) {
+            $targetAuthorId = (int) ($_POST['target_author_id'] ?? 0);
+
+            if ($targetAuthorId > 0) {
+                $postService->bulkReassignAuthor($editableIds, $targetAuthorId);
+            }
+
+            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
+            exit;
+        }
+
+        if ($bulkAction === 'add_category' && $currentUser->can('edit_posts')) {
+            $targetCategoryId = (int) ($_POST['target_category_id'] ?? 0);
+
+            if ($targetCategoryId > 0) {
+                $kernel->categories->bulkAddToPosts($editableIds, $targetCategoryId);
+            }
+
+            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
+            exit;
+        }
+
+        if (($bulkAction === 'set_public' || $bulkAction === 'set_private') && $canPublish) {
+            $postService->bulkSetVisibility($editableIds, $bulkAction === 'set_private' ? PostVisibility::Private : PostVisibility::Public);
+
+            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
+            exit;
+        }
+
+        foreach ($editableIds as $id) {
+            $existing = $postService->findById($id);
+
+            if ($existing === null) {
                 continue;
             }
 
@@ -190,11 +231,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <?php
 $page = max(1, (int) ($_GET['paged'] ?? 1));
 $statusFilter = PostStatus::tryFrom((string) ($_GET['status'] ?? ''));
-$pagination = $postService->paginateForAdmin($page, statusFilter: $statusFilter);
 $isTrashView = $statusFilter === PostStatus::Trashed;
 
+$termFilter = trim((string) ($_GET['q'] ?? ''));
+$authorFilter = (int) ($_GET['author'] ?? 0);
+$categoryFilter = (int) ($_GET['category'] ?? 0);
+$tagFilter = (int) ($_GET['tag'] ?? 0);
+$dateFromFilter = (string) ($_GET['date_from'] ?? '');
+$dateToFilter = (string) ($_GET['date_to'] ?? '');
+$listFilters = [
+    'term' => $termFilter,
+    'authorId' => $authorFilter,
+    'categoryId' => $categoryFilter,
+    'tagId' => $tagFilter,
+    'dateFrom' => $dateFromFilter,
+    'dateTo' => $dateToFilter,
+];
+$pagination = $postService->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters);
+
 // Trash is excluded from "All" (see PostService::paginateForAdmin()'s
-// docblock), so the "All" tab's own count is the other three statuses
+// docblock), so the "All" tab's own count is every non-Trashed status
 // summed rather than a simple "no filter" count.
 $statusCounts = [];
 
@@ -202,11 +258,15 @@ foreach (PostStatus::cases() as $statusCase) {
     $statusCounts[$statusCase->value] = $postService->countByStatus($statusCase);
 }
 
-$allCount = $statusCounts[PostStatus::Draft->value] + $statusCounts[PostStatus::Published->value] + $statusCounts[PostStatus::Scheduled->value];
+$allCount = $statusCounts[PostStatus::Draft->value] + $statusCounts[PostStatus::PendingReview->value]
+    + $statusCounts[PostStatus::Published->value] + $statusCounts[PostStatus::Scheduled->value];
 $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
     array_map(static fn (PostStatus $status): string => $status->value, PostStatus::cases()),
     array_map(static fn (PostStatus $status): string => $status->label() . ' (' . $statusCounts[$status->value] . ')', PostStatus::cases()),
 )];
+$allUsersForFilter = $kernel->users->listAll();
+$allCategoriesForFilter = $kernel->categories->listAll();
+$allTagsForFilter = $kernel->tags->listAll();
 ?>
 
 <p class="lp-admin__filters">
@@ -217,6 +277,55 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
         ><?= esc_html($label) ?></a>
     <?php endforeach; ?>
 </p>
+
+<section class="lp-admin__panel">
+    <h2>Search &amp; Filter</h2>
+    <form method="get" action="<?= esc_url(admin_url('posts/all-posts')) ?>">
+        <?php if ($statusFilter !== null): ?>
+            <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+        <?php endif; ?>
+        <p class="lp-field">
+            <label for="posts-q">Search title</label>
+            <input type="text" id="posts-q" name="q" value="<?= esc_attr($termFilter) ?>">
+        </p>
+        <p class="lp-field">
+            <label for="posts-author-filter">Author</label>
+            <select id="posts-author-filter" name="author">
+                <option value="0">All authors</option>
+                <?php foreach ($allUsersForFilter as $filterUser): ?>
+                    <option value="<?= (int) $filterUser->id ?>" <?= $authorFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </p>
+        <p class="lp-field">
+            <label for="posts-category-filter">Category</label>
+            <select id="posts-category-filter" name="category">
+                <option value="0">All categories</option>
+                <?php foreach ($allCategoriesForFilter as $filterCategory): ?>
+                    <option value="<?= (int) $filterCategory->id ?>" <?= $categoryFilter === $filterCategory->id ? 'selected' : '' ?>><?= esc_html($filterCategory->name) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </p>
+        <p class="lp-field">
+            <label for="posts-tag-filter">Tag</label>
+            <select id="posts-tag-filter" name="tag">
+                <option value="0">All tags</option>
+                <?php foreach ($allTagsForFilter as $filterTag): ?>
+                    <option value="<?= (int) $filterTag->id ?>" <?= $tagFilter === $filterTag->id ? 'selected' : '' ?>><?= esc_html($filterTag->name) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </p>
+        <p class="lp-field">
+            <label for="posts-date-from">Created from</label>
+            <input type="date" id="posts-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+        </p>
+        <p class="lp-field">
+            <label for="posts-date-to">Created to</label>
+            <input type="date" id="posts-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+        </p>
+        <button type="submit" class="lp-button">Filter</button>
+    </form>
+</section>
 
 <section class="lp-admin__panel">
     <?php if ($pagination['posts'] === []): ?>
@@ -240,9 +349,26 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
                         <?php if ($canPublish): ?>
                             <option value="publish">Publish</option>
                             <option value="draft">Mark as Draft</option>
+                            <option value="set_public">Set Public</option>
+                            <option value="set_private">Set Private</option>
                         <?php endif; ?>
                         <?php if ($canDeletePosts): ?><option value="trash">Move to Trash</option><?php endif; ?>
+                        <?php if ($canEditOthersPosts): ?><option value="change_author">Change author to&hellip;</option><?php endif; ?>
+                        <option value="add_category">Add category&hellip;</option>
                     <?php endif; ?>
+                </select>
+                <?php if ($canEditOthersPosts): ?>
+                    <select name="target_author_id">
+                        <?php foreach ($allUsersForFilter as $bulkAuthorOption): ?>
+                            <option value="<?= (int) $bulkAuthorOption->id ?>"><?= esc_html($bulkAuthorOption->displayName) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+                <select name="target_category_id">
+                    <option value="0">(Choose a category)</option>
+                    <?php foreach ($allCategoriesForFilter as $bulkCategoryOption): ?>
+                        <option value="<?= (int) $bulkCategoryOption->id ?>"><?= esc_html($bulkCategoryOption->name) ?></option>
+                    <?php endforeach; ?>
                 </select>
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>

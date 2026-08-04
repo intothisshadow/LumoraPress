@@ -6,6 +6,29 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Posts (LP-008) gained most of its remaining checklist (configurable
+  permalinks deliberately excluded — see TODO.md). Publishing workflow:
+  Pending Review status (Contributors submit for review instead of only
+  saving a draft), Private posts (visible only to the author or staff
+  with `edit_posts`, independent of Draft/Published/Scheduled status),
+  Sticky posts (pinned to the top of the homepage only), and Schedule
+  unpublishing (an optional date after which a post automatically stops
+  being publicly visible, computed live with no background job — same
+  approach scheduled publishing already used). The post editor gained
+  Custom Fields (a repeatable key/value row editor), a Preview button
+  (view a draft/scheduled/pending/private post exactly as it will render
+  publicly, without publishing it or exposing it to anyone else), and a
+  live URL preview as the slug is typed. Editors/Administrators can now
+  reassign a post's author from the edit screen, and every author has a
+  public archive page (`/author/{slug}`) with their name linked to it
+  from post listings. The admin Posts list gained a Search & Filter
+  panel (title, author, category, tag, date range) and three new bulk
+  actions: Change author, Change category (adds the category to every
+  selected post without removing others already assigned), and Change
+  visibility. Saving a post now enforces a title length limit and runs
+  Html-format content through the same sanitizer used at render time,
+  closing a gap where the REST API's raw `content` field could otherwise
+  carry unsanitized stored HTML.
 - Media Manager (LP-005) is now complete. Broadened supported
   file types with word-processing documents (doc/docx/rtf/odt) and
   rar/7z archives — SVG is deliberately excluded from the allow-list

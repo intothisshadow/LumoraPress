@@ -293,6 +293,48 @@ final class CategoryService
         });
     }
 
+    /**
+     * Adds $categoryId to $postId's existing category assignments without
+     * touching any other category already assigned — unlike
+     * assignToPost() (which replaces the full set, used by the single-post
+     * edit form), this backs LP-008's bulk "Change category" action, where
+     * "change" means "add this category to every selected post", not
+     * "replace each post's entire category list with just this one".
+     * post_categories has a composite (post_id, category_id) primary key,
+     * so a duplicate INSERT would fail — check-then-insert rather than an
+     * `ON DUPLICATE KEY` upsert keeps this portable to the SQLite-backed
+     * unit tests, the same precedent MediaStatsService::recordDownload()
+     * already established.
+     *
+     * @param array<int, int> $postIds
+     * @return int how many posts actually gained the assignment (already-
+     *     assigned posts are skipped, not counted)
+     */
+    public function bulkAddToPosts(array $postIds, int $categoryId): int
+    {
+        $added = 0;
+
+        foreach (array_unique(array_map('intval', $postIds)) as $postId) {
+            $exists = $this->database->fetchOne(
+                'SELECT 1 FROM ' . $this->postCategoriesTable() . ' WHERE post_id = :post_id AND category_id = :category_id',
+                ['post_id' => $postId, 'category_id' => $categoryId],
+            ) !== null;
+
+            if ($exists) {
+                continue;
+            }
+
+            $this->database->execute(
+                'INSERT INTO ' . $this->postCategoriesTable() . ' (post_id, category_id) VALUES (:post_id, :category_id)',
+                ['post_id' => $postId, 'category_id' => $categoryId],
+            );
+
+            $added++;
+        }
+
+        return $added;
+    }
+
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string
     {
         $base = $this->slugify($source);

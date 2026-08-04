@@ -51,6 +51,46 @@ final class UserService
         return $row === null ? null : $this->hydrate($row);
     }
 
+    /**
+     * LP-008's public author archives (`/author/{slug}`) — there's no
+     * dedicated `slug` column on users, so this slugifies every
+     * username the same way PostService/CategoryService/etc. already
+     * slugify their own titles/names (see this class's own slugify())
+     * and compares against $slug, rather than adding a new schema
+     * column just for this. Fine at the scale of a typical blog's
+     * author list; listAll() is already used unbounded elsewhere (e.g.
+     * the admin Users screen).
+     */
+    public function findByAuthorSlug(string $slug): ?User
+    {
+        foreach ($this->listAll() as $user) {
+            if ($this->slugify($user->username) === $slug) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The URL-safe slug for $user's author archive — see
+     * findByAuthorSlug()'s docblock for why this is computed rather than
+     * stored.
+     */
+    public function authorSlug(User $user): string
+    {
+        return $this->slugify($user->username);
+    }
+
+    private function slugify(string $value): string
+    {
+        $slug = strtolower(trim($value));
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?? '';
+        $slug = trim($slug, '-');
+
+        return $slug === '' ? 'user' : $slug;
+    }
+
     public function usernameOrEmailExists(string $username, string $email): bool
     {
         $row = $this->database->fetchOne(

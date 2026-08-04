@@ -1491,6 +1491,19 @@ select:focus {
     font-size: 0.8rem;
 }
 
+/* Custom fields (LP-008) — repeatable key/value row editor */
+
+.lp-custom-fields__row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
+.lp-custom-fields__row input[type="text"] {
+    flex: 1 1 auto;
+}
+
 /* Tag input widget (progressive enhancement of a plain text field) */
 
 .lp-tag-input {
@@ -1893,6 +1906,7 @@ select:focus {
 }
 
 .lp-status-badge--pending,
+.lp-status-badge--pending_review,
 .lp-status-badge--warning {
     background: var(--lp-admin-warning-bg);
     color: var(--lp-admin-warning-text);

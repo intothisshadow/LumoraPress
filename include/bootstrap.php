@@ -37,6 +37,7 @@ use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ActiveTheme;
+use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeRegistry;
@@ -415,6 +416,14 @@ FeaturedImages::set($media, $thumbnails, $config);
 require LUMORA_ROOT . '/include/media-functions.php';
 
 /*
+ * Author archive/profile-link helpers (LP-008) — same bridge shape as
+ * FeaturedImages above, for the same reason (themes have no route to
+ * UserService of their own).
+ */
+Authors::set($users);
+require LUMORA_ROOT . '/include/author-functions.php';
+
+/*
  * The fixed set of paths (relative to LUMORA_ROOT) that make up the core
  * application, as distributed in an official release ZIP. Everything
  * else under LUMORA_ROOT — config/, content/uploads, content/plugins,
@@ -566,11 +575,13 @@ $kernel = new Kernel(
     mailer: $mailer,
 );
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users);
 
 $router->get('/', fn (array $params) => $site->home($params));
 $router->get('/post/{slug}', fn (array $params) => $site->singlePost($params));
 $router->post('/post/{slug}/comment', fn (array $params) => $site->submitComment($params));
+$router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
+$router->get('/author/{slug}', fn (array $params) => $site->author($params));
 $router->get('/category/{slug}', fn (array $params) => $site->category($params));
 $router->get('/tag/{slug}', fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));

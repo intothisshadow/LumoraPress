@@ -26,6 +26,7 @@ use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\UserService;
 
 /**
  * Public front-end routes. Posts, Pages, Categories, Tags, Feeds, and
@@ -56,6 +57,7 @@ final class SiteController
         private readonly CacheManager $cache,
         private readonly RedirectService $redirects,
         private readonly AkismetClient $akismet,
+        private readonly UserService $users,
     ) {
     }
 
@@ -148,7 +150,7 @@ final class SiteController
         $slug = $params['slug'] ?? '';
         $post = $slug !== '' ? $this->posts->findBySlug($slug) : null;
 
-        if ($post === null || !$post->isPubliclyVisible()) {
+        if ($post === null || !$post->isVisibleToViewer($this->canViewPrivatePost($post))) {
             $this->notFound();
 
             return;
@@ -314,6 +316,87 @@ final class SiteController
     private function commentsOpenFor(Post $post): bool
     {
         return $post->commentsOpen && $this->config->option('comments_enabled', '1') !== '0';
+    }
+
+    /**
+     * LP-008's "Private posts" — whether the current visitor is permitted
+     * to see $post even though it's Private: logged in, and either the
+     * post's own author or holding edit_posts (Editor/Administrator/
+     * Author/Contributor all qualify, matching who can already see a
+     * draft they didn't write via the admin list's own edit_others_posts
+     * gate).
+     */
+    private function canViewPrivatePost(Post $post): bool
+    {
+        $user = $this->auth->user();
+
+        return $user !== null && ($user->can('edit_posts') || $user->id === $post->authorId);
+    }
+
+    /**
+     * LP-008's "Preview button" — lets an author/editor view a post
+     * exactly as it will render publicly (single.php, comments and all)
+     * without publishing it and without any other visitor ever being
+     * able to reach it, since this bypasses isVisibleToViewer() entirely
+     * rather than issuing a shareable signed URL. Gated by the same
+     * ownership rule admin/views/posts/new.php already applies to editing
+     * a post at all (edit_others_posts, or being the post's own author).
+     * Deliberately never cached (see singlePost()'s own docblock note —
+     * neither method calls markCacheableForGuests()).
+     *
+     * @param array<string, string> $params
+     */
+    public function previewPost(array $params): void
+    {
+        $id = (int) ($params['id'] ?? 0);
+        $post = $id > 0 ? $this->posts->findById($id) : null;
+        $user = $this->auth->user();
+
+        if ($post === null || $user === null || !($user->can('edit_others_posts') || $user->id === $post->authorId)) {
+            $this->notFound();
+
+            return;
+        }
+
+        $this->theme->render('single.php', [
+            'page_title' => $post->title,
+            'post' => $post,
+            'comments_open' => $this->commentsOpenFor($post),
+            'comment_tree' => $this->comments->publicTreeForPost($post->id),
+            'comment_count' => $this->comments->countForPost($post->id),
+            'current_user' => $user,
+        ]);
+    }
+
+    /**
+     * LP-008's public author archives (`/author/{slug}`) — the slug is
+     * computed from the user's username (UserService::findByAuthorSlug()),
+     * not a stored column; see that method's docblock.
+     *
+     * @param array<string, string> $params
+     */
+    public function author(array $params): void
+    {
+        $slug = $params['slug'] ?? '';
+        $author = $slug !== '' ? $this->users->findByAuthorSlug($slug) : null;
+
+        if ($author === null) {
+            $this->notFound();
+
+            return;
+        }
+
+        $page = max(1, (int) ($_GET['paged'] ?? 1));
+        $pagination = $this->posts->paginateByAuthor($author->id, $page, $this->postsPerPage());
+
+        $this->markCacheableForGuests(['posts', 'author_' . $author->id]);
+        $this->theme->render('archive.php', [
+            'page_title' => $author->displayName,
+            'archive_type' => 'author',
+            'archive_description' => null,
+            'posts' => $pagination['posts'],
+            'pagination' => $pagination,
+        ]);
     }
 
     /**

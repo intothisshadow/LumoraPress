@@ -204,8 +204,11 @@ them via FTP/SFTP or your hosting file manager).
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme
   system, plugin hook API, widgets, and navigation menus.
-- **Posts** — full CRUD with drafts/scheduling, Trash & restore, bulk
-  actions, duplicate, categories and tags, revision history.
+- **Posts** — full CRUD with drafts/scheduling/pending review, Private
+  and Sticky posts, scheduled unpublishing, Trash & restore, bulk
+  actions (including change author/category/visibility), duplicate,
+  custom fields, preview, author archives, categories and tags,
+  revision history.
 - **Pages** — static pages with parent/child relationships and revision
   history.
 - **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
