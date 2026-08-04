@@ -7,6 +7,8 @@ namespace LumoraPress\Services;
 use Closure;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
+use LumoraPress\Services\Storage\LocalFilesystemStorage;
+use LumoraPress\Services\Storage\MediaStorageInterface;
 use RuntimeException;
 
 /**
@@ -27,9 +29,23 @@ use RuntimeException;
  */
 final class MediaService
 {
+    /**
+     * LP-005's "Other downloadable resources" broadening: word-processing
+     * documents (doc/docx/rtf/odt — guides, fanlisting text) and rar/7z
+     * archives (downloadable themes, icon packs, wallpaper sets) on top of
+     * the original image/document/archive/audio/video set. SVG is
+     * deliberately excluded — unlike every other image type here, a
+     * browser executes an SVG's embedded `<script>` when it's opened
+     * directly (not `<img>`-embedded, but navigated to as its own
+     * document, which every media file here is reachable as via its plain
+     * static URL — see the class docblock), a stored-XSS risk WordPress
+     * itself excludes SVG from its own default allow-list for the same
+     * reason.
+     */
     private const ALLOWED_EXTENSIONS = [
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'ico',
         'pdf', 'zip', 'css', 'txt', 'xml', 'json',
+        'doc', 'docx', 'rtf', 'odt', 'rar', '7z',
         'mp3', 'ogg', 'wav', 'm4a',
         'mp4', 'webm', 'mov',
     ];
@@ -39,6 +55,12 @@ final class MediaService
         'image/x-icon', 'image/vnd.microsoft.icon',
         'application/pdf', 'application/zip', 'text/css', 'text/plain',
         'application/xml', 'text/xml', 'application/json',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/rtf', 'application/rtf',
+        'application/vnd.oasis.opendocument.text',
+        'application/vnd.rar', 'application/x-rar-compressed', 'application/x-rar',
+        'application/x-7z-compressed',
         'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mp4',
         'video/mp4', 'video/webm', 'video/quicktime',
     ];
@@ -54,26 +76,32 @@ final class MediaService
      */
     private const TYPE_CATEGORY_MIME_TYPES = [
         'image' => ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'],
-        'document' => ['application/pdf', 'text/css', 'text/plain', 'application/xml', 'text/xml', 'application/json'],
-        'archive' => ['application/zip'],
+        'document' => [
+            'application/pdf', 'text/css', 'text/plain', 'application/xml', 'text/xml', 'application/json',
+            'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/rtf', 'application/rtf', 'application/vnd.oasis.opendocument.text',
+        ],
+        'archive' => ['application/zip', 'application/vnd.rar', 'application/x-rar-compressed', 'application/x-rar', 'application/x-7z-compressed'],
         'audio' => ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mp4'],
         'video' => ['video/mp4', 'video/webm', 'video/quicktime'],
     ];
 
     private const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-    private readonly Closure $moveUploadedFile;
+    private readonly MediaStorageInterface $storage;
 
     /**
      * @param Closure(string, string): bool|null $moveUploadedFile Overrides
-     *     the file-move operation — defaults to move_uploaded_file().
-     *     Exists so tests can exercise upload()'s success path: PHP's
-     *     is_uploaded_file() (which move_uploaded_file() depends on) can
-     *     only ever pass for a file that arrived via a real HTTP upload,
-     *     never from a CLI test process.
+     *     the default storage driver's file-move operation — see
+     *     LocalFilesystemStorage's constructor docblock for why tests need
+     *     this. Ignored when $storage is given explicitly.
      * @param ?HookManager $hooks Optional (LP-037) — see PostService's
      *     docblock for why; fires 'media_saved'/'media_deleted' for cache
      *     invalidation.
+     * @param ?MediaStorageInterface $storage LP-005's storage abstraction
+     *     — defaults to local disk (LocalFilesystemStorage, built from
+     *     $uploadsPath/$uploadsUrl/$moveUploadedFile) when omitted. A
+     *     future S3/R2 driver plugs in here without this class changing.
      */
     public function __construct(
         private readonly Database $database,
@@ -82,8 +110,9 @@ final class MediaService
         private readonly string $uploadsUrl,
         ?Closure $moveUploadedFile = null,
         private readonly ?HookManager $hooks = null,
+        ?MediaStorageInterface $storage = null,
     ) {
-        $this->moveUploadedFile = $moveUploadedFile ?? static fn (string $from, string $to): bool => move_uploaded_file($from, $to);
+        $this->storage = $storage ?? new LocalFilesystemStorage($uploadsPath, $uploadsUrl, $moveUploadedFile);
     }
 
     /**
@@ -114,20 +143,15 @@ final class MediaService
 
         $year = date('Y');
         $month = date('m');
-        $directory = rtrim($this->uploadsPath, '/') . "/{$year}/{$month}";
-
-        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-            throw new RuntimeException('Unable to create the uploads directory.');
-        }
-
         $safeName = $this->sanitizeFilename(pathinfo($file['name'], PATHINFO_FILENAME));
         $filename = $safeName . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
-        $destination = $directory . '/' . $filename;
+        $relativePath = "{$year}/{$month}/{$filename}";
 
-        if (!($this->moveUploadedFile)($file['tmp_name'], $destination)) {
+        if (!$this->storage->put($file['tmp_name'], $relativePath)) {
             throw new RuntimeException('Unable to move the uploaded file.');
         }
 
+        $destination = $this->storage->absolutePath($relativePath);
         $width = null;
         $height = null;
 
@@ -141,7 +165,6 @@ final class MediaService
         }
 
         $fileHash = hash_file('sha256', $destination) ?: null;
-        $relativePath = "{$year}/{$month}/{$filename}";
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
@@ -170,6 +193,101 @@ final class MediaService
         $this->hooks?->doAction('media_saved', $media);
 
         return $media;
+    }
+
+    /**
+     * LP-005's "Replace" action — swaps a media item's file content in
+     * place while keeping its id, file_path, and public URL exactly as
+     * they were, so every post/page/setting already pointing at it keeps
+     * working without edits. Deliberately a single-item action, not a
+     * bulk one: there's no sensible UI for mapping several different
+     * replacement files onto several different selected items in one
+     * bulk-action submit (see TODO.md's LP-005 entry).
+     *
+     * The replacement file's extension must match the original's exactly
+     * — the only way file_path (and so the URL) can stay untouched
+     * without also risking a MIME/extension mismatch on disk.
+     *
+     * @param array{name: string, type: string, tmp_name: string, error: int, size: int} $file
+     * @return array<string, mixed>
+     */
+    public function replace(int $id, array $file): array
+    {
+        $media = $this->find($id);
+
+        if ($media === null) {
+            throw new RuntimeException('Media item not found.');
+        }
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new RuntimeException('File upload failed.');
+        }
+
+        if ($file['size'] > self::MAX_FILE_SIZE) {
+            throw new RuntimeException('File exceeds the maximum upload size.');
+        }
+
+        $existingExtension = strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION));
+        $newExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
+        if ($newExtension !== $existingExtension) {
+            throw new RuntimeException("The replacement file must be the same type (.{$existingExtension}) as the original, to keep its URL working.");
+        }
+
+        if (!$this->isAllowedExtension($newExtension)) {
+            throw new RuntimeException('File type is not allowed.');
+        }
+
+        $mimeType = mime_content_type($file['tmp_name']) ?: '';
+
+        if (!$this->isAllowedMimeType($mimeType)) {
+            throw new RuntimeException('File type could not be verified.');
+        }
+
+        $relativePath = (string) $media['file_path'];
+
+        if (!$this->storage->put($file['tmp_name'], $relativePath)) {
+            throw new RuntimeException('Unable to move the uploaded file.');
+        }
+
+        $destination = $this->storage->absolutePath($relativePath);
+        $width = null;
+        $height = null;
+
+        if (str_starts_with($mimeType, 'image/')) {
+            $dimensions = getimagesize($destination);
+
+            if (is_array($dimensions)) {
+                $width = $dimensions[0];
+                $height = $dimensions[1];
+            }
+        }
+
+        $fileHash = hash_file('sha256', $destination) ?: null;
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . '
+                SET mime_type = :mime_type, file_size = :file_size, width = :width, height = :height, file_hash = :file_hash
+              WHERE id = :id',
+            [
+                'mime_type' => $mimeType,
+                'file_size' => $file['size'],
+                'width' => $width,
+                'height' => $height,
+                'file_hash' => $fileHash,
+                'id' => $id,
+            ],
+        );
+
+        $updated = $this->find($id);
+
+        if ($updated === null) {
+            throw new RuntimeException('Failed to load the media item after replacing it.');
+        }
+
+        $this->hooks?->doAction('media_saved', $updated);
+
+        return $updated;
     }
 
     /**
@@ -213,6 +331,88 @@ final class MediaService
     }
 
     /**
+     * LP-005's bulk "Rename" action: a find/replace substring rename
+     * across every selected item's display name. Renames file_name only —
+     * like move()/updateMetadata(), never touches file_path, so a file's
+     * public URL never changes just because its display name did (see
+     * class docblock). A no-op ($find === '') is refused rather than
+     * silently doing nothing, since str_contains('', '') is always true
+     * and would otherwise "match" (and leave unchanged, since
+     * str_replace('', $replace, $name) === $name) every selected item.
+     *
+     * @param array<int, int> $ids
+     * @return int How many of the selected ids actually had $find in
+     *     their name (and so were renamed) — items without a match are
+     *     left untouched, not renamed to a duplicate/garbage name.
+     */
+    public function bulkRenameByReplacing(array $ids, string $find, string $replace): int
+    {
+        if ($find === '') {
+            return 0;
+        }
+
+        $renamed = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            $media = $this->find($id);
+
+            if ($media === null || !str_contains((string) $media['file_name'], $find)) {
+                continue;
+            }
+
+            $newName = str_replace($find, $replace, (string) $media['file_name']);
+
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET file_name = :file_name WHERE id = :id',
+                ['file_name' => $newName, 'id' => $id],
+            );
+
+            $renamed++;
+        }
+
+        return $renamed;
+    }
+
+    /**
+     * LP-005's bulk "Change metadata" action. Unlike updateMetadata()
+     * (single-item edit form, where every field is always submitted and a
+     * blank field means "clear this"), a bulk edit only ever sets fields
+     * the admin actually filled in — null here means "leave this field's
+     * existing value alone" for every selected item, not "clear it",
+     * since applying a blank caption/description/notes to every selected
+     * item at once would otherwise silently wipe out per-file text nobody
+     * asked to remove.
+     *
+     * @param array<int, int> $ids
+     * @return int How many ids were updated (every valid id, regardless
+     *     of which fields were non-null)
+     */
+    public function bulkUpdateMetadata(array $ids, ?string $altText, ?string $caption, ?string $description, ?string $notes): int
+    {
+        $updated = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            $media = $this->find($id);
+
+            if ($media === null) {
+                continue;
+            }
+
+            $this->updateMetadata(
+                $id,
+                $altText ?? ($media['alt_text'] !== null ? (string) $media['alt_text'] : null),
+                $caption ?? ($media['caption'] !== null ? (string) $media['caption'] : null),
+                $description ?? ($media['description'] !== null ? (string) $media['description'] : null),
+                $notes ?? ($media['notes'] !== null ? (string) $media['notes'] : null),
+            );
+
+            $updated++;
+        }
+
+        return $updated;
+    }
+
+    /**
      * Reassigns a file's virtual folder — purely a metadata update, never
      * touches file_path/the public URL (see class docblock).
      */
@@ -227,12 +427,17 @@ final class MediaService
     /**
      * Filterable listing, replacing the old browse()/search() split.
      *
-     * @param array{folderIds?: array<int, int>, unassignedOnly?: bool, term?: string, type?: string, dateFrom?: string, dateTo?: string} $filters
+     * @param array{folderIds?: array<int, int>, unassignedOnly?: bool, term?: string, type?: string, dateFrom?: string, dateTo?: string, widthMin?: int, widthMax?: int, heightMin?: int, heightMax?: int, sizeMin?: int, sizeMax?: int} $filters
      *     folderIds: restrict to these folder ids (e.g. a folder plus its
      *     descendants — see FolderService::descendantIds()). unassignedOnly:
      *     restrict to files with no folder ("General Uploads"); ignored if
      *     folderIds is set. term: matches file_name. type: one of
      *     TYPE_CATEGORY_MIME_TYPES's keys. dateFrom/dateTo: 'Y-m-d' strings.
+     *     widthMin/widthMax/heightMin/heightMax: pixel bounds against the
+     *     width/height columns (NULL for non-image files, so these
+     *     necessarily exclude them — matches the fact that a size range
+     *     only makes sense for images in the first place). sizeMin/sizeMax:
+     *     byte bounds against file_size, any file type.
      * @return array{items: array<int, array<string, mixed>>, total: int}
      */
     public function query(array $filters = [], int $limit = 40, int $offset = 0): array
@@ -284,6 +489,36 @@ final class MediaService
             $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
         }
 
+        if (isset($filters['widthMin'])) {
+            $where[] = 'width >= :width_min';
+            $params['width_min'] = $filters['widthMin'];
+        }
+
+        if (isset($filters['widthMax'])) {
+            $where[] = 'width <= :width_max';
+            $params['width_max'] = $filters['widthMax'];
+        }
+
+        if (isset($filters['heightMin'])) {
+            $where[] = 'height >= :height_min';
+            $params['height_min'] = $filters['heightMin'];
+        }
+
+        if (isset($filters['heightMax'])) {
+            $where[] = 'height <= :height_max';
+            $params['height_max'] = $filters['heightMax'];
+        }
+
+        if (isset($filters['sizeMin'])) {
+            $where[] = 'file_size >= :size_min';
+            $params['size_min'] = $filters['sizeMin'];
+        }
+
+        if (isset($filters['sizeMax'])) {
+            $where[] = 'file_size <= :size_max';
+            $params['size_max'] = $filters['sizeMax'];
+        }
+
         $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
 
         $total = (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table() . $whereSql, $params);
@@ -311,6 +546,72 @@ final class MediaService
         return 'other';
     }
 
+    /**
+     * Largest files first, any type — LP-005's "Large Files" Smart
+     * Collection. An unpaginated, capped list, the same "quick, capped
+     * listing" precedent LP-006's built-in views (mostDownloaded() etc. in
+     * MediaStatsService) already established.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function largestFiles(int $limit = 40): array
+    {
+        $limit = max(1, $limit);
+
+        return $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " ORDER BY file_size DESC LIMIT {$limit}",
+        );
+    }
+
+    /**
+     * Images with no alt text set — LP-005's "Missing Alt Text" Smart
+     * Collection, an accessibility-maintenance aid (see this project's
+     * Accessibility goal). Non-image files are excluded outright since alt
+     * text is meaningless for them.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function missingAltText(int $limit = 40): array
+    {
+        $limit = max(1, $limit);
+
+        return $this->database->fetchAll(
+            "SELECT * FROM " . $this->table() . " WHERE mime_type LIKE 'image/%' AND (alt_text IS NULL OR alt_text = '') ORDER BY uploaded_at DESC LIMIT {$limit}",
+        );
+    }
+
+    /**
+     * Full media rows for a set of ids, in no particular guaranteed order
+     * beyond upload date — used to render a Smart Collection built from ids
+     * gathered elsewhere (e.g. MediaUsageChecker's featured-image lookups)
+     * rather than a query() filter.
+     *
+     * @param array<int, int> $ids
+     * @return array<int, array<string, mixed>>
+     */
+    public function findMany(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+
+        foreach ($ids as $i => $id) {
+            $key = "id_{$i}";
+            $placeholders[] = ':' . $key;
+            $params[$key] = $id;
+        }
+
+        return $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE id IN (' . implode(',', $placeholders) . ') ORDER BY uploaded_at DESC',
+            $params,
+        );
+    }
+
     public function delete(int $id): bool
     {
         $media = $this->find($id);
@@ -319,11 +620,7 @@ final class MediaService
             return false;
         }
 
-        $path = rtrim($this->uploadsPath, '/') . '/' . $media['file_path'];
-
-        if (is_file($path)) {
-            unlink($path);
-        }
+        $this->storage->delete((string) $media['file_path']);
 
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
 
@@ -339,7 +636,19 @@ final class MediaService
      */
     public function url(array $media): string
     {
-        return rtrim($this->uploadsUrl, '/') . '/' . $media['file_path'];
+        return $this->storage->url((string) $media['file_path']);
+    }
+
+    /**
+     * The file's real filesystem location — needed by callers that must
+     * read the file's actual bytes (LP-005's bulk ZIP download) rather
+     * than just link to it.
+     *
+     * @param array<string, mixed> $media
+     */
+    public function absolutePath(array $media): string
+    {
+        return $this->storage->absolutePath((string) $media['file_path']);
     }
 
     /**

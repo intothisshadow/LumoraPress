@@ -129,6 +129,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $thumbnailService->regenerate($id);
         header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
+    } elseif ($form === 'replace_file' && Csrf::verify('replace_file', $token)) {
+        $id = (int) ($_POST['id'] ?? 0);
+
+        if (!isset($_FILES['replacement']) || $_FILES['replacement']['error'] === UPLOAD_ERR_NO_FILE) {
+            $error = 'Please choose a replacement file.';
+        } else {
+            try {
+                $mediaService->replace($id, $_FILES['replacement']);
+                $thumbnailService->regenerate($id);
+                header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
+                exit;
+            } catch (\Throwable $exception) {
+                $error = $exception->getMessage();
+            }
+        }
     } elseif ($form === 'bulk_action' && Csrf::verify('bulk_action', $token)) {
         $ids = array_filter(array_map('intval', is_array($_POST['ids'] ?? null) ? $_POST['ids'] : []), static fn (int $id): bool => $id > 0);
         $bulkActionType = (string) ($_POST['bulk_action_type'] ?? '');
@@ -164,6 +179,78 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $query = http_build_query(['deleted' => $deleted, 'skipped' => implode(',', $skipped)]);
             header('Location: ' . $backToList . (str_contains($backToList, '?') ? '&' : '?') . $query);
             exit;
+        } elseif ($bulkActionType === 'download') {
+            $zipPath = tempnam(sys_get_temp_dir(), 'lumora-media-download-');
+            $zip = new ZipArchive();
+
+            if ($zipPath === false || $zip->open($zipPath, ZipArchive::OVERWRITE) !== true) {
+                $error = 'Unable to create the download archive.';
+            } else {
+                $usedNames = [];
+
+                foreach ($ids as $id) {
+                    $item = $mediaService->find($id);
+
+                    if ($item === null) {
+                        continue;
+                    }
+
+                    $absolutePath = $mediaService->absolutePath($item);
+
+                    if (!is_file($absolutePath)) {
+                        continue;
+                    }
+
+                    $entryName = (string) $item['file_name'];
+                    $suffix = 1;
+
+                    while (isset($usedNames[$entryName])) {
+                        $entryName = pathinfo((string) $item['file_name'], PATHINFO_FILENAME) . '-' . (++$suffix) . '.' . pathinfo((string) $item['file_name'], PATHINFO_EXTENSION);
+                    }
+
+                    $usedNames[$entryName] = true;
+                    $zip->addFile($absolutePath, $entryName);
+                }
+
+                $zip->close();
+
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="media-' . date('Y-m-d-His') . '.zip"');
+                header('Content-Length: ' . (string) filesize($zipPath));
+                readfile($zipPath);
+                unlink($zipPath);
+                exit;
+            }
+        } elseif ($bulkActionType === 'rename') {
+            $find = (string) ($_POST['rename_find'] ?? '');
+            $replace = (string) ($_POST['rename_replace'] ?? '');
+
+            if ($find === '') {
+                $error = 'Enter text to find in order to bulk rename.';
+            } else {
+                $renamed = $mediaService->bulkRenameByReplacing($ids, $find, $replace);
+                header('Location: ' . $backToList . (str_contains($backToList, '?') ? '&' : '?') . 'renamed=' . $renamed);
+                exit;
+            }
+        } elseif ($bulkActionType === 'change_metadata') {
+            $metaAltText = trim((string) ($_POST['bulk_alt_text'] ?? ''));
+            $metaCaption = trim((string) ($_POST['bulk_caption'] ?? ''));
+            $metaDescription = trim((string) ($_POST['bulk_description'] ?? ''));
+            $metaNotes = trim((string) ($_POST['bulk_notes'] ?? ''));
+
+            if ($metaAltText === '' && $metaCaption === '' && $metaDescription === '' && $metaNotes === '') {
+                $error = 'Fill in at least one metadata field to apply in bulk.';
+            } else {
+                $updated = $mediaService->bulkUpdateMetadata(
+                    $ids,
+                    $metaAltText !== '' ? $metaAltText : null,
+                    $metaCaption !== '' ? $metaCaption : null,
+                    $metaDescription !== '' ? $metaDescription : null,
+                    $metaNotes !== '' ? $metaNotes : null,
+                );
+                header('Location: ' . $backToList . (str_contains($backToList, '?') ? '&' : '?') . 'metaUpdated=' . $updated);
+                exit;
+            }
         }
     }
 }
@@ -192,6 +279,14 @@ $allFolders = $folderService->listAll();
             Skipped (currently in use): <?= esc_html((string) $_GET['skipped']) ?>.
         <?php endif; ?>
     </div>
+<?php endif; ?>
+
+<?php if (isset($_GET['renamed'])): ?>
+    <div class="lp-alert lp-alert--success">Renamed <?= (int) $_GET['renamed'] ?> file(s).</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['metaUpdated'])): ?>
+    <div class="lp-alert lp-alert--success">Updated metadata on <?= (int) $_GET['metaUpdated'] ?> file(s).</div>
 <?php endif; ?>
 
 <?php if ($action === 'edit'): ?>
@@ -280,6 +375,26 @@ $allFolders = $folderService->listAll();
             </p>
         <?php endif; ?>
 
+        <?php $existingExtension = strtolower((string) pathinfo((string) $editingMedia['file_path'], PATHINFO_EXTENSION)); ?>
+        <details class="lp-folder-tree__manage">
+            <summary>Replace file</summary>
+            <p class="lp-field__hint">
+                Uploads new content under this same item's existing URL — every
+                post, page, and setting already linking to it keeps working.
+                The replacement must be a .<?= esc_html($existingExtension) ?> file.
+            </p>
+            <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" enctype="multipart/form-data">
+                <?= Csrf::field('replace_file') ?>
+                <input type="hidden" name="form" value="replace_file">
+                <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
+                <p class="lp-field">
+                    <label for="media-replacement">Replacement file</label>
+                    <input type="file" id="media-replacement" name="replacement" accept=".<?= esc_attr($existingExtension) ?>" required>
+                </p>
+                <button type="submit" class="lp-button">Replace</button>
+            </form>
+        </details>
+
         <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
             <?= Csrf::field('update_metadata') ?>
             <input type="hidden" name="form" value="update_metadata">
@@ -354,19 +469,29 @@ $allFolders = $folderService->listAll();
     $type = (string) ($_GET['type'] ?? '');
     $dateFrom = (string) ($_GET['date_from'] ?? '');
     $dateTo = (string) ($_GET['date_to'] ?? '');
+    $widthMin = trim((string) ($_GET['width_min'] ?? ''));
+    $widthMax = trim((string) ($_GET['width_max'] ?? ''));
+    $heightMin = trim((string) ($_GET['height_min'] ?? ''));
+    $heightMax = trim((string) ($_GET['height_max'] ?? ''));
+    $sizeMinKb = trim((string) ($_GET['size_min'] ?? ''));
+    $sizeMaxKb = trim((string) ($_GET['size_max'] ?? ''));
     $view = (string) ($_GET['view'] ?? '');
+    $folderSearchTerm = trim((string) ($_GET['folder_q'] ?? ''));
+    $folderTreeFolders = $folderSearchTerm !== '' ? $folderService->search($folderSearchTerm) : $allFolders;
 
     /*
      * LP-006's built-in views (Unused / Most Downloaded / Recently
-     * Downloaded / Never Downloaded) — unpaginated, capped lists rather
-     * than folded into the regular filter+pagination query() above, the
-     * same "quick, capped listing" precedent already used elsewhere for
-     * picker dropdowns (e.g. settings/general.php's OG image select,
-     * `$kernel->media->query(['type' => 'image'], 500, 0)`). "Unused"
-     * specifically only knows about the structured references
-     * MediaUsageChecker checks (featured images, site logo/favicon/
-     * default OG image) — see that class's docblock — not media embedded
-     * in post/page body content.
+     * Downloaded / Never Downloaded) and LP-005's Smart Collections
+     * (Recently Uploaded / Missing Alt Text / Large Files / ZIP Downloads /
+     * Featured Images) — unpaginated, capped lists rather than folded into
+     * the regular filter+pagination query() above, the same "quick, capped
+     * listing" precedent already used elsewhere for picker dropdowns (e.g.
+     * settings/general.php's OG image select,
+     * `$kernel->media->query(['type' => 'image'], 500, 0)`). "Unused" and
+     * "Featured Images" only know about the structured references
+     * MediaUsageChecker/PostService/PageService check (featured images,
+     * site logo/favicon/default OG image) — see MediaUsageChecker's
+     * class docblock — not media embedded in post/page body content.
      */
     if ($view === 'unused') {
         $usedIds = $usageChecker->usedMediaIds();
@@ -388,6 +513,27 @@ $allFolders = $folderService->listAll();
         $items = $mediaStats->neverDownloaded(100);
         $totalPages = 1;
         $page = 1;
+    } elseif ($view === 'recently_uploaded') {
+        $items = $mediaService->query([], 40, 0)['items'];
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'missing_alt') {
+        $items = $mediaService->missingAltText(100);
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'large_files') {
+        $items = $mediaService->largestFiles(100);
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'zip_downloads') {
+        $items = $mediaService->query(['type' => 'archive'], 100, 0)['items'];
+        $totalPages = 1;
+        $page = 1;
+    } elseif ($view === 'featured_images') {
+        $featuredIds = [...$kernel->posts->featuredImageIdsInUse(), ...$kernel->pages->featuredImageIdsInUse()];
+        $items = $mediaService->findMany($featuredIds);
+        $totalPages = 1;
+        $page = 1;
     } else {
         $filters = [
             'term' => $term,
@@ -395,6 +541,30 @@ $allFolders = $folderService->listAll();
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
         ];
+
+        if ($widthMin !== '') {
+            $filters['widthMin'] = (int) $widthMin;
+        }
+
+        if ($widthMax !== '') {
+            $filters['widthMax'] = (int) $widthMax;
+        }
+
+        if ($heightMin !== '') {
+            $filters['heightMin'] = (int) $heightMin;
+        }
+
+        if ($heightMax !== '') {
+            $filters['heightMax'] = (int) $heightMax;
+        }
+
+        if ($sizeMinKb !== '') {
+            $filters['sizeMin'] = (int) $sizeMinKb * 1024;
+        }
+
+        if ($sizeMaxKb !== '') {
+            $filters['sizeMax'] = (int) $sizeMaxKb * 1024;
+        }
 
         if ($currentFolderRaw === '0') {
             $filters['unassignedOnly'] = true;
@@ -459,7 +629,12 @@ $allFolders = $folderService->listAll();
             <ul class="lp-folder-tree">
                 <?php foreach ([
                     '' => 'All Files',
+                    'recently_uploaded' => 'Recently Uploaded',
                     'unused' => 'Unused Media',
+                    'missing_alt' => 'Missing Alt Text',
+                    'large_files' => 'Large Files',
+                    'zip_downloads' => 'ZIP Downloads',
+                    'featured_images' => 'Featured Images',
                     'most_downloaded' => 'Most Downloaded',
                     'recently_downloaded' => 'Recently Downloaded',
                     'never_downloaded' => 'Never Downloaded',
@@ -471,6 +646,19 @@ $allFolders = $folderService->listAll();
             </ul>
 
             <h2>Folders</h2>
+            <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
+                <p class="lp-field">
+                    <label for="folder-q">Search folders</label>
+                    <input type="text" id="folder-q" name="folder_q" value="<?= esc_attr($folderSearchTerm) ?>" placeholder="Folder name&hellip;">
+                </p>
+                <button type="submit" class="lp-button">Search</button>
+                <?php if ($folderSearchTerm !== ''): ?>
+                    <a class="lp-button" href="<?= esc_url(admin_url('media/media') . ($currentFolderRaw !== '' ? '?folder=' . urlencode($currentFolderRaw) : '')) ?>">Clear</a>
+                <?php endif; ?>
+            </form>
+            <?php if ($folderSearchTerm !== '' && $folderTreeFolders === []): ?>
+                <p class="lp-admin__widget-placeholder">No folders match &ldquo;<?= esc_html($folderSearchTerm) ?>&rdquo;.</p>
+            <?php endif; ?>
             <ul class="lp-folder-tree">
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '' ? ' is-active' : '' ?>">
                     <a href="<?= esc_url(admin_url('media/media')) ?>">All Files</a>
@@ -479,7 +667,7 @@ $allFolders = $folderService->listAll();
                     <a href="<?= esc_url(admin_url('media/media')) ?>?folder=0">General Uploads</a>
                 </li>
             </ul>
-            <?php $renderFolderTree($allFolders); ?>
+            <?php $renderFolderTree($folderTreeFolders); ?>
 
             <details class="lp-folder-tree__manage">
                 <summary>New Folder</summary>
@@ -533,6 +721,22 @@ $allFolders = $folderService->listAll();
                         <label for="media-date-to">Uploaded to</label>
                         <input type="date" id="media-date-to" name="date_to" value="<?= esc_attr($dateTo) ?>">
                     </p>
+                    <p class="lp-field">
+                        <label for="media-width-min">Width (px)</label>
+                        <input type="number" id="media-width-min" name="width_min" min="0" placeholder="Min" value="<?= esc_attr($widthMin) ?>">
+                        <input type="number" name="width_max" min="0" placeholder="Max" value="<?= esc_attr($widthMax) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="media-height-min">Height (px)</label>
+                        <input type="number" id="media-height-min" name="height_min" min="0" placeholder="Min" value="<?= esc_attr($heightMin) ?>">
+                        <input type="number" name="height_max" min="0" placeholder="Max" value="<?= esc_attr($heightMax) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="media-size-min">File size (KB)</label>
+                        <input type="number" id="media-size-min" name="size_min" min="0" placeholder="Min" value="<?= esc_attr($sizeMinKb) ?>">
+                        <input type="number" name="size_max" min="0" placeholder="Max" value="<?= esc_attr($sizeMaxKb) ?>">
+                    </p>
+                    <p class="lp-field__hint">Width/height filters only match images (other file types have no dimensions).</p>
                     <button type="submit" class="lp-button">Filter</button>
                 </form>
             </section>
@@ -571,6 +775,9 @@ $allFolders = $folderService->listAll();
                             <select name="bulk_action_type">
                                 <option value="move">Move selected to&hellip;</option>
                                 <option value="delete">Delete selected</option>
+                                <option value="download">Download selected (ZIP)</option>
+                                <option value="rename">Rename selected (find &amp; replace)</option>
+                                <option value="change_metadata">Change metadata on selected</option>
                             </select>
                             <select name="target_folder">
                                 <option value="0">(General Uploads)</option>
@@ -580,6 +787,39 @@ $allFolders = $folderService->listAll();
                             </select>
                             <button type="submit" class="lp-button">Apply</button>
                         </div>
+
+                        <details class="lp-folder-tree__manage">
+                            <summary>Rename fields (used only when &ldquo;Rename selected&rdquo; is applied)</summary>
+                            <p class="lp-field">
+                                <label for="bulk-rename-find">Find in filename</label>
+                                <input type="text" id="bulk-rename-find" name="rename_find">
+                            </p>
+                            <p class="lp-field">
+                                <label for="bulk-rename-replace">Replace with</label>
+                                <input type="text" id="bulk-rename-replace" name="rename_replace">
+                            </p>
+                        </details>
+
+                        <details class="lp-folder-tree__manage">
+                            <summary>Metadata fields (used only when &ldquo;Change metadata&rdquo; is applied)</summary>
+                            <p class="lp-field__hint">Leave a field blank to leave that field unchanged on every selected file.</p>
+                            <p class="lp-field">
+                                <label for="bulk-alt-text">Alt text</label>
+                                <input type="text" id="bulk-alt-text" name="bulk_alt_text">
+                            </p>
+                            <p class="lp-field">
+                                <label for="bulk-caption">Caption</label>
+                                <textarea id="bulk-caption" name="bulk_caption" rows="2"></textarea>
+                            </p>
+                            <p class="lp-field">
+                                <label for="bulk-description">Description</label>
+                                <textarea id="bulk-description" name="bulk_description" rows="3"></textarea>
+                            </p>
+                            <p class="lp-field">
+                                <label for="bulk-notes">Notes</label>
+                                <textarea id="bulk-notes" name="bulk_notes" rows="3"></textarea>
+                            </p>
+                        </details>
                     </form>
 
                     <?php render_pagination(['page' => $page, 'totalPages' => $totalPages], 'Media pagination'); ?>

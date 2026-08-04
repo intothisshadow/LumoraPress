@@ -6,6 +6,37 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Media Manager (LP-005) is now complete. Broadened supported
+  file types with word-processing documents (doc/docx/rtf/odt) and
+  rar/7z archives — SVG is deliberately excluded from the allow-list
+  since a browser executes an SVG's embedded script when it's opened
+  directly, a stored-XSS risk. The Folders sidebar gained a search box
+  (`FolderService::search()`) that matches folder names and keeps every
+  ancestor of a match visible so the tree stays coherent. The bulk-action
+  bar gained "Download selected" (streams a ZIP of the selected files'
+  real content), "Rename selected" (a find/replace substring rename
+  across selected filenames — display name only, URLs untouched), and
+  "Change metadata on selected" (only overwrites fields an admin actually
+  filled in, leaving the rest alone per file). The single-file media edit
+  page gained a "Replace file" action: uploads new content under the same
+  item's existing id/URL/folder/metadata so every place already linking
+  to it keeps working; the replacement must match the original's file
+  extension. Internally, `MediaService` now delegates every filesystem
+  operation through a new `MediaStorageInterface` (implemented today by
+  `LocalFilesystemStorage`, `app/Services/Storage/`) instead of touching
+  disk directly — laying the groundwork for a future S3/R2 storage driver
+  without changing any current behavior.
+- Media Manager (LP-005) gained dimensions and file-size search filters
+  plus Smart Collections. The Search &amp; Filter form now has width/
+  height min/max fields (images only — other file types have no
+  dimensions) and a file-size min/max field (KB), backed by six new
+  `MediaService::query()` filter keys. The Views sidebar gained five new
+  capped, unpaginated collections alongside LP-006's existing ones:
+  Recently Uploaded, Missing Alt Text, Large Files, ZIP Downloads, and
+  Featured Images (posts'/pages' featured images specifically, not the
+  site logo/favicon/OG image); Unused Files reuses LP-006's existing
+  "Unused Media" view rather than duplicating it. New `MediaService`
+  methods: `largestFiles()`, `missingAltText()`, `findMany()`.
 - "Discover Directories" on Media Manager &rsaquo; Import from Server
   (LP-064): instead of typing exact absolute server paths from memory, an
   administrator can now scan for real subdirectories next to the Lumora

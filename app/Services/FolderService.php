@@ -163,6 +163,51 @@ final class FolderService
     }
 
     /**
+     * Folders whose name contains $term (case-insensitive), plus every
+     * ancestor of each match — LP-005's "Folder search". Ancestors are
+     * included so the sidebar tree (which can only render a folder once
+     * its parent chain up to the root is also present) still shows each
+     * match in its proper place rather than as a set of disconnected
+     * leaves. Built from one listAll() call rather than a query per
+     * folder, the same "small dataset, filter in PHP" approach
+     * descendantIds() already uses.
+     *
+     * @return array<int, Folder>
+     */
+    public function search(string $term): array
+    {
+        $term = trim($term);
+
+        if ($term === '') {
+            return [];
+        }
+
+        $all = $this->listAll();
+        $byId = [];
+
+        foreach ($all as $folder) {
+            $byId[$folder->id] = $folder;
+        }
+
+        $resultIds = [];
+
+        foreach ($all as $folder) {
+            if (!str_contains(strtolower($folder->name), strtolower($term))) {
+                continue;
+            }
+
+            $current = $folder;
+
+            while ($current !== null) {
+                $resultIds[$current->id] = true;
+                $current = $current->parentId !== null ? ($byId[$current->parentId] ?? null) : null;
+            }
+        }
+
+        return array_values(array_filter($all, static fn (Folder $folder): bool => isset($resultIds[$folder->id])));
+    }
+
+    /**
      * Every descendant of $id (children, grandchildren, ...), NOT
      * including $id itself — built from one query (listAll()) rather
      * than one query per level, so it stays cheap regardless of tree
