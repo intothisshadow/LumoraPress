@@ -235,7 +235,7 @@ if ($action === 'edit') {
                                         <?= Csrf::field('user_delete_' . $listedUser->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedUser->id ?>">
-                                        <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                     </form>
                                 <?php else: ?>
                                     <span class="lp-field__hint" title="<?= esc_attr($blockReason) ?>">Cannot delete</span>

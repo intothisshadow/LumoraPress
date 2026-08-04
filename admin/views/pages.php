@@ -586,7 +586,7 @@ if ($action === 'edit') {
                                         <?= Csrf::field('page_delete_' . $listedPage->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedPage->id ?>">
-                                        <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                     </form>
                                 <?php endif; ?>
                             </td>

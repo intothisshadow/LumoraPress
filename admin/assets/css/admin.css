@@ -26,6 +26,10 @@
     --lp-admin-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
     --lp-admin-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 4px 10px rgba(16, 24, 40, 0.08);
     --lp-admin-focus-ring: rgba(34, 113, 177, 0.18);
+    --lp-admin-chip-bg: rgba(34, 113, 177, 0.07);
+    --lp-admin-chip-border: rgba(34, 113, 177, 0.3);
+    --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
+    --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +55,10 @@
         --lp-admin-shadow: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 3px rgba(0, 0, 0, 0.3);
         --lp-admin-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.35);
         --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
+        --lp-admin-chip-bg: rgba(76, 155, 232, 0.12);
+        --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
+        --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
+        --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
     }
 }
 
@@ -444,6 +452,33 @@ body.lp-admin-login {
 
 .lp-admin__meta-list--stacked li {
     display: list-item;
+}
+
+/*
+ * LP-063: plain list-item links (Dashboard's meta lists, the Media
+ * Manager's folder/Views sidebar tree, a media item's generated-
+ * thumbnail-size links) had no color/underline rule of their own, so
+ * they fell back to the browser's default blue/purple/underlined link
+ * styling instead of this admin theme's palette. Default to body text
+ * with no underline, switch to the accent color with an underline on
+ * hover/focus — same "no underline until hover" convention
+ * .lp-theme-editor__node-label--file already uses.
+ */
+.lp-admin__meta-list a,
+.lp-folder-tree__item a,
+.lp-thumbnails__list a {
+    color: var(--lp-admin-text);
+    text-decoration: none;
+}
+
+.lp-admin__meta-list a:hover,
+.lp-admin__meta-list a:focus-visible,
+.lp-folder-tree__item a:hover,
+.lp-folder-tree__item a:focus-visible,
+.lp-thumbnails__list a:hover,
+.lp-thumbnails__list a:focus-visible {
+    color: var(--lp-admin-accent);
+    text-decoration: underline;
 }
 
 /* Appearance: theme grid */
@@ -1179,6 +1214,14 @@ body.lp-admin-login {
     border-radius: var(--lp-admin-radius);
     padding: 0.5rem;
     text-align: center;
+    background: var(--lp-admin-panel-bg);
+    box-shadow: var(--lp-admin-shadow);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.lp-media-grid__item:hover {
+    box-shadow: var(--lp-admin-shadow-hover);
+    transform: translateY(-2px);
 }
 
 .lp-media-grid__select {
@@ -1211,9 +1254,15 @@ body.lp-admin-login {
     display: block;
     font-size: 0.8rem;
     color: var(--lp-admin-text);
+    text-decoration: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.lp-media-grid__item:hover .lp-media-grid__name {
+    color: var(--lp-admin-accent);
+    text-decoration: underline;
 }
 
 .lp-media-manager__bulk-bar {
@@ -1341,6 +1390,35 @@ body.lp-admin-login {
 .lp-field input:focus,
 .lp-field textarea:focus,
 .lp-field select:focus {
+    outline: none;
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
+/*
+ * LP-063: a universal fallback so every <select> gets the same chrome as
+ * one wrapped in .lp-field, even standalone/inline pickers that aren't
+ * (theme/menu pickers, bulk-action bars) — those previously fell back to
+ * a completely unstyled native dropdown. Defaults to width:auto since an
+ * unwrapped select usually sits inline in a flex row next to a button or
+ * label, not stretched to fill a vertical form field; .lp-field select
+ * above keeps width:100% via its higher specificity, so nothing that
+ * already relied on full width regresses.
+ */
+select {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+    font-size: 1rem;
+    width: auto;
+    max-width: 100%;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus {
     outline: none;
     border-color: var(--lp-admin-accent);
     box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
@@ -1809,11 +1887,81 @@ body.lp-admin-login {
     font-size: 0.85rem;
 }
 
-.lp-update__release-notes pre {
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin: 0.5rem 0 0;
-    font-family: inherit;
+/*
+ * Rendered Markdown (LP-059) — GitHub's release body goes through the
+ * same MarkdownParser/HtmlSanitizer pipeline post/page content does
+ * (ContentRenderer::render()), so this only needs to style the subset of
+ * HtmlSanitizer::ALLOWED_TAGS a release body realistically produces.
+ */
+.lp-update__release-notes-body {
+    margin-top: 0.5rem;
+}
+
+.lp-update__release-notes-body > *:first-child {
+    margin-top: 0;
+}
+
+.lp-update__release-notes-body > *:last-child {
+    margin-bottom: 0;
+}
+
+.lp-update__release-notes-body h1,
+.lp-update__release-notes-body h2,
+.lp-update__release-notes-body h3,
+.lp-update__release-notes-body h4,
+.lp-update__release-notes-body h5,
+.lp-update__release-notes-body h6 {
+    margin: 1rem 0 0.4rem;
+    line-height: 1.3;
+}
+
+.lp-update__release-notes-body p,
+.lp-update__release-notes-body ul,
+.lp-update__release-notes-body ol,
+.lp-update__release-notes-body blockquote {
+    margin: 0.5rem 0;
+}
+
+.lp-update__release-notes-body ul,
+.lp-update__release-notes-body ol {
+    padding-left: 1.4rem;
+}
+
+.lp-update__release-notes-body li + li {
+    margin-top: 0.2rem;
+}
+
+.lp-update__release-notes-body a {
+    color: var(--lp-admin-accent);
+}
+
+.lp-update__release-notes-body code {
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 3px;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.85em;
+}
+
+.lp-update__release-notes-body pre {
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 0.6rem 0.75rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+}
+
+.lp-update__release-notes-body pre code {
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.lp-update__release-notes-body blockquote {
+    padding-left: 0.75rem;
+    border-left: 3px solid var(--lp-admin-border);
+    color: var(--lp-admin-sidebar-fg-muted);
 }
 
 /*
@@ -1829,9 +1977,12 @@ body.lp-admin-login {
 }
 
 .lp-tabs__list {
-    display: flex;
-    gap: 0.25rem;
-    border-bottom: 1px solid var(--lp-admin-border);
+    display: inline-flex;
+    gap: 0.2rem;
+    padding: 0.3rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: calc(var(--lp-admin-panel-radius) + 0.3rem);
     margin-bottom: 1.5rem;
 }
 
@@ -1839,23 +1990,38 @@ body.lp-admin-login {
     appearance: none;
     background: transparent;
     border: 0;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    padding: 0.65rem 1rem;
-    font-size: 0.95rem;
+    border-radius: var(--lp-admin-panel-radius);
+    padding: 0.6rem 1.25rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--lp-admin-sidebar-fg-muted);
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
-.lp-tabs__tab:hover,
-.lp-tabs__tab:focus-visible {
+.lp-tabs__tab:hover {
     color: var(--lp-admin-text);
+    background: var(--lp-admin-panel-bg);
+}
+
+.lp-tabs__tab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
+.lp-tabs__tab:active {
+    transform: translateY(1px);
 }
 
 .lp-tabs__tab[aria-selected="true"] {
-    color: var(--lp-admin-accent);
-    border-bottom-color: var(--lp-admin-accent);
+    color: #fff;
+    background: var(--lp-admin-accent);
+    box-shadow: var(--lp-admin-shadow);
+}
+
+.lp-tabs__tab[aria-selected="true"]:hover {
+    color: #fff;
+    background: var(--lp-admin-accent-hover);
 }
 
 .lp-tabs__panel > *:last-child {
@@ -1986,13 +2152,58 @@ body.lp-admin-login {
     margin-top: 0.5rem;
 }
 
+/*
+ * Row-action chips (Duplicate, Trash, Restore, Delete, Remove, etc. — any
+ * .lp-admin__row-actions list, plus the standalone uses on the Posts/Pages
+ * editor and Theme Editor). Previously bare underlined text links, always
+ * in the danger/error color regardless of what the action actually did —
+ * so a purely reversible "Duplicate" or "Restore" read visually the same
+ * as an irreversible "Delete". Now small bordered pill chips: neutral
+ * accent color by default, with .lp-button--link--danger added in the
+ * view for the subset of actions that are genuinely destructive
+ * (Delete/Delete Permanently/Remove/Revoke/Trash).
+ */
 .lp-button--link {
-    background: none;
-    border: none;
-    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    background: var(--lp-admin-chip-bg);
+    border: 1px solid var(--lp-admin-chip-border);
+    border-radius: 999px;
+    padding: 0.3rem 0.85rem;
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.lp-button--link:hover {
+    background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-button--link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
+.lp-button--link:active {
+    transform: translateY(1px);
+}
+
+.lp-button--link--danger {
+    background: var(--lp-admin-chip-danger-bg);
+    border-color: var(--lp-admin-chip-danger-border);
     color: var(--lp-admin-error-text);
-    text-decoration: underline;
-    font-size: 0.85rem;
+}
+
+.lp-button--link--danger:hover {
+    background: var(--lp-admin-error-border);
+    border-color: var(--lp-admin-error-border);
+    color: #fff;
 }
 
 .lp-visually-hidden {

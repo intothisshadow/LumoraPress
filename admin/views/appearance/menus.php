@@ -555,7 +555,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                                         <input type="hidden" name="form" value="remove_item">
                                         <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
                                         <input type="hidden" name="item_id" value="<?= esc_attr($item['id']) ?>">
-                                        <button type="submit" class="lp-button lp-button--link">Remove</button>
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Remove</button>
                                     </form>
                                 </div>
                             </details>

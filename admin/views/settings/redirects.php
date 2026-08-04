@@ -117,7 +117,7 @@ $allRedirects = $redirects->listAll();
                                 <?= Csrf::field('delete_redirect_' . (int) $redirect['id']) ?>
                                 <input type="hidden" name="form" value="delete_redirect">
                                 <input type="hidden" name="id" value="<?= (int) $redirect['id'] ?>">
-                                <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                             </form>
                         </td>
                     </tr>

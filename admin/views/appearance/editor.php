@@ -284,7 +284,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                                 <?= Csrf::field('tfe_delete_' . sha1($slug . '|' . $node['path'])) ?>
                                 <input type="hidden" name="form" value="delete">
                                 <input type="hidden" name="path" value="<?= esc_attr($node['path']) ?>">
-                                <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                             </form>
                         </div>
                     </li>

@@ -144,7 +144,7 @@ if ($currentUser->can('manage_options')) {
                 <ul class="lp-admin__meta-list">
                     <?php foreach ($popularDownloads as $downloadItem): ?>
                         <li>
-                            <span><a href="<?= esc_url(admin_url('media')) ?>?action=edit&id=<?= (int) $downloadItem['id'] ?>"><?= esc_html((string) $downloadItem['file_name']) ?></a></span>
+                            <span><a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $downloadItem['id'] ?>"><?= esc_html((string) $downloadItem['file_name']) ?></a></span>
                             <span><?= (int) $downloadItem['downloads'] ?></span>
                         </li>
                     <?php endforeach; ?>

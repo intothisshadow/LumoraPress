@@ -125,7 +125,7 @@ $tokens = $kernel->apiTokens->listForUser($currentUser->id);
                                     <?= Csrf::field('revoke_token_' . $tokenRow['id']) ?>
                                     <input type="hidden" name="form" value="revoke_token">
                                     <input type="hidden" name="id" value="<?= (int) $tokenRow['id'] ?>">
-                                    <button type="submit" class="lp-button lp-button--link">Revoke</button>
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Revoke</button>
                                 </form>
                             <?php endif; ?>
                         </td>

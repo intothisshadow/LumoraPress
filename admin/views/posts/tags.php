@@ -148,7 +148,7 @@ if ($action === 'edit') {
                                         <?= Csrf::field('tag_delete_' . $listedTag->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>">
-                                        <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                     </form>
                                 <?php endif; ?>
                             </td>

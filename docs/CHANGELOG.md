@@ -4,8 +4,170 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Admin visual polish, pass 2 (LP-063): dropdowns that previously fell
+  outside the `.lp-field` wrapper (the Theme Editor's theme picker, the
+  Menus page's menu picker, the Posts list's bulk-action select, the
+  Media Manager grid's bulk-action/target-folder selects) now get the
+  same bordered/rounded/focus-ring chrome as every other form field
+  instead of rendering as a bare native dropdown. Plain list-item links
+  that had no color/underline rule of their own — Dashboard's Recent
+  Posts/Recent Comments/Popular Downloads, the Media Manager's Views/
+  Folders sidebar, a media item's generated-thumbnail-size links — now
+  use the admin theme's accent color with underline-on-hover instead of
+  the browser's default blue/purple/underlined styling. Media grid items
+  gained the same shadow/hover-lift card treatment
+  Theme/Plugin cards already have, and a filename's stray default
+  underline (visible under its already-custom text color) is gone.
+- Custom CSS is now its own Appearance sub-page (LP-062), alongside
+  Themes/Widgets/Menus/Theme Editor, instead of a section embedded at the
+  bottom of Appearance &rsaquo; Themes.
+- Thumbnail and Media Import settings moved from Settings &rsaquo; Media
+  onto their corresponding Media Manager sub-pages (LP-061): thumbnail
+  size/quality/default-featured-image settings now live on Media Manager
+  &rsaquo; Thumbnails, and the allowed server-import-directories list now
+  lives on Media Manager &rsaquo; Import from Server, next to the tools
+  that actually use them. Settings &rsaquo; Media now holds only the
+  Statistics (download tracking) section. Both moved settings sections
+  still require the `manage_options` capability (Administrator only),
+  even though the rest of Media Manager only requires `upload_files`
+  (also held by Author/Editor) — unlike everything else on those pages,
+  these are site-wide configuration, not per-file actions.
+- Media admin restructured into a "Media Manager" nav section (LP-060):
+  the single, 922-line `/admin/media` page — previously three workflows
+  crammed behind an `?action=` query param plus two panels embedded in
+  the library view — is now four proper sub-pages: **Media** (the
+  library grid and per-item editor), **Upload** (a dedicated add-new-file
+  page), **Import from Server** (the existing LP-041 flow, now its own
+  page instead of `?action=import`), and **Thumbnails** (bulk regenerate/
+  orphan cleanup, previously a panel on the library page). No behavior
+  changed — same forms, same handlers, same CSRF actions — only the
+  navigation structure.
+- Release notes on the Maintenance &rsaquo; Updates page are now rendered
+  as actual Markdown (LP-059) instead of shown as literal `##`/`*`/`**`
+  source text in a `<pre>` block — reuses the same `ContentRenderer`
+  Markdown-to-sanitized-HTML pipeline already built for post/page content.
+- Modernized admin row-action buttons (Duplicate, Trash, Delete, Restore,
+  Remove, Revoke, etc. across Posts, Pages, Categories, Tags, Comments,
+  Media, Users, API Tokens, Widgets, Menus, Redirects, and the Theme File
+  Editor) from bare underlined text links into small bordered pill chips.
+  Along the way, fixed a color-semantics bug: every one of these actions
+  previously rendered in the same danger/error red regardless of what it
+  actually did, so a fully reversible action like "Duplicate" or "Restore"
+  looked as alarming as an irreversible "Delete". Genuinely destructive
+  actions now get a distinct danger-red chip (`.lp-button--link--danger`);
+  everything else uses a neutral accent-colored chip.
+- Modernized the Maintenance &rsaquo; Updates page's GitHub/Manual Update
+  tab bar (LP-057) into a pill-style segmented control with a solid
+  accent-colored active tab, replacing the earlier flat underline style.
+- Classic Widgets (LP-048): a new Appearance &rsaquo; Widgets admin screen
+  backed by a persisted `widgets_config` option — widget areas registered
+  by a theme can now have individual widget instances added, configured,
+  reordered, and removed independently. Ten built-in widget types ship:
+  Text, Custom HTML, Search, Navigation Menu, Pages, Categories, Recent
+  Posts, Recent Comments, Archives (backed by a new `/archive/{year}/{month}`
+  route), Tag Cloud, and Meta.
+- Navigation Menus (LP-049): a new Appearance &rsaquo; Menus admin screen
+  for building named, reusable menus (create/rename/duplicate/delete) and
+  assigning them independently to theme-registered locations, persisted as
+  `nav_menus`/`nav_menu_locations` options. Menu items (Pages, Posts,
+  Categories, Tags, Custom Links) support unlimited-depth submenus, and
+  the default theme renders real nested dropdown navigation.
+- Password Reset (LP-058): a self-service "forgot password" flow —
+  request a reset link by email, click it, set a new password. Uses
+  single-use selector/validator tokens (modeled on the existing "Remember
+  Me" tokens) with a 60-second per-account cooldown and IP-based rate
+  limiting on the request form, and never reveals whether a submitted
+  email is actually registered. Resetting a password also revokes that
+  user's other "Remember Me" sessions. Sent via a new dependency-free
+  `Mailer`/`NativeMailer` (PHP's built-in `mail()`), since no mail library
+  exists in this codebase yet.
+- Akismet spam-checking integration and configurable login lockout
+  (LP-025): a built-in, opt-in Akismet client checks new comments for spam
+  (Settings &rsaquo; Security &rsaquo; Spam Protection — API key entry,
+  key verification, automatic fallback to existing local protections if
+  Akismet is unavailable), and moderator Spam/Not-Spam actions now report
+  back to Akismet to improve its accuracy. The existing login-attempt
+  throttle's thresholds (max attempts, window, lockout duration) are now
+  admin-configurable on the same Security page rather than hardcoded, and
+  that page documents a user-enumeration audit confirming no exploitable
+  surface exists in this codebase (no XML-RPC, public author archives, or
+  REST user-listing).
+- SEO Tools (LP-022): per-post/page meta title and description overrides,
+  self-referencing canonical URLs, a `/sitemap.xml` route, `BlogPosting`/
+  `WebSite` JSON-LD structured data, and a new Settings &rsaquo; Redirects
+  admin page (`RedirectService`) for exact-path 301/302 redirects checked
+  before a request falls through to a real 404.
+- Cache API & LiteSpeed Support (LP-037/LP-038): a new framework-agnostic
+  `CacheManager` (purge by URL/tag/entire cache, configurable lifetimes)
+  with a `LiteSpeedCacheDriver` that auto-detects LiteSpeed/OpenLiteSpeed
+  and purges via `X-LiteSpeed-Purge` headers, falling back to an inert
+  null driver elsewhere. Eligible public pages (homepage, category/tag/
+  search/page/archive listings — not single posts, which embed a
+  session-bound comment-form CSRF token) are cached for guests only, with
+  conditional-GET (ETag/304) support. Saving a post, page, category, tag,
+  comment, media item, or any site setting/widget/menu/theme change
+  automatically purges the cache. Settings &rsaquo; Cache shows the
+  detected driver, lets an admin override auto-detection, and adds a
+  manual "Purge Entire Cache" button with a recent-purge log.
+- Reading Settings (LP-046): a new Settings &rsaquo; Reading admin page —
+  choose a static page (plus a separate posts-listing page) as the
+  homepage instead of the latest-posts feed, set posts-per-page, and
+  discourage search engines from indexing the site (a virtual
+  `/robots.txt` plus a site-wide `noindex,nofollow` meta tag).
+- General settings expansion (LP-042): the Settings &rsaquo; General page
+  gained Site (tagline, website URL, admin email, timezone), Date & Time
+  (date/time format, applied via new `the_date()`/`the_time()` theme
+  helpers), Footer (custom copyright text), and SEO & Social Sharing
+  (site meta description, default Open Graph image) sections. Also fixes
+  a bug where the Settings &rsaquo; General timezone field silently had no
+  effect — `bootstrap.php` was only ever reading the file-config copy of
+  the timezone written once at install, never the database option.
+- Media Statistics (LP-006): a "Views" panel on the Media Manager (All
+  Files / Unused Media / Most Downloaded / Recently Downloaded / Never
+  Downloaded) and a "Popular Downloads" Dashboard widget, backed by a new
+  `download` counter recorded when a visitor uses a document/archive/
+  audio/video item's new `/media/{id}/download` link (gated by a
+  Settings &rsaquo; Media &rsaquo; Statistics toggle, default on). Image
+  views and audio/video plays are not tracked — there's no PHP-mediated
+  request to count them without adding overhead to every page load.
+- Posts: Trash, Duplicate, and Bulk Actions (LP-008): the admin Posts list
+  gained a Trash with restore (deleting a post now soft-deletes it by
+  default), a "Duplicate" action that clones a post as a new Draft, bulk
+  checkbox actions (Move to Trash / Restore / Delete Permanently /
+  Publish / Mark as Draft), and live status-count tabs (All/Draft/
+  Published/Scheduled/Trash). Restoring a trashed post always returns it
+  to Draft rather than its prior status.
+- Updates page GitHub/Manual tabs (LP-057): the Maintenance &rsaquo;
+  Updates page is now split into a GitHub tab (default) and a Manual
+  Update tab, so the ZIP-upload form is no longer buried at the bottom of
+  a long scroll. A validation error on a manual upload automatically
+  opens the Manual Update tab instead of hiding it behind GitHub.
+- Manual/GitHub updates now remove obsolete core files (LP-026): a new
+  `UpdateManifest` tracks which top-level core paths were installed as of
+  the last successful update or restore, so an update that drops a
+  previously-shipped top-level file or directory actually removes it
+  instead of leaving it behind forever.
+- Admin content page visual polish (LP-055): panels, tables, buttons, form
+  fields, alerts, theme/plugin cards, status-bar typography, and the
+  breadcrumb trail across the admin panel gained a more polished look
+  (shadows, rounded corners, hover/focus feedback, a bordered breadcrumb
+  pill) — a CSS-only change with matching dark-mode variants.
+- Admin sidebar top-level nav refinement (LP-056): removed the icon from
+  top-level sidebar nav items (Dashboard, Posts, Media, etc. — sub-nav
+  items keep theirs) and uppercased top-level labels for a cleaner look;
+  also replaced the "New Post" sidebar icon (previously invisible against
+  the sidebar background) with `🆕`.
+
 ### Fixed
 
+- **Password reset emails linked to a root-relative URL** (e.g.
+  `/lumorapress/admin/reset-password`) instead of a full address the
+  recipient's mail client could resolve. `admin/index.php` now builds the
+  reset link with `home_url()` (absolute) instead of `admin_url()`
+  (root-relative) — the same distinction RSS feeds and canonical tags
+  already rely on `home_url()` for.
 - **Widget saves silently failed with "That widget no longer exists"; Custom
   HTML/Text widget content never persisted (LP-048).** A newly added widget
   was saved into the persisted `widgets_config` option without an `id`.

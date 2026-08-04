@@ -221,7 +221,7 @@ if ($action === 'edit') {
                                     <?= Csrf::field('comment_delete_' . $comment->id) ?>
                                     <input type="hidden" name="form" value="delete">
                                     <input type="hidden" name="id" value="<?= (int) $comment->id ?>">
-                                    <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                 </form>
                             </td>
                         </tr>

@@ -174,7 +174,11 @@ if ($page === 'forgot-password') {
                         $resetToken = $kernel->passwordResets->issueToken($user->id);
 
                         if ($resetToken !== null) {
-                            $resetUrl = admin_url('reset-password') . '?token=' . urlencode($resetToken);
+                            // home_url(), not admin_url(): the link is going
+                        // into an email, where a root-relative URL has no
+                        // "current page" for the recipient's mail client to
+                        // resolve it against.
+                        $resetUrl = home_url('admin/reset-password') . '?token=' . urlencode($resetToken);
                             $body = "Someone requested a password reset for your Lumora Press account.\n\n"
                                 . "Reset your password: {$resetUrl}\n\n"
                                 . "This link expires in 1 hour. If you didn't request this, you can safely ignore this email.";
@@ -271,12 +275,23 @@ $menu = [
         'default_child' => 'all-posts',
         'children' => [
             'all-posts' => ['label' => 'All Posts', 'icon' => '📋', 'capability' => 'edit_posts'],
-            'new' => ['label' => 'New Post', 'icon' => "➕\u{FE0F}", 'capability' => 'edit_posts'],
+            'new' => ['label' => 'New Post', 'icon' => '🆕', 'capability' => 'edit_posts'],
             'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'edit_posts'],
             'tags' => ['label' => 'Tags', 'icon' => '🏷️', 'capability' => 'edit_posts'],
         ],
     ],
-    'media' => ['label' => 'Media', 'icon' => '🖼️', 'capability' => 'upload_files'],
+    'media' => [
+        'label' => 'Media Manager',
+        'icon' => '🖼️',
+        'capability' => 'upload_files',
+        'default_child' => 'media',
+        'children' => [
+            'media' => ['label' => 'Media', 'icon' => '🖼️', 'capability' => 'upload_files'],
+            'upload' => ['label' => 'Upload', 'icon' => '⬆️', 'capability' => 'upload_files'],
+            'import' => ['label' => 'Import from Server', 'icon' => '📥', 'capability' => 'upload_files'],
+            'thumbnails' => ['label' => 'Thumbnails', 'icon' => '🔲', 'capability' => 'upload_files'],
+        ],
+    ],
     'pages' => ['label' => 'Pages', 'icon' => '📄', 'capability' => 'edit_posts'],
     'comments' => ['label' => 'Comments', 'icon' => '💬', 'capability' => 'moderate_comments'],
     'appearance' => [
@@ -288,6 +303,7 @@ $menu = [
             'themes' => ['label' => 'Themes', 'icon' => '🖌️', 'capability' => 'manage_themes'],
             'widgets' => ['label' => 'Widgets', 'icon' => '🧩', 'capability' => 'manage_themes'],
             'menus' => ['label' => 'Menus', 'icon' => '🧭', 'capability' => 'manage_themes'],
+            'custom-css' => ['label' => 'Custom CSS', 'icon' => '🎨', 'capability' => 'manage_themes'],
             'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes'],
         ],
     ],

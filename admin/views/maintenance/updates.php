@@ -3,6 +3,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\UpdateStatus;
 
 if (!isset($kernel)) {
@@ -354,7 +355,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                     <?php if ($updateStatus['release_notes'] !== null): ?>
                         <div class="lp-update__release-notes">
                             <p><strong><?= esc_html($updateStatus['release_name'] ?? ('Release notes for ' . $updateStatus['latest_version'])) ?></strong></p>
-                            <pre><?= esc_html($updateStatus['release_notes']) ?></pre>
+                            <div class="lp-update__release-notes-body"><?= $kernel->content->render($updateStatus['release_notes'], ContentFormat::Markdown) ?></div>
                         </div>
                     <?php endif; ?>
                 </section>

@@ -296,7 +296,7 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
                                                 <?= Csrf::field('post_delete_permanently_' . $listedPost->id) ?>
                                                 <input type="hidden" name="form" value="delete_permanently">
                                                 <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                                <button type="submit" class="lp-button lp-button--link">Delete Permanently</button>
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete Permanently</button>
                                             </form>
                                         <?php endif; ?>
                                     <?php else: ?>
@@ -311,7 +311,7 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
                                                 <?= Csrf::field('post_trash_' . $listedPost->id) ?>
                                                 <input type="hidden" name="form" value="trash">
                                                 <input type="hidden" name="id" value="<?= (int) $listedPost->id ?>">
-                                                <button type="submit" class="lp-button lp-button--link">Trash</button>
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Trash</button>
                                             </form>
                                         <?php endif; ?>
                                     <?php endif; ?>

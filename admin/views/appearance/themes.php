@@ -10,8 +10,9 @@ if (!isset($kernel)) {
 }
 
 /*
- * Three independent sections (LP-034): Theme Management, Branding, and
- * Custom CSS — each with its own "form" value and CSRF action name, same
+ * Two independent sections (LP-034; Custom CSS moved to its own
+ * appearance/custom-css.php sub-page in LP-062): Theme Management and
+ * Branding — each with its own "form" value and CSRF action name, same
  * dispatch pattern admin/views/settings.php uses for Feeds/Search/
  * Maintenance.
  */
@@ -119,11 +120,6 @@ if ($form === 'activate_theme' && Csrf::verify($csrfAction, is_string($_POST['cs
         header('Location: ' . admin_url('appearance/themes') . '?saved=1');
         exit;
     }
-} elseif ($form === 'custom_css' && Csrf::verify('custom_css', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $kernel->config->setOption('custom_css', (string) ($_POST['custom_css'] ?? ''));
-
-    header('Location: ' . admin_url('appearance/themes') . '?saved=1');
-    exit;
 }
 
 $themeList = $kernel->themes->discover();
@@ -333,21 +329,6 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                 <label class="lp-field--checkbox"><input type="checkbox" name="remove_favicon" value="1"> Remove current favicon</label>
             <?php endif; ?>
             <input type="file" id="site-favicon" name="favicon" accept="image/png,image/x-icon,.ico">
-        </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
-
-<section class="lp-admin__panel">
-    <h2>Custom CSS</h2>
-    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>">
-        <?= Csrf::field('custom_css') ?>
-        <input type="hidden" name="form" value="custom_css">
-
-        <p class="lp-field">
-            <label for="custom-css">Additional CSS, applied on every public page</label>
-            <textarea id="custom-css" name="custom_css" rows="12" class="lp-code-textarea"><?= esc_html((string) $kernel->config->option('custom_css', '')) ?></textarea>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

@@ -15,24 +15,10 @@ $mediaService = $kernel->media;
 $folderService = $kernel->folders;
 $usageChecker = $kernel->mediaUsage;
 $thumbnailService = $kernel->thumbnails;
-$importService = $kernel->mediaImport;
 $mediaStats = $kernel->mediaStats;
-$allowedImportDirectories = (array) (json_decode((string) $kernel->config->option('media_import_allowed_directories', '[]'), true) ?: []);
 
 $error = null;
 $warnUsages = null;
-$scanResults = null;
-
-/**
- * A batch import's progress/tallies/pending path list live in a small
- * JSON file under storage/cache (never web-accessible, and already a
- * required-writable directory per RequirementsCheck) rather than a new
- * database table or a huge hidden-field path list threaded through every
- * "Continue" form — the same "no queue infra, batch-per-request" shape
- * LP-001's bulk thumbnail regeneration uses, just needing somewhere to
- * park state between one batch's redirect and the next.
- */
-$importCachePath = static fn (string $importToken): string => rtrim(LUMORA_ROOT, '/') . '/storage/cache/media-import-' . $importToken . '.json';
 
 /**
  * Builds an indented, depth-first flat list of {id, label} for a
@@ -67,7 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
     $currentFolderParam = is_string($_POST['current_folder'] ?? null) ? $_POST['current_folder'] : '';
-    $backToList = admin_url('media') . ($currentFolderParam !== '' ? '?folder=' . urlencode($currentFolderParam) : '');
+    $backToList = admin_url('media/media') . ($currentFolderParam !== '' ? '?folder=' . urlencode($currentFolderParam) : '');
 
     if ($form === 'create_folder' && Csrf::verify('create_folder', $token)) {
         $name = trim((string) ($_POST['name'] ?? ''));
@@ -110,21 +96,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 exit;
             }
         }
-    } elseif ($form === 'upload' && Csrf::verify('upload', $token)) {
-        $folderId = (int) ($_POST['folder_id'] ?? 0);
-
-        if (!isset($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
-            $error = 'Please choose a file to upload.';
-        } else {
-            try {
-                $uploaded = $mediaService->upload($_FILES['file'], $currentUser->id, $folderId > 0 ? $folderId : null);
-                $thumbnailService->generate($uploaded);
-                header('Location: ' . admin_url('media') . '?action=edit&id=' . $uploaded['id'] . '&saved=1');
-                exit;
-            } catch (\Throwable $exception) {
-                $error = $exception->getMessage();
-            }
-        }
     } elseif ($form === 'update_metadata' && Csrf::verify('update_metadata', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
         $folderId = (int) ($_POST['folder_id'] ?? 0);
@@ -138,7 +109,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         );
         $mediaService->move($id, $folderId > 0 ? $folderId : null);
 
-        header('Location: ' . admin_url('media') . '?action=edit&id=' . $id . '&saved=1');
+        header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
     } elseif ($form === 'delete_file' && Csrf::verify('delete_file', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
@@ -150,118 +121,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } else {
             $thumbnailService->deleteForMedia($id);
             $mediaService->delete($id);
-            header('Location: ' . admin_url('media'));
+            header('Location: ' . admin_url('media/media'));
             exit;
         }
     } elseif ($form === 'regenerate_thumbnails' && Csrf::verify('regenerate_thumbnails', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
         $thumbnailService->regenerate($id);
-        header('Location: ' . admin_url('media') . '?action=edit&id=' . $id . '&saved=1');
-        exit;
-    } elseif ($form === 'cleanup_orphaned_thumbnails' && Csrf::verify('cleanup_orphaned_thumbnails', $token)) {
-        $removed = $thumbnailService->deleteOrphaned();
-        header('Location: ' . admin_url('media') . '?orphans_removed=' . $removed);
-        exit;
-    } elseif ($form === 'bulk_regenerate_thumbnails' && Csrf::verify('bulk_regenerate_thumbnails', $token)) {
-        $missingOnly = ($_POST['missing_only'] ?? '') === '1';
-        $offset = max(0, (int) ($_POST['offset'] ?? 0));
-        $batch = $thumbnailService->queueForBulkRegeneration($missingOnly, $offset, 10);
-
-        $query = http_build_query([
-            'thumb_progress' => $offset + $batch['processed'],
-            'thumb_total' => $batch['total'],
-            'thumb_done' => $batch['done'] ? '1' : '0',
-            'missing_only' => $missingOnly ? '1' : '0',
-            'next_offset' => $offset + 10,
-        ]);
-        header('Location: ' . admin_url('media') . '?' . $query);
-        exit;
-    } elseif ($form === 'scan_import' && Csrf::verify('scan_import', $token)) {
-        $importDirectory = trim((string) ($_POST['directory'] ?? ''));
-
-        if (!in_array($importDirectory, $allowedImportDirectories, true)) {
-            $error = 'Choose one of the configured allowed import directories.';
-        } else {
-            try {
-                $scanResults = [
-                    'directory' => $importDirectory,
-                    'recursive' => ($_POST['recursive'] ?? '') === '1',
-                    'folderId' => (int) ($_POST['folder_id'] ?? 0),
-                    'mirrorStructure' => ($_POST['mirror_structure'] ?? '') === '1',
-                    'useFileModifiedDate' => ($_POST['use_file_modified_date'] ?? '') === '1',
-                    'files' => $importService->scan($importDirectory, ($_POST['recursive'] ?? '') === '1', $allowedImportDirectories),
-                ];
-            } catch (\Throwable $exception) {
-                $error = $exception->getMessage();
-            }
-        }
-    } elseif ($form === 'start_import' && Csrf::verify('start_import', $token)) {
-        $paths = array_filter(is_array($_POST['paths'] ?? null) ? array_map('strval', $_POST['paths']) : []);
-        $importDirectory = trim((string) ($_POST['directory'] ?? ''));
-
-        if ($paths === [] || !in_array($importDirectory, $allowedImportDirectories, true)) {
-            $error = 'Select at least one file to import.';
-        } else {
-            $kernel->config->setOption('media_import_last_folder_id', (string) ($_POST['folder_id'] ?? 0));
-            $importToken = bin2hex(random_bytes(16));
-            $state = [
-                'paths' => array_values($paths),
-                'directory' => $importDirectory,
-                'folderId' => (int) ($_POST['folder_id'] ?? 0) ?: null,
-                'mirrorStructure' => ($_POST['mirror_structure'] ?? '') === '1',
-                'useFileModifiedDate' => ($_POST['use_file_modified_date'] ?? '') === '1',
-                'offset' => 0,
-                'total' => count($paths),
-                'done' => false,
-                'imported' => 0,
-                'duplicate' => 0,
-                'failed' => 0,
-                'failures' => [],
-            ];
-
-            file_put_contents($importCachePath($importToken), json_encode($state));
-            header('Location: ' . admin_url('media') . '?action=import&import_token=' . $importToken);
-            exit;
-        }
-    } elseif ($form === 'continue_import' && Csrf::verify('continue_import', $token)) {
-        $importToken = (string) ($_POST['import_token'] ?? '');
-
-        if (preg_match('/^[a-f0-9]{32}$/', $importToken) === 1 && is_file($importCachePath($importToken))) {
-            $state = json_decode((string) file_get_contents($importCachePath($importToken)), true);
-
-            if (is_array($state)) {
-                $batch = $importService->importBatch(
-                    $state['paths'],
-                    $currentUser->id,
-                    $state['folderId'],
-                    $state['mirrorStructure'],
-                    $state['useFileModifiedDate'],
-                    $state['directory'],
-                    $allowedImportDirectories,
-                    $state['offset'],
-                    10,
-                );
-
-                foreach ($batch['results'] as $result) {
-                    if ($result['status'] === 'imported') {
-                        $state['imported']++;
-                    } elseif ($result['status'] === 'duplicate') {
-                        $state['duplicate']++;
-                    } else {
-                        $state['failed']++;
-                        $state['failures'][] = basename((string) $result['path']) . ': ' . (string) $result['reason'];
-                    }
-                }
-
-                $state['offset'] += 10;
-                $state['done'] = $batch['done'];
-                $state['total'] = $batch['total'];
-
-                file_put_contents($importCachePath($importToken), json_encode($state));
-            }
-        }
-
-        header('Location: ' . admin_url('media') . '?action=import&import_token=' . $importToken);
+        header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('bulk_action', $token)) {
         $ids = array_filter(array_map('intval', is_array($_POST['ids'] ?? null) ? $_POST['ids'] : []), static fn (int $id): bool => $id > 0);
@@ -328,45 +194,13 @@ $allFolders = $folderService->listAll();
     </div>
 <?php endif; ?>
 
-<?php if (isset($_GET['orphans_removed'])): ?>
-    <div class="lp-alert lp-alert--success">Removed <?= (int) $_GET['orphans_removed'] ?> orphaned thumbnail(s).</div>
-<?php endif; ?>
-
-<?php if (isset($_GET['thumb_progress'])): ?>
-    <?php
-    $thumbProgress = (int) $_GET['thumb_progress'];
-    $thumbTotal = (int) ($_GET['thumb_total'] ?? 0);
-    $thumbDone = ($_GET['thumb_done'] ?? '0') === '1';
-    $thumbMissingOnly = ($_GET['missing_only'] ?? '0') === '1';
-    $thumbNextOffset = (int) ($_GET['next_offset'] ?? 0);
-    $thumbPercent = $thumbTotal > 0 ? (int) round(min(100, $thumbProgress / $thumbTotal * 100)) : 100;
-    ?>
-    <div class="lp-alert lp-alert--success">
-        <p>Regenerating thumbnails: <?= $thumbProgress ?> of <?= $thumbTotal ?> processed.</p>
-        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $thumbPercent ?>" aria-valuemin="0" aria-valuemax="100">
-            <div class="lp-thumbnails__progress-bar" style="width: <?= $thumbPercent ?>%;"></div>
-        </div>
-        <?php if (!$thumbDone): ?>
-            <form method="post" action="<?= esc_url(admin_url('media')) ?>" id="thumb-bulk-continue">
-                <?= Csrf::field('bulk_regenerate_thumbnails') ?>
-                <input type="hidden" name="form" value="bulk_regenerate_thumbnails">
-                <input type="hidden" name="missing_only" value="<?= $thumbMissingOnly ? '1' : '0' ?>">
-                <input type="hidden" name="offset" value="<?= $thumbNextOffset ?>">
-                <button type="submit" class="lp-button">Continue</button>
-            </form>
-        <?php else: ?>
-            <p>Done.</p>
-        <?php endif; ?>
-    </div>
-<?php endif; ?>
-
 <?php if ($action === 'edit'): ?>
     <?php
     $editingId = (int) ($_GET['id'] ?? 0);
     $editingMedia = $editingId > 0 ? $mediaService->find($editingId) : null;
 
     if ($editingMedia === null) {
-        header('Location: ' . admin_url('media'));
+        header('Location: ' . admin_url('media/media'));
         exit;
     }
 
@@ -416,7 +250,7 @@ $allFolders = $folderService->listAll();
                         <?php endforeach; ?>
                     </ul>
                 <?php endif; ?>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>" class="lp-admin__inline-form">
+                <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
                     <?= Csrf::field('regenerate_thumbnails') ?>
                     <input type="hidden" name="form" value="regenerate_thumbnails">
                     <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
@@ -446,7 +280,7 @@ $allFolders = $folderService->listAll();
             </p>
         <?php endif; ?>
 
-        <form method="post" action="<?= esc_url(admin_url('media')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
             <?= Csrf::field('update_metadata') ?>
             <input type="hidden" name="form" value="update_metadata">
             <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
@@ -484,7 +318,7 @@ $allFolders = $folderService->listAll();
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save</button>
-            <a class="lp-button" href="<?= esc_url(admin_url('media')) ?>">Back to Media Manager</a>
+            <a class="lp-button" href="<?= esc_url(admin_url('media/media')) ?>">Back to Media Manager</a>
         </form>
 
         <?php if ($warnUsages !== null): ?>
@@ -495,7 +329,7 @@ $allFolders = $folderService->listAll();
                         <li><?= esc_html($usage) ?></li>
                     <?php endforeach; ?>
                 </ul>
-                <form method="post" action="<?= esc_url(admin_url('media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" onsubmit="return confirm('Delete this file anyway? This cannot be undone.');">
+                <form method="post" action="<?= esc_url(admin_url('media/media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" onsubmit="return confirm('Delete this file anyway? This cannot be undone.');">
                     <?= Csrf::field('delete_file') ?>
                     <input type="hidden" name="form" value="delete_file">
                     <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
@@ -504,142 +338,11 @@ $allFolders = $folderService->listAll();
                 </form>
             </div>
         <?php else: ?>
-            <form method="post" action="<?= esc_url(admin_url('media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" class="lp-admin__inline-form">
+            <form method="post" action="<?= esc_url(admin_url('media/media') . '?action=edit&id=' . (int) $editingMedia['id']) ?>" class="lp-admin__inline-form">
                 <?= Csrf::field('delete_file') ?>
                 <input type="hidden" name="form" value="delete_file">
                 <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
-                <button type="submit" class="lp-button lp-button--link">Delete</button>
-            </form>
-        <?php endif; ?>
-    </section>
-<?php elseif ($action === 'import'): ?>
-    <?php
-    $importFolderOptions = $buildFolderOptions($allFolders, []);
-    $importTokenParam = is_string($_GET['import_token'] ?? null) ? $_GET['import_token'] : '';
-    $importState = null;
-
-    if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCachePath($importTokenParam))) {
-        $importState = json_decode((string) file_get_contents($importCachePath($importTokenParam)), true);
-
-        if (is_array($importState) && ($importState['done'] ?? false) === true) {
-            unlink($importCachePath($importTokenParam));
-        }
-    }
-    ?>
-    <section class="lp-admin__panel">
-        <h2>Import from Server</h2>
-
-        <?php if ($allowedImportDirectories === []): ?>
-            <p class="lp-admin__widget-placeholder">
-                No import directories are configured. An administrator can add one or more absolute server paths on the
-                <a href="<?= esc_url(admin_url('settings/media')) ?>">Settings &rsaquo; Media</a> page under "Media Import".
-            </p>
-        <?php elseif (is_array($importState)): ?>
-            <?php
-            $importPercent = ((int) $importState['total']) > 0
-                ? (int) round(min(100, ($importState['offset'] / $importState['total']) * 100))
-                : 100;
-            ?>
-            <p>
-                Imported <?= (int) $importState['imported'] ?>, skipped <?= (int) $importState['duplicate'] ?> duplicate(s),
-                failed <?= (int) $importState['failed'] ?> &mdash; <?= min((int) $importState['offset'], (int) $importState['total']) ?> of <?= (int) $importState['total'] ?> processed.
-            </p>
-            <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $importPercent ?>" aria-valuemin="0" aria-valuemax="100">
-                <div class="lp-thumbnails__progress-bar" style="width: <?= $importPercent ?>%;"></div>
-            </div>
-            <?php if (($importState['done'] ?? false) !== true): ?>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>" id="import-bulk-continue">
-                    <?= Csrf::field('continue_import') ?>
-                    <input type="hidden" name="form" value="continue_import">
-                    <input type="hidden" name="import_token" value="<?= esc_attr($importTokenParam) ?>">
-                    <button type="submit" class="lp-button">Continue</button>
-                </form>
-            <?php else: ?>
-                <p>Done.</p>
-                <?php if (($importState['failures'] ?? []) !== []): ?>
-                    <ul>
-                        <?php foreach ($importState['failures'] as $failure): ?>
-                            <li><?= esc_html((string) $failure) ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-                <a class="lp-button" href="<?= esc_url(admin_url('media')) ?>?action=import">Import more files</a>
-            <?php endif; ?>
-        <?php elseif ($scanResults !== null): ?>
-            <?php if ($scanResults['files'] === []): ?>
-                <p class="lp-admin__widget-placeholder">No importable files were found in that directory.</p>
-                <a class="lp-button" href="<?= esc_url(admin_url('media')) ?>?action=import">Back</a>
-            <?php else: ?>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>">
-                    <?= Csrf::field('start_import') ?>
-                    <input type="hidden" name="form" value="start_import">
-                    <input type="hidden" name="directory" value="<?= esc_attr($scanResults['directory']) ?>">
-                    <input type="hidden" name="folder_id" value="<?= (int) $scanResults['folderId'] ?>">
-                    <input type="hidden" name="mirror_structure" value="<?= $scanResults['mirrorStructure'] ? '1' : '0' ?>">
-                    <input type="hidden" name="use_file_modified_date" value="<?= $scanResults['useFileModifiedDate'] ? '1' : '0' ?>">
-
-                    <p><?= count($scanResults['files']) ?> file(s) found.</p>
-
-                    <ul class="lp-import-scan__list">
-                        <?php foreach ($scanResults['files'] as $file): ?>
-                            <li>
-                                <label>
-                                    <input type="checkbox" name="paths[]" value="<?= esc_attr($file['path']) ?>" <?= $file['isDuplicate'] ? '' : 'checked' ?>>
-                                    <?= esc_html($file['relativePath']) ?>
-                                    (<?= esc_html(number_format($file['size'] / 1024, 1)) ?> KB, <?= esc_html($file['modifiedAt']) ?>)
-                                    <?php if ($file['isDuplicate']): ?>
-                                        <span class="lp-status-badge">Already in Media Manager</span>
-                                    <?php endif; ?>
-                                </label>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-
-                    <button type="submit" class="lp-button lp-button--primary">Import selected</button>
-                    <a class="lp-button" href="<?= esc_url(admin_url('media')) ?>?action=import">Cancel</a>
-                </form>
-            <?php endif; ?>
-        <?php else: ?>
-            <form method="post" action="<?= esc_url(admin_url('media')) ?>?action=import">
-                <?= Csrf::field('scan_import') ?>
-                <input type="hidden" name="form" value="scan_import">
-
-                <p class="lp-field">
-                    <label for="import-directory">Directory to scan</label>
-                    <select id="import-directory" name="directory">
-                        <?php foreach ($allowedImportDirectories as $allowedDirectory): ?>
-                            <option value="<?= esc_attr($allowedDirectory) ?>"><?= esc_html($allowedDirectory) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </p>
-
-                <label class="lp-field--checkbox">
-                    <input type="checkbox" name="recursive" value="1" checked>
-                    Scan subdirectories recursively
-                </label>
-
-                <p class="lp-field">
-                    <label for="import-folder">Import into folder</label>
-                    <?php $lastFolderId = (int) $kernel->config->option('media_import_last_folder_id', '0'); ?>
-                    <select id="import-folder" name="folder_id">
-                        <option value="0" <?= $lastFolderId === 0 ? 'selected' : '' ?>>(General Uploads)</option>
-                        <?php foreach ($importFolderOptions as $option): ?>
-                            <option value="<?= (int) $option['id'] ?>" <?= $lastFolderId === $option['id'] ? 'selected' : '' ?>><?= esc_html($option['label']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </p>
-
-                <label class="lp-field--checkbox">
-                    <input type="checkbox" name="mirror_structure" value="1">
-                    Mirror the scanned directory structure as subfolders
-                </label>
-
-                <label class="lp-field--checkbox">
-                    <input type="checkbox" name="use_file_modified_date" value="1">
-                    Use each file's modification time as its upload date
-                </label>
-
-                <button type="submit" class="lp-button lp-button--primary">Scan</button>
+                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
             </form>
         <?php endif; ?>
     </section>
@@ -721,10 +424,10 @@ $allFolders = $folderService->listAll();
         foreach ($children as $folder) {
             $isActive = $currentFolderRaw === (string) $folder->id;
             echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . '">';
-            echo '<a href="' . esc_url(admin_url('media') . '?folder=' . $folder->id) . '">' . esc_html($folder->name) . '</a> ';
+            echo '<a href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '">' . esc_html($folder->name) . '</a> ';
 
             echo '<details class="lp-folder-tree__manage"><summary>Manage</summary>';
-            echo '<form method="post" action="' . esc_url(admin_url('media')) . '">';
+            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '">';
             echo Csrf::field('rename_folder_' . $folder->id);
             echo '<input type="hidden" name="form" value="rename_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
@@ -733,12 +436,12 @@ $allFolders = $folderService->listAll();
             echo '<input type="text" name="name" value="' . esc_attr($folder->name) . '">';
             echo '<button type="submit" class="lp-button">Rename</button>';
             echo '</form>';
-            echo '<form method="post" action="' . esc_url(admin_url('media')) . '" onsubmit="return confirm(\'Delete this folder? It must be empty.\');">';
+            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" onsubmit="return confirm(\'Delete this folder? It must be empty.\');">';
             echo Csrf::field('delete_folder_' . $folder->id);
             echo '<input type="hidden" name="form" value="delete_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
             echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
-            echo '<button type="submit" class="lp-button lp-button--link">Delete</button>';
+            echo '<button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>';
             echo '</form>';
             echo '</details>';
 
@@ -762,7 +465,7 @@ $allFolders = $folderService->listAll();
                     'never_downloaded' => 'Never Downloaded',
                 ] as $viewValue => $viewLabel): ?>
                     <li class="lp-folder-tree__item<?= $view === $viewValue ? ' is-active' : '' ?>">
-                        <a href="<?= esc_url(admin_url('media') . ($viewValue !== '' ? '?view=' . $viewValue : '')) ?>"><?= esc_html($viewLabel) ?></a>
+                        <a href="<?= esc_url(admin_url('media/media') . ($viewValue !== '' ? '?view=' . $viewValue : '')) ?>"><?= esc_html($viewLabel) ?></a>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -770,17 +473,17 @@ $allFolders = $folderService->listAll();
             <h2>Folders</h2>
             <ul class="lp-folder-tree">
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '' ? ' is-active' : '' ?>">
-                    <a href="<?= esc_url(admin_url('media')) ?>">All Files</a>
+                    <a href="<?= esc_url(admin_url('media/media')) ?>">All Files</a>
                 </li>
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '0' ? ' is-active' : '' ?>">
-                    <a href="<?= esc_url(admin_url('media')) ?>?folder=0">General Uploads</a>
+                    <a href="<?= esc_url(admin_url('media/media')) ?>?folder=0">General Uploads</a>
                 </li>
             </ul>
             <?php $renderFolderTree($allFolders); ?>
 
             <details class="lp-folder-tree__manage">
                 <summary>New Folder</summary>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>">
+                <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
                     <?= Csrf::field('create_folder') ?>
                     <input type="hidden" name="form" value="create_folder">
                     <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
@@ -804,43 +507,8 @@ $allFolders = $folderService->listAll();
 
         <div class="lp-media-manager__main">
             <section class="lp-admin__panel">
-                <h2>Upload</h2>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>" enctype="multipart/form-data">
-                    <?= Csrf::field('upload') ?>
-                    <input type="hidden" name="form" value="upload">
-                    <input type="hidden" name="folder_id" value="<?= $currentFolderId !== null ? (int) $currentFolderId : 0 ?>">
-                    <p class="lp-field">
-                        <label for="media-file">File</label>
-                        <input type="file" id="media-file" name="file" required>
-                        <span class="lp-field__hint">Uploads into <?= $currentFolderId !== null ? esc_html($folderService->findById($currentFolderId)?->name ?? 'the current folder') : 'General Uploads' ?>.</span>
-                    </p>
-                    <button type="submit" class="lp-button lp-button--primary">Upload</button>
-                </form>
-                <p><a class="lp-button" href="<?= esc_url(admin_url('media')) ?>?action=import">Import from Server&hellip;</a></p>
-            </section>
-
-            <section class="lp-admin__panel">
-                <h2>Thumbnails</h2>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>" class="lp-admin__inline-form">
-                    <?= Csrf::field('bulk_regenerate_thumbnails') ?>
-                    <input type="hidden" name="form" value="bulk_regenerate_thumbnails">
-                    <input type="hidden" name="offset" value="0">
-                    <label class="lp-field--checkbox">
-                        <input type="checkbox" name="missing_only" value="1" checked>
-                        Only generate missing thumbnails
-                    </label>
-                    <button type="submit" class="lp-button">Bulk regenerate thumbnails</button>
-                </form>
-                <form method="post" action="<?= esc_url(admin_url('media')) ?>" class="lp-admin__inline-form">
-                    <?= Csrf::field('cleanup_orphaned_thumbnails') ?>
-                    <input type="hidden" name="form" value="cleanup_orphaned_thumbnails">
-                    <button type="submit" class="lp-button">Clean up orphaned thumbnails</button>
-                </form>
-            </section>
-
-            <section class="lp-admin__panel">
                 <h2>Search &amp; Filter</h2>
-                <form method="get" action="<?= esc_url(admin_url('media')) ?>">
+                <form method="get" action="<?= esc_url(admin_url('media/media')) ?>">
                     <?php if ($currentFolderRaw !== ''): ?>
                         <input type="hidden" name="folder" value="<?= esc_attr($currentFolderRaw) ?>">
                     <?php endif; ?>
@@ -873,7 +541,7 @@ $allFolders = $folderService->listAll();
                 <?php if ($items === []): ?>
                     <p class="lp-admin__widget-placeholder">No files found.</p>
                 <?php else: ?>
-                    <form method="post" action="<?= esc_url(admin_url('media')) ?>">
+                    <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
                         <?= Csrf::field('bulk_action') ?>
                         <input type="hidden" name="form" value="bulk_action">
                         <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
@@ -884,7 +552,7 @@ $allFolders = $folderService->listAll();
                                     <label class="lp-media-grid__select">
                                         <input type="checkbox" name="ids[]" value="<?= (int) $item['id'] ?>">
                                     </label>
-                                    <a href="<?= esc_url(admin_url('media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
+                                    <a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
                                         <?php if (str_starts_with((string) $item['mime_type'], 'image/')): ?>
                                             <img class="lp-media-grid__thumb" src="<?= esc_url((string) ($thumbnailService->url($item, 'small') ?? $mediaService->url($item))) ?>" alt="<?= esc_attr((string) ($item['alt_text'] ?? '')) ?>">
                                         <?php else: ?>

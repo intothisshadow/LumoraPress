@@ -296,7 +296,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                                     <input type="hidden" name="form" value="remove_widget">
                                     <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
                                     <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
-                                    <button type="submit" class="lp-button lp-button--link">Remove</button>
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Remove</button>
                                 </form>
                             </div>
                         </details>

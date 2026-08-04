@@ -169,7 +169,7 @@ if ($action === 'edit') {
                                         <?= Csrf::field('category_delete_' . $listedCategory->id) ?>
                                         <input type="hidden" name="form" value="delete">
                                         <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>">
-                                        <button type="submit" class="lp-button lp-button--link">Delete</button>
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                     </form>
                                 <?php endif; ?>
                             </td>
