@@ -4,8 +4,24 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-04
+
 ### Added
 
+- User Management, completed (LP-032): the admin Users screen now has
+  Trash/Restore (a `trashed_at` soft-delete, mirroring the Posts admin's
+  own Trash tab — permanent delete is only offered from the Trash view),
+  bulk actions (Trash, Restore, Delete Permanently, and Change role,
+  guarded the same way as the existing single-row actions: never your own
+  account, never the last remaining Administrator, never a user who has
+  authored posts or pages), a Search &amp; Filter panel (username/email/
+  display name term plus a role dropdown), and avatars — Gravatar by
+  default (based on the account email) with an optional per-user
+  uploaded override. A trashed user can no longer log in, and an already
+  open session for an account trashed mid-session stops working on its
+  very next request rather than lingering until it expires; trashing a
+  user now also revokes their "Remember Me" tokens, the same as deleting
+  one already did.
 - Media Manager improvements (LP-068): a "Select all" checkbox above the
   media grid toggles every item's checkbox in the bulk-actions form. The
   Virtual Folder System's "Manage" and "New Folder" toggles now render as

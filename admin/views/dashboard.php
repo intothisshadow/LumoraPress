@@ -129,7 +129,7 @@ if ($currentUser->can('manage_options')) {
         <h2>System Information</h2>
         <ul class="lp-admin__meta-list">
             <li><span>PHP Version</span><span><?= esc_html(PHP_VERSION) ?></span></li>
-            <li><span>Lumora Press Version</span><span><?= esc_html((string) $version['version']) ?> (<?= esc_html((string) $version['codename']) ?>)</span></li>
+            <li><span>Lumora Press Version</span><span><?= esc_html((string) $version['version']) ?></span></li>
             <li><span>Active Theme</span><span><?= esc_html($kernel->theme->activeTheme() ?? '—') ?></span></li>
         </ul>
     </section>

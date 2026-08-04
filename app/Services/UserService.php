@@ -121,7 +121,8 @@ final class UserService
     public function verifyCredentials(string $usernameOrEmail, string $password): ?User
     {
         $row = $this->database->fetchOne(
-            'SELECT * FROM ' . $this->table() . ' WHERE username = :identity1 OR email = :identity2',
+            'SELECT * FROM ' . $this->table() . '
+                WHERE (username = :identity1 OR email = :identity2) AND trashed_at IS NULL',
             ['identity1' => $usernameOrEmail, 'identity2' => $usernameOrEmail],
         );
 
@@ -221,13 +222,136 @@ final class UserService
     }
 
     /**
+     * Soft-deletes a user: sets trashed_at rather than removing the row.
+     * A trashed user cannot authenticate (see verifyCredentials()) and is
+     * excluded from listAll()/paginateForAdmin() by default, but remains
+     * fully recoverable via restore() until it's permanently removed with
+     * delete().
+     */
+    public function trash(int $id): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET trashed_at = :trashed_at WHERE id = :id',
+            ['trashed_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
+    }
+
+    public function restore(int $id): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET trashed_at = NULL WHERE id = :id',
+            ['id' => $id],
+        ) > 0;
+    }
+
+    public function countTrashed(): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE trashed_at IS NOT NULL',
+        );
+    }
+
+    /**
      * @return array<int, User>
      */
-    public function listAll(): array
+    public function listAll(bool $includeTrashed = false): array
     {
-        $rows = $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' ORDER BY username ASC');
+        $sql = 'SELECT * FROM ' . $this->table();
+
+        if (!$includeTrashed) {
+            $sql .= ' WHERE trashed_at IS NULL';
+        }
+
+        $rows = $this->database->fetchAll($sql . ' ORDER BY username ASC');
 
         return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
+     * Search/filter/paginate for the admin Users screen (LP-032). Mirrors
+     * PostService::paginateForAdmin()'s shape. $trashedOnly toggles between
+     * the normal list (trashed_at IS NULL) and the Trash view (trashed_at
+     * IS NOT NULL) — there is no "both" mode, matching the Posts admin's
+     * own Trash-is-a-separate-tab convention.
+     *
+     * Three distinct LIKE placeholders (:term/:term2/:term3) rather than
+     * one reused three times — Database::connect() disables emulated
+     * prepares, and MySQL's native protocol rejects a repeated named
+     * placeholder (see PostService::paginateForAdmin()'s own docblock and
+     * PHP-TEST-SUITE.md's "Known gaps").
+     *
+     * @return array{users: array<int, User>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateForAdmin(
+        int $page = 1,
+        int $perPage = 20,
+        ?UserRole $roleFilter = null,
+        string $term = '',
+        bool $trashedOnly = false,
+    ): array {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+
+        $conditions = [$trashedOnly ? 'trashed_at IS NOT NULL' : 'trashed_at IS NULL'];
+        $params = [];
+
+        if ($roleFilter !== null) {
+            $conditions[] = 'role = :role';
+            $params['role'] = $roleFilter->value;
+        }
+
+        if ($term !== '') {
+            $conditions[] = '(username LIKE :term OR email LIKE :term2 OR display_name LIKE :term3)';
+            $params['term'] = '%' . $term . '%';
+            $params['term2'] = '%' . $term . '%';
+            $params['term3'] = '%' . $term . '%';
+        }
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
+
+        $total = (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . " {$where}",
+            $params,
+        );
+
+        $offset = ($page - 1) * $perPage;
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " {$where} ORDER BY username ASC LIMIT {$perPage} OFFSET {$offset}",
+            $params,
+        );
+
+        return [
+            'users' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => (int) max(1, ceil($total / $perPage)),
+        ];
+    }
+
+    public function updateAvatar(int $id, ?int $mediaId): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET avatar_media_id = :avatar_media_id WHERE id = :id',
+            ['avatar_media_id' => $mediaId, 'id' => $id],
+        );
+    }
+
+    /**
+     * The default avatar for a user with no uploaded avatar_media_id.
+     * Gravatar's newer avatar API accepts a SHA256 hash of the lowercased,
+     * trimmed email address (alongside its legacy MD5 form, which this
+     * project avoids per its own "never MD5" rule even outside a password
+     * context). `d=mp` falls back to a generic silhouette ("mystery
+     * person") for any email with no registered Gravatar, so this never
+     * needs a null-check at the call site.
+     */
+    public function gravatarUrl(string $email, int $size = 96): string
+    {
+        $hash = hash('sha256', strtolower(trim($email)));
+
+        return 'https://www.gravatar.com/avatar/' . $hash . '?s=' . $size . '&d=mp';
     }
 
     /**
@@ -256,6 +380,8 @@ final class UserService
             preferredEditor: isset($row['preferred_editor'])
                 ? ContentFormat::tryFrom((string) $row['preferred_editor'])
                 : null,
+            trashedAt: isset($row['trashed_at']) ? new \DateTimeImmutable((string) $row['trashed_at']) : null,
+            avatarMediaId: isset($row['avatar_media_id']) ? (int) $row['avatar_media_id'] : null,
         );
     }
 

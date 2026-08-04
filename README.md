@@ -230,7 +230,7 @@ them via FTP/SFTP or your hosting file manager).
 
 ## Current Status
 
-**Version 0.4.0 "Updates"**
+**Version 0.5.0**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme
@@ -251,7 +251,10 @@ them via FTP/SFTP or your hosting file manager).
   (Settings &rsaquo; Security — off by default, never required).
 - **RSS & Atom feeds** — a site-wide feed of published posts.
 - **Search** — full-text search across posts and pages.
-- **User management** — admin-managed accounts and roles.
+- **User management** — admin-managed accounts and roles, with Trash &
+  restore, bulk actions (trash/restore/delete/change role),
+  search/filter by username, email, or role, and avatars (Gravatar by
+  default, with an optional per-user upload).
 - **Updates** — install official release ZIPs from the admin panel, either
   by checking GitHub Releases directly or uploading a ZIP manually, with
   automatic backup and rollback either way.

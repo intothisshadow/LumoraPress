@@ -1875,6 +1875,19 @@ select:focus {
     vertical-align: middle;
 }
 
+.lp-user-avatar {
+    display: block;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.lp-user-avatar--large {
+    width: 96px;
+    height: 96px;
+}
+
 /* Alerts */
 
 .lp-alert {

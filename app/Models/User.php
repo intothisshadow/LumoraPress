@@ -17,6 +17,17 @@ final class User
          * EditorPreferenceService::activeEditor().
          */
         public readonly ?ContentFormat $preferredEditor = null,
+        /**
+         * LP-032: non-null means this account is in the Trash (soft
+         * deleted). A trashed user cannot authenticate — see
+         * UserService::verifyCredentials() and Auth::user().
+         */
+        public readonly ?\DateTimeImmutable $trashedAt = null,
+        /**
+         * LP-032: an uploaded avatar's media id, or null to fall back to
+         * Gravatar — see UserService::gravatarUrl().
+         */
+        public readonly ?int $avatarMediaId = null,
     ) {
     }
 
