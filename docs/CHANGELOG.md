@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- "Discover Directories" on Media Manager &rsaquo; Import from Server
+  (LP-064): instead of typing exact absolute server paths from memory, an
+  administrator can now scan for real subdirectories next to the Lumora
+  Press install and check off which ones to add to the allowed import
+  directories list. The scan is a bounded, read-only, one-level-deep look
+  at the install's parent directory only — never configurable to an
+  arbitrary starting path, never recursive, and nothing is added until
+  explicitly selected and submitted. Same `manage_options`-only gate as
+  the rest of the Import Settings panel.
 - Admin visual polish, pass 2 (LP-063): dropdowns that previously fell
   outside the `.lp-field` wrapper (the Theme Editor's theme picker, the
   Menus page's menu picker, the Posts list's bulk-action select, the
@@ -20,6 +29,12 @@ All notable changes to Lumora Press are documented in this file.
   gained the same shadow/hover-lift card treatment
   Theme/Plugin cards already have, and a filename's stray default
   underline (visible under its already-custom text color) is gone.
+  Follow-up same day: the Comments page's Approve/Unapprove/Spam/Trash
+  row actions now use the same pill-chip button treatment as every other
+  admin row action instead of a separate, never-updated plain-underline
+  style; and every table-cell link across the admin (post/page titles, a
+  comment's excerpt and parent post) picked up the same default-blue/
+  purple-link fix already applied to Dashboard/sidebar list links.
 - Custom CSS is now its own Appearance sub-page (LP-062), alongside
   Themes/Widgets/Menus/Theme Editor, instead of a section embedded at the
   bottom of Appearance &rsaquo; Themes.

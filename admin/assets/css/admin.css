@@ -1819,6 +1819,27 @@ select:focus {
     background: var(--lp-admin-bg);
 }
 
+/*
+ * LP-063 follow-up: table-cell links (a post/page title, a comment's
+ * excerpt, the post a comment belongs to, etc. across every .lp-table —
+ * Posts, Pages, Comments, Categories, Tags, and more) had no color rule
+ * of their own, so they fell back to the browser's default blue/purple/
+ * underlined link styling instead of this admin theme's accent color.
+ * Unlike the quieter list-links fixed alongside this one (Dashboard's
+ * meta lists, the folder tree), a table row's main link is its primary
+ * click target, so it stays accent-colored by default rather than
+ * defaulting to body text.
+ */
+.lp-table td a {
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+}
+
+.lp-table td a:hover,
+.lp-table td a:focus-visible {
+    text-decoration: underline;
+}
+
 .lp-status-badge {
     display: inline-block;
     padding: 0.15rem 0.55rem;
@@ -2135,15 +2156,6 @@ select:focus {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
-}
-
-.lp-button--link-muted {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--lp-admin-accent);
-    text-decoration: underline;
-    font-size: 0.85rem;
 }
 
 /* Updates page */

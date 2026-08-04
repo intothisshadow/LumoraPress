@@ -73,6 +73,72 @@ final class MediaImportService
     }
 
     /**
+     * LP-064: lists real, immediate (non-recursive) subdirectories of
+     * $scanParent as candidates for the admin to add to the allowed
+     * import directories, instead of having to already know exact server
+     * paths to type in blind. Deliberately shallow and non-configurable
+     * to an arbitrary starting point — the caller always passes
+     * dirname(LUMORA_ROOT), the one location most likely to hold an
+     * FTP-dropped sibling folder on shared hosting — so this never turns
+     * into a general-purpose file browser. A pure read: nothing here
+     * writes to $allowedDirectories or the filesystem; alreadyAllowed is
+     * just a display hint for the view.
+     *
+     * @param array<int, string> $allowedDirectories Existing allowed
+     *     directories, used only to flag which candidates are already
+     *     configured.
+     * @param array<int, string> $exclude Resolved-away paths (e.g.
+     *     LUMORA_ROOT itself — importing from the app's own install
+     *     directory isn't a real use case).
+     * @return array<int, array{path: string, alreadyAllowed: bool}>
+     */
+    public function discoverCandidateDirectories(
+        string $scanParent,
+        array $allowedDirectories = [],
+        array $exclude = [],
+        int $limit = 200,
+    ): array {
+        $resolvedParent = realpath($scanParent);
+
+        if ($resolvedParent === false || !is_dir($resolvedParent)) {
+            return [];
+        }
+
+        $entries = scandir($resolvedParent);
+
+        if ($entries === false) {
+            return [];
+        }
+
+        $resolvedExclude = array_filter(array_map('realpath', $exclude), static fn ($path): bool => $path !== false);
+        $resolvedAllowed = array_filter(array_map('realpath', $allowedDirectories), static fn ($path): bool => $path !== false);
+
+        $candidates = [];
+
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
+                continue;
+            }
+
+            $path = $resolvedParent . '/' . $entry;
+            $resolvedPath = realpath($path);
+
+            if ($resolvedPath === false || !is_dir($resolvedPath) || in_array($resolvedPath, $resolvedExclude, true)) {
+                continue;
+            }
+
+            $candidates[] = [
+                'path' => $resolvedPath,
+                'alreadyAllowed' => in_array($resolvedPath, $resolvedAllowed, true),
+            ];
+        }
+
+        usort($candidates, static fn (array $a, array $b): int => strcmp($a['path'], $b['path']));
+
+        return array_slice($candidates, 0, $limit);
+    }
+
+    /**
      * Lists candidate files under $directory (only extensions
      * MediaService::isAllowedExtension() accepts), each flagged with
      * whether its content already exists in the media library (duplicate/

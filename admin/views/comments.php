@@ -202,18 +202,18 @@ if ($action === 'edit') {
                             <td><?= esc_html($comment->createdAt->format('M j, Y')) ?></td>
                             <td class="lp-admin__row-actions">
                                 <?php foreach ([
-                                    [CommentStatus::Approved, 'Approve'],
-                                    [CommentStatus::Pending, 'Unapprove'],
-                                    [CommentStatus::Spam, 'Spam'],
-                                    [CommentStatus::Trash, 'Trash'],
-                                ] as [$targetStatus, $actionLabel]): ?>
+                                    [CommentStatus::Approved, 'Approve', false],
+                                    [CommentStatus::Pending, 'Unapprove', false],
+                                    [CommentStatus::Spam, 'Spam', true],
+                                    [CommentStatus::Trash, 'Trash', true],
+                                ] as [$targetStatus, $actionLabel, $isDanger]): ?>
                                     <?php if ($comment->status !== $targetStatus): ?>
                                         <form method="post" action="<?= esc_url(admin_url('comments')) ?><?= isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : '' ?>">
                                             <?= Csrf::field('comment_moderate_' . $comment->id . '_' . $targetStatus->value) ?>
                                             <input type="hidden" name="form" value="moderate">
                                             <input type="hidden" name="id" value="<?= (int) $comment->id ?>">
                                             <input type="hidden" name="status" value="<?= esc_attr($targetStatus->value) ?>">
-                                            <button type="submit" class="lp-button lp-button--link-muted"><?= esc_html($actionLabel) ?></button>
+                                            <button type="submit" class="lp-button lp-button--link<?= $isDanger ? ' lp-button--link--danger' : '' ?>"><?= esc_html($actionLabel) ?></button>
                                         </form>
                                     <?php endif; ?>
                                 <?php endforeach; ?>

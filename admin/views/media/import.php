@@ -159,6 +159,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('media/import') . '?saved=1');
         exit;
+    } elseif ($form === 'add_discovered_directories' && $currentUser->can('manage_options') && Csrf::verify('add_discovered_directories', $token)) {
+        // Same manage_options gate as media_import_settings above — this
+        // still only ever touches media_import_allowed_directories.
+        $selected = array_filter(is_array($_POST['directories'] ?? null) ? array_map('strval', $_POST['directories']) : []);
+        $merged = array_values(array_unique([...$allowedImportDirectories, ...$selected]));
+        $kernel->config->setOption('media_import_allowed_directories', json_encode($merged));
+
+        header('Location: ' . admin_url('media/import') . '?saved=1');
+        exit;
     }
 }
 
@@ -200,6 +209,45 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
 
             <button type="submit" class="lp-button lp-button--primary">Save</button>
         </form>
+
+        <?php if (isset($_GET['discover'])): ?>
+            <?php $discovered = $importService->discoverCandidateDirectories(dirname(LUMORA_ROOT), $allowedImportDirectories, [LUMORA_ROOT]); ?>
+            <h3>Discovered Directories</h3>
+            <?php if ($discovered === []): ?>
+                <p class="lp-admin__widget-placeholder">
+                    No candidate directories were found next to the Lumora Press install
+                    (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>) — either there aren't any, or this host's
+                    permissions don't allow reading that location.
+                </p>
+            <?php else: ?>
+                <form method="post" action="<?= esc_url(admin_url('media/import')) ?>">
+                    <?= Csrf::field('add_discovered_directories') ?>
+                    <input type="hidden" name="form" value="add_discovered_directories">
+
+                    <ul class="lp-import-scan__list">
+                        <?php foreach ($discovered as $candidate): ?>
+                            <li>
+                                <label>
+                                    <?php if ($candidate['alreadyAllowed']): ?>
+                                        <input type="checkbox" disabled>
+                                    <?php else: ?>
+                                        <input type="checkbox" name="directories[]" value="<?= esc_attr($candidate['path']) ?>">
+                                    <?php endif; ?>
+                                    <?= esc_html($candidate['path']) ?>
+                                    <?php if ($candidate['alreadyAllowed']): ?>
+                                        <span class="lp-status-badge">Already allowed</span>
+                                    <?php endif; ?>
+                                </label>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+
+                    <button type="submit" class="lp-button lp-button--primary">Add Selected</button>
+                </form>
+            <?php endif; ?>
+        <?php else: ?>
+            <p><a class="lp-button" href="<?= esc_url(admin_url('media/import')) ?>?discover=1">Discover Directories</a></p>
+        <?php endif; ?>
     </section>
 <?php endif; ?>
 
