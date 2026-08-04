@@ -273,7 +273,7 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
             failed <?= (int) $importState['failed'] ?> &mdash; <?= min((int) $importState['offset'], (int) $importState['total']) ?> of <?= (int) $importState['total'] ?> processed.
         </p>
         <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $importPercent ?>" aria-valuemin="0" aria-valuemax="100">
-            <div class="lp-thumbnails__progress-bar" style="width: <?= $importPercent ?>%;"></div>
+            <div class="lp-thumbnails__progress-bar" data-style-width="<?= $importPercent ?>%"></div>
         </div>
         <?php if (($importState['done'] ?? false) !== true): ?>
             <form method="post" action="<?= esc_url(admin_url('media/import')) ?>" id="import-bulk-continue">

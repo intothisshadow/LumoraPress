@@ -14,6 +14,7 @@
         <a class="lp-site-footer__feed-link" href="<?= esc_url(home_url('feed')) ?>">Subscribe via RSS</a>
     </div>
 </footer>
+<script src="<?= esc_url(theme_url('assets/js/dynamic-style.js')) ?>"></script>
 <?php if (\LumoraPress\Core\Theme\MediaViewer::isUsed()): ?>
     <!--
         Media Viewer & Lightbox (LP-031): PhotoSwipe loaded from jsDelivr

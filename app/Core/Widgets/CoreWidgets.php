@@ -212,7 +212,7 @@ final class CoreWidgets
                 // plain list.
                 $scale = $maxCount > 0 ? $entry['postCount'] / $maxCount : 0;
                 $fontSize = 0.85 + ($scale * 0.75);
-                echo '<a class="lp-widget__tag-cloud-item" style="font-size: ' . round($fontSize, 2) . 'em" href="'
+                echo '<a class="lp-widget__tag-cloud-item" data-style-font-size="' . round($fontSize, 2) . 'em" href="'
                     . esc_url(site_url('tag/' . $entry['tag']->slug)) . '">' . esc_html($entry['tag']->name) . '</a> ';
             }
 

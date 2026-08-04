@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use LumoraPress\Controllers\ApiController;
 use LumoraPress\Controllers\SiteController;
+use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\Autoloader;
 use LumoraPress\Core\Cache\CacheDriverInterface;
 use LumoraPress\Core\Cache\CacheManager;
@@ -30,6 +31,7 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
+use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
@@ -40,6 +42,8 @@ use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Core\Theme\SiteBranding;
+use LumoraPress\Core\Theme\ThemeOptions;
+use LumoraPress\Core\Theme\ThemeOptionsBridge;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\CoreWidgets;
@@ -90,6 +94,7 @@ $autoloader->addNamespace('LumoraPress', LUMORA_ROOT . '/app');
 $autoloader->register();
 
 $config = new PressConfig(LUMORA_ROOT . '/config/config.php');
+ActiveConfig::set($config);
 
 FormTiming::setSecretKey((string) $config->get('secret_key', ''));
 
@@ -171,11 +176,28 @@ ActiveContentRenderer::set($content);
  * needs it too: EasyMDE's toolbar icons are Font Awesome 4 glyphs (also
  * loaded from jsDelivr — see content-editor.js), and FA's CSS pulls in
  * its actual font files via @font-face.
+ *
+ * style-src also needs a per-request nonce (LP-034 fix): the default
+ * theme emits two inline <style> blocks (Custom CSS, Theme Options CSS,
+ * both in header.php) that `style-src 'self'` blocks outright with no
+ * catchable error on either side — the response is entirely valid, CSP
+ * enforcement happens client-side, so this failure mode looks exactly
+ * like "the CSS variable isn't taking effect" rather than "the whole
+ * <style> block never ran," and was only found by inspecting
+ * document.styleSheets directly. See CspNonce's own docblock. Google
+ * Fonts (the new google_fonts_url Theme Option) needs its own two hosts:
+ * style-src for the stylesheet fetch, font-src for the @font-face files
+ * it references — added unconditionally, the same "always allow, don't
+ * bother checking whether this page actually uses it" approach the
+ * jsDelivr additions above already take.
  */
-add_filter('csp_directives', static function (array $directives): array {
+$cspNonce = bin2hex(random_bytes(16));
+CspNonce::set($cspNonce);
+
+add_filter('csp_directives', static function (array $directives) use ($cspNonce): array {
     $directives['script-src'] .= ' https://cdn.jsdelivr.net';
-    $directives['style-src'] .= ' https://cdn.jsdelivr.net';
-    $directives['font-src'] .= ' https://cdn.jsdelivr.net';
+    $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
+    $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
 
     return $directives;
 });
@@ -211,6 +233,18 @@ $theme->setActiveTheme($activeThemeSlug);
 ActiveTheme::set($theme);
 require LUMORA_ROOT . '/include/theme.php';
 $theme->loadFunctions();
+
+/*
+ * LP-034 (originally scoped as LP-023 — see DECISIONS.md's "LP-023
+ * merged into LP-034" entry): registered after loadFunctions() so a
+ * theme's own functions.php can hook 'register_theme_options' to add
+ * fields of its own, the same ordering widgets/menus already rely on for
+ * register_widget()/register_nav_menu() above.
+ */
+$themeOptions = new ThemeOptions($config);
+$themeOptions->registerStandardOptions();
+do_action('register_theme_options', $themeOptions);
+ThemeOptionsBridge::set($themeOptions);
 
 $themes = new ThemeRegistry($themesPath, $themesUrl, $activeThemeSlug);
 $themeInstaller = new ThemeInstaller($themesPath, $themes);
@@ -573,6 +607,7 @@ $kernel = new Kernel(
     passwordResets: $passwordResets,
     passwordResetThrottle: $passwordResetThrottle,
     mailer: $mailer,
+    themeOptions: $themeOptions,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users);

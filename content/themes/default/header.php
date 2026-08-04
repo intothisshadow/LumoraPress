@@ -43,7 +43,15 @@ $meta_description = $seo_description ?? meta_description();
         <meta name="robots" content="noindex,nofollow">
     <?php endif; ?>
     <link rel="canonical" href="<?= esc_url(canonical_url()) ?>">
+    <?php if (theme_option('google_fonts_url') !== ''): ?>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="<?= esc_url(theme_option('google_fonts_url')) ?>">
+    <?php endif; ?>
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">
+    <?php if (theme_options_css() !== ''): ?>
+        <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= theme_options_css() ?></style>
+    <?php endif; ?>
     <link rel="alternate" type="application/rss+xml" title="<?= esc_attr(site_name()) ?> &raquo; Feed" href="<?= esc_url(home_url('feed')) ?>">
     <link rel="alternate" type="application/atom+xml" title="<?= esc_attr(site_name()) ?> &raquo; Atom Feed" href="<?= esc_url(home_url('feed/atom')) ?>">
     <?php if (favicon_url() !== null): ?>
@@ -111,8 +119,18 @@ $meta_description = $seo_description ?? meta_description();
         <script type="application/ld+json"><?= json_encode($jsonLd) ?></script>
     <?php endif; ?>
     <?php if (custom_css() !== ''): ?>
-        <style><?= custom_css() ?></style>
+        <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= custom_css() ?></style>
     <?php endif; ?>
+    <?php
+    /*
+     * LPP-002: the classic WordPress wp_head()-equivalent extension point —
+     * lets a plugin (currently just Font Awesome) print its own <link>/
+     * <style> tags into <head> without this theme needing to know it
+     * exists. Fires unconditionally, same as get_header()/get_footer()
+     * above; a plugin with nothing to add here simply never hooks it.
+     */
+    do_action('head_assets');
+    ?>
 </head>
 <body class="lp-site">
 <a class="lp-skip-link" href="#lp-content">Skip to content</a>

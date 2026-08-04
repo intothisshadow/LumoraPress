@@ -106,7 +106,7 @@ version.
   independent: EasyMDE still bundles its own internal CodeMirror 5 copy for
   the Markdown editor, and upgrading one does not affect the other.
 
-## Font Awesome
+## Font Awesome (editor toolbar, v4)
 
 - **Purpose:** Icon glyphs for EasyMDE's default Markdown editor toolbar
   (bold, italic, lists, link, image, preview, fullscreen, and the custom
@@ -125,7 +125,35 @@ version.
   request stays on the CSP-allow-listed `cdn.jsdelivr.net` origin rather
   than an arbitrary one EasyMDE would otherwise pick. Version 4 specifically
   (not a later major) because that is the icon set EasyMDE's own CSS
-  references by class name (e.g. `fa fa-bold`).
+  references by class name (e.g. `fa fa-bold`). Independent of the
+  front-end plugin below — this load is scoped to the post/page editor
+  screen only.
+
+## Font Awesome (Font Awesome plugin, v6 — front-end, optional)
+
+- **Purpose:** Icon glyphs for the front-end `[icon]` shortcode and
+  `lp_icon()` theme/plugin helper, provided by the bundled first-party
+  `content/plugins/font-awesome` plugin (LPP-002, see `TODO-PLUGINS.md`).
+- **Current version:** 6.5.2 (default; an administrator can pin a
+  different Font Awesome Free release number in Settings &rsaquo;
+  Appearance &rsaquo; Font Awesome).
+- **Date added:** 2026-08-04
+- **Date last updated:** 2026-08-04
+- **Loaded from:** CDN (jsDelivr) by default; an administrator can switch
+  to a self-hosted URL of their own instead — see the plugin's own
+  README.md. Either way, nothing loads unless the plugin is both active
+  and enabled in its own settings (off by default).
+- **Source URL:** https://github.com/FortAwesome/Font-Awesome
+- **License:** Font (SIL OFL 1.1) + CSS/icons (MIT)
+- **Local installation path:** N/A — not bundled (self-hosted mode still
+  points at a URL the administrator controls; this project doesn't vendor
+  the files itself)
+- **Homepage/Documentation URL:** https://fontawesome.com/
+- **Notes:** A self-hosted delivery URL's origin is added to the
+  Content-Security-Policy's `style-src`/`font-src` directives at runtime
+  (`FontAwesomeService::filterCsp()`) — CDN delivery needs no CSP change,
+  since `cdn.jsdelivr.net` is already allow-listed for the reasons
+  documented throughout this file.
 
 ## CSS frameworks
 

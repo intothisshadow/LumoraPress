@@ -477,7 +477,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                             static fn (array $candidate): bool => $candidate['id'] !== $item['id'] && !in_array($candidate['id'], $descendants, true),
                         );
                         ?>
-                        <li class="lp-menus-structure-list__item" style="margin-left: <?= (int) $row['depth'] * 1.5 ?>rem">
+                        <li class="lp-menus-structure-list__item" data-style-margin-left="<?= (int) $row['depth'] * 1.5 ?>rem">
                             <details class="lp-widgets-list__details">
                                 <summary class="lp-widgets-list__summary">
                                     <?= esc_html($item['label']) ?>

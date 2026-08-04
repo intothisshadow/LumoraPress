@@ -1,0 +1,462 @@
+<?php
+
+declare(strict_types=1);
+
+namespace LumoraPress\Core\Theme;
+
+use LumoraPress\Core\PressConfig;
+
+/**
+ * LP-034's Theme Options system (originally scoped as the standalone
+ * LP-023 ticket — see DECISIONS.md's "LP-023 merged into LP-034" entry).
+ *
+ * Sections and fields are registered once per request — core's own
+ * standard Colors/Typography/Layout options via registerStandardOptions()
+ * (called from include/bootstrap.php), plus anything a theme or plugin
+ * adds by hooking `add_action('register_theme_options', function
+ * (ThemeOptions $options) { ... })` — and are never theme-specific
+ * storage: all sites share one flat `theme_options` option (a JSON map of
+ * key => string value, the same "structured value as JSON" convention
+ * widgets_config/nav_menus already use), not scoped per active theme.
+ * Switching themes does not reset or lose values; a future per-theme
+ * scoping pass is tracked as deferred on TODO.md's LP-034 (Theme update
+ * compatibility / child theme support).
+ *
+ * Values are always plain strings — Checkbox stores '1'/'0', Number
+ * stores a numeric string, Color stores a '#rrggbb' hex string or '' for
+ * "inherit the active theme's own default" (see ThemeOptionField's
+ * $allowEmpty docblock for why Colors specifically need that empty state
+ * and Typography/Layout don't).
+ */
+final class ThemeOptions
+{
+    private const OPTION_KEY = 'theme_options';
+
+    /** @var array<string, ThemeOptionSection> */
+    private array $sections = [];
+
+    /** @var array<string, ThemeOptionField> */
+    private array $fields = [];
+
+    /** @var array<string, string>|null */
+    private ?array $values = null;
+
+    public function __construct(private readonly PressConfig $config)
+    {
+    }
+
+    public function registerSection(string $key, string $label, string $description = ''): void
+    {
+        $this->sections[$key] = new ThemeOptionSection($key, $label, $description);
+    }
+
+    public function registerField(ThemeOptionField $field): void
+    {
+        $this->fields[$field->key] = $field;
+    }
+
+    /**
+     * Core's own built-in options — called once from bootstrap, before
+     * the active theme's functions.php gets a chance (via the
+     * 'register_theme_options' action) to register more. Scoped to
+     * Colors, Typography, and Layout for this first pass; Homepage,
+     * Header, Footer, Blog, Images, and Custom Code (beyond the
+     * pre-existing Custom CSS field) remain deferred — see TODO.md's
+     * LP-034 for the exact remaining checklist.
+     */
+    public function registerStandardOptions(): void
+    {
+        $this->registerSection('colors', 'Colors', 'Overrides the active theme\'s default color palette. Leave a color set to "Use theme default" to keep the theme\'s own choice, including its dark-mode variant.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'accent_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Accent color',
+            cssVariable: '--lp-accent',
+            help: 'Used for links, buttons, and highlighted elements.',
+            allowEmpty: true,
+            previewDefault: '#2271b1',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'text_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Text color',
+            cssVariable: '--lp-text',
+            allowEmpty: true,
+            previewDefault: '#1d2327',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'text_muted_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Muted text color',
+            help: 'Used for dates, metadata, and secondary text.',
+            cssVariable: '--lp-text-muted',
+            allowEmpty: true,
+            previewDefault: '#646970',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'background_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Background color',
+            cssVariable: '--lp-bg',
+            allowEmpty: true,
+            previewDefault: '#ffffff',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'background_alt_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Alternate background color',
+            help: 'Used for the header, footer, and card backgrounds.',
+            cssVariable: '--lp-bg-alt',
+            allowEmpty: true,
+            previewDefault: '#f7f7f8',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'border_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Border color',
+            cssVariable: '--lp-border',
+            allowEmpty: true,
+            previewDefault: '#dcdcde',
+        ));
+
+        $this->registerSection('typography', 'Typography', 'Controls the fonts and text sizing used across every public page.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'body_font',
+            section: 'typography',
+            type: ThemeOptionType::Select,
+            label: 'Body font',
+            default: 'serif',
+            cssVariable: '--lp-font-body',
+            choices: [
+                'serif' => 'Serif (Georgia)',
+                'sans' => 'Sans-serif',
+                'system' => 'System UI',
+                'mono' => 'Monospace',
+            ],
+            cssValueMap: [
+                'serif' => 'Georgia, "Times New Roman", serif',
+                'sans' => '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+                'system' => 'system-ui, sans-serif',
+                'mono' => '"SF Mono", Consolas, "Courier New", monospace',
+            ],
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'base_font_size',
+            section: 'typography',
+            type: ThemeOptionType::Number,
+            label: 'Base font size (px)',
+            default: '16',
+            cssVariable: '--lp-font-size-base',
+            min: 14,
+            max: 22,
+            cssUnit: 'px',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'line_height',
+            section: 'typography',
+            type: ThemeOptionType::Select,
+            label: 'Line height',
+            default: '1.6',
+            cssVariable: '--lp-line-height-base',
+            choices: [
+                '1.4' => 'Compact',
+                '1.6' => 'Default',
+                '1.8' => 'Relaxed',
+            ],
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'google_fonts_url',
+            section: 'typography',
+            type: ThemeOptionType::Url,
+            label: 'Google Fonts URL',
+            help: 'Paste a stylesheet URL from fonts.google.com ("Get font" → "Get embed code" → the <link href="..."> value). Only fonts.googleapis.com URLs are accepted.',
+            allowEmpty: true,
+            allowedHosts: ['fonts.googleapis.com'],
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'google_fonts_family',
+            section: 'typography',
+            type: ThemeOptionType::Text,
+            label: 'Google Fonts font family',
+            cssVariable: '--lp-font-body',
+            help: 'The font-family value from the same embed code, e.g. \'Inter\', sans-serif — overrides the Body font selection above when set. Has no effect without a Google Fonts URL above.',
+            allowEmpty: true,
+        ));
+
+        $this->registerSection('layout', 'Layout', 'Controls the width of the site\'s header, content, and footer.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'content_width',
+            section: 'layout',
+            type: ThemeOptionType::Select,
+            label: 'Content width',
+            default: '960px',
+            cssVariable: '--lp-max-width',
+            choices: [
+                '720px' => 'Narrow',
+                '960px' => 'Default',
+                '1200px' => 'Wide',
+                'none' => 'Full width',
+            ],
+        ));
+    }
+
+    /**
+     * @return array<string, ThemeOptionSection> keyed by section key, in registration order
+     */
+    public function sections(): array
+    {
+        return $this->sections;
+    }
+
+    /**
+     * @return array<int, ThemeOptionField>
+     */
+    public function fieldsForSection(string $sectionKey): array
+    {
+        return array_values(array_filter(
+            $this->fields,
+            static fn (ThemeOptionField $field): bool => $field->section === $sectionKey,
+        ));
+    }
+
+    public function field(string $key): ?ThemeOptionField
+    {
+        return $this->fields[$key] ?? null;
+    }
+
+    public function value(string $key): string
+    {
+        $field = $this->field($key);
+
+        if ($field === null) {
+            return '';
+        }
+
+        $stored = $this->loadValues()[$key] ?? null;
+
+        return $stored ?? $field->default;
+    }
+
+    /**
+     * Validates and persists a single field's value. Returns false (and
+     * leaves the stored value untouched) when validation fails, so the
+     * admin view can report a per-field error instead of silently storing
+     * something invalid — LP-034's "Display validation errors".
+     */
+    public function set(string $key, string $rawValue): bool
+    {
+        $field = $this->field($key);
+
+        if ($field === null) {
+            return false;
+        }
+
+        $sanitized = $this->sanitize($field, $rawValue);
+
+        if ($sanitized === null) {
+            return false;
+        }
+
+        $values = $this->loadValues();
+        $values[$key] = $sanitized;
+        $this->persist($values);
+
+        return true;
+    }
+
+    public function reset(string $key): void
+    {
+        $field = $this->field($key);
+
+        if ($field === null) {
+            return;
+        }
+
+        $values = $this->loadValues();
+        unset($values[$key]);
+        $this->persist($values);
+    }
+
+    public function resetSection(string $sectionKey): void
+    {
+        $values = $this->loadValues();
+
+        foreach ($this->fieldsForSection($sectionKey) as $field) {
+            unset($values[$field->key]);
+        }
+
+        $this->persist($values);
+    }
+
+    public function resetAll(): void
+    {
+        $this->persist([]);
+    }
+
+    /**
+     * Renders every field with a $cssVariable as one `:root { ... }`
+     * block, meant to be echoed inside a <style> tag in <head> — see
+     * include/helpers.php's theme_options_css(). A field with an empty,
+     * $allowEmpty-permitted value is skipped entirely rather than
+     * emitting an override — for a Color this means the active theme's
+     * own :root default, including its `prefers-color-scheme: dark`
+     * variant, keeps controlling that token; for google_fonts_family it
+     * means body_font's own choice (registered earlier, so its
+     * declaration for the same --lp-font-body comes first in the block)
+     * keeps controlling it instead. Every field without $allowEmpty has a
+     * real default and is always emitted.
+     *
+     * accent_color gets a second derived declaration for
+     * --lp-accent-hover (color-mix(), already used elsewhere in the
+     * default theme's own stylesheet for its focus-ring tint) so a
+     * custom accent color doesn't leave hover/focus states pointing at
+     * the theme's original, now-mismatched, hover color.
+     */
+    public function cssVariables(): string
+    {
+        $declarations = [];
+
+        foreach ($this->fields as $field) {
+            if ($field->cssVariable === null) {
+                continue;
+            }
+
+            $value = $this->value($field->key);
+
+            if ($value === '' && $field->allowEmpty) {
+                continue;
+            }
+
+            $cssValue = $field->cssValueMap[$value] ?? $value;
+            $declarations[] = $field->cssVariable . ': ' . $cssValue . $field->cssUnit . ';';
+
+            if ($field->key === 'accent_color') {
+                $declarations[] = '--lp-accent-hover: color-mix(in srgb, ' . $value . ' 80%, black);';
+            }
+        }
+
+        if ($declarations === []) {
+            return '';
+        }
+
+        return ':root{' . implode('', $declarations) . '}';
+    }
+
+    private function sanitize(ThemeOptionField $field, string $rawValue): ?string
+    {
+        $rawValue = trim($rawValue);
+
+        return match ($field->type) {
+            // A field with a $cssVariable gets its value interpolated
+            // directly into a `:root { ... }` declaration inside a plain
+            // <style> block (see cssVariables()) — stripping these four
+            // characters (never legitimate in a font-family/CSS value)
+            // blocks a trivial break-out of that one declaration/rule/tag,
+            // the same "defensive, not a security boundary" posture
+            // custom_css()'s own `</style` strip already documents for
+            // this same trust level (manage_themes administrators only).
+            ThemeOptionType::Text, ThemeOptionType::Textarea => $field->cssVariable !== null
+                ? str_replace(['{', '}', '<', '>'], '', $rawValue)
+                : $rawValue,
+            ThemeOptionType::Checkbox => $rawValue === '1' ? '1' : '0',
+            ThemeOptionType::Select => array_key_exists($rawValue, $field->choices) ? $rawValue : null,
+            ThemeOptionType::Color => $this->sanitizeColor($field, $rawValue),
+            ThemeOptionType::Number => $this->sanitizeNumber($field, $rawValue),
+            ThemeOptionType::Url => $this->sanitizeUrl($field, $rawValue),
+        };
+    }
+
+    private function sanitizeColor(ThemeOptionField $field, string $rawValue): ?string
+    {
+        if ($rawValue === '') {
+            return $field->allowEmpty ? '' : null;
+        }
+
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $rawValue) === 1 ? strtolower($rawValue) : null;
+    }
+
+    /**
+     * Requires https and (when the field restricts it) an exact host
+     * match — see ThemeOptionField::$allowedHosts. Deliberately not a
+     * general-purpose "is this a URL" check: the point is to stop this
+     * field from becoming a way to load an arbitrary stylesheet from an
+     * arbitrary host on every visitor's browser.
+     */
+    private function sanitizeUrl(ThemeOptionField $field, string $rawValue): ?string
+    {
+        if ($rawValue === '') {
+            return $field->allowEmpty ? '' : null;
+        }
+
+        if (filter_var($rawValue, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        $parts = parse_url($rawValue);
+
+        if (($parts['scheme'] ?? '') !== 'https') {
+            return null;
+        }
+
+        if ($field->allowedHosts !== [] && !in_array($parts['host'] ?? '', $field->allowedHosts, true)) {
+            return null;
+        }
+
+        return $rawValue;
+    }
+
+    private function sanitizeNumber(ThemeOptionField $field, string $rawValue): ?string
+    {
+        if (!is_numeric($rawValue)) {
+            return null;
+        }
+
+        $number = (float) $rawValue;
+
+        if ($field->min !== null && $number < $field->min) {
+            return null;
+        }
+
+        if ($field->max !== null && $number > $field->max) {
+            return null;
+        }
+
+        // Whole-number fields (every Number field registered today) stay
+        // formatted without a trailing ".0" so the stored value matches
+        // what a plain <input type="number" step="1"> submits.
+        return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function loadValues(): array
+    {
+        if ($this->values !== null) {
+            return $this->values;
+        }
+
+        $decoded = json_decode((string) $this->config->option(self::OPTION_KEY, '{}'), true);
+        $this->values = is_array($decoded) ? array_map(strval(...), $decoded) : [];
+
+        return $this->values;
+    }
+
+    /**
+     * @param array<string, string> $values
+     */
+    private function persist(array $values): void
+    {
+        $this->values = $values;
+        $this->config->setOption(self::OPTION_KEY, json_encode($values, JSON_THROW_ON_ERROR));
+    }
+}

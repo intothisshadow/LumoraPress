@@ -280,7 +280,7 @@ $allTagsForFilter = $kernel->tags->listAll();
 
 <section class="lp-admin__panel">
     <h2>Search &amp; Filter</h2>
-    <form method="get" action="<?= esc_url(admin_url('posts/all-posts')) ?>">
+    <form method="get" action="<?= esc_url(admin_url('posts/all-posts')) ?>" class="lp-admin__filter-form">
         <?php if ($statusFilter !== null): ?>
             <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
         <?php endif; ?>

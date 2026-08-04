@@ -6,6 +6,53 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Font Awesome (LPP-002), Lumora Press's first bundled first-party plugin
+  (`content/plugins/font-awesome`) — first-pass "core plugin foundation"
+  scope. A new Settings &rsaquo; Appearance &rsaquo; Font Awesome admin
+  page (only visible while the plugin is active) lets an administrator
+  enable Font Awesome (off by default, so nothing loads until opted in),
+  choose CDN or self-hosted delivery, pin a version, and turn on
+  compatibility mode (loads the v4-shims stylesheet alongside Font Awesome
+  6 for old `fa fa-camera`-style class names). Adds an `[icon
+  name="camera"]` shortcode (with `style`/`size`/`rotate`/`flip`/
+  `animation`/`color`/`class`/`label` attributes, decorative icons marked
+  `aria-hidden`, labeled ones getting `role="img" aria-label`) usable in
+  any post/page body, plus a small developer API: `lp_fontawesome_enabled()`,
+  `lp_fontawesome_enqueue()`, `lp_icon()`, and `lp_register_icon_pack()`.
+  Self-hosted delivery's origin is added to the Content-Security-Policy
+  automatically. Two small pieces of core plumbing landed alongside it,
+  both generically reusable by future plugins rather than Font-Awesome-
+  specific: `LumoraPress\Core\ActiveConfig` (a `PressConfig` static bridge
+  matching `ActiveTheme`/`ActiveContentRenderer`'s existing shape) and a
+  new `do_action('head_assets')` call in the default theme's `header.php`
+  just before `</head>` — a `wp_head()`-equivalent extension point that
+  didn't exist anywhere in this codebase before now. See `TODO-PLUGINS.md`'s
+  LPP-002 for exactly what's deferred (Pro/Kit support, SVG rendering, the
+  icon picker, the admin diagnostics page, icon metadata caching,
+  localization).
+- Theme Options (LP-034, originally scoped as LP-023 — see DECISIONS.md's
+  "LP-023 merged into LP-034" entry): a new Appearance &rsaquo; Theme Options
+  admin page lets administrators customize the active theme's colors,
+  typography, and content width without editing CSS. Backed by a new
+  `LumoraPress\Core\Theme\ThemeOptions` service — themes and plugins can
+  register their own sections/fields via `add_action('register_theme_options',
+  ...)`, the same hook-based extensibility pattern already used elsewhere in
+  this app. Nine built-in options ship this pass: six colors (Accent, Text,
+  Muted Text, Background, Alt Background, Border — each independently
+  resettable to "Use theme default," which preserves the default theme's own
+  dark-mode color variants rather than forcing a light-mode value onto every
+  visitor), three typography/layout controls (Body font, Base font size, Line
+  height, Content width), plus a Google Fonts URL + font-family pair (a new
+  Url control type, restricted by an allowed-hosts check to
+  `fonts.googleapis.com` so this field can't become a way to load an
+  arbitrary stylesheet on every visitor's browser) that overrides the Body
+  font selection when set. Values are exposed to themes via a new
+  `theme_option()` helper and rendered as CSS custom properties
+  (`theme_options_css()`) in `<head>`, reusing the default theme's existing
+  `--lp-*` token names so no theme markup changes were needed beyond adding
+  three new typography tokens. See TODO.md's LP-034 for exactly what's
+  covered vs. still deferred (Homepage/Header/Footer/Blog options, per-theme
+  option scoping, Import/Export, and more).
 - Posts (LP-008) gained most of its remaining checklist (configurable
   permalinks deliberately excluded — see TODO.md). Publishing workflow:
   Pending Review status (Contributors submit for review instead of only
@@ -231,6 +278,45 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- **The Content-Security-Policy header silently blocked every inline
+  `<style>` tag**, including the pre-existing Custom CSS field — not just
+  the new Theme Options CSS. `style-src 'self'` allows no inline styles
+  without a nonce or hash, and CSP enforcement fails silently client-side
+  (no console error, no PHP error), so this had likely been quietly
+  breaking Custom CSS since it shipped. Fixed with a new per-request nonce
+  (`LumoraPress\Core\Security\CspNonce`) threaded through the existing
+  `csp_directives` filter and applied to both inline `<style>` tags in the
+  default theme's `header.php`; `fonts.googleapis.com`/`fonts.gstatic.com`
+  were also added to `style-src`/`font-src` for the new Google Fonts
+  option, which would have hit the same class of silent block. See
+  DECISIONS.md for the full root-cause story. The same-day follow-up below
+  covers the three admin views that hit a related but different problem.
+- **Three admin views' bulk-progress bars and menu structure indents used
+  inline `style="..."` attributes**, a different CSP problem than inline
+  `<style>` tags — nonces only cover `<style>`/`<script>` elements, not
+  attributes, so these were very likely silently non-functional too.
+  `admin/views/media/thumbnails.php`, `admin/views/media/import.php`
+  (progress bar width), and `admin/views/appearance/menus.php` (menu item
+  indent) now emit `data-style-width`/`data-style-margin-left` attributes
+  instead; a new `admin/assets/js/dynamic-style.js`, enqueued globally from
+  `admin/views/layout-footer.php`, applies them as real style properties on
+  `DOMContentLoaded` — setting `element.style.<property>` via script is
+  unaffected by `style-src`, unlike inline markup.
+- **Follow-up, same day: the Tag Cloud widget's public-facing per-tag font
+  size hit the same inline-`style`-attribute CSP problem noted as a known
+  gap above.** `app/Core/Widgets/CoreWidgets.php`'s `tag_cloud` widget now
+  emits `data-style-font-size="1.4em"` instead of `style="font-size:
+  1.4em"`. Since this is public-facing rather than admin-only, the fix
+  follows the "Public-Facing CSS Rule" and lives in the default theme
+  itself: a new `content/themes/default/assets/js/dynamic-style.js` (same
+  `data-style-*` → `element.style.<property>` pattern as the admin version
+  above, but theme-scoped) is enqueued from the theme's own `footer.php`.
+- **The Posts and Media "Search & Filter" panels stacked one full-width
+  field per line**, pushing the panel to several screen-heights tall on
+  wide viewports. Both filter `<form>`s (`admin/views/posts/all-posts.php`,
+  `admin/views/media/media.php`) now use a new `.lp-admin__filter-form`
+  wrapping flex-row layout (`admin/assets/css/admin.css`) instead, matching
+  the existing flex-row pattern already used for the bulk-actions bar.
 - **Password reset emails linked to a root-relative URL** (e.g.
   `/lumorapress/admin/reset-password`) instead of a full address the
   recipient's mail client could resolve. `admin/index.php` now builds the

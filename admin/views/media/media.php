@@ -696,7 +696,7 @@ $allFolders = $folderService->listAll();
         <div class="lp-media-manager__main">
             <section class="lp-admin__panel">
                 <h2>Search &amp; Filter</h2>
-                <form method="get" action="<?= esc_url(admin_url('media/media')) ?>">
+                <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__filter-form">
                     <?php if ($currentFolderRaw !== ''): ?>
                         <input type="hidden" name="folder" value="<?= esc_attr($currentFolderRaw) ?>">
                     <?php endif; ?>

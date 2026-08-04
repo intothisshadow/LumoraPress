@@ -84,7 +84,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <div class="lp-alert lp-alert--success">
         <p>Regenerating thumbnails: <?= $thumbProgress ?> of <?= $thumbTotal ?> processed.</p>
         <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $thumbPercent ?>" aria-valuemin="0" aria-valuemax="100">
-            <div class="lp-thumbnails__progress-bar" style="width: <?= $thumbPercent ?>%;"></div>
+            <div class="lp-thumbnails__progress-bar" data-style-width="<?= $thumbPercent ?>%"></div>
         </div>
         <?php if (!$thumbDone): ?>
             <form method="post" action="<?= esc_url(admin_url('media/thumbnails')) ?>" id="thumb-bulk-continue">

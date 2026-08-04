@@ -20,6 +20,7 @@ use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Theme\ThemeOptions;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
@@ -99,6 +100,7 @@ final class Kernel
         public readonly PasswordResetService $passwordResets,
         public readonly PasswordResetThrottle $passwordResetThrottle,
         public readonly Mailer $mailer,
+        public readonly ThemeOptions $themeOptions,
     ) {
     }
 }

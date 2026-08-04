@@ -266,6 +266,19 @@ $subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
 // Icons (LP-053) are purely decorative — see layout-header.php's
 // aria-hidden treatment — so they're plain emoji, no icon font/SVG sprite
 // dependency, matching Lumora Gallery's admin sidebar.
+/*
+ * LPP-002: the Font Awesome plugin's settings page only appears under
+ * Appearance while the plugin is active — same "hidden when inactive"
+ * behavior a real WordPress-style plugin settings page has, and avoids a
+ * dead menu entry pointing at a view that calls into a class the plugin
+ * manager never required this request (see PluginManager::loadActive(),
+ * called earlier in include/bootstrap.php). Mirrors admin/views/
+ * plugins.php's own $readActivePlugins closure.
+ */
+$activePluginsRaw = $kernel->config->option('active_plugins', '[]');
+$activePlugins = is_string($activePluginsRaw) ? (json_decode($activePluginsRaw, true) ?: []) : (array) $activePluginsRaw;
+$fontAwesomeActive = in_array('font-awesome', $activePlugins, true);
+
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
     'posts' => [
@@ -301,10 +314,12 @@ $menu = [
         'default_child' => 'themes',
         'children' => [
             'themes' => ['label' => 'Themes', 'icon' => '🖌️', 'capability' => 'manage_themes'],
+            'theme-options' => ['label' => 'Theme Options', 'icon' => '🎛️', 'capability' => 'manage_themes'],
             'widgets' => ['label' => 'Widgets', 'icon' => '🧩', 'capability' => 'manage_themes'],
             'menus' => ['label' => 'Menus', 'icon' => '🧭', 'capability' => 'manage_themes'],
             'custom-css' => ['label' => 'Custom CSS', 'icon' => '🎨', 'capability' => 'manage_themes'],
             'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes'],
+            ...($fontAwesomeActive ? ['font-awesome' => ['label' => 'Font Awesome', 'icon' => '🅰️', 'capability' => 'manage_themes']] : []),
         ],
     ],
     'plugins' => ['label' => 'Plugins', 'icon' => '🔌', 'capability' => 'manage_plugins'],

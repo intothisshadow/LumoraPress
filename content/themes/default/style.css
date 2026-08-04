@@ -18,6 +18,9 @@ Version: 0.1.0
     --lp-accent-hover: #135e96;
     --lp-radius: 4px;
     --lp-max-width: 960px;
+    --lp-font-body: Georgia, "Times New Roman", serif;
+    --lp-font-size-base: 16px;
+    --lp-line-height-base: 1.6;
     --lp-success-bg: #edfaef;
     --lp-success-border: #00a32a;
     --lp-success-text: #005c15;
@@ -54,10 +57,11 @@ Version: 0.1.0
 
 body.lp-site {
     margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: var(--lp-font-body);
+    font-size: var(--lp-font-size-base);
     background: var(--lp-bg);
     color: var(--lp-text);
-    line-height: 1.6;
+    line-height: var(--lp-line-height-base);
 }
 
 a {

@@ -1797,6 +1797,34 @@ select:focus {
     font-weight: 600;
 }
 
+/*
+ * Search & Filter panels (Posts, Media): lays the .lp-field items out in a
+ * wrapping row instead of one full-width field per line, so a panel with
+ * five or six filters takes one or two rows instead of stacking to the
+ * height of the whole viewport.
+ */
+.lp-admin__filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+}
+
+.lp-admin__filter-form .lp-field {
+    flex: 1 1 180px;
+    min-width: 160px;
+    margin: 0;
+}
+
+.lp-admin__filter-form .lp-button {
+    flex: 0 0 auto;
+}
+
+.lp-admin__filter-form .lp-field__hint {
+    flex-basis: 100%;
+    margin: -0.25rem 0 0;
+}
+
 /* Posts list table */
 
 .lp-table {

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Http\SiteUrl;
+use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Theme\SiteBranding;
+use LumoraPress\Core\Theme\ThemeOptionsBridge;
 
 /**
  * General-purpose output escaping and localization helpers, available
@@ -348,6 +350,50 @@ if (!function_exists('custom_css')) {
     }
 }
 
+if (!function_exists('theme_option')) {
+    /**
+     * The current value of a registered Theme Option (LP-034), by key —
+     * either the administrator's saved value or the field's own default
+     * if it was never set. Returns '' for an unknown key rather than
+     * throwing, since a theme checking for an option a plugin hasn't
+     * registered yet (or that a different theme registered) is a normal,
+     * non-error case.
+     */
+    function theme_option(string $key): string
+    {
+        return ThemeOptionsBridge::instance()->value($key);
+    }
+}
+
+if (!function_exists('theme_options_css')) {
+    /**
+     * Every registered Theme Option with a $cssVariable, rendered as one
+     * `:root { --var: value; ... }` block — meant to be echoed inside a
+     * <style> tag in <head>, immediately after the theme's own stylesheet
+     * link so the cascade lets these values override it. See
+     * ThemeOptions::cssVariables() for exactly which fields are included.
+     */
+    function theme_options_css(): string
+    {
+        return ThemeOptionsBridge::instance()->cssVariables();
+    }
+}
+
+if (!function_exists('csp_style_nonce')) {
+    /**
+     * This request's Content-Security-Policy nonce — every inline
+     * <style> tag a theme emits must carry `nonce="<?= csp_style_nonce() ?>"`
+     * or the default `style-src 'self'` policy silently drops it in the
+     * browser (see CspNonce's own docblock for why this is so easy to
+     * miss). Not needed for inline `style="..."` attributes — CSP nonces
+     * only apply to <style>/<script> elements, not attributes.
+     */
+    function csp_style_nonce(): string
+    {
+        return CspNonce::value();
+    }
+}
+
 if (!function_exists('home_url')) {
     /**
      * Like site_url(), but returns an absolute URL (scheme + host +
@@ -391,5 +437,67 @@ if (!function_exists('canonical_url')) {
         $url = home_url(ltrim($path, '/'));
 
         return $query === [] ? $url : $url . '?' . http_build_query($query);
+    }
+}
+
+/*
+ * LPP-002 (Font Awesome) developer API. Plain hook-based facades rather
+ * than a static bridge to a plugin class: the Font Awesome plugin may not
+ * be installed or active, and add_filter()/apply_filters()/do_action()
+ * are always safe to call whether or not anything is listening (they fall
+ * through to the given default), so a theme/plugin calling these never
+ * needs a function_exists() or "is this plugin active" guard of its own.
+ */
+
+if (!function_exists('lp_fontawesome_enabled')) {
+    function lp_fontawesome_enabled(): bool
+    {
+        return (bool) apply_filters('lp_fontawesome_enabled', false);
+    }
+}
+
+if (!function_exists('lp_fontawesome_enqueue')) {
+    /**
+     * Signals that the current page needs Font Awesome's stylesheet — call
+     * this from a theme's header.php (or anywhere before it) when the
+     * theme's own markup uses `lp_icon()`/hand-written `fa-*` classes
+     * outside the `[icon]` shortcode, so the Font Awesome plugin's
+     * (deferred) per-request diagnostics can attribute the load to it. Has
+     * no effect on whether the stylesheet actually loads — see
+     * FontAwesomeService::printHeadLinks()'s docblock for why that's
+     * gated purely on the plugin's "enabled" setting.
+     */
+    function lp_fontawesome_enqueue(): void
+    {
+        do_action('lp_fontawesome_enqueue');
+    }
+}
+
+if (!function_exists('lp_icon')) {
+    /**
+     * Renders one icon as `<i>` markup (e.g. `lp_icon('camera', ['label'
+     * => 'Camera'])`). Returns '' if no icon plugin is active/enabled —
+     * always safe to call unconditionally from theme markup. See
+     * FontAwesomeService::icon() for the full $args shape (style, size,
+     * rotate, flip, animation, color, class, label).
+     *
+     * @param array<string, mixed> $args
+     */
+    function lp_icon(string $name, array $args = []): string
+    {
+        return (string) apply_filters('lp_icon', '', $name, $args);
+    }
+}
+
+if (!function_exists('lp_register_icon_pack')) {
+    /**
+     * Lets a theme/plugin register an additional icon pack (e.g. a custom
+     * SVG set) alongside Font Awesome's own "fa" pack.
+     *
+     * @param array<string, mixed> $config
+     */
+    function lp_register_icon_pack(string $key, array $config): void
+    {
+        do_action('lp_register_icon_pack', $key, $config);
     }
 }

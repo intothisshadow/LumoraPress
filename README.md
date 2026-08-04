@@ -80,6 +80,19 @@ Lumora Press follows a small service-oriented architecture rather than a full fr
 - **`LumoraPress\Core\Theme\ThemeRenderer`** — locates and renders classic
   PHP theme templates (`header.php`, `single.php`, etc.), with `get_header()`
   / `get_footer()` / `get_sidebar()` helpers available inside templates.
+- **`LumoraPress\Core\Theme\ThemeOptions`** — the Theme Options system
+  (Appearance &rsaquo; Theme Options): themes and plugins register sections and
+  fields (`ThemeOptionField`, one of `ThemeOptionType::{Text,Textarea,Number,
+  Checkbox,Select,Color,Url}`) via `add_action('register_theme_options', function
+  (ThemeOptions $options) { ... })`, and the admin page + validation +
+  storage are generated automatically. A field with a `cssVariable` is
+  exposed to every public page as a CSS custom property via the
+  `theme_options_css()` template helper (or read directly with
+  `theme_option($key)`); core ships eleven built-in options — Colors (Accent,
+  Text, Muted Text, Background, Alt Background, Border), Typography (Body
+  font, Base font size, Line height, Google Fonts URL + font family — the
+  URL field is restricted to `fonts.googleapis.com`), and Layout (Content
+  width).
 - **`LumoraPress\Core\Widgets\WidgetManager`** and
   **`LumoraPress\Core\Menus\MenuManager`** — sidebar/widget and nav-menu
   registration and rendering, exposed procedurally for theme authors.
@@ -226,9 +239,14 @@ them via FTP/SFTP or your hosting file manager).
   automatic backup and rollback either way.
 - **Maintenance mode** — take the public site offline for visitors while
   admins keep working.
-- **Appearance** — theme browser, branding, custom CSS, widgets,
-  navigation menus, and a built-in theme file editor.
+- **Appearance** — theme browser, branding, custom CSS, Theme Options
+  (colors/typography/layout, no CSS editing required), widgets, navigation
+  menus, and a built-in theme file editor.
 - **Plugin browser** — install and manage plugins from the admin panel.
+- **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
+  developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
+  with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
+  Font Awesome, off by default).
 - **Media Manager** — uploads, virtual folders, metadata, thumbnail
   generation, a lightbox viewer, download statistics for document/
   archive/audio/video files, and usage tracking with delete-time
