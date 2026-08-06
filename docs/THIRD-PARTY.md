@@ -175,11 +175,81 @@ version.
   - Spotify — `https://open.spotify.com`
   - CodePen — `https://codepen.io`
 - **Date added:** 2026-08-04
-- **Notes:** Twitter/X is deliberately not supported — see `TODO.md`'s
-  LP-023 — because it has no plain-iframe embed, only a script-based one
-  (`platform.twitter.com/widgets.js`), which is a materially different
-  (and heavier) third-party dependency than the other five and was left
-  for a follow-up rather than folded into this first pass.
+
+## Twitter/X Auto-Embed (`platform.twitter.com/widgets.js`)
+
+- **Purpose:** LP-070's Twitter/X provider for the same Auto-Embed feature
+  above — split out from it because, unlike the five iframe-only
+  providers, Twitter/X has no plain-iframe embed. `EmbedService::wrap()`
+  instead emits a `<blockquote class="twitter-tweet">` and
+  `content/themes/default/footer.php` conditionally loads
+  `platform.twitter.com/widgets.js`, which scans the page on load and
+  replaces each matching blockquote with its own rendered iframe. Unlike
+  the iframe-only providers above, this one *does* download and execute a
+  third-party script, so it gets its own entry rather than folding into
+  the iframe-only list.
+- **Current version:** N/A — Twitter/X does not publish a pinned/versioned
+  build of `widgets.js`; it is always loaded from the unversioned
+  `https://platform.twitter.com/widgets.js` URL Twitter/X itself
+  documents for this purpose.
+- **Date added:** 2026-08-06
+- **Date last updated:** 2026-08-06
+- **Loaded from:** `platform.twitter.com` directly (not jsDelivr — this is
+  Twitter/X's own hosted script, not a package on npm/GitHub).
+- **Source URL:** https://developer.x.com/en/docs/x-for-websites/javascript-api/guides/set-up-twitter-for-websites
+- **License:** Proprietary (Twitter/X's own hosted script; not
+  redistributed by Lumora Press).
+- **Local installation path:** N/A — not bundled, and never will be; this
+  is the one third-party asset in this file that Lumora Press does not
+  control the version of at all.
+- **Homepage/Documentation URL:** https://developer.x.com/en/docs/x-for-websites/javascript-api/guides/set-up-twitter-for-websites
+- **Notes:** Loaded only when Settings &rsaquo; Embeds' Twitter/X toggle
+  is on **and** the current page actually rendered a tweet embed
+  (`ScriptEmbeds::isUsed('twitter')`, mirroring `MediaViewer`'s identical PhotoSwipe
+  gating) — a page with no tweet links loads nothing extra. Widens the
+  Content-Security-Policy's `script-src` and `frame-src` (for
+  `platform.twitter.com`) and `connect-src` (for
+  `syndication.twitter.com`, which `widgets.js` calls to fetch a tweet's
+  content) — see `EmbedService::filterCsp()`.
+
+## Bluesky Auto-Embed (`embed.bsky.app/static/embed.js`)
+
+- **Purpose:** LP-071's Bluesky provider for the same Auto-Embed feature —
+  the same script+blockquote shape as Twitter/X above (`EmbedService::wrap()`
+  emits `<blockquote class="bluesky-embed">`, and
+  `content/themes/default/footer.php` conditionally loads
+  `embed.bsky.app/static/embed.js`, which scans the page and replaces each
+  matching blockquote with its own rendered iframe), but with one further
+  difference from every other provider in this file: Bluesky's blockquote
+  needs a resolved AT-URI and content hash that cannot be derived from the
+  pasted URL alone, so this is the one provider where Lumora Press itself
+  makes an outbound request — once, at save time, via
+  `BlueskyResolverService` (`app/Services/BlueskyResolverService.php`),
+  never at render time. See that class's own docblock and `EmbedService`'s
+  class docblock for the full reasoning; `TODO.md`'s LP-071 records the
+  architecture decision.
+- **Current version:** N/A — same as Twitter/X's `widgets.js` above, no
+  pinned/versioned build exists; loaded from the unversioned
+  `https://embed.bsky.app/static/embed.js` URL Bluesky's own docs specify.
+- **Date added:** 2026-08-06
+- **Date last updated:** 2026-08-06
+- **Loaded from:** `embed.bsky.app` directly (not jsDelivr — Bluesky's own
+  hosted script and oEmbed endpoint, not a package on npm/GitHub).
+- **Source URL:** https://docs.bsky.app/docs/advanced-guides/oembed
+- **License:** Proprietary (Bluesky's own hosted script/API; not
+  redistributed by Lumora Press).
+- **Local installation path:** N/A — not bundled, and never will be.
+- **Homepage/Documentation URL:** https://docs.bsky.app/docs/advanced-guides/oembed
+- **Notes:** The `embed.js` script tag is loaded only when Settings &rsaquo;
+  Embeds' Bluesky toggle is on **and** the current page actually rendered a
+  resolved Bluesky embed (`ScriptEmbeds::isUsed('bluesky')`, same gating
+  shape as Twitter/X and PhotoSwipe above). Separately, the one-time
+  `embed.bsky.app/oembed` resolution request only fires from the
+  `post_saved`/`page_saved` hooks in `include/bootstrap.php`, and only
+  while the Bluesky toggle is on — a disabled toggle means this app never
+  contacts Bluesky's servers at all, matching every other provider's
+  on/off behavior. Widens the Content-Security-Policy's `script-src` and
+  `frame-src` for `embed.bsky.app` — see `EmbedService::filterCsp()`.
 
 ## CSS frameworks
 

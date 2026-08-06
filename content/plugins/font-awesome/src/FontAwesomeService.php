@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Core logic for the bundled Font Awesome plugin (LPP-002): settings, CDN/self-hosted CSS URLs, and icon markup rendering.
+ *
+ * @package LumoraPress
+ * @subpackage Plugins
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Plugins\FontAwesome;

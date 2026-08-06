@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * The admin Settings > Embeds screen (LP-023/LP-070/LP-071): Auto-Embed provider toggles.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
@@ -13,7 +26,10 @@ if (!isset($kernel)) {
  * LP-023: Settings > Embeds. A bare provider URL alone on its own line in
  * a post/page automatically expands into an embedded player when the
  * matching toggle below is on — see EmbedService's own docblock for the
- * detection rules and why this never makes an outbound HTTP request.
+ * detection rules and why this never makes an outbound HTTP request, with
+ * one deliberate exception: Bluesky (LP-071) resolves each post URL once,
+ * at save time, via BlueskyResolverService — see that class's own
+ * docblock.
  */
 $embeds = $kernel->embeds;
 $errors = [];
@@ -24,7 +40,7 @@ if ($form === 'embed_settings' && Csrf::verify('embed_settings', is_string($_POS
 
     $providers = [];
 
-    foreach (['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen'] as $providerKey) {
+    foreach (['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky'] as $providerKey) {
         $providers[$providerKey] = isset($_POST['provider_' . $providerKey]);
     }
 
@@ -46,6 +62,8 @@ $providerLabels = [
     'soundcloud' => 'SoundCloud',
     'spotify' => 'Spotify',
     'codepen' => 'CodePen',
+    'twitter' => 'Twitter/X',
+    'bluesky' => 'Bluesky',
 ];
 ?>
 <h1 class="lp-admin__title">Embeds</h1>
@@ -60,8 +78,10 @@ $providerLabels = [
         When on, pasting a supported link alone on its own line in a post or
         page automatically turns it into an embedded player &mdash; no HTML
         editing required. A link inline within a sentence is always left as
-        a plain link. No provider is ever contacted over the network to
-        build the embed; only the pasted link's own text is used.
+        a plain link. No provider is contacted over the network to build the
+        embed, with one exception: Bluesky links are resolved once against
+        Bluesky's own servers when a post or page containing one is saved,
+        not on every page view &mdash; see the Bluesky note below.
     </p>
 
     <form method="post" action="<?= esc_url(admin_url('settings/embeds')) ?>">
@@ -83,7 +103,7 @@ $providerLabels = [
                     <?= esc_html($providerLabel) ?>
                 </label>
             <?php endforeach; ?>
-            <span class="lp-field__hint">Twitter/X isn't supported yet &mdash; it has no plain-iframe embed, only a script-based one. Other providers can be added by a plugin via the <code>embed_providers</code> filter without touching core.</span>
+            <span class="lp-field__hint">Twitter/X and Bluesky work differently from the others &mdash; neither has a plain-iframe embed, so enabling either loads a small script (from <code>platform.twitter.com</code> or <code>embed.bsky.app</code> respectively) only on pages that actually contain a matching link. Bluesky links are also resolved once against Bluesky's own servers when the post/page is saved, so a rendered Bluesky embed may take an extra save-and-reload to appear the first time a link is pasted. Other providers can be added by a plugin via the <code>embed_providers</code> filter without touching core.</span>
         </fieldset>
 
         <p class="lp-field">

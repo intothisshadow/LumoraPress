@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Virtual media folders (LP-005), purely organizational and independent of a file's actual filesystem location.
+ *
+ * @package LumoraPress
+ * @subpackage Services
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Services;

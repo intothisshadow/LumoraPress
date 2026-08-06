@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * The admin front controller: authenticates the request and dispatches to the matching admin view.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 use LumoraPress\Core\Database\Migrator;

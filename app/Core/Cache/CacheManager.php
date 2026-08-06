@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * The framework-agnostic Cache API (LP-037): one instance per request, delegating actual purging to whichever driver is active.
+ *
+ * @package LumoraPress
+ * @subpackage Cache
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core\Cache;

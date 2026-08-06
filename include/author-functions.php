@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Author display/link helpers (LP-008) for theme templates, backed by UserService via the Authors static bridge.
+ *
+ * @package LumoraPress
+ * @subpackage Core
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 use LumoraPress\Core\Theme\Authors;

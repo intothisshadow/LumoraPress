@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * Installer success screen shown once install completes.
+ *
+ * @package LumoraPress
+ * @subpackage Installer
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var string $installUrl */
 /** @var string $baseUrl */
 ?>

@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Procedural widget API for themes (register_sidebar(), dynamic_sidebar()) and plugins (register_widget()).
+ *
+ * @package LumoraPress
+ * @subpackage Core
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 use LumoraPress\Core\Widgets\Widgets;

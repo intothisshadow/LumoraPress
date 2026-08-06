@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * The composition root: a single readonly object carrying every request-scoped service, built once in bootstrap.php.
+ *
+ * @package LumoraPress
+ * @subpackage Core
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core;

@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * The "My Profile" admin screen: a user's own account settings.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 

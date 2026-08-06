@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * Installer step 1: database connection details.
+ *
+ * @package LumoraPress
+ * @subpackage Installer
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var array<int, string> $errors */
 /** @var string $suggestedPrefix */
 /** @var string $installUrl */

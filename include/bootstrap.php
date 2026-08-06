@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Central application bootstrap: builds every service, wires hooks, sends the CSP header, and constructs the Kernel.
+ *
+ * @package LumoraPress
+ * @subpackage Core
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 use LumoraPress\Controllers\ApiController;
@@ -51,6 +64,7 @@ use LumoraPress\Core\Widgets\CoreWidgets;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Core\Widgets\Widgets;
 use LumoraPress\Services\AkismetClient;
+use LumoraPress\Services\BlueskyResolverService;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
@@ -341,9 +355,33 @@ $redirects = new RedirectService($database, $tablePrefix);
  * constructor — 'content_html' has no existing subscriber to follow as
  * precedent, so this matches the closest one that does.
  */
-$embeds = new EmbedService($config, $hooks);
+$blueskyResolver = new BlueskyResolverService($database, $tablePrefix);
+$embeds = new EmbedService($config, $hooks, $blueskyResolver);
 add_filter('content_html', [$embeds, 'render']);
 add_filter('csp_directives', [$embeds, 'filterCsp']);
+
+/*
+ * LP-071: Bluesky's embed needs an AT-URI/CID this app can't derive from
+ * a pasted URL by regex (see BlueskyResolverService's own class
+ * docblock) — resolveContent() is the one deliberate, scoped exception to
+ * this file's otherwise-total "auto-embed never makes an outbound
+ * request" rule, run here once per save via the existing 'post_saved'/
+ * 'page_saved' hooks (see PostService/PageService's own docblocks on why
+ * those hooks exist) rather than from render(). Gated on the Bluesky
+ * provider's own toggle so a site with it switched off in Settings >
+ * Embeds never makes this request at all, matching every other
+ * provider's on/off behavior.
+ */
+add_action('post_saved', static function (\LumoraPress\Models\Post $post) use ($blueskyResolver, $embeds): void {
+    if ($embeds->providerEnabled('bluesky')) {
+        $blueskyResolver->resolveContent($post->content);
+    }
+});
+add_action('page_saved', static function (\LumoraPress\Models\Page $page) use ($blueskyResolver, $embeds): void {
+    if ($embeds->providerEnabled('bluesky')) {
+        $blueskyResolver->resolveContent($page->content);
+    }
+});
 
 /*
  * LP-048: core widget types need PostService/PageService/CategoryService/

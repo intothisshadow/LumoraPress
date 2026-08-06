@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * The shared admin page chrome's closing markup, included at the bottom of every admin view.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var \LumoraPress\Core\Kernel $kernel */
 
 if (!isset($kernel)) {

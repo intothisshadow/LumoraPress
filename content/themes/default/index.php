@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * Default theme template for the homepage post listing.
+ *
+ * @package LumoraPress
+ * @subpackage Themes
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var array<int, \LumoraPress\Models\Post> $posts */
 /** @var array{page: int, totalPages: int} $pagination */
 /** @var string|null $page_title */

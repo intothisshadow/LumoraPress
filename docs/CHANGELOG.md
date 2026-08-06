@@ -4,6 +4,36 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Twitter/X Auto-Embed (LP-070): a bare tweet-status link alone on its own
+  line in a post/page now auto-embeds, alongside the five existing
+  Auto-Embed providers (YouTube, Vimeo, SoundCloud, Spotify, CodePen).
+  Unlike those five, Twitter/X has no plain-iframe embed, so `EmbedService`
+  emits a `<blockquote class="twitter-tweet">` instead of an `<iframe>`,
+  and the default theme conditionally loads `platform.twitter.com/widgets.js`
+  (which renders the blockquote into a tweet) only on pages that actually
+  contain one, via a new `ScriptEmbeds` bridge class mirroring the existing
+  `MediaViewer`/PhotoSwipe conditional-loading pattern. Settings &rsaquo;
+  Embeds gains a Twitter/X toggle alongside the other five, and the
+  Content-Security-Policy's `script-src`/`frame-src`/`connect-src`
+  directives widen for `platform.twitter.com`/`syndication.twitter.com`
+  only while that toggle is on.
+- Bluesky Auto-Embed (LP-071): a bare Bluesky post link on its own line
+  auto-embeds the same way, as a seventh Auto-Embed provider. Bluesky's
+  official embed needs a resolved AT-URI and content hash that can't be
+  derived from the pasted link alone, so a new `BlueskyResolverService`
+  resolves and caches each distinct Bluesky link once, when the containing
+  post/page is saved — never on page render — via Bluesky's own oEmbed
+  endpoint; only the two needed values are cached, not Bluesky's raw
+  response. A down or slow Bluesky never blocks saving or breaks the page:
+  an unresolved link simply stays a plain link until a later save resolves
+  it. The default theme conditionally loads `embed.bsky.app/static/
+  embed.js` only on pages that actually contain a resolved Bluesky embed.
+  Settings &rsaquo; Embeds gains a Bluesky toggle, with updated hint text
+  noting this is the one provider that does contact the network (at save
+  time only).
+
 ## [0.5.0] — 2026-08-04
 
 ### Added

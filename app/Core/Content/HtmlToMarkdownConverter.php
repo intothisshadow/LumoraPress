@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Converts already-sanitized HTML back to Markdown, for switching a post/page between Markdown and WYSIWYG editing (LP-016).
+ *
+ * @package LumoraPress
+ * @subpackage Content
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core\Content;

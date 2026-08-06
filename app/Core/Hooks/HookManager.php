@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Priority-ordered action and filter registry, the engine behind the classic add_action()/do_action()/add_filter()/apply_filters() plugin API.
+ *
+ * @package LumoraPress
+ * @subpackage Hooks
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core\Hooks;

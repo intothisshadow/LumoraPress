@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Validates an uploaded update ZIP and stages it into a private directory for review before installation.
+ *
+ * @package LumoraPress
+ * @subpackage Services
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Services;

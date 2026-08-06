@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * The shared admin page chrome: the top nav, sidebar menu, and page header, included at the top of every admin view.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var array<string, array{label: string, icon: string, capability: string|null, default_child?: string, children?: array<string, array{label: string, icon: string, capability: string|null}>}> $menu */
 /** @var string $page */

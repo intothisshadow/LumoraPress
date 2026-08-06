@@ -291,11 +291,14 @@ them via FTP/SFTP or your hosting file manager).
 - **SEO tools** — per-post/page SEO title and meta description overrides,
   canonical URLs, an XML sitemap, JSON-LD structured data, and
   admin-managed URL redirects.
-- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify, or
-  CodePen link on its own line in a post/page and it automatically
-  becomes an embedded player, with no outbound request made to build it
-  (Settings &rsaquo; Embeds). Themes and plugins can register additional
-  providers via `apply_filters('embed_providers', ...)`.
+- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify,
+  CodePen, Twitter/X, or Bluesky link on its own line in a post/page and it
+  automatically becomes an embedded player, tweet, or post (Settings
+  &rsaquo; Embeds). No outbound request is made to build the embed, with
+  one exception: a Bluesky link is resolved once against Bluesky's own
+  servers when the post/page is saved, not on every page view. Themes and
+  plugins can register additional providers via
+  `apply_filters('embed_providers', ...)`.
 - **Default Editor** — a site-wide default content editor (Settings
   &rsaquo; General), with a per-user override on each user's own "My
   Profile" page (or set for them by an administrator) and an optional

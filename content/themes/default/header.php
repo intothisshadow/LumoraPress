@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * Default theme header template: opening HTML, site branding, and primary navigation.
+ *
+ * @package LumoraPress
+ * @subpackage Themes
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var string|null $page_title */
 /** @var \LumoraPress\Models\Post|null $post */
 /** @var \LumoraPress\Models\Page|null $page */

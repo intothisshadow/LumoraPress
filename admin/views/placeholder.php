@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * A generic "this section is not built yet" placeholder for an admin menu entry with no view of its own.
+ *
+ * @package LumoraPress
+ * @subpackage Admin
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var array{label: string, capability: string|null} $activeEntry */
 

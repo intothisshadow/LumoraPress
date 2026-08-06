@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Discovers installed plugins under content/plugins (LP-045) and parses their metadata for the Plugin Browser.
+ *
+ * @package LumoraPress
+ * @subpackage Plugins
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core\Plugin;

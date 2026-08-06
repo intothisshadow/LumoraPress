@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Fetches release metadata from the GitHub Releases API for the administrator-initiated Check for Updates flow (LP-027).
+ *
+ * @package LumoraPress
+ * @subpackage Services
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Services;

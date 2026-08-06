@@ -1,4 +1,17 @@
 <?php
+
+/**
+ * Default theme template shown to visitors while Maintenance Mode is active (LP-033).
+ *
+ * @package LumoraPress
+ * @subpackage Themes
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
 /** @var string $page_title */
 /** @var string $message */
 /** @var \DateTimeImmutable|null $return_at */

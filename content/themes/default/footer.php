@@ -1,3 +1,18 @@
+<?php
+
+/**
+ * Default theme footer template: closing HTML, footer navigation, and conditional third-party script tags.
+ *
+ * @package LumoraPress
+ * @subpackage Themes
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+?>
 </div>
 <footer class="lp-site-footer">
     <div class="lp-site-footer__inner">
@@ -27,6 +42,32 @@
     -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css">
     <script type="module" src="<?= esc_url(theme_url('assets/js/media-viewer.js')) ?>"></script>
+<?php endif; ?>
+<?php if (\LumoraPress\Core\Theme\ScriptEmbeds::isUsed('twitter')): ?>
+    <!--
+        Twitter/X Auto-Embed (LP-070): widgets.js scans the page on load
+        for <blockquote class="twitter-tweet"> markup (emitted by
+        EmbedService::wrap()) and replaces each one with its own rendered
+        iframe. Conditional on ScriptEmbeds::isUsed('twitter') — only set
+        true when a post/page actually contained a matching tweet URL
+        earlier in this same request — so a page with no tweet embeds
+        loads nothing extra. One <script> tag covers every tweet on the
+        page; widgets.js itself scans the whole DOM, so no per-embed
+        loading is needed.
+    -->
+    <script async src="https://platform.twitter.com/widgets.js"></script>
+<?php endif; ?>
+<?php if (\LumoraPress\Core\Theme\ScriptEmbeds::isUsed('bluesky')): ?>
+    <!--
+        Bluesky Auto-Embed (LP-071): embed.js scans the page on load for
+        <blockquote class="bluesky-embed"> markup (emitted by
+        EmbedService::wrap()) and replaces each one with its own rendered
+        iframe. Conditional on ScriptEmbeds::isUsed('bluesky') — only set
+        true when a post/page actually contained a resolved Bluesky post
+        URL earlier in this same request — so a page with no Bluesky
+        embeds loads nothing extra.
+    -->
+    <script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>
 <?php endif; ?>
 </body>
 </html>

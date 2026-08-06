@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Tracks whether the current request rendered a lightbox-wrapped image (LP-031), so footer.php only loads PhotoSwipe on pages that need it.
+ *
+ * @package LumoraPress
+ * @subpackage Themes
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.5.0
+ */
+
 declare(strict_types=1);
 
 namespace LumoraPress\Core\Theme;
