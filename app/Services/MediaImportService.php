@@ -256,6 +256,7 @@ final class MediaImportService
         string $scanRoot,
         array $allowedDirectories,
         array &$mirroredFolderIds = [],
+        bool $optimizeImages = false,
     ): array {
         if (!$this->isPathAllowed($absolutePath, $allowedDirectories)) {
             return ['status' => 'failed', 'mediaId' => null, 'reason' => 'Path is outside the allowed import directories.'];
@@ -312,6 +313,16 @@ final class MediaImportService
 
         if (!copy($resolvedPath, $destination)) {
             return ['status' => 'failed', 'mediaId' => null, 'reason' => 'Unable to copy the file into the uploads directory.'];
+        }
+
+        // "Optimize images after import" (LP-041) — always opt-in per
+        // import run (see the admin screen's checkbox), never automatic.
+        // Runs after the copy, before file_size is read below, so the
+        // recorded size reflects whatever optimizeInPlace() actually left
+        // on disk (the optimized file if it was smaller, the untouched
+        // copy otherwise).
+        if ($optimizeImages && str_starts_with($mimeType, 'image/')) {
+            $this->thumbnails->optimizeInPlace($destination, $mimeType);
         }
 
         $width = null;
@@ -376,6 +387,7 @@ final class MediaImportService
         array $allowedDirectories,
         int $offset,
         int $batchSize = self::DEFAULT_BATCH_SIZE,
+        bool $optimizeImages = false,
     ): array {
         $total = count($paths);
         $batch = array_slice($paths, $offset, $batchSize);
@@ -383,7 +395,7 @@ final class MediaImportService
         $mirroredFolderIds = [];
 
         foreach ($batch as $path) {
-            $outcome = $this->import($path, $userId, $folderId, $mirrorStructure, $useFileModifiedDate, $scanRoot, $allowedDirectories, $mirroredFolderIds);
+            $outcome = $this->import($path, $userId, $folderId, $mirrorStructure, $useFileModifiedDate, $scanRoot, $allowedDirectories, $mirroredFolderIds, $optimizeImages);
             $results[] = [
                 'path' => $path,
                 'status' => $outcome['status'],

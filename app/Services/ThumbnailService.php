@@ -344,6 +344,67 @@ final class ThumbnailService
     }
 
     /**
+     * Re-encodes an image file in place through GD's own decode/encode
+     * pipeline — LP-041's "Optimize images after import", a lossy
+     * recompression pass, not a dedicated lossless optimizer: no cwebp/
+     * mozjpeg/etc. tooling exists in this codebase (GD only, see this
+     * class's own docblock), so this reuses the exact same quality-
+     * controlled encoders ($jpegQuality/$webpQuality via encode()) that
+     * thumbnails already use. Always opt-in per call site — nothing here
+     * runs automatically; the FTP Media Import screen only calls this when
+     * an administrator checks "Optimize images after import" for that
+     * specific import.
+     *
+     * GIFs are skipped outright: GD's decoder only reads a GIF's first
+     * frame, so round-tripping an animated GIF through it would silently
+     * destroy the animation. The file is only overwritten if the
+     * recompressed version actually comes out smaller — a source that's
+     * already well-compressed (or was uploaded below the configured
+     * quality already) is left untouched rather than risking a
+     * quality-for-nothing swap.
+     *
+     * @return bool true if the file was rewritten, false if it was left
+     *     as-is (unsupported/corrupt source, a GIF, or no size win)
+     */
+    public function optimizeInPlace(string $path, string $mimeType): bool
+    {
+        if ($mimeType === 'image/gif' || !is_file($path)) {
+            return false;
+        }
+
+        try {
+            $canvas = $this->loadImage($path, $mimeType);
+        } catch (Throwable) {
+            return false;
+        }
+
+        $originalSize = filesize($path);
+        $temporaryPath = $path . '.optimize-' . bin2hex(random_bytes(4)) . '.tmp';
+
+        try {
+            $this->encode($canvas, $temporaryPath, $mimeType);
+        } catch (Throwable $exception) {
+            imagedestroy($canvas);
+            @unlink($temporaryPath);
+            $this->log("Failed to optimize \"{$path}\": {$exception->getMessage()}");
+
+            return false;
+        }
+
+        imagedestroy($canvas);
+
+        $optimizedSize = is_file($temporaryPath) ? filesize($temporaryPath) : false;
+
+        if ($optimizedSize === false || $originalSize === false || $optimizedSize >= $originalSize) {
+            @unlink($temporaryPath);
+
+            return false;
+        }
+
+        return rename($temporaryPath, $path);
+    }
+
+    /**
      * Removes `media_thumbnails` rows (and their files) whose parent media
      * row no longer exists. DB-level reconciliation only — not a
      * filesystem tree walk — since deleteForMedia() already keeps files

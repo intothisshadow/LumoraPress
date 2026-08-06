@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Optimize images after import (LP-041): the FTP Media Import screen gains
+  an "Optimize images after import" checkbox, off by default and always
+  opt-in per import run. When checked, each imported image is re-encoded
+  through GD at the same JPEG/WebP quality settings thumbnails already use
+  (Settings &rsaquo; Media), keeping the smaller result only — the file is
+  left untouched if recompression wouldn't actually shrink it. Animated
+  GIFs are never touched.
 - Draft scheduling (LP-018): a Draft post can now carry a planned publish
   date via the same "Publish date" field the admin post editor already
   offered for Scheduled posts. It has no effect on visibility — a Draft

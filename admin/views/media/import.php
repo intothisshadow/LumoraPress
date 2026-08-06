@@ -81,6 +81,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'folderId' => (int) ($_POST['folder_id'] ?? 0),
                     'mirrorStructure' => ($_POST['mirror_structure'] ?? '') === '1',
                     'useFileModifiedDate' => ($_POST['use_file_modified_date'] ?? '') === '1',
+                    'optimizeImages' => ($_POST['optimize_images'] ?? '') === '1',
                     'files' => $importService->scan($importDirectory, ($_POST['recursive'] ?? '') === '1', $allowedImportDirectories),
                 ];
             } catch (\Throwable $exception) {
@@ -102,6 +103,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'folderId' => (int) ($_POST['folder_id'] ?? 0) ?: null,
                 'mirrorStructure' => ($_POST['mirror_structure'] ?? '') === '1',
                 'useFileModifiedDate' => ($_POST['use_file_modified_date'] ?? '') === '1',
+                'optimizeImages' => ($_POST['optimize_images'] ?? '') === '1',
                 'offset' => 0,
                 'total' => count($paths),
                 'done' => false,
@@ -132,6 +134,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $allowedImportDirectories,
                     $state['offset'],
                     10,
+                    $state['optimizeImages'] ?? false,
                 );
 
                 foreach ($batch['results'] as $result) {
@@ -318,6 +321,7 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
                 <input type="hidden" name="folder_id" value="<?= (int) $scanResults['folderId'] ?>">
                 <input type="hidden" name="mirror_structure" value="<?= $scanResults['mirrorStructure'] ? '1' : '0' ?>">
                 <input type="hidden" name="use_file_modified_date" value="<?= $scanResults['useFileModifiedDate'] ? '1' : '0' ?>">
+                <input type="hidden" name="optimize_images" value="<?= $scanResults['optimizeImages'] ? '1' : '0' ?>">
 
                 <p><?= count($scanResults['files']) ?> file(s) found.</p>
 
@@ -379,6 +383,12 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
                 <input type="checkbox" name="use_file_modified_date" value="1">
                 Use each file's modification time as its upload date
             </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="optimize_images" value="1">
+                Optimize images after import (recompress to reduce file size)
+            </label>
+            <span class="lp-field__hint">Always optional, off by default. Re-encodes each imported image through the same quality settings thumbnails use (Settings &rsaquo; Media), keeping the smaller result only. Animated GIFs are never touched.</span>
 
             <button type="submit" class="lp-button lp-button--primary">Scan</button>
         </form>
