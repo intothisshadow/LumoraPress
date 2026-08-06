@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Draft scheduling (LP-018): a Draft post can now carry a planned publish
+  date via the same "Publish date" field the admin post editor already
+  offered for Scheduled posts. It has no effect on visibility — a Draft
+  stays private regardless — but the date survives a later Draft →
+  Scheduled switch without needing to be re-entered.
 - Bulk comment moderation (LP-025): the admin Comments screen gains a
   "Bulk actions" control (Approve, Unapprove, Mark as Spam, Move to
   Trash, Delete Permanently) with a "select all" checkbox, matching the

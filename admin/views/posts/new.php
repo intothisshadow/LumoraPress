@@ -166,9 +166,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ? $requestedStatus
             : ($requestedStatus === PostStatus::PendingReview ? PostStatus::PendingReview : PostStatus::Draft);
 
+        // Publish date: required to actually schedule a post (Scheduled),
+        // optional as a planned date on a Draft (LP-018 "Draft scheduling")
+        // that carries forward automatically if the post is later switched
+        // to Scheduled. Gated by $canPublish, same as Visibility/Sticky/
+        // Schedule unpublishing below — a Contributor's form never renders
+        // this field at all (see the $canPublish branch further down).
         $publishedAt = null;
 
-        if ($status === PostStatus::Scheduled) {
+        if ($canPublish && ($status === PostStatus::Scheduled || $status === PostStatus::Draft)) {
             $rawPublishedAt = trim((string) ($_POST['published_at'] ?? ''));
 
             try {
@@ -623,13 +629,14 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
             </p>
 
             <p class="lp-field">
-                <label for="post-published-at">Publish date (for scheduled posts)</label>
+                <label for="post-published-at">Publish date</label>
                 <input
                     type="datetime-local"
                     id="post-published-at"
                     name="published_at"
                     value="<?= esc_attr($post?->publishedAt?->format('Y-m-d\TH:i') ?? '') ?>"
                 >
+                <span class="lp-field__hint">Required to schedule a post. On a Draft, this is optional and just a planned date to note when you intend to publish — the post stays unpublished until you switch its status, and the date carries over automatically if you do.</span>
             </p>
 
             <p class="lp-field">

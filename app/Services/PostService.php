@@ -948,6 +948,15 @@ final class PostService
             . " AND ({$prefix}unpublish_at IS NULL OR {$prefix}unpublish_at > :now_unpublish)";
     }
 
+    /**
+     * A Draft carries published_at as a planned date rather than an
+     * enforced one (LP-018 "Draft scheduling") — it has no effect on
+     * visibility, since publicWhereClause() never matches Draft regardless
+     * of this value, but it lets an author note when they intend to
+     * publish and survives a later Draft -> Scheduled transition without
+     * re-entering the date. PendingReview/Trashed have no such use for it
+     * and stay forced to null.
+     */
     private function resolvePublishedAt(
         PostStatus $status,
         ?DateTimeImmutable $publishedAt,
@@ -955,7 +964,8 @@ final class PostService
         ?DateTimeImmutable $existingPublishedAt = null,
     ): ?DateTimeImmutable {
         return match ($status) {
-            PostStatus::Draft, PostStatus::PendingReview, PostStatus::Trashed => null,
+            PostStatus::Draft => $publishedAt ?? $existingPublishedAt,
+            PostStatus::PendingReview, PostStatus::Trashed => null,
             PostStatus::Published => $publishedAt ?? $existingPublishedAt ?? $now,
             PostStatus::Scheduled => $publishedAt ?? $existingPublishedAt,
         };
