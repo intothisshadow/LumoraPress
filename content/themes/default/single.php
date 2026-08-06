@@ -18,6 +18,18 @@
  * @var bool $comments_open
  * @var int $comment_count
  * @var \LumoraPress\Models\User|null $current_user
+ * @var array{total: int, page: int, perPage: int, totalPages: int} $comment_pagination
+ * @var bool $comment_pagination_enabled
+ * @var int $comment_max_nesting_level
+ * @var bool $avatars_enabled
+ * @var string $avatar_rating
+ * @var string $avatar_default
+ * @var bool $comment_cookies_consent_enabled
+ * @var string $comment_saved_guest_name
+ * @var string $comment_saved_guest_email
+ * @var string $comment_saved_guest_url
+ * @var bool $comment_author_name_required
+ * @var bool $comment_author_email_required
  */
 get_header(['post' => $post]);
 ?>
@@ -36,7 +48,27 @@ get_header(['post' => $post]);
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
         </article>
-        <?php comments_template(['post' => $post, 'comment_tree' => $comment_tree, 'comments_open' => $comments_open, 'comment_count' => $comment_count, 'current_user' => $current_user]); ?>
+        <?php
+        comments_template([
+            'post' => $post,
+            'comment_tree' => $comment_tree,
+            'comments_open' => $comments_open,
+            'comment_count' => $comment_count,
+            'current_user' => $current_user,
+            'comment_pagination' => $comment_pagination,
+            'comment_pagination_enabled' => $comment_pagination_enabled,
+            'comment_max_nesting_level' => $comment_max_nesting_level,
+            'avatars_enabled' => $avatars_enabled,
+            'avatar_rating' => $avatar_rating,
+            'avatar_default' => $avatar_default,
+            'comment_cookies_consent_enabled' => $comment_cookies_consent_enabled,
+            'comment_saved_guest_name' => $comment_saved_guest_name,
+            'comment_saved_guest_email' => $comment_saved_guest_email,
+            'comment_saved_guest_url' => $comment_saved_guest_url,
+            'comment_author_name_required' => $comment_author_name_required,
+            'comment_author_email_required' => $comment_author_email_required,
+        ]);
+        ?>
     </main>
     <?php get_sidebar(); ?>
 </div>

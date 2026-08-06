@@ -66,6 +66,8 @@ use LumoraPress\Core\Widgets\Widgets;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\BlueskyResolverService;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentModerationService;
+use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
@@ -470,7 +472,13 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
 
 $search = new SearchService($database, $tablePrefix, $config, $content);
 $akismet = new AkismetClient($config, home_url());
-$api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks, akismet: $akismet);
+// LP-047 Discussion Settings: shared moderation policy + notifications for
+// both the public comment form (SiteController) and the REST API
+// (ApiController) — see CommentModerationService's own docblock for why
+// this sits between them rather than living in either controller.
+$commentModeration = new CommentModerationService($config, $comments);
+$commentNotifications = new CommentNotificationService($config, $mailer, $users);
+$api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks, akismet: $akismet, commentModeration: $commentModeration, commentNotifications: $commentNotifications);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
 $mediaStats = new MediaStatsService($database, $tablePrefix);
@@ -675,9 +683,10 @@ $kernel = new Kernel(
     themeOptions: $themeOptions,
     embeds: $embeds,
     editorPreferences: $editorPreferences,
+    commentModeration: $commentModeration,
 );
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications);
 
 $router->get('/', fn (array $params) => $site->home($params));
 $router->get('/post/{slug}', fn (array $params) => $site->singlePost($params));

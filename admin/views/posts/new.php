@@ -571,8 +571,14 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
             <span class="lp-field__hint">Separate multiple tags with commas. New tags are created automatically.</span>
         </div>
 
+        <?php
+        // Settings > Discussion's "Allow comments on new posts" (LP-047)
+        // only sets the default for a brand-new post's checkbox below — an
+        // existing post's own saved comments_open value always wins.
+        $defaultCommentsOpen = $post !== null ? $post->commentsOpen : $kernel->commentModeration->defaultCommentsOpenForNewPosts();
+        ?>
         <label class="lp-field--checkbox">
-            <input type="checkbox" name="comments_open" value="1" <?= ($post->commentsOpen ?? true) ? 'checked' : '' ?>>
+            <input type="checkbox" name="comments_open" value="1" <?= $defaultCommentsOpen ? 'checked' : '' ?>>
             Allow comments on this post
         </label>
 

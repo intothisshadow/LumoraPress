@@ -887,6 +887,14 @@ img {
     margin-bottom: 1.5rem;
 }
 
+.lp-comment__avatar {
+    float: left;
+    margin: 0 0.75rem 0.5rem 0;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+}
+
 .lp-comment__meta {
     display: flex;
     flex-wrap: wrap;
@@ -937,6 +945,20 @@ img {
 .lp-comment-form__honeypot {
     position: absolute;
     left: -9999px;
+}
+
+.lp-comments__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+}
+
+.lp-comments__pagination-status {
+    color: var(--lp-text-muted);
 }
 
 /* =========================================================

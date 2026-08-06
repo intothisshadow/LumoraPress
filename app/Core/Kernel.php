@@ -39,6 +39,7 @@ use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
@@ -118,6 +119,7 @@ final class Kernel
         public readonly ThemeOptions $themeOptions,
         public readonly EmbedService $embeds,
         public readonly EditorPreferenceService $editorPreferences,
+        public readonly CommentModerationService $commentModeration,
     ) {
     }
 }

@@ -37,6 +37,8 @@ use LumoraPress\Models\Tag;
 use LumoraPress\Models\User;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentModerationService;
+use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\PageService;
@@ -75,6 +77,10 @@ final class ApiController
 
     private readonly AkismetClient $akismet;
 
+    private readonly CommentModerationService $commentModeration;
+
+    private readonly ?CommentNotificationService $commentNotifications;
+
     /**
      * @param Closure(): string|null $rawInput Overrides reading the raw
      *     request body — defaults to `file_get_contents('php://input')`.
@@ -95,10 +101,19 @@ final class ApiController
         ?Closure $rawInput = null,
         ?ContentRenderer $content = null,
         ?AkismetClient $akismet = null,
+        ?CommentModerationService $commentModeration = null,
+        ?CommentNotificationService $commentNotifications = null,
     ) {
         $this->rawInput = $rawInput ?? static fn (): string|false => file_get_contents('php://input');
         $this->content = $content ?? new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), $hooks);
         $this->akismet = $akismet ?? new AkismetClient($config, '');
+        $this->commentModeration = $commentModeration ?? new CommentModerationService($config, $comments);
+        // Unlike commentModeration above, this has no zero-dependency
+        // default to fall back to (it needs a Mailer + UserService) — a
+        // caller that doesn't pass one (e.g. a test double) simply gets no
+        // API-submitted-comment notifications, matching how $content/
+        // $akismet already tolerate being omitted.
+        $this->commentNotifications = $commentNotifications;
     }
 
     // =================================================================
@@ -1040,8 +1055,18 @@ final class ApiController
             return;
         }
 
-        if (!$post->commentsOpen) {
+        // "Automatically close comments after N days" (LP-047) and the
+        // site-wide toggle both apply here too, not just the per-post
+        // flag this endpoint used to check on its own.
+        if (!$this->commentModeration->commentsOpenFor($post)) {
             ApiResponse::error('Comments are closed for this post.', 403);
+
+            return;
+        }
+
+        // "Require user registration before commenting" (LP-047).
+        if ($user === null && $this->commentModeration->requiresRegistrationToComment()) {
+            ApiResponse::error('This site requires a registered account (bearer token) to comment.', 403, 'registration_required');
 
             return;
         }
@@ -1051,6 +1076,20 @@ final class ApiController
         $guestEmail = $user !== null ? $user->email : trim((string) ($body['guest_email'] ?? ''));
         $guestUrl = trim((string) ($body['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
+
+        // "Comment author name/email required" (LP-047) — see
+        // SiteController::submitComment()'s identical block for why a
+        // disabled requirement fills a placeholder rather than leaving the
+        // NOT NULL guest_name/guest_email columns empty.
+        if ($user === null) {
+            if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {
+                $guestName = __('Anonymous');
+            }
+
+            if ($guestEmail === '' && !$this->commentModeration->isAuthorEmailRequired()) {
+                $guestEmail = 'anonymous@' . ((string) (parse_url(home_url(), PHP_URL_HOST) ?: 'invalid.example'));
+            }
+        }
 
         if ($content === '' || $guestName === '' || filter_var($guestEmail, FILTER_VALIDATE_EMAIL) === false) {
             ApiResponse::error('"content", and a valid name/email (or a bearer token), are required.', 422);
@@ -1076,10 +1115,14 @@ final class ApiController
             }
         }
 
-        $status = (($user?->can('moderate_comments')) ?? false)
-            || $this->comments->hasPreviouslyApprovedComment($user?->id, $guestEmail)
-            ? CommentStatus::Approved
-            : CommentStatus::Pending;
+        $status = $this->commentModeration->determineStatus(
+            userId: $user?->id,
+            isTrustedModerator: $user?->can('moderate_comments') ?? false,
+            guestName: $guestName,
+            guestEmail: $guestEmail,
+            guestUrl: $guestUrl,
+            content: $content,
+        );
 
         // Akismet (LP-025) — see SiteController::submitComment()'s
         // identical block for why this can only push toward Spam, never
@@ -1102,6 +1145,13 @@ final class ApiController
             }
         }
 
+        // Same 'comment_is_spam' filter SiteController::submitComment()
+        // applies (LP-047) — a future spam-detection plugin only needs to
+        // hook this once to cover both entry points.
+        if (apply_filters('comment_is_spam', false, $guestName, $guestEmail, $guestUrl, $content, $ipAddress) === true) {
+            $status = CommentStatus::Spam;
+        }
+
         $comment = $this->comments->create(
             postId: $post->id,
             parentId: $parentId,
@@ -1114,6 +1164,10 @@ final class ApiController
             ipAddress: $ipAddress,
             userAgent: is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null,
         );
+
+        if ($status !== CommentStatus::Spam && $this->commentNotifications !== null) {
+            $this->commentNotifications->notifyNewComment($comment, $post);
+        }
 
         ApiResponse::json($this->commentToArray($comment), 201);
     }

@@ -280,6 +280,52 @@ final class CommentService
     }
 
     /**
+     * Approved comments for a post as a paginated, orderable thread list
+     * (LP-047 Discussion Settings: "Enable comment pagination"/"Comments
+     * per page"/"Display oldest or newest comments first"). Pagination
+     * counts top-level threads (a top-level comment plus every one of its
+     * nested replies counts as one page entry), the same convention
+     * classic WordPress's own comment pagination uses — not paginated by
+     * raw row count, since splitting a reply from its parent mid-thread
+     * would be confusing to read. When $threaded is false, nesting is
+     * ignored entirely and every comment paginates as its own flat entry
+     * in $order.
+     *
+     * @return array{comments: array<int, array{comment: Comment, children: array<mixed>}>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateForPost(int $postId, int $page = 1, int $perPage = 50, string $order = 'asc', bool $threaded = true): array
+    {
+        $direction = strtolower($order) === 'desc' ? 'DESC' : 'ASC';
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . "
+                WHERE post_id = :post_id AND status = :status
+             ORDER BY created_at {$direction}, id {$direction}",
+            ['post_id' => $postId, 'status' => CommentStatus::Approved->value],
+        );
+
+        $comments = array_map($this->hydrate(...), $rows);
+
+        $entries = $threaded
+            ? $this->buildTree($comments, null)
+            : array_map(static fn (Comment $comment): array => ['comment' => $comment, 'children' => []], $comments);
+
+        $total = count($entries);
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $totalPages);
+
+        return [
+            'comments' => array_slice($entries, ($page - 1) * $perPage, $perPage),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
+        ];
+    }
+
+    /**
      * "Comment author must have a previously approved comment" — the
      * lightweight, standard trust signal used to auto-approve without
      * requiring a login system for public commenters.

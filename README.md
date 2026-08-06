@@ -249,6 +249,13 @@ them via FTP/SFTP or your hosting file manager).
 - **Comments** — threaded discussion with moderation, honeypot/CSRF/
   submission-timing spam protection, and optional Akismet spam-checking
   (Settings &rsaquo; Security — off by default, never required).
+- **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
+  for comment defaults (required name/email, registered-only commenting,
+  auto-close after N days, cookie-remembered guest info, threading depth,
+  pagination and ordering), moderation (manual-approval, link/keyword
+  holds, disallowed-keyword rejection, a `comment_is_spam` filter for
+  spam-detection plugins), admin/author email notifications, and avatars
+  (Gravatar rating/default, or a locally uploaded default image).
 - **RSS & Atom feeds** — a site-wide feed of published posts.
 - **Search** — full-text search across posts and pages.
 - **User management** — admin-managed accounts and roles, with Trash &

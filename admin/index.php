@@ -344,6 +344,7 @@ $menu = [
         'children' => [
             'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options'],
             'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options'],
+            'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options'],
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
             'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],

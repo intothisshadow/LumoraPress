@@ -6,6 +6,32 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Discussion Settings (LP-047): a new Settings &rsaquo; Discussion admin
+  screen covering comment defaults, moderation, notifications, and
+  avatars. Comment author name/email can each be made optional; commenting
+  can require a registered/logged-in account; comments on a post can
+  auto-close after a configurable number of days; a "Save my name and
+  email in this browser" cookie-consent checkbox can be shown on the
+  comment form; threaded comments can be disabled or capped at a maximum
+  visual nesting depth; comments can be paginated (configurable per-page
+  count, first/last default page, oldest/newest ordering). New
+  moderation controls: require manual approval for every comment (or
+  disable the existing auto-approve-previously-approved-commenter trust
+  signal specifically), hold a comment for moderation if it contains more
+  than a configurable number of links or matches a configurable
+  moderation-keyword list, and reject a comment as Spam outright if it
+  matches a configurable disallowed-keyword list — checked against the
+  comment content and the author's name/email/website. A new
+  `comment_is_spam` filter runs alongside the existing Akismet (LP-025)
+  integration on both the public comment form and the REST API, so a
+  future spam-detection plugin (e.g. the planned Lumora Shield) needs only
+  one hook to cover both. New admin/author email notifications for new
+  comments and comments awaiting moderation, with additional configurable
+  recipients, sent via the existing LP-058 mail service. Avatars can be
+  turned off site-wide, given a maximum Gravatar rating and a choice of
+  built-in default image, or given a locally uploaded default image
+  (reusing the same upload-a-media-item pattern Branding's logo/favicon
+  already use) — shown next to each comment on the default theme.
 - Twitter/X Auto-Embed (LP-070): a bare tweet-status link alone on its own
   line in a post/page now auto-embeds, alongside the five existing
   Auto-Embed providers (YouTube, Vimeo, SoundCloud, Spotify, CodePen).

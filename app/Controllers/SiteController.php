@@ -30,6 +30,8 @@ use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\Post;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
+use LumoraPress\Services\CommentModerationService;
+use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\MediaService;
@@ -71,6 +73,8 @@ final class SiteController
         private readonly RedirectService $redirects,
         private readonly AkismetClient $akismet,
         private readonly UserService $users,
+        private readonly CommentModerationService $commentModeration,
+        private readonly CommentNotificationService $commentNotifications,
     ) {
     }
 
@@ -173,10 +177,77 @@ final class SiteController
             'page_title' => $post->title,
             'post' => $post,
             'comments_open' => $this->commentsOpenFor($post),
-            'comment_tree' => $this->comments->publicTreeForPost($post->id),
-            'comment_count' => $this->comments->countForPost($post->id),
+            ...$this->commentThreadViewData($post),
             'current_user' => $this->auth->user(),
         ]);
+    }
+
+    /**
+     * View data for the comment thread shared by singlePost() and
+     * previewPost() — pagination, ordering, threading, and avatar display
+     * are all Settings > Discussion (LP-047) options rather than hardcoded
+     * as publicTreeForPost() always was before this ticket.
+     *
+     * @return array<string, mixed>
+     */
+    private function commentThreadViewData(Post $post): array
+    {
+        $order = (string) $this->config->option('comment_order', 'asc');
+        $threaded = $this->config->option('comment_threading_enabled', '1') !== '0';
+        $maxNesting = max(0, (int) $this->config->option('comment_max_nesting_level', '5'));
+
+        if ($this->config->option('comment_pagination_enabled', '0') !== '1') {
+            // Pagination disabled: one "page" holding every comment on the
+            // post. 100000 comfortably exceeds any realistic thread size
+            // while keeping paginateForPost()'s single query/slice path.
+            $pagination = $this->comments->paginateForPost($post->id, 1, 100000, $order, $threaded);
+        } else {
+            $perPage = max(1, (int) $this->config->option('comment_per_page', '50'));
+            $requestedPage = isset($_GET['cpage']) ? max(1, (int) $_GET['cpage']) : null;
+
+            $pagination = $this->comments->paginateForPost($post->id, $requestedPage ?? 1, $perPage, $order, $threaded);
+
+            if ($requestedPage === null && $this->config->option('comment_default_page', 'last') === 'last' && $pagination['totalPages'] > 1) {
+                $pagination = $this->comments->paginateForPost($post->id, $pagination['totalPages'], $perPage, $order, $threaded);
+            }
+        }
+
+        return [
+            'comment_tree' => $pagination['comments'],
+            'comment_pagination' => $pagination,
+            'comment_pagination_enabled' => $this->config->option('comment_pagination_enabled', '0') === '1',
+            'comment_max_nesting_level' => $maxNesting,
+            'comment_count' => $this->comments->countForPost($post->id),
+            'avatars_enabled' => $this->config->option('avatars_enabled', '1') !== '0',
+            'avatar_rating' => strtolower((string) $this->config->option('avatar_max_rating', 'G')),
+            'avatar_default' => $this->avatarDefaultParam(),
+            'comment_cookies_consent_enabled' => $this->config->option('comment_cookies_consent_enabled', '0') === '1',
+            'comment_author_name_required' => $this->commentModeration->isAuthorNameRequired(),
+            'comment_author_email_required' => $this->commentModeration->isAuthorEmailRequired(),
+            'comment_saved_guest_name' => is_string($_COOKIE['lp_commenter_name'] ?? null) ? $_COOKIE['lp_commenter_name'] : '',
+            'comment_saved_guest_email' => is_string($_COOKIE['lp_commenter_email'] ?? null) ? $_COOKIE['lp_commenter_email'] : '',
+            'comment_saved_guest_url' => is_string($_COOKIE['lp_commenter_url'] ?? null) ? $_COOKIE['lp_commenter_url'] : '',
+        ];
+    }
+
+    /**
+     * The Gravatar "d" (default image) param: an absolute URL to the
+     * locally uploaded default avatar (Settings > Discussion) when one is
+     * configured, otherwise one of Gravatar's own built-in default styles.
+     */
+    private function avatarDefaultParam(): string
+    {
+        $mediaId = (int) $this->config->option('avatar_default_media_id', '0');
+
+        if ($mediaId > 0) {
+            $item = $this->media->find($mediaId);
+
+            if ($item !== null) {
+                return $this->media->url($item);
+            }
+        }
+
+        return (string) $this->config->option('avatar_default', 'mp');
     }
 
     /**
@@ -247,15 +318,41 @@ final class SiteController
             exit;
         }
 
+        $authUser = $this->auth->user();
+
+        // "Require user registration before commenting" (LP-047) — checked
+        // before touching any submitted guest fields, since a guest who
+        // hits this has nothing else worth validating.
+        if ($authUser === null && $this->commentModeration->requiresRegistrationToComment()) {
+            header('Location: ' . $redirectTo . '?comment=login_required#comment-form');
+            exit;
+        }
+
         $content = trim((string) ($_POST['content'] ?? ''));
         $parentId = $rawParentId > 0 ? $rawParentId : null;
 
-        $authUser = $this->auth->user();
         $userId = $authUser?->id;
         $guestName = $authUser !== null ? $authUser->displayName : trim((string) ($_POST['guest_name'] ?? ''));
         $guestEmail = $authUser !== null ? $authUser->email : trim((string) ($_POST['guest_email'] ?? ''));
         $guestUrl = trim((string) ($_POST['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
+
+        // "Comment author name/email required" (LP-047): when a guest
+        // field isn't required, a blank value is filled with a placeholder
+        // rather than left empty — guest_name/guest_email are NOT NULL
+        // columns (every existing admin/API comment list assumes a
+        // displayable name and a syntactically valid email is always
+        // present), so "not required" means "don't force the visitor to
+        // type one," not "store nothing."
+        if ($authUser === null) {
+            if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {
+                $guestName = __('Anonymous');
+            }
+
+            if ($guestEmail === '' && !$this->commentModeration->isAuthorEmailRequired()) {
+                $guestEmail = 'anonymous@' . ((string) (parse_url(home_url(), PHP_URL_HOST) ?: 'invalid.example'));
+            }
+        }
 
         if ($content === '' || $guestName === '' || filter_var($guestEmail, FILTER_VALIDATE_EMAIL) === false) {
             header('Location: ' . $redirectTo . '?comment=error#comment-form');
@@ -270,15 +367,21 @@ final class SiteController
             }
         }
 
-        $status = ($authUser?->can('moderate_comments') ?? false)
-            || $this->comments->hasPreviouslyApprovedComment($userId, $guestEmail)
-            ? CommentStatus::Approved
-            : CommentStatus::Pending;
+        $status = $this->commentModeration->determineStatus(
+            userId: $userId,
+            isTrustedModerator: $authUser?->can('moderate_comments') ?? false,
+            guestName: $guestName,
+            guestEmail: $guestEmail,
+            guestUrl: $guestUrl,
+            content: $content,
+        );
 
         // Akismet (LP-025), when enabled, can only push a comment toward
         // Spam — never away from it — so this is strictly additive on top
         // of the trust-signal decision above. A null result (Akismet
-        // unreachable/misconfigured) leaves that decision untouched.
+        // unreachable/misconfigured) leaves that decision untouched. A
+        // future spam-detection plugin (e.g. Lumora Shield) can hook the
+        // same 'comment_is_spam' filter (LP-047) to apply the same rule.
         if ($this->akismet->isEnabled()) {
             $isSpam = $this->akismet->checkComment([
                 'comment_type' => 'comment',
@@ -297,6 +400,10 @@ final class SiteController
             }
         }
 
+        if (apply_filters('comment_is_spam', false, $guestName, $guestEmail, $guestUrl, $content, $ipAddress) === true) {
+            $status = CommentStatus::Spam;
+        }
+
         $comment = $this->comments->create(
             postId: $post->id,
             parentId: $parentId,
@@ -312,6 +419,21 @@ final class SiteController
 
         do_action('comment_posted', $comment);
 
+        if ($status !== CommentStatus::Spam) {
+            $this->commentNotifications->notifyNewComment($comment, $post);
+        }
+
+        // "Enable comment cookies consent" (LP-047) — a guest who checked
+        // "Save my name/email in this browser" gets those fields
+        // pre-filled next time; unchecking (or the site-wide setting being
+        // off) never writes/clears anything the visitor didn't ask for.
+        if ($authUser === null && $this->config->option('comment_cookies_consent_enabled', '0') === '1' && ($_POST['comment_save_info'] ?? '') === '1') {
+            $expires = time() + (86400 * 90);
+            setcookie('lp_commenter_name', $guestName, $expires, '/');
+            setcookie('lp_commenter_email', $guestEmail, $expires, '/');
+            setcookie('lp_commenter_url', $guestUrl ?? '', $expires, '/');
+        }
+
         $flag = $status === CommentStatus::Approved ? 'posted' : 'pending';
         $anchor = $status === CommentStatus::Approved ? '#comment-' . $comment->id : '#comment-form';
 
@@ -320,15 +442,15 @@ final class SiteController
     }
 
     /**
-     * A post accepts comments only if both the post itself and the site
-     * as a whole allow it. Stored as the literal strings '1'/'0' (see
-     * CommentService's own docblock convention) rather than a PHP bool,
-     * since PressConfig::setOption() casts `false` to '' — an easy
-     * footgun for a "!== '0'" style default-true check.
+     * A post accepts comments only if the post itself and the site as a
+     * whole allow it, and — Settings > Discussion's "Automatically close
+     * comments after N days" — the post isn't past that window. Delegates
+     * to CommentModerationService (LP-047) so SiteController and
+     * ApiController share one answer.
      */
     private function commentsOpenFor(Post $post): bool
     {
-        return $post->commentsOpen && $this->config->option('comments_enabled', '1') !== '0';
+        return $this->commentModeration->commentsOpenFor($post);
     }
 
     /**
@@ -375,8 +497,7 @@ final class SiteController
             'page_title' => $post->title,
             'post' => $post,
             'comments_open' => $this->commentsOpenFor($post),
-            'comment_tree' => $this->comments->publicTreeForPost($post->id),
-            'comment_count' => $this->comments->countForPost($post->id),
+            ...$this->commentThreadViewData($post),
             'current_user' => $user,
         ]);
     }
