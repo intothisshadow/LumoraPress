@@ -246,9 +246,10 @@ them via FTP/SFTP or your hosting file manager).
   best-effort conversion between formats.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages.
-- **Comments** — threaded discussion with moderation, honeypot/CSRF/
-  submission-timing spam protection, and optional Akismet spam-checking
-  (Settings &rsaquo; Security — off by default, never required).
+- **Comments** — threaded discussion with moderation (including bulk
+  approve/spam/trash/delete), honeypot/CSRF/submission-timing spam
+  protection, and optional Akismet spam-checking (Settings &rsaquo;
+  Security — off by default, never required).
 - **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
   for comment defaults (required name/email, registered-only commenting,
   auto-close after N days, cookie-remembered guest info, threading depth,

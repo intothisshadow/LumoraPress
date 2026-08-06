@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Bulk comment moderation (LP-025): the admin Comments screen gains a
+  "Bulk actions" control (Approve, Unapprove, Mark as Spam, Move to
+  Trash, Delete Permanently) with a "select all" checkbox, matching the
+  bulk-actions pattern already used on the Users screen.
 - Discussion Settings (LP-047): a new Settings &rsaquo; Discussion admin
   screen covering comment defaults, moderation, notifications, and
   avatars. Comment author name/email can each be made optional; commenting

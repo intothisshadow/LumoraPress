@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
 
 if (!isset($kernel)) {
@@ -25,6 +26,38 @@ if (!isset($kernel)) {
 
 $commentService = $kernel->comments;
 $error = null;
+
+/**
+ * Tells Akismet when a human moderator overturned its (or the local trust
+ * signal's) original call, so its model improves — shared by the
+ * single-row "moderate" handler and the bulk-action handler below (LP-025),
+ * since a bulk approve/spam is still a human moderation decision Akismet
+ * should learn from the same way a single-row one already does.
+ */
+$submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newStatus) use ($kernel): void {
+    if (!$kernel->akismet->isEnabled() || $previousComment->status === $newStatus) {
+        return;
+    }
+
+    $post = $kernel->posts->findById($previousComment->postId);
+    $akismetComment = [
+        'comment_type' => 'comment',
+        'comment_author' => $previousComment->guestName,
+        'comment_author_email' => $previousComment->guestEmail,
+        'comment_author_url' => $previousComment->guestUrl,
+        'comment_content' => $previousComment->content,
+        'user_ip' => $previousComment->ipAddress ?? '0.0.0.0',
+        'user_agent' => $previousComment->userAgent,
+        'referrer' => null,
+        'permalink' => $post !== null ? home_url('post/' . $post->slug) : home_url(),
+    ];
+
+    if ($newStatus === CommentStatus::Spam) {
+        $kernel->akismet->submitSpam($akismetComment);
+    } elseif ($newStatus === CommentStatus::Approved && $previousComment->status === CommentStatus::Spam) {
+        $kernel->akismet->submitHam($akismetComment);
+    }
+};
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -55,29 +88,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $previousComment = $commentService->findById($id);
             $commentService->updateStatus($id, $newStatus);
 
-            // Akismet moderator feedback (LP-025): tells Akismet when a
-            // human overturned its (or the local trust signal's) original
-            // call, so its model improves — best-effort, never blocks
-            // moderation if Akismet is unreachable.
-            if ($previousComment !== null && $kernel->akismet->isEnabled() && $previousComment->status !== $newStatus) {
-                $post = $kernel->posts->findById($previousComment->postId);
-                $akismetComment = [
-                    'comment_type' => 'comment',
-                    'comment_author' => $previousComment->guestName,
-                    'comment_author_email' => $previousComment->guestEmail,
-                    'comment_author_url' => $previousComment->guestUrl,
-                    'comment_content' => $previousComment->content,
-                    'user_ip' => $previousComment->ipAddress ?? '0.0.0.0',
-                    'user_agent' => $previousComment->userAgent,
-                    'referrer' => null,
-                    'permalink' => $post !== null ? home_url('post/' . $post->slug) : home_url(),
-                ];
-
-                if ($newStatus === CommentStatus::Spam) {
-                    $kernel->akismet->submitSpam($akismetComment);
-                } elseif ($newStatus === CommentStatus::Approved && $previousComment->status === CommentStatus::Spam) {
-                    $kernel->akismet->submitHam($akismetComment);
-                }
+            if ($previousComment !== null) {
+                $submitAkismetFeedback($previousComment, $newStatus);
             }
         }
 
@@ -92,6 +104,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
 
         header('Location: ' . admin_url('comments'));
+        exit;
+    } elseif ($form === 'bulk_action' && Csrf::verify('comments_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $bulkAction = (string) ($_POST['bulk_action'] ?? '');
+        $ids = array_values(array_filter(array_map('intval', is_array($_POST['comment_ids'] ?? null) ? $_POST['comment_ids'] : [])));
+        $bulkStatus = match ($bulkAction) {
+            'approve' => CommentStatus::Approved,
+            'unapprove' => CommentStatus::Pending,
+            'spam' => CommentStatus::Spam,
+            'trash' => CommentStatus::Trash,
+            default => null,
+        };
+
+        foreach ($ids as $id) {
+            if ($bulkAction === 'delete') {
+                $commentService->delete($id);
+
+                continue;
+            }
+
+            if ($bulkStatus === null) {
+                continue;
+            }
+
+            $previousComment = $commentService->findById($id);
+
+            if ($previousComment === null) {
+                continue;
+            }
+
+            $commentService->updateStatus($id, $bulkStatus);
+            $submitAkismetFeedback($previousComment, $bulkStatus);
+        }
+
+        header('Location: ' . admin_url('comments') . (isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : ''));
         exit;
     }
 }
@@ -180,67 +226,125 @@ if ($action === 'edit') {
         <?php if ($pagination['comments'] === []): ?>
             <p class="lp-admin__widget-placeholder">No comments yet.</p>
         <?php else: ?>
-            <table class="lp-table">
-                <thead>
-                    <tr>
-                        <th scope="col">Author</th>
-                        <th scope="col">Comment</th>
-                        <th scope="col">Post</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Date</th>
-                        <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($pagination['comments'] as $row): ?>
-                        <?php $comment = $row['comment']; ?>
+            <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-bulk-form>
+                <?= Csrf::field('comments_bulk_action') ?>
+                <input type="hidden" name="form" value="bulk_action">
+                <?php if ($statusFilter !== null): ?>
+                    <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+                <?php endif; ?>
+
+                <p class="lp-admin__bulk-actions">
+                    <label class="lp-visually-hidden" for="comments-bulk-action">Bulk action</label>
+                    <select id="comments-bulk-action" name="bulk_action">
+                        <option value="">Bulk actions</option>
+                        <option value="approve">Approve</option>
+                        <option value="unapprove">Unapprove</option>
+                        <option value="spam">Mark as Spam</option>
+                        <option value="trash">Move to Trash</option>
+                        <option value="delete">Delete Permanently</option>
+                    </select>
+                    <button type="submit" class="lp-button lp-button--secondary">Apply</button>
+                </p>
+
+                <table class="lp-table">
+                    <thead>
                         <tr>
-                            <td>
-                                <?= esc_html($comment->guestName) ?><br>
-                                <span class="lp-field__hint"><?= esc_html($comment->guestEmail) ?></span>
-                            </td>
-                            <td>
-                                <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $comment->id ?>">
-                                    <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
-                                </a>
-                            </td>
-                            <td>
-                                <a href="<?= esc_url(home_url('post/' . $row['postSlug'])) ?>#comment-<?= (int) $comment->id ?>"><?= esc_html($row['postTitle']) ?></a>
-                            </td>
-                            <td>
-                                <span class="lp-status-badge lp-status-badge--<?= esc_attr($comment->status->value) ?>">
-                                    <?= esc_html($comment->status->label()) ?>
-                                </span>
-                            </td>
-                            <td><?= esc_html($comment->createdAt->format('M j, Y')) ?></td>
-                            <td class="lp-admin__row-actions">
-                                <?php foreach ([
-                                    [CommentStatus::Approved, 'Approve', false],
-                                    [CommentStatus::Pending, 'Unapprove', false],
-                                    [CommentStatus::Spam, 'Spam', true],
-                                    [CommentStatus::Trash, 'Trash', true],
-                                ] as [$targetStatus, $actionLabel, $isDanger]): ?>
-                                    <?php if ($comment->status !== $targetStatus): ?>
-                                        <form method="post" action="<?= esc_url(admin_url('comments')) ?><?= isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : '' ?>">
-                                            <?= Csrf::field('comment_moderate_' . $comment->id . '_' . $targetStatus->value) ?>
-                                            <input type="hidden" name="form" value="moderate">
-                                            <input type="hidden" name="id" value="<?= (int) $comment->id ?>">
-                                            <input type="hidden" name="status" value="<?= esc_attr($targetStatus->value) ?>">
-                                            <button type="submit" class="lp-button lp-button--link<?= $isDanger ? ' lp-button--link--danger' : '' ?>"><?= esc_html($actionLabel) ?></button>
-                                        </form>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                                <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-confirm="Delete this comment permanently? Replies will be kept but become top-level.">
-                                    <?= Csrf::field('comment_delete_' . $comment->id) ?>
-                                    <input type="hidden" name="form" value="delete">
-                                    <input type="hidden" name="id" value="<?= (int) $comment->id ?>">
-                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
-                                </form>
-                            </td>
+                            <th scope="col">
+                                <label class="lp-visually-hidden" for="comments-select-all">Select all</label>
+                                <input type="checkbox" id="comments-select-all" data-lp-select-all="comment_ids[]" data-lp-select-all-scope="table">
+                            </th>
+                            <th scope="col">Author</th>
+                            <th scope="col">Comment</th>
+                            <th scope="col">Post</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Date</th>
+                            <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pagination['comments'] as $row): ?>
+                            <?php $comment = $row['comment']; ?>
+                            <tr>
+                                <td>
+                                    <label class="lp-visually-hidden" for="comment-select-<?= (int) $comment->id ?>">Select comment from "<?= esc_attr($comment->guestName) ?>"</label>
+                                    <input type="checkbox" id="comment-select-<?= (int) $comment->id ?>" name="comment_ids[]" value="<?= (int) $comment->id ?>">
+                                </td>
+                                <td>
+                                    <?= esc_html($comment->guestName) ?><br>
+                                    <span class="lp-field__hint"><?= esc_html($comment->guestEmail) ?></span>
+                                </td>
+                                <td>
+                                    <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $comment->id ?>">
+                                        <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
+                                    </a>
+                                </td>
+                                <td>
+                                    <a href="<?= esc_url(home_url('post/' . $row['postSlug'])) ?>#comment-<?= (int) $comment->id ?>"><?= esc_html($row['postTitle']) ?></a>
+                                </td>
+                                <td>
+                                    <span class="lp-status-badge lp-status-badge--<?= esc_attr($comment->status->value) ?>">
+                                        <?= esc_html($comment->status->label()) ?>
+                                    </span>
+                                </td>
+                                <td><?= esc_html($comment->createdAt->format('M j, Y')) ?></td>
+                                <td class="lp-admin__row-actions">
+                                    <?php foreach ([
+                                        [CommentStatus::Approved, 'Approve', false],
+                                        [CommentStatus::Pending, 'Unapprove', false],
+                                        [CommentStatus::Spam, 'Spam', true],
+                                        [CommentStatus::Trash, 'Trash', true],
+                                    ] as [$targetStatus, $actionLabel, $isDanger]): ?>
+                                        <?php if ($comment->status !== $targetStatus): ?>
+                                            <?php $moderateFormId = 'comment-moderate-form-' . $comment->id . '-' . $targetStatus->value; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('comment_moderate_' . $comment->id . '_' . $targetStatus->value)) ?>" form="<?= esc_attr($moderateFormId) ?>">
+                                                <input type="hidden" name="form" value="moderate" form="<?= esc_attr($moderateFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $comment->id ?>" form="<?= esc_attr($moderateFormId) ?>">
+                                                <input type="hidden" name="status" value="<?= esc_attr($targetStatus->value) ?>" form="<?= esc_attr($moderateFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link<?= $isDanger ? ' lp-button--link--danger' : '' ?>" form="<?= esc_attr($moderateFormId) ?>"><?= esc_html($actionLabel) ?></button>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                    <?php $deleteFormId = 'comment-delete-form-' . $comment->id; ?>
+                                    <span class="lp-admin__inline-form">
+                                        <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('comment_delete_' . $comment->id)) ?>" form="<?= esc_attr($deleteFormId) ?>">
+                                        <input type="hidden" name="form" value="delete" form="<?= esc_attr($deleteFormId) ?>">
+                                        <input type="hidden" name="id" value="<?= (int) $comment->id ?>" form="<?= esc_attr($deleteFormId) ?>">
+                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deleteFormId) ?>" data-lp-confirm="Delete this comment permanently? Replies will be kept but become top-level.">Delete</button>
+                                    </span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </form>
+
+            <?php
+            /*
+             * Out-of-band target forms for each row action button above —
+             * a nested <form> can't be used here since the enclosing
+             * bulk-action form already wraps the whole table (see
+             * admin/views/users.php's identical pattern/docblock): the
+             * browser's parse-error recovery would silently close the
+             * outer bulk-action form as soon as it hit the first inner
+             * </form> tag.
+             */
+            foreach ($pagination['comments'] as $row):
+                $comment = $row['comment'];
+
+                foreach (CommentStatus::cases() as $targetStatus):
+                    if ($comment->status === $targetStatus) {
+                        continue;
+                    }
+                    ?>
+                    <form id="comment-moderate-form-<?= (int) $comment->id ?>-<?= esc_attr($targetStatus->value) ?>" method="post" action="<?= esc_url(admin_url('comments')) ?><?= $statusFilter !== null ? '?status=' . esc_attr($statusFilter->value) : '' ?>"></form>
+                    <?php
+                endforeach;
+                ?>
+                <form id="comment-delete-form-<?= (int) $comment->id ?>" method="post" action="<?= esc_url(admin_url('comments')) ?>"></form>
+                <?php
+            endforeach;
+            ?>
 
             <?php render_pagination($pagination, 'Comments pagination'); ?>
         <?php endif; ?>
