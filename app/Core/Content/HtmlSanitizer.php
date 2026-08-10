@@ -42,10 +42,17 @@ final class HtmlSanitizer
 {
     /** @var array<string, array<int, string>> tag => allowed attributes */
     private const ALLOWED_TAGS = [
-        'p' => [],
+        // 'class' on 'p'/headings (LP-016) carries the WYSIWYG editor's
+        // text-alignment classes (has-text-align-left/center/right/
+        // justify) — TinyMCE's align toolbar is configured to apply
+        // these classes rather than its inline-style default, since
+        // this sanitizer never allows a 'style' attribute at all (an
+        // arbitrary-CSS injection surface this project deliberately
+        // avoids).
+        'p' => ['class'],
         'br' => [],
         'hr' => [],
-        'h1' => ['id'], 'h2' => ['id'], 'h3' => ['id'], 'h4' => ['id'], 'h5' => ['id'], 'h6' => ['id'],
+        'h1' => ['id', 'class'], 'h2' => ['id', 'class'], 'h3' => ['id', 'class'], 'h4' => ['id', 'class'], 'h5' => ['id', 'class'], 'h6' => ['id', 'class'],
         'strong' => [], 'b' => [],
         'em' => [], 'i' => [],
         'u' => [],

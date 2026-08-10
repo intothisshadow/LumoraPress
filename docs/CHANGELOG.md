@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Text and image alignment in both editors (LP-016): a new alignment
+  toolbar (left/center/right/justify) for paragraphs and headings, and
+  an Alignment choice (None/Left/Center/Right) in the Insert Media
+  picker's Attachment Display Settings step for images. The WYSIWYG
+  editor applies these directly; the Markdown editor uses a new, minimal
+  trailing-marker syntax (`{.center}` after a heading/paragraph,
+  `{.aligncenter}` after an image) — Markdown has no native attribute
+  syntax, so this is a small project-defined convention, not
+  CommonMark — with matching toolbar buttons that insert it.
 - Configurable lightbox image size (LP-031): Settings &rsaquo; Media
   gains a "Lightbox image size" option — choose which size the featured-
   image lightbox loads when opened (any enabled thumbnail size, or the

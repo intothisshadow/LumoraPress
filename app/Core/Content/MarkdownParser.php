@@ -140,9 +140,13 @@ final class MarkdownParser
                 continue;
             }
 
-            // ATX heading
+            // ATX heading — a trailing {.left|center|right|justify}
+            // marker (LP-016) sets its alignment; see stripAlignmentMarker()'s
+            // docblock for why this is a trailing marker rather than an
+            // attribute, the syntax Markdown otherwise has none of.
             if (preg_match('/^(#{1,6})\s+(.*?)\s*#*\s*$/', $line, $m) === 1) {
-                $blocks[] = ['type' => 'heading', 'level' => strlen($m[1]), 'lines' => [$m[2]]];
+                [$headingText, $headingAlign] = $this->stripAlignmentMarker($m[2]);
+                $blocks[] = ['type' => 'heading', 'level' => strlen($m[1]), 'lines' => [$headingText], 'align' => $headingAlign];
                 $i++;
 
                 continue;
@@ -229,10 +233,40 @@ final class MarkdownParser
                 $i++;
             }
 
-            $blocks[] = ['type' => 'paragraph', 'lines' => $paragraphLines];
+            // The alignment marker (LP-016), if present, is only ever
+            // meaningful on the paragraph's own last line — a marker
+            // elsewhere is just literal text the author typed.
+            $lastLine = $paragraphLines[count($paragraphLines) - 1];
+            [$paragraphLines[count($paragraphLines) - 1], $paragraphAlign] = $this->stripAlignmentMarker($lastLine);
+
+            $blocks[] = ['type' => 'paragraph', 'lines' => $paragraphLines, 'align' => $paragraphAlign];
         }
 
         return $blocks;
+    }
+
+    /**
+     * Strips a trailing `{.left}`/`{.center}`/`{.right}`/`{.justify}`
+     * marker (LP-016) from $text, returning the cleaned text and the
+     * matched alignment (or null if there was none). Markdown has no
+     * native attribute syntax — this is a minimal, kramdown-inspired
+     * convention (a trailing inline attribute list) rather than a
+     * project-invented one, kept to the one thing this parser needs it
+     * for: text alignment on a heading or paragraph, mirroring the
+     * WYSIWYG editor's has-text-align-* classes (see
+     * content-editor.js's TinyMCE `formats` config and
+     * ContentRenderer/HtmlSanitizer, which never allows a `style`
+     * attribute at all).
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function stripAlignmentMarker(string $text): array
+    {
+        if (preg_match('/^(.*?)\s*\{\.(left|center|right|justify)\}\s*$/', $text, $m) === 1) {
+            return [$m[1], $m[2]];
+        }
+
+        return [$text, null];
     }
 
     /**
@@ -362,8 +396,8 @@ final class MarkdownParser
     private function renderBlock(array $block): string
     {
         return match ($block['type']) {
-            'heading' => $this->renderHeading((int) $block['level'], (string) $block['lines'][0]),
-            'paragraph' => '<p>' . $this->parseInline($this->joinParagraphLines((array) $block['lines'])) . "</p>\n",
+            'heading' => $this->renderHeading((int) $block['level'], (string) $block['lines'][0], is_string($block['align'] ?? null) ? $block['align'] : null),
+            'paragraph' => '<p' . $this->alignmentClassAttr(is_string($block['align'] ?? null) ? $block['align'] : null) . '>' . $this->parseInline($this->joinParagraphLines((array) $block['lines'])) . "</p>\n",
             'code' => $this->renderCodeBlock((array) $block['lines'], (string) $block['lang']),
             'blockquote' => '<blockquote>' . $this->renderBlocks($this->parseBlocks((array) $block['lines'])) . "</blockquote>\n",
             'hr' => "<hr>\n",
@@ -393,13 +427,25 @@ final class MarkdownParser
         return $out;
     }
 
-    private function renderHeading(int $level, string $text): string
+    private function renderHeading(int $level, string $text, ?string $align = null): string
     {
         $inline = $this->parseInline($text);
         $id = $this->uniqueHeadingId($this->slugify($text));
         $this->headings[] = ['level' => $level, 'text' => $text, 'id' => $id];
 
-        return "<h{$level} id=\"{$id}\">{$inline}</h{$level}>\n";
+        return "<h{$level} id=\"{$id}\"{$this->alignmentClassAttr($align)}>{$inline}</h{$level}>\n";
+    }
+
+    /**
+     * Renders $align (one of 'left'/'center'/'right'/'justify', or null
+     * for no marker) as a ` class="has-text-align-{align}"` attribute
+     * fragment — the same class convention the WYSIWYG editor's
+     * TinyMCE `formats` config applies (content-editor.js), so both
+     * editors produce identical, interchangeable output.
+     */
+    private function alignmentClassAttr(?string $align): string
+    {
+        return $align !== null ? ' class="has-text-align-' . $align . '"' : '';
     }
 
     /**
@@ -601,16 +647,28 @@ final class MarkdownParser
         }, $text);
     }
 
+    /**
+     * A trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}` marker
+     * (LP-016, mirrors stripAlignmentMarker()'s heading/paragraph
+     * syntax) sets the image's alignment class — the same classic-
+     * WordPress class names the WYSIWYG editor's Insert Media
+     * "Alignment" step applies (content-editor.js), so both editors
+     * produce identical, interchangeable output. `alignnone` is
+     * deliberately not a marker value: it's the unmarked default, the
+     * same "no class needed" convention
+     * content/themes/default/style.css already documents.
+     */
     private function parseImages(string $text): string
     {
         return (string) preg_replace_callback(
-            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)/',
+            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)(?:\{\.(alignleft|aligncenter|alignright)\})?/',
             function (array $m): string {
                 $alt = htmlspecialchars($m[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $url = $this->sanitizeUrl(trim($m[2], '<>'));
                 $titleAttr = isset($m[3]) && $m[3] !== '' ? ' title="' . htmlspecialchars($m[3], ENT_QUOTES, 'UTF-8') . '"' : '';
+                $classAttr = isset($m[4]) && $m[4] !== '' ? ' class="' . $m[4] . '"' : '';
 
-                return $this->storePlaceholder('<img src="' . $url . '" alt="' . $alt . '"' . $titleAttr . ' loading="lazy">');
+                return $this->storePlaceholder('<img src="' . $url . '" alt="' . $alt . '"' . $titleAttr . $classAttr . ' loading="lazy">');
             },
             $text,
         );

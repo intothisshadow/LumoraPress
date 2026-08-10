@@ -376,6 +376,28 @@ img {
     border-radius: var(--lp-radius);
 }
 
+/*
+ * LP-016's image alignment — classes the WYSIWYG editor's Insert Media
+ * "Alignment" step adds directly to the <img> (content-editor.js).
+ * .alignnone needs no rule of its own: an inline <img> with no float is
+ * already the "no alignment" default.
+ */
+.lp-post__content img.alignleft {
+    float: left;
+    margin: 0.25em 1.5em 1em 0;
+}
+
+.lp-post__content img.alignright {
+    float: right;
+    margin: 0.25em 0 1em 1.5em;
+}
+
+.lp-post__content img.aligncenter {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .lp-post__content code {
     padding: 0.15em 0.4em;
     border-radius: var(--lp-radius);
@@ -452,6 +474,30 @@ img {
 
 .lp-post__content .lp-align-right {
     text-align: right;
+}
+
+/*
+ * LP-016's text alignment (WYSIWYG editor toolbar) — distinct from
+ * .lp-align-center/.lp-align-right above, which are Markdown table-cell
+ * alignment classes (renderTable() in MarkdownParser). TinyMCE's align
+ * toolbar is configured (content-editor.js) to apply these
+ * has-text-align-* classes rather than an inline style="text-align:...",
+ * since HtmlSanitizer never allows a style attribute at all.
+ */
+.lp-post__content .has-text-align-left {
+    text-align: left;
+}
+
+.lp-post__content .has-text-align-center {
+    text-align: center;
+}
+
+.lp-post__content .has-text-align-right {
+    text-align: right;
+}
+
+.lp-post__content .has-text-align-justify {
+    text-align: justify;
 }
 
 .lp-post__content .lp-toc {

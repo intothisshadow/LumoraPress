@@ -184,6 +184,22 @@
             linkField.appendChild(linkLabelEl);
             linkField.appendChild(linkSelect);
 
+            var alignField = document.createElement('p');
+            alignField.className = 'lp-field';
+            var alignLabelEl = document.createElement('label');
+            alignLabelEl.textContent = 'Alignment';
+            var alignSelect = document.createElement('select');
+
+            [['alignnone', 'None'], ['alignleft', 'Left'], ['aligncenter', 'Center'], ['alignright', 'Right']].forEach(function (pair) {
+                var option = document.createElement('option');
+                option.value = pair[0];
+                option.textContent = pair[1];
+                alignSelect.appendChild(option);
+            });
+
+            alignField.appendChild(alignLabelEl);
+            alignField.appendChild(alignSelect);
+
             var actions = document.createElement('div');
             actions.className = 'lp-editor-media-dialog__settings-actions';
 
@@ -200,6 +216,7 @@
                     width: chosen.width,
                     height: chosen.height,
                     size: sizeSelect.value,
+                    align: alignSelect.value,
                     alt: item.alt || item.name,
                     linkUrl: linkSelect.value === 'file' ? full.url : null,
                     // The *linked* file's own dimensions — only
@@ -229,6 +246,7 @@
 
             settings.appendChild(sizeField);
             settings.appendChild(linkField);
+            settings.appendChild(alignField);
             settings.appendChild(actions);
         }
 
@@ -288,6 +306,25 @@
     // Markdown editor (EasyMDE)
     // ------------------------------------------------------------------
 
+    /**
+     * Appends a trailing {.left|center|right|justify} marker (LP-016,
+     * MarkdownParser::stripAlignmentMarker()) to the current selection,
+     * or the current line if nothing is selected — Markdown has no
+     * attribute syntax, so this minimal, kramdown-inspired convention
+     * is how a heading/paragraph's alignment survives at all. Replaces
+     * any marker already trailing that text first, so re-clicking a
+     * different alignment button swaps it rather than stacking markers.
+     */
+    function wrapSelectionWithAlignment(cm, align) {
+        var hasSelection = cm.somethingSelected();
+        var from = hasSelection ? cm.getCursor('from') : { line: cm.getCursor().line, ch: 0 };
+        var to = hasSelection ? cm.getCursor('to') : { line: cm.getCursor().line, ch: cm.getLine(cm.getCursor().line).length };
+        var text = cm.getRange(from, to);
+        var stripped = text.replace(/\s*\{\.(left|center|right|justify)\}\s*$/, '');
+
+        cm.replaceRange(stripped + ' {.' + align + '}', from, to);
+    }
+
     function initMarkdownEditor(container, textarea, statsEl) {
         loadStyle(EASYMDE_CSS);
         loadStyle(FONT_AWESOME_CSS);
@@ -331,6 +368,31 @@
                 toolbar: [
                     'bold', 'italic', 'strikethrough', '|',
                     'heading-1', 'heading-2', 'heading-3', '|',
+                    {
+                        name: 'align-left',
+                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'left'); },
+                        className: 'fa fa-align-left',
+                        title: 'Align Left',
+                    },
+                    {
+                        name: 'align-center',
+                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'center'); },
+                        className: 'fa fa-align-center',
+                        title: 'Align Center',
+                    },
+                    {
+                        name: 'align-right',
+                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'right'); },
+                        className: 'fa fa-align-right',
+                        title: 'Align Right',
+                    },
+                    {
+                        name: 'align-justify',
+                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'justify'); },
+                        className: 'fa fa-align-justify',
+                        title: 'Justify',
+                    },
+                    '|',
                     'code', 'quote', 'unordered-list', 'ordered-list', '|',
                     'link', 'image',
                     {
@@ -341,10 +403,17 @@
                                 // Markdown has no attribute syntax, so the
                                 // chosen size is expressed purely by which
                                 // file's URL gets inserted (LP-075) — no
-                                // width/height/class survives into the
-                                // rendered <img> for Markdown-authored
-                                // content, a hard limitation of the format.
-                                var image = '![' + payload.alt + '](' + payload.url + ')';
+                                // width/height survives into the rendered
+                                // <img> for Markdown-authored content, a
+                                // hard limitation of the format. Alignment
+                                // (LP-016) is the one exception: a trailing
+                                // {.alignleft/aligncenter/alignright} marker
+                                // (MarkdownParser::parseImages()) does
+                                // survive, the same minimal convention
+                                // wrapSelectionWithAlignment() uses for
+                                // heading/paragraph alignment above.
+                                var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
+                                var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker;
                                 cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
                             });
                         },
@@ -405,8 +474,23 @@
                     // had (LP-068).
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough | '
+                        + 'aligncenter alignleft alignright alignjustify | '
                         + 'bullist numlist | blockquote hr | link image lumoraMedia table codesample | '
                         + 'searchreplace fullscreen code help',
+                    // TinyMCE's align toolbar defaults to an inline
+                    // style="text-align: ..." — HtmlSanitizer never
+                    // allows a style attribute at all (an arbitrary-CSS
+                    // injection surface this project deliberately
+                    // avoids), so alignment is applied as a class
+                    // instead, the same has-text-align-* convention
+                    // Gutenberg uses. See content/themes/default/
+                    // style.css for the matching CSS.
+                    formats: {
+                        alignleft: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-left' },
+                        aligncenter: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-center' },
+                        alignright: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-right' },
+                        alignjustify: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-justify' },
+                    },
                     branding: false,
                     promotion: false,
                     // TinyMCE's default (relative_urls: true) silently
@@ -437,7 +521,7 @@
                                     var image = '<img src="' + escapeHtmlAttr(payload.url) + '" alt="' + escapeHtmlAttr(payload.alt) + '"'
                                         + (payload.width ? ' width="' + payload.width + '"' : '')
                                         + (payload.height ? ' height="' + payload.height + '"' : '')
-                                        + ' class="size-' + payload.size + '">';
+                                        + ' class="size-' + payload.size + ' ' + payload.align + '">';
 
                                     if (!payload.linkUrl) {
                                         editor.insertContent(image);
