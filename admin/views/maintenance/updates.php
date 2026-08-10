@@ -66,7 +66,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $allowDowngrade = ($_POST['allow_downgrade'] ?? '') === '1';
 
             try {
-                $checkResult = $updates->checkUpload($_FILES['package']['tmp_name'], $allowDowngrade);
+                $checkResult = $updates->checkUpload($_FILES['package']['tmp_name'], $allowDowngrade, 'manual', $currentUser->id);
             } catch (\Throwable $exception) {
                 $error = $exception->getMessage();
             }
@@ -126,7 +126,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $kernel->githubUpdates->downloadRelease($release, $downloadPath);
 
-            $checkResult = $updates->checkUpload($downloadPath, $allowDowngrade, 'github');
+            $checkResult = $updates->checkUpload($downloadPath, $allowDowngrade, 'github', $currentUser->id);
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
         } finally {
@@ -388,23 +388,29 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <div class="lp-tabs__panel" id="lp-tabpanel-manual" role="tabpanel" aria-labelledby="lp-tab-manual"<?= $activeTab === 'manual' ? '' : ' hidden' ?>>
             <section class="lp-admin__panel">
                 <h2>Manual Update (ZIP Upload)</h2>
-                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
-                    <?= Csrf::field('update_upload') ?>
-                    <input type="hidden" name="form" value="upload">
+                <div class="lp-update-upload" data-lp-update-upload>
+                    <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
+                        <?= Csrf::field('update_upload') ?>
+                        <input type="hidden" name="form" value="upload">
 
-                    <p class="lp-field">
-                        <label for="update-package">Release ZIP file</label>
-                        <input type="file" id="update-package" name="package" accept=".zip" required>
-                        <span class="lp-field__hint">Only official Lumora Press release packages should be uploaded here.</span>
-                    </p>
+                        <p class="lp-field">
+                            <label for="update-package">Release ZIP file</label>
+                            <input type="file" id="update-package" name="package" accept=".zip" required>
+                            <span class="lp-field__hint">Only official Lumora Press release packages should be uploaded here. You can also drag and drop a ZIP file anywhere in this box.</span>
+                        </p>
 
-                    <p class="lp-field lp-field--checkbox">
-                        <input type="checkbox" id="update-allow-downgrade" name="allow_downgrade" value="1">
-                        <label for="update-allow-downgrade">Allow installing an older version than what is currently installed</label>
-                    </p>
+                        <p class="lp-field lp-field--checkbox">
+                            <input type="checkbox" id="update-allow-downgrade" name="allow_downgrade" value="1">
+                            <label for="update-allow-downgrade">Allow installing an older version than what is currently installed</label>
+                        </p>
 
-                    <button type="submit" class="lp-button lp-button--primary">Upload &amp; Check</button>
-                </form>
+                        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" data-lp-update-upload-progress hidden>
+                            <div class="lp-thumbnails__progress-bar" data-lp-update-upload-progress-bar></div>
+                        </div>
+
+                        <button type="submit" class="lp-button lp-button--primary">Upload &amp; Check</button>
+                    </form>
+                </div>
             </section>
         </div>
     </div>
@@ -591,6 +597,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <li>Release source: GitHub Releases (<code><?= esc_html($githubRepo) ?></code>), or a manually uploaded ZIP.</li>
         <li>Themes and plugins other than the default theme are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, and the root PHP files are replaced.</li>
         <li>An automatic file and database backup is created before any update is applied. Use the Backups panel above to create one on demand, or restore/delete an existing one.</li>
+        <li>Maintenance mode is automatically enabled for the duration of an update and restored to its previous state afterward — the admin area itself always stays reachable.</li>
         <li>If the <code>install/</code> directory is present when an update completes, it is automatically removed during cleanup.</li>
         <li>If a folder or file that made up an older release is no longer part of a newer one, it's automatically removed once the update finishes — this only ever applies to Lumora Press's own core paths (<code>app/</code>, <code>admin/</code>, <code>include/</code>, etc.); themes other than the default theme, plugins, uploads, and <code>config/</code> are never touched.</li>
         <li>SHA-256 checksum verification is used when the release source provides one.</li>

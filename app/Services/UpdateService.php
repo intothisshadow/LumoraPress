@@ -21,6 +21,7 @@ use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\InstallerCleanup;
+use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\UpdateStatus;
 use RuntimeException;
 use Throwable;
@@ -39,9 +40,48 @@ final class UpdateService
 
     private const LOCK_STALE_SECONDS = 600;
 
+    private const MIN_MYSQL_VERSION = '5.6.4';
+
+    private const MIN_MARIADB_VERSION = '10.0.5';
+
+    /** @var array<int, string> */
+    private const REQUIRED_CONFIG_KEYS = [
+        'db_host', 'db_name', 'db_user', 'db_password', 'db_charset', 'table_prefix', 'secret_key',
+    ];
+
+    private const MIN_BACKUP_FREE_BYTES = 50 * 1024 * 1024;
+
+    /**
+     * "Warn about active users" — an admin is considered still active if
+     * their last authenticated request (see UserService::touchLastActive(),
+     * called once per admin page load) was within this window.
+     */
+    private const ACTIVE_USER_WINDOW_SECONDS = 300;
+
+    /**
+     * "Detect modified core files" — a wall of dozens of filenames would
+     * bury the actionable part of the warning, so the list is capped and
+     * the remainder summarized as a count.
+     */
+    private const MAX_MODIFIED_FILES_SHOWN = 10;
+
     /**
      * @param array<int, string> $corePaths Paths (relative to $installRoot) the
      *     updater overlays from the staged package onto the installation.
+     * @param ?string $configFilePath config/config.php's absolute path —
+     *     nullable so every existing `new UpdateService(...)` call site in
+     *     the test suite keeps compiling unchanged (the same optional-DI
+     *     pattern PostService's docblock uses for $hooks); the
+     *     "Configuration compatibility" check below is simply skipped
+     *     when this is null. include/bootstrap.php's real instance always
+     *     passes one.
+     * @param ?PressConfig $config Nullable for the same reason as
+     *     $configFilePath — when absent, "Maintenance mode during update"
+     *     is simply skipped (install() behaves exactly as it did before
+     *     that feature existed) rather than every test call site needing
+     *     an in-memory PressConfig just to construct a service.
+     * @param ?UserService $users Nullable for the same reason — when
+     *     absent, "Warn about active users" always reports no problems.
      */
     public function __construct(
         private readonly Database $database,
@@ -56,6 +96,10 @@ final class UpdateService
         private readonly string $lockFilePath,
         private readonly array $corePaths,
         private readonly UpdateManifest $manifest,
+        private readonly ?string $configFilePath = null,
+        private readonly ?PressConfig $config = null,
+        private readonly ?UserService $users = null,
+        private readonly ?UpdateChecksumManifest $checksums = null,
     ) {
     }
 
@@ -68,11 +112,28 @@ final class UpdateService
      *     token: string,
      * }
      */
-    public function checkUpload(string $uploadedZipPath, bool $allowDowngrade, string $source = 'manual'): array
+    public function checkUpload(string $uploadedZipPath, bool $allowDowngrade, string $source = 'manual', ?int $currentUserId = null): array
     {
         $installedVersion = $this->installedVersion();
 
         $result = $this->validator->validateAndStage($uploadedZipPath, $installedVersion, $allowDowngrade);
+
+        // Compatibility Checks: PHP version/extensions/writability are
+        // already validated above (they depend on the uploaded package
+        // itself, so they live in UpdatePackageValidator); these three
+        // depend only on this server's own current state, not anything in
+        // the package, so they run here regardless of what validateAndStage()
+        // found.
+        array_push($result['blocking'], ...$this->databaseVersionProblems());
+        array_push($result['blocking'], ...$this->configCompatibilityProblems());
+        array_push($result['blocking'], ...$this->backupLocationProblems());
+
+        // Neither of these is a reason to block the update — an
+        // administrator may deliberately want to proceed despite another
+        // active session, or despite overwriting a file they hand-edited —
+        // so both are warnings, not blocking problems.
+        array_push($result['warnings'], ...$this->activeUserProblems($currentUserId));
+        array_push($result['warnings'], ...$this->modifiedCoreFileProblems());
 
         if ($result['blocking'] === []) {
             $pendingPath = rtrim($result['staging_path'], '/') . '/' . self::PENDING_FILE;
@@ -84,11 +145,247 @@ final class UpdateService
                 'source' => $source,
                 'created_at' => time(),
             ], JSON_THROW_ON_ERROR));
+        } else {
+            // A check added above (rather than validateAndStage() itself)
+            // may be the only reason blocking is non-empty, in which case
+            // the package is still sitting in a freshly extracted staging
+            // directory — validateAndStage() only cleans up after its own
+            // blocking reasons, never ours.
+            $this->removeDirectory($result['staging_path']);
         }
 
         unset($result['staging_path']);
 
         return $result;
+    }
+
+    /**
+     * "Database version" Compatibility Check — the connected MySQL/MariaDB
+     * server's own version, not to be confused with migrationStatus()'s
+     * "how many of this app's own migrations have run" (that's an
+     * expected, normal, often-not-yet-complete state right up until
+     * install() actually runs them as part of applying the update itself,
+     * not a pre-update blocker). Mirrors README.md's stated minimum
+     * (MySQL 5.6.4+ / MariaDB 10.0.5+ — InnoDB FULLTEXT support, used by
+     * search) the same way UpdatePackageValidator checks the package's own
+     * requires_php against PHP_VERSION.
+     *
+     * @return array<int, string>
+     */
+    public function databaseVersionProblems(): array
+    {
+        try {
+            $rawVersion = (string) $this->database->fetchColumn('SELECT VERSION()');
+        } catch (Throwable) {
+            // Most likely a non-MySQL-protocol connection (e.g. a unit
+            // test's SQLite fixture) — nothing meaningful to check.
+            return [];
+        }
+
+        if ($rawVersion === '' || self::isDatabaseVersionSupported($rawVersion)) {
+            return [];
+        }
+
+        return [sprintf(
+            'The connected database server (%s) is older than the minimum supported version (MySQL %s+ or MariaDB %s+).',
+            $rawVersion,
+            self::MIN_MYSQL_VERSION,
+            self::MIN_MARIADB_VERSION,
+        )];
+    }
+
+    /**
+     * Pure version-string logic split out from databaseVersionProblems()
+     * so it's unit-testable without a real database connection — the same
+     * "extract the comparison, keep the I/O thin" split
+     * RequirementsCheck's constructor-injectable $extensionLoaded uses for
+     * a different reason (testability without root/disabled extensions),
+     * applied here for testability without a real MySQL/MariaDB server.
+     */
+    public static function isDatabaseVersionSupported(string $rawVersion): bool
+    {
+        if (preg_match('/^\d+\.\d+\.\d+/', $rawVersion, $matches) !== 1) {
+            // Doesn't even look like a version string — fail open rather
+            // than block an update over a server that reports its version
+            // in an unrecognised format.
+            return true;
+        }
+
+        $numericVersion = $matches[0];
+        $isMariaDb = stripos($rawVersion, 'mariadb') !== false;
+        $minimum = $isMariaDb ? self::MIN_MARIADB_VERSION : self::MIN_MYSQL_VERSION;
+
+        return version_compare($numericVersion, $minimum, '>=');
+    }
+
+    /**
+     * "Configuration compatibility" Compatibility Check — config/config.php
+     * survives an update untouched (it's never one of $corePaths), so this
+     * confirms it's actually healthy *before* an update runs, rather than
+     * risking a config-related failure during/after the update being
+     * misattributed to the update itself. Returns [] (nothing to check)
+     * when $configFilePath wasn't provided — see the constructor docblock.
+     *
+     * @return array<int, string>
+     */
+    public function configCompatibilityProblems(): array
+    {
+        if ($this->configFilePath === null) {
+            return [];
+        }
+
+        if (!is_file($this->configFilePath)) {
+            return ["The configuration file ({$this->configFilePath}) could not be found."];
+        }
+
+        $data = require $this->configFilePath;
+
+        if (!is_array($data)) {
+            return ["The configuration file ({$this->configFilePath}) must return an array."];
+        }
+
+        $problems = [];
+
+        foreach (self::REQUIRED_CONFIG_KEYS as $key) {
+            if (!array_key_exists($key, $data)) {
+                $problems[] = "The configuration file is missing the required \"{$key}\" setting.";
+            }
+        }
+
+        foreach (['secret_key', 'table_prefix'] as $key) {
+            if (array_key_exists($key, $data) && trim((string) $data[$key]) === '') {
+                $problems[] = "The configuration file's \"{$key}\" setting is empty.";
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * "Verify backup location" — confirms the configured backup
+     * destination is writable with a sane minimum of free space *before*
+     * an update proceeds, rather than only discovering a stuck permission
+     * or full disk when backupFiles()/backupDatabase() itself throws deep
+     * inside install(). The directory itself is created lazily on first
+     * backup (see UpdateBackupService::ensureBackupsDirectory()), so a
+     * fresh install checks the nearest existing ancestor instead —
+     * mirrors systemStatus()'s "Temporary directory" check, one level up.
+     *
+     * @return array<int, string>
+     */
+    public function backupLocationProblems(): array
+    {
+        $backupsPath = $this->backups->backupsPath();
+        $existingAncestor = is_dir($backupsPath) ? $backupsPath : $this->nearestExistingDirectory(dirname($backupsPath));
+
+        if (!is_writable($existingAncestor)) {
+            return ["The backup directory ({$backupsPath}) is not writable by the web server."];
+        }
+
+        $freeSpace = @disk_free_space($existingAncestor);
+
+        if ($freeSpace !== false && $freeSpace < self::MIN_BACKUP_FREE_BYTES) {
+            return [sprintf(
+                'There is not enough free disk space at the backup location (%s) — only %s available.',
+                $backupsPath,
+                number_format($freeSpace / 1024 / 1024, 1) . ' MB',
+            )];
+        }
+
+        return [];
+    }
+
+    /**
+     * "Warn about active users" — surfaces a non-blocking heads-up when
+     * another administrator/editor session has been active recently, since
+     * an update briefly puts the site into maintenance mode (see
+     * beginMaintenanceMode()) and overwrites core files out from under
+     * anyone mid-edit. Returns [] when $currentUserId or $users wasn't
+     * provided (an on-demand backup or a test double, e.g.).
+     *
+     * @return array<int, string>
+     */
+    public function activeUserProblems(?int $currentUserId): array
+    {
+        if ($this->users === null || $currentUserId === null) {
+            return [];
+        }
+
+        $others = $this->users->activeUsernamesExcluding($currentUserId, self::ACTIVE_USER_WINDOW_SECONDS);
+
+        if ($others === []) {
+            return [];
+        }
+
+        return [sprintf(
+            'Other users are currently active in the admin area (%s) — consider waiting until they are done, since this update will briefly enable maintenance mode and replace core files.',
+            implode(', ', $others),
+        )];
+    }
+
+    /**
+     * "Detect modified core files" — compares the live filesystem against
+     * the checksums recorded right after the last successful install()
+     * (see UpdateChecksumManifest's docblock). A mismatch means a core file
+     * was hand-edited (or deleted) since then; this update's overlay step
+     * will silently replace or remove it, so it's worth a heads-up before
+     * that happens. Returns [] when nothing was recorded yet (a fresh
+     * install predating this feature, or $checksums wasn't provided) —
+     * fail-safe, never a false "everything is modified" alarm.
+     *
+     * @return array<int, string>
+     */
+    public function modifiedCoreFileProblems(): array
+    {
+        if ($this->checksums === null) {
+            return [];
+        }
+
+        $expected = $this->checksums->read();
+
+        if ($expected === []) {
+            return [];
+        }
+
+        $modified = [];
+
+        foreach ($expected as $relativePath => $expectedHash) {
+            $absolute = rtrim($this->installRoot, '/') . '/' . $relativePath;
+            $actualHash = is_file($absolute) ? hash_file('sha256', $absolute) : false;
+
+            if ($actualHash !== $expectedHash) {
+                $modified[] = $relativePath;
+            }
+        }
+
+        if ($modified === []) {
+            return [];
+        }
+
+        sort($modified);
+        $shown = array_slice($modified, 0, self::MAX_MODIFIED_FILES_SHOWN);
+        $remaining = count($modified) - count($shown);
+
+        return [sprintf(
+            'The following core file(s) appear to have been modified since they were installed and will be overwritten by this update: %s%s.',
+            implode(', ', $shown),
+            $remaining > 0 ? sprintf(' (and %d more)', $remaining) : '',
+        )];
+    }
+
+    private function nearestExistingDirectory(string $path): string
+    {
+        while (!is_dir($path)) {
+            $parent = dirname($path);
+
+            if ($parent === $path) {
+                break;
+            }
+
+            $path = $parent;
+        }
+
+        return $path;
     }
 
     public function cancel(string $token): void
@@ -116,6 +413,7 @@ final class UpdateService
 
         $filesBackupPath = null;
         $databaseBackupPath = null;
+        $previousMaintenanceMode = $this->beginMaintenanceMode();
 
         try {
             $this->hooks->doAction('lumora_press_before_update', $fromVersion, $toVersion);
@@ -156,6 +454,7 @@ final class UpdateService
             (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
 
             $this->removeObsoleteCorePaths();
+            $this->checksums?->write($this->checksums->computeForCorePaths($this->corePaths));
 
             $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
@@ -200,8 +499,40 @@ final class UpdateService
                 'to_version' => $toVersion,
             ];
         } finally {
+            $this->endMaintenanceMode($previousMaintenanceMode);
             $this->releaseLock();
         }
+    }
+
+    /**
+     * "Maintenance mode during update" — auto-enables the existing
+     * MaintenanceGate for the duration of install() (see its own docblock:
+     * /admin/* stays exempt regardless, so an administrator can always
+     * keep working through the update), and returns whatever the option
+     * held before so endMaintenanceMode() can restore it exactly — an
+     * administrator who had already turned maintenance mode on deliberately
+     * must find it still on afterward, not toggled off. Returns null (and
+     * does nothing) when $config wasn't provided.
+     */
+    private function beginMaintenanceMode(): ?string
+    {
+        if ($this->config === null) {
+            return null;
+        }
+
+        $previous = (string) $this->config->option('maintenance_mode_enabled', '0');
+        $this->config->setOption('maintenance_mode_enabled', '1');
+
+        return $previous;
+    }
+
+    private function endMaintenanceMode(?string $previous): void
+    {
+        if ($this->config === null || $previous === null) {
+            return;
+        }
+
+        $this->config->setOption('maintenance_mode_enabled', $previous);
     }
 
     /**

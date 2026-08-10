@@ -60,13 +60,22 @@ final class MediaService
         'pdf', 'zip', 'css', 'txt', 'xml', 'json',
         'doc', 'docx', 'rtf', 'odt', 'rar', '7z',
         'mp3', 'ogg', 'wav', 'm4a',
-        'mp4', 'webm', 'mov',
+        'mp4', 'webm', 'mov', 'vtt',
     ];
 
+    /**
+     * text/vtt is listed alongside text/plain (LP-031's video
+     * captions/subtitles) because mime_content_type()'s detection of a
+     * .vtt file is not consistent across systems' magic databases — some
+     * report text/vtt, others fall back to text/plain, which was already
+     * allowed for other reasons. Both are accepted so a WebVTT upload
+     * isn't rejected purely due to which magic database the host happens
+     * to have installed.
+     */
     private const ALLOWED_MIME_TYPES = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
         'image/x-icon', 'image/vnd.microsoft.icon',
-        'application/pdf', 'application/zip', 'text/css', 'text/plain',
+        'application/pdf', 'application/zip', 'text/css', 'text/plain', 'text/vtt',
         'application/xml', 'text/xml', 'application/json',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -434,6 +443,29 @@ final class MediaService
         $this->database->execute(
             'UPDATE ' . $this->table() . ' SET folder_id = :folder_id WHERE id = :id',
             ['folder_id' => $folderId, 'id' => $id],
+        );
+    }
+
+    /**
+     * LP-031's video poster image and caption/subtitle track: both are
+     * just references to other media items (an image for the poster, a
+     * .vtt file for the track), so no new upload path is needed — an
+     * admin picks from already-uploaded media via a <select>. A separate
+     * method rather than folding into updateMetadata() since these two
+     * fields are video-specific, not part of the generic alt/caption/
+     * description/notes set every media type shares.
+     */
+    public function setVideoAssets(int $id, ?int $posterMediaId, ?int $captionTrackMediaId): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . '
+                SET poster_media_id = :poster_media_id, caption_track_media_id = :caption_track_media_id
+              WHERE id = :id',
+            [
+                'poster_media_id' => $posterMediaId,
+                'caption_track_media_id' => $captionTrackMediaId,
+                'id' => $id,
+            ],
         );
     }
 

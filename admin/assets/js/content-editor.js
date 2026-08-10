@@ -102,7 +102,26 @@
     // Media picker — shared by both editors. Built from the same
     // already-fetched image list the page rendered into
     // data-media-library, rather than a separate AJAX endpoint.
+    //
+    // LP-075: picking an image is now a two-step flow — the grid, then
+    // an "Attachment Display Settings" step (Size / Link To) before the
+    // callback fires, mirroring classic WordPress's Insert Media dialog.
+    // Each library item's `sizes` map ({full, small?, medium?, large?},
+    // each {url, width, height} — see posts/new.php's/pages.php's
+    // $editorMediaLibrary) is built server-side so this step needs no
+    // extra request.
     // ------------------------------------------------------------------
+
+    var SIZE_LABELS = { small: 'Thumbnail', medium: 'Medium', large: 'Large', full: 'Full Size' };
+    var SIZE_ORDER = ['small', 'medium', 'large', 'full'];
+
+    function escapeHtmlAttr(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
 
     function openMediaPicker(library, onSelect) {
         var dialog = document.createElement('dialog');
@@ -111,10 +130,106 @@
         var grid = document.createElement('div');
         grid.className = 'lp-editor-media-dialog__grid';
 
+        var settings = document.createElement('div');
+        settings.className = 'lp-editor-media-dialog__settings';
+        settings.hidden = true;
+
         if (library.length === 0) {
             var empty = document.createElement('p');
             empty.textContent = 'No images in the Media Manager yet.';
             grid.appendChild(empty);
+        }
+
+        function showSettingsStep(item) {
+            settings.innerHTML = '';
+            grid.hidden = true;
+            settings.hidden = false;
+
+            var itemSizes = item.sizes || {};
+
+            var sizeField = document.createElement('p');
+            sizeField.className = 'lp-field';
+            var sizeLabelEl = document.createElement('label');
+            sizeLabelEl.textContent = 'Size';
+            var sizeSelect = document.createElement('select');
+
+            SIZE_ORDER.forEach(function (name) {
+                if (!itemSizes[name]) {
+                    return;
+                }
+
+                var option = document.createElement('option');
+                option.value = name;
+                option.textContent = SIZE_LABELS[name] + ' (' + itemSizes[name].width + '×' + itemSizes[name].height + ')';
+                option.selected = name === 'full';
+                sizeSelect.appendChild(option);
+            });
+
+            sizeField.appendChild(sizeLabelEl);
+            sizeField.appendChild(sizeSelect);
+
+            var linkField = document.createElement('p');
+            linkField.className = 'lp-field';
+            var linkLabelEl = document.createElement('label');
+            linkLabelEl.textContent = 'Link To';
+            var linkSelect = document.createElement('select');
+
+            [['none', 'None'], ['file', 'Media File']].forEach(function (pair) {
+                var option = document.createElement('option');
+                option.value = pair[0];
+                option.textContent = pair[1];
+                linkSelect.appendChild(option);
+            });
+
+            linkField.appendChild(linkLabelEl);
+            linkField.appendChild(linkSelect);
+
+            var actions = document.createElement('div');
+            actions.className = 'lp-editor-media-dialog__settings-actions';
+
+            var insertButton = document.createElement('button');
+            insertButton.type = 'button';
+            insertButton.className = 'lp-button lp-button--primary';
+            insertButton.textContent = 'Insert';
+            insertButton.addEventListener('click', function () {
+                var chosen = itemSizes[sizeSelect.value] || { url: item.url, width: 0, height: 0 };
+                var full = itemSizes.full || { url: item.url, width: 0, height: 0 };
+
+                onSelect({
+                    url: chosen.url,
+                    width: chosen.width,
+                    height: chosen.height,
+                    size: sizeSelect.value,
+                    alt: item.alt || item.name,
+                    linkUrl: linkSelect.value === 'file' ? full.url : null,
+                    // The *linked* file's own dimensions — only
+                    // meaningful (and only ever different from width/
+                    // height above) when linkUrl is set, since a chosen
+                    // display size can differ from Full. Passed through
+                    // separately so a lightbox opened on this image sizes
+                    // itself against the file it actually links to, not
+                    // the inline thumbnail's own smaller size.
+                    linkWidth: linkSelect.value === 'file' ? full.width : 0,
+                    linkHeight: linkSelect.value === 'file' ? full.height : 0,
+                });
+                dialog.close();
+            });
+
+            var backButton = document.createElement('button');
+            backButton.type = 'button';
+            backButton.className = 'lp-button';
+            backButton.textContent = 'Back';
+            backButton.addEventListener('click', function () {
+                settings.hidden = true;
+                grid.hidden = false;
+            });
+
+            actions.appendChild(insertButton);
+            actions.appendChild(backButton);
+
+            settings.appendChild(sizeField);
+            settings.appendChild(linkField);
+            settings.appendChild(actions);
         }
 
         library.forEach(function (item) {
@@ -128,8 +243,7 @@
             button.appendChild(img);
 
             button.addEventListener('click', function () {
-                onSelect(item);
-                dialog.close();
+                showSettingsStep(item);
             });
 
             grid.appendChild(button);
@@ -142,6 +256,7 @@
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         dialog.appendChild(grid);
+        dialog.appendChild(settings);
         dialog.appendChild(closeButton);
         dialog.addEventListener('close', function () { dialog.remove(); });
         document.body.appendChild(dialog);
@@ -221,9 +336,16 @@
                     {
                         name: 'media-library',
                         action: function () {
-                            openMediaPicker(library, function (item) {
+                            openMediaPicker(library, function (payload) {
                                 var cm = editor.codemirror;
-                                cm.replaceSelection('![' + item.name + '](' + item.url + ')');
+                                // Markdown has no attribute syntax, so the
+                                // chosen size is expressed purely by which
+                                // file's URL gets inserted (LP-075) — no
+                                // width/height/class survives into the
+                                // rendered <img> for Markdown-authored
+                                // content, a hard limitation of the format.
+                                var image = '![' + payload.alt + '](' + payload.url + ')';
+                                cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
                             });
                         },
                         className: 'fa fa-photo',
@@ -287,6 +409,19 @@
                         + 'searchreplace fullscreen code help',
                     branding: false,
                     promotion: false,
+                    // TinyMCE's default (relative_urls: true) silently
+                    // rewrites every inserted/typed absolute URL — image
+                    // src, link href — into a path relative to the admin
+                    // editor's own page location (e.g. "../../content/
+                    // uploads/..."). That's only ever valid from the
+                    // editor page itself; once the same stored HTML
+                    // renders on a public post/page at a different URL
+                    // depth, the relative path resolves to the wrong
+                    // place and 404s. Content this app stores must remain
+                    // correct wherever it's later rendered, so URLs
+                    // inserted here (via Insert from Media Manager or
+                    // typed by hand) must stay exactly as given.
+                    relative_urls: false,
                     content_css: (container.dataset.themeStylesheet || undefined),
                     images_upload_handler: function (blobInfo) {
                         return uploadFile(container, blobInfo.blob());
@@ -298,8 +433,35 @@
                             icon: 'image',
                             tooltip: 'Insert from Media Manager',
                             onAction: function () {
-                                openMediaPicker(library, function (item) {
-                                    editor.insertContent('<img src="' + item.url + '" alt="' + item.name + '">');
+                                openMediaPicker(library, function (payload) {
+                                    var image = '<img src="' + escapeHtmlAttr(payload.url) + '" alt="' + escapeHtmlAttr(payload.alt) + '"'
+                                        + (payload.width ? ' width="' + payload.width + '"' : '')
+                                        + (payload.height ? ' height="' + payload.height + '"' : '')
+                                        + ' class="size-' + payload.size + '">';
+
+                                    if (!payload.linkUrl) {
+                                        editor.insertContent(image);
+
+                                        return;
+                                    }
+
+                                    // The link's own data-pswp-width/height/
+                                    // caption are set directly here, from the
+                                    // *linked* file's real dimensions —
+                                    // needed because a chosen display size
+                                    // can differ from Full, so the lightbox
+                                    // (ContentRenderer::addLightboxAttributes())
+                                    // can't reliably infer the linked file's
+                                    // real size from the inline <img> alone,
+                                    // which only ever describes its own,
+                                    // possibly smaller, display size.
+                                    var link = '<a href="' + escapeHtmlAttr(payload.linkUrl) + '"'
+                                        + (payload.linkWidth ? ' data-pswp-width="' + payload.linkWidth + '"' : '')
+                                        + (payload.linkHeight ? ' data-pswp-height="' + payload.linkHeight + '"' : '')
+                                        + ' data-pswp-caption="' + escapeHtmlAttr(payload.alt) + '"'
+                                        + '>' + image + '</a>';
+
+                                    editor.insertContent(link);
                                 });
                             },
                         });

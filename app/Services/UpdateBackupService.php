@@ -49,7 +49,19 @@ final class UpdateBackupService
         private readonly string $backupsPath,
         private readonly array $corePaths,
         private readonly UpdateManifest $manifest,
+        private readonly ?UpdateChecksumManifest $checksums = null,
     ) {
+    }
+
+    /**
+     * Exposes the configured backup destination — UpdateService's
+     * "Verify backup location" pre-update check needs this to confirm the
+     * directory is writable with enough free space before an update ever
+     * gets as far as actually calling backupFiles()/backupDatabase().
+     */
+    public function backupsPath(): string
+    {
+        return $this->backupsPath;
     }
 
     public function backupFiles(string $version): string
@@ -78,9 +90,65 @@ final class UpdateBackupService
             throw new RuntimeException('Unable to finalize the file backup archive.');
         }
 
+        $this->verifyFilesBackup($path);
         $this->pruneOldBackups('files-*.zip');
 
         return $path;
+    }
+
+    /**
+     * "Backup verification" — reopens a just-created archive with
+     * ZipArchive::CHECKCONS, which validates its central directory and
+     * local file headers are internally consistent, rather than trusting
+     * that a successful write() implies a readable archive. Deliberately
+     * does not re-read every entry's bytes (that would double the I/O cost
+     * of every backup for large sites, contrary to CLAUDE.md's performance
+     * goals) — a corrupt central directory is the failure mode that
+     * actually matters here (a truncated write, a disk that filled up
+     * mid-write), and CHECKCONS catches exactly that.
+     */
+    private function verifyFilesBackup(string $path): void
+    {
+        $verify = new ZipArchive();
+
+        if ($verify->open($path, ZipArchive::CHECKCONS) !== true) {
+            throw new RuntimeException('The file backup archive failed integrity verification after being created.');
+        }
+
+        $verify->close();
+    }
+
+    /**
+     * "Backup verification" for the database half of a pair — a
+     * non-empty dump must end with the same statement marker every
+     * completed fwrite() call in writeTableData()/backupDatabase() itself
+     * appends, so a dump truncated by a crash or a full disk (ending
+     * mid-statement, with no trailing marker) is caught immediately rather
+     * than only discovered when a restore silently applies a partial SQL
+     * script. An empty dump is valid on its own (no prefixed tables yet,
+     * e.g. a fresh install) and is not flagged.
+     */
+    private function verifyDatabaseBackup(string $path): void
+    {
+        $size = @filesize($path);
+
+        if ($size === false || $size === 0) {
+            return;
+        }
+
+        $markerLength = strlen(self::STATEMENT_MARKER);
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new RuntimeException('The database backup file could not be reopened for verification.');
+        }
+
+        $tail = fseek($handle, -$markerLength, SEEK_END) === 0 ? fread($handle, $markerLength) : false;
+        fclose($handle);
+
+        if ($tail !== self::STATEMENT_MARKER) {
+            throw new RuntimeException('The database backup file appears to be truncated or corrupted.');
+        }
     }
 
     /**
@@ -208,6 +276,16 @@ final class UpdateBackupService
         // something it shouldn't — keeps the manifest from describing a
         // version that a restore just moved away from.
         $this->manifest->write($this->corePaths);
+
+        // A restore can bring back an arbitrary (possibly much older)
+        // backup — not necessarily the one taken immediately before the
+        // most recent install() — so the checksum baseline can no longer
+        // be trusted to describe what's now live. Clearing it (rather than
+        // recomputing) is the safe choice: the restored files may
+        // themselves have carried admin modifications before the backup
+        // was taken, and a fresh install() run will simply repopulate a
+        // correct baseline the next time one succeeds.
+        $this->checksums?->clear();
     }
 
     public function backupDatabase(string $version): string
@@ -241,6 +319,7 @@ final class UpdateBackupService
             fclose($handle);
         }
 
+        $this->verifyDatabaseBackup($path);
         $this->pruneOldBackups('db-*.sql');
 
         return $path;

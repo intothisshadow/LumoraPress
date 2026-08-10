@@ -34,9 +34,21 @@ $results ??= [];
                             </div>
                         <?php endif; ?>
                         <div class="lp-search-results__body">
-                            <p class="lp-search-results__type"><?= esc_html($result->type === 'page' ? 'Page' : 'Post') ?></p>
+                            <p class="lp-search-results__type"><?= esc_html(match ($result->type) {
+                                'page' => 'Page',
+                                'category' => 'Category',
+                                'tag' => 'Tag',
+                                'author' => 'Author',
+                                default => 'Post',
+                            }) ?></p>
                             <h2 class="lp-search-results__title">
-                                <a href="<?= esc_url(site_url(($result->type === 'page' ? 'page/' : 'post/') . $result->slug)) ?>">
+                                <a href="<?= esc_url(site_url(match ($result->type) {
+                                    'page' => 'page/',
+                                    'category' => 'category/',
+                                    'tag' => 'tag/',
+                                    'author' => 'author/',
+                                    default => 'post/',
+                                } . $result->slug)) ?>">
                                     <?= highlight_terms(esc_html($result->title), $query) ?>
                                 </a>
                             </h2>

@@ -56,6 +56,16 @@ final class ThemeRenderer
         return rtrim($this->themesPath, '/') . '/' . $this->activeTheme;
     }
 
+    /**
+     * Appends `?v={mtime}` when $path resolves to a real file on disk —
+     * a cache-busting query string that changes automatically whenever
+     * the file itself changes, no version-number bookkeeping needed.
+     * Without this, a stylesheet/script fix shipped between releases
+     * (via the manual ZIP update, LP-026) can sit invisible in every
+     * visitor's browser cache indefinitely, since the URL never changes
+     * to tell the browser to re-fetch it — a real bug this exact gap
+     * caused (see docs/CHANGELOG.md's entry for this date).
+     */
     public function themeUrl(string $path = ''): string
     {
         if ($this->activeTheme === null) {
@@ -64,7 +74,15 @@ final class ThemeRenderer
 
         $base = rtrim($this->themesUrl, '/') . '/' . $this->activeTheme;
 
-        return $path === '' ? $base : $base . '/' . ltrim($path, '/');
+        if ($path === '') {
+            return $base;
+        }
+
+        $relativePath = ltrim($path, '/');
+        $absolutePath = $this->themePath() . '/' . $relativePath;
+        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+
+        return $base . '/' . $relativePath . ($mtime !== false ? '?v=' . $mtime : '');
     }
 
     public function locateTemplate(string $template): ?string

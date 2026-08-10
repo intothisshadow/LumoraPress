@@ -35,6 +35,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/content-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/theme-file-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/folder-drag-drop.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/update-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/select-all.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/confirm-submit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/auto-submit.js')) ?>" defer></script>
@@ -42,7 +43,8 @@ if (!isset($kernel)) {
 <?php if (\LumoraPress\Core\Theme\MediaViewer::isUsed()): ?>
     <!-- Media Viewer & Lightbox (LP-031) — see content/themes/default/footer.php's identical block for why this is CDN-loaded and conditional. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css">
-    <script type="module" src="<?= esc_url(admin_asset_url('js/media-viewer.js')) ?>"></script>
+    <?php /* See content/themes/default/footer.php's identical block for why this is a data-* attribute rather than an inline <script> — CSP's script-src has no inline allowance. */ ?>
+    <script type="module" data-lp-media-viewer data-show-filenames="<?= $kernel->config->option('lightbox_show_filenames', '0') === '1' ? '1' : '0' ?>" src="<?= esc_url(admin_asset_url('js/media-viewer.js')) ?>"></script>
 <?php endif; ?>
 </body>
 </html>

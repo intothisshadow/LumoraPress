@@ -124,6 +124,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
+    } elseif ($form === 'update_video_assets' && Csrf::verify('update_video_assets', $token)) {
+        $id = (int) ($_POST['id'] ?? 0);
+        $posterMediaId = (int) ($_POST['poster_media_id'] ?? 0);
+        $captionTrackMediaId = (int) ($_POST['caption_track_media_id'] ?? 0);
+
+        $mediaService->setVideoAssets($id, $posterMediaId > 0 ? $posterMediaId : null, $captionTrackMediaId > 0 ? $captionTrackMediaId : null);
+
+        header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
+        exit;
     } elseif ($form === 'delete_file' && Csrf::verify('delete_file', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
         $confirmed = ($_POST['confirm_delete'] ?? '') === '1';
@@ -329,6 +338,7 @@ $allFolders = $folderService->listAll();
             <div class="lp-gallery">
                 <a
                     href="<?= esc_url($mediaService->url($editingMedia)) ?>"
+                    data-pswp-id="<?= (int) $editingMedia['id'] ?>"
                     <?php if ($editingMedia['width'] !== null): ?>
                         data-pswp-width="<?= (int) $editingMedia['width'] ?>"
                         data-pswp-height="<?= (int) $editingMedia['height'] ?>"
@@ -336,9 +346,29 @@ $allFolders = $folderService->listAll();
                     <?php if (($editingMedia['caption'] ?? '') !== '' || ($editingMedia['alt_text'] ?? '') !== ''): ?>
                         data-pswp-caption="<?= esc_attr((string) ($editingMedia['caption'] ?: $editingMedia['alt_text'])) ?>"
                     <?php endif; ?>
+                    data-pswp-filename="<?= esc_attr((string) $editingMedia['file_name']) ?>"
                 >
                     <img class="lp-media-edit__preview" src="<?= esc_url($mediaService->url($editingMedia)) ?>" alt="">
                 </a>
+            </div>
+
+            <?php
+            $directImageUrl = home_url(ltrim($mediaService->url($editingMedia), '/'));
+            $embedAltText = (string) ($editingMedia['alt_text'] ?? '');
+            $embedHtml = '<a href="' . $directImageUrl . '"><img class="alignnone size-full" src="' . $directImageUrl . '"'
+                . ($editingMedia['width'] !== null ? ' width="' . (int) $editingMedia['width'] . '" height="' . (int) $editingMedia['height'] . '"' : '')
+                . ' alt="' . htmlspecialchars($embedAltText, ENT_QUOTES) . '" /></a>';
+            ?>
+            <div class="lp-media-edit__links">
+                <h3>Direct Link &amp; Embed Code</h3>
+                <p class="lp-field">
+                    <label for="media-direct-url">Direct image URL</label>
+                    <input type="text" id="media-direct-url" class="lp-media-edit__link-field" value="<?= esc_attr($directImageUrl) ?>" readonly onclick="this.select()">
+                </p>
+                <p class="lp-field">
+                    <label for="media-embed-html">HTML embed code</label>
+                    <textarea id="media-embed-html" class="lp-media-edit__link-field" rows="2" readonly onclick="this.select()"><?= esc_html($embedHtml) ?></textarea>
+                </p>
             </div>
 
             <?php $existingThumbnails = $thumbnailService->thumbnailsFor((int) $editingMedia['id']); ?>
@@ -366,7 +396,50 @@ $allFolders = $folderService->listAll();
                 </form>
             </div>
         <?php elseif (str_starts_with((string) $editingMedia['mime_type'], 'video/')): ?>
-            <video class="lp-media-edit__video" src="<?= esc_url($mediaService->url($editingMedia)) ?>" controls preload="metadata"></video>
+            <?php
+            $posterMedia = $editingMedia['poster_media_id'] !== null ? $mediaService->find((int) $editingMedia['poster_media_id']) : null;
+            $captionTrackMedia = $editingMedia['caption_track_media_id'] !== null ? $mediaService->find((int) $editingMedia['caption_track_media_id']) : null;
+            ?>
+            <video class="lp-media-edit__video" src="<?= esc_url($mediaService->url($editingMedia)) ?>" controls preload="metadata" <?= $posterMedia !== null ? 'poster="' . esc_url($mediaService->url($posterMedia)) . '"' : '' ?>>
+                <?php if ($captionTrackMedia !== null): ?>
+                    <track kind="subtitles" src="<?= esc_url($mediaService->url($captionTrackMedia)) ?>">
+                <?php endif; ?>
+            </video>
+
+            <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
+                <?= Csrf::field('update_video_assets') ?>
+                <input type="hidden" name="form" value="update_video_assets">
+                <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
+
+                <p class="lp-field">
+                    <label for="media-poster">Poster image</label>
+                    <select id="media-poster" name="poster_media_id">
+                        <option value="0">(None)</option>
+                        <?php foreach ($mediaService->query(['type' => 'image'], 500, 0)['items'] as $posterOption): ?>
+                            <option value="<?= (int) $posterOption['id'] ?>" <?= (int) ($editingMedia['poster_media_id'] ?? 0) === (int) $posterOption['id'] ? 'selected' : '' ?>>
+                                <?= esc_html((string) $posterOption['file_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="lp-field__hint">Shown before the video plays.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="media-caption-track">Caption/subtitle track</label>
+                    <select id="media-caption-track" name="caption_track_media_id">
+                        <option value="0">(None)</option>
+                        <?php foreach ($mediaService->query(['term' => '.vtt'], 500, 0)['items'] as $trackOption): ?>
+                            <?php if (!str_ends_with((string) $trackOption['file_name'], '.vtt')) { continue; } ?>
+                            <option value="<?= (int) $trackOption['id'] ?>" <?= (int) ($editingMedia['caption_track_media_id'] ?? 0) === (int) $trackOption['id'] ? 'selected' : '' ?>>
+                                <?= esc_html((string) $trackOption['file_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="lp-field__hint">A WebVTT (.vtt) file uploaded to the Media Manager.</span>
+                </p>
+
+                <button type="submit" class="lp-button">Save</button>
+            </form>
         <?php elseif (str_starts_with((string) $editingMedia['mime_type'], 'audio/')): ?>
             <audio class="lp-media-edit__audio" src="<?= esc_url($mediaService->url($editingMedia)) ?>" controls preload="metadata"></audio>
         <?php elseif ((string) $editingMedia['mime_type'] === 'application/pdf'): ?>

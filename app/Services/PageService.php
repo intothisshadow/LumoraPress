@@ -224,6 +224,19 @@ final class PageService
         );
     }
 
+    /**
+     * Mirrors PostService::countByStatus() (which backs the admin post
+     * list's status filter tab counts) — used here by the Statistics
+     * widget's published-page count (LP-048).
+     */
+    public function countByStatus(PageStatus $status): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE status = :status',
+            ['status' => $status->value],
+        );
+    }
+
     public function findBySlug(string $slug): ?Page
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE slug = :slug', ['slug' => $slug]);

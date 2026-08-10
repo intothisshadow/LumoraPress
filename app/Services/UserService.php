@@ -265,6 +265,22 @@ final class UserService
     }
 
     /**
+     * Total registered (non-trashed) user count — backs the Statistics
+     * widget's user count (LP-048), mirroring listAll()'s own
+     * $includeTrashed default of excluding trashed accounts.
+     */
+    public function countAll(bool $includeTrashed = false): int
+    {
+        $sql = 'SELECT COUNT(*) FROM ' . $this->table();
+
+        if (!$includeTrashed) {
+            $sql .= ' WHERE trashed_at IS NULL';
+        }
+
+        return (int) $this->database->fetchColumn($sql);
+    }
+
+    /**
      * @return array<int, User>
      */
     public function listAll(bool $includeTrashed = false): array
@@ -377,6 +393,45 @@ final class UserService
             'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE role = :role',
             ['role' => $role->value],
         );
+    }
+
+    /**
+     * Stamps $id as active right now — called once per authenticated admin
+     * request (see admin/index.php). This is the only source of "who's
+     * currently active" data in the application (there is no DB-backed
+     * session table — see SessionManager's docblock), so it deliberately
+     * tracks the coarsest signal that's actually available: the last time
+     * this user's session was seen making an admin request, not a live
+     * connection count.
+     */
+    public function touchLastActive(int $id): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET last_active_at = :last_active_at WHERE id = :id',
+            ['last_active_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+        );
+    }
+
+    /**
+     * Display names of other users (never $excludeUserId, so an
+     * administrator starting an update never sees a warning about their
+     * own session) stamped active within the last $withinSeconds — used by
+     * UpdateService's "Warn about active users" pre-update check.
+     *
+     * @return array<int, string>
+     */
+    public function activeUsernamesExcluding(int $excludeUserId, int $withinSeconds): array
+    {
+        $since = (new \DateTimeImmutable())->modify('-' . max(0, $withinSeconds) . ' seconds')->format('Y-m-d H:i:s');
+
+        $rows = $this->database->fetchAll(
+            'SELECT display_name FROM ' . $this->table() . '
+                WHERE id != :exclude_id AND trashed_at IS NULL AND last_active_at IS NOT NULL AND last_active_at >= :since
+             ORDER BY last_active_at DESC',
+            ['exclude_id' => $excludeUserId, 'since' => $since],
+        );
+
+        return array_map(static fn (array $row): string => (string) $row['display_name'], $rows);
     }
 
     /**

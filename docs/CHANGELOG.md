@@ -6,6 +6,72 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Insert Media: Attachment Display Settings (LP-075): the "Insert from
+  Media Manager" picker in both the Markdown and WYSIWYG post/page
+  editors now shows a Size (Thumbnail/Medium/Large/Full — only sizes an
+  image actually has) and Link To (None/Media File) step before
+  inserting, matching the classic "Attachment Display Settings" choice
+  from other blogging software. Previously every insert dropped in one
+  fixed-size image pointing at the original file with no way to link it
+  to itself.
+- Content-Embedded Image Lightbox (LP-076): images inserted into post/page
+  body content now open the PhotoSwipe lightbox (LP-031) on the public
+  front end, not just the featured image. A plain inserted image becomes
+  lightbox-clickable automatically; an image an author explicitly linked
+  to its own full-size file keeps that link and gains the same lightbox
+  behavior; a link to anything else is left untouched. A new
+  `no-lightbox` class opts an individual image out.
+- Media Viewer & Lightbox, second pass (LP-031): the lightbox now shows
+  each image's dimensions and, when a new "Show filenames in lightbox"
+  setting (Settings &rsaquo; Media, off by default) is turned on, its
+  filename. A download button saves the currently displayed full-size
+  image. A slideshow toggle auto-advances through a gallery every 4
+  seconds until turned off or the lightbox is closed. Individual images
+  are now deep-linkable — opening one updates the URL with a
+  `#lp-media-{id}` hash, and loading a page with that hash present
+  reopens the same image directly. Videos in the Media Manager can now
+  have a poster image (shown before playback) and a WebVTT
+  caption/subtitle track, both chosen from already-uploaded media via new
+  `<select>` fields on the video edit view.
+- Direct Media Link & Embed Code (LP-074): the Media Manager's image edit
+  view gained a "Direct Link & Embed Code" panel with a ready-to-copy
+  direct image URL and an HTML embed snippet (`<a><img
+  class="alignnone size-full" ...></a>`, matching the classic full-size-
+  image insert markup), for pasting into other tools without hand-
+  building the HTML.
+- Search now covers Categories, Tags, and Authors as well as Posts and
+  Pages (LP-014). Author results only ever include a user with at least
+  one published post. A search results page mixes all five result types,
+  ranked together by relevance.
+- Two new classic widgets (LP-048): **Statistics** shows published post,
+  published page, approved comment, and registered user counts. **Social
+  Links** renders a row of profile links for a fixed set of platforms
+  (Website, Email, Mastodon, Bluesky, Twitter/X, GitHub, YouTube,
+  Instagram, Discord) — only platforms with a URL configured are shown.
+  Icons render automatically when the optional Font Awesome plugin is
+  active; otherwise each link falls back to visible platform text.
+- Manual Update (ZIP Upload) — remaining pre-update safety checks (LP-026):
+  a manual/GitHub update now briefly enables maintenance mode for its
+  duration (restored to whatever it was set to beforehand once the update
+  finishes), and warns — without blocking — if another user has been
+  active in the admin area recently, or if a core file appears to have
+  been hand-edited since the last install and is about to be overwritten.
+  Both automatic backups (files and database) taken before an update are
+  now verified immediately after being written, so a corrupted or
+  truncated backup is caught before the update ever proceeds, rather than
+  only discovered if a restore is later needed.
+- Manual Update (ZIP Upload) improvements (LP-026): the upload box on
+  Maintenance &rsaquo; Updates now accepts drag-and-drop and shows a real
+  progress bar while the archive itself uploads. Three new pre-update
+  checks run before an upload is ever staged: the connected database
+  server's version against this project's documented minimum (MySQL 5.6.4+
+  / MariaDB 10.0.5+), `config/config.php`'s own health (present, valid,
+  every required setting non-empty), and that the backup destination is
+  writable with enough free space. A package whose version string looks
+  like a development build (`-dev`/`-alpha`/`-beta`/`-rc`) now surfaces a
+  warning rather than being treated identically to a stable release. A
+  successful update now also purges the external reverse-proxy/edge cache
+  (if one is configured), not just this app's own local file cache.
 - Optimize images after import (LP-041): the FTP Media Import screen gains
   an "Optimize images after import" checkbox, off by default and always
   opt-in per import run. When checked, each imported image is re-encoded
@@ -75,6 +141,84 @@ All notable changes to Lumora Press are documented in this file.
   Settings &rsaquo; Embeds gains a Bluesky toggle, with updated hint text
   noting this is the one provider that does contact the network (at save
   time only).
+
+### Fixed
+
+- The WYSIWYG editor's "Insert from Media Manager" silently rewrote every
+  inserted image's URL into a path relative to the admin editor's own
+  page location (TinyMCE's `relative_urls` default) — correct only from
+  that admin page, so the same stored HTML 404'd once rendered on the
+  actual public post/page. Caught while testing LP-075/LP-076: a WYSIWYG-
+  inserted image displayed fine in the editor but showed only its
+  filename as a broken link on the front end, and its lightbox reported
+  "The image cannot be loaded." Fixed by disabling that rewriting
+  (`relative_urls: false`) so an inserted image's URL is stored exactly
+  as given. Pre-existing content that already has a broken relative
+  image URL from before this fix needs the image re-inserted to pick up
+  a correct URL — this fix only prevents new occurrences.
+- The WYSIWYG editor's "Link To: Media File" step (LP-075) could open a
+  visibly stretched/blurry lightbox when the chosen display size differed
+  from the linked file's own size (e.g. a Thumbnail-size image linked to
+  the Full-size original) — the lightbox was sizing itself using the
+  inline image's own smaller dimensions rather than the linked file's
+  real ones. Fixed by having the editor embed the linked file's own real
+  dimensions directly at insert time, which the lightbox now trusts over
+  guessing from the inline image.
+- The lightbox's dimensions/filename display (`.lp-pswp-meta`) sat
+  directly on top of PhotoSwipe's own toolbar (zoom, close, and the new
+  download/slideshow buttons), silently blocking clicks on all of them
+  even though the buttons stayed visibly clickable-looking. An initial
+  `pointer-events: none` fix wasn't enough on its own — PhotoSwipe
+  auto-applies its own `pswp__hide-on-close` class to elements registered
+  this way, and that class's own CSS
+  (`.pswp--ui-visible .pswp__hide-on-close { pointer-events: auto; }`)
+  has higher specificity, silently winning pointer-events back the
+  moment the lightbox finished opening — exactly when a click was
+  attempted. Fixed by making that display (and the caption bar below the
+  image) purely visual with `pointer-events: none !important`, since
+  neither ever needs to receive clicks.
+- Theme and admin CSS/JS assets had no cache-busting query string on
+  their URLs, so a browser that loaded a page even once before a fix
+  shipped kept using its cached copy of that file indefinitely — the
+  previous fix above wasn't visible in any browser that had already
+  loaded the lightbox once. `theme_url()` and `admin_asset_url()` now
+  append `?v={file's modification time}` automatically for any path that
+  resolves to a real file, so every future asset change invalidates
+  itself with no manual version bumping required.
+- The "Show filenames in lightbox" setting (added last entry) never
+  actually reached the browser — it was passed via an inline
+  `<script>window.lpMediaViewer = ...</script>` tag, which this
+  project's own Content-Security-Policy silently blocks (`script-src`
+  has no inline-execution allowance). Fixed by passing it as a
+  `data-show-filenames` attribute on the existing external lightbox
+  `<script>` tag instead, which isn't inline execution and so isn't
+  subject to that policy.
+- The lightbox's download and slideshow buttons were nearly invisible
+  against the dark toolbar. Their icon `<path>` elements carried an
+  explicit `fill="currentColor"`, which resolves against
+  PhotoSwipe's `.pswp__icn` `color` property (a dark grey meant for icon
+  shadows/outlines) rather than inheriting its `fill` property (white,
+  the actual icon color PhotoSwipe's own zoom/close icons use). Fixed by
+  removing that attribute so the icons inherit the correct color the
+  same way PhotoSwipe's own do.
+- Images in a Markdown-authored post/page never triggered the lightbox
+  on the front end at all, unlike WYSIWYG-authored images. Markdown has
+  no attribute syntax, so a Markdown image never carries width/height —
+  and that was the only signal used to recognize a lightbox-eligible
+  image, both for deciding whether to load PhotoSwipe's assets at all
+  and for PhotoSwipe's own gallery selector. Fixed by adding a dedicated
+  marker that's always present regardless of whether dimensions are
+  known.
+- The lightbox could open with the image stretched full-screen and
+  visibly out of aspect ratio. PhotoSwipe uses the reported image
+  dimensions to lay out the slide before the real image finishes
+  loading, not just as a caption hint — so a missing dimension (every
+  Markdown-authored image) or a wrong one (an author-linked thumbnail
+  pointing at a larger original) produced a distorted result once the
+  real image loaded into a slide sized for the wrong numbers. Fixed by
+  reading a linked image's real pixel dimensions directly off disk
+  whenever the inline image's own declared size doesn't actually
+  describe the file being linked to.
 
 ## [0.5.0] — 2026-08-04
 

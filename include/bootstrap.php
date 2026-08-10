@@ -90,6 +90,7 @@ use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
 use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UpdateBackupService;
+use LumoraPress\Services\UpdateChecksumManifest;
 use LumoraPress\Services\UpdateManifest;
 use LumoraPress\Services\UpdatePackageValidator;
 use LumoraPress\Services\UpdateService;
@@ -394,7 +395,7 @@ add_action('page_saved', static function (\LumoraPress\Models\Page $page) use ($
  * doesn't matter: registerWidget() only populates a lookup map queried
  * later at render time.
  */
-CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments);
+CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users);
 
 /*
  * Persisted widget assignments (LP-048) — one JSON option keyed by
@@ -470,7 +471,7 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
     }
 }
 
-$search = new SearchService($database, $tablePrefix, $config, $content);
+$search = new SearchService($database, $tablePrefix, $config, $content, $users);
 $akismet = new AkismetClient($config, home_url());
 // LP-047 Discussion Settings: shared moderation policy + notifications for
 // both the public comment form (SiteController) and the REST API
@@ -561,6 +562,7 @@ $updateValidator = new UpdatePackageValidator(
 );
 
 $updateManifest = new UpdateManifest(LUMORA_ROOT);
+$updateChecksums = new UpdateChecksumManifest(LUMORA_ROOT);
 
 $updateBackups = new UpdateBackupService(
     database: $database,
@@ -569,6 +571,7 @@ $updateBackups = new UpdateBackupService(
     backupsPath: LUMORA_ROOT . '/storage/backups',
     corePaths: $updateCorePaths,
     manifest: $updateManifest,
+    checksums: $updateChecksums,
 );
 
 $updates = new UpdateService(
@@ -584,6 +587,10 @@ $updates = new UpdateService(
     lockFilePath: LUMORA_ROOT . '/storage/updates/update.lock',
     corePaths: $updateCorePaths,
     manifest: $updateManifest,
+    configFilePath: LUMORA_ROOT . '/config/config.php',
+    config: $config,
+    users: $users,
+    checksums: $updateChecksums,
 );
 
 $githubUpdates = new GitHubReleaseProvider($config);
@@ -631,6 +638,23 @@ foreach ([
         $cache->purgeAll();
     });
 }
+
+/*
+ * LP-026 "Rebuild caches if necessary": UpdateService::install() already
+ * empties storage/cache/ itself (see its own clearCache()), but that's
+ * this app's own local file cache — an external reverse-proxy/edge cache
+ * (LiteSpeed, via $cacheDriver above) is a separate thing that also needs
+ * purging once new code is live, the same purgeAll() every content-change
+ * action above already triggers. Reuses the existing
+ * 'lumora_press_after_update' hook rather than a new UpdateService
+ * constructor dependency, consistent with how this class already prefers
+ * hooks for cross-cutting concerns.
+ */
+$hooks->addAction('lumora_press_after_update', static function (string $fromVersion, string $toVersion, \LumoraPress\Models\UpdateStatus $status) use ($cache): void {
+    if ($status === \LumoraPress\Models\UpdateStatus::Success) {
+        $cache->purgeAll();
+    }
+});
 
 $router = new Router();
 $maintenance = new MaintenanceGate($config, $auth, $theme, $hooks);

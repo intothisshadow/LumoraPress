@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Content\ActiveContentRenderer;
 use LumoraPress\Core\Theme\ActiveTheme;
+use LumoraPress\Core\Theme\MediaViewer;
 use LumoraPress\Models\ContentFormat;
 
 /**
@@ -70,10 +71,35 @@ if (!function_exists('render_content')) {
      * of following the project's usual esc_html()-at-output convention).
      *
      * Usage: <?= render_content($post->content, $post->contentFormat) ?>
+     *
+     * LP-076: when ContentRenderer's own lightbox pass (see its
+     * addLightboxAttributes()) touched at least one image, this wraps
+     * the result in `.lp-gallery` and flags MediaViewer as used, the
+     * same "only load PhotoSwipe's assets when something on the page
+     * actually needs them" gating the_post_thumbnail_lightbox() already
+     * applies to the featured image. Kept here rather than inside
+     * ContentRenderer since that service's render() is also used for
+     * excerpts/OG descriptions (stripped back to plain text either way),
+     * where marking the page as needing a lightbox would be meaningless.
+     *
+     * Checks for data-pswp-lightbox OR data-pswp-width, not just the
+     * latter alone: addLightboxAttributes() only sets data-pswp-width
+     * when the image's dimensions are actually known, which Markdown-
+     * authored images never are (Markdown has no attribute syntax) —
+     * data-pswp-lightbox is the one marker guaranteed present whenever
+     * that pass touched an image at all, dimensions or not.
      */
     function render_content(string $content, ContentFormat $format): string
     {
-        return ActiveContentRenderer::instance()->render($content, $format);
+        $html = ActiveContentRenderer::instance()->render($content, $format);
+
+        if (!str_contains($html, 'data-pswp-lightbox') && !str_contains($html, 'data-pswp-width')) {
+            return $html;
+        }
+
+        MediaViewer::markUsed();
+
+        return '<div class="lp-gallery">' . $html . '</div>';
     }
 }
 

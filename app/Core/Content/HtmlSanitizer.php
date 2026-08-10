@@ -56,8 +56,19 @@ final class HtmlSanitizer
         'blockquote' => [],
         'ul' => ['class'], 'ol' => ['class'], 'li' => ['class', 'id'],
         'input' => ['type', 'disabled', 'checked'],
-        'a' => ['href', 'title', 'rel', 'target', 'id', 'class', 'aria-label'],
-        'img' => ['src', 'alt', 'title', 'width', 'height', 'loading'],
+        // data-pswp-width/height/caption (LP-075/LP-076) let the WYSIWYG
+        // editor embed a linked image's own real dimensions directly at
+        // authoring time — needed because a "Link To: Media File" insert
+        // can link to a file at a different size than the inline <img>
+        // displays, so ContentRenderer's render-time lightbox pass can't
+        // reliably infer the linked file's real size from the <img>
+        // alone (see ContentRenderer::addLightboxAttributes()).
+        'a' => ['href', 'title', 'rel', 'target', 'id', 'class', 'aria-label', 'data-pswp-width', 'data-pswp-height', 'data-pswp-caption'],
+        // 'class' is needed for LP-076's "no-lightbox" opt-out and
+        // LP-075's "size-{name}" display-size classes — both purely
+        // presentational, the same trust level 'class' already carries
+        // on every other allowed tag below.
+        'img' => ['src', 'alt', 'title', 'width', 'height', 'loading', 'class'],
         'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'th' => ['class', 'scope'], 'td' => ['class'],
         'nav' => ['class', 'aria-label'],
         'section' => ['class'],
@@ -172,6 +183,12 @@ final class HtmlSanitizer
             }
 
             if (($name === 'href' || $name === 'src') && !$this->isSafeUrl($attribute->nodeValue ?? '')) {
+                $element->removeAttribute($attribute->nodeName);
+
+                continue;
+            }
+
+            if (($name === 'data-pswp-width' || $name === 'data-pswp-height') && !preg_match('/^[1-9][0-9]*$/', $attribute->nodeValue ?? '')) {
                 $element->removeAttribute($attribute->nodeName);
 
                 continue;

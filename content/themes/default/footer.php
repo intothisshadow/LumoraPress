@@ -41,7 +41,20 @@
         in this same request — so a page with no images loads neither.
     -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css">
-    <script type="module" src="<?= esc_url(theme_url('assets/js/media-viewer.js')) ?>"></script>
+    <?php
+    /*
+     * The "Show filenames in lightbox" setting reaches media-viewer.js
+     * via a data-* attribute on this same <script> tag, not an inline
+     * <script>— this project's Content-Security-Policy script-src has
+     * no 'unsafe-inline'/nonce allowance (only style-src does, via
+     * csp_style_nonce()), so an inline script here would be silently
+     * blocked by every browser with no server-side error to catch it.
+     * A data-* attribute on an externally-src'd <script> isn't inline
+     * script execution, so CSP has no opinion on it.
+     */
+    $showFilenames = \LumoraPress\Core\Theme\FeaturedImages::config()->option('lightbox_show_filenames', '0') === '1';
+    ?>
+    <script type="module" data-lp-media-viewer data-show-filenames="<?= $showFilenames ? '1' : '0' ?>" src="<?= esc_url(theme_url('assets/js/media-viewer.js')) ?>"></script>
 <?php endif; ?>
 <?php if (\LumoraPress\Core\Theme\ScriptEmbeds::isUsed('twitter')): ?>
     <!--

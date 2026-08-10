@@ -24,8 +24,8 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\SearchResult;
 
 /**
- * Site search across Posts and Pages (LP-014, first pass). Relevance
- * ranking uses real MySQL/MariaDB FULLTEXT indexes
+ * Site search across Posts, Pages, Categories, Tags, and Authors (LP-014).
+ * Post/Page relevance ranking uses real MySQL/MariaDB FULLTEXT indexes
  * (`0011_add_fulltext_index_to_posts_and_pages.sql`) via
  * MATCH(...) AGAINST(...) — title matches are weighted higher than body
  * matches. Each table has two FULLTEXT indexes (title+content, and title
@@ -40,6 +40,16 @@ use LumoraPress\Models\SearchResult;
  * real server. paginateResults() is deliberately factored out as a pure,
  * DB-free static method so the merge/sort/paginate math stays
  * unit-testable against plain SearchResult fixtures.
+ *
+ * Categories/Tags/Authors are a much smaller table (personal-blog scale —
+ * tens, not tens of thousands, unlike Posts/Pages), so a plain `LIKE`
+ * match is proportionate rather than needing its own FULLTEXT index; this
+ * also means, unlike searchTable(), these three are portable to SQLite and
+ * covered directly by Unit tests. Scoring uses a simple heuristic (exact
+ * name match > name starts with > name contains > description contains)
+ * rather than MySQL's relevance algorithm, so it can never be perfectly
+ * comparable to a Post/Page FULLTEXT score — acceptable for a first pass,
+ * see paginateResults()'s combined-ranking caveat below.
  *
  * Posts and Pages are queried independently (each capped at
  * search_max_results), merged, and re-sorted by score — a query matching
@@ -56,11 +66,21 @@ final class SearchService
 
     private const DEFAULT_MAX_RESULTS = 50;
 
+    /** Heuristic relevance scores for the LIKE-based Category/Tag/Author match. */
+    private const SCORE_EXACT_NAME = 10.0;
+
+    private const SCORE_NAME_STARTS_WITH = 6.0;
+
+    private const SCORE_NAME_CONTAINS = 3.0;
+
+    private const SCORE_DESCRIPTION_CONTAINS = 1.5;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly PressConfig $config,
         private readonly ContentRenderer $content,
+        private readonly UserService $users,
     ) {
     }
 
@@ -89,6 +109,9 @@ final class SearchService
         $candidates = [
             ...$this->searchTable('posts', 'post', $query, $maxResults),
             ...$this->searchTable('pages', 'page', $query, $maxResults),
+            ...$this->searchCategories($query, $maxResults),
+            ...$this->searchTags($query, $maxResults),
+            ...$this->searchAuthors($query, $maxResults),
         ];
 
         $paginated = self::paginateResults($candidates, $page, self::DEFAULT_PER_PAGE, $maxResults);
@@ -168,5 +191,144 @@ final class SearchService
             ),
             $rows,
         );
+    }
+
+    /**
+     * Public (unlike searchTable()) so it's directly unit-testable against
+     * SQLite — `LIKE` matching runs identically on both, unlike
+     * searchTable()'s MySQL-only MATCH AGAINST, so there's no need to
+     * route this through the MySQL-only search() entry point just to
+     * exercise it.
+     *
+     * @return array<int, SearchResult>
+     */
+    public function searchCategories(string $query, int $limit): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT id, name, slug, description FROM ' . $this->tablePrefix . "categories
+                WHERE name LIKE :name OR description LIKE :description
+             ORDER BY id ASC
+             LIMIT {$limit}",
+            ['name' => '%' . $query . '%', 'description' => '%' . $query . '%'],
+        );
+
+        return array_map(
+            fn (array $row): SearchResult => new SearchResult(
+                type: 'category',
+                id: (int) $row['id'],
+                title: (string) $row['name'],
+                slug: (string) $row['slug'],
+                excerpt: make_excerpt((string) $row['description']),
+                featuredImageId: null,
+                publishedAt: null,
+                score: self::nameMatchScore((string) $row['name'], (string) $row['description'], $query),
+            ),
+            $rows,
+        );
+    }
+
+    /**
+     * Public for the same testability reason as searchCategories() above.
+     *
+     * @return array<int, SearchResult>
+     */
+    public function searchTags(string $query, int $limit): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT id, name, slug, description FROM ' . $this->tablePrefix . "tags
+                WHERE name LIKE :name OR description LIKE :description
+             ORDER BY id ASC
+             LIMIT {$limit}",
+            ['name' => '%' . $query . '%', 'description' => '%' . $query . '%'],
+        );
+
+        return array_map(
+            fn (array $row): SearchResult => new SearchResult(
+                type: 'tag',
+                id: (int) $row['id'],
+                title: (string) $row['name'],
+                slug: (string) $row['slug'],
+                excerpt: make_excerpt((string) $row['description']),
+                featuredImageId: null,
+                publishedAt: null,
+                score: self::nameMatchScore((string) $row['name'], (string) $row['description'], $query),
+            ),
+            $rows,
+        );
+    }
+
+    /**
+     * Restricted to non-trashed users who have authored at least one
+     * published post — an author with nothing publicly attributed to them
+     * has no useful destination for a search result to link to (their
+     * `/author/{slug}` archive would simply be empty), and this keeps
+     * search from surfacing the existence of e.g. Subscriber-only accounts
+     * that have never published anything. Public for the same testability
+     * reason as searchCategories() above.
+     *
+     * @return array<int, SearchResult>
+     */
+    public function searchAuthors(string $query, int $limit): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT id, display_name FROM ' . $this->tablePrefix . 'users
+                WHERE trashed_at IS NULL AND display_name LIKE :name
+                  AND EXISTS (
+                      SELECT 1 FROM ' . $this->tablePrefix . 'posts
+                       WHERE author_id = ' . $this->tablePrefix . "users.id AND status = 'published'
+                  )
+             ORDER BY id ASC
+             LIMIT {$limit}",
+            ['name' => '%' . $query . '%'],
+        );
+
+        $results = [];
+
+        foreach ($rows as $row) {
+            $author = $this->users->findById((int) $row['id']);
+
+            if ($author === null) {
+                continue;
+            }
+
+            $results[] = new SearchResult(
+                type: 'author',
+                id: $author->id,
+                title: $author->displayName,
+                slug: $this->users->authorSlug($author),
+                excerpt: '',
+                featuredImageId: null,
+                publishedAt: null,
+                score: self::nameMatchScore($author->displayName, '', $query),
+            );
+        }
+
+        return $results;
+    }
+
+    /**
+     * The LIKE-based heuristic relevance score shared by
+     * searchCategories()/searchTags()/searchAuthors() — see this class's
+     * own docblock for why this can never be perfectly comparable to a
+     * Post/Page FULLTEXT score.
+     */
+    private static function nameMatchScore(string $name, string $description, string $query): float
+    {
+        $lowerName = mb_strtolower($name);
+        $lowerQuery = mb_strtolower($query);
+
+        if ($lowerName === $lowerQuery) {
+            return self::SCORE_EXACT_NAME;
+        }
+
+        if (str_starts_with($lowerName, $lowerQuery)) {
+            return self::SCORE_NAME_STARTS_WITH;
+        }
+
+        if (str_contains($lowerName, $lowerQuery)) {
+            return self::SCORE_NAME_CONTAINS;
+        }
+
+        return self::SCORE_DESCRIPTION_CONTAINS;
     }
 }

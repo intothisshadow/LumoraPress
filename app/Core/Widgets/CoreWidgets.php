@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Registers Lumora Press's built-in widget types (LP-048): Text, Custom HTML, Search, Navigation Menu, and more.
+ * Registers Lumora Press's built-in widget types (LP-048): Text, Custom HTML, Search, Navigation Menu, Statistics, Social Links, and more.
  *
  * @package LumoraPress
  * @subpackage Widgets
@@ -17,19 +17,24 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Widgets;
 
+use LumoraPress\Models\CommentStatus;
+use LumoraPress\Models\PageStatus;
+use LumoraPress\Models\PostStatus;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\UserService;
 
 /**
  * Registers Lumora Press's built-in widget types (LP-048) against a
  * WidgetManager — Text, Custom HTML, Search, Navigation Menu, Pages,
- * Categories, Recent Posts, Recent Comments, Archives, Tag Cloud, and
- * Meta. Themes remain free to register additional widget types of their
- * own (content/themes/default/functions.php no longer needs to — these
- * used to live there as a single Phase 1 proof-of-concept widget).
+ * Categories, Recent Posts, Recent Comments, Archives, Tag Cloud, Meta,
+ * Statistics, and Social Links. Themes remain free to register additional
+ * widget types of their own (content/themes/default/functions.php no
+ * longer needs to — these used to live there as a single Phase 1
+ * proof-of-concept widget).
  *
  * Deliberately not shipped in this pass: an Image widget (would need its
  * own Media Manager picker UI, the same scope narrowing LP-040 applied to
@@ -41,6 +46,30 @@ use LumoraPress\Services\TagService;
  */
 final class CoreWidgets
 {
+    /**
+     * Social Links' fixed platform list (LP-048) — a curated set rather
+     * than a free-form repeater (which would need its own "add/remove
+     * row" UI, the same scope this project has avoided for widget/menu
+     * item reordering elsewhere — see WidgetManager's own Move Up/Move
+     * Down choice). Each entry's icon name/style matches Font Awesome 6's
+     * actual icon slugs, rendered via lp_icon() — a no-op when the
+     * (optional, deferred-by-default) Font Awesome plugin isn't active,
+     * so this never depends on it being installed.
+     *
+     * @var array<string, array{label: string, icon: string, style: string}>
+     */
+    private const SOCIAL_LINK_PLATFORMS = [
+        'website' => ['label' => 'Website', 'icon' => 'globe', 'style' => 'solid'],
+        'email' => ['label' => 'Email', 'icon' => 'envelope', 'style' => 'solid'],
+        'mastodon' => ['label' => 'Mastodon', 'icon' => 'mastodon', 'style' => 'brands'],
+        'bluesky' => ['label' => 'Bluesky', 'icon' => 'bluesky', 'style' => 'brands'],
+        'twitter' => ['label' => 'Twitter/X', 'icon' => 'x-twitter', 'style' => 'brands'],
+        'github' => ['label' => 'GitHub', 'icon' => 'github', 'style' => 'brands'],
+        'youtube' => ['label' => 'YouTube', 'icon' => 'youtube', 'style' => 'brands'],
+        'instagram' => ['label' => 'Instagram', 'icon' => 'instagram', 'style' => 'brands'],
+        'discord' => ['label' => 'Discord', 'icon' => 'discord', 'style' => 'brands'],
+    ];
+
     public static function register(
         WidgetManager $widgets,
         PostService $posts,
@@ -48,6 +77,7 @@ final class CoreWidgets
         CategoryService $categories,
         TagService $tags,
         CommentService $comments,
+        UserService $users,
     ): void {
         $widgets->registerWidget('text', 'Text', static function (array $settings): void {
             $title = (string) ($settings['title'] ?? '');
@@ -241,6 +271,66 @@ final class CoreWidgets
                 . '<li><a href="' . esc_url(admin_url('login')) . '">Log in</a></li>'
                 . '<li><a href="' . esc_url(home_url('feed')) . '">Entries RSS</a></li>'
                 . '</ul></section>';
+        });
+
+        $widgets->registerWidget('statistics', 'Statistics', static function (array $settings) use ($posts, $pages, $comments, $users): void {
+            $title = (string) ($settings['title'] ?? '');
+
+            $stats = [
+                'Posts' => $posts->countByStatus(PostStatus::Published),
+                'Pages' => $pages->countByStatus(PageStatus::Published),
+                'Comments' => $comments->countByStatus(CommentStatus::Approved),
+                'Users' => $users->countAll(),
+            ];
+
+            echo '<section class="lp-widget lp-widget--statistics">';
+            self::renderTitle($title);
+            echo '<ul class="lp-widget__list lp-widget__stats">';
+
+            foreach ($stats as $label => $count) {
+                echo '<li><span class="lp-widget__stats-label">' . esc_html($label) . '</span> '
+                    . '<span class="lp-widget__count">' . (int) $count . '</span></li>';
+            }
+
+            echo '</ul></section>';
+        });
+
+        $widgets->registerWidget('social_links', 'Social Links', static function (array $settings): void {
+            $title = (string) ($settings['title'] ?? '');
+            $links = [];
+
+            foreach (self::SOCIAL_LINK_PLATFORMS as $key => $platform) {
+                $value = trim((string) ($settings[$key] ?? ''));
+
+                if ($value === '') {
+                    continue;
+                }
+
+                $href = $key === 'email' ? 'mailto:' . $value : $value;
+                $icon = lp_icon($platform['icon'], ['style' => $platform['style'], 'label' => $platform['label']]);
+                // Without an icon (Font Awesome plugin inactive), the
+                // platform name renders as visible text instead of being
+                // screen-reader-only — an icon-shaped circle is too small
+                // to hold a readable label, so the link falls back to a
+                // plain text-link style entirely (--text modifier below).
+                $linkClass = 'lp-widget__social-link lp-widget__social-link--' . esc_attr($key)
+                    . ($icon === '' ? ' lp-widget__social-link--text' : '');
+
+                $links[] = '<a class="' . $linkClass . '" '
+                    . 'href="' . esc_url($href) . '"'
+                    . ($key === 'email' ? '' : ' rel="me noopener" target="_blank"')
+                    . '>' . $icon . '<span' . ($icon !== '' ? ' class="lp-visually-hidden"' : '') . '>'
+                    . esc_html($platform['label']) . '</span></a>';
+            }
+
+            if ($links === []) {
+                return;
+            }
+
+            echo '<section class="lp-widget lp-widget--social-links">';
+            self::renderTitle($title);
+            echo '<div class="lp-widget__social-links">' . implode('', $links) . '</div>';
+            echo '</section>';
         });
     }
 

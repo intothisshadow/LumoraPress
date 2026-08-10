@@ -201,6 +201,19 @@ final class UpdatePackageValidator
             $warnings[] = sprintf('This package is the same version (%s) that is already installed.', $toVersion);
         }
 
+        // Warn about development builds: a version string carrying a
+        // pre-release suffix (SemVer-style "-dev"/"-alpha"/"-beta"/"-rc")
+        // is never blocking — an administrator may deliberately want to
+        // try one — but installing it on a production site is worth a
+        // clear heads-up rather than treating it identically to a stable
+        // release.
+        if (preg_match('/-(dev|alpha|beta|rc)(\.|$|\d)/i', $toVersion) === 1) {
+            $warnings[] = sprintf(
+                'This package (version %s) looks like a development build rather than a stable release — installing it on a production site is not recommended.',
+                $toVersion,
+            );
+        }
+
         $requiresPhp = is_string($manifest['requires_php'] ?? null) ? $manifest['requires_php'] : self::DEFAULT_REQUIRES_PHP;
 
         if (version_compare(PHP_VERSION, $requiresPhp, '<')) {

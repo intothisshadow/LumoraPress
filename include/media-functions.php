@@ -343,10 +343,17 @@ if (!function_exists('the_post_thumbnail_lightbox')) {
         }
         $caption = post_thumbnail_caption($item) ?? (($media['alt_text'] ?? '') !== '' ? (string) $media['alt_text'] : '');
 
+        // data-pswp-id backs the deep-link feature (media-viewer.js) —
+        // it identifies which anchor a "#lp-media-{id}" URL hash should
+        // reopen. data-pswp-filename backs the "show filenames in
+        // lightbox" setting — always emitted here since the toggle is
+        // read client-side (window.lpMediaViewer), not per-image.
         echo '<a href="' . esc_url($href) . '"'
+            . ' data-pswp-id="' . (int) $media['id'] . '"'
             . ($width > 0 ? ' data-pswp-width="' . $width . '"' : '')
             . ($height > 0 ? ' data-pswp-height="' . $height . '"' : '')
             . ($caption !== '' ? ' data-pswp-caption="' . esc_attr($caption) . '"' : '')
+            . ' data-pswp-filename="' . esc_attr((string) $media['file_name']) . '"'
             . '>';
         the_post_thumbnail($item, $size, $attrs);
         echo '</a>';

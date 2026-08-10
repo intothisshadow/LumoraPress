@@ -269,6 +269,15 @@ if (!$kernel->auth->check()) {
 
 $currentUser = $kernel->auth->user();
 
+/*
+ * LP-026 "Warn about active users": the only source of "who's currently
+ * active" data available (there's no DB-backed session table — see
+ * SessionManager's docblock), stamped once per authenticated admin page
+ * load rather than per-action, matching the coarse "recently active"
+ * signal an update's pre-check actually needs.
+ */
+$kernel->users->touchLastActive($currentUser->id);
+
 $subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
 
 /*

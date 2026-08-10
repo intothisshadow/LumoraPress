@@ -228,6 +228,48 @@ final class ThumbnailService
     }
 
     /**
+     * Bulk form of thumbnailsFor() — one query for every id rather than
+     * one per id, for callers building a per-image size list across a
+     * whole media library at once (LP-075's "Attachment Display
+     * Settings" step needs every image's available sizes up front, and
+     * an N+1 query per image there would scale badly on a library with
+     * hundreds of uploads).
+     *
+     * @param array<int, int> $mediaIds
+     * @return array<int, array<int, array<string, mixed>>> media_id => its thumbnail rows
+     */
+    public function thumbnailsForMany(array $mediaIds): array
+    {
+        $mediaIds = array_values(array_unique(array_map('intval', $mediaIds)));
+
+        if ($mediaIds === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+
+        foreach ($mediaIds as $i => $mediaId) {
+            $key = "media_id_{$i}";
+            $placeholders[] = ':' . $key;
+            $params[$key] = $mediaId;
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE media_id IN (' . implode(',', $placeholders) . ') ORDER BY size_name ASC',
+            $params,
+        );
+
+        $grouped = [];
+
+        foreach ($rows as $row) {
+            $grouped[(int) $row['media_id']][] = $row;
+        }
+
+        return $grouped;
+    }
+
+    /**
      * @param array<string, mixed> $media
      */
     public function url(array $media, string $size): ?string

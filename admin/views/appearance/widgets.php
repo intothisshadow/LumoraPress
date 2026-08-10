@@ -64,7 +64,19 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
         'recent_posts' => [$titleField, ['key' => 'limit', 'label' => 'Number of posts to show', 'type' => 'number']],
         'recent_comments' => [$titleField, ['key' => 'limit', 'label' => 'Number of comments to show', 'type' => 'number']],
         'archives' => [$titleField, ['key' => 'limit', 'label' => 'Number of months to show', 'type' => 'number']],
-        'tag_cloud', 'meta' => [$titleField],
+        'tag_cloud', 'meta', 'statistics' => [$titleField],
+        'social_links' => [
+            $titleField,
+            ['key' => 'website', 'label' => 'Website URL', 'type' => 'text'],
+            ['key' => 'email', 'label' => 'Email address', 'type' => 'text'],
+            ['key' => 'mastodon', 'label' => 'Mastodon URL', 'type' => 'text'],
+            ['key' => 'bluesky', 'label' => 'Bluesky URL', 'type' => 'text'],
+            ['key' => 'twitter', 'label' => 'Twitter/X URL', 'type' => 'text'],
+            ['key' => 'github', 'label' => 'GitHub URL', 'type' => 'text'],
+            ['key' => 'youtube', 'label' => 'YouTube URL', 'type' => 'text'],
+            ['key' => 'instagram', 'label' => 'Instagram URL', 'type' => 'text'],
+            ['key' => 'discord', 'label' => 'Discord invite/URL', 'type' => 'text'],
+        ],
         default => [$titleField],
     };
 };

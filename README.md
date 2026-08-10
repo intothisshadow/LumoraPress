@@ -178,15 +178,25 @@ either of two ways, each on its own tab (**GitHub**, the default tab, and
 
 Either way, the package is validated (integrity, structure, version
 number) and checked for compatibility (PHP version, required extensions,
-disk space, writable directories) before anything is touched:
+disk space, writable directories, connected database server version,
+`config/config.php`'s own health, and that the backup destination is
+writable with enough free space) before anything is touched. Two further
+checks are non-blocking warnings rather than reasons to stop: another user
+recently active in the admin area, and a core file that appears to have
+been hand-edited since it was last installed and is about to be
+overwritten.
 
 1. Review the summary screen — it shows the version change and any
    warnings — then confirm.
 2. Lumora Press automatically backs up the core application files and the
-   database to `storage/backups/` before applying the update, runs any new
-   database migrations, and verifies the new version took effect. If
-   anything goes wrong after the backup, it automatically restores the
-   files and database from that backup.
+   database to `storage/backups/` before applying the update (each backup
+   is verified immediately after being written, so a corrupted or
+   truncated one is caught before the update proceeds), briefly enables
+   maintenance mode for the duration of the update (restored to whatever
+   it was set to beforehand once finished — the admin area itself always
+   stays reachable), runs any new database migrations, and verifies the
+   new version took effect. If anything goes wrong after the backup, it
+   automatically restores the files and database from that backup.
 
 Every attempt (success, failure, or rollback) is recorded in the
 `{prefix}update_log` table, tagged with its source (`github` or `manual`),

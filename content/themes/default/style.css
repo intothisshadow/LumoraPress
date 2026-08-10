@@ -764,6 +764,79 @@ img {
     border-bottom-color: currentColor;
 }
 
+/* Statistics widget (LP-048): reuses .lp-widget__list/.lp-widget__count
+   above, plus its own label styling for the "Posts / Pages / Comments /
+   Users" rows. */
+
+.lp-widget__stats {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.lp-widget__stats li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.lp-widget__stats-label {
+    color: var(--lp-text);
+}
+
+/* Social Links widget (LP-048): a row of icon links for a fixed set of
+   platforms. lp_icon() renders nothing when the (optional) Font Awesome
+   plugin isn't active, in which case the platform's name is shown as
+   plain text instead — see .lp-visually-hidden below for when it is. */
+
+.lp-widget__social-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.lp-widget__social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    border: 1px solid var(--lp-border);
+    color: var(--lp-text);
+    text-decoration: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+}
+
+.lp-widget__social-link:hover,
+.lp-widget__social-link:focus {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
+}
+
+/* No icon plugin active: fall back to a plain text link rather than a
+   label crammed into a small icon-sized circle. */
+.lp-widget__social-link--text {
+    width: auto;
+    height: auto;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--lp-radius);
+}
+
+/* Standard visually-hidden pattern (mirrors admin.css's own copy) — used
+   by the Social Links widget so a platform without an icon (Font Awesome
+   inactive) still reads its full name to screen readers, while a
+   platform with an icon keeps that name available without showing it
+   twice. */
+
+.lp-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
 /* =========================================================
    Buttons
    ========================================================= */
@@ -1020,6 +1093,54 @@ img {
     color: #fff;
     font-size: 0.9rem;
     text-align: center;
+    /*
+     * Pure read-only text overlay — must never intercept clicks meant
+     * for whatever PhotoSwipe control happens to sit at the same edge.
+     * !important is required, not decorative: PhotoSwipe auto-applies
+     * its own `pswp__hide-on-close` class to elements registered this
+     * way, and that class's own CSS includes
+     * `.pswp--ui-visible .pswp__hide-on-close { pointer-events: auto; }`
+     * — two classes, higher specificity than this single-class
+     * selector — which silently wins back pointer-events the moment the
+     * lightbox finishes opening, exactly when a visitor tries to click.
+     */
+    pointer-events: none !important;
+}
+
+/*
+ * .lp-pswp-meta shows image dimensions and (when the "Show filenames in
+ * lightbox" setting is on) the filename — stacked above .lp-pswp-caption
+ * rather than merged into it, since a caption is author-written content
+ * and this is file metadata.
+ */
+.lp-pswp-meta {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.8rem;
+    text-align: center;
+    /*
+     * Full-width overlay at the same edge as PhotoSwipe's own toolbar
+     * (zoom/close/download/slideshow buttons) — without this, the bar
+     * sits on top of those buttons and swallows clicks meant for them,
+     * even though the buttons remain visually unobstructed (the bar has
+     * no visible border/shadow to signal it's there). !important is
+     * required, not decorative — see .lp-pswp-caption's identical note
+     * above for why: PhotoSwipe's own
+     * `.pswp--ui-visible .pswp__hide-on-close { pointer-events: auto; }`
+     * (higher specificity) otherwise wins this back the moment the
+     * lightbox finishes opening.
+     */
+    pointer-events: none !important;
+}
+
+/* The slideshow toggle button gets a visual "playing" state so its icon's meaning is clear without relying on a title/tooltip alone. */
+.lp-pswp-slideshow--playing {
+    color: var(--lp-accent);
 }
 
 /* =========================================================

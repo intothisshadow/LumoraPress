@@ -20,15 +20,18 @@ namespace LumoraPress\Models;
 use DateTimeImmutable;
 
 /**
- * One row of a SearchService result set — either a Post or a Page, reduced
- * to the fields a search results listing needs. Deliberately data-only, no
- * URL-building method: templates build the link themselves via
- * site_url('post/' . $slug) / site_url('page/' . $slug), the same
- * convention Post/Page already follow.
+ * One row of a SearchService result set — a Post, Page, Category, Tag, or
+ * Author (`type` distinguishes which), reduced to the fields a search
+ * results listing needs. Deliberately data-only, no URL-building method:
+ * templates build the link themselves via site_url('post/' . $slug) /
+ * site_url('page/' . $slug) / site_url('category/' . $slug) /
+ * site_url('tag/' . $slug) / site_url('author/' . $slug), the same
+ * convention every other listing already follows.
  *
  * featuredImageId mirrors Post/Page's own field (LP-040) so search results
  * can show a thumbnail and participate in the LP-031 lightbox the same way
- * other listings do.
+ * other listings do — always null for Category/Tag/Author results, which
+ * have no featured image concept.
  */
 final class SearchResult
 {

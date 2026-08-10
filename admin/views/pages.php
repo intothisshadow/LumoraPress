@@ -330,8 +330,40 @@ if ($action === 'edit') {
     $parentOptions = $pageService->listAllForParentSelect($page?->id);
     $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
     $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
+    /*
+     * LP-075's Attachment Display Settings step needs, per image, every
+     * size it actually has a generated thumbnail for (plus the original
+     * as "full") so the size/link-to choice can be resolved entirely
+     * client-side with no extra request. thumbnailsForMany() (one query
+     * for every image here, not one per image) keeps this from becoming
+     * an N+1 query on a library with hundreds of uploads.
+     */
+    $editorThumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(array_map(static fn (array $item): int => (int) $item['id'], $imageOptions));
     $editorMediaLibrary = array_map(
-        static fn (array $item): array => ['url' => $kernel->media->url($item), 'name' => (string) $item['file_name']],
+        static function (array $item) use ($kernel, $editorThumbnailsByMediaId): array {
+            $sizes = [
+                'full' => [
+                    'url' => $kernel->media->url($item),
+                    'width' => (int) ($item['width'] ?? 0),
+                    'height' => (int) ($item['height'] ?? 0),
+                ],
+            ];
+
+            foreach ($editorThumbnailsByMediaId[(int) $item['id']] ?? [] as $thumbnail) {
+                $sizes[(string) $thumbnail['size_name']] = [
+                    'url' => $kernel->thumbnails->url($item, (string) $thumbnail['size_name']),
+                    'width' => (int) $thumbnail['width'],
+                    'height' => (int) $thumbnail['height'],
+                ];
+            }
+
+            return [
+                'url' => $kernel->media->url($item),
+                'name' => (string) $item['file_name'],
+                'alt' => (string) ($item['alt_text'] ?? ''),
+                'sizes' => $sizes,
+            ];
+        },
         $imageOptions,
     );
     ?>

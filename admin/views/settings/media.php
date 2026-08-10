@@ -38,6 +38,11 @@ if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_
 
     header('Location: ' . admin_url('settings/media') . '?saved=1');
     exit;
+} elseif ($form === 'lightbox_settings' && Csrf::verify('lightbox_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $kernel->config->setOption('lightbox_show_filenames', ($_POST['lightbox_show_filenames'] ?? '') === '1' ? '1' : '0');
+
+    header('Location: ' . admin_url('settings/media') . '?saved=1');
+    exit;
 }
 ?>
 <h1 class="lp-admin__title">Media</h1>
@@ -57,6 +62,22 @@ if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_
             Track file downloads
         </label>
         <span class="lp-field__hint">Counts a download each time a document, archive, audio, or video file is fetched through its <code>/media/{id}/download</code> link, shown on that file's Media Manager details page. Image "views" aren't tracked &mdash; see <a href="<?= esc_url(admin_url('media/media')) ?>">Media Manager</a>'s built-in views for what's available.</span>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Media Viewer &amp; Lightbox</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings/media')) ?>">
+        <?= Csrf::field('lightbox_settings') ?>
+        <input type="hidden" name="form" value="lightbox_settings">
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="lightbox_show_filenames" value="1" <?= $kernel->config->option('lightbox_show_filenames', '0') === '1' ? 'checked' : '' ?>>
+            Show filenames in the lightbox
+        </label>
+        <span class="lp-field__hint">Displays each image's filename alongside its dimensions at the bottom of the lightbox (LP-031). Off by default, since filenames are rarely meaningful to visitors.</span>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>

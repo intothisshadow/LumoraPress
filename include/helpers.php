@@ -83,13 +83,34 @@ if (!function_exists('admin_asset_url')) {
      * stylesheet), honouring the install's base path — admin/assets/ is a
      * real, directly-reachable directory rather than a routed page, so
      * this deliberately doesn't go through admin_url().
+     *
+     * Appends `?v={mtime}` when $path resolves to a real file on disk —
+     * a cache-busting query string that changes automatically whenever
+     * the file itself changes, with no version-number bookkeeping
+     * needed. Without this, a CSS/JS fix shipped between releases (via
+     * the manual ZIP update, LP-026) can sit invisible in every
+     * browser's cache indefinitely, since the URL never changes to tell
+     * the browser to re-fetch it — a real bug this exact gap caused
+     * (see docs/CHANGELOG.md's entry for this date).
      */
     function admin_asset_url(string $path = ''): string
     {
         $path = ltrim($path, '/');
         $base = BasePath::get() . '/admin/assets';
 
-        return $path === '' ? $base : $base . '/' . $path;
+        if ($path === '') {
+            return $base;
+        }
+
+        // dirname(__DIR__) rather than the LUMORA_ROOT constant — this
+        // file is also loaded directly by the PHP Test Suite's bootstrap
+        // (without the rest of include/bootstrap.php, which is where
+        // LUMORA_ROOT is actually defined), so a self-contained path
+        // derived from this file's own location works in both contexts.
+        $absolutePath = dirname(__DIR__) . '/admin/assets/' . $path;
+        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+
+        return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');
     }
 }
 
