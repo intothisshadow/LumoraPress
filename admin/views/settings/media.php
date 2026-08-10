@@ -41,6 +41,18 @@ if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_
 } elseif ($form === 'lightbox_settings' && Csrf::verify('lightbox_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('lightbox_show_filenames', ($_POST['lightbox_show_filenames'] ?? '') === '1' ? '1' : '0');
 
+    // 'full' (the raw original) plus every enabled registered thumbnail
+    // size (small/medium/large by default, plus anything a theme/plugin
+    // added via the thumbnail_sizes filter) are the only valid values —
+    // an unrecognized submitted value falls back to 'large' rather than
+    // being stored as-is, since the_post_thumbnail_lightbox() would
+    // otherwise silently show the full original for a typo'd/tampered
+    // value (ThumbnailService::url() returns null, then falls through
+    // to the original) instead of failing loudly.
+    $allowedLightboxSizes = ['full', ...array_keys(array_filter($kernel->thumbnails->sizes(), static fn (array $size): bool => $size['enabled']))];
+    $submittedLightboxSize = is_string($_POST['lightbox_large_size'] ?? null) ? $_POST['lightbox_large_size'] : '';
+    $kernel->config->setOption('lightbox_large_size', in_array($submittedLightboxSize, $allowedLightboxSizes, true) ? $submittedLightboxSize : 'large');
+
     header('Location: ' . admin_url('settings/media') . '?saved=1');
     exit;
 }
@@ -67,11 +79,37 @@ if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_
     </form>
 </section>
 
+<?php
+$lightboxSizeOptions = [];
+
+foreach ($kernel->thumbnails->sizes() as $sizeName => $sizeInfo) {
+    if ($sizeInfo['enabled']) {
+        // The raw × character, not the &times; HTML entity — this
+        // string is passed through esc_html() at output, which would
+        // otherwise escape the entity's own "&" and show the literal
+        // text "&times;" instead of rendering the symbol.
+        $lightboxSizeOptions[$sizeName] = ucfirst($sizeName) . ' (' . $sizeInfo['width'] . '×' . $sizeInfo['height'] . ')';
+    }
+}
+
+$lightboxSizeOptions['full'] = 'Original (full size)';
+$currentLightboxSize = (string) $kernel->config->option('lightbox_large_size', 'large');
+?>
 <section class="lp-admin__panel">
     <h2>Media Viewer &amp; Lightbox</h2>
     <form method="post" action="<?= esc_url(admin_url('settings/media')) ?>">
         <?= Csrf::field('lightbox_settings') ?>
         <input type="hidden" name="form" value="lightbox_settings">
+
+        <p class="lp-field">
+            <label for="lightbox-large-size">Lightbox image size</label>
+            <select id="lightbox-large-size" name="lightbox_large_size">
+                <?php foreach ($lightboxSizeOptions as $sizeName => $label): ?>
+                    <option value="<?= esc_attr($sizeName) ?>" <?= $currentLightboxSize === $sizeName ? 'selected' : '' ?>><?= esc_html($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">Which size the lightbox loads when opened. Defaults to <strong>Large</strong> rather than the original — avoids loading a full-resolution file just to display it scaled down in a browser window. Choose <strong>Original (full size)</strong> to always show the raw upload instead.</span>
+        </p>
 
         <label class="lp-field--checkbox">
             <input type="checkbox" name="lightbox_show_filenames" value="1" <?= $kernel->config->option('lightbox_show_filenames', '0') === '1' ? 'checked' : '' ?>>

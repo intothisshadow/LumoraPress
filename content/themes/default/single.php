@@ -43,7 +43,7 @@ get_header(['post' => $post]);
             </p>
             <?php if (has_post_thumbnail($post)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
-                    <?php the_post_thumbnail_lightbox($post, size: 'large', largeSize: 'large'); ?>
+                    <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>

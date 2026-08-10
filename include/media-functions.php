@@ -297,15 +297,29 @@ if (!function_exists('the_post_thumbnail_lightbox')) {
      * Does nothing if there is no image (mirrors the_post_thumbnail()'s
      * own no-image case) — no dangling empty <a>.
      *
+     * $largeSize defaults to the site-wide "Lightbox image size" setting
+     * (Settings > Media, `lightbox_large_size` option, itself defaulting
+     * to `'large'`) when not passed explicitly — lets a template opt out
+     * of the site setting for a specific call without needing a PHP
+     * constant, while every call site that doesn't care picks up an
+     * admin's choice automatically. `'large'`/any other registered
+     * thumbnail size name loads that size; `'full'` loads the raw
+     * original upload — ThumbnailService::url() returning null for an
+     * unregistered size name (which `'full'` always is) already falls
+     * through to the original in post_thumbnail_url(), so no special
+     * casing is needed here for that value.
+     *
      * @param array<string, string> $attrs Forwarded to the_post_thumbnail().
      */
-    function the_post_thumbnail_lightbox(Post|Page|SearchResult $item, string $size = 'medium', string $largeSize = 'large', array $attrs = []): void
+    function the_post_thumbnail_lightbox(Post|Page|SearchResult $item, string $size = 'medium', ?string $largeSize = null, array $attrs = []): void
     {
         $media = post_thumbnail_media($item);
 
         if ($media === null) {
             return;
         }
+
+        $largeSize ??= (string) FeaturedImages::config()->option('lightbox_large_size', 'large');
 
         $href = post_thumbnail_url($item, $largeSize);
 

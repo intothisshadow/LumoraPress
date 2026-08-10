@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Configurable lightbox image size (LP-031): Settings &rsaquo; Media
+  gains a "Lightbox image size" option — choose which size the featured-
+  image lightbox loads when opened (any enabled thumbnail size, or the
+  raw original). Defaults to the existing `large` size (~1024px), so
+  behavior is unchanged unless explicitly reconfigured.
 - Insert Media: Attachment Display Settings (LP-075): the "Insert from
   Media Manager" picker in both the Markdown and WYSIWYG post/page
   editors now shows a Size (Thumbnail/Medium/Large/Full — only sizes an
