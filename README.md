@@ -240,7 +240,7 @@ them via FTP/SFTP or your hosting file manager).
 
 ## Current Status
 
-**Version 0.5.0**
+**Version 0.6.0**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme
@@ -253,7 +253,8 @@ them via FTP/SFTP or your hosting file manager).
 - **Pages** — static pages with parent/child relationships and revision
   history.
 - **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
-  best-effort conversion between formats.
+  best-effort conversion between formats, text/image alignment, and an
+  Attachment Display Settings step (size, link-to) when inserting media.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages.
 - **Comments** — threaded discussion with moderation (including bulk
@@ -287,9 +288,10 @@ them via FTP/SFTP or your hosting file manager).
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
   Font Awesome, off by default).
 - **Media Manager** — uploads, virtual folders, metadata, thumbnail
-  generation, a lightbox viewer, download statistics for document/
-  archive/audio/video files, and usage tracking with delete-time
-  warnings.
+  generation, a lightbox viewer (covering both featured images and
+  images embedded directly in post/page content), download statistics
+  for document/archive/audio/video files, and usage tracking with
+  delete-time warnings.
 - **Featured images** — per-post/page featured images with manual
   cropping.
 - **FTP media import** — bring in files already on the server without a

@@ -29,6 +29,19 @@ use LumoraPress\Models\UserRole;
  */
 final class UserService
 {
+    /**
+     * Per-request memoization for findById() (LP-008 Performance) — an
+     * archive/index/search-results render calls the_author_link() once per
+     * post, and the same author id typically repeats across many posts in
+     * one listing. One instance of this service lives for the whole
+     * request (built once in bootstrap.php), so caching by id here
+     * collapses those repeats into a single query. Every write method
+     * below that can change a row already in this cache must evict it.
+     *
+     * @var array<int, User|null>
+     */
+    private array $findByIdCache = [];
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -37,12 +50,16 @@ final class UserService
 
     public function findById(int $id): ?User
     {
+        if (array_key_exists($id, $this->findByIdCache)) {
+            return $this->findByIdCache[$id];
+        }
+
         $row = $this->database->fetchOne(
             'SELECT * FROM ' . $this->table() . ' WHERE id = :id',
             ['id' => $id],
         );
 
-        return $row === null ? null : $this->hydrate($row);
+        return $this->findByIdCache[$id] = ($row === null ? null : $this->hydrate($row));
     }
 
     public function findByUsername(string $username): ?User
@@ -199,6 +216,7 @@ final class UserService
             ],
         );
 
+        unset($this->findByIdCache[$id]);
         $user = $this->findById($id);
 
         if ($user === null) {
@@ -214,6 +232,8 @@ final class UserService
             'UPDATE ' . $this->table() . ' SET password_hash = :hash WHERE id = :id',
             ['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $id],
         );
+
+        unset($this->findByIdCache[$id]);
     }
 
     /**
@@ -227,11 +247,17 @@ final class UserService
             'UPDATE ' . $this->table() . ' SET preferred_editor = :preferred_editor WHERE id = :id',
             ['preferred_editor' => $format?->value, 'id' => $id],
         );
+
+        unset($this->findByIdCache[$id]);
     }
 
     public function delete(int $id): bool
     {
-        return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+        $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        unset($this->findByIdCache[$id]);
+
+        return $deleted;
     }
 
     /**
@@ -243,18 +269,26 @@ final class UserService
      */
     public function trash(int $id): bool
     {
-        return $this->database->execute(
+        $trashed = $this->database->execute(
             'UPDATE ' . $this->table() . ' SET trashed_at = :trashed_at WHERE id = :id',
             ['trashed_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
         ) > 0;
+
+        unset($this->findByIdCache[$id]);
+
+        return $trashed;
     }
 
     public function restore(int $id): bool
     {
-        return $this->database->execute(
+        $restored = $this->database->execute(
             'UPDATE ' . $this->table() . ' SET trashed_at = NULL WHERE id = :id',
             ['id' => $id],
         ) > 0;
+
+        unset($this->findByIdCache[$id]);
+
+        return $restored;
     }
 
     public function countTrashed(): int
@@ -365,6 +399,8 @@ final class UserService
             'UPDATE ' . $this->table() . ' SET avatar_media_id = :avatar_media_id WHERE id = :id',
             ['avatar_media_id' => $mediaId, 'id' => $id],
         );
+
+        unset($this->findByIdCache[$id]);
     }
 
     /**
@@ -410,6 +446,8 @@ final class UserService
             'UPDATE ' . $this->table() . ' SET last_active_at = :last_active_at WHERE id = :id',
             ['last_active_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
         );
+
+        unset($this->findByIdCache[$id]);
     }
 
     /**

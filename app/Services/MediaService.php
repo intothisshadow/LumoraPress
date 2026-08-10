@@ -113,6 +113,22 @@ final class MediaService
     private readonly MediaStorageInterface $storage;
 
     /**
+     * Per-request memoization for find() (LP-008 Performance) — a single
+     * post/archive/search-results render can call the Featured Image theme
+     * API (has_post_thumbnail()/the_post_thumbnail()/
+     * the_post_thumbnail_lightbox()) several times against the same media
+     * id for one item, and the same media id often repeats across several
+     * items in a listing. One instance of this service lives for the
+     * whole request (built once in bootstrap.php), so caching by id here
+     * collapses those into a single query without needing a shared cache
+     * store. Every write method below that can change a row already in
+     * this cache must evict it — see each one's own note.
+     *
+     * @var array<int, array<string, mixed>|null>
+     */
+    private array $findCache = [];
+
+    /**
      * @param Closure(string, string): bool|null $moveUploadedFile Overrides
      *     the default storage driver's file-move operation — see
      *     LocalFilesystemStorage's constructor docblock for why tests need
@@ -301,6 +317,7 @@ final class MediaService
             ],
         );
 
+        unset($this->findCache[$id]);
         $updated = $this->find($id);
 
         if ($updated === null) {
@@ -333,7 +350,11 @@ final class MediaService
      */
     public function find(int $id): ?array
     {
-        return $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
+        if (array_key_exists($id, $this->findCache)) {
+            return $this->findCache[$id];
+        }
+
+        return $this->findCache[$id] = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
     }
 
     public function updateMetadata(int $id, ?string $altText, ?string $caption, ?string $description, ?string $notes): void
@@ -350,6 +371,8 @@ final class MediaService
                 'id' => $id,
             ],
         );
+
+        unset($this->findCache[$id]);
     }
 
     /**
@@ -389,6 +412,7 @@ final class MediaService
                 ['file_name' => $newName, 'id' => $id],
             );
 
+            unset($this->findCache[$id]);
             $renamed++;
         }
 
@@ -444,6 +468,8 @@ final class MediaService
             'UPDATE ' . $this->table() . ' SET folder_id = :folder_id WHERE id = :id',
             ['folder_id' => $folderId, 'id' => $id],
         );
+
+        unset($this->findCache[$id]);
     }
 
     /**
@@ -467,6 +493,8 @@ final class MediaService
                 'id' => $id,
             ],
         );
+
+        unset($this->findCache[$id]);
     }
 
     /**
@@ -671,6 +699,8 @@ final class MediaService
         $this->storage->delete((string) $media['file_path']);
 
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        unset($this->findCache[$id]);
 
         if ($deleted) {
             $this->hooks?->doAction('media_deleted', $id);

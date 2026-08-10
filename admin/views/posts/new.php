@@ -470,6 +470,14 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
             <input type="text" id="post-title" name="title" value="<?= esc_attr($post->title ?? '') ?>" required>
         </p>
 
+        <?php if ($post !== null && $post->status === PostStatus::Published): ?>
+            <p class="lp-field lp-permalink">
+                <span class="lp-permalink__label">Permalink:</span>
+                <a class="lp-permalink__url" href="<?= esc_url(site_url('post/' . $post->slug)) ?>" target="_blank" rel="noopener"><?= esc_html(site_url('post/' . $post->slug)) ?></a>
+                <a class="lp-button lp-button--secondary lp-permalink__view" href="<?= esc_url(site_url('post/' . $post->slug)) ?>" target="_blank" rel="noopener">View Post</a>
+            </p>
+        <?php endif; ?>
+
         <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url(site_url('post/')) ?>">
             <label for="post-slug">Slug</label>
             <input type="text" id="post-slug" name="slug" value="<?= esc_attr($post->slug ?? '') ?>">

@@ -61,6 +61,21 @@ final class ThumbnailService
     private readonly Closure $readExif;
 
     /**
+     * Per-request memoization for thumbnailsFor() (LP-008 Performance) —
+     * rendering one item's featured image through the theme API
+     * (has_post_thumbnail()/the_post_thumbnail()/
+     * the_post_thumbnail_lightbox() in include/media-functions.php) looks
+     * up the same media id's thumbnail rows more than once per item. One
+     * instance of this service lives for the whole request (built once in
+     * bootstrap.php), so caching by media id here collapses those repeats
+     * into a single query. generateOne()/deleteForMedia() evict an id's
+     * entry whenever its rows actually change.
+     *
+     * @var array<int, array<int, array<string, mixed>>>
+     */
+    private array $thumbnailsForCache = [];
+
+    /**
      * @param Closure(string): (array<string, mixed>|false)|null $readExif
      *     Overrides EXIF reading — defaults to exif_read_data(). Exists so
      *     tests can exercise orientation handling without needing a real
@@ -214,6 +229,8 @@ final class ThumbnailService
         }
 
         $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE media_id = :media_id', ['media_id' => $mediaId]);
+
+        unset($this->thumbnailsForCache[$mediaId]);
     }
 
     /**
@@ -221,7 +238,11 @@ final class ThumbnailService
      */
     public function thumbnailsFor(int $mediaId): array
     {
-        return $this->database->fetchAll(
+        if (array_key_exists($mediaId, $this->thumbnailsForCache)) {
+            return $this->thumbnailsForCache[$mediaId];
+        }
+
+        return $this->thumbnailsForCache[$mediaId] = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . ' WHERE media_id = :media_id ORDER BY size_name ASC',
             ['media_id' => $mediaId],
         );
@@ -600,6 +621,8 @@ final class ThumbnailService
                 'created_at' => date('Y-m-d H:i:s'),
             ],
         );
+
+        unset($this->thumbnailsForCache[(int) $media['id']]);
 
         return ['width' => $targetWidth, 'height' => $targetHeight, 'path' => $relativePath];
     }

@@ -4,8 +4,21 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-10
+
 ### Added
 
+- Post editor Permalink row (LP-008): once a post is Published, the
+  admin edit screen now shows a "Permalink" row above the Slug field with
+  the live URL and a "View Post" link, opening in a new tab.
+- Performance (LP-008): `MediaService::find()`, `UserService::findById()`,
+  and `ThumbnailService::thumbnailsFor()` now memoize by id for the life
+  of a request, eliminating repeat identical queries the Featured Image
+  and author-link theme APIs were making per post on the homepage,
+  archive, category/tag/author, and search-results listings (rendering
+  one post's thumbnail alone could re-query the same media row up to five
+  times). Every write method on these ids evicts the cache, so a save
+  still reads back fresh data in the same request.
 - Text and image alignment in both editors (LP-016): a new alignment
   toolbar (left/center/right/justify) for paragraphs and headings, and
   an Alignment choice (None/Left/Center/Right) in the Insert Media

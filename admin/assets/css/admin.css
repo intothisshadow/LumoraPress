@@ -1755,6 +1755,30 @@ select:focus {
     font-size: 0.8rem;
 }
 
+/* Permalink row (LP-008) — shown on the edit screen once a post is published */
+.lp-permalink {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+}
+
+.lp-permalink__label {
+    font-weight: 600;
+}
+
+.lp-permalink__url {
+    word-break: break-all;
+}
+
+.lp-permalink__view {
+    margin-left: auto;
+}
+
 /* Custom fields (LP-008) — repeatable key/value row editor */
 
 .lp-custom-fields__row {

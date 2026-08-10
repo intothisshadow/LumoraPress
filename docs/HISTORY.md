@@ -3192,3 +3192,944 @@ on every changed PHP file and `node -c` on the three new JS files, plus
 a full `composer test` (981 tests) and `composer stan` run (both clean)
 from `PHP Test Suite/`.
 
+---
+
+## 0.6.0 (2026-08-10)
+
+### LP-018. Scheduled Posts
+
+**Implemented (2026-07-21)** as part of LP-008 Posts —
+`LumoraPress\Services\PostService` stores a `PostStatus::Scheduled` post's
+future `published_at` and computes public visibility live
+(`published OR (scheduled AND published_at <= NOW())`) rather than via cron;
+see `DECISIONS.md`'s "Scheduled posts don't need a background job".
+
+**Optional scheduled unpublishing implemented (2026-07-21, also as part of
+LP-008 Posts)** — this checkbox had been left unticked despite the feature
+already existing: the `unpublish_at` column, `PostService::create()`/
+`update()` params, `publicWhereClause()`'s exclusion of posts past their
+`unpublish_at`, and the admin form field (`admin/views/posts/new.php`) were
+all already in place, with test coverage in `PostServiceTest`/`PostTest`.
+Ticked off 2026-08-06 as a status correction, not new work.
+
+**Draft scheduling implemented (2026-08-06)** — a Draft can now carry a
+`published_at` as a planned/intended publish date (set via the same
+"Publish date" field the admin edit form already had for Scheduled posts,
+now also accepted when status is Draft). It has no effect on visibility —
+`publicWhereClause()` never matches Draft regardless — and survives a later
+Draft → Scheduled transition without needing to be re-entered, since
+`PostService::resolvePublishedAt()`'s Draft branch now falls back to the
+existing value instead of being forced to `null`. Gated behind the same
+`$canPublish` check as Visibility/Sticky/Schedule-unpublishing, matching
+this form's existing "publish-time decision" gating pattern.
+
+**"Cron scheduling" declined (2026-08-06)** — removed from the checklist
+below rather than left open. See `DECISIONS.md`'s "LP-018's 'Cron
+scheduling' checklist item declined" for the rationale.
+
+**Time zone support confirmed already in place, per-post/per-user override
+declined (2026-08-06)** — `PostService` always builds dates with `new
+DateTimeImmutable()` and no explicit offset, so both what an admin types
+into the "Publish date"/"Unpublish date" fields and the `now()` used for
+every visibility comparison are already interpreted in the single site-wide
+timezone (Settings &rsaquo; General's "timezone" option, applied via
+`date_default_timezone_set()` in `include/bootstrap.php` — see LP-042).
+Per-post/per-user timezone override was considered and declined as a
+separate feature rather than built: there is no per-user timezone anywhere
+in the codebase today, and a single site-wide timezone is the same model
+WordPress itself has always used. See `DECISIONS.md`'s "LP-018's 'Time zone
+support' checklist item closed without a per-post/per-user override" for
+the full rationale.
+
+#### Goal
+
+Allow scheduled publishing.
+
+#### Features
+
+- [x] Future publication
+- [x] Time zone support — a single site-wide timezone (Settings &rsaquo; General), no per-post/per-user override
+- [x] Draft scheduling
+- [x] Optional scheduled unpublishing
+
+---
+
+### LP-031. Media Viewer & Lightbox System
+
+#### Goal
+
+Create a modern, responsive media viewing experience for all supported media types while keeping the implementation lightweight, fast, and theme-friendly.
+
+Second pass implemented this session: image dimensions, an optional
+filename display (site-wide setting), a download button, a slideshow
+mode, deep-link support, video poster images, and video captions/
+subtitles. See each checklist item below for exact scope. A handful of
+items not applicable to Lumora Press (Album/Favorites/Most viewed/
+Custom collections gallery navigation — no such concepts exist anywhere
+in this app) and permanently deferred/out-of-scope items (OGV video,
+audio album art/metadata, text-file syntax highlighting, themes
+disabling the built-in viewer, high-contrast verification, next/previous
+preloading) were removed from the checklist entirely rather than left
+unchecked, since none represent real gaps to close later.
+
+**Real bug found and fixed while browser-testing the new toolbar
+buttons**: `.lp-pswp-meta` (the dimensions/filename bar added above) is
+a full-width `position: absolute; top: 0` overlay — the same edge
+PhotoSwipe's own toolbar (zoom/close, plus this session's new download/
+slideshow buttons) renders into. With no `pointer-events` override, that
+overlay sat on top of the toolbar and silently swallowed clicks meant
+for those buttons, even though the buttons remained visibly unobstructed
+(the bar has no border/shadow signaling it's there) — reported as "the
+lightbox top buttons don't work when I click on them." Fixed by adding
+`pointer-events: none` to both `.lp-pswp-meta` and (defensively, same
+risk class) `.lp-pswp-caption` in both `content/themes/default/style.css`
+and `admin/assets/css/admin.css` — neither element ever needs to receive
+clicks, only display text.
+
+**Two more real bugs found immediately after, when the fix above was
+reported as still not working** — both structural gaps, not specific to
+this bar:
+
+1. Neither theme nor admin CSS/JS assets carry a cache-busting query
+   string, so a browser that had loaded the page even once before a
+   fix shipped kept serving its cached copy indefinitely — the
+   pointer-events fix above was correctly deployed server-side but
+   invisible in the browser under test (`getComputedStyle()` showed the
+   stale `pointer-events: auto`). Fixed by having `ThemeRenderer::themeUrl()`
+   and `admin_asset_url()` (`include/helpers.php`) append
+   `?v={filemtime}` automatically for any path resolving to a real
+   file — no manual version bumping, self-invalidating on every future
+   edit.
+2. The "Show filenames in lightbox" setting's `window.lpMediaViewer = {...}`
+   inline `<script>` was silently blocked by this project's own
+   Content-Security-Policy (`script-src` has no inline-execution
+   allowance, only `style-src` does — see `CspNonce`). Confirmed via the
+   browser console. Fixed by moving the value onto a
+   `data-show-filenames` attribute on the existing external
+   `<script type="module">` tag instead, read via
+   `document.querySelector('script[data-lp-media-viewer]')` in both
+   `media-viewer.js` copies (a module script never gets
+   `document.currentScript`).
+
+**A fourth real bug, found once cache-busting made the fixes above
+actually reach the browser**: the plain `pointer-events: none` on
+`.lp-pswp-meta`/`.lp-pswp-caption` wasn't enough by itself — reported as
+buttons only responding when clicked just below/outside their visible
+area. Fetching PhotoSwipe 5.4.4's real `photoswipe.css` directly showed
+why: `registerElement()` auto-applies PhotoSwipe's own `pswp__hide-on-close`
+class to elements registered this way (confirmed — its `z-index: 10` is
+exactly what `getComputedStyle()` had shown on `.lp-pswp-meta` earlier),
+and that class's own CSS includes
+`.pswp--ui-visible .pswp__hide-on-close { pointer-events: auto; }` — two
+classes, higher specificity than this project's single-class selector,
+which silently wins pointer-events back the instant the lightbox
+finishes its open transition (`pswp--ui-visible` gets added to the root)
+— exactly when a visitor would try to click. Fixed with
+`pointer-events: none !important` on both rules in both stylesheets,
+which no rule in PhotoSwipe's own CSS uses and so can't lose to.
+
+**A fifth real bug, found once clicks reached the buttons at all**: the
+download/slideshow icons were rendering nearly invisible against the
+dark toolbar — reported directly after the fourth fix confirmed clicks
+worked. Both custom SVG `<path>` elements (`media-viewer.js`, both
+copies) carried an explicit `fill="currentColor"`. That's a specified
+value on the `<path>` itself, so it does not inherit `fill` from its
+parent `.pswp__icn` (which PhotoSwipe's CSS sets to
+`var(--pswp-icon-color)`, white — the correct icon color, and what
+PhotoSwipe's own zoom/close icons render as by simply not setting `fill`
+on their own paths at all). Instead `currentColor` resolved to
+`.pswp__icn`'s `color` property, `var(--pswp-icon-color-secondary)` — a
+dark grey PhotoSwipe reserves for icon shadows/outlines, not fills —
+against a near-black toolbar background. Fixed by removing the
+attribute entirely so both icons inherit the same way PhotoSwipe's own
+already do.
+
+See `docs/CHANGELOG.md`'s entries for this date and
+`PHP Test Suite/TEST_LOG.md` for the full Docker-matrix verification of
+the first three fixes (cache-busting, CSP-blocked script, the initial
+pointer-events pass). The fourth and fifth (`!important`, icon fill) are
+CSS/SVG-only — verified live in a real browser against the deployed
+host, not by the PHP test suite, which has no way to exercise a
+rendering/specificity issue like either of these.
+
+#### Image Viewing
+
+- [x]  Use a modern JavaScript lightbox for images (preferably **PhotoSwipe 5**) —
+       loaded from the jsDelivr CDN at a pinned version (5.4.4), per explicit
+       request, rather than vendored locally.
+- [x]  Clicking any image thumbnail opens the lightbox.
+- [x]  Keyboard navigation (← → Esc) — PhotoSwipe 5's own built-in behavior.
+- [x]  Touch gestures on mobile — PhotoSwipe 5's own built-in behavior.
+- [x]  Mouse wheel zoom support — PhotoSwipe 5's own built-in behavior.
+- [x]  Pinch-to-zoom on touch devices — PhotoSwipe 5's own built-in behavior.
+- [x]  Smooth opening/closing animations — PhotoSwipe 5's own built-in behavior.
+- [x]  Lazy-load adjacent images — PhotoSwipe 5's own built-in behavior.
+- [x]  Display image dimensions — a custom PhotoSwipe UI element
+       (`lp-meta`, both `content/themes/default/assets/js/media-viewer.js`
+       and its admin copy) reads the `data-pswp-width`/`data-pswp-height`
+       attributes already emitted by `the_post_thumbnail_lightbox()`.
+- [x]  Optional filename display — a site-wide "Show filenames in
+       lightbox" toggle (Settings &rsaquo; Media, `lightbox_show_filenames`
+       option) gates whether `lp-meta` also shows the filename, sourced
+       from a new `data-pswp-filename` attribute; the setting reaches the
+       JS via a small inline `window.lpMediaViewer = {...}` script emitted
+       right before `media-viewer.js` loads (`footer.php`/
+       `admin/views/layout-footer.php`), since the JS has no PHP access of
+       its own.
+- [x]  Optional caption/description — a custom PhotoSwipe UI element shows
+       the media's caption (falling back to alt text), sourced from the
+       `caption`/`alt_text` columns already captured by Media Manager (LP-005).
+- [x] Download button — a custom PhotoSwipe UI element (`lp-download`)
+       triggers a real browser download (an `<a download>` click) of the
+       currently displayed full-size image, named from
+       `data-pswp-filename`.
+- [x] Slideshow mode — a custom PhotoSwipe UI element (`lp-slideshow`)
+       toggles a 4-second auto-advance (`pswp.next()` on an interval,
+       cleared on toggle-off or lightbox close) rather than a bundled
+       PhotoSwipe plugin, to avoid a second CDN dependency for one small
+       feature.
+- [x]  Deep-link support so individual images can be linked directly —
+       implemented without PhotoSwipe's own (v4-era, not bundled in v5)
+       history plugin: `media-viewer.js` reflects the open image as a
+       `#lp-media-{id}` URL hash (`history.replaceState`, so paging
+       through a gallery doesn't spam browser history) and, on page load,
+       reopens the matching image via `lightbox.loadAndOpen()` if that
+       hash is present. `data-pswp-id` (the media row's id) backs the
+       match.
+
+#### Gallery Navigation
+
+When browsing inside:
+
+- [x] Category — the category archive (`archive.php`).
+- [x] Search results — search results gained thumbnails (`SearchResult`
+      now has `featuredImageId`, mirroring Post/Page) specifically so this
+      is a real navigable gallery, not an empty one.
+- [x] Tag results — the tag archive (`archive.php`, shared with Category).
+- [x] Recent uploads — the homepage's recent-posts list (`index.php`); the
+      admin Media Manager's own grid keeps its existing thumbnail → edit-page
+      click target rather than gaining a competing lightbox click target.
+
+the lightbox should allow seamless navigation to the previous/next media item without returning to the gallery page. Implemented: every list-view page (homepage/archive/category/tag/search) groups its thumbnails into one lightbox gallery per page load; a single post/page's featured image is a lightbox "gallery" of one.
+
+#### Other Media Types
+
+Use an appropriate viewer depending on the file type.
+
+Non-image types (video/audio/PDF) only ever appear in the admin Media
+Manager today — there is no public embedding path for them (post/page
+content is plain escaped text, not HTML, so nothing ever embeds a video/
+audio/PDF publicly). Their viewers are therefore implemented on the
+Media Manager's edit/preview page (`admin/views/media.php?action=edit`),
+not publicly.
+
+##### Images
+
+- [x] PhotoSwipe lightbox
+
+##### Animated Images
+
+- [x] GIF
+- [x] Animated WebP
+- [x] APNG
+
+Display natively inside the lightbox — free: GIF/WebP/APNG all animate
+natively in a plain `<img>` tag, and PhotoSwipe displays whatever image
+element it's given the same way. No extra code was needed for this.
+
+##### Video
+
+- [x] HTML5 video player
+- [x] MP4
+- [x] WebM
+
+Features:
+
+- [x] play/pause — native `<video controls>`.
+- [x] volume — native `<video controls>`.
+- [x] fullscreen — native `<video controls>`.
+- [x] picture-in-picture (where supported) — native `<video controls>`.
+- [x] captions/subtitles — a new nullable `caption_track_media_id` column
+      (migration `0032_add_video_poster_and_captions_to_media.sql`,
+      `MediaService::setVideoAssets()`) references another media row — a
+      WebVTT file uploaded like any other file (`.vtt`/`text/vtt` added to
+      `MediaService`'s allow-list). The Media Manager's video edit view
+      gained a "Caption/subtitle track" `<select>` of the site's uploaded
+      `.vtt` files; when set, a `<track kind="subtitles">` is rendered
+      inside the `<video>` element.
+- [x] poster images — a new nullable `poster_media_id` column (same
+      migration/method as captions above) references an image media row;
+      the video edit view gained a "Poster image" `<select>` of the
+      site's uploaded images, rendered as the `<video poster="...">`
+      attribute when set.
+
+##### Audio
+
+Display a compact embedded audio player with:
+
+- [x] play/pause — native `<audio controls>`.
+- [x] seek bar — native `<audio controls>`.
+- [x] volume — native `<audio controls>`.
+
+##### PDF
+
+- [x] Open in an embedded PDF viewer with download option — native
+      browser PDF viewer via `<iframe>`; the download link already exists
+      on the edit page's metadata line.
+
+##### Unsupported Files
+
+Display:
+
+- [x] file icon — the existing type-category badge.
+- [x] filename
+- [x] filesize
+- [x] MIME type
+- [x] download button — already the file's own direct URL.
+
+#### Theme Integration
+
+- [x] Themes should not need to implement their own lightbox.
+- [x] Provide a standardized Media Viewer API — `the_post_thumbnail_lightbox()`
+      in `include/media-functions.php`.
+- [x] Themes simply output media links with the required data attributes —
+      `the_post_thumbnail_lightbox()` builds the `data-pswp-*` attributes;
+      a theme only needs to wrap its gallery container in `class="lp-gallery"`.
+- [x] Allow themes to override viewer styling through CSS — plain CSS
+      classes (`.lp-gallery`, `.lp-pswp-caption`), no CSS-in-JS.
+
+#### Accessibility
+
+- [x] WCAG-compliant — relies on PhotoSwipe 5's own documented WCAG support.
+- [x] Full keyboard navigation — PhotoSwipe 5's own built-in behavior.
+- [x] Proper focus management — PhotoSwipe 5's own built-in behavior.
+- [x] ARIA labels — PhotoSwipe 5's own built-in behavior.
+- [x] Screen-reader friendly controls — PhotoSwipe 5's own built-in behavior.
+
+#### Performance
+
+- [x] Load viewer JavaScript only on pages containing media — a new
+      `MediaViewer` static flag (set by `the_post_thumbnail_lightbox()`)
+      gates the CDN `<script>`/`<link>` tags in `footer.php`/
+      `admin/views/layout-footer.php`; a page with zero images loads neither.
+- [x] Lazy-load assets — PhotoSwipe's own JS is only fetched via a dynamic
+      `import()` when a gallery exists, and PhotoSwipe 5 lazy-loads adjacent
+      images itself.
+- [x] Support responsive image sizes (`srcset`/`sizes`) — already true of
+      `the_post_thumbnail()`/`the_post_thumbnail_lightbox()` since LP-040.
+- [x] Avoid loading full-resolution images until requested (zoom/download) —
+      the lightbox link defaults to the `large` thumbnail size (quality-
+      controlled, capped at 1024px), not the raw original, the same
+      reasoning most WordPress themes use for their own "large" image
+      size. Now admin-configurable (Settings &rsaquo; Media &rsaquo;
+      "Lightbox image size") rather than hardcoded: a new
+      `lightbox_large_size` `PressConfig` option (default `'large'`)
+      lets an administrator pick any enabled registered thumbnail size
+      (small/medium/large by default, plus anything a theme/plugin
+      registers via the `thumbnail_sizes` filter) or `full` (the raw
+      original) as the site-wide default.
+      `the_post_thumbnail_lightbox()`'s `$largeSize` parameter is now
+      nullable, resolving to this setting when a template omits it — all
+      five theme call sites (`archive.php`/`index.php`/`search.php`
+      already omitted it; `single.php`/`page.php`'s explicit
+      `largeSize: 'large'` override was removed) pick up the setting
+      automatically. `'full'` needed no special-casing:
+      `ThumbnailService::url()` already returns `null` for an
+      unregistered size name, and `post_thumbnail_url()` already falls
+      through to the raw original in that case.
+
+#### Why PhotoSwipe?
+
+PhotoSwipe 5 is a strong fit because it:
+
+- Is lightweight and actively maintained.
+- Supports responsive images, zooming, touch gestures, keyboard navigation, and accessibility out of the box.
+- Is easy to theme without requiring themes to duplicate functionality.
+- Can be extended later with captions, downloads, EXIF panels, slideshows, and custom plugins while keeping the core implementation clean.
+
+------
+
+### LP-041. FTP Media Import
+
+#### Goal
+
+Import existing media files from the server into the Media Manager without re-uploading them.
+
+#### Features
+
+- [x] Scan one or more configured server directories for media files
+
+- [x] Recursive directory scanning
+
+- [x] Import images, videos, audio, and documents — any extension/MIME
+      `MediaService`'s upload allow-list already accepts.
+  
+- [x] Allow selecting the destination Media Manager folder before importing
+
+- [x] Create a new Media Manager folder during import — via "mirror
+      directory structure" (see below); there's no separate "type a new
+      folder name" field on the import screen itself (use the Media
+      Manager's existing "New Folder" control first, then pick it here).
+  
+- [x] Remember the last selected destination folder
+
+- [x] Optionally mirror the scanned directory structure under the selected Media Manager folder
+
+- [x] Preview files before importing
+
+- [x] Import selected files or entire folders — a "select all" default
+      (every non-duplicate file starts checked) covers "entire folder".
+  
+- [x] Preserve directory structure — see "mirror" above.
+
+- [x] Automatically create Media Library folders from directory structure
+
+- [x] Detect and skip duplicate files
+
+- [x] Detect moved or renamed files — same SHA-256 hash check as
+      duplicate detection; a rename/move doesn't change the hash.
+  
+- [x] Generate thumbnails during import
+
+- [x] Extract image metadata (dimensions, EXIF, etc.) — dimensions only
+      (same as a browser upload); no EXIF-metadata column exists on
+      `{prefix}media` to populate, so that part is out of scope.
+  
+- [x] Batch import with progress indicator — batch-per-request +
+      redirect-loop, the same pattern LP-001 built for bulk thumbnail
+      regeneration (no queue/cron infrastructure exists in this codebase).
+  
+- [x] Resume interrupted imports — not a persisted resume-token system;
+      re-running the same scan/import after an interruption naturally
+      skips everything already imported via the duplicate-hash check.
+  
+- [x] Detailed import summary (imported, skipped, failed)
+
+- [x] Log errors for unreadable or unsupported files — shown in the
+      on-screen failure summary with a reason per file, not a separate
+      persisted log file.
+  
+- [x] Automatically assign uploaded date from file modification time (optional)
+
+- [x] Set author/owner for imported media — defaults to the importing
+      administrator (`uploaded_by`), same as a browser upload; no
+      separate "import as a different user" picker.
+  
+  
+  
+- [x] Automatically optimize images after import (always optional) —
+      implemented (2026-08-06) as a lossy recompression pass via GD (still
+      no cwebp/mozjpeg/etc. dependency), not resize/format conversion:
+      `ThumbnailService::optimizeInPlace()` reuses the same
+      `thumbnail_jpeg_quality`/`thumbnail_webp_quality` settings thumbnails
+      already use, and only overwrites the file when the recompressed
+      result is actually smaller. An unchecked-by-default "Optimize images
+      after import" checkbox on the FTP Media Import screen threads the
+      flag through `MediaImportService::import()`/`importBatch()` — never
+      on unless chosen for that specific import run, matching "always
+      optional" in the ticket text. Animated GIFs are skipped outright
+      (GD's decoder only reads a GIF's first frame).
+  
+- [x] Support very large imports through background processing — same
+      batch-per-request shape as above, not real background workers.
+  
+  
+
+#### Security
+
+- [x] Restrict scanning to administrator-configured directories
+- [x] Prevent directory traversal — `realpath()`-resolved, separator-
+      boundary-safe prefix checking against the allow-list, re-validated
+      on every path immediately before use (scan, and again on import,
+      never trusting a path round-tripped through the preview form).
+- [x] Validate all imported files as genuine media — real MIME-type
+      detection via `mime_content_type()`, same as a browser upload
+      (never trusts the extension alone).
+- [x] Honor allowed file type restrictions
+
+#### Deliverables
+
+- FTP/Server Import page in the Media Manager
+- Fast, resumable bulk import process
+- Automatic thumbnail generation and metadata extraction
+- Import logs and duplicate detection
+
+------
+
+### LP-047. Discussion Settings
+
+**Implemented (2026-08-06), first-pass scope.** Overlaps with several
+still-open `LP-012` (Comments) checklist items — auto-close-after-days,
+notifications, word/link moderation, Akismet, and avatars — were real
+content duplication, flagged and resolved with the user before starting:
+this ticket implements the actual behavior, and the matching `LP-012`
+items are checked off below with a cross-reference rather than tracked
+twice. New `CommentModerationService` (comment-status decisions,
+comments-open-with-auto-close, field requirements) and
+`CommentNotificationService` (admin/author/extra-recipient email via the
+existing LP-058 `Mailer`) sit between `SiteController::submitComment()`
+and `ApiController::commentsStore()`, replacing the status-decision logic
+that used to be duplicated inline in both. `CommentService` gained
+`paginateForPost()` (threaded-by-top-level-comment pagination, oldest/
+newest ordering). A `comment_is_spam` filter now runs alongside Akismet in
+both entry points, so a future spam-detection plugin (e.g. `LPP-001`
+Lumora Shield) only needs one hook to cover the public form and the REST
+API. Guest name/email "required" toggles substitute a placeholder
+(`Anonymous` / `anonymous@{host}`) rather than leaving the NOT NULL
+`guest_name`/`guest_email` columns empty when disabled. "Maximum nesting
+level" caps only the *visual* indentation depth in `comments.php` — no
+reply is ever dropped from the data. Avatars reuse Gravatar (extended with
+configurable rating/default) plus the same "upload replaces a stored
+`options` media ID" pattern Branding's logo/favicon already use for a
+locally uploaded default avatar. New Settings > Discussion admin screen
+(`admin/views/settings/discussion.php`). Scoped to Posts only, matching
+`LP-012`'s own Posts-only scope — Pages have no `comment_status` column to
+hang a per-page override off yet (see `TODO.md`'s Pages ticket).
+
+#### Goal
+
+Provide comprehensive configuration for comments, moderation, notifications, and avatars.
+
+#### Features
+
+##### Default Post Settings
+
+- [x] Allow comments on new posts
+
+  
+
+##### Comment Settings
+
+- [x] Comment author name required
+- [x] Comment author email required
+- [x] Require user registration before commenting
+- [x] Automatically close comments after configurable number of days
+- [x] Enable comment cookies consent
+- [x] Enable threaded (nested) comments
+- [x] Maximum nesting level
+- [x] Enable comment pagination
+- [x] Comments per page
+- [x] Default comments page
+- [x] Display oldest or newest comments first
+
+##### Notifications
+
+- [x] Notify administrator of new comments
+- [x] Notify administrator when comments require moderation
+- [x] Notify post author of new comments
+- [x] Configurable notification recipients
+
+##### Moderation
+
+- [x] Manual approval for all comments
+- [x] Automatically approve previously approved commenters
+- [x] Hold comments containing more than X links
+- [x] Comment moderation keyword list
+- [x] Disallowed comment keywords
+- [x] Spam protection integration (Akismet/Lumora Shield) — Akismet itself already existed (`LP-025`); this ticket surfaces its status on the new Discussion settings page and adds a `comment_is_spam` filter hook for a future Lumora Shield plugin
+
+##### Avatars
+
+- [x] Enable avatars
+
+- [x] Maximum avatar rating
+
+- [x] Default avatar
+
+  
+
+- [x] Support locally uploaded avatars
+
+  
+
+##### Deliverables
+
+- Complete Discussion Settings page
+- Flexible moderation tools
+- Avatar configuration
+- Notification management
+
+------
+
+### LP-070. Twitter/X Auto-Embed
+
+**Implemented (2026-08-06).** Pulled out of `LP-023` (oEmbed / Auto-Embed) as
+its own ticket — Twitter/X was deliberately left out of that first pass since
+it doesn't fit the same fixed-iframe-template approach the other five
+providers (YouTube, Vimeo, SoundCloud, Spotify, CodePen) use.
+
+Unlike those five, Twitter/X has no plain-`<iframe>` embed — only a
+script-based one (`platform.twitter.com/widgets.js`, which scans the page
+for `<blockquote class="twitter-tweet">` markup and replaces it with the
+rendered tweet). Implementing this needed:
+
+- [x] A `csp_directives` filter addition allowing
+      `platform.twitter.com`/`syndication.twitter.com` under `script-src`
+      (and whatever `frame-src`/`connect-src` the rendered widget ends up
+      needing — confirm empirically once built) — narrower than a
+      blanket third-party allowance, matching this project's "same-origin
+      by default, widen only per feature" CSP posture (see
+      `ContentSecurityPolicy::defaultDirectives()`'s docblock). Landed as
+      `EmbedService::filterCsp()` widening `script-src`/`frame-src` for
+      `platform.twitter.com` and `connect-src` for
+      `syndication.twitter.com`, gated on the Twitter/X provider toggle
+      like the other five providers' `frame-src` entries.
+- [x] A "load the script once per page" mechanism — the same shape as
+      Font Awesome's editor-load concern (`docs/THIRD-PARTY.md`) and
+      `admin/assets/js/content-editor.js`'s `loadScript()`/`loadStyle()`
+      memoization — so a post with multiple embedded tweets doesn't
+      inject `widgets.js` more than once. Landed as a single conditional
+      `<script async src="https://platform.twitter.com/widgets.js">` tag
+      in `content/themes/default/footer.php` — one tag covers every tweet
+      on the page since `widgets.js` scans the whole DOM itself, so no
+      per-embed JS-side dedup (the `content-editor.js` shape this item
+      originally named) was actually needed; see the next item.
+- [x] Regex-based tweet-URL ID extraction (same "no oEmbed HTTP fetch"
+      architecture as the other five providers — see `LP-023`'s
+      Architecture note), producing the `<blockquote class="twitter-tweet">`
+      markup `widgets.js` expects rather than an `<iframe>`. Landed as
+      `EmbedService::matchTwitter()` (host allowlist for
+      twitter.com/www.twitter.com/mobile.twitter.com/x.com/www.x.com, path
+      pattern `^/(\w{1,15})/status/(\d+)`) and a new `type: 'blockquote'`
+      field on the provider array that `wrap()` branches on.
+- [x] Decide how the widget script only loads on pages that actually
+      contain a Twitter/X embed, not site-wide, mirroring `MediaViewer`'s
+      conditional PhotoSwipe loading pattern. Landed as a new
+      `ScriptEmbeds` bridge class (`app/Core/Theme/ScriptEmbeds.php`) —
+      identical shape to `MediaViewer` but keyed per provider
+      (`markUsed(string $provider)`/`isUsed(string $provider)`) rather
+      than a single bool, anticipating LP-071's second script-based
+      provider; originally landed as a single-flag `TweetEmbed` class,
+      generalized the same session once LP-071 made the "second
+      near-identical class" duplication concrete rather than
+      speculative.
+- [x] Unit tests for URL/ID extraction and malformed-URL fallback, same
+      shape as `PHP Test Suite/Unit/Services/EmbedServiceTest.php`'s
+      existing per-provider tests. Landed: status-URL matching (both
+      twitter.com and x.com hosts), malformed-URL fallback, the
+      disabled-provider/other-providers-still-work pair, `ScriptEmbeds`
+      marking, and CSP `script-src`/`frame-src`/`connect-src` widening —
+      plus a new `ScriptEmbedsTest.php` mirroring `MediaViewerTest.php`.
+- [x] Settings &rsaquo; Embeds gains a Twitter/X per-provider toggle,
+      alongside the five already there.
+
+------
+
+### LP-071. Bluesky Auto-Embed
+
+**Implemented (2026-08-06), Option A.** Another entry in the LP-023
+Auto-Embed family. Bluesky's official embed is the same script+blockquote
+shape as Twitter/X's (LP-070) — a `<blockquote class="bluesky-embed">` that
+a Bluesky-hosted script (`https://embed.bsky.app/static/embed.js`) scans the
+page for and replaces with a rendered post — rather than the fixed-iframe
+shape the original five providers use, confirmed against Bluesky's own
+current docs (docs.bsky.app/docs/advanced-guides/oembed and
+bsky.social/about/blog/post-embeds-guide) 2026-08-06.
+
+**Architecture conflict found during that research:** the blockquote's
+required `data-bluesky-uri` attribute is not a plain post URL — it's an AT
+Protocol URI in the form `at://did:plc:{did}/app.bsky.feed.post/{postId}`,
+and the blockquote also needs a `data-bluesky-cid` (a content hash of that
+specific post). Neither is derivable by regex from a pasted
+`https://bsky.app/profile/{handle}/post/{postId}` URL the way every other
+provider's id is — resolving them requires an outbound HTTP request to
+Bluesky's own `embed.bsky.app/oembed` endpoint (confirmed empirically: it
+accepts a plain `bsky.app/profile/{handle}/post/{id}` URL directly and
+resolves the handle→DID itself server-side, so no separate handle
+resolution step was needed on this app's side). Ariane chose **Option A**
+— a scoped, one-provider exception to `EmbedService`'s otherwise-total
+no-outbound-request rule, made as narrow as possible:
+
+- [x] **The resolution call happens once, at save time, never at render
+      time.** New `BlueskyResolverService` (`app/Services/
+      BlueskyResolverService.php`) — `resolveContent()` (the only method
+      that touches the network) is called from new `post_saved`/
+      `page_saved` hook listeners in `include/bootstrap.php`, gated on the
+      Bluesky provider's own Settings &rsaquo; Embeds toggle so a site with
+      it off never makes this request at all. `cached()` — the method
+      `EmbedService::matchBluesky()` actually calls — is a pure local DB
+      read with no network access, so render() still never blocks on the
+      network for any provider, Bluesky included; an unresolved (or
+      never-resolvable) URL just renders as a plain link, same as a
+      malformed URL for any other provider.
+- [x] **Only the two needed fields are cached, not Bluesky's raw response.**
+      New `install/migrations/0030_create_bluesky_embeds_table.sql`
+      (`{prefix}bluesky_embeds`, unique on `(handle, rkey)` so the same
+      post referenced from multiple posts/pages is only ever resolved
+      once) stores just the extracted `at_uri`/`cid` — Bluesky's returned
+      `html` blob itself is discarded after extraction, never cached or
+      echoed verbatim, keeping the "we control the template, only the data
+      is external" property every other provider already has (see
+      `EmbedService`'s class docblock).
+- [x] **Fails open, same as AkismetClient/GitHubReleaseProvider's existing
+      HTTP pattern** (curl-first, `file_get_contents` fallback, injectable
+      closure for tests): a down/slow Bluesky, malformed JSON, or a
+      response missing the expected attributes all leave the URL
+      unresolved rather than throwing or blocking the save. A `Throwable`
+      guard around each URL's resolution inside `resolveContent()`'s loop
+      also means one bad URL can never stop the others in the same
+      content, or turn into a failed post/page save.
+- [x] A `type: 'blockquote'` provider entry, reusing (and generalizing)
+      the branch `wrap()` gained for Twitter/X — `wrap()` now takes the
+      full match array (not just `src`/`title`) so provider-specific
+      blockquote shapes (Bluesky's `data-bluesky-uri`/`data-bluesky-cid`
+      vs. Twitter's bare `<a href>`) can both be built from it.
+- [x] `ScriptEmbeds::markUsed('bluesky')`/`isUsed('bluesky')` for the
+      conditional `embed.js` load — already generalized for exactly this
+      in LP-070 rather than needing a second near-identical bridge class,
+      confirming that generalization was the right call.
+- [x] `csp_directives` filter addition: `script-src`/`frame-src` widened
+      for `embed.bsky.app` when the Bluesky provider is enabled (no
+      `connect-src` widening needed, unlike Twitter/X — Bluesky's content
+      is resolved ahead of time by `BlueskyResolverService`, so its widget
+      script has no equivalent runtime API call to make).
+- [x] Unit tests: `BlueskyResolverServiceTest.php` (resolution success/
+      failure/malformed-response/exception-safety/deduplication, against
+      fake `httpGet` closures — no real network call is ever exercised)
+      plus `EmbedServiceTest.php` additions mirroring the Twitter/X
+      coverage (URL matching against a pre-warmed cache, unresolved-URL
+      fallback, disabled-provider fallback, `ScriptEmbeds` marking, CSP
+      widening).
+- [x] Settings &rsaquo; Embeds gains a Bluesky toggle, plus updated hint
+      text clarifying that (unlike every other provider) a Bluesky embed
+      is resolved once against Bluesky's own servers when the post/page is
+      saved — the one place this project's "no provider is contacted over
+      the network" claim needed an explicit exception called out.
+
+---
+
+### LP-074. Direct Media Link & Embed Code Display
+
+#### Goal
+
+Give administrators/staff a one-click way to grab a fully-qualified direct
+URL and ready-to-paste HTML embed snippet for an uploaded image, straight
+from the Media Manager's edit view — the classic "copy this into your
+post" workflow familiar from other blogging/gallery software, without
+needing to hand-build the markup. Split out of LP-031 (Media Viewer &
+Lightbox System) since it's an admin-authoring convenience, not part of
+the public-facing viewer itself.
+
+- [x] Media Manager's image edit view (`admin/views/media/media.php`)
+      gained a "Direct Link & Embed Code" panel, shown only for image
+      files (mirroring the existing image-only branches on that page).
+- [x] "Direct image URL": a readonly, select-on-click text input
+      containing the image's fully-qualified URL (`home_url()`-wrapped,
+      matching how `post_thumbnail_url($item, absolute: true)` builds
+      absolute URLs elsewhere).
+- [x] "HTML embed code": a readonly, select-on-click textarea containing
+      an `<a href="..."><img class="alignnone size-full" src="..."
+      width="..." height="..." alt="..." /></a>` snippet — the same shape
+      classic WordPress produced when inserting a full-size image, chosen
+      for familiarity. `width`/`height` are only included when the image
+      has known dimensions; `alt` is populated from the media's existing
+      alt text (empty string if none set) and HTML-escaped.
+- [x] New `.lp-media-edit__links`/`.lp-media-edit__link-field` classes in
+      `admin/assets/css/admin.css` — admin-only UI, not a public-facing
+      component, so it does not need the theme-stylesheet placement the
+      project's Public-Facing CSS Rule requires for visitor-facing markup.
+
+Deliberately scoped to images only this pass (matching the example the
+feature request was built around) — other media types (video/audio/PDF/
+other) already show their own direct download link elsewhere on the same
+page (see the existing `!str_starts_with(mime_type, 'image/')` block
+above the "Replace file" section) and were left as-is rather than
+duplicated into this new panel's shape.
+
+---
+
+### LP-075. Insert Media: Attachment Display Settings (Size / Link To)
+
+#### Goal
+
+Let an author choose an image's display size and link destination when
+inserting it into post/page content from either editor's "Insert from
+Media Manager" picker — the classic WordPress "Attachment Display
+Settings" step (Alignment/Link To/Size) that this project's picker never
+grew. Reported gap: inserting an image today always drops in one
+fixed-size `<img>` (WYSIWYG) or `![alt](url)` (Markdown) pointing at the
+original file, with no way to pick Thumbnail/Medium/Large/Full or link the
+image to its own full-size version.
+
+- [x] `admin/assets/js/content-editor.js`'s shared media picker
+      (`openMediaPicker()`) gains a second step after an image is clicked:
+      a small form with a "Size" `<select>` (Thumbnail/Medium/Large/Full
+      — only sizes the item actually has a generated thumbnail for, plus
+      Full, are offered) and a "Link To" `<select>` (None / Media File).
+- [x] `$editorMediaLibrary` (built in both `admin/views/posts/new.php` and
+      `admin/views/pages.php`) is enriched per item with a `sizes` map
+      (`{full, small, medium, large}`, each `{url, width, height}`,
+      omitting sizes with no generated thumbnail row — mirrors
+      `ThumbnailService::thumbnailsFor()`) so the size/link choice can be
+      resolved client-side with no extra round trip. Backed by a new
+      bulk `ThumbnailService::thumbnailsForMany()` (one query for every
+      image in the library, not one per image) so this doesn't become an
+      N+1 query on a library with hundreds of uploads.
+- [x] Markdown editor: inserts `![alt](sizeUrl)` as before when Link To is
+      None, or `[![alt](sizeUrl)](fullUrl)` (a linked image — this
+      project's Markdown parser already supports a link wrapping an
+      image, see `MarkdownParser::parseImages()`/`parseLinks()`) when
+      Link To is Media File. Markdown has no attribute syntax, so the
+      chosen size is expressed purely by which file's URL gets inserted —
+      no `width`/`height`/`class` on the resulting `<img>` is possible
+      from Markdown source, a hard limitation of the format rather than a
+      missed step here.
+- [x] TinyMCE (WYSIWYG) editor: inserts `<img src="sizeUrl" alt="alt"
+      width="w" height="h" class="size-{name}">` (the `size-{name}` class
+      matches the convention `admin/views/media/media.php`'s LP-074 embed
+      snippet already uses), wrapped in `<a href="fullUrl">...</a>` when
+      Link To is Media File. `HtmlSanitizer`'s `img` allowlist gained
+      `class` as part of this — it was missing entirely before, which
+      would have silently stripped the new `size-{name}` class (and
+      LP-076's `no-lightbox` opt-out) on every save.
+- [x] New `.lp-editor-media-dialog__settings-actions` CSS in
+      `admin/assets/css/admin.css` for the added form step (admin-only
+      UI — no public-facing CSS rule implication; the Size/Link To
+      fields themselves reuse the existing `.lp-field` styling).
+
+Deliberately out of scope this pass: captions (already tracked
+separately as the still-unchecked "captions" half of LP-016's "Image
+alignment, resizing, captions, and alt text" line).
+
+**Alignment (WordPress's third Attachment Display Settings field),
+deferred here as "this theme has no float-based alignment classes to
+hook into yet," was added in a later session** — see LP-016's own
+checklist for the actual implementation (an "Alignment" select added to
+this same Attachment Display Settings step, applying classic-WordPress
+`alignleft`/`aligncenter`/`alignright` classes to the `<img>`; matching
+CSS in `content/themes/default/style.css`).
+
+**Real bug found and fixed while testing this ticket end-to-end**
+(browser-verified against a live post on the deployed host): TinyMCE's
+default `relative_urls: true` silently rewrote every inserted image's
+`src` into a path relative to the *admin editor's own page location*
+(e.g. `../../content/uploads/...`) — correct only from that admin page,
+so the exact same stored HTML 404'd once rendered on the actual public
+post. This affected the plain pre-existing "Insert from Media Manager"
+flow too, not just this ticket's new size/link step — nobody had tested
+a WYSIWYG-inserted image on the front end before now. Fixed via
+`relative_urls: false` in `content-editor.js`'s `tinymce.init()` — see
+`docs/CHANGELOG.md`'s "Fixed" entry for this date. Pre-existing posts
+saved with a broken relative image URL from before this fix need the
+image re-inserted; this only prevents new occurrences.
+
+---
+
+### LP-076. Content-Embedded Image Lightbox
+
+#### Goal
+
+Make the PhotoSwipe lightbox (LP-031) activate for images inside post/page
+*body content*, not just the featured image — reported gap: an image
+inserted into a post via either editor does not open a lightbox on the
+public front end at all today, because `the_post_thumbnail_lightbox()`
+(the only code in this codebase that ever emits `data-pswp-*` attributes)
+only ever runs against the featured image, never against
+`ContentRenderer`'s output.
+
+- [x] `ContentRenderer::render()` gains a post-sanitization pass
+      (`addLightboxAttributes()`) that walks every `<img>` in the
+      rendered HTML (a cheap `str_contains($html, '<img')` gate skips the
+      DOM parse entirely for content with no images, including all Plain-
+      format content) and, for each one not carrying a `no-lightbox`
+      class:
+  - [x] If already wrapped in an `<a>` whose `href` looks like a direct
+        link to an image file (extension check against the same
+        image-type set `MediaService` uploads accept, restricted to a
+        same-site/relative URL — an author's intentional link to
+        something else, e.g. an external page, is never touched): adds
+        `data-pswp-width`/`data-pswp-height` (from the `<img>`'s own
+        `width`/`height` attributes, when present — omitted otherwise,
+        the same tolerance `the_post_thumbnail_lightbox()` already has
+        for a dimensionless image) and `data-pswp-caption` (from `alt`)
+        to that existing anchor.
+  - [x] If not wrapped in a link at all: wraps the `<img>` in a new
+        self-linking `<a href="{the img's own src}">` with the same
+        `data-pswp-*` attributes — so a plain inserted image (no "Link
+        To" chosen, the common case) still becomes lightbox-clickable,
+        not just an explicitly-linked one.
+  - [x] A `no-lightbox` class (on the `<img>` or an existing wrapping
+        `<a>`) opts an image out entirely — the only escape hatch, usable
+        from HTML-mode content or a theme's own markup.
+- [x] `render_content()` (`include/theme.php`) checks the returned HTML
+      for `data-pswp-lightbox` or `data-pswp-width` and, only when
+      present, calls `MediaViewer::markUsed()` and wraps the content in
+      `<div class="lp-gallery">...</div>` — mirrors the existing
+      `MediaViewer::isUsed()` cheap-gating pattern everywhere else in
+      LP-031, and keeps this logic in the theme-bridge layer
+      (`include/`) rather than inside the `ContentRenderer` service,
+      consistent with `the_post_thumbnail_lightbox()`'s own placement.
+- [x] Unit tests: `ContentRendererTest` gains coverage for a plain
+      unlinked content image gaining a self-link + `data-pswp-*`, an
+      author-linked-to-full-image anchor gaining the same attributes, an
+      author link to a non-image URL being left untouched, a
+      `no-lightbox`-classed image being skipped, and Markdown-authored
+      linked images (`[![alt](url)](fullUrl)`) getting the same
+      treatment as hand-typed/TinyMCE HTML.
+
+**Real bug found and fixed while testing this ticket end-to-end**
+(browser-verified against a live post): the first pass here assumed a
+*linked* image's `data-pswp-width`/`data-pswp-height` could safely be
+inferred from the inline `<img>`'s own `width`/`height` — wrong when
+LP-075's "Link To: Media File" links to a size other than the one
+displayed (e.g. Thumbnail-size image linked to the Full-size original).
+PhotoSwipe uses those attributes to size the lightbox viewport itself,
+not just as a caption hint, so the mismatch produced a visibly
+stretched/blurry lightbox rather than a merely-wrong caption. Fixed by
+having `content-editor.js`'s TinyMCE insertion embed the *linked* file's
+own real `data-pswp-width`/`data-pswp-height`/`data-pswp-caption`
+directly onto the `<a>` at authoring time (client-side, since the size
+map already has this data — see LP-075 above), and
+`ContentRenderer::addLightboxAttributes()` now trusts those over
+inferring from the `<img>` whenever they're already present.
+`HtmlSanitizer`'s `a` allowlist gained `data-pswp-width`/
+`data-pswp-height`/`data-pswp-caption` (with numeric validation on the
+first two) to let this survive sanitization. Markdown-authored linked
+images can't hit this *particular* mismatch (an editor supplying a
+wrong-but-present dimension) — Markdown has no attribute syntax, so a
+Markdown `<img>` never carries a display-size `width`/`height` at all —
+but they turned out to have their own distinct version of the same
+visible symptom; see the third real bug below.
+
+**A second real bug, reported separately**: Markdown-authored images
+didn't just risk a dimension mismatch — they were **never lightboxed at
+all**. `data-pswp-width` was the *only* signal both `render_content()`'s
+gate and `media-viewer.js`'s gallery `children` selector used to
+recognize a lightbox-eligible image, but `addLightboxAttributes()` only
+sets it when a dimension is actually known — which, per the paragraph
+above, a Markdown image never has. A self-link was still created, but
+nothing marked it as part of a gallery, so PhotoSwipe's assets never
+even loaded on a Markdown-only post. Fixed by having
+`addLightboxAttributes()` always set a new `data-pswp-lightbox="1"`
+marker on every anchor it touches regardless of known dimensions, and
+updating `render_content()`'s gate and both `media-viewer.js` copies'
+gallery selectors (the `children:` option and the deep-link
+`querySelectorAll` lookup) to also match on it. See
+`docs/CHANGELOG.md`'s entry for this date and
+`PHP Test Suite/TEST_LOG.md` for the full Docker-matrix verification.
+
+**A third real bug, found once Markdown images started lightboxing at
+all**: reported via a live screenshot as the lightbox opening with the
+image blown up full-screen and visibly out of aspect ratio. This is the
+same underlying issue the first "real bug" above already identified
+(PhotoSwipe uses `data-pswp-width`/`data-pswp-height` to lay out the
+slide *before* the image finishes loading, not just as a caption hint)
+but hitting a case that fix didn't cover: a Markdown-authored image (or
+any hand-typed HTML link to a differently-sized file) has no width/
+height to omit-or-trust in the first place, so no dimension hint ever
+reached PhotoSwipe at all — and PhotoSwipe defaults to something other
+than the real aspect ratio when none is given, visibly stretching the
+image once it loads. Fixed by adding
+`ContentRenderer::resolveImageDimensions()` — reads the linked file's
+real pixel size directly off disk via `getimagesize()` whenever the
+inline `<img>`'s own width/height are absent, or don't actually describe
+the file the link points at (the same "thumbnail linked to a different
+original" case the first real bug covers for editor-authored content,
+now also covered for hand-typed/Markdown content). Falls back to the
+`<img>`'s own values if the file can't be resolved on disk, rather than
+emitting nothing. `resolveImageDimensions()` only ever runs against a
+URL `looksLikeImageUrl()` already confirmed has no host (same-site by
+construction), so this never resolves an arbitrary external address —
+`ContentRenderer` still has no `MediaService`/database dependency, only
+a direct, narrowly-scoped filesystem read.
+
