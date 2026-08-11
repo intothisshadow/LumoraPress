@@ -58,17 +58,52 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
     if ($form === 'upload' && Csrf::verify('upload', $token)) {
         $folderId = (int) ($_POST['folder_id'] ?? 0);
+        $isAjax = ($_POST['ajax'] ?? '') === '1';
 
         if (!isset($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
             $error = 'Please choose a file to upload.';
+
+            if ($isAjax) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => $error, 'csrfToken' => Csrf::token('upload')]);
+                exit;
+            }
         } else {
             try {
                 $uploaded = $mediaService->upload($_FILES['file'], $currentUser->id, $folderId > 0 ? $folderId : null);
                 $thumbnailService->generate($uploaded);
+
+                /*
+                 * LP-080: multi-file upload (admin/assets/js/multi-upload.js)
+                 * sequentially POSTs one file per request against this same
+                 * endpoint. Csrf::verify() unsets the token it just checked
+                 * (single-use, see app/Core/Security/Csrf.php), so each
+                 * response hands back a *new* token for the next file's
+                 * request — without this, every file after the first would
+                 * fail CSRF verification.
+                 */
+                if ($isAjax) {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'id' => $uploaded['id'],
+                        'fileName' => $uploaded['file_name'],
+                        'csrfToken' => Csrf::token('upload'),
+                    ]);
+                    exit;
+                }
+
                 header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $uploaded['id'] . '&saved=1');
                 exit;
             } catch (\Throwable $exception) {
                 $error = $exception->getMessage();
+
+                if ($isAjax) {
+                    http_response_code(422);
+                    header('Content-Type: application/json');
+                    echo json_encode(['error' => $error, 'csrfToken' => Csrf::token('upload')]);
+                    exit;
+                }
             }
         }
     }
@@ -85,13 +120,20 @@ $folderOptions = $buildFolderOptions($allFolders, []);
 
 <section class="lp-admin__panel">
     <h2>Upload</h2>
-    <form method="post" action="<?= esc_url(admin_url('media/upload')) ?>" enctype="multipart/form-data">
+    <form
+        method="post"
+        action="<?= esc_url(admin_url('media/upload')) ?>"
+        enctype="multipart/form-data"
+        data-lp-multi-upload
+        data-lp-multi-upload-media-url="<?= esc_url(admin_url('media/media')) ?>"
+    >
         <?= Csrf::field('upload') ?>
         <input type="hidden" name="form" value="upload">
 
         <p class="lp-field">
-            <label for="media-file">File</label>
-            <input type="file" id="media-file" name="file" required>
+            <label for="media-file">File(s)</label>
+            <input type="file" id="media-file" name="file" multiple required>
+            <span class="lp-field__hint">Select more than one file to upload them all, one after another, with progress shown below.</span>
         </p>
 
         <p class="lp-field">
@@ -104,6 +146,7 @@ $folderOptions = $buildFolderOptions($allFolders, []);
             </select>
         </p>
 
-        <button type="submit" class="lp-button lp-button--primary">Upload</button>
+        <button type="submit" class="lp-button lp-button--primary" data-lp-multi-upload-submit>Upload</button>
+        <ul class="lp-multi-upload__list" data-lp-multi-upload-list hidden></ul>
     </form>
 </section>

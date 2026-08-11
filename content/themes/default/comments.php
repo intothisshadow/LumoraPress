@@ -69,7 +69,7 @@ if (!function_exists('lp_render_comment_form')) {
         // last-rendered one with a stale, already-invalid token.
         $csrfAction = 'comment_submit_' . $post->id . '_' . ($parentId ?? 'root');
         ?>
-        <form id="<?= esc_attr($formId) ?>" class="lp-comment-form" method="post" action="<?= esc_url(home_url('post/' . $post->slug . '/comment')) ?>">
+        <form id="<?= esc_attr($formId) ?>" class="lp-comment-form" method="post" action="<?= esc_url(post_permalink($post) . '/comment') ?>">
             <?= Csrf::field($csrfAction) ?>
             <input type="hidden" name="parent_id" value="<?= (int) ($parentId ?? 0) ?>">
 
@@ -211,11 +211,11 @@ $guestFieldOptions = [
     <?php if (($comment_pagination_enabled ?? false) && ($comment_pagination['totalPages'] ?? 1) > 1): ?>
         <nav class="lp-comments__pagination" aria-label="Comments pagination">
             <?php if ($comment_pagination['page'] > 1): ?>
-                <a class="lp-button lp-button--secondary" href="<?= esc_url(home_url('post/' . $post->slug) . '?cpage=' . ($comment_pagination['page'] - 1) . '#comments') ?>">&larr; Newer Comments</a>
+                <a class="lp-button lp-button--secondary" href="<?= esc_url(post_permalink($post) . '?cpage=' . ($comment_pagination['page'] - 1) . '#comments') ?>">&larr; Newer Comments</a>
             <?php endif; ?>
             <span class="lp-comments__pagination-status">Page <?= (int) $comment_pagination['page'] ?> of <?= (int) $comment_pagination['totalPages'] ?></span>
             <?php if ($comment_pagination['page'] < $comment_pagination['totalPages']): ?>
-                <a class="lp-button lp-button--secondary" href="<?= esc_url(home_url('post/' . $post->slug) . '?cpage=' . ($comment_pagination['page'] + 1) . '#comments') ?>">Older Comments &rarr;</a>
+                <a class="lp-button lp-button--secondary" href="<?= esc_url(post_permalink($post) . '?cpage=' . ($comment_pagination['page'] + 1) . '#comments') ?>">Older Comments &rarr;</a>
             <?php endif; ?>
         </nav>
     <?php endif; ?>

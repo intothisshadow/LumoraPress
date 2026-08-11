@@ -352,11 +352,7 @@ final class ThumbnailService
         }
 
         [$sourceWidth, $sourceHeight] = $dimensions;
-
-        $x = max(0, min((int) $crop['x'], $sourceWidth - 1));
-        $y = max(0, min((int) $crop['y'], $sourceHeight - 1));
-        $width = max(1, min((int) $crop['width'], $sourceWidth - $x));
-        $height = max(1, min((int) $crop['height'], $sourceHeight - $y));
+        [$x, $y, $width, $height] = $this->clampCrop($crop, $sourceWidth, $sourceHeight);
 
         $hash = substr(sha1("{$mediaId}:{$x},{$y},{$width},{$height}"), 0, 12);
         $extension = strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION));
@@ -377,33 +373,169 @@ final class ThumbnailService
         $mimeType = (string) $media['mime_type'];
 
         try {
-            $source = $this->loadImage($sourcePath, $mimeType);
-
-            if ($this->isRotatedByExif($sourcePath, $mimeType)) {
-                $source = $this->applyExifOrientation($source, $sourcePath);
-            }
-
-            // Capped to the "large" size's configured width so a crop of a
-            // huge source image doesn't produce an equally huge featured
-            // image file — never upscaled beyond the crop's own size.
-            $maxWidth = max(1, $this->sizes()['large']['width'] ?? 1024);
-            $outputWidth = min($width, $maxWidth);
-            $outputHeight = max(1, (int) round($outputWidth * ($height / $width)));
-
-            $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
-            $this->preserveTransparency($canvas);
-            imagecopyresampled($canvas, $source, 0, 0, $x, $y, $outputWidth, $outputHeight, $width, $height);
-            imagedestroy($source);
-
-            $this->encode($canvas, $destination, $mimeType);
-            imagedestroy($canvas);
+            $output = $this->cropResizeAndEncode($sourcePath, $mimeType, $x, $y, $width, $height, $this->featuredCropMaxWidth(), $destination);
         } catch (Throwable $exception) {
             $this->log("Media #{$mediaId}: failed to generate manual featured-image crop: {$exception->getMessage()}");
 
             return null;
         }
 
-        return ['url' => $url, 'width' => $outputWidth, 'height' => $outputHeight];
+        return ['url' => $url, 'width' => $output['width'], 'height' => $output['height']];
+    }
+
+    /**
+     * LP-080: crops $sourceMedia into a brand-new, independent Media
+     * Library item — a distinct concern from generateFeaturedCrop()
+     * above, which produces a cache file for one post/page's own
+     * `featuredImageCrop` and is never registered as its own `media`
+     * row. This is reachable from the Media Manager (not just a specific
+     * post/page's featured-image field), and its output is meant to be
+     * selected as *any* post/page's featured image afterward — so it
+     * needs its own row, own thumbnails, and its own uniquely-named file
+     * (never the content-addressed cache naming above: a deliberate new
+     * Library asset should get its own filename even when the exact same
+     * rectangle is chosen twice, the same "duplicates are fine" behavior
+     * re-uploading a file already has via MediaService::upload()).
+     *
+     * The original file is never touched.
+     *
+     * @param array<string, mixed> $sourceMedia
+     * @param array{x: int, y: int, width: int, height: int} $crop
+     * @return array<string, mixed>|null the newly created media row, or
+     *     null if $sourceMedia isn't an image, its file is missing, or
+     *     the crop/encode step failed
+     */
+    public function createCroppedFeaturedMedia(array $sourceMedia, array $crop, int $uploadedByUserId, ?int $folderId = null): ?array
+    {
+        $mimeType = (string) $sourceMedia['mime_type'];
+
+        if (!str_starts_with($mimeType, 'image/')) {
+            return null;
+        }
+
+        $sourceMediaId = (int) $sourceMedia['id'];
+        $sourcePath = rtrim($this->uploadsPath, '/') . '/' . $sourceMedia['file_path'];
+
+        if (!is_file($sourcePath)) {
+            return null;
+        }
+
+        $dimensions = @getimagesize($sourcePath);
+
+        if ($dimensions === false) {
+            return null;
+        }
+
+        [$sourceWidth, $sourceHeight] = $dimensions;
+        [$x, $y, $width, $height] = $this->clampCrop($crop, $sourceWidth, $sourceHeight);
+
+        $extension = strtolower(pathinfo((string) $sourceMedia['file_path'], PATHINFO_EXTENSION));
+        $basename = pathinfo((string) $sourceMedia['file_path'], PATHINFO_FILENAME);
+        $directory = dirname((string) $sourceMedia['file_path']);
+        $fileName = $basename . '-crop-' . bin2hex(random_bytes(4)) . '.' . $extension;
+        $relativePath = ($directory === '.' ? '' : $directory . '/') . $fileName;
+        $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
+
+        try {
+            $output = $this->cropResizeAndEncode($sourcePath, $mimeType, $x, $y, $width, $height, $this->featuredCropMaxWidth(), $destination);
+        } catch (Throwable $exception) {
+            $this->log("Media #{$sourceMediaId}: failed to create cropped featured media: {$exception->getMessage()}");
+
+            return null;
+        }
+
+        $newMedia = $this->media->registerExistingFile(
+            relativePath: $relativePath,
+            fileName: $fileName,
+            mimeType: $mimeType,
+            fileSize: (int) (filesize($destination) ?: 0),
+            width: $output['width'],
+            height: $output['height'],
+            uploadedByUserId: $uploadedByUserId,
+            folderId: $folderId,
+        );
+
+        $sourceAltText = (string) ($sourceMedia['alt_text'] ?? '');
+
+        if ($sourceAltText !== '') {
+            $this->media->updateMetadata((int) $newMedia['id'], $sourceAltText, null, null, null);
+            $newMedia = $this->media->find((int) $newMedia['id']) ?? $newMedia;
+        }
+
+        $this->generate($newMedia);
+
+        return $newMedia;
+    }
+
+    /**
+     * The output width every manually-cropped featured image (both
+     * generateFeaturedCrop()'s per-post/page cache and
+     * createCroppedFeaturedMedia()'s new Library item above) is capped
+     * to — LP-080's `featured_image_crop_size` option, naming one of the
+     * currently *enabled* thumbnail sizes. Falls back to `large`, then a
+     * fixed 1024px, if the configured size was since disabled or removed
+     * (e.g. a filter unregistered it) — a crop still needs some sane cap
+     * either way rather than failing outright.
+     */
+    private function featuredCropMaxWidth(): int
+    {
+        $sizes = $this->sizes();
+        $configuredName = (string) $this->config->option('featured_image_crop_size', 'large');
+
+        if (isset($sizes[$configuredName]) && $sizes[$configuredName]['enabled']) {
+            return max(1, $sizes[$configuredName]['width']);
+        }
+
+        return max(1, $sizes['large']['width'] ?? 1024);
+    }
+
+    /**
+     * Clamps a requested crop rectangle to the source image's actual
+     * dimensions — out-of-bounds values are clamped, never rejected
+     * outright, so a stale crop against a since-replaced image with
+     * different dimensions still produces *something* sane rather than
+     * silently doing nothing.
+     *
+     * @param array{x: int, y: int, width: int, height: int} $crop
+     * @return array{0: int, 1: int, 2: int, 3: int} x, y, width, height
+     */
+    private function clampCrop(array $crop, int $sourceWidth, int $sourceHeight): array
+    {
+        $x = max(0, min((int) $crop['x'], $sourceWidth - 1));
+        $y = max(0, min((int) $crop['y'], $sourceHeight - 1));
+        $width = max(1, min((int) $crop['width'], $sourceWidth - $x));
+        $height = max(1, min((int) $crop['height'], $sourceHeight - $y));
+
+        return [$x, $y, $width, $height];
+    }
+
+    /**
+     * Shared crop + EXIF-rotate + resample + encode pipeline behind both
+     * generateFeaturedCrop() and createCroppedFeaturedMedia() — never
+     * upscaled beyond the crop's own width, capped to $maxWidth.
+     *
+     * @return array{width: int, height: int}
+     */
+    private function cropResizeAndEncode(string $sourcePath, string $mimeType, int $x, int $y, int $width, int $height, int $maxWidth, string $destination): array
+    {
+        $source = $this->loadImage($sourcePath, $mimeType);
+
+        if ($this->isRotatedByExif($sourcePath, $mimeType)) {
+            $source = $this->applyExifOrientation($source, $sourcePath);
+        }
+
+        $outputWidth = min($width, max(1, $maxWidth));
+        $outputHeight = max(1, (int) round($outputWidth * ($height / $width)));
+
+        $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
+        $this->preserveTransparency($canvas);
+        imagecopyresampled($canvas, $source, 0, 0, $x, $y, $outputWidth, $outputHeight, $width, $height);
+        imagedestroy($source);
+
+        $this->encode($canvas, $destination, $mimeType);
+        imagedestroy($canvas);
+
+        return ['width' => $outputWidth, 'height' => $outputHeight];
     }
 
     /**

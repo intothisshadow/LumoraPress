@@ -22,11 +22,11 @@ use DateTimeImmutable;
 /**
  * One row of a SearchService result set — a Post, Page, Category, Tag, or
  * Author (`type` distinguishes which), reduced to the fields a search
- * results listing needs. Deliberately data-only, no URL-building method:
- * templates build the link themselves via site_url('post/' . $slug) /
- * site_url('page/' . $slug) / site_url('category/' . $slug) /
- * site_url('tag/' . $slug) / site_url('author/' . $slug), the same
- * convention every other listing already follows.
+ * results listing needs. Deliberately data-only, no URL-building method of
+ * its own: templates call search_result_permalink() (LP-078,
+ * include/permalink-functions.php) instead, since a 'post' result's link
+ * must honor the configured permalink structure the same way
+ * post_permalink() does everywhere else.
  *
  * featuredImageId mirrors Post/Page's own field (LP-040) so search results
  * can show a thumbnail and participate in the LP-031 lightbox the same way

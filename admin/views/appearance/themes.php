@@ -48,6 +48,7 @@ $postedSlug = trim((string) ($_POST['slug'] ?? ''));
 $csrfAction = match ($form) {
     'activate_theme' => 'activate_theme_' . $postedSlug,
     'delete_theme' => 'delete_theme_' . $postedSlug,
+    'update_theme' => 'update_theme_' . $postedSlug,
     default => $form,
 };
 
@@ -84,6 +85,23 @@ if ($form === 'activate_theme' && Csrf::verify($csrfAction, is_string($_POST['cs
             $kernel->themeInstaller->delete($slug);
 
             header('Location: ' . admin_url('appearance/themes') . '?deleted=1');
+            exit;
+        } catch (\Throwable $exception) {
+            $error = $exception->getMessage();
+        }
+    }
+} elseif ($form === 'update_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $slug = $postedSlug;
+
+    if (!isset($_FILES['theme_zip']) || $_FILES['theme_zip']['error'] === UPLOAD_ERR_NO_FILE) {
+        $error = 'Please choose a ZIP file to upload.';
+    } elseif ($_FILES['theme_zip']['error'] !== UPLOAD_ERR_OK) {
+        $error = 'The file upload failed. Please try again.';
+    } else {
+        try {
+            $updated = $kernel->themeInstaller->update($_FILES['theme_zip']['tmp_name'], $slug);
+
+            header('Location: ' . admin_url('appearance/themes') . '?updated=' . urlencode($updated->name));
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -159,6 +177,10 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
     <div class="lp-alert lp-alert--success">Theme deleted.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['updated'])): ?>
+    <div class="lp-alert lp-alert--success">Updated &ldquo;<?= esc_html((string) $_GET['updated']) ?>&rdquo;.</div>
+<?php endif; ?>
+
 <section class="lp-admin__panel">
     <h2>Themes</h2>
 
@@ -175,6 +197,17 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
             $searchHaystack = strtolower($info->name . ' ' . $info->author . ' ' . implode(' ', $info->tags));
             $templateId = 'lp-theme-details-' . $info->slug;
             $previewUrl = site_url('') . '?lp_preview_theme=' . rawurlencode($info->slug);
+            /*
+             * Computed once and reused in both the visible card's Activate
+             * form and its details-template counterpart below — calling
+             * Csrf::field() a second time for the same action name would
+             * overwrite the session's stored token for it, silently
+             * invalidating whichever form was rendered first (the
+             * LP-012-style collision its own docblock above warns about,
+             * just within a single theme's two forms rather than across
+             * themes).
+             */
+            $activateCsrfField = Csrf::field('activate_theme_' . $info->slug);
             ?>
             <div class="lp-theme-card<?= $info->isActive ? ' lp-theme-card--active' : '' ?>" data-lp-theme-card data-theme-search="<?= esc_attr($searchHaystack) ?>">
                 <div class="lp-theme-card__screenshot-wrap">
@@ -203,7 +236,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                         <?php if (!$info->isActive): ?>
                             <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
                             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
-                                <?= Csrf::field('activate_theme_' . $info->slug) ?>
+                                <?= $activateCsrfField ?>
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button">Activate</button>
@@ -279,7 +312,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                         <?php if (!$info->isActive): ?>
                             <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
                             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
-                                <?= Csrf::field('activate_theme_' . $info->slug) ?>
+                                <?= $activateCsrfField ?>
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--primary">Activate</button>
@@ -291,6 +324,14 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                                 <button type="submit" class="lp-button lp-button--danger">Delete</button>
                             </form>
                         <?php endif; ?>
+                        <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" enctype="multipart/form-data" class="lp-admin__inline-form lp-theme-details__update-form" data-lp-confirm="This will overwrite this theme's current files with the contents of the uploaded ZIP. Continue?">
+                            <?= Csrf::field('update_theme_' . $info->slug) ?>
+                            <input type="hidden" name="form" value="update_theme">
+                            <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                            <label class="lp-visually-hidden" for="<?= esc_attr($templateId) ?>-zip">Theme ZIP file to update &ldquo;<?= esc_html($info->name) ?>&rdquo; with</label>
+                            <input type="file" id="<?= esc_attr($templateId) ?>-zip" name="theme_zip" accept=".zip" required>
+                            <button type="submit" class="lp-button lp-button--secondary">Update from ZIP</button>
+                        </form>
                         <button type="button" class="lp-button" data-lp-theme-dialog-close>Close</button>
                     </div>
                 </div>

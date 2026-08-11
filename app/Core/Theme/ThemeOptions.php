@@ -220,6 +220,52 @@ final class ThemeOptions
                 'none' => 'Full width',
             ],
         ));
+
+        // LP-079: kept as its own section rather than folded into Layout
+        // above — that section controls page *width*, an unrelated
+        // concern from how much of each post's content a listing shows.
+        // None of these fields carry a $cssVariable: they're read
+        // directly via theme_option() in content/themes/default/index.php
+        // and archive.php to decide what to render, not injected as CSS.
+        $this->registerSection('post_display', 'Post Display', 'Controls how posts appear on the front page and category/tag/date/author archives. Single-post pages always show the full post regardless of these settings.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'post_display_mode',
+            section: 'post_display',
+            type: ThemeOptionType::Select,
+            label: 'Post display',
+            default: 'excerpt',
+            choices: [
+                'excerpt' => 'Excerpt',
+                'full' => 'Full Content',
+            ],
+            help: 'Excerpt shows a preview with a Read More link; Full Content shows the entire post inline with no Read More link. A post with its own Read More tag in the content editor always cuts off there and shows a Read More link, regardless of this setting.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'show_featured_image_in_listings',
+            section: 'post_display',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show featured image',
+            default: '1',
+            help: 'Show each post\'s featured image in front-page/archive listings, when it has one.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'excerpt_length',
+            section: 'post_display',
+            type: ThemeOptionType::Number,
+            label: 'Automatic excerpt length (words)',
+            default: '55',
+            min: 1,
+            max: 300,
+            help: 'Used only when a post has no manually entered excerpt and no More tag in its content.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'read_more_text',
+            section: 'post_display',
+            type: ThemeOptionType::Text,
+            label: 'Read More text',
+            default: 'Continue reading →',
+        ));
     }
 
     /**

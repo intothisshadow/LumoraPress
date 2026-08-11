@@ -42,13 +42,7 @@ $results ??= [];
                                 default => 'Post',
                             }) ?></p>
                             <h2 class="lp-search-results__title">
-                                <a href="<?= esc_url(site_url(match ($result->type) {
-                                    'page' => 'page/',
-                                    'category' => 'category/',
-                                    'tag' => 'tag/',
-                                    'author' => 'author/',
-                                    default => 'post/',
-                                } . $result->slug)) ?>">
+                                <a href="<?= esc_url(search_result_permalink($result)) ?>">
                                     <?= highlight_terms(esc_html($result->title), $query) ?>
                                 </a>
                             </h2>

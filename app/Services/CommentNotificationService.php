@@ -72,7 +72,7 @@ final class CommentNotificationService
             return;
         }
 
-        $link = home_url('post/' . $post->slug . '#comment-' . $comment->id);
+        $link = post_permalink($post) . '#comment-' . $comment->id;
         $subject = $comment->status === CommentStatus::Pending
             ? 'Comment awaiting moderation on "' . $post->title . '"'
             : 'New comment on "' . $post->title . '"';

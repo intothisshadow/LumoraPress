@@ -34,21 +34,31 @@ $archive_description ??= null;
             <div class="lp-post-list lp-gallery">
                 <?php foreach ($posts as $post): ?>
                     <article class="lp-post-list__item">
-                        <?php if (has_post_thumbnail($post)): ?>
+                        <?php if (theme_option('show_featured_image_in_listings') !== '0' && has_post_thumbnail($post)): ?>
                             <div class="lp-post-list__thumbnail">
                                 <?php the_post_thumbnail_lightbox($post, 'small'); ?>
                             </div>
                         <?php endif; ?>
                         <div class="lp-post-list__body">
                             <h2 class="lp-post-list__title">
-                                <a href="<?= esc_url(site_url('post/' . $post->slug)) ?>"><?= esc_html($post->title) ?></a>
+                                <a href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html($post->title) ?></a>
                             </h2>
                             <p class="lp-post-list__meta">
                                 <?php the_author_link($post); ?>
                                 <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
                             </p>
-                            <?php if ($post->excerpt !== ''): ?>
-                                <p class="lp-post-list__excerpt"><?= esc_html($post->excerpt) ?></p>
+                            <?php $moreTagContent = get_the_content_up_to_more_tag($post); ?>
+                            <?php if ($moreTagContent !== null): ?>
+                                <div class="lp-post-list__content lp-post__content"><?= $moreTagContent ?></div>
+                                <a class="lp-post-list__more" href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html(theme_option('read_more_text')) ?></a>
+                            <?php elseif (theme_option('post_display_mode') === 'full'): ?>
+                                <div class="lp-post-list__content lp-post__content"><?php the_content($post); ?></div>
+                            <?php else: ?>
+                                <?php $postListingExcerpt = get_the_excerpt($post); ?>
+                                <?php if ($postListingExcerpt !== ''): ?>
+                                    <p class="lp-post-list__excerpt"><?= esc_html($postListingExcerpt) ?></p>
+                                <?php endif; ?>
+                                <a class="lp-post-list__more" href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html(theme_option('read_more_text')) ?></a>
                             <?php endif; ?>
                         </div>
                     </article>

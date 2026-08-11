@@ -55,6 +55,7 @@ use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
+use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptions;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
@@ -80,6 +81,7 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
@@ -350,6 +352,7 @@ $categories = new CategoryService($database, $tablePrefix, $hooks);
 $tags = new TagService($database, $tablePrefix, $hooks);
 $comments = new CommentService($database, $tablePrefix, $hooks);
 $redirects = new RedirectService($database, $tablePrefix);
+$permalinks = new PermalinkService($config, $categories, $users);
 
 /*
  * LP-023: auto-embed. Registered as a plain procedural add_filter() call
@@ -519,6 +522,25 @@ require LUMORA_ROOT . '/include/media-functions.php';
  */
 Authors::set($users);
 require LUMORA_ROOT . '/include/author-functions.php';
+
+/*
+ * Post/category/tag permalink helpers (LP-078) — same bridge shape as
+ * Authors/FeaturedImages above, for the same reason (themes have no route
+ * to PermalinkService of their own).
+ */
+Permalinks::set($permalinks);
+require LUMORA_ROOT . '/include/permalink-functions.php';
+
+/*
+ * the_content()/get_the_content()/the_excerpt()/get_the_excerpt() (LP-079)
+ * — unlike the bridges above, these need no bridge/service of their own:
+ * they're pure orchestration over render_content()/content_plain_text()/
+ * content_split_at_more_tag() (include/theme.php, already required above)
+ * and make_excerpt()/theme_option() (include/helpers.php, already
+ * required). Still grouped here with the other theme-helper-file requires
+ * for consistency.
+ */
+require LUMORA_ROOT . '/include/content-display-functions.php';
 
 /*
  * The fixed set of paths (relative to LUMORA_ROOT) that make up the core
@@ -708,17 +730,29 @@ $kernel = new Kernel(
     embeds: $embeds,
     editorPreferences: $editorPreferences,
     commentModeration: $commentModeration,
+    permalinks: $permalinks,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications);
 
+/*
+ * LP-078: the post/category/tag patterns are derived from PermalinkService
+ * rather than hardcoded, so a configured permalink_structure/category_base/
+ * tag_base option changes what Router actually matches, not just what
+ * post_permalink()/category_permalink()/tag_permalink() generate. The
+ * default (unconfigured) structure compiles to the exact same
+ * '/post/{slug}' pattern this application always registered — see
+ * PermalinkService::postRoutePattern()'s docblock.
+ */
+$postRoutePattern = $permalinks->postRoutePattern();
+
 $router->get('/', fn (array $params) => $site->home($params));
-$router->get('/post/{slug}', fn (array $params) => $site->singlePost($params));
-$router->post('/post/{slug}/comment', fn (array $params) => $site->submitComment($params));
+$router->get($postRoutePattern, fn (array $params) => $site->singlePost($params));
+$router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
 $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
 $router->get('/author/{slug}', fn (array $params) => $site->author($params));
-$router->get('/category/{slug}', fn (array $params) => $site->category($params));
-$router->get('/tag/{slug}', fn (array $params) => $site->tag($params));
+$router->get($permalinks->categoryRoutePattern(), fn (array $params) => $site->category($params));
+$router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));

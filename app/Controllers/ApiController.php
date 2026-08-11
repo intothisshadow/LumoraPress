@@ -219,6 +219,7 @@ final class ApiController
             'created_at' => $post->createdAt->format(DateTimeImmutable::ATOM),
             'updated_at' => $post->updatedAt->format(DateTimeImmutable::ATOM),
             'comments_open' => $post->commentsOpen,
+            'permalink' => post_permalink($post),
         ];
     }
 
@@ -1137,7 +1138,7 @@ final class ApiController
                 'user_ip' => $ipAddress,
                 'user_agent' => is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null,
                 'referrer' => is_string($_SERVER['HTTP_REFERER'] ?? null) ? $_SERVER['HTTP_REFERER'] : null,
-                'permalink' => home_url('post/' . $post->slug),
+                'permalink' => post_permalink($post),
             ]);
 
             if ($isSpam === true) {

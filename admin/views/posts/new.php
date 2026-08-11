@@ -57,16 +57,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(422);
-        echo json_encode(['error' => 'Upload failed.']);
+        echo json_encode(['error' => 'Upload failed.', 'csrfToken' => Csrf::token('editor_upload')]);
         exit;
     }
 
     try {
         $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
-        echo json_encode(['data' => ['filePath' => $kernel->media->url($uploaded)], 'url' => $kernel->media->url($uploaded)]);
+
+        /*
+         * Csrf::verify() is single-use (app/Core/Security/Csrf.php) — a
+         * second image upload without a full page reload would otherwise
+         * fail CSRF verification against the already-consumed token from
+         * the initial page load. content-editor.js's uploadFile() writes
+         * this fresh token back into data-upload-csrf for the next call,
+         * matching the same pattern admin/views/media/upload.php's
+         * ajax=1 branch already uses for the Media Manager.
+         */
+        echo json_encode([
+            'data' => ['filePath' => $kernel->media->url($uploaded)],
+            'url' => $kernel->media->url($uploaded),
+            'csrfToken' => Csrf::token('editor_upload'),
+        ]);
     } catch (\Throwable $exception) {
         http_response_code(422);
-        echo json_encode(['error' => $exception->getMessage()]);
+        echo json_encode(['error' => $exception->getMessage(), 'csrfToken' => Csrf::token('editor_upload')]);
     }
 
     exit;
@@ -473,16 +487,17 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
         <?php if ($post !== null && $post->status === PostStatus::Published): ?>
             <p class="lp-field lp-permalink">
                 <span class="lp-permalink__label">Permalink:</span>
-                <a class="lp-permalink__url" href="<?= esc_url(site_url('post/' . $post->slug)) ?>" target="_blank" rel="noopener"><?= esc_html(site_url('post/' . $post->slug)) ?></a>
-                <a class="lp-button lp-button--secondary lp-permalink__view" href="<?= esc_url(site_url('post/' . $post->slug)) ?>" target="_blank" rel="noopener">View Post</a>
+                <a class="lp-permalink__url" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener"><?= esc_html(post_permalink($post)) ?></a>
+                <a class="lp-button lp-button--secondary lp-permalink__view" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener">View Post</a>
             </p>
         <?php endif; ?>
 
-        <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url(site_url('post/')) ?>">
+        <?php $permalinkPreviewBase = $kernel->permalinks->postUrlPreviewBase($post); ?>
+        <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url($permalinkPreviewBase) ?>">
             <label for="post-slug">Slug</label>
             <input type="text" id="post-slug" name="slug" value="<?= esc_attr($post->slug ?? '') ?>">
             <span class="lp-field__hint">Leave blank to generate one automatically from the title.</span>
-            <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html(site_url('post/' . ($post->slug ?? ''))) ?></code></span>
+            <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html($permalinkPreviewBase . ($post->slug ?? '')) ?></code></span>
         </p>
 
         <?php $activeContentFormat = $post->contentFormat ?? get_active_editor($currentUser->id); ?>
@@ -515,6 +530,12 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
         <p class="lp-field">
             <label for="post-excerpt">Excerpt</label>
             <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
+            <span class="lp-field__hint">
+                Shown as this post's preview on the front page and archives (Settings for this are on
+                <a href="<?= esc_url(admin_url('appearance/theme-options')) ?>">Appearance &rsaquo; Theme Options &rsaquo; Post Display</a>).
+                Leave blank to use the content up to a Read More tag in the editor above, or an automatically
+                generated excerpt if there's no Read More tag either.
+            </span>
         </p>
 
         <fieldset class="lp-field">

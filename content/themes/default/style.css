@@ -604,10 +604,24 @@ img {
     margin: 0 0 0.75rem;
 }
 
+/* LP-079: full-content post-listing mode ("Post Display" Theme Option) —
+   reuses .lp-post__content's rich-content rules (headings, images, lists,
+   etc.) for the identical rendered markup the_content() produces on a
+   single-post page; this class only adds listing-specific spacing. */
+.lp-post-list__content {
+    margin: 0 0 0.75rem;
+}
+
 .lp-post-list__more {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 0.9rem;
+    color: var(--lp-accent);
     text-decoration: none;
+}
+
+.lp-post-list__more:hover,
+.lp-post-list__more:focus {
+    text-decoration: underline;
 }
 
 /* =========================================================

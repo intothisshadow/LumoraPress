@@ -98,6 +98,8 @@ $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $postedMenuId = trim((string) ($_POST['menu_id'] ?? ''));
 $postedItemId = trim((string) ($_POST['item_id'] ?? ''));
 $postedDirection = (string) ($_POST['direction'] ?? '');
+$postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
+$postedPosition = (string) ($_POST['position'] ?? 'before');
 $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
 /*
@@ -121,6 +123,10 @@ $csrfAction = match ($form) {
     'update_item' => 'menu_update_item_' . $postedItemId,
     'remove_item' => 'menu_remove_item_' . $postedItemId,
     'move_item' => 'menu_move_' . $postedDirection . '_' . $postedItemId,
+    // One reposition form per menu (see the rendering below), not per
+    // item — sortable.js fills in its dragged/target/position fields and
+    // submits it on drop.
+    'reposition_item' => 'menu_reposition_' . $postedMenuId,
     'save_locations' => 'menu_save_locations',
     default => 'menu_unknown_form',
 };
@@ -208,21 +214,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                 'add_posts' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
                     foreach ($kernel->posts->listAllForMenuSelect() as $post) {
                         if (in_array($post['id'], $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $post['title'], 'url' => site_url('post/' . $post['slug'])]);
+                            $postForLink = $kernel->posts->findById((int) $post['id']);
+                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $post['title'], 'url' => $postForLink !== null ? post_permalink($postForLink) : site_url('post/' . $post['slug'])]);
                         }
                     }
                 })(),
                 'add_categories' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
                     foreach ($kernel->categories->listAll() as $category) {
                         if (in_array($category->id, $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $category->name, 'url' => site_url('category/' . $category->slug)]);
+                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $category->name, 'url' => category_permalink($category)]);
                         }
                     }
                 })(),
                 'add_tags' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
                     foreach ($kernel->tags->listAll() as $tag) {
                         if (in_array($tag->id, $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $tag->name, 'url' => site_url('tag/' . $tag->slug)]);
+                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $tag->name, 'url' => tag_permalink($tag)]);
                         }
                     }
                 })(),
@@ -312,6 +319,56 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                 $swapIndex = $siblingIndices[$swapPosition];
                 [$items[$targetIndex], $items[$swapIndex]] = [$items[$swapIndex], $items[$targetIndex]];
                 $kernel->menus->setMenuItems($postedMenuId, $items);
+                $persistMenus();
+            }
+        }
+
+        header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
+        exit;
+    } elseif ($form === 'reposition_item') {
+        // Drag-and-drop reordering (LP-049): the same "splice out, splice
+        // back in" algorithm as widgets.php's reposition_widget, with one
+        // addition — the target must share the dragged item's parentId.
+        // sortable.js's own dragover guard already refuses to treat a
+        // different-parent row as a valid drop target, so this is a
+        // server-side backstop, not the primary defense; a request that
+        // fails it (a stale/tampered target_id) just silently does
+        // nothing, same as an out-of-range Move Up/Move Down already does
+        // above. Re-parenting an item stays the "Parent Item" dropdown's
+        // job — drag-and-drop never changes parentId.
+        $menu = $kernel->menus->menu($postedMenuId);
+        $items = $menu['items'];
+        $draggedIndex = null;
+
+        foreach ($items as $index => $item) {
+            if ($item['id'] === $postedItemId) {
+                $draggedIndex = $index;
+
+                break;
+            }
+        }
+
+        if ($draggedIndex !== null) {
+            $dragged = $items[$draggedIndex];
+            $remaining = array_values(array_filter(
+                $items,
+                static fn (array $item): bool => $item['id'] !== $postedItemId,
+            ));
+
+            $targetIndex = null;
+
+            foreach ($remaining as $index => $item) {
+                if ($item['id'] === $postedTargetId && $item['parentId'] === $dragged['parentId']) {
+                    $targetIndex = $index;
+
+                    break;
+                }
+            }
+
+            if ($targetIndex !== null) {
+                $insertAt = $postedPosition === 'after' ? $targetIndex + 1 : $targetIndex;
+                array_splice($remaining, $insertAt, 0, [$dragged]);
+                $kernel->menus->setMenuItems($postedMenuId, $remaining);
                 $persistMenus();
             }
         }
@@ -480,6 +537,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
             <?php if ($currentMenu['items'] === []): ?>
                 <p class="lp-admin__widget-placeholder">This menu is empty. Add items from the panel.</p>
             <?php else: ?>
+                <div data-lp-sortable-group="menu-<?= esc_attr($currentMenuId) ?>">
                 <ul class="lp-menus-structure-list">
                     <?php foreach ($flattenForDisplay($currentMenu['items']) as $row): ?>
                         <?php
@@ -490,9 +548,10 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                             static fn (array $candidate): bool => $candidate['id'] !== $item['id'] && !in_array($candidate['id'], $descendants, true),
                         );
                         ?>
-                        <li class="lp-menus-structure-list__item" data-style-margin-left="<?= (int) $row['depth'] * 1.5 ?>rem">
+                        <li class="lp-menus-structure-list__item" data-style-margin-left="<?= (int) $row['depth'] * 1.5 ?>rem" data-lp-sortable-item data-lp-sortable-id="<?= esc_attr($item['id']) ?>" data-lp-sortable-parent="<?= esc_attr($item['parentId'] ?? '') ?>">
                             <details class="lp-widgets-list__details">
                                 <summary class="lp-widgets-list__summary">
+                                    <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true" title="Drag to reorder">&#10303;</span>
                                     <?= esc_html($item['label']) ?>
                                     <span class="lp-widgets-list__instance-title">&mdash; <?= esc_html($item['url']) ?></span>
                                 </summary>
@@ -575,6 +634,15 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                         </li>
                     <?php endforeach; ?>
                 </ul>
+                <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" data-lp-sortable-reposition-form>
+                    <?= Csrf::field('menu_reposition_' . $currentMenuId) ?>
+                    <input type="hidden" name="form" value="reposition_item">
+                    <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
+                    <input type="hidden" name="item_id" data-lp-sortable-field="dragged_id">
+                    <input type="hidden" name="target_id" data-lp-sortable-field="target_id">
+                    <input type="hidden" name="position" data-lp-sortable-field="position">
+                </form>
+                </div>
             <?php endif; ?>
         </div>
     </section>

@@ -49,16 +49,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(422);
-        echo json_encode(['error' => 'Upload failed.']);
+        echo json_encode(['error' => 'Upload failed.', 'csrfToken' => Csrf::token('editor_upload')]);
         exit;
     }
 
     try {
         $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
-        echo json_encode(['data' => ['filePath' => $kernel->media->url($uploaded)], 'url' => $kernel->media->url($uploaded)]);
+
+        // See the identical comment in admin/views/posts/new.php's matching
+        // block for why a fresh token is returned on every response here.
+        echo json_encode([
+            'data' => ['filePath' => $kernel->media->url($uploaded)],
+            'url' => $kernel->media->url($uploaded),
+            'csrfToken' => Csrf::token('editor_upload'),
+        ]);
     } catch (\Throwable $exception) {
         http_response_code(422);
-        echo json_encode(['error' => $exception->getMessage()]);
+        echo json_encode(['error' => $exception->getMessage(), 'csrfToken' => Csrf::token('editor_upload')]);
     }
 
     exit;

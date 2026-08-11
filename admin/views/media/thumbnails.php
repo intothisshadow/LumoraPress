@@ -70,6 +70,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('thumbnail_max_pixels', (string) max(1, (int) ($_POST['thumbnail_max_pixels'] ?? 25_000_000)));
         $kernel->config->setOption('default_featured_image_media_id', (string) max(0, (int) ($_POST['default_featured_image_media_id'] ?? 0)));
 
+        // LP-080: the manually-cropped featured image's output-width cap.
+        // Validated against the currently *enabled* size names (same
+        // pattern lightbox_large_size already establishes on Settings >
+        // Media) so an invalid/removed size can never be stored.
+        $allowedCropSizes = array_keys(array_filter($thumbnailService->sizes(), static fn (array $size): bool => $size['enabled']));
+        $submittedCropSize = is_string($_POST['featured_image_crop_size'] ?? null) ? $_POST['featured_image_crop_size'] : '';
+        $kernel->config->setOption('featured_image_crop_size', in_array($submittedCropSize, $allowedCropSizes, true) ? $submittedCropSize : 'large');
+
         header('Location: ' . admin_url('media/thumbnails') . '?saved=1');
         exit;
     }
@@ -175,6 +183,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     <?php endforeach; ?>
                 </select>
                 <span class="lp-field__hint">Used as the featured image (and Open Graph/Twitter Card image) for posts/pages that don't have one of their own.</span>
+            </p>
+
+            <?php
+            $currentCropSize = (string) $kernel->config->option('featured_image_crop_size', 'large');
+            $enabledCropSizeNames = array_keys(array_filter($thumbnailService->sizes(), static fn (array $size): bool => $size['enabled']));
+            ?>
+            <p class="lp-field">
+                <label for="featured-image-crop-size">Featured image crop size</label>
+                <select id="featured-image-crop-size" name="featured_image_crop_size">
+                    <?php foreach ($enabledCropSizeNames as $cropSizeName): ?>
+                        <option value="<?= esc_attr($cropSizeName) ?>" <?= $currentCropSize === $cropSizeName ? 'selected' : '' ?>><?= esc_html(ucfirst($cropSizeName)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <span class="lp-field__hint">The maximum width a manually-cropped featured image (drawn in the post/page editor, or created from an existing image below) is generated at. Defaults to <strong>Large</strong>.</span>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save</button>

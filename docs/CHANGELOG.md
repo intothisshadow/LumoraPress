@@ -4,6 +4,88 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Drag-and-drop reordering on Appearance &rsaquo; Widgets and Appearance
+  &rsaquo; Menus (LP-048/LP-049): widgets within a sidebar, and menu items
+  among their siblings, can now be reordered by dragging instead of only
+  the Move Up/Move Down buttons — both stay available side by side. Menu
+  item drag-and-drop only ever reorders among items sharing the same
+  parent; re-parenting an item remains the "Parent Item" dropdown's job.
+- Update an installed theme in place from a ZIP upload (LP-081): Appearance
+  &rsaquo; Themes previously only let an administrator install a brand-new
+  theme from a ZIP — re-uploading a newer ZIP for an already-installed
+  theme hard-failed, forcing a destructive delete-then-reinstall cycle that
+  wasn't even possible for the currently active theme. Each theme's details
+  panel now has an "Update from ZIP" action (with a confirmation prompt,
+  since it overwrites that theme's files) that works for the active theme
+  too. The upload is validated and extracted to a staging directory first
+  and only swapped into place afterward, with the previous version restored
+  automatically if anything goes wrong partway through — a failed update
+  never leaves a theme half-installed.
+- Configurable permalink structure & settings (LP-078): a new Settings
+  &rsaquo; Permalinks admin page lets a site owner choose how post URLs
+  are built — Post name (`/post/%postname%`, today's behavior, stays the
+  default), Day and name (`/%year%/%monthnum%/%day%/%postname%`), Month
+  and name (`/%year%/%monthnum%/%postname%`), or a custom structure built
+  from `%postname%`/`%year%`/`%monthnum%`/`%day%`/`%category%`/`%author%`
+  tokens with a live preview — plus separate Category base and Tag base
+  fields to rename the `/category/{slug}`/`/tag/{slug}` URL prefixes. A
+  warning appears on the settings page when the site already has
+  published posts, since changing the structure changes those posts'
+  URLs going forward. Every place a post/category/tag URL was previously
+  hand-built (feeds, the XML sitemap, the REST API, search results,
+  admin screens, and every default theme template) now goes through the
+  same `post_permalink()`/`category_permalink()`/`tag_permalink()` theme
+  API, so a configured structure is honored everywhere at once. An
+  unconfigured site's URLs are unchanged.
+- Front Page & Archive Post Display (LP-079): a new "Post Display" tab
+  under Appearance &rsaquo; Theme Options controls how posts appear on
+  the front page and category/tag/author/date archives — Excerpt (a
+  preview with a Read More link) or Full Content (the entire post
+  inline), whether the featured image shows in listings, the automatic
+  excerpt length in words, and the Read More link's text. A Read More
+  tag can now be inserted into post content (a new toolbar button in
+  both the Markdown and WYSIWYG editors) to choose the preview cutoff
+  point by hand — takes priority over both the "Full Content" setting
+  and the automatic excerpt (so a listing still stops at the tag even
+  when the site is set to show full posts), but yields to a manually
+  entered Excerpt field. New `the_content()`/
+  `get_the_content()`/`the_excerpt()`/`get_the_excerpt()` theme API
+  functions, modeled on WordPress's own, available to themes and
+  plugins. Single-post pages are unaffected — always the full post,
+  regardless of this setting.
+- Featured image crop size setting, multi-file upload, and Media-Manager
+  cropping (LP-080): the manually-cropped featured image's output size is
+  now configurable (Media Manager &rsaquo; Thumbnail Settings), instead of
+  always capping to the Large thumbnail size. The Media Manager's upload
+  screen now accepts multiple files at once, uploading them one after
+  another with a visible per-file progress list. A new "Create Cropped
+  Featured Image" action on any already-uploaded image's Media Manager
+  edit screen crops it into a brand-new, independently selectable Media
+  Library item (its own file and thumbnails) — the original image is
+  never modified, and cropping is no longer only reachable from inside a
+  specific post's or page's own featured-image field.
+
+### Fixed
+
+- Appearance &rsaquo; Themes: activating a theme could silently fail with
+  no error shown. Each theme's card rendered its own CSRF-protected
+  Activate form, and its details dialog further down the page rendered a
+  second, separate Activate form for the same theme — issuing a fresh
+  CSRF token for the second form invalidated the token already embedded
+  in the first, so submitting the visible card's Activate button posted
+  a stale token and the request was silently rejected. Both forms now
+  share a single issued token.
+- Insert Media's "Link To: None" now means no link at all. Previously,
+  every inserted image still ended up wrapped in a link regardless of
+  this choice — an unlinked image automatically gets a self-link so it
+  can open in the PhotoSwipe lightbox (LP-076), which "None" was never
+  actually opting out of, only "Media File" was ever meant to override.
+  Both the Markdown and WYSIWYG editors now add a `no-lightbox` marker
+  when "None" is chosen, genuinely producing a plain, non-clickable
+  image; choosing "Media File" is unaffected.
+
 ## [0.6.0] — 2026-08-10
 
 ### Added

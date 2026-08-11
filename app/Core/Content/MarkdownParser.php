@@ -648,25 +648,40 @@ final class MarkdownParser
     }
 
     /**
-     * A trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}` marker
-     * (LP-016, mirrors stripAlignmentMarker()'s heading/paragraph
-     * syntax) sets the image's alignment class — the same classic-
-     * WordPress class names the WYSIWYG editor's Insert Media
-     * "Alignment" step applies (content-editor.js), so both editors
-     * produce identical, interchangeable output. `alignnone` is
-     * deliberately not a marker value: it's the unmarked default, the
-     * same "no class needed" convention
-     * content/themes/default/style.css already documents.
+     * One or more trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}`/
+     * `{.no-lightbox}` markers (LP-016/LP-080, mirrors
+     * stripAlignmentMarker()'s heading/paragraph syntax) set the image's
+     * class list — the same classic-WordPress alignment class names the
+     * WYSIWYG editor's Insert Media "Alignment" step applies
+     * (content-editor.js), so both editors produce identical,
+     * interchangeable output. `alignnone` is deliberately not a marker
+     * value: it's the unmarked default, the same "no class needed"
+     * convention content/themes/default/style.css already documents.
+     *
+     * `no-lightbox` opts the image out of ContentRenderer::
+     * addLightboxAttributes()'s automatic self-link (LP-080's "Link To:
+     * None" fix — that setting used to only control *which* URL an image
+     * links to, never whether it links at all, since every unlinked image
+     * still got a self-link for the PhotoSwipe lightbox; content-editor.js
+     * now appends this marker whenever "Link To: None" is chosen, so
+     * "None" finally means no link at all).
      */
     private function parseImages(string $text): string
     {
         return (string) preg_replace_callback(
-            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)(?:\{\.(alignleft|aligncenter|alignright)\})?/',
+            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)((?:\{\.(?:alignleft|aligncenter|alignright|no-lightbox)\})+)?/',
             function (array $m): string {
                 $alt = htmlspecialchars($m[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $url = $this->sanitizeUrl(trim($m[2], '<>'));
                 $titleAttr = isset($m[3]) && $m[3] !== '' ? ' title="' . htmlspecialchars($m[3], ENT_QUOTES, 'UTF-8') . '"' : '';
-                $classAttr = isset($m[4]) && $m[4] !== '' ? ' class="' . $m[4] . '"' : '';
+
+                $classes = [];
+
+                if (isset($m[4]) && $m[4] !== '' && preg_match_all('/\{\.([a-z-]+)\}/', $m[4], $classMatches) > 0) {
+                    $classes = $classMatches[1];
+                }
+
+                $classAttr = $classes !== [] ? ' class="' . htmlspecialchars(implode(' ', $classes), ENT_QUOTES, 'UTF-8') . '"' : '';
 
                 return $this->storePlaceholder('<img src="' . $url . '" alt="' . $alt . '"' . $titleAttr . $classAttr . ' loading="lazy">');
             },

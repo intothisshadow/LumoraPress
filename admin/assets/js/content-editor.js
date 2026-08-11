@@ -294,6 +294,16 @@
         return fetch(container.dataset.uploadUrl, { method: 'POST', body: formData })
             .then(function (response) { return response.json(); })
             .then(function (json) {
+                // Csrf::verify() is single-use (app/Core/Security/Csrf.php)
+                // — every editor_upload response carries a freshly issued
+                // token, which must replace the page-load one here or a
+                // second upload in the same page load fails CSRF
+                // verification (matches admin/assets/js/multi-upload.js's
+                // identical pattern for the Media Manager).
+                if (json.csrfToken) {
+                    container.dataset.uploadCsrf = json.csrfToken;
+                }
+
                 if (json.error) {
                     throw new Error(json.error);
                 }
@@ -323,6 +333,17 @@
         var stripped = text.replace(/\s*\{\.(left|center|right|justify)\}\s*$/, '');
 
         cm.replaceRange(stripped + ' {.' + align + '}', from, to);
+    }
+
+    /**
+     * Inserts the LP-079 More tag on its own line, blank-line-separated
+     * from surrounding text — the literal marker
+     * ContentRenderer::splitAtMoreTag() looks for in raw Markdown/Plain
+     * content. See that method's docblock for why the marker itself
+     * (rather than any rendered form of it) is what gets stored.
+     */
+    function insertMoreTag(cm) {
+        cm.replaceSelection('\n\n<!--more-->\n\n');
     }
 
     function initMarkdownEditor(container, textarea, statsEl) {
@@ -393,6 +414,13 @@
                         title: 'Justify',
                     },
                     '|',
+                    {
+                        name: 'more-tag',
+                        action: function () { insertMoreTag(editor.codemirror); },
+                        className: 'fa fa-scissors',
+                        title: 'Insert Read More Tag',
+                    },
+                    '|',
                     'code', 'quote', 'unordered-list', 'ordered-list', '|',
                     'link', 'image',
                     {
@@ -412,8 +440,18 @@
                                 // survive, the same minimal convention
                                 // wrapSelectionWithAlignment() uses for
                                 // heading/paragraph alignment above.
+                                //
+                                // LP-080: "Link To: None" means no link at
+                                // all, not just "no link to something
+                                // different than what's displayed" — a
+                                // {.no-lightbox} marker opts the image out
+                                // of ContentRenderer::addLightboxAttributes()'s
+                                // automatic self-link, which would otherwise
+                                // still wrap even an unlinked image in an
+                                // <a> so PhotoSwipe can open it.
                                 var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
-                                var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker;
+                                var noLightboxMarker = payload.linkUrl ? '' : '{.no-lightbox}';
+                                var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker + noLightboxMarker;
                                 cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
                             });
                         },
@@ -475,8 +513,20 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | link image lumoraMedia table codesample | '
+                        + 'bullist numlist | blockquote hr | link image lumoraMedia lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
+                    // LP-079: visually distinguishes the More tag marker
+                    // (span.lp-more-tag) while editing — this stylesheet
+                    // only ever loads inside TinyMCE's own editing iframe,
+                    // never on the public site (the marker itself is
+                    // always stripped before the_content()/the_excerpt()
+                    // render anything — see ContentRenderer::
+                    // splitAtMoreTag()), so it's safe to make the marker
+                    // look nothing like its final (nonexistent) public
+                    // appearance.
+                    content_style: '.lp-more-tag { display: block; text-align: center; '
+                        + 'color: #888; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; '
+                        + 'padding: 0.5em 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; }',
                     // TinyMCE's align toolbar defaults to an inline
                     // style="text-align: ..." — HtmlSanitizer never
                     // allows a style attribute at all (an arbitrary-CSS
@@ -518,10 +568,16 @@
                             tooltip: 'Insert from Media Manager',
                             onAction: function () {
                                 openMediaPicker(library, function (payload) {
+                                    // LP-080: "Link To: None" means no link
+                                    // at all — see the identical comment on
+                                    // the Markdown insertion above for why
+                                    // no-lightbox is needed even for an
+                                    // otherwise-unlinked image.
+                                    var classAttr = 'size-' + payload.size + ' ' + payload.align + (payload.linkUrl ? '' : ' no-lightbox');
                                     var image = '<img src="' + escapeHtmlAttr(payload.url) + '" alt="' + escapeHtmlAttr(payload.alt) + '"'
                                         + (payload.width ? ' width="' + payload.width + '"' : '')
                                         + (payload.height ? ' height="' + payload.height + '"' : '')
-                                        + ' class="size-' + payload.size + ' ' + payload.align + '">';
+                                        + ' class="' + classAttr + '">';
 
                                     if (!payload.linkUrl) {
                                         editor.insertContent(image);
@@ -547,6 +603,24 @@
 
                                     editor.insertContent(link);
                                 });
+                            },
+                        });
+
+                        // LP-079 — inserts a whole paragraph containing
+                        // only the More tag marker, mirroring
+                        // insertMoreTag()'s Markdown-side blank-line-
+                        // separated block. Visible "Read More" label text
+                        // is included so the marker isn't just an empty,
+                        // hard-to-select inline element while editing —
+                        // see ContentRenderer::MORE_TAG_HTML_MARKER_PATTERN's
+                        // docblock for why that text is safe to include
+                        // (matched, and discarded, as part of the whole
+                        // marker element).
+                        editor.ui.registry.addButton('lumoraMoreTag', {
+                            icon: 'horizontal-rule',
+                            tooltip: 'Insert Read More Tag',
+                            onAction: function () {
+                                editor.insertContent('<p><span class="lp-more-tag">Read More</span></p>');
                             },
                         });
 

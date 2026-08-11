@@ -151,6 +151,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $thumbnailService->regenerate($id);
         header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
+    } elseif ($form === 'create_cropped_featured_image' && Csrf::verify('create_cropped_featured_image', $token)) {
+        $id = (int) ($_POST['id'] ?? 0);
+        $sourceMedia = $mediaService->find($id);
+        $cropX = $_POST['crop_x'] ?? '';
+        $cropY = $_POST['crop_y'] ?? '';
+        $cropWidth = $_POST['crop_width'] ?? '';
+        $cropHeight = $_POST['crop_height'] ?? '';
+
+        if ($sourceMedia === null) {
+            $error = 'Media item not found.';
+        } elseif (
+            !is_numeric($cropX) || !is_numeric($cropY) || !is_numeric($cropWidth) || !is_numeric($cropHeight)
+            || (int) $cropWidth <= 0 || (int) $cropHeight <= 0
+        ) {
+            $error = 'Please select a crop area first.';
+        } else {
+            $crop = [
+                'x' => max(0, (int) $cropX),
+                'y' => max(0, (int) $cropY),
+                'width' => (int) $cropWidth,
+                'height' => (int) $cropHeight,
+            ];
+            $sourceFolderId = $sourceMedia['folder_id'] !== null ? (int) $sourceMedia['folder_id'] : null;
+            $newMedia = $thumbnailService->createCroppedFeaturedMedia($sourceMedia, $crop, $currentUser->id, $sourceFolderId);
+
+            if ($newMedia === null) {
+                $error = 'Could not create the cropped featured image.';
+            } else {
+                header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $newMedia['id'] . '&saved=1');
+                exit;
+            }
+        }
     } elseif ($form === 'replace_file' && Csrf::verify('replace_file', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
 
@@ -394,6 +426,40 @@ $allFolders = $folderService->listAll();
                     <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
                     <button type="submit" class="lp-button">Regenerate thumbnails</button>
                 </form>
+            </div>
+
+            <div class="lp-featured-crop-create">
+                <h3>Create Cropped Featured Image</h3>
+                <p class="lp-field__hint">
+                    Crops this image and adds the result as a new, separate item in the Media Library — the
+                    original is never modified. Select it as any post's or page's featured image afterward.
+                </p>
+
+                <div class="lp-featured-crop" data-lp-featured-crop>
+                    <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>Choose Crop Area</button>
+
+                    <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" data-lp-featured-crop-editor hidden>
+                        <?= Csrf::field('create_cropped_featured_image') ?>
+                        <input type="hidden" name="form" value="create_cropped_featured_image">
+                        <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
+
+                        <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
+                            <img src="<?= esc_url($mediaService->url($editingMedia)) ?>" alt="" data-lp-featured-crop-image>
+                            <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
+                                <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
+                            </div>
+                        </div>
+                        <p class="lp-field__hint">Drag to select the area to use. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
+                        <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear</button>
+
+                        <input type="hidden" name="crop_x" data-lp-featured-crop-x value="">
+                        <input type="hidden" name="crop_y" data-lp-featured-crop-y value="">
+                        <input type="hidden" name="crop_width" data-lp-featured-crop-width value="">
+                        <input type="hidden" name="crop_height" data-lp-featured-crop-height value="">
+
+                        <button type="submit" class="lp-button lp-button--primary">Create Cropped Featured Image</button>
+                    </form>
+                </div>
             </div>
         <?php elseif (str_starts_with((string) $editingMedia['mime_type'], 'video/')): ?>
             <?php

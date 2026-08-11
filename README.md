@@ -257,6 +257,10 @@ them via FTP/SFTP or your hosting file manager).
   Attachment Display Settings step (size, link-to) when inserting media.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages.
+- **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the
+  post URL structure (Post name, Day and name, Month and name, or a
+  custom token-based pattern) and rename the Category/Tag archive URL
+  prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`.
 - **Comments** — threaded discussion with moderation (including bulk
   approve/spam/trash/delete), honeypot/CSRF/submission-timing spam
   protection, and optional Akismet spam-checking (Settings &rsaquo;
@@ -280,20 +284,22 @@ them via FTP/SFTP or your hosting file manager).
 - **Maintenance mode** — take the public site offline for visitors while
   admins keep working.
 - **Appearance** — theme browser, branding, custom CSS, Theme Options
-  (colors/typography/layout, no CSS editing required), widgets, navigation
-  menus, and a built-in theme file editor.
+  (colors/typography/layout/post display, no CSS editing required),
+  widgets, navigation menus, and a built-in theme file editor.
 - **Plugin browser** — install and manage plugins from the admin panel.
 - **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
   developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
   Font Awesome, off by default).
-- **Media Manager** — uploads, virtual folders, metadata, thumbnail
-  generation, a lightbox viewer (covering both featured images and
-  images embedded directly in post/page content), download statistics
-  for document/archive/audio/video files, and usage tracking with
-  delete-time warnings.
+- **Media Manager** — multi-file uploads with per-file progress, virtual
+  folders, metadata, thumbnail generation, a lightbox viewer (covering
+  both featured images and images embedded directly in post/page
+  content), download statistics for document/archive/audio/video files,
+  and usage tracking with delete-time warnings.
 - **Featured images** — per-post/page featured images with manual
-  cropping.
+  cropping (with a configurable output size), or crop any already-
+  uploaded image directly from its Media Manager edit screen into a new,
+  independently reusable featured-image-ready Library item.
 - **FTP media import** — bring in files already on the server without a
   browser upload.
 - **REST API** — a versioned, token-authenticated API for posts, pages,
@@ -304,6 +310,13 @@ them via FTP/SFTP or your hosting file manager).
   (with an optional separate posts page), set how many posts each
   listing page shows, and discourage search engines from indexing the
   site (a virtual `robots.txt` plus a `noindex` meta tag).
+- **Front page & archive post display** — Theme Options &rsaquo; Post
+  Display controls whether the front page and archives show each post's
+  full content or an excerpt (with a configurable Read More link and
+  automatic excerpt length), and whether the featured image appears in
+  listings. A Read More tag, insertable from the content editor toolbar,
+  lets an author choose the excerpt cutoff point by hand. Single-post
+  pages always show the complete post regardless of this setting.
 - **Caching** — HTTP cache headers and conditional `304` responses on
   cacheable public pages, first-class LiteSpeed Cache purge integration
   (auto-detected, with a manual override), and automatic cache

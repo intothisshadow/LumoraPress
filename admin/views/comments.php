@@ -49,7 +49,7 @@ $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newS
         'user_ip' => $previousComment->ipAddress ?? '0.0.0.0',
         'user_agent' => $previousComment->userAgent,
         'referrer' => null,
-        'permalink' => $post !== null ? home_url('post/' . $post->slug) : home_url(),
+        'permalink' => $post !== null ? post_permalink($post) : home_url(),
     ];
 
     if ($newStatus === CommentStatus::Spam) {
@@ -278,8 +278,9 @@ if ($action === 'edit') {
                                         <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
                                     </a>
                                 </td>
+                                <?php $rowPost = $kernel->posts->findById($comment->postId); ?>
                                 <td>
-                                    <a href="<?= esc_url(home_url('post/' . $row['postSlug'])) ?>#comment-<?= (int) $comment->id ?>"><?= esc_html($row['postTitle']) ?></a>
+                                    <a href="<?= esc_url(($rowPost !== null ? post_permalink($rowPost) : home_url('post/' . $row['postSlug'])) . '#comment-' . (int) $comment->id) ?>"><?= esc_html($row['postTitle']) ?></a>
                                 </td>
                                 <td>
                                     <span class="lp-status-badge lp-status-badge--<?= esc_attr($comment->status->value) ?>">

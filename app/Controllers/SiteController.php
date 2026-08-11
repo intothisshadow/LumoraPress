@@ -269,7 +269,7 @@ final class SiteController
             return;
         }
 
-        $redirectTo = home_url('post/' . $post->slug);
+        $redirectTo = post_permalink($post);
 
         if (!$this->commentsOpenFor($post)) {
             header('Location: ' . $redirectTo . '#comments');
@@ -762,7 +762,7 @@ final class SiteController
 
         foreach ($items as $item) {
             $post = $item['post'];
-            $link = home_url('post/' . $post->slug);
+            $link = post_permalink($post);
 
             $xml .= '<item>' . "\n";
             $xml .= '<title>' . esc_html($post->title) . '</title>' . "\n";
@@ -817,7 +817,7 @@ final class SiteController
 
         foreach ($items as $item) {
             $post = $item['post'];
-            $link = home_url('post/' . $post->slug);
+            $link = post_permalink($post);
             $updated = $post->updatedAt > $post->createdAt ? $post->updatedAt : ($post->publishedAt ?? $post->createdAt);
 
             $xml .= '<entry>' . "\n";
@@ -952,7 +952,7 @@ final class SiteController
         $urls = [['loc' => home_url(), 'lastmod' => null]];
 
         foreach ($this->posts->paginatePublished(1, 50000)['posts'] as $sitemapPost) {
-            $urls[] = ['loc' => home_url('post/' . $sitemapPost->slug), 'lastmod' => $sitemapPost->updatedAt];
+            $urls[] = ['loc' => post_permalink($sitemapPost), 'lastmod' => $sitemapPost->updatedAt];
         }
 
         foreach ($this->pages->paginatePublished(1, 50000)['pages'] as $sitemapPage) {
@@ -960,11 +960,11 @@ final class SiteController
         }
 
         foreach ($this->categories->listAll() as $category) {
-            $urls[] = ['loc' => home_url('category/' . $category->slug), 'lastmod' => null];
+            $urls[] = ['loc' => category_permalink($category), 'lastmod' => null];
         }
 
         foreach ($this->tags->listAll() as $tag) {
-            $urls[] = ['loc' => home_url('tag/' . $tag->slug), 'lastmod' => null];
+            $urls[] = ['loc' => tag_permalink($tag), 'lastmod' => null];
         }
 
         echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

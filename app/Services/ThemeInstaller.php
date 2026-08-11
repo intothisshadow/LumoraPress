@@ -1,7 +1,8 @@
 <?php
 
 /**
- * Validates and installs a theme ZIP directly into content/themes/{slug} (LP-034).
+ * Validates and installs, or updates in place, a theme ZIP directly into
+ * content/themes/{slug} (LP-034/LP-081).
  *
  * @package LumoraPress
  * @subpackage Services
@@ -23,19 +24,21 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Validates and installs a theme ZIP directly into content/themes/{slug}
- * (LP-034). Deliberately much simpler than UpdatePackageValidator/
- * UpdateService (LP-026): a theme install only ever adds one brand-new,
- * self-contained directory — it never overlays live core files — so there
- * is no staging/backup/rollback/migration ceremony needed, and every
- * failure can simply throw rather than being collected into a
- * blocking/warnings review step. The path-traversal and size/entry-count
- * safety checks mirror UpdatePackageValidator's (smaller limits here — a
- * theme is not a whole application), but the *content* requirements are
- * theme-specific: a style.css with a non-empty "Theme Name:" header,
- * rather than a version.php manifest — read directly out of the archive
- * before extracting, so the theme's own name can drive its slug and a
- * missing header is rejected without ever touching the filesystem.
+ * Validates and installs, or updates in place, a theme ZIP directly into
+ * content/themes/{slug} (LP-034/LP-081). Deliberately much simpler than
+ * UpdatePackageValidator/UpdateService (LP-026): a theme install/update
+ * only ever touches one self-contained directory — it never overlays live
+ * core files — so there is no migration/checksum/active-user-warning
+ * ceremony needed beyond update()'s own rename-swap rollback. The
+ * path-traversal and size/entry-count safety checks mirror
+ * UpdatePackageValidator's (smaller limits here — a theme is not a whole
+ * application), but the *content* requirements are theme-specific: a
+ * style.css with a non-empty "Theme Name:" header, rather than a
+ * version.php manifest — read directly out of the archive before
+ * extracting, so a missing header is rejected without ever touching the
+ * filesystem. update()'s staged-extract-then-rename-swap approach mirrors
+ * Lumora Gallery's ThemeService::updateFromZip() (LG-043) — reference
+ * material only; this project introduces no dependency on that one.
  */
 final class ThemeInstaller
 {
@@ -69,6 +72,107 @@ final class ThemeInstaller
 
     public function install(string $zipPath): ThemeInfo
     {
+        $zip = $this->openZip($zipPath);
+
+        try {
+            [$rootPrefix, $themeName] = $this->validateArchive($zip);
+
+            $slug = $this->deriveSlug($themeName, $rootPrefix);
+            $destination = rtrim($this->themesPath, '/') . '/' . $slug;
+
+            if (is_dir($destination)) {
+                throw new RuntimeException("A theme named \"{$slug}\" is already installed. Remove it first or rename the archive, or use Update instead to replace its files in place.");
+            }
+
+            $this->extractAndFinalize($zip, $rootPrefix, $destination);
+
+            $info = $this->themes->infoFor($slug);
+
+            if ($info === null) {
+                throw new RuntimeException('The theme was installed but could not be read back.');
+            }
+
+            return $info;
+        } finally {
+            $zip->close();
+        }
+    }
+
+    /**
+     * Replaces an already-installed theme's files with the contents of a
+     * new ZIP, in place — LP-081's counterpart to install(), which always
+     * hard-rejects an existing destination. The archive is extracted to a
+     * staging directory and validated exactly as install() validates one
+     * (same style.css + "Theme Name:" header requirement — the header's
+     * declared name does not need to match $slug; the slug the site
+     * already knows this theme by always wins, since that's what every
+     * active_theme option/nav menu/widget assignment references), then
+     * swapped into place via two fast rename() calls: the live directory
+     * is displaced first, the staged one takes its place second, and only
+     * then is the displaced original removed. If the second rename fails,
+     * the displaced original is renamed straight back — the window where
+     * $destination doesn't exist at all is as small as the filesystem
+     * allows, and a failure never leaves the theme half-installed.
+     */
+    public function update(string $zipPath, string $slug): ThemeInfo
+    {
+        $destination = rtrim($this->themesPath, '/') . '/' . $slug;
+
+        if ($slug === '' || !is_dir($destination)) {
+            throw new RuntimeException('That theme could not be found.');
+        }
+
+        $zip = $this->openZip($zipPath);
+
+        try {
+            [$rootPrefix] = $this->validateArchive($zip);
+
+            $staging = $destination . '.updating-' . bin2hex(random_bytes(4));
+
+            if (!mkdir($staging, 0755, true)) {
+                throw new RuntimeException('Unable to create a staging directory for the update.');
+            }
+
+            if (!$zip->extractTo($staging)) {
+                $this->removeDirectory($staging);
+
+                throw new RuntimeException('Failed to extract the theme archive.');
+            }
+
+            $extractedRoot = rtrim($staging . '/' . $rootPrefix, '/');
+
+            $displaced = $destination . '.replaced-' . bin2hex(random_bytes(4));
+
+            if (!rename($destination, $displaced)) {
+                $this->removeDirectory($staging);
+
+                throw new RuntimeException('Could not remove the existing theme files before updating.');
+            }
+
+            if (!rename($extractedRoot, $destination)) {
+                rename($displaced, $destination);
+                $this->removeDirectory($staging);
+
+                throw new RuntimeException('Could not install the updated theme files; the previous version was restored.');
+            }
+
+            $this->removeDirectory($displaced);
+            $this->removeDirectory($staging);
+
+            $info = $this->themes->infoFor($slug);
+
+            if ($info === null) {
+                throw new RuntimeException('The theme was updated but could not be read back.');
+            }
+
+            return $info;
+        } finally {
+            $zip->close();
+        }
+    }
+
+    private function openZip(string $zipPath): ZipArchive
+    {
         if (!is_file($zipPath)) {
             throw new RuntimeException('The uploaded file could not be found.');
         }
@@ -79,14 +183,18 @@ final class ThemeInstaller
             throw new RuntimeException('The uploaded file is not a valid ZIP archive.');
         }
 
-        try {
-            return $this->installFromOpenArchive($zip);
-        } finally {
-            $zip->close();
-        }
+        return $zip;
     }
 
-    private function installFromOpenArchive(ZipArchive $zip): ThemeInfo
+    /**
+     * Validates entry count, path safety, and total uncompressed size, then
+     * confirms a style.css with a "Theme Name:" header exists — the shared
+     * contract both install() and update() require before touching the
+     * filesystem. Does not extract anything.
+     *
+     * @return array{0: string, 1: string} [$rootPrefix, $themeName]
+     */
+    private function validateArchive(ZipArchive $zip): array
     {
         $numFiles = $zip->numFiles;
 
@@ -141,13 +249,11 @@ final class ThemeInstaller
             throw new RuntimeException('The archive\'s style.css does not have a valid "Theme Name:" header.');
         }
 
-        $slug = $this->deriveSlug($themeName, $rootPrefix);
-        $destination = rtrim($this->themesPath, '/') . '/' . $slug;
+        return [$rootPrefix, $themeName];
+    }
 
-        if (is_dir($destination)) {
-            throw new RuntimeException("A theme named \"{$slug}\" is already installed. Remove it first or rename the archive.");
-        }
-
+    private function extractAndFinalize(ZipArchive $zip, string $rootPrefix, string $destination): void
+    {
         $tempDestination = $destination . '.installing-' . bin2hex(random_bytes(4));
 
         if (!mkdir($tempDestination, 0755, true)) {
@@ -179,14 +285,6 @@ final class ThemeInstaller
 
             throw new RuntimeException('Failed to finalize the theme installation.');
         }
-
-        $info = $this->themes->infoFor($slug);
-
-        if ($info === null) {
-            throw new RuntimeException('The theme was installed but could not be read back.');
-        }
-
-        return $info;
     }
 
     private function parseThemeName(string $styleCssContents): string

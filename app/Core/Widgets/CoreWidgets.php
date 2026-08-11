@@ -164,7 +164,7 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
 
             foreach ($list as $entry) {
-                echo '<li><a href="' . esc_url(site_url('category/' . $entry['category']->slug)) . '">' . esc_html($entry['category']->name) . '</a>'
+                echo '<li><a href="' . esc_url(category_permalink($entry['category'])) . '">' . esc_html($entry['category']->name) . '</a>'
                     . ($showCount ? ' <span class="lp-widget__count">(' . (int) $entry['postCount'] . ')</span>' : '')
                     . '</li>';
             }
@@ -186,13 +186,13 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
 
             foreach ($list as $post) {
-                echo '<li><a href="' . esc_url(site_url('post/' . $post->slug)) . '">' . esc_html($post->title) . '</a></li>';
+                echo '<li><a href="' . esc_url(post_permalink($post)) . '">' . esc_html($post->title) . '</a></li>';
             }
 
             echo '</ul></section>';
         });
 
-        $widgets->registerWidget('recent_comments', 'Recent Comments', static function (array $settings) use ($comments): void {
+        $widgets->registerWidget('recent_comments', 'Recent Comments', static function (array $settings) use ($comments, $posts): void {
             $title = (string) ($settings['title'] ?? '');
             $limit = max(1, (int) ($settings['limit'] ?? 5));
             $list = $comments->recentApproved($limit);
@@ -206,7 +206,13 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
 
             foreach ($list as $entry) {
-                $url = site_url('post/' . $entry['postSlug']) . '#comment-' . $entry['comment']->id;
+                // A real Post lookup (rather than the postname_permalink()
+                // slug-only helper) so a custom permalink structure using
+                // %category%/%author% resolves correctly here too — this
+                // widget's default limit (5) keeps the extra query cheap.
+                $entryPost = $posts->findBySlug($entry['postSlug']);
+                $url = ($entryPost !== null ? post_permalink($entryPost) : site_url('post/' . $entry['postSlug']))
+                    . '#comment-' . $entry['comment']->id;
                 echo '<li>' . esc_html($entry['comment']->guestName) . ' on <a href="' . esc_url($url) . '">' . esc_html($entry['postTitle']) . '</a></li>';
             }
 
@@ -256,7 +262,7 @@ final class CoreWidgets
                 $scale = $maxCount > 0 ? $entry['postCount'] / $maxCount : 0;
                 $fontSize = 0.85 + ($scale * 0.75);
                 echo '<a class="lp-widget__tag-cloud-item" data-style-font-size="' . round($fontSize, 2) . 'em" href="'
-                    . esc_url(site_url('tag/' . $entry['tag']->slug)) . '">' . esc_html($entry['tag']->name) . '</a> ';
+                    . esc_url(tag_permalink($entry['tag'])) . '">' . esc_html($entry['tag']->name) . '</a> ';
             }
 
             echo '</div></section>';

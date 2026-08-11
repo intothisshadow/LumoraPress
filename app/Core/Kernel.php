@@ -52,6 +52,7 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
@@ -120,6 +121,7 @@ final class Kernel
         public readonly EmbedService $embeds,
         public readonly EditorPreferenceService $editorPreferences,
         public readonly CommentModerationService $commentModeration,
+        public readonly PermalinkService $permalinks,
     ) {
     }
 }

@@ -117,6 +117,28 @@ if (!function_exists('content_plain_text')) {
     }
 }
 
+if (!function_exists('content_has_more_tag')) {
+    /**
+     * LP-079 — see ContentRenderer::hasMoreTag()'s docblock.
+     */
+    function content_has_more_tag(string $content): bool
+    {
+        return ActiveContentRenderer::instance()->hasMoreTag($content);
+    }
+}
+
+if (!function_exists('content_split_at_more_tag')) {
+    /**
+     * LP-079 — see ContentRenderer::splitAtMoreTag()'s docblock.
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    function content_split_at_more_tag(string $content): array
+    {
+        return ActiveContentRenderer::instance()->splitAtMoreTag($content);
+    }
+}
+
 if (!function_exists('comments_template')) {
     /**
      * Renders the active theme's comments.php partial, if it has one —

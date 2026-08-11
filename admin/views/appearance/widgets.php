@@ -100,6 +100,8 @@ $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : 
  * on instead.
  */
 $postedDirection = (string) ($_POST['direction'] ?? '');
+$postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
+$postedPosition = (string) ($_POST['position'] ?? 'before');
 $csrfAction = match ($form) {
     'add_widget' => 'widget_add_' . $postedSidebarId,
     'update_widget' => 'widget_update_' . $postedWidgetId,
@@ -109,6 +111,11 @@ $csrfAction = match ($form) {
     // per-form-not-just-per-page scoping this whole action-name scheme
     // exists for).
     'move_widget' => 'widget_move_' . $postedDirection . '_' . $postedWidgetId,
+    // One reposition form per sidebar (see the rendering below), not per
+    // widget — sortable.js fills in its dragged/target/position fields
+    // and submits it on drop, so this action name only needs to be
+    // scoped per sidebar.
+    'reposition_widget' => 'widget_reposition_' . $postedSidebarId,
     'remove_widget' => 'widget_remove_' . $postedWidgetId,
     default => 'widget_unknown_form',
 };
@@ -206,6 +213,49 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
 
         header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
         exit;
+    } elseif ($form === 'reposition_widget') {
+        // Drag-and-drop reordering (LP-048): remove the dragged widget,
+        // find where the drop target now sits in the remaining list, and
+        // reinsert immediately before or after it — the standard
+        // "splice out, splice back in" reorder algorithm, so this works
+        // for a drag to any position, not just an adjacent swap like
+        // Move Up/Move Down.
+        $widgetId = $postedWidgetId;
+        $targetId = $postedTargetId;
+        $widgetsConfig = $loadWidgetsConfig();
+        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
+
+        $dragged = null;
+        $remaining = [];
+
+        foreach ($sidebarWidgets as $widget) {
+            if (($widget['id'] ?? null) === $widgetId) {
+                $dragged = $widget;
+            } else {
+                $remaining[] = $widget;
+            }
+        }
+
+        $targetIndex = null;
+
+        foreach ($remaining as $index => $widget) {
+            if (($widget['id'] ?? null) === $targetId) {
+                $targetIndex = $index;
+
+                break;
+            }
+        }
+
+        if ($dragged !== null && $targetIndex !== null) {
+            $insertAt = $postedPosition === 'after' ? $targetIndex + 1 : $targetIndex;
+            array_splice($remaining, $insertAt, 0, [$dragged]);
+            $widgetsConfig[$sidebarId] = $remaining;
+            $saveWidgetsConfig($widgetsConfig);
+            $kernel->widgets->setWidgets($sidebarId, $remaining);
+        }
+
+        header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
+        exit;
     }
 }
 ?>
@@ -239,15 +289,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         <?php if ($sidebarWidgets === []): ?>
             <p class="lp-admin__widget-placeholder">No widgets in this area yet.</p>
         <?php else: ?>
+            <div data-lp-sortable-group="widgets-<?= esc_attr($sidebarId) ?>">
             <ul class="lp-widgets-list">
                 <?php foreach ($sidebarWidgets as $position => $widget): ?>
                     <?php
                     $widgetType = $kernel->widgets->widgetTypes()[$widget['type']] ?? null;
                     $fields = $settingsFieldsFor($widget['type']);
                     ?>
-                    <li class="lp-widgets-list__item">
+                    <li class="lp-widgets-list__item" data-lp-sortable-item data-lp-sortable-id="<?= esc_attr($widget['id']) ?>">
                         <details class="lp-widgets-list__details">
                             <summary class="lp-widgets-list__summary">
+                                <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true" title="Drag to reorder">&#10303;</span>
                                 <?= esc_html($widgetType['label'] ?? $widget['type']) ?>
                                 <?php if (($widget['settings']['title'] ?? '') !== ''): ?>
                                     <span class="lp-widgets-list__instance-title">&mdash; <?= esc_html((string) $widget['settings']['title']) ?></span>
@@ -328,6 +380,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                     </li>
                 <?php endforeach; ?>
             </ul>
+            <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" data-lp-sortable-reposition-form>
+                <?= Csrf::field('widget_reposition_' . $sidebarId) ?>
+                <input type="hidden" name="form" value="reposition_widget">
+                <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
+                <input type="hidden" name="widget_id" data-lp-sortable-field="dragged_id">
+                <input type="hidden" name="target_id" data-lp-sortable-field="target_id">
+                <input type="hidden" name="position" data-lp-sortable-field="position">
+            </form>
+            </div>
         <?php endif; ?>
 
         <?php if ($kernel->widgets->widgetTypes() !== []): ?>

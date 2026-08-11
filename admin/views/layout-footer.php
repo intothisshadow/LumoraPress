@@ -27,14 +27,17 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/tag-input.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/category-quick-add.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/url-preview.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/permalink-preview.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/custom-fields.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/featured-image-crop.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/multi-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/thumbnail-bulk.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/theme-browser.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/plugin-browser.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/content-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/theme-file-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/folder-drag-drop.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/sortable.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/update-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/select-all.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/confirm-submit.js')) ?>" defer></script>

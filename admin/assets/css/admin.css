@@ -766,6 +766,17 @@ body.lp-admin-login {
     margin: 0;
 }
 
+.lp-theme-details__update-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.lp-theme-details__update-form input[type="file"] {
+    max-width: 220px;
+    font-size: 0.85em;
+}
+
 /* Plugins: plugin grid (LP-045) — mirrors the theme grid above */
 
 .lp-plugin-toolbar {
@@ -1088,6 +1099,28 @@ body.lp-admin-login {
     background: var(--lp-admin-accent);
     border: 2px solid var(--lp-admin-panel-bg);
     cursor: nwse-resize;
+}
+
+/* Media Manager multi-file upload (LP-080) */
+
+.lp-multi-upload__list {
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.lp-multi-upload__list li {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--lp-admin-bg);
+}
+
+.lp-multi-upload__summary {
+    font-weight: 600;
 }
 
 .lp-code-textarea {
@@ -1569,6 +1602,10 @@ body.lp-admin-login {
     margin-bottom: 1rem;
 }
 
+.lp-featured-crop-create {
+    margin-bottom: 1rem;
+}
+
 .lp-thumbnails__list {
     display: flex;
     flex-wrap: wrap;
@@ -1745,6 +1782,23 @@ select:focus {
     margin-top: 0.35rem;
     color: var(--lp-admin-sidebar-fg-muted);
     font-size: 0.8rem;
+}
+
+/* LP-078: Settings > Permalinks structure presets. */
+.lp-field--radio {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.lp-field--radio input {
+    width: auto;
+    margin: 0;
+}
+
+.lp-field--radio code {
+    color: var(--lp-admin-sidebar-fg-muted);
 }
 
 .lp-field__hint code {
@@ -2685,6 +2739,34 @@ select:focus {
     padding: 0.75rem 1rem;
     cursor: pointer;
     font-weight: 600;
+}
+
+/* Drag-and-drop reordering (LP-048/LP-049, sortable.js) — shared by the
+   Widgets and Menus screens' item lists (.lp-widgets-list__item and
+   .lp-menus-structure-list__item both render a .lp-drag-handle inside
+   their <summary>). */
+
+.lp-drag-handle {
+    cursor: grab;
+    color: var(--lp-admin-text);
+    margin-right: 0.5rem;
+    opacity: 0.5;
+}
+
+.lp-drag-handle:hover {
+    opacity: 1;
+}
+
+[data-lp-sortable-item].lp-sortable--dragging {
+    opacity: 0.4;
+}
+
+[data-lp-sortable-item].lp-sortable__item--drop-before {
+    box-shadow: 0 -2px 0 0 var(--lp-admin-accent);
+}
+
+[data-lp-sortable-item].lp-sortable__item--drop-after {
+    box-shadow: 0 2px 0 0 var(--lp-admin-accent);
 }
 
 .lp-widgets-list__instance-title {

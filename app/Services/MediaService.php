@@ -234,6 +234,59 @@ final class MediaService
     }
 
     /**
+     * Registers a file that already exists on disk (under $uploadsPath)
+     * as a new `media` row — LP-080's Media-Manager "Create Cropped
+     * Featured Image" (ThumbnailService::createCroppedFeaturedMedia())
+     * is the first caller: the file itself was already written by GD
+     * before this runs, so unlike upload() there's no browser-submitted
+     * upload to validate or move, just a row to insert. Mirrors the same
+     * INSERT shape upload()/MediaImportService::import() already use.
+     *
+     * @return array<string, mixed>
+     */
+    public function registerExistingFile(
+        string $relativePath,
+        string $fileName,
+        string $mimeType,
+        int $fileSize,
+        ?int $width,
+        ?int $height,
+        int $uploadedByUserId,
+        ?int $folderId,
+    ): array {
+        $absolutePath = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
+        $fileHash = is_file($absolutePath) ? (hash_file('sha256', $absolutePath) ?: null) : null;
+
+        $id = $this->database->insertGetId(
+            'INSERT INTO ' . $this->table() . '
+                (file_name, file_path, mime_type, file_size, width, height, uploaded_by, folder_id, file_hash, uploaded_at)
+             VALUES (:file_name, :file_path, :mime_type, :file_size, :width, :height, :uploaded_by, :folder_id, :file_hash, :uploaded_at)',
+            [
+                'file_name' => $fileName,
+                'file_path' => $relativePath,
+                'mime_type' => $mimeType,
+                'file_size' => $fileSize,
+                'width' => $width,
+                'height' => $height,
+                'uploaded_by' => $uploadedByUserId,
+                'folder_id' => $folderId,
+                'file_hash' => $fileHash,
+                'uploaded_at' => date('Y-m-d H:i:s'),
+            ],
+        );
+
+        $media = $this->find((int) $id);
+
+        if ($media === null) {
+            throw new RuntimeException('Failed to load the media item that was just registered.');
+        }
+
+        $this->hooks?->doAction('media_saved', $media);
+
+        return $media;
+    }
+
+    /**
      * LP-005's "Replace" action — swaps a media item's file content in
      * place while keeping its id, file_path, and public URL exactly as
      * they were, so every post/page/setting already pointing at it keeps

@@ -53,6 +53,42 @@ final class ContentRenderer
      */
     private const LIGHTBOXABLE_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
+    /**
+     * LP-079's More tag — the equivalent of WordPress's `<!--more-->` —
+     * on raw stored `content`, typed by the author into the Markdown/
+     * Plain textarea directly. Detected/split on the *raw* content,
+     * before render() ever runs, since HtmlSanitizer strips HTML
+     * comments outright (see its cleanNode() — a comment node is neither
+     * DOMText nor DOMElement, so it's simply removed) and would destroy
+     * this marker before it could ever be found in already-sanitized
+     * output. Markdown/Plain content is never sanitized at all (see
+     * PostService::sanitizeStoredContent()'s docblock), so the literal
+     * text survives there unmodified until this class explicitly looks
+     * for it.
+     */
+    private const MORE_TAG_TEXT_MARKER = '<!--more-->';
+
+    /**
+     * The WYSIWYG-format equivalent — an Html-format post's raw content
+     * *is* sanitized at save time (PostService::sanitizeStoredContent()),
+     * so an HTML comment could never survive being stored in the first
+     * place. `<span class="lp-more-tag">...</span>` uses only tag/
+     * attribute combinations HtmlSanitizer's own allowlist already
+     * permits (see its ALLOWED_TAGS — 'span' => ['class']), so it
+     * round-trips through sanitization intact. The pattern matches any
+     * inner text (content-editor.js's TinyMCE button inserts a visible
+     * "Read More" label so the marker isn't just an invisible empty
+     * element while editing) — that text is discarded along with the
+     * rest of the match, never rendered. The first alternative also
+     * consumes a single wrapping `<p>...</p>` when the marker is its
+     * only content — exactly what that same TinyMCE button inserts
+     * (`<p><span class="lp-more-tag">...</span></p>`) — so splitting
+     * doesn't leave a stray empty paragraph behind; the second
+     * alternative is the bare-span fallback for a marker not wrapped
+     * that way (e.g. hand-edited HTML).
+     */
+    private const MORE_TAG_HTML_MARKER_PATTERN = '#<p[^>]*>\s*<span[^>]*\bclass="lp-more-tag"[^>]*>.*?</span>\s*</p>|<span[^>]*\bclass="lp-more-tag"[^>]*>.*?</span>#is';
+
     public function __construct(
         private readonly MarkdownParser $markdown,
         private readonly HtmlSanitizer $sanitizer,
@@ -72,6 +108,56 @@ final class ContentRenderer
         $html = $this->addLightboxAttributes($html);
 
         return $this->hooks->applyFilters('content_html', $html, $content, $format);
+    }
+
+    /**
+     * Whether $rawContent (a post's un-rendered, stored `content`)
+     * contains a More tag — see splitAtMoreTag()'s docblock for what
+     * that marker looks like per ContentFormat.
+     */
+    public function hasMoreTag(string $rawContent): bool
+    {
+        return $this->splitAtMoreTag($rawContent)[1] !== null;
+    }
+
+    /**
+     * Splits $rawContent at its first More tag, operating on the raw,
+     * un-rendered source (see the two MORE_TAG_*_MARKER constants'
+     * docblocks for why it must happen here rather than after render()).
+     * The marker itself is removed, never present in either returned
+     * half.
+     *
+     * With no marker present, the first element is $rawContent
+     * unchanged and the second is null — callers use that null/non-null
+     * distinction to tell "the whole post, nothing to cut" from "here's
+     * the author's chosen cutoff point." See get_the_excerpt()/
+     * get_the_content() (include/content-display-functions.php) for the
+     * actual callers.
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    public function splitAtMoreTag(string $rawContent): array
+    {
+        $textPosition = strpos($rawContent, self::MORE_TAG_TEXT_MARKER);
+
+        if ($textPosition !== false) {
+            return [
+                substr($rawContent, 0, $textPosition),
+                substr($rawContent, $textPosition + strlen(self::MORE_TAG_TEXT_MARKER)),
+            ];
+        }
+
+        if (preg_match(self::MORE_TAG_HTML_MARKER_PATTERN, $rawContent, $matches, PREG_OFFSET_CAPTURE) === 1) {
+            $matchedText = $matches[0][0];
+            $matchedOffset = $matches[0][1];
+
+            return [
+                substr($rawContent, 0, $matchedOffset),
+                substr($rawContent, $matchedOffset + strlen($matchedText)),
+            ];
+        }
+
+        return [$rawContent, null];
     }
 
     /**
