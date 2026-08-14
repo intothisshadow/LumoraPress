@@ -39,6 +39,7 @@ use LumoraPress\Services\FeedService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\SearchService;
@@ -77,6 +78,7 @@ final class SiteController
         private readonly UserService $users,
         private readonly CommentModerationService $commentModeration,
         private readonly CommentNotificationService $commentNotifications,
+        private readonly PermalinkService $permalinks,
     ) {
     }
 
@@ -1003,9 +1005,67 @@ final class SiteController
         }
 
         $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
-        $channel = $this->feeds->channel();
-        $items = $this->feeds->items();
 
+        $this->emitFeed(
+            $format,
+            $this->feeds->channel(),
+            $this->feeds->items(),
+            home_url(),
+            home_url('feed/atom'),
+            'site|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
+     * Category-scoped counterpart of feed() (LP-010): `/{category_base}/
+     * {slug}/feed` and `/{category_base}/{slug}/feed/atom` serve RSS 2.0/
+     * Atom 1.0 for just that category's published posts, reusing the same
+     * FeedService item-building and emitFeed() caching/rendering plumbing
+     * as the site-wide feed — only the channel, item source, and links
+     * differ. 404s on an unknown category the same way category() does,
+     * rather than falling back to the site-wide feed.
+     *
+     * @param array<string, string> $params
+     */
+    public function categoryFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $slug = $params['slug'] ?? '';
+        $category = $slug !== '' ? $this->categories->findBySlug($slug) : null;
+
+        if ($category === null) {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+
+        $this->emitFeed(
+            $format,
+            $this->feeds->categoryChannel($category),
+            $this->feeds->categoryItems($category),
+            $this->permalinks->categoryUrl($category),
+            $this->permalinks->categoryFeedUrl($category, 'atom'),
+            'category_' . $category->id . '|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
+     * Shared caching/conditional-GET/rendering plumbing for feed() and
+     * categoryFeed() — everything past "which channel/items/links" is
+     * identical between a site-wide and a category-scoped feed.
+     *
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     */
+    private function emitFeed(string $format, array $channel, array $items, string $channelLink, string $selfLink, string $etagSeed): void
+    {
         $lastModified = null;
 
         foreach ($items as $item) {
@@ -1017,7 +1077,7 @@ final class SiteController
             }
         }
 
-        $etag = '"' . md5($format . '|' . $this->feeds->itemLimit() . '|' . ($lastModified?->format('c') ?? '')) . '"';
+        $etag = '"' . md5($format . '|' . $etagSeed . '|' . ($lastModified?->format('c') ?? '')) . '"';
 
         $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? trim($_SERVER['HTTP_IF_NONE_MATCH']) : null;
 
@@ -1038,7 +1098,9 @@ final class SiteController
             header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
         }
 
-        echo $format === 'atom' ? $this->renderAtom($channel, $items) : $this->renderRss2($channel, $items);
+        echo $format === 'atom'
+            ? $this->renderAtom($channel, $items, $channelLink, $selfLink)
+            : $this->renderRss2($channel, $items, $channelLink);
 
         do_action('feed_generated', $format);
     }
@@ -1047,7 +1109,7 @@ final class SiteController
      * @param array{title: string, description: string} $channel
      * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
      */
-    private function renderRss2(array $channel, array $items): string
+    private function renderRss2(array $channel, array $items, string $channelLink): string
     {
         $now = new DateTimeImmutable();
 
@@ -1055,7 +1117,7 @@ final class SiteController
         $xml .= '<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">' . "\n";
         $xml .= '<channel>' . "\n";
         $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
-        $xml .= '<link>' . esc_url(home_url()) . '</link>' . "\n";
+        $xml .= '<link>' . esc_url($channelLink) . '</link>' . "\n";
         $xml .= '<description>' . esc_html($channel['description']) . '</description>' . "\n";
         $xml .= '<language>en</language>' . "\n";
         $xml .= '<lastBuildDate>' . $now->format('r') . '</lastBuildDate>' . "\n";
@@ -1101,18 +1163,17 @@ final class SiteController
      * @param array{title: string, description: string} $channel
      * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
      */
-    private function renderAtom(array $channel, array $items): string
+    private function renderAtom(array $channel, array $items, string $channelLink, string $selfLink): string
     {
         $now = new DateTimeImmutable();
-        $feedLink = home_url('feed/atom');
 
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         $xml .= '<feed xmlns="http://www.w3.org/2005/Atom">' . "\n";
         $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
         $xml .= '<subtitle>' . esc_html($channel['description']) . '</subtitle>' . "\n";
-        $xml .= '<id>' . esc_url(home_url()) . '</id>' . "\n";
-        $xml .= '<link rel="self" href="' . esc_url($feedLink) . '"/>' . "\n";
-        $xml .= '<link rel="alternate" href="' . esc_url(home_url()) . '"/>' . "\n";
+        $xml .= '<id>' . esc_url($channelLink) . '</id>' . "\n";
+        $xml .= '<link rel="self" href="' . esc_url($selfLink) . '"/>' . "\n";
+        $xml .= '<link rel="alternate" href="' . esc_url($channelLink) . '"/>' . "\n";
         $xml .= '<updated>' . $now->format('c') . '</updated>' . "\n";
 
         foreach ($items as $item) {

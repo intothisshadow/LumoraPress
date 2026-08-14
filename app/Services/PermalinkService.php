@@ -194,6 +194,28 @@ final class PermalinkService
     }
 
     /**
+     * '/category/{slug}/feed' and '/category/{slug}/feed/{format}' — the
+     * category-scoped counterparts of SiteController::feed()'s '/feed' and
+     * '/feed/{format}'. A trailing '/feed' segment never collides with
+     * categoryRoutePattern() itself, since Router's {slug} placeholder
+     * matches a single path segment ([^/]+), not '/feed' too.
+     */
+    public function categoryFeedRoutePattern(): string
+    {
+        return $this->categoryRoutePattern() . '/feed';
+    }
+
+    public function categoryFeedFormatRoutePattern(): string
+    {
+        return $this->categoryRoutePattern() . '/feed/{format}';
+    }
+
+    public function categoryFeedUrl(Category $category, string $format = 'rss'): string
+    {
+        return $this->categoryUrl($category) . '/feed' . ($format === 'atom' ? '/atom' : '');
+    }
+
+    /**
      * A post with no assigned category, or whose author account was since
      * deleted, still needs a valid, uniquely-resolvable URL under a
      * custom structure that includes %category%/%author% — falling back

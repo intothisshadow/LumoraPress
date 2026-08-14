@@ -77,11 +77,18 @@ final class ThumbnailService
 
     /**
      * @param Closure(string): (array<string, mixed>|false)|null $readExif
-     *     Overrides EXIF reading — defaults to exif_read_data(). Exists so
-     *     tests can exercise orientation handling without needing a real
+     *     Overrides EXIF reading — defaults to exif_read_data() (only when
+     *     the exif extension is actually loaded; shared hosting frequently
+     *     omits it, so the default reader reports "no EXIF data" rather
+     *     than fatally calling an undefined function). Exists so tests can
+     *     exercise orientation handling without needing a real
      *     EXIF-embedded fixture file, the same DI-for-testability pattern
      *     MediaService's $moveUploadedFile and RequirementsCheck's
-     *     $extensionLoaded use.
+     *     $extensionLoaded use. Note that isRotatedByExif()/
+     *     applyExifOrientation() call $readExif directly and must not
+     *     re-gate on function_exists('exif_read_data') themselves — doing
+     *     so would ignore an injected closure whenever the real extension
+     *     isn't loaded, defeating the whole point of injecting one.
      */
     public function __construct(
         private readonly Database $database,
@@ -94,7 +101,8 @@ final class ThumbnailService
         private readonly string $logDirectory,
         ?Closure $readExif = null,
     ) {
-        $this->readExif = $readExif ?? static fn (string $path): array|false => @exif_read_data($path);
+        $this->readExif = $readExif ?? static fn (string $path): array|false =>
+            function_exists('exif_read_data') ? @exif_read_data($path) : false;
     }
 
     /**
@@ -851,7 +859,7 @@ final class ThumbnailService
 
     private function isRotatedByExif(string $path, string $mimeType): bool
     {
-        if ($mimeType !== 'image/jpeg' || !function_exists('exif_read_data')) {
+        if ($mimeType !== 'image/jpeg') {
             return false;
         }
 

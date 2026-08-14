@@ -291,7 +291,8 @@ them via FTP/SFTP or your hosting file manager).
   holds, disallowed-keyword rejection, a `comment_is_spam` filter for
   spam-detection plugins), admin/author email notifications, and avatars
   (Gravatar rating/default, or a locally uploaded default image).
-- **RSS & Atom feeds** — a site-wide feed of published posts.
+- **RSS & Atom feeds** — a site-wide feed of published posts, plus a
+  per-category feed (`/category/{slug}/feed`) for each category.
 - **Search** — full-text search across posts and pages.
 - **User management** — admin-managed accounts and roles, with Trash &
   restore, bulk actions (trash/restore/delete/change role),

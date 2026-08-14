@@ -20,6 +20,7 @@ namespace LumoraPress\Services;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Models\Category;
 use LumoraPress\Models\Post;
 
 /**
@@ -95,6 +96,40 @@ final class FeedService
         $configured = (int) $this->config->option('feed_item_limit', (string) self::DEFAULT_ITEM_LIMIT);
 
         return max(1, min(self::MAX_ITEM_LIMIT, $configured));
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
+    public function categoryChannel(Category $category): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » ' . $category->name,
+            'description' => $category->description,
+        ];
+
+        return $this->hooks->applyFilters('feed_category_channel', $channel, $category);
+    }
+
+    /**
+     * Items for a single category's feed, newest first — same shape as
+     * items(), scoped through PostService::paginateByCategory() (which
+     * already excludes drafts/not-yet-due scheduled posts, same as
+     * paginatePublished() does for the site-wide feed).
+     *
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     */
+    public function categoryItems(Category $category): array
+    {
+        $limit = $this->itemLimit();
+        $fullContent = $this->config->option('feed_full_content', '1') !== '0';
+        $posts = $this->posts->paginateByCategory($category->id, 1, $limit)['posts'];
+
+        return array_map(
+            fn (Post $post): array => $this->buildItem($post, $fullContent),
+            $posts,
+        );
     }
 
     /**

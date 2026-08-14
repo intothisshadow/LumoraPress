@@ -788,7 +788,7 @@ $kernel = new Kernel(
     commentImporter: $commentImporter,
 );
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);
 
 /*
  * LP-078: the post/category/tag patterns are derived from PermalinkService
@@ -808,6 +808,8 @@ $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params))
 $router->get('/preview-page/{id}', fn (array $params) => $site->previewPage($params));
 $router->get('/author/{slug}', fn (array $params) => $site->author($params));
 $router->get($permalinks->categoryRoutePattern(), fn (array $params) => $site->category($params));
+$router->get($permalinks->categoryFeedRoutePattern(), fn (array $params) => $site->categoryFeed($params));
+$router->get($permalinks->categoryFeedFormatRoutePattern(), fn (array $params) => $site->categoryFeed($params));
 $router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));

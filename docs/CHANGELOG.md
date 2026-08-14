@@ -6,6 +6,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Category RSS/Atom feeds (LP-010): every category archive now has its
+  own subscribable feed at `/category/{slug}/feed` (RSS 2.0) and
+  `/category/{slug}/feed/atom` (Atom 1.0), listing just that category's
+  published posts, newest first — the same item shape (excerpt/full
+  content, author, publish date, optional featured-image enclosure) as
+  the existing site-wide `/feed`. Respects the `feeds_enabled`,
+  `feed_item_limit`, `feed_full_content`, `feed_cache_lifetime`, and
+  `feed_featured_images` settings, and the `category_base` permalink
+  option. Filterable via a new `feed_category_channel` hook, alongside
+  the existing `feed_item` hook.
+
 - Discussion settings (comments) for Pages (LP-009): Pages can now
   accept comments, matching Posts — an "Allow comments on this page"
   toggle in the Page editor, threaded guest/signed-in commenting with
@@ -257,6 +268,14 @@ All notable changes to Lumora Press are documented in this file.
   Both the Markdown and WYSIWYG editors now add a `no-lightbox` marker
   when "None" is chosen, genuinely producing a plain, non-clickable
   image; choosing "Media File" is unaffected.
+- Thumbnail generation never corrected an image's orientation from its
+  EXIF data on any server without the PHP `exif` extension installed —
+  common on budget shared hosting — silently producing sideways or
+  upside-down thumbnails for photos straight off a phone or camera
+  instead of failing loudly. `ThumbnailService` checked whether the real
+  `exif_read_data()` function existed before ever consulting its EXIF
+  reader, even when a reader had been supplied directly; that guard now
+  only applies to the built-in reader, not a supplied one.
 
 ## [0.6.0] — 2026-08-10
 
