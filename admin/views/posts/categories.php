@@ -54,23 +54,88 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
             exit;
         }
-    } elseif ($form === 'delete') {
+    } elseif ($form === 'trash') {
         $id = (int) ($_POST['id'] ?? 0);
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-        if (!Csrf::verify('category_delete_' . $id, $token)) {
+        if (!Csrf::verify('category_trash_' . $id, $token)) {
             header('Location: ' . admin_url('posts/categories'));
             exit;
         }
 
         if ($canDeleteCategories && $id > 0) {
+            $categoryService->trash($id);
+        }
+
+        header('Location: ' . admin_url('posts/categories') . '?trashed=1');
+        exit;
+    } elseif ($form === 'restore_category') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('category_restore_' . $id, $token)) {
+            header('Location: ' . admin_url('posts/categories'));
+            exit;
+        }
+
+        if ($canDeleteCategories && $id > 0) {
+            $categoryService->restore($id);
+        }
+
+        header('Location: ' . admin_url('posts/categories') . '?status=trash&category_restored=1');
+        exit;
+    } elseif ($form === 'delete_permanently') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('category_delete_permanently_' . $id, $token)) {
+            header('Location: ' . admin_url('posts/categories'));
+            exit;
+        }
+
+        $existing = $id > 0 ? $categoryService->findById($id) : null;
+
+        // Permanent delete is only offered (and only honoured) for
+        // categories already in the Trash — Move to Trash is the only
+        // reachable path to actually removing a category from the "All"
+        // view, the same "delete means trash first" guardrail
+        // admin/views/pages/all-pages.php enforces.
+        if ($existing !== null && $existing->isTrashed() && $canDeleteCategories) {
             $categoryService->delete($id);
         }
 
-        header('Location: ' . admin_url('posts/categories'));
+        header('Location: ' . admin_url('posts/categories') . '?status=trash&category_deleted=1');
+        exit;
+    } elseif ($form === 'bulk_action' && Csrf::verify('categories_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $bulkAction = (string) ($_POST['bulk_action'] ?? '');
+        $ids = array_values(array_filter(array_map('intval', is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : [])));
+        $mergeTargetId = (int) ($_POST['merge_target_id'] ?? 0);
+
+        if ($canDeleteCategories) {
+            foreach ($ids as $id) {
+                if ($bulkAction === 'trash') {
+                    $categoryService->trash($id);
+                } elseif ($bulkAction === 'restore') {
+                    $categoryService->restore($id);
+                } elseif ($bulkAction === 'delete_permanently') {
+                    $existing = $categoryService->findById($id);
+
+                    if ($existing !== null && $existing->isTrashed()) {
+                        $categoryService->delete($id);
+                    }
+                } elseif ($bulkAction === 'merge' && $mergeTargetId > 0 && $id !== $mergeTargetId) {
+                    $categoryService->merge($id, $mergeTargetId);
+                }
+            }
+        }
+
+        header('Location: ' . admin_url('posts/categories') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
         exit;
     }
 }
+
+$statusFilter = (string) ($_GET['status'] ?? '');
+$isTrashView = $statusFilter === 'trash';
 
 $action = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
 $editingId = isset($_GET['id']) ? (int) $_GET['id'] : null;
@@ -79,7 +144,7 @@ $editingCategory = null;
 if ($action === 'edit') {
     $editingCategory = $editingId !== null ? $categoryService->findById($editingId) : null;
 
-    if ($editingCategory === null) {
+    if ($editingCategory === null || $editingCategory->isTrashed()) {
         header('Location: ' . admin_url('posts/categories') . '?error=forbidden');
         exit;
     }
@@ -93,6 +158,18 @@ if ($action === 'edit') {
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Category saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trashed'])): ?>
+    <div class="lp-alert lp-alert--success">Category moved to Trash.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['category_restored'])): ?>
+    <div class="lp-alert lp-alert--success">Category restored.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['category_deleted'])): ?>
+    <div class="lp-alert lp-alert--success">Category permanently deleted.</div>
 <?php endif; ?>
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
@@ -147,49 +224,153 @@ if ($action === 'edit') {
 <?php else: ?>
     <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('posts/categories')) ?>?action=new">Add New Category</a></p>
 
-    <?php $rows = $categoryService->listAllWithPostCounts(); ?>
+    <?php
+    $trashedCount = $categoryService->trashedCount();
+    $statusLinks = ['' => 'All', 'trash' => 'Trash (' . $trashedCount . ')'];
+    $rows = $isTrashView ? $categoryService->listTrashedWithPostCounts() : $categoryService->listAllWithPostCounts();
+    ?>
+
+    <p class="lp-admin__filters">
+        <?php foreach ($statusLinks as $value => $label): ?>
+            <a
+                href="<?= esc_url(admin_url('posts/categories')) ?><?= $value !== '' ? '?status=' . esc_attr($value) : '' ?>"
+                class="<?= $statusFilter === $value ? 'is-active' : '' ?>"
+            ><?= esc_html($label) ?></a>
+        <?php endforeach; ?>
+    </p>
 
     <section class="lp-admin__panel">
         <?php if ($rows === []): ?>
-            <p class="lp-admin__widget-placeholder">No categories yet.</p>
+            <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No categories yet.' ?></p>
         <?php else: ?>
-            <table class="lp-table">
-                <thead>
-                    <tr>
-                        <th scope="col">Name</th>
-                        <th scope="col">Slug</th>
-                        <th scope="col">Parent</th>
-                        <th scope="col">Posts</th>
-                        <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($rows as $row): ?>
-                        <?php
-                        $listedCategory = $row['category'];
-                        $parentCategory = $listedCategory->parentId !== null ? $categoryService->findById($listedCategory->parentId) : null;
-                        ?>
+            <form id="categories-bulk-form" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" data-lp-bulk-form>
+                <?= Csrf::field('categories_bulk_action') ?>
+                <input type="hidden" name="form" value="bulk_action">
+                <?php if ($statusFilter !== ''): ?>
+                    <input type="hidden" name="status" value="<?= esc_attr($statusFilter) ?>">
+                <?php endif; ?>
+
+                <?php if ($canDeleteCategories): ?>
+                    <p class="lp-admin__bulk-actions">
+                        <label class="lp-visually-hidden" for="categories-bulk-action">Bulk action</label>
+                        <select id="categories-bulk-action" name="bulk_action">
+                            <option value="">Bulk actions</option>
+                            <?php if ($isTrashView): ?>
+                                <option value="restore">Restore</option>
+                                <option value="delete_permanently">Delete Permanently</option>
+                            <?php else: ?>
+                                <option value="trash">Move to Trash</option>
+                                <option value="merge">Merge into&hellip;</option>
+                            <?php endif; ?>
+                        </select>
+                        <?php if (!$isTrashView): ?>
+                            <label class="lp-visually-hidden" for="categories-merge-target">Merge target</label>
+                            <select id="categories-merge-target" name="merge_target_id">
+                                <option value="0">(select a category to merge into)</option>
+                                <?php foreach ($categoryService->listAll() as $mergeTargetOption): ?>
+                                    <option value="<?= (int) $mergeTargetOption->id ?>"><?= esc_html($mergeTargetOption->name) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php endif; ?>
+                        <button type="submit" class="lp-button lp-button--secondary">Apply</button>
+                    </p>
+                <?php endif; ?>
+
+                <table class="lp-table">
+                    <thead>
                         <tr>
-                            <td>
-                                <a href="<?= esc_url(admin_url('posts/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
-                            </td>
-                            <td><?= esc_html($listedCategory->slug) ?></td>
-                            <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
-                            <td><?= (int) $row['postCount'] ?></td>
-                            <td>
-                                <?php if ($canDeleteCategories): ?>
-                                    <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" data-lp-confirm="Delete this category permanently? Child categories will be kept but become top-level.">
-                                        <?= Csrf::field('category_delete_' . $listedCategory->id) ?>
-                                        <input type="hidden" name="form" value="delete">
-                                        <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>">
-                                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
-                                    </form>
-                                <?php endif; ?>
-                            </td>
+                            <?php if ($canDeleteCategories): ?>
+                                <th scope="col">
+                                    <label class="lp-visually-hidden" for="categories-select-all">Select all</label>
+                                    <input type="checkbox" id="categories-select-all" data-lp-select-all="category_ids[]" data-lp-select-all-scope="table">
+                                </th>
+                            <?php endif; ?>
+                            <th scope="col">Name</th>
+                            <th scope="col">Slug</th>
+                            <th scope="col">Parent</th>
+                            <th scope="col">Posts</th>
+                            <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($rows as $row): ?>
+                            <?php
+                            $listedCategory = $row['category'];
+                            $parentCategory = $listedCategory->parentId !== null ? $categoryService->findById($listedCategory->parentId) : null;
+                            ?>
+                            <tr>
+                                <?php if ($canDeleteCategories): ?>
+                                    <td>
+                                        <label class="lp-visually-hidden" for="category-select-<?= (int) $listedCategory->id ?>">Select "<?= esc_html($listedCategory->name) ?>"</label>
+                                        <input type="checkbox" id="category-select-<?= (int) $listedCategory->id ?>" name="category_ids[]" value="<?= (int) $listedCategory->id ?>">
+                                    </td>
+                                <?php endif; ?>
+                                <td>
+                                    <?php if ($isTrashView): ?>
+                                        <?= esc_html($listedCategory->name) ?>
+                                    <?php else: ?>
+                                        <a href="<?= esc_url(admin_url('posts/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?= esc_html($listedCategory->slug) ?></td>
+                                <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
+                                <td><?= (int) $row['postCount'] ?></td>
+                                <td class="lp-admin__row-actions">
+                                    <?php if ($canDeleteCategories): ?>
+                                        <?php if ($isTrashView): ?>
+                                            <?php $restoreFormId = 'category-restore-form-' . $listedCategory->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_restore_' . $listedCategory->id)) ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                                <input type="hidden" name="form" value="restore_category" form="<?= esc_attr($restoreFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($restoreFormId) ?>">Restore</button>
+                                            </span>
+                                            <?php $deletePermFormId = 'category-delete-permanently-form-' . $listedCategory->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_delete_permanently_' . $listedCategory->id)) ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="form" value="delete_permanently" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deletePermFormId) ?>" data-lp-confirm="Permanently delete this category? Child categories will be kept but become top-level. This cannot be undone.">Delete Permanently</button>
+                                            </span>
+                                        <?php else: ?>
+                                            <?php $trashFormId = 'category-trash-form-' . $listedCategory->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_trash_' . $listedCategory->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="form" value="trash" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($trashFormId) ?>" data-lp-confirm="Move this category to the Trash?">Trash</button>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </form>
+
+            <?php
+            /*
+             * Out-of-band target forms for each row's Trash/Restore/Delete
+             * Permanently button above — standalone, empty <form>s the
+             * buttons point at via the HTML `form=""` attribute, since a
+             * <form> can't nest inside categories-bulk-form (same LP-068
+             * nested-form fix admin/views/pages/all-pages.php uses).
+             */
+            if ($canDeleteCategories):
+                foreach ($rows as $row):
+                    $listedCategory = $row['category'];
+                    ?>
+                    <?php if ($isTrashView): ?>
+                        <form id="category-restore-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
+                        <form id="category-delete-permanently-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
+                    <?php else: ?>
+                        <form id="category-trash-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
+                    <?php endif; ?>
+                    <?php
+                endforeach;
+            endif;
+            ?>
         <?php endif; ?>
     </section>
 <?php endif; ?>

@@ -275,7 +275,10 @@ them via FTP/SFTP or your hosting file manager).
   a fixed-palette font color, blockquotes, and an Attachment Display
   Settings step (size, link-to) when inserting media.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
-  pages.
+  pages. Categories support Trash with restore, Merge (moves a
+  category's posts and child categories into another before removing
+  it), and bulk actions (Move to Trash / Restore / Delete Permanently /
+  Merge), matching Posts/Pages where applicable.
 - **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the
   post URL structure (Post name, Day and name, Month and name, or a
   custom token-based pattern) and rename the Category/Tag archive URL

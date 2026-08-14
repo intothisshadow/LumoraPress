@@ -6,6 +6,18 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Merge categories (LP-010): a new "Merge into…" bulk action on the
+  admin Categories list moves every post from the selected source
+  categories to a chosen target category (without duplicating a post
+  already in both), reparents the sources' child categories onto the
+  target, and removes the source categories.
+- Trash with restore, and bulk management, for Categories (LP-010): the
+  admin Categories list gained a Trash tab and checkbox-driven bulk
+  actions (Move to Trash / Restore / Delete Permanently), matching the
+  existing Posts/Pages pattern. A trashed category disappears from
+  every public archive, feed, sitemap, category picker, and the REST
+  API, but stays recoverable until permanently deleted (only offered
+  once already in the Trash).
 - Category RSS/Atom feeds (LP-010): every category archive now has its
   own subscribable feed at `/category/{slug}/feed` (RSS 2.0) and
   `/category/{slug}/feed/atom` (Atom 1.0), listing just that category's

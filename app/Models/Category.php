@@ -29,6 +29,12 @@ final class Category
         public readonly ?int $parentId,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
+        public readonly ?DateTimeImmutable $trashedAt = null,
     ) {
+    }
+
+    public function isTrashed(): bool
+    {
+        return $this->trashedAt !== null;
     }
 }
