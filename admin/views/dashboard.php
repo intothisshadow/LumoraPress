@@ -111,7 +111,7 @@ if ($currentUser->can('manage_options')) {
                     <li>
                         <span>
                             <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $row['comment']->id ?>">
-                                <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['postTitle']) ?>&rdquo;
+                                <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['contentTitle']) ?>&rdquo;
                             </a>
                         </span>
                         <span><?= esc_html($row['comment']->status->label()) ?></span>

@@ -30,6 +30,18 @@ namespace LumoraPress\Core\Widgets;
  */
 final class WidgetManager
 {
+    /**
+     * Reserved pseudo-sidebar id for widgets removed from a real sidebar
+     * (LP-048 "inactive widgets") — deactivating a widget moves it here
+     * instead of deleting it outright, preserving its settings until it's
+     * either reactivated into a sidebar or deleted permanently. Deliberately
+     * not registered via registerSidebar(), so it never appears in
+     * sidebars() and no theme can accidentally dynamic_sidebar() it; the
+     * widget assignment storage keyed by sidebar id already accepts any
+     * string key, so this bucket needs no other special-casing here.
+     */
+    public const INACTIVE_SIDEBAR_ID = '__lp_inactive_widgets__';
+
     /** @var array<string, array{name: string, description: string}> */
     private array $sidebars = [];
 

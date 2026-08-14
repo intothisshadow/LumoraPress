@@ -2,15 +2,19 @@
  * Native HTML5 drag-and-drop reordering, shared by the Appearance >
  * Widgets and Appearance > Menus screens (LP-048/LP-049) — a generic
  * counterpart to folder-drag-drop.js's single-purpose reparenting drag.
- * Reuses one pre-rendered, CSRF-protected "reposition" form per group
- * rather than a new AJAX/JSON endpoint: on drop, this script only fills
- * in that form's hidden dragged/target/position fields and calls
- * requestSubmit(), so the actual reorder is a normal full-page-reload
- * POST through the same server-side validation every other action on
- * these pages already goes through — the same "full reload is expected
- * anyway" trade-off folder-drag-drop.js's own docblock makes.
  *
- * Markup contract:
+ * Two persistence modes, both driven by the same drag detection:
+ *
+ * Form mode (original, still the default) reuses one pre-rendered,
+ * CSRF-protected "reposition" form per group rather than a new AJAX/JSON
+ * endpoint: on drop, this script only fills in that form's hidden
+ * dragged/target/position fields and calls requestSubmit(), so the actual
+ * reorder is a normal full-page-reload POST through the same server-side
+ * validation every other action on these pages already goes through — the
+ * same "full reload is expected anyway" trade-off folder-drag-drop.js's
+ * own docblock makes.
+ *
+ * Markup contract (form mode):
  *   <ANY data-lp-sortable-group>
  *     <LI data-lp-sortable-item data-lp-sortable-id="123" data-lp-sortable-parent="optional-group-id">
  *       <... data-lp-drag-handle>drag me</...>
@@ -23,6 +27,34 @@
  *     </form>
  *   </ANY>
  *
+ * AJAX mode (LP-083, opt-in via data-lp-sortable-ajax-url) is for the Post/
+ * Page editor sidebars, where the surrounding form is the entire post/page
+ * being edited — a full-page-reload submit on every drag would risk
+ * discarding unsaved edits. In this mode there is no reposition form: this
+ * script itself moves the dragged box's DOM node (there is no reload to
+ * show a server-computed order), then POSTs the resulting full box order
+ * plus which boxes are currently collapsed via fetch(), so a drag and a
+ * collapse/expand toggle both send one consistent snapshot rather than
+ * racing each other with partial state.
+ *
+ * Markup contract (AJAX mode):
+ *   <ANY data-lp-sortable-group
+ *        data-lp-sortable-ajax-url="..."
+ *        data-lp-sortable-ajax-csrf="..."
+ *        data-lp-editor-screen-type="post|page">
+ *     <DIV data-lp-sortable-item data-lp-sortable-id="publish" class="lp-sidebar-box ...">
+ *       <... data-lp-drag-handle>drag me</...>
+ *       <... data-lp-sidebar-box-toggle>collapse/expand</...>  (optional)
+ *     </DIV>
+ *     ...
+ *   </ANY>
+ * The POST body is { form: 'save_editor_layout', screen_type, csrf_token,
+ * order[], collapsed[] } — see admin/views/partials/editor-layout-save.php.
+ * data-lp-sortable-ajax-csrf is refreshed from the JSON response after
+ * every call, since Csrf::verify() (app/Core/Security/Csrf.php) is
+ * single-use — the same refresh pattern content-editor.js's upload flow
+ * already uses.
+ *
  * data-lp-sortable-parent is optional — when present on both the dragged
  * item and a candidate drop target, they must match for the drop to be
  * allowed. This is what keeps a nested menu's drag-and-drop scoped to
@@ -30,41 +62,118 @@
  * sibling-only semantics exactly) — dragging an item onto a row that
  * belongs to a different parent is silently refused rather than
  * re-parenting it, since re-parenting stays the "Parent Item" dropdown's
- * job. Widgets lists omit data-lp-sortable-parent entirely, so every item
- * is a valid drop target for every other (undefined matches undefined).
+ * job. Widgets lists and the editor sidebar omit data-lp-sortable-parent
+ * entirely, so every item is a valid drop target for every other
+ * (undefined matches undefined).
  */
 (function () {
     'use strict';
+
+    function clearIndicators(group) {
+        group.querySelectorAll('.lp-sortable__item--drop-before, .lp-sortable__item--drop-after').forEach(function (el) {
+            el.classList.remove('lp-sortable__item--drop-before', 'lp-sortable__item--drop-after');
+        });
+    }
+
+    function sameGroup(a, b) {
+        return (a.dataset.lpSortableParent || null) === (b.dataset.lpSortableParent || null);
+    }
+
+    /**
+     * The current on-screen box order and collapsed-box set for an AJAX-mode
+     * group, read straight from the DOM — the source of truth for what to
+     * persist is whatever the user currently sees, not any prior server
+     * response.
+     */
+    function readState(group) {
+        var order = [];
+        var collapsed = [];
+
+        group.querySelectorAll('[data-lp-sortable-item]').forEach(function (item) {
+            var id = item.dataset.lpSortableId;
+
+            if (!id) {
+                return;
+            }
+
+            order.push(id);
+
+            if (item.classList.contains('lp-sidebar-box--collapsed')) {
+                collapsed.push(id);
+            }
+        });
+
+        return { order: order, collapsed: collapsed };
+    }
+
+    function persistState(group) {
+        var url = group.dataset.lpSortableAjaxUrl;
+
+        if (!url) {
+            return;
+        }
+
+        var state = readState(group);
+        var body = new URLSearchParams();
+        body.set('form', 'save_editor_layout');
+        body.set('screen_type', group.dataset.lpEditorScreenType || '');
+        body.set('csrf_token', group.dataset.lpSortableAjaxCsrf || '');
+        state.order.forEach(function (id) {
+            body.append('order[]', id);
+        });
+        state.collapsed.forEach(function (id) {
+            body.append('collapsed[]', id);
+        });
+
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (json) {
+                if (json && typeof json.csrfToken === 'string') {
+                    group.dataset.lpSortableAjaxCsrf = json.csrfToken;
+                }
+            })
+            .catch(function (error) {
+                // A UI-preference save failing isn't worth interrupting the
+                // editor for — worst case the layout just reverts to its
+                // previous saved state next visit, while the drag/collapse
+                // the user just did still visually applied.
+                console.error('Failed to save editor sidebar layout.', error);
+            });
+    }
 
     document.addEventListener('DOMContentLoaded', function () {
         var groups = document.querySelectorAll('[data-lp-sortable-group]');
 
         groups.forEach(function (group) {
-            var form = group.querySelector('[data-lp-sortable-reposition-form]');
+            var ajaxUrl = group.dataset.lpSortableAjaxUrl;
+            var form = null;
+            var draggedField = null;
+            var targetField = null;
+            var positionField = null;
 
-            if (!form) {
-                return;
-            }
+            if (!ajaxUrl) {
+                form = group.querySelector('[data-lp-sortable-reposition-form]');
 
-            var draggedField = form.querySelector('[data-lp-sortable-field="dragged_id"]');
-            var targetField = form.querySelector('[data-lp-sortable-field="target_id"]');
-            var positionField = form.querySelector('[data-lp-sortable-field="position"]');
+                if (!form) {
+                    return;
+                }
 
-            if (!draggedField || !targetField || !positionField) {
-                return;
+                draggedField = form.querySelector('[data-lp-sortable-field="dragged_id"]');
+                targetField = form.querySelector('[data-lp-sortable-field="target_id"]');
+                positionField = form.querySelector('[data-lp-sortable-field="position"]');
+
+                if (!draggedField || !targetField || !positionField) {
+                    return;
+                }
             }
 
             var draggedItem = null;
-
-            function clearIndicators() {
-                group.querySelectorAll('.lp-sortable__item--drop-before, .lp-sortable__item--drop-after').forEach(function (el) {
-                    el.classList.remove('lp-sortable__item--drop-before', 'lp-sortable__item--drop-after');
-                });
-            }
-
-            function sameGroup(a, b) {
-                return (a.dataset.lpSortableParent || null) === (b.dataset.lpSortableParent || null);
-            }
 
             group.querySelectorAll('[data-lp-sortable-item]').forEach(function (item) {
                 var handle = item.querySelector('[data-lp-drag-handle]');
@@ -90,7 +199,7 @@
                 handle.addEventListener('dragend', function () {
                     item.classList.remove('lp-sortable--dragging');
                     draggedItem = null;
-                    clearIndicators();
+                    clearIndicators(group);
                 });
 
                 item.addEventListener('dragover', function (event) {
@@ -103,7 +212,7 @@
                     var rect = item.getBoundingClientRect();
                     var before = (event.clientY - rect.top) < rect.height / 2;
 
-                    clearIndicators();
+                    clearIndicators(group);
                     item.classList.add(before ? 'lp-sortable__item--drop-before' : 'lp-sortable__item--drop-after');
                 });
 
@@ -117,11 +226,32 @@
                     var rect = item.getBoundingClientRect();
                     var before = (event.clientY - rect.top) < rect.height / 2;
 
+                    if (ajaxUrl) {
+                        item.parentNode.insertBefore(draggedItem, before ? item : item.nextSibling);
+                        persistState(group);
+                        return;
+                    }
+
                     draggedField.value = draggedItem.dataset.lpSortableId;
                     targetField.value = item.dataset.lpSortableId;
                     positionField.value = before ? 'before' : 'after';
                     form.requestSubmit();
                 });
+            });
+        });
+
+        document.querySelectorAll('[data-lp-sidebar-box-toggle]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var box = button.closest('[data-lp-sortable-item]');
+                var group = button.closest('[data-lp-sortable-group]');
+
+                if (!box || !group) {
+                    return;
+                }
+
+                var collapsed = box.classList.toggle('lp-sidebar-box--collapsed');
+                button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                persistState(group);
             });
         });
     });

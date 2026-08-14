@@ -56,9 +56,10 @@ a clear, specific message if something is missing (`LumoraPress\Core\Requirement
 ```
 LumoraPress/
 ├── admin/          Admin area (dashboard, settings, etc.) — reached via /admin
+├── assets/         Framework-owned static JS/CSS themes depend on but don't vendor themselves
 ├── app/
 │   ├── Core/        Framework internals (database, hooks, security, theming, routing)
-│   ├── Controllers/ Front-end request handlers
+│   ├── Controllers/ Front-end and admin request handlers
 │   ├── Models/       Plain data/domain objects (User, UserRole, ...)
 │   ├── Services/     Business logic (UserService, MediaService, ...)
 │   └── Views/         Reserved for future server-rendered app views
@@ -198,14 +199,28 @@ overwritten.
    new version took effect. If anything goes wrong after the backup, it
    automatically restores the files and database from that backup.
 
+Every download, validation, and install step shows live, step-by-step
+progress on the Updates page while it runs (e.g. Backing up files &rarr;
+Backing up database &rarr; Applying update files &rarr; Running database
+migrations), rather than leaving the page blank until it finishes — a
+failed step is shown distinctly from a completed one, so the actual
+point of failure stays visible.
+
+Every download, validation, and install step shows live, step-by-step
+progress on the Updates page while it runs (e.g. Backing up files &rarr;
+Backing up database &rarr; Applying update files &rarr; Running database
+migrations), rather than leaving the page blank until it finishes — a
+failed step is shown distinctly from a completed one, so the actual
+point of failure stays visible.
+
 Every attempt (success, failure, or rollback) is recorded in the
 `{prefix}update_log` table, tagged with its source (`github` or `manual`),
 and listed on the Updates page. Only `app/`,
 `admin/`, `include/`, `install/`, `docs/`, the default theme, the bundled
-Font Awesome plugin (`content/plugins/font-awesome`), and the root PHP
-files are ever replaced — `config/`, `content/uploads/`, any
-user-installed plugin, any theme other than the default, and `storage/`
-are never touched.
+Font Awesome and Dummy Content plugins (`content/plugins/font-awesome`,
+`content/plugins/dummy-content`), and the root PHP files are ever
+replaced — `config/`, `content/uploads/`, any user-installed plugin, any
+theme other than the default, and `storage/` are never touched.
 `install/` is deleted again automatically once the update succeeds (the
 same best-effort cleanup the installer itself performs), so a package that
 ships it doesn't leave it lying around on disk. If a future release drops
@@ -250,21 +265,25 @@ them via FTP/SFTP or your hosting file manager).
   actions (including change author/category/visibility), duplicate,
   custom fields, preview, author archives, categories and tags,
   revision history.
-- **Pages** — static pages with parent/child relationships and revision
-  history.
+- **Pages** — static pages with parent/child relationships, a
+  drag-and-drop-reorderable tree view, drafts/scheduling/pending
+  review, Private pages, comments, Trash & restore, bulk actions,
+  duplicate, Quick Edit, search & filtering, preview, breadcrumbs, and
+  revision history.
 - **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
-  best-effort conversion between formats, text/image alignment, and an
-  Attachment Display Settings step (size, link-to) when inserting media.
+  best-effort conversion between formats, text/image alignment, underline,
+  a fixed-palette font color, blockquotes, and an Attachment Display
+  Settings step (size, link-to) when inserting media.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages.
 - **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the
   post URL structure (Post name, Day and name, Month and name, or a
   custom token-based pattern) and rename the Category/Tag archive URL
   prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`.
-- **Comments** — threaded discussion with moderation (including bulk
-  approve/spam/trash/delete), honeypot/CSRF/submission-timing spam
-  protection, and optional Akismet spam-checking (Settings &rsaquo;
-  Security — off by default, never required).
+- **Comments** — threaded discussion on both Posts and Pages, with
+  moderation (including bulk approve/spam/trash/delete), honeypot/CSRF/
+  submission-timing spam protection, and optional Akismet spam-checking
+  (Settings &rsaquo; Security — off by default, never required).
 - **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
   for comment defaults (required name/email, registered-only commenting,
   auto-close after N days, cookie-remembered guest info, threading depth,

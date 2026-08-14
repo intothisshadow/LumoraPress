@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Comment CRUD, moderation, and the public comment tree for a post.
+ * Comment CRUD, moderation, and the public comment tree for a post or page.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -25,7 +25,7 @@ use LumoraPress\Models\CommentStatus;
 use RuntimeException;
 
 /**
- * Comment CRUD, moderation, and the public comment tree for a post.
+ * Comment CRUD, moderation, and the public comment tree for a post or page.
  *
  * Commenter identity is denormalized onto the comment row itself
  * (guest_name/guest_email/guest_url) rather than joined from
@@ -55,8 +55,13 @@ final class CommentService
     ) {
     }
 
+    /**
+     * Exactly one of $postId/$pageId should be passed — see Comment's
+     * own docblock for why this is a nullable pair rather than a
+     * polymorphic content_id/content_type column.
+     */
     public function create(
-        int $postId,
+        ?int $postId,
         ?int $parentId,
         ?int $userId,
         string $guestName,
@@ -66,15 +71,17 @@ final class CommentService
         CommentStatus $status,
         ?string $ipAddress,
         ?string $userAgent,
+        ?int $pageId = null,
     ): Comment {
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (post_id, parent_id, user_id, guest_name, guest_email, guest_url, content, status, ip_address, user_agent, created_at, updated_at)
-             VALUES (:post_id, :parent_id, :user_id, :guest_name, :guest_email, :guest_url, :content, :status, :ip_address, :user_agent, :created_at, :updated_at)',
+                (post_id, page_id, parent_id, user_id, guest_name, guest_email, guest_url, content, status, ip_address, user_agent, created_at, updated_at)
+             VALUES (:post_id, :page_id, :parent_id, :user_id, :guest_name, :guest_email, :guest_url, :content, :status, :ip_address, :user_agent, :created_at, :updated_at)',
             [
                 'post_id' => $postId,
+                'page_id' => $pageId,
                 'parent_id' => $parentId,
                 'user_id' => $userId,
                 'guest_name' => $guestName,
@@ -179,11 +186,24 @@ final class CommentService
     }
 
     /**
+     * Mirrors countForPost() exactly, for Pages.
+     */
+    public function countForPage(int $pageId, CommentStatus $status = CommentStatus::Approved): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE page_id = :page_id AND status = :status',
+            ['page_id' => $pageId, 'status' => $status->value],
+        );
+    }
+
+    /**
      * All comments for the admin moderation screen, newest first, each
-     * paired with the title/slug of the post it belongs to (one JOIN
-     * rather than one lookup per row).
+     * paired with the title/slug of whichever post or page it belongs
+     * to (one LEFT JOIN per content type rather than one lookup per
+     * row — LEFT, not INNER, since exactly one of post_id/page_id is
+     * ever set per comment, see Comment's own docblock).
      *
-     * @return array{comments: array<int, array{comment: Comment, postTitle: string, postSlug: string}>, total: int, page: int, perPage: int, totalPages: int}
+     * @return array{comments: array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}>, total: int, page: int, perPage: int, totalPages: int}
      */
     public function paginateForAdmin(int $page = 1, int $perPage = 20, ?CommentStatus $statusFilter = null): array
     {
@@ -201,9 +221,10 @@ final class CommentService
         $offset = ($page - 1) * $perPage;
 
         $rows = $this->database->fetchAll(
-            'SELECT c.*, p.title AS post_title, p.slug AS post_slug
+            'SELECT c.*, p.title AS post_title, p.slug AS post_slug, pg.title AS page_title, pg.slug AS page_slug
                FROM ' . $this->table() . ' c
-               INNER JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->pagesTable() . ' pg ON pg.id = c.page_id
                ' . $where . '
               ORDER BY c.created_at DESC, c.id DESC
               LIMIT ' . (int) $perPage . ' OFFSET ' . (int) $offset,
@@ -211,7 +232,7 @@ final class CommentService
         );
 
         return [
-            'comments' => array_map($this->hydrateWithPost(...), $rows),
+            'comments' => array_map($this->hydrateWithContent(...), $rows),
             'total' => $total,
             'page' => $page,
             'perPage' => $perPage,
@@ -220,19 +241,20 @@ final class CommentService
     }
 
     /**
-     * @return array<int, array{comment: Comment, postTitle: string, postSlug: string}>
+     * @return array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}>
      */
     public function recentForAdmin(int $limit = 5): array
     {
         $rows = $this->database->fetchAll(
-            'SELECT c.*, p.title AS post_title, p.slug AS post_slug
+            'SELECT c.*, p.title AS post_title, p.slug AS post_slug, pg.title AS page_title, pg.slug AS page_slug
                FROM ' . $this->table() . ' c
-               INNER JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->pagesTable() . ' pg ON pg.id = c.page_id
               ORDER BY c.created_at DESC, c.id DESC
               LIMIT ' . (int) $limit,
         );
 
-        return array_map($this->hydrateWithPost(...), $rows);
+        return array_map($this->hydrateWithContent(...), $rows);
     }
 
     /**
@@ -241,21 +263,22 @@ final class CommentService
      * includes every status for moderators, this must never surface a
      * pending/spam/trashed comment to public site visitors.
      *
-     * @return array<int, array{comment: Comment, postTitle: string, postSlug: string}>
+     * @return array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}>
      */
     public function recentApproved(int $limit = 5): array
     {
         $rows = $this->database->fetchAll(
-            'SELECT c.*, p.title AS post_title, p.slug AS post_slug
+            'SELECT c.*, p.title AS post_title, p.slug AS post_slug, pg.title AS page_title, pg.slug AS page_slug
                FROM ' . $this->table() . ' c
-               INNER JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
+               LEFT JOIN ' . $this->pagesTable() . ' pg ON pg.id = c.page_id
               WHERE c.status = :status
               ORDER BY c.created_at DESC, c.id DESC
               LIMIT ' . (int) $limit,
             ['status' => CommentStatus::Approved->value],
         );
 
-        return array_map($this->hydrateWithPost(...), $rows);
+        return array_map($this->hydrateWithContent(...), $rows);
     }
 
     /**
@@ -272,6 +295,25 @@ final class CommentService
                 WHERE post_id = :post_id AND status = :status
              ORDER BY created_at ASC, id ASC',
             ['post_id' => $postId, 'status' => CommentStatus::Approved->value],
+        );
+
+        $comments = array_map($this->hydrate(...), $rows);
+
+        return $this->buildTree($comments, null);
+    }
+
+    /**
+     * Mirrors publicTreeForPost() exactly, for Pages.
+     *
+     * @return array<int, array{comment: Comment, children: array<mixed>}>
+     */
+    public function publicTreeForPage(int $pageId): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . '
+                WHERE page_id = :page_id AND status = :status
+             ORDER BY created_at ASC, id ASC',
+            ['page_id' => $pageId, 'status' => CommentStatus::Approved->value],
         );
 
         $comments = array_map($this->hydrate(...), $rows);
@@ -304,6 +346,43 @@ final class CommentService
                 WHERE post_id = :post_id AND status = :status
              ORDER BY created_at {$direction}, id {$direction}",
             ['post_id' => $postId, 'status' => CommentStatus::Approved->value],
+        );
+
+        $comments = array_map($this->hydrate(...), $rows);
+
+        $entries = $threaded
+            ? $this->buildTree($comments, null)
+            : array_map(static fn (Comment $comment): array => ['comment' => $comment, 'children' => []], $comments);
+
+        $total = count($entries);
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $totalPages);
+
+        return [
+            'comments' => array_slice($entries, ($page - 1) * $perPage, $perPage),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
+        ];
+    }
+
+    /**
+     * Mirrors paginateForPost() exactly, for Pages.
+     *
+     * @return array{comments: array<int, array{comment: Comment, children: array<mixed>}>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateForPage(int $pageId, int $page = 1, int $perPage = 50, string $order = 'asc', bool $threaded = true): array
+    {
+        $direction = strtolower($order) === 'desc' ? 'DESC' : 'ASC';
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . "
+                WHERE page_id = :page_id AND status = :status
+             ORDER BY created_at {$direction}, id {$direction}",
+            ['page_id' => $pageId, 'status' => CommentStatus::Approved->value],
         );
 
         $comments = array_map($this->hydrate(...), $rows);
@@ -392,7 +471,7 @@ final class CommentService
     {
         return new Comment(
             id: (int) $row['id'],
-            postId: (int) $row['post_id'],
+            postId: $row['post_id'] !== null ? (int) $row['post_id'] : null,
             parentId: $row['parent_id'] !== null ? (int) $row['parent_id'] : null,
             userId: $row['user_id'] !== null ? (int) $row['user_id'] : null,
             guestName: (string) $row['guest_name'],
@@ -404,19 +483,23 @@ final class CommentService
             userAgent: $row['user_agent'] !== null ? (string) $row['user_agent'] : null,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+            pageId: isset($row['page_id']) && $row['page_id'] !== null ? (int) $row['page_id'] : null,
         );
     }
 
     /**
      * @param array<string, mixed> $row
-     * @return array{comment: Comment, postTitle: string, postSlug: string}
+     * @return array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}
      */
-    private function hydrateWithPost(array $row): array
+    private function hydrateWithContent(array $row): array
     {
+        $isPage = $row['page_id'] !== null;
+
         return [
             'comment' => $this->hydrate($row),
-            'postTitle' => (string) $row['post_title'],
-            'postSlug' => (string) $row['post_slug'],
+            'contentTitle' => (string) ($isPage ? $row['page_title'] : $row['post_title']),
+            'contentSlug' => (string) ($isPage ? $row['page_slug'] : $row['post_slug']),
+            'contentType' => $isPage ? 'page' : 'post',
         ];
     }
 
@@ -428,5 +511,10 @@ final class CommentService
     private function postsTable(): string
     {
         return $this->tablePrefix . 'posts';
+    }
+
+    private function pagesTable(): string
+    {
+        return $this->tablePrefix . 'pages';
     }
 }

@@ -300,6 +300,17 @@ $subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
 $activePluginsRaw = $kernel->config->option('active_plugins', '[]');
 $activePlugins = is_string($activePluginsRaw) ? (json_decode($activePluginsRaw, true) ?: []) : (array) $activePluginsRaw;
 $fontAwesomeActive = in_array('font-awesome', $activePlugins, true);
+/*
+ * LPP-005: unlike Font Awesome above, Dummy Content has no menu entry of
+ * its own — its generator lives as a gated section on the always-present
+ * Maintenance > Tools screen (admin/views/maintenance/tools.php), the
+ * same "hidden when inactive" reasoning applied at the section level
+ * instead of the menu-entry level. $dummyContentActive is still computed
+ * here (not inside tools.php) so it stays available to that view via
+ * PHP's normal require-scope sharing, matching every other value this
+ * file precomputes before requiring a view.
+ */
+$dummyContentActive = in_array('dummy-content', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -327,7 +338,16 @@ $menu = [
             'thumbnails' => ['label' => 'Thumbnails', 'icon' => '🔲', 'capability' => 'upload_files'],
         ],
     ],
-    'pages' => ['label' => 'Pages', 'icon' => '📄', 'capability' => 'edit_posts'],
+    'pages' => [
+        'label' => 'Pages',
+        'icon' => '📄',
+        'capability' => 'edit_posts',
+        'default_child' => 'all-pages',
+        'children' => [
+            'all-pages' => ['label' => 'All Pages', 'icon' => '📋', 'capability' => 'edit_posts'],
+            'new' => ['label' => 'New Page', 'icon' => '🆕', 'capability' => 'edit_posts'],
+        ],
+    ],
     'comments' => ['label' => 'Comments', 'icon' => '💬', 'capability' => 'moderate_comments'],
     'appearance' => [
         'label' => 'Appearance',
@@ -395,7 +415,11 @@ $menu = [
  * existed as parent menus — /admin/updates and /admin/tools used to be
  * complete pages on their own, not children of Maintenance. LP-054 adds
  * the same for /admin/categories and /admin/tags, from before Posts
- * gained All Posts/New Post/Categories/Tags children.
+ * gained All Posts/New Post/Categories/Tags children. A bare
+ * /admin/pages (LP-009 gained All Pages/New Page children the same way)
+ * needs no entry here — it has no legacy direct-subroute to preserve,
+ * so the generic children redirect below already sends it to
+ * 'default_child' just like a bare /admin/posts always has.
  */
 $legacyRedirects = [
     'updates' => 'maintenance/updates',

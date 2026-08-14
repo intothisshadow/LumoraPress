@@ -77,6 +77,25 @@ if (!function_exists('admin_url')) {
     }
 }
 
+if (!function_exists('redirect')) {
+    /**
+     * A single named seam for the Location-header-then-exit pattern used
+     * throughout admin views and SiteController (LP-082) — introduced as
+     * a proof-of-concept adopted by admin/views/appearance/themes.php
+     * first. Does not, by itself, make callers testable: PHPUnit still
+     * cannot intercept a real exit(). Admin controller action methods
+     * avoid that problem a different way (returning an AdminActionResult
+     * instead of redirecting themselves — see
+     * LumoraPress\Controllers\Admin\AdminActionResult) and call this only
+     * from the thin view, after the fact.
+     */
+    function redirect(string $url): never
+    {
+        header('Location: ' . $url);
+        exit;
+    }
+}
+
 if (!function_exists('admin_asset_url')) {
     /**
      * Builds a URL to a static file under admin/assets/ (e.g. its
@@ -108,6 +127,33 @@ if (!function_exists('admin_asset_url')) {
         // LUMORA_ROOT is actually defined), so a self-contained path
         // derived from this file's own location works in both contexts.
         $absolutePath = dirname(__DIR__) . '/admin/assets/' . $path;
+        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+
+        return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');
+    }
+}
+
+if (!function_exists('core_asset_url')) {
+    /**
+     * Builds a URL to a static file under the top-level assets/ directory
+     * — framework-owned JavaScript/CSS a theme's markup depends on but
+     * doesn't itself provide (e.g. dynamic-style.js, needed by any widget
+     * that emits a data-style-* attribute under this site's CSP). Mirrors
+     * admin_asset_url()'s shape exactly, including its cache-busting
+     * `?v={mtime}` query string, for a doc-root-level directory instead of
+     * admin/assets/ — themes reference this instead of vendoring their own
+     * copy of a file that has nothing theme-specific about it.
+     */
+    function core_asset_url(string $path = ''): string
+    {
+        $path = ltrim($path, '/');
+        $base = BasePath::get() . '/assets';
+
+        if ($path === '') {
+            return $base;
+        }
+
+        $absolutePath = dirname(__DIR__) . '/assets/' . $path;
         $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
 
         return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');

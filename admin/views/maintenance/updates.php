@@ -24,6 +24,31 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
+/*
+ * Progress polling (LP-086): a separate, lightweight GET the page's own
+ * JS hits every second or so while a download/install POST below is still
+ * running on another connection. Handled first, before any session-write
+ * work or view rendering below, and intentionally never checks CSRF —
+ * this only ever reads UpdateProgress's on-disk state, so there is
+ * nothing here for CSRF to protect. Still requires the same admin
+ * session/manage_options capability every other branch of this page
+ * does, since that gate already ran in admin/index.php before this file
+ * was even required.
+ */
+if (($_GET['ajax'] ?? null) === 'progress') {
+    // See editor-layout-save.php's identical pattern: layout-header.php
+    // (required before this file, from admin/index.php) already opened
+    // an output buffer for its own HTML, which must be discarded before
+    // a JSON response or that buffered markup would flush alongside it.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($kernel->updateProgress->read());
+    exit;
+}
+
 $updates = $kernel->updates;
 $error = null;
 $checkResult = null;
@@ -65,14 +90,54 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } else {
             $allowDowngrade = ($_POST['allow_downgrade'] ?? '') === '1';
 
+            $kernel->updateProgress->reset('upload', [
+                ['key' => 'validate', 'label' => 'Validating package'],
+                ['key' => 'compatibility', 'label' => 'Checking compatibility'],
+            ]);
+
+            // See this file's `?ajax=progress` branch above and
+            // UpdateProgress's own docblock: the byte upload itself is
+            // already finished by the time PHP even reaches this line
+            // (the whole $_FILES superglobal is only populated once the
+            // request body has fully arrived), so what's left —
+            // extracting and validating the archive — can take a real
+            // moment on a large package. Releasing the session lock here
+            // lets the page's polling request actually observe that.
+            session_write_close();
+
             try {
                 $checkResult = $updates->checkUpload($_FILES['package']['tmp_name'], $allowDowngrade, 'manual', $currentUser->id);
             } catch (\Throwable $exception) {
                 $error = $exception->getMessage();
+                $kernel->updateProgress->complete(false, $error);
             }
+
+            // Every path below still needs to render the rest of the
+            // page (the Update Summary panel, or this same form again
+            // with an error banner), which calls Csrf::field() for
+            // several other forms — that throws once the session isn't
+            // PHP_SESSION_ACTIVE anymore, exactly what session_write_close()
+            // above just did. Reopening here is safe: whatever a
+            // concurrent poller needed from the session lock, it already
+            // had its window while checkUpload() was running.
+            session_start();
         }
     } elseif ($form === 'install' && Csrf::verify('update_install', $token)) {
         $installToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        $kernel->updateProgress->reset('install', [
+            ['key' => 'backup_files', 'label' => 'Backing up files'],
+            ['key' => 'backup_database', 'label' => 'Backing up database'],
+            ['key' => 'apply_files', 'label' => 'Applying update files'],
+            ['key' => 'migrate', 'label' => 'Running database migrations'],
+            ['key' => 'clear_cache', 'label' => 'Clearing caches'],
+            ['key' => 'cleanup', 'label' => 'Finishing up'],
+        ]);
+
+        // See the 'upload' branch above for why this releases the
+        // session lock before a long-running operation — install() is
+        // the single longest step in the whole update pipeline.
+        session_write_close();
 
         try {
             $result = $updates->install($installToken, $currentUser->id);
@@ -85,6 +150,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
+            $kernel->updateProgress->complete(false, $error);
+
+            // See the 'upload' branch above for why this is needed
+            // before the rest of the page renders — only reached on
+            // failure here, since success already exited via the
+            // redirect above.
+            session_start();
         }
     } elseif ($form === 'cancel' && Csrf::verify('update_cancel', $token)) {
         $cancelToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
@@ -109,7 +181,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $allowDowngrade = ($_POST['allow_downgrade'] ?? '') === '1';
         $downloadPath = null;
 
+        // Declared once, here in the view, covering this whole branch —
+        // including the two stages checkUpload() below reports itself —
+        // rather than by checkUpload()/UpdateService, which only ever
+        // call stage()/complete() and never reset(). See UpdateService's
+        // constructor docblock: a service resetting its own stage list
+        // would stomp whatever this branch already recorded for the
+        // "check"/"download" steps that ran before it.
+        $kernel->updateProgress->reset('github_download', [
+            ['key' => 'check', 'label' => 'Checking GitHub for the release'],
+            ['key' => 'download', 'label' => 'Downloading release package'],
+            ['key' => 'validate', 'label' => 'Validating package'],
+            ['key' => 'compatibility', 'label' => 'Checking compatibility'],
+        ]);
+
+        // See the 'upload'/'install' branches above for why this
+        // releases the session lock before starting a potentially
+        // multi-minute network download.
+        session_write_close();
+
         try {
+            $kernel->updateProgress->stage('check');
             $release = $kernel->githubUpdates->checkNow();
 
             if ($release === null) {
@@ -124,16 +216,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $downloadPath = $downloadDir . '/' . bin2hex(random_bytes(16)) . '.zip';
 
+            $kernel->updateProgress->stage('download');
             $kernel->githubUpdates->downloadRelease($release, $downloadPath);
 
             $checkResult = $updates->checkUpload($downloadPath, $allowDowngrade, 'github', $currentUser->id);
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
+            $kernel->updateProgress->complete(false, $error);
         } finally {
             if ($downloadPath !== null && is_file($downloadPath)) {
                 unlink($downloadPath);
             }
         }
+
+        // See the 'upload' branch above for why this is needed before
+        // the rest of the page renders.
+        session_start();
     } elseif ($form === 'github_settings' && Csrf::verify('github_settings', $token)) {
         $kernel->config->setOption('update_github_repo', trim((string) ($_POST['update_github_repo'] ?? '')));
         $kernel->config->setOption('update_github_token', trim((string) ($_POST['update_github_token'] ?? '')));
@@ -293,10 +391,11 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
 
             <p>Lumora Press will automatically back up your files and database before installing this update.</p>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/updates')) ?>?ajax=progress" data-lp-update-progress-target="lp-update-progress-install">
                 <?= Csrf::field('update_install') ?>
                 <input type="hidden" name="form" value="install">
                 <input type="hidden" name="token" value="<?= esc_attr($checkResult['token']) ?>">
+                <ul id="lp-update-progress-install" class="lp-update-progress" hidden></ul>
                 <button type="submit" class="lp-button lp-button--primary">Confirm &amp; Install</button>
             </form>
             <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
@@ -357,13 +456,17 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                         <a class="lp-button" href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View release notes on GitHub</a>
 
                         <?php if ($updateStatus['available']): ?>
-                            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
+                            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/updates')) ?>?ajax=progress" data-lp-update-progress-target="lp-update-progress-github">
                                 <?= Csrf::field('github_download') ?>
                                 <input type="hidden" name="form" value="github_download">
                                 <button type="submit" class="lp-button lp-button--primary">Download &amp; Install</button>
                             </form>
                         <?php endif; ?>
                     </p>
+
+                    <?php if ($updateStatus['available']): ?>
+                        <ul id="lp-update-progress-github" class="lp-update-progress" hidden></ul>
+                    <?php endif; ?>
 
                     <?php if ($updateStatus['release_notes'] !== null): ?>
                         <div class="lp-update__release-notes">
@@ -388,7 +491,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <div class="lp-tabs__panel" id="lp-tabpanel-manual" role="tabpanel" aria-labelledby="lp-tab-manual"<?= $activeTab === 'manual' ? '' : ' hidden' ?>>
             <section class="lp-admin__panel">
                 <h2>Manual Update (ZIP Upload)</h2>
-                <div class="lp-update-upload" data-lp-update-upload>
+                <div class="lp-update-upload" data-lp-update-upload data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/updates')) ?>?ajax=progress">
                     <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" enctype="multipart/form-data">
                         <?= Csrf::field('update_upload') ?>
                         <input type="hidden" name="form" value="upload">
@@ -407,6 +510,8 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                         <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" data-lp-update-upload-progress hidden>
                             <div class="lp-thumbnails__progress-bar" data-lp-update-upload-progress-bar></div>
                         </div>
+
+                        <ul class="lp-update-progress" data-lp-update-upload-stages hidden></ul>
 
                         <button type="submit" class="lp-button lp-button--primary">Upload &amp; Check</button>
                     </form>

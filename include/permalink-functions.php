@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Models\Category;
+use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\SearchResult;
 use LumoraPress\Models\Tag;
@@ -34,6 +35,22 @@ if (!function_exists('post_permalink')) {
     function post_permalink(Post $post): string
     {
         return Permalinks::service()->postUrl($post);
+    }
+}
+
+if (!function_exists('page_permalink')) {
+    /**
+     * A Page's public URL — always flat ('page/{slug}'), regardless of
+     * nesting depth (LP-009's Hierarchy UI adds parent/child structure
+     * to the admin tree view, but hierarchical URLs are a separate,
+     * not-yet-built ticket — see DECISIONS.md/TODO.md). No
+     * PermalinkService involvement: unlike posts/categories/tags, pages
+     * have no configurable permalink structure to honor (see LP-078's
+     * "Explicitly Out of Scope" note in TODO.md).
+     */
+    function page_permalink(Page $page): string
+    {
+        return site_url('page/' . $page->slug);
     }
 }
 

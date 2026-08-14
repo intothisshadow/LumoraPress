@@ -21,9 +21,10 @@ namespace LumoraPress\Core\Content;
  * Converts Markdown source to HTML (LP-015). A hand-rolled, dependency-free
  * parser covering the subset of Markdown/GFM listed in TODO.md's LP-015
  * "Markdown Support" checklist — headings, paragraphs, bold, italic,
- * strikethrough, inline code, fenced code blocks, tables, blockquotes,
- * horizontal rules, ordered/unordered/task lists, links, images, and
- * footnotes — rather than a full CommonMark implementation. Lumora Press
+ * strikethrough, underline, a fixed-palette font color, inline code,
+ * fenced code blocks, tables, blockquotes, horizontal rules,
+ * ordered/unordered/task lists, links, images, and footnotes — rather
+ * than a full CommonMark implementation. Lumora Press
  * avoids Composer/npm dependencies (see CLAUDE.md), so this is plain PHP
  * with no vendored library behind it.
  *
@@ -47,6 +48,20 @@ namespace LumoraPress\Core\Content;
  */
 final class MarkdownParser
 {
+    /**
+     * Fixed font-color palette (LP-016 parity) — mirrors the swatch list
+     * content-editor.js offers in both editors and the has-{color}-color
+     * classes content/themes/default/style.css defines. Kept in sync by
+     * hand across all three; see parseFontColor()'s docblock for why this
+     * must stay a hardcoded allowlist rather than accepting arbitrary
+     * color names. Public because HtmlToMarkdownConverter reuses the same
+     * list when converting a `has-{color}-color` span back to this
+     * class's `[text]{.color}` marker syntax.
+     *
+     * @var array<int, string>
+     */
+    public const FONT_COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'];
+
     /** @var array<string, string> */
     private array $placeholders = [];
 
@@ -633,6 +648,8 @@ final class MarkdownParser
         $text = $this->parseFootnoteReferences($text);
         $text = $this->parseBoldItalic($text);
         $text = $this->parseStrikethrough($text);
+        $text = $this->parseUnderline($text);
+        $text = $this->parseFontColor($text);
         $text = str_replace("\x04BR\x04", "<br>\n", $text);
 
         return $this->restorePlaceholders($text);
@@ -748,6 +765,34 @@ final class MarkdownParser
     private function parseStrikethrough(string $text): string
     {
         return (string) preg_replace('/~~(?=\S)(.+?)(?<=\S)~~/s', '<del>$1</del>', $text);
+    }
+
+    private function parseUnderline(string $text): string
+    {
+        return (string) preg_replace('/\+\+(?=\S)(.+?)(?<=\S)\+\+/s', '<u>$1</u>', $text);
+    }
+
+    /**
+     * `[text]{.color}` wraps text in `<span class="has-{color}-color">`
+     * (LP-016 font-color parity), reusing the same trailing-marker
+     * convention as heading/paragraph/image alignment — Markdown has no
+     * native attribute syntax, so this is a project-defined convention,
+     * not CommonMark. Only the fixed, hardcoded palette in self::
+     * FONT_COLORS is recognized: HtmlSanitizer never allows a style
+     * attribute (see its docblock), so this is the one inline construct
+     * that turns author-controlled text into a CSS class name, and an
+     * unrecognized color word is left as literal text rather than ever
+     * being interpolated into a class attribute.
+     */
+    private function parseFontColor(string $text): string
+    {
+        return (string) preg_replace_callback(
+            '/\[(?=\S)(.+?)(?<=\S)\]\{\.(' . implode('|', self::FONT_COLORS) . ')\}/s',
+            static function (array $m): string {
+                return '<span class="has-' . $m[2] . '-color">' . $m[1] . '</span>';
+            },
+            $text,
+        );
     }
 
     private function escapeRemainingHtml(string $text): string

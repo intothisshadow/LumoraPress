@@ -6,6 +6,133 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Discussion settings (comments) for Pages (LP-009): Pages can now
+  accept comments, matching Posts — an "Allow comments on this page"
+  toggle in the Page editor, threaded guest/signed-in commenting with
+  moderation, notifications, and spam protection all working the same
+  way they already do for Posts. The admin Comments screen now shows
+  and links to whichever a comment belongs to, Post or Page.
+- Preview button for Pages (LP-009): the Page editor's Publish box
+  gained a "Preview" link, matching the Post editor's — lets an
+  author/editor see a Draft, Pending Review, Scheduled, or Private
+  page exactly as it will render publicly, without publishing it and
+  without any other visitor ever being able to reach it.
+- Pending Review and Private pages (LP-009), matching the equivalent
+  Posts features exactly: Contributors and other roles without
+  `publish_posts` can now submit a page for review ("Submit for
+  Review" in the Status field) instead of only ever saving a Draft; an
+  Editor/Administrator can mark a page Private (visible only to its
+  author or a user who can edit pages) via a new Visibility field or
+  the list's new "Set Public"/"Set Private" bulk actions. A Private
+  page is excluded from the XML sitemap, the REST API, and the Pages
+  widget, and returns a normal 404 to anyone else who requests its URL
+  directly.
+- "Change author to&hellip;" bulk action for Pages (LP-009), matching
+  the equivalent action already on the Posts list.
+- Quick Edit for Pages (LP-009): a new "Quick Edit" row action on the
+  Pages list (flat/paginated view only, not the drag-and-drop tree
+  view) expands an inline form — Title, Slug, Parent, Status — and
+  saves without navigating to the full editor or reloading the page.
+- Search & Filtering for Pages (LP-009): the Pages list screen gained a
+  collapsible "Search & Filter" panel — a single search box matching
+  either the title or the content, plus filters for author, parent
+  page, and a created-date range — mirroring the equivalent panel on
+  the Posts list. Applying any filter (or a status tab other than
+  "All") switches the list from the drag-and-drop tree view to the
+  flat, paginated table, since a filtered result set can't preserve
+  the tree's parent/child grouping.
+- Duplicate Pages (LP-009): the Pages list screen (both the flat table
+  and the tree view) gained a "Duplicate" row action next to Trash,
+  matching Posts. Duplicating clones the title (suffixed " (Copy)"),
+  content, excerpt, featured image, and SEO title/description as a new
+  Draft — the parent is intentionally left unset rather than copied, so
+  duplicating a page never silently doubles part of the page tree.
+- Dummy Content plugin (LPP-005): a new bundled, inactive-by-default
+  developer plugin (a Dummy Content section on Maintenance &rsaquo;
+  Tools, once activated from Plugins) generates realistic placeholder
+  content — one user per
+  role, a small nested category tree, a varied tag set, placeholder
+  images, posts mixing every status/content format, a shallow page
+  hierarchy, and comments mixing status/threading/guest-and-registered
+  authors — at a chosen volume (small/medium/large), so a theme or
+  plugin can be exercised against real-shaped content without hand-
+  authoring test data. Every generated record is tracked so "Remove All
+  Generated Content" deletes exactly what was generated, never anything
+  created by hand. Built on a new shared import layer
+  (`ContentImportRegistry` plus `PostImporter`/`PageImporter`/
+  `UserImporter`/`MediaImporter`/`CommentImporter`) intended to also back
+  a future WordPress WXR importer (LPP-004).
+- Footer Widget Area and Inactive Widgets (LP-048): the default theme now
+  registers and renders a Footer Widget Area (Appearance &rsaquo;
+  Widgets), shown above the footer navigation only when at least one
+  widget is assigned to it — every existing widget type works there
+  unchanged, laid out as a wrapping row of cards instead of a single
+  stacked column. Removing a widget from any widget area no longer
+  deletes it outright: it moves into a new "Inactive Widgets" section at
+  the bottom of the Widgets screen, where its settings stay intact until
+  it's reactivated into any widget area or deleted permanently.
+- Visible update progress (LP-086): both update paths on Maintenance
+  &rsaquo; Updates — GitHub's "Download & Install" and the manual ZIP
+  "Confirm & Install" — now show a live, step-by-step checklist (e.g.
+  Backing up files &rarr; Backing up database &rarr; Applying update
+  files &rarr; Running database migrations &rarr; Clearing caches &rarr;
+  Finishing up) while the operation runs, instead of a blank page with
+  no feedback until it finishes. The Manual Update tab's existing
+  byte-upload progress bar now hands off to a similar checklist once the
+  file itself has finished uploading and the server starts
+  validating/checking compatibility. A failed step is marked distinctly
+  from a completed one, so the actual point of failure stays visible.
+- Underline and fixed-palette font color in both the Markdown and
+  WYSIWYG editors (LP-015/LP-016): the Markdown editor gained an
+  Underline toolbar button and a Font Color button opening a swatch
+  picker (red, orange, yellow, green, blue, purple, gray), inserting
+  `++text++` and `[text]{.color}` respectively — new Markdown
+  conventions, since Markdown has no native syntax for either; the
+  WYSIWYG editor's toolbar already had Underline and gained a matching
+  Font Color menu. Font color is a fixed palette rather than a free
+  color picker, applied as a `has-{color}-color` CSS class rather than
+  an inline `style` attribute, which this app's HTML sanitizer never
+  allows. Switching a post or page between Markdown and HTML editing
+  preserves both through the conversion. Blockquote formatting was
+  already supported in both editors.
+- Post & Page editor sidebar layout (LP-083): the New/Edit Post and
+  New/Edit Page screens are now a classic two-column layout instead of
+  one long stacked column — Title, Slug, the content editor, and Excerpt
+  stay in the main column, while Publish (with the Save/Preview/Cancel
+  buttons now inside it), Featured Image, Categories, Tags, Allow
+  Comments, SEO, Parent Page, Custom Fields, and Author reassignment move
+  into a right-hand sidebar of drag-reorderable boxes. SEO, Custom
+  Fields, and Author reassignment can also be collapsed. Box order and
+  collapsed state are remembered per user, separately for Posts and
+  Pages, and persist across page reloads without a full-page save. Below
+  782px wide, the layout collapses back to a single column. The Custom
+  Fields row wraps its Remove button onto its own line instead of
+  overflowing the sidebar, and the Publish box drops its old long-form
+  field hints (kept from the previous single-column layout) to stay
+  compact enough to drag other boxes past comfortably. The Featured
+  Image preview is bigger in this sidebar box than the small
+  logo/favicon-style preview it's styled from elsewhere.
+- Configurable session storage location: a new `session_path` option in
+  `config/config.php` lets an install write PHP session files somewhere
+  other than the default `storage/sessions` (an absolute path outside
+  this install, a tmpfs, etc.). Leave it blank (the default) to keep
+  today's behavior; an invalid or unwritable path is ignored and PHP's
+  own session storage setting is used instead, so a bad value never
+  breaks logins.
+- Pages: Trash, bulk actions, and a drag-and-drop tree view (LP-009):
+  Pages can now be moved to Trash and restored, permanently deleted only
+  once already trashed, and acted on in bulk (Trash, Restore, Delete
+  Permanently, Publish, Mark as Draft, Change parent to&hellip;) from a
+  new checkbox-and-bulk-actions bar on the Pages list. The unfiltered
+  "All" tab now shows pages as a flat, depth-indented tree that can be
+  reordered by dragging a page above or below its siblings. Deleting a
+  page with children now moves them to the top level instead of leaving
+  them pointing at a page that no longer exists. Public pages with at
+  least one ancestor now show a breadcrumb trail (About &rsaquo; Team,
+  etc.) above their title, in both the default theme and Duskline. The
+  Page editor also gained a Permalink row (the live URL plus a
+  "View Page" link) once a page is Published, matching the Post
+  editor's existing row.
 - Drag-and-drop reordering on Appearance &rsaquo; Widgets and Appearance
   &rsaquo; Menus (LP-048/LP-049): widgets within a sidebar, and menu items
   among their siblings, can now be reordered by dragging instead of only
@@ -67,8 +194,53 @@ All notable changes to Lumora Press are documented in this file.
   never modified, and cropping is no longer only reachable from inside a
   specific post's or page's own featured-image field.
 
+### Changed
+
+- Pages (LP-009): the admin sidebar's single "Pages" entry is now a
+  submenu with **All Pages** and **New Page** children, matching Posts'
+  existing menu structure. The single `admin/views/pages.php` view
+  (list and editor combined behind an `?action=` query param) is split
+  into `admin/views/pages/all-pages.php` and `admin/views/pages/new.php`,
+  the same split Posts already went through — no change to what Pages
+  can do, only to how the admin screens for them are organized and
+  addressed.
+- Appearance &rsaquo; Themes' form-handling logic (activate, delete,
+  install/update from ZIP, and Branding) now lives in a dedicated
+  `ThemesController` class instead of inline in the view template
+  (LP-082) — an internal refactor with no user-facing behavior change,
+  except that a form whose session token has expired now shows an error
+  message instead of silently reloading the page with no feedback.
+- Settings &rsaquo; General's Date format and Time format fields are now
+  dropdowns of common presets (each showing a live-rendered example)
+  with a "Custom" option that reveals a free-text field for any other
+  PHP `date()` format string, replacing the previous always-visible
+  plain text input.
+
 ### Fixed
 
+- Manual/automatic updates could silently fail to deliver a newly-added
+  bundled file or plugin (e.g. the new Dummy Content plugin) to a site
+  running code from before that addition existed — the updater only ever
+  consulted the *currently-installed* code's own list of "core" paths to
+  decide what to overlay from the uploaded package, so a path only just
+  added to that list could never reach an older install no matter what
+  the uploaded package actually contained. The list is now its own file
+  (`core-paths.php`) that the updater reads from the *uploaded package*
+  as well as the running install, so newly-added paths always come
+  through correctly regardless of how old the site being updated is.
+  If `core-paths.php` itself is ever missing (an interrupted or
+  otherwise half-applied update), the site no longer goes down entirely
+  — it now falls back to a built-in default list instead of a fatal
+  error on every page.
+- Media Manager: selecting multiple files to upload always failed every
+  file with "network error" shown next to each, even though the uploads
+  themselves succeeded. `admin/views/media/upload.php`'s multi-file AJAX
+  responses were never discarding `admin/index.php`'s output buffer
+  before sending JSON, so the actual response body was buffered admin
+  HTML followed by the JSON, not valid JSON on its own — the browser's
+  `response.json()` call threw on the malformed body. Single-file uploads
+  were unaffected (they redirect normally rather than going through the
+  AJAX path).
 - Appearance &rsaquo; Themes: activating a theme could silently fail with
   no error shown. Each theme's card rendered its own CSRF-protected
   Activate form, and its details dialog further down the page rendered a

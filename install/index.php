@@ -222,6 +222,7 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
                     'timezone' => $timezone,
                     'locale' => $locale,
                     'base_path' => rtrim($baseUrl, '/'),
+                    'session_path' => '',
                 ]);
 
                 $config = new PressConfig($root . '/config/config.php');

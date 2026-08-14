@@ -251,6 +251,56 @@ final class UserService
         unset($this->findByIdCache[$id]);
     }
 
+    /**
+     * LP-083: the saved sidebar box order/collapse state for the Post or
+     * Page editor, for the given screen type ('post'|'page'). An empty
+     * 'order' means "nothing saved yet" — the caller falls back to its own
+     * built-in default box list, since only the view knows which boxes
+     * exist for that screen.
+     *
+     * @return array{order: array<int, string>, collapsed: array<int, string>}
+     */
+    public function getEditorLayoutPreferences(int $id, string $screenType): array
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->editorLayoutPreferences ?? '{}', true);
+        $forScreen = is_array($decoded) ? ($decoded[$screenType] ?? null) : null;
+
+        return [
+            'order' => is_array($forScreen['order'] ?? null) ? array_values(array_map('strval', $forScreen['order'])) : [],
+            'collapsed' => is_array($forScreen['collapsed'] ?? null) ? array_values(array_map('strval', $forScreen['collapsed'])) : [],
+        ];
+    }
+
+    /**
+     * Persists $order/$collapsed for one screen type without disturbing the
+     * other screen type's saved state — the column holds both under one
+     * JSON blob (LONGTEXT, matching this codebase's existing widgets_config
+     * precedent rather than a native MySQL JSON column type), so this is a
+     * read-modify-write.
+     *
+     * @param array<int, string> $order
+     * @param array<int, string> $collapsed
+     */
+    public function updateEditorLayoutPreferences(int $id, string $screenType, array $order, array $collapsed): void
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->editorLayoutPreferences ?? '{}', true);
+
+        if (!is_array($decoded)) {
+            $decoded = [];
+        }
+
+        $decoded[$screenType] = ['order' => array_values($order), 'collapsed' => array_values($collapsed)];
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET editor_layout_preferences = :editor_layout_preferences WHERE id = :id',
+            ['editor_layout_preferences' => json_encode($decoded), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+    }
+
     public function delete(int $id): bool
     {
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -488,6 +538,7 @@ final class UserService
                 : null,
             trashedAt: isset($row['trashed_at']) ? new \DateTimeImmutable((string) $row['trashed_at']) : null,
             avatarMediaId: isset($row['avatar_media_id']) ? (int) $row['avatar_media_id'] : null,
+            editorLayoutPreferences: isset($row['editor_layout_preferences']) ? (string) $row['editor_layout_preferences'] : null,
         );
     }
 

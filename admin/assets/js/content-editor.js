@@ -43,6 +43,22 @@
     var TINYMCE_VERSION = '7';
     var TINYMCE_JS = 'https://cdn.jsdelivr.net/npm/tinymce@' + TINYMCE_VERSION + '/tinymce.min.js';
 
+    // Fixed font-color palette (LP-016 parity), shared by both editors.
+    // Applied as a has-{name}-color class (content/themes/default/style.css)
+    // rather than an inline style="color:..." — HtmlSanitizer never allows
+    // a style attribute (see its docblock), so an arbitrary color picker
+    // isn't an option here. MarkdownParser::FONT_COLORS carries the same
+    // list of names; keep both in sync by hand if this ever changes.
+    var FONT_COLORS = [
+        { name: 'red', label: 'Red', swatch: '#c0392b' },
+        { name: 'orange', label: 'Orange', swatch: '#d35400' },
+        { name: 'yellow', label: 'Yellow', swatch: '#b7950b' },
+        { name: 'green', label: 'Green', swatch: '#1e8449' },
+        { name: 'blue', label: 'Blue', swatch: '#2471a3' },
+        { name: 'purple', label: 'Purple', swatch: '#7d3c98' },
+        { name: 'gray', label: 'Gray', swatch: '#616a6b' },
+    ];
+
     var loadedScripts = {};
     var loadedStyles = {};
 
@@ -346,6 +362,72 @@
         cm.replaceSelection('\n\n<!--more-->\n\n');
     }
 
+    /**
+     * Wraps the current selection in `++...++`
+     * (MarkdownParser::parseUnderline()) — Markdown has no native
+     * underline syntax, so this mirrors the existing `~~strikethrough~~`
+     * convention with a marker CommonMark doesn't otherwise use. Falls
+     * back to placeholder text when nothing is selected, the same
+     * pattern EasyMDE's own bold/italic toolbar actions use.
+     */
+    function wrapSelectionWithUnderline(cm) {
+        var selection = cm.getSelection();
+
+        cm.replaceSelection('++' + (selection !== '' ? selection : 'underlined text') + '++');
+    }
+
+    /**
+     * Wraps the current selection in `[text]{.color}`
+     * (MarkdownParser::parseFontColor()) — the same trailing-marker
+     * convention wrapSelectionWithAlignment() uses, extended to an inline
+     * span. Falls back to placeholder text when nothing is selected.
+     */
+    function wrapSelectionWithColor(cm, colorName) {
+        var selection = cm.getSelection();
+
+        cm.replaceSelection('[' + (selection !== '' ? selection : 'colored text') + ']{.' + colorName + '}');
+    }
+
+    /**
+     * Small swatch-grid dialog for picking a font color — shares the
+     * <dialog>-based structure openMediaPicker() above uses, at a much
+     * smaller scale (LP-016 parity: TinyMCE gets the same fixed palette
+     * via its lumoraFontColor menu button below).
+     */
+    function openColorPicker(onSelect) {
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-color-dialog';
+
+        var grid = document.createElement('div');
+        grid.className = 'lp-editor-color-dialog__grid';
+
+        FONT_COLORS.forEach(function (color) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-color-dialog__swatch';
+            button.style.backgroundColor = color.swatch;
+            button.title = color.label;
+            button.setAttribute('aria-label', color.label);
+            button.addEventListener('click', function () {
+                onSelect(color.name);
+                dialog.close();
+            });
+            grid.appendChild(button);
+        });
+
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'lp-button';
+        closeButton.textContent = 'Cancel';
+        closeButton.addEventListener('click', function () { dialog.close(); });
+
+        dialog.appendChild(grid);
+        dialog.appendChild(closeButton);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
     function initMarkdownEditor(container, textarea, statsEl) {
         loadStyle(EASYMDE_CSS);
         loadStyle(FONT_AWESOME_CSS);
@@ -387,7 +469,24 @@
                     delay: 15000,
                 } : { enabled: false },
                 toolbar: [
-                    'bold', 'italic', 'strikethrough', '|',
+                    'bold', 'italic', 'strikethrough',
+                    {
+                        name: 'underline',
+                        action: function () { wrapSelectionWithUnderline(editor.codemirror); },
+                        className: 'fa fa-underline',
+                        title: 'Underline',
+                    },
+                    {
+                        name: 'font-color',
+                        action: function () {
+                            openColorPicker(function (colorName) {
+                                wrapSelectionWithColor(editor.codemirror, colorName);
+                            });
+                        },
+                        className: 'fa fa-paint-brush',
+                        title: 'Font Color',
+                    },
+                    '|',
                     'heading-1', 'heading-2', 'heading-3', '|',
                     {
                         name: 'align-left',
@@ -495,6 +594,14 @@
             var autosaveId = container.dataset.autosaveId || '';
             var basePlugins = 'lists link image table code codesample searchreplace fullscreen wordcount help';
 
+            // Same has-{color}-color class convention as the align
+            // formats below — one custom format per fixed palette color,
+            // consumed by the lumoraFontColor menu button in setup().
+            var fontColorFormats = {};
+            FONT_COLORS.forEach(function (color) {
+                fontColorFormats['fontcolor-' + color.name] = { inline: 'span', classes: 'has-' + color.name + '-color' };
+            });
+
             return new Promise(function (resolve) {
                 tinymce.init({
                     target: textarea,
@@ -511,7 +618,7 @@
                     // otherwise still hit the same bug EasyMDE's autosave
                     // had (LP-068).
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
-                    toolbar: 'undo redo | blocks | bold italic underline strikethrough | '
+                    toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
                         + 'bullist numlist | blockquote hr | link image lumoraMedia lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
@@ -535,12 +642,12 @@
                     // instead, the same has-text-align-* convention
                     // Gutenberg uses. See content/themes/default/
                     // style.css for the matching CSS.
-                    formats: {
+                    formats: Object.assign({
                         alignleft: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-left' },
                         aligncenter: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-center' },
                         alignright: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-right' },
                         alignjustify: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-justify' },
-                    },
+                    }, fontColorFormats),
                     branding: false,
                     promotion: false,
                     // TinyMCE's default (relative_urls: true) silently
@@ -563,6 +670,46 @@
                     autosave_interval: '15s',
                     autosave_prefix: 'lp-tinymce-autosave-' + autosaveId + '-',
                     setup: function (editor) {
+                        // Fixed-palette font color (LP-016 parity with
+                        // Markdown's [text]{.color}) — a menu of swatches
+                        // toggling the fontcolor-{name} formats registered
+                        // above, rather than TinyMCE's default forecolor
+                        // button, which applies an inline style="color:..."
+                        // HtmlSanitizer would strip right back out.
+                        editor.ui.registry.addMenuButton('lumoraFontColor', {
+                            icon: 'text-color',
+                            tooltip: 'Font Color',
+                            fetch: function (callback) {
+                                var items = FONT_COLORS.map(function (color) {
+                                    return {
+                                        type: 'togglemenuitem',
+                                        text: color.label,
+                                        onAction: function () {
+                                            editor.formatter.toggle('fontcolor-' + color.name);
+                                            editor.nodeChanged();
+                                        },
+                                        onSetup: function (api) {
+                                            api.setActive(editor.formatter.match('fontcolor-' + color.name));
+
+                                            return function () {};
+                                        },
+                                    };
+                                });
+
+                                items.push({
+                                    type: 'menuitem',
+                                    text: 'Remove Color',
+                                    onAction: function () {
+                                        FONT_COLORS.forEach(function (color) {
+                                            editor.formatter.remove('fontcolor-' + color.name);
+                                        });
+                                    },
+                                });
+
+                                callback(items);
+                            },
+                        });
+
                         editor.ui.registry.addButton('lumoraMedia', {
                             icon: 'image',
                             tooltip: 'Insert from Media Manager',

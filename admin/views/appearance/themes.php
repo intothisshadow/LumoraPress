@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\ThemesController;
 use LumoraPress\Core\Security\Csrf;
 
 if (!isset($kernel)) {
@@ -25,131 +26,34 @@ if (!isset($kernel)) {
 /*
  * Two independent sections (LP-034; Custom CSS moved to its own
  * appearance/custom-css.php sub-page in LP-062): Theme Management and
- * Branding — each with its own "form" value and CSRF action name, same
- * dispatch pattern admin/views/settings.php uses for Feeds/Search/
- * Maintenance.
+ * Branding — each with its own "form" value. POST handling itself lives
+ * in ThemesController (LP-082, the first admin view extracted this way —
+ * see DECISIONS.md); this view only reads the request, dispatches to the
+ * matching controller method, and turns the returned AdminActionResult
+ * into either a redirect or an inline $error string.
  */
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
-$postedSlug = trim((string) ($_POST['slug'] ?? ''));
+$csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-/*
- * Every theme card (and its details-template counterpart) renders its own
- * Activate/Delete form, so this page has many forms sharing the page at
- * once. Csrf::field()/verify() are keyed by action *name*, and
- * Csrf::field() overwrites the session's token for a given name on every
- * call, so a bare 'activate_theme'/'delete_theme' name shared across all
- * of them would leave every form but the last-rendered one silently
- * submitting an already-invalidated token (see widgets.php's/menus.php's
- * own docblocks for the LP-012 incident this exact mistake caused). Each
- * action name below is scoped to the specific theme slug it acts on
- * instead.
- */
-$csrfAction = match ($form) {
-    'activate_theme' => 'activate_theme_' . $postedSlug,
-    'delete_theme' => 'delete_theme_' . $postedSlug,
-    'update_theme' => 'update_theme_' . $postedSlug,
-    default => $form,
-};
+if ($form !== '') {
+    $controller = new ThemesController($kernel->themes, $kernel->themeInstaller, $kernel->config, $kernel->media);
 
-if ($form === 'activate_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-    $known = array_filter($kernel->themes->discover(), static fn ($info): bool => $info->slug === $slug);
+    $result = match ($form) {
+        'activate_theme' => $controller->activateTheme($_POST, $csrfToken),
+        'delete_theme' => $controller->deleteTheme($_POST, $csrfToken),
+        'update_theme' => $controller->updateTheme($_POST, $_FILES, $csrfToken),
+        'install_theme' => $controller->installTheme($_FILES, $csrfToken),
+        'branding' => $controller->saveBranding($_POST, $_FILES, $currentUser->id, $csrfToken),
+        default => null,
+    };
 
-    if ($known === []) {
-        $error = 'That theme could not be found.';
-    } else {
-        $kernel->config->setOption('active_theme', $slug);
-
-        header('Location: ' . admin_url('appearance/themes') . '?saved=1');
-        exit;
-    }
-} elseif ($form === 'delete_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-    $target = null;
-
-    foreach ($kernel->themes->discover() as $info) {
-        if ($info->slug === $slug) {
-            $target = $info;
-
-            break;
+    if ($result !== null) {
+        if ($result->redirectUrl !== null) {
+            redirect($result->redirectUrl);
         }
-    }
 
-    if ($target === null) {
-        $error = 'That theme could not be found.';
-    } elseif ($target->isActive) {
-        $error = 'The active theme cannot be deleted. Activate a different theme first.';
-    } else {
-        try {
-            $kernel->themeInstaller->delete($slug);
-
-            header('Location: ' . admin_url('appearance/themes') . '?deleted=1');
-            exit;
-        } catch (\Throwable $exception) {
-            $error = $exception->getMessage();
-        }
-    }
-} elseif ($form === 'update_theme' && Csrf::verify($csrfAction, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-
-    if (!isset($_FILES['theme_zip']) || $_FILES['theme_zip']['error'] === UPLOAD_ERR_NO_FILE) {
-        $error = 'Please choose a ZIP file to upload.';
-    } elseif ($_FILES['theme_zip']['error'] !== UPLOAD_ERR_OK) {
-        $error = 'The file upload failed. Please try again.';
-    } else {
-        try {
-            $updated = $kernel->themeInstaller->update($_FILES['theme_zip']['tmp_name'], $slug);
-
-            header('Location: ' . admin_url('appearance/themes') . '?updated=' . urlencode($updated->name));
-            exit;
-        } catch (\Throwable $exception) {
-            $error = $exception->getMessage();
-        }
-    }
-} elseif ($form === 'install_theme' && Csrf::verify('install_theme', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    if (!isset($_FILES['theme_zip']) || $_FILES['theme_zip']['error'] === UPLOAD_ERR_NO_FILE) {
-        $error = 'Please choose a ZIP file to upload.';
-    } elseif ($_FILES['theme_zip']['error'] !== UPLOAD_ERR_OK) {
-        $error = 'The file upload failed. Please try again.';
-    } else {
-        try {
-            $installed = $kernel->themeInstaller->install($_FILES['theme_zip']['tmp_name']);
-
-            header('Location: ' . admin_url('appearance/themes') . '?installed=' . urlencode($installed->name));
-            exit;
-        } catch (\Throwable $exception) {
-            $error = $exception->getMessage();
-        }
-    }
-} elseif ($form === 'branding' && Csrf::verify('branding', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $kernel->config->setOption('site_name', trim((string) ($_POST['site_name'] ?? '')));
-
-    if (($_POST['remove_logo'] ?? '') === '1') {
-        $kernel->config->setOption('site_logo_media_id', '');
-    } elseif (isset($_FILES['logo']) && $_FILES['logo']['error'] !== UPLOAD_ERR_NO_FILE) {
-        try {
-            $uploaded = $kernel->media->upload($_FILES['logo'], $currentUser->id);
-            $kernel->config->setOption('site_logo_media_id', (string) $uploaded['id']);
-        } catch (\Throwable $exception) {
-            $error = 'Logo upload failed: ' . $exception->getMessage();
-        }
-    }
-
-    if (($_POST['remove_favicon'] ?? '') === '1') {
-        $kernel->config->setOption('favicon_media_id', '');
-    } elseif (isset($_FILES['favicon']) && $_FILES['favicon']['error'] !== UPLOAD_ERR_NO_FILE) {
-        try {
-            $uploaded = $kernel->media->upload($_FILES['favicon'], $currentUser->id);
-            $kernel->config->setOption('favicon_media_id', (string) $uploaded['id']);
-        } catch (\Throwable $exception) {
-            $error = 'Favicon upload failed: ' . $exception->getMessage();
-        }
-    }
-
-    if ($error === null) {
-        header('Location: ' . admin_url('appearance/themes') . '?saved=1');
-        exit;
+        $error = $result->errorMessage;
     }
 }
 

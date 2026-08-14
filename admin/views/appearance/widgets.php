@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Widgets\WidgetManager;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -31,7 +32,9 @@ if (!isset($kernel)) {
  * back; WidgetManager itself (in-memory for this request only) is kept in
  * sync too so the page re-renders with the change reflected immediately
  * without needing a redirect round-trip through bootstrap.php's own
- * loader.
+ * loader. WidgetManager::INACTIVE_SIDEBAR_ID is one more entry in this
+ * same JSON structure — a reserved, unregistered "sidebar" id that holds
+ * deactivated widgets until they're reactivated or deleted permanently.
  */
 $loadWidgetsConfig = static function () use ($kernel): array {
     $decoded = json_decode((string) $kernel->config->option('widgets_config', '{}'), true);
@@ -81,6 +84,50 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     };
 };
 
+/**
+ * Renders one widget's settings fields — shared by the per-sidebar list
+ * and the Inactive Widgets list below, which otherwise duplicated this
+ * exact field-type switch.
+ *
+ * @param array{id: string, type: string, settings: array<string, mixed>} $widget
+ * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>}> $fields
+ */
+$renderWidgetSettingsFields = static function (array $widget, array $fields): void {
+    foreach ($fields as $field) {
+        $fieldId = 'widget-' . $widget['id'] . '-' . $field['key'];
+        $value = $widget['settings'][$field['key']] ?? '';
+        ?>
+        <p class="lp-field">
+            <?php if ($field['type'] !== 'checkbox'): ?>
+                <label for="<?= esc_attr($fieldId) ?>"><?= esc_html($field['label']) ?></label>
+            <?php endif; ?>
+
+            <?php if ($field['type'] === 'textarea'): ?>
+                <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="4"><?= esc_html((string) $value) ?></textarea>
+            <?php elseif ($field['type'] === 'code'): ?>
+                <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="6" class="lp-code-textarea"><?= esc_html((string) $value) ?></textarea>
+            <?php elseif ($field['type'] === 'number'): ?>
+                <input type="number" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" min="1" value="<?= esc_attr((string) $value) ?>">
+            <?php elseif ($field['type'] === 'checkbox'): ?>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="1" <?= $value === '1' ? 'checked' : '' ?>>
+                    <?= esc_html($field['label']) ?>
+                </label>
+            <?php elseif ($field['type'] === 'select'): ?>
+                <select id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]">
+                    <option value="">(None)</option>
+                    <?php foreach (($field['options'] ?? []) as $optionValue => $optionLabel): ?>
+                        <option value="<?= esc_attr($optionValue) ?>" <?= $value === $optionValue ? 'selected' : '' ?>><?= esc_html($optionLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php else: ?>
+                <input type="text" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="<?= esc_attr((string) $value) ?>">
+            <?php endif; ?>
+        </p>
+        <?php
+    }
+};
+
 $error = null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $postedWidgetId = trim((string) ($_POST['widget_id'] ?? ''));
@@ -88,12 +135,12 @@ $postedSidebarId = trim((string) ($_POST['sidebar_id'] ?? ''));
 $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
 /*
- * Every widget on this page renders its own Save/Move Up/Move Down/Remove
- * form, and one "Add Widget" form per sidebar — many forms on one page
- * load. Csrf::field()/verify() are keyed by action *name*, and
- * Csrf::field() overwrites the session's token for a given name on every
- * call, so reusing one shared name across all of them would leave every
- * form but the last-rendered one silently submitting an
+ * Every widget on this page renders its own Save/Move Up/Move Down/
+ * Deactivate/Activate/Delete form, and one "Add Widget" form per sidebar —
+ * many forms on one page load. Csrf::field()/verify() are keyed by action
+ * *name*, and Csrf::field() overwrites the session's token for a given
+ * name on every call, so reusing one shared name across all of them would
+ * leave every form but the last-rendered one silently submitting an
  * already-invalidated token (see CommentService's/SiteController's own
  * docblocks for the LP-012 incident this exact mistake caused). Each
  * action name below is scoped to the specific widget/sidebar id it acts
@@ -102,6 +149,7 @@ $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : 
 $postedDirection = (string) ($_POST['direction'] ?? '');
 $postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
 $postedPosition = (string) ($_POST['position'] ?? 'before');
+$postedTargetSidebarId = trim((string) ($_POST['target_sidebar_id'] ?? ''));
 $csrfAction = match ($form) {
     'add_widget' => 'widget_add_' . $postedSidebarId,
     'update_widget' => 'widget_update_' . $postedWidgetId,
@@ -116,15 +164,18 @@ $csrfAction = match ($form) {
     // and submits it on drop, so this action name only needs to be
     // scoped per sidebar.
     'reposition_widget' => 'widget_reposition_' . $postedSidebarId,
-    'remove_widget' => 'widget_remove_' . $postedWidgetId,
+    'deactivate_widget' => 'widget_deactivate_' . $postedWidgetId,
+    'activate_widget' => 'widget_activate_' . $postedWidgetId,
+    'delete_widget' => 'widget_delete_' . $postedWidgetId,
     default => 'widget_unknown_form',
 };
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction, $postedToken)) {
     $sidebarId = $postedSidebarId;
     $knownSidebars = $kernel->widgets->sidebars();
+    $isInactiveBucket = $sidebarId === WidgetManager::INACTIVE_SIDEBAR_ID;
 
-    if (!array_key_exists($sidebarId, $knownSidebars)) {
+    if (!$isInactiveBucket && !array_key_exists($sidebarId, $knownSidebars)) {
         $error = 'Unknown widget area.';
     } elseif ($form === 'add_widget') {
         $widgetType = trim((string) ($_POST['widget_type'] ?? ''));
@@ -175,7 +226,73 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         }
 
         $error = 'That widget no longer exists.';
-    } elseif ($form === 'remove_widget') {
+    } elseif ($form === 'deactivate_widget') {
+        // LP-048 "inactive widgets": moves the widget out of its sidebar
+        // and into the reserved INACTIVE_SIDEBAR_ID bucket instead of
+        // deleting it, preserving its settings so it can be reactivated
+        // (into this or any other sidebar) or deleted permanently later.
+        $widgetId = $postedWidgetId;
+        $widgetsConfig = $loadWidgetsConfig();
+        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
+        $moving = null;
+        $remaining = [];
+
+        foreach ($sidebarWidgets as $widget) {
+            if (($widget['id'] ?? null) === $widgetId) {
+                $moving = $widget;
+            } else {
+                $remaining[] = $widget;
+            }
+        }
+
+        if ($moving !== null) {
+            $widgetsConfig[$sidebarId] = $remaining;
+            $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] ??= [];
+            $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID][] = $moving;
+            $saveWidgetsConfig($widgetsConfig);
+            $kernel->widgets->setWidgets($sidebarId, $remaining);
+            $kernel->widgets->setWidgets(WidgetManager::INACTIVE_SIDEBAR_ID, $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID]);
+        }
+
+        header('Location: ' . admin_url('appearance/widgets') . '?deactivated=1');
+        exit;
+    } elseif ($form === 'activate_widget') {
+        // Moves a widget out of the inactive bucket and appends it to a
+        // chosen registered sidebar. $sidebarId here is always
+        // INACTIVE_SIDEBAR_ID (the bucket the widget currently lives in);
+        // target_sidebar_id is the destination the admin picked.
+        if (!array_key_exists($postedTargetSidebarId, $knownSidebars)) {
+            $error = 'Choose a widget area to activate this widget into.';
+        } else {
+            $widgetId = $postedWidgetId;
+            $widgetsConfig = $loadWidgetsConfig();
+            $inactiveWidgets = $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] ?? [];
+            $moving = null;
+            $remaining = [];
+
+            foreach ($inactiveWidgets as $widget) {
+                if (($widget['id'] ?? null) === $widgetId) {
+                    $moving = $widget;
+                } else {
+                    $remaining[] = $widget;
+                }
+            }
+
+            if ($moving !== null) {
+                $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] = $remaining;
+                $widgetsConfig[$postedTargetSidebarId] ??= [];
+                $widgetsConfig[$postedTargetSidebarId][] = $moving;
+                $saveWidgetsConfig($widgetsConfig);
+                $kernel->widgets->setWidgets(WidgetManager::INACTIVE_SIDEBAR_ID, $remaining);
+                $kernel->widgets->setWidgets($postedTargetSidebarId, $widgetsConfig[$postedTargetSidebarId]);
+            }
+
+            header('Location: ' . admin_url('appearance/widgets') . '?activated=1');
+            exit;
+        }
+    } elseif ($form === 'delete_widget') {
+        // Permanent removal — used from the Inactive Widgets list once a
+        // widget's settings are no longer wanted at all.
         $widgetId = $postedWidgetId;
         $widgetsConfig = $loadWidgetsConfig();
         $widgetsConfig[$sidebarId] = array_values(array_filter(
@@ -185,7 +302,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         $saveWidgetsConfig($widgetsConfig);
         $kernel->widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
 
-        header('Location: ' . admin_url('appearance/widgets') . '?removed=1');
+        header('Location: ' . admin_url('appearance/widgets') . '?deleted=1');
         exit;
     } elseif ($form === 'move_widget') {
         $widgetId = $postedWidgetId;
@@ -269,8 +386,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
-<?php if (isset($_GET['removed'])): ?>
-    <div class="lp-alert lp-alert--success">Widget removed.</div>
+<?php if (isset($_GET['deactivated'])): ?>
+    <div class="lp-alert lp-alert--success">Widget moved to Inactive Widgets.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['activated'])): ?>
+    <div class="lp-alert lp-alert--success">Widget activated.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['deleted'])): ?>
+    <div class="lp-alert lp-alert--success">Widget permanently deleted.</div>
 <?php endif; ?>
 
 <?php if ($kernel->widgets->sidebars() === []): ?>
@@ -312,37 +437,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                                 <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
                                 <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
 
-                                <?php foreach ($fields as $field): ?>
-                                    <?php $fieldId = 'widget-' . $widget['id'] . '-' . $field['key']; ?>
-                                    <?php $value = $widget['settings'][$field['key']] ?? ''; ?>
-                                    <p class="lp-field">
-                                        <?php if ($field['type'] !== 'checkbox'): ?>
-                                            <label for="<?= esc_attr($fieldId) ?>"><?= esc_html($field['label']) ?></label>
-                                        <?php endif; ?>
-
-                                        <?php if ($field['type'] === 'textarea'): ?>
-                                            <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="4"><?= esc_html((string) $value) ?></textarea>
-                                        <?php elseif ($field['type'] === 'code'): ?>
-                                            <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="6" class="lp-code-textarea"><?= esc_html((string) $value) ?></textarea>
-                                        <?php elseif ($field['type'] === 'number'): ?>
-                                            <input type="number" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" min="1" value="<?= esc_attr((string) $value) ?>">
-                                        <?php elseif ($field['type'] === 'checkbox'): ?>
-                                            <label class="lp-field--checkbox">
-                                                <input type="checkbox" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="1" <?= $value === '1' ? 'checked' : '' ?>>
-                                                <?= esc_html($field['label']) ?>
-                                            </label>
-                                        <?php elseif ($field['type'] === 'select'): ?>
-                                            <select id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]">
-                                                <option value="">(None)</option>
-                                                <?php foreach (($field['options'] ?? []) as $optionValue => $optionLabel): ?>
-                                                    <option value="<?= esc_attr($optionValue) ?>" <?= $value === $optionValue ? 'selected' : '' ?>><?= esc_html($optionLabel) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                        <?php else: ?>
-                                            <input type="text" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="<?= esc_attr((string) $value) ?>">
-                                        <?php endif; ?>
-                                    </p>
-                                <?php endforeach; ?>
+                                <?php $renderWidgetSettingsFields($widget, $fields); ?>
 
                                 <button type="submit" class="lp-button lp-button--primary">Save</button>
                             </form>
@@ -368,12 +463,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                                         <button type="submit" class="lp-button lp-button--secondary">Move Down</button>
                                     </form>
                                 <?php endif; ?>
-                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form" data-lp-confirm="Remove this widget?">
-                                    <?= Csrf::field('widget_remove_' . $widget['id']) ?>
-                                    <input type="hidden" name="form" value="remove_widget">
+                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('widget_deactivate_' . $widget['id']) ?>
+                                    <input type="hidden" name="form" value="deactivate_widget">
                                     <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
                                     <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
-                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Remove</button>
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Deactivate</button>
                                 </form>
                             </div>
                         </details>
@@ -408,3 +503,78 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         <?php endif; ?>
     </section>
 <?php endforeach; ?>
+
+<?php
+/*
+ * LP-048 "inactive widgets": a holding area for widgets deactivated out of
+ * a real sidebar above, mirroring classic WordPress's own Inactive
+ * Widgets area. Always rendered (even when empty) so the feature is
+ * discoverable before a widget has ever been deactivated, matching the
+ * "No widgets in this area yet." placeholder pattern used for real
+ * sidebars above.
+ */
+$inactiveWidgets = $kernel->widgets->widgetsFor(WidgetManager::INACTIVE_SIDEBAR_ID);
+?>
+<section class="lp-admin__panel lp-widgets-area lp-widgets-area--inactive">
+    <h2>Inactive Widgets</h2>
+    <p class="lp-field__hint">Widgets deactivated from a widget area above are kept here with their settings intact. Activate one into any widget area, or delete it permanently.</p>
+
+    <?php if ($inactiveWidgets === []): ?>
+        <p class="lp-admin__widget-placeholder">No inactive widgets.</p>
+    <?php else: ?>
+        <ul class="lp-widgets-list">
+            <?php foreach ($inactiveWidgets as $widget): ?>
+                <?php
+                $widgetType = $kernel->widgets->widgetTypes()[$widget['type']] ?? null;
+                $fields = $settingsFieldsFor($widget['type']);
+                ?>
+                <li class="lp-widgets-list__item">
+                    <details class="lp-widgets-list__details">
+                        <summary class="lp-widgets-list__summary">
+                            <?= esc_html($widgetType['label'] ?? $widget['type']) ?>
+                            <?php if (($widget['settings']['title'] ?? '') !== ''): ?>
+                                <span class="lp-widgets-list__instance-title">&mdash; <?= esc_html((string) $widget['settings']['title']) ?></span>
+                            <?php endif; ?>
+                        </summary>
+
+                        <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-widgets-list__settings">
+                            <?= Csrf::field('widget_update_' . $widget['id']) ?>
+                            <input type="hidden" name="form" value="update_widget">
+                            <input type="hidden" name="sidebar_id" value="<?= esc_attr(WidgetManager::INACTIVE_SIDEBAR_ID) ?>">
+                            <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
+
+                            <?php $renderWidgetSettingsFields($widget, $fields); ?>
+
+                            <button type="submit" class="lp-button lp-button--primary">Save</button>
+                        </form>
+
+                        <div class="lp-widgets-list__actions">
+                            <?php if ($kernel->widgets->sidebars() !== []): ?>
+                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-widgets-list__activate-form">
+                                    <?= Csrf::field('widget_activate_' . $widget['id']) ?>
+                                    <input type="hidden" name="form" value="activate_widget">
+                                    <input type="hidden" name="sidebar_id" value="<?= esc_attr(WidgetManager::INACTIVE_SIDEBAR_ID) ?>">
+                                    <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
+                                    <label class="lp-visually-hidden" for="activate-target-<?= esc_attr($widget['id']) ?>">Widget area</label>
+                                    <select id="activate-target-<?= esc_attr($widget['id']) ?>" name="target_sidebar_id">
+                                        <?php foreach ($kernel->widgets->sidebars() as $targetSidebarId => $targetSidebar): ?>
+                                            <option value="<?= esc_attr($targetSidebarId) ?>"><?= esc_html($targetSidebar['name']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" class="lp-button lp-button--secondary">Activate</button>
+                                </form>
+                            <?php endif; ?>
+                            <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form" data-lp-confirm="Permanently delete this widget? This cannot be undone.">
+                                <?= Csrf::field('widget_delete_' . $widget['id']) ?>
+                                <input type="hidden" name="form" value="delete_widget">
+                                <input type="hidden" name="sidebar_id" value="<?= esc_attr(WidgetManager::INACTIVE_SIDEBAR_ID) ?>">
+                                <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
+                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete Permanently</button>
+                            </form>
+                        </div>
+                    </details>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+</section>

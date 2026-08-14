@@ -1213,6 +1213,36 @@ body.lp-admin-login {
     margin-top: 1rem;
 }
 
+/* Font color swatch picker (Markdown editor's toolbar button) — same fixed palette TinyMCE's lumoraFontColor menu offers. */
+.lp-editor-color-dialog {
+    width: min(260px, 92vw);
+    padding: 1.25rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+}
+
+.lp-editor-color-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-editor-color-dialog__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.lp-editor-color-dialog__swatch {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
 .lp-api-token__value {
     display: block;
     padding: 0.5rem 0.75rem;
@@ -1643,6 +1673,81 @@ body.lp-admin-login {
     background: var(--lp-admin-sidebar-bg);
 }
 
+/*
+ * LP-086 Update progress stages — a live checklist of the current
+ * download/install run, polled from UpdateProgress while the driving
+ * request is still in flight. Each <li> carries a status class
+ * (is-pending/is-active/is-done/is-error) set by admin/assets/js/
+ * update-progress.js as it reads back UpdateProgress::read().
+ */
+.lp-update-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    list-style: none;
+    margin: 0.75rem 0;
+    padding: 0;
+    font-size: 0.9rem;
+}
+
+.lp-update-progress__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-update-progress__marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: none;
+    border-radius: 50%;
+    border: 2px solid var(--lp-admin-border);
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
+.lp-update-progress__item.is-active {
+    color: var(--lp-admin-text);
+    font-weight: 600;
+}
+
+.lp-update-progress__item.is-active .lp-update-progress__marker {
+    border-color: var(--lp-admin-accent);
+    border-top-color: transparent;
+    animation: lp-update-progress-spin 0.8s linear infinite;
+}
+
+.lp-update-progress__item.is-done {
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-update-progress__item.is-done .lp-update-progress__marker {
+    background: var(--lp-admin-success-border);
+    border-color: var(--lp-admin-success-border);
+    color: #fff;
+}
+
+.lp-update-progress__item.is-error {
+    color: var(--lp-admin-error-text);
+    font-weight: 600;
+}
+
+.lp-update-progress__item.is-error .lp-update-progress__marker {
+    background: var(--lp-admin-error-border);
+    border-color: var(--lp-admin-error-border);
+    color: #fff;
+}
+
+@keyframes lp-update-progress-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .lp-import-scan__list {
     list-style: none;
     margin: 0 0 1rem;
@@ -1833,17 +1938,27 @@ select:focus {
     margin-left: auto;
 }
 
-/* Custom fields (LP-008) — repeatable key/value row editor */
+/* Custom fields (LP-008) — repeatable key/value row editor. LP-083 moved
+   this into the ~266px-wide sidebar box (its only remaining home), too
+   narrow to fit two inputs plus a Remove button on one line at their
+   natural size — flex-wrap plus a small flex-basis lets the pair wrap
+   onto their own line above Remove instead of overflowing the box. */
 
 .lp-custom-fields__row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.4rem;
 }
 
 .lp-custom-fields__row input[type="text"] {
-    flex: 1 1 auto;
+    flex: 1 1 90px;
+    min-width: 0;
+}
+
+.lp-custom-fields__row [data-lp-custom-fields-remove] {
+    flex-shrink: 0;
 }
 
 /* Tag input widget (progressive enhancement of a plain text field) */
@@ -2300,7 +2415,8 @@ select:focus {
     overflow-y: auto;
     padding: 0.75rem;
     margin: 0.5rem 0 0;
-    background: var(--lp-admin-border);
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
     border-radius: 4px;
     font-size: 0.85rem;
 }
@@ -2769,6 +2885,116 @@ select:focus {
     box-shadow: 0 2px 0 0 var(--lp-admin-accent);
 }
 
+/* Post/Page editor sidebar layout (LP-083) — extends .lp-media-manager's
+   grid pattern above. The sidebar's boxes reuse .lp-drag-handle/
+   .lp-sortable--dragging/--drop-before/--drop-after from sortable.js's
+   AJAX mode above unchanged. */
+
+.lp-editor-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@media (max-width: 782px) {
+    .lp-editor-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.lp-editor-layout__sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.lp-sidebar-box {
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-sidebar-box__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    cursor: grab;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-sidebar-box--collapsed .lp-sidebar-box__header {
+    border-bottom: none;
+}
+
+.lp-sidebar-box__title {
+    font-weight: 600;
+}
+
+.lp-sidebar-box__toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+    padding: 0.25rem;
+    line-height: 1;
+}
+
+.lp-sidebar-box--collapsed .lp-sidebar-box__toggle {
+    transform: rotate(-90deg);
+}
+
+.lp-sidebar-box__content {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    /* min-width:0 on a flex column forces its flex-row children (Custom
+       Fields' key/value inputs, the Publish box's action buttons) to
+       actually respect the sidebar's ~268px content width instead of
+       overflowing it at their content-based minimum size — the classic
+       flexbox "min-width: auto" trap. */
+    min-width: 0;
+}
+
+.lp-sidebar-box--collapsed .lp-sidebar-box__content {
+    display: none;
+}
+
+.lp-sidebar-box__content * {
+    min-width: 0;
+}
+
+/* .lp-field already carries its own margin-bottom for the stacked,
+   single-column screens it was designed for; inside the sidebar's flex
+   column that stacks with the column's own `gap` above, nearly doubling
+   the space between fields. */
+.lp-sidebar-box__content .lp-field,
+.lp-sidebar-box__content .lp-field--checkbox {
+    margin-bottom: 0;
+}
+
+/* .lp-branding-preview's 64px cap suits the small logo/favicon/avatar
+   previews it's shared with elsewhere (Appearance > Themes, Settings) —
+   too small to judge a Featured Image by. Scoped to the sidebar so those
+   other previews are unaffected. */
+.lp-sidebar-box__content .lp-branding-preview {
+    max-height: 200px;
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-sidebar-box__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .lp-widgets-list__instance-title {
     font-weight: 400;
     opacity: 0.75;
@@ -2794,6 +3020,21 @@ select:focus {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+}
+
+/* Inactive Widgets (LP-048): a dashed border distinguishes deactivated
+   widget rows from the solid-bordered ones assigned to a live sidebar
+   above — same visual cue classic WordPress used for its own Inactive
+   Widgets area. */
+
+.lp-widgets-area--inactive .lp-widgets-list__item {
+    border-style: dashed;
+}
+
+.lp-widgets-list__activate-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 /* LP-049 Menus */
@@ -2849,6 +3090,71 @@ select:focus {
     padding: 0;
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* LP-009 Pages tree view — the admin "All" tab's flat, depth-indented,
+   drag-reorderable list (see admin/views/pages.php's listAllForTree()-
+   backed rendering). Indentation itself is applied via
+   data-style-margin-left + dynamic-style.js, not a CSS rule here (this
+   project's CSP has no 'unsafe-inline', so a computed per-row value
+   can't be a raw style= attribute — see menus.php's identical pattern). */
+
+.lp-pages-tree {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.lp-pages-tree__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-pages-tree__title {
+    flex: 1 1 auto;
+}
+
+.lp-pages-tree__date {
+    color: var(--lp-admin-text);
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+/* Quick Edit (LP-009) — the Pages list's inline per-row edit form,
+   swapped in for the normal row via quick-edit.js. */
+
+.lp-quick-edit-row {
+    background: var(--lp-admin-chip-bg);
+    border-top: 1px solid var(--lp-admin-chip-border);
+    border-bottom: 1px solid var(--lp-admin-chip-border);
+}
+
+.lp-quick-edit-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.lp-quick-edit-fields .lp-field {
+    flex: 1 1 12rem;
+    margin: 0;
+}
+
+.lp-quick-edit-error {
+    color: var(--lp-admin-error-text);
+}
+
+.lp-quick-edit-actions {
+    display: flex;
     gap: 0.5rem;
 }
 

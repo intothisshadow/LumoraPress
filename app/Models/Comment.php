@@ -23,7 +23,14 @@ final class Comment
 {
     public function __construct(
         public readonly int $id,
-        public readonly int $postId,
+        /**
+         * Exactly one of $postId/$pageId is set — comments were Posts-only
+         * (LP-012) before Pages gained Discussion settings (LP-009); a
+         * nullable `page_id` column was added alongside the existing
+         * `post_id` rather than a polymorphic content_id/content_type pair,
+         * to avoid migrating existing comment data.
+         */
+        public readonly ?int $postId,
         public readonly ?int $parentId,
         public readonly ?int $userId,
         public readonly string $guestName,
@@ -35,6 +42,7 @@ final class Comment
         public readonly ?string $userAgent,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
+        public readonly ?int $pageId = null,
     ) {
     }
 }

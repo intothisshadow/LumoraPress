@@ -69,8 +69,13 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
         exit;
     }
 } elseif ($form === 'date_time_settings' && Csrf::verify('date_time_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $dateFormatInput = trim((string) ($_POST['date_format'] ?? ''));
-    $timeFormatInput = trim((string) ($_POST['time_format'] ?? ''));
+    $dateFormatPresetInput = trim((string) ($_POST['date_format_preset'] ?? ''));
+    $dateFormatCustomInput = trim((string) ($_POST['date_format_custom'] ?? ''));
+    $dateFormatInput = $dateFormatPresetInput === 'custom' ? $dateFormatCustomInput : $dateFormatPresetInput;
+
+    $timeFormatPresetInput = trim((string) ($_POST['time_format_preset'] ?? ''));
+    $timeFormatCustomInput = trim((string) ($_POST['time_format_custom'] ?? ''));
+    $timeFormatInput = $timeFormatPresetInput === 'custom' ? $timeFormatCustomInput : $timeFormatPresetInput;
 
     $kernel->config->setOption('date_format', $dateFormatInput !== '' ? $dateFormatInput : 'F j, Y');
     $kernel->config->setOption('time_format', $timeFormatInput !== '' ? $timeFormatInput : 'g:i a');
@@ -207,23 +212,44 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 
 <section class="lp-admin__panel">
     <h2>Date &amp; Time</h2>
+    <?php
+    $dateTimeSample = new \DateTimeImmutable();
+    $dateFormatPresets = ['F j, Y', 'Y-m-d', 'm/d/Y', 'd/m/Y'];
+    $timeFormatPresets = ['g:i a', 'g:i A', 'H:i'];
+    $currentDateFormat = (string) $kernel->config->option('date_format', 'F j, Y');
+    $currentTimeFormat = (string) $kernel->config->option('time_format', 'g:i a');
+    $isCustomDateFormat = !in_array($currentDateFormat, $dateFormatPresets, true);
+    $isCustomTimeFormat = !in_array($currentTimeFormat, $timeFormatPresets, true);
+    ?>
     <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>">
         <?= Csrf::field('date_time_settings') ?>
         <input type="hidden" name="form" value="date_time_settings">
 
-        <p class="lp-field">
-            <label for="date-format">Date format</label>
-            <input type="text" id="date-format" name="date_format" value="<?= esc_attr((string) $kernel->config->option('date_format', 'F j, Y')) ?>">
+        <p class="lp-field" data-lp-format-field>
+            <label for="date-format-preset">Date format</label>
+            <select id="date-format-preset" name="date_format_preset" data-lp-format-preset-select>
+                <?php foreach ($dateFormatPresets as $dateFormatPreset): ?>
+                    <option value="<?= esc_attr($dateFormatPreset) ?>" <?= (!$isCustomDateFormat && $currentDateFormat === $dateFormatPreset) ? 'selected' : '' ?>><?= esc_html($dateTimeSample->format($dateFormatPreset)) ?></option>
+                <?php endforeach; ?>
+                <option value="custom" <?= $isCustomDateFormat ? 'selected' : '' ?>>Custom</option>
+            </select>
+            <input type="text" id="date-format-custom" name="date_format_custom" value="<?= esc_attr($currentDateFormat) ?>" data-lp-format-custom-input <?= $isCustomDateFormat ? '' : 'hidden' ?>>
             <span class="lp-field__hint">
-                PHP <a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">date()</a> format.
-                Currently: <?= esc_html(the_date(new \DateTimeImmutable())) ?>
+                Custom values use PHP <a href="https://www.php.net/manual/en/datetime.format.php" target="_blank" rel="noopener">date()</a> format.
+                Currently: <?= esc_html(the_date($dateTimeSample)) ?>
             </span>
         </p>
 
-        <p class="lp-field">
-            <label for="time-format">Time format</label>
-            <input type="text" id="time-format" name="time_format" value="<?= esc_attr((string) $kernel->config->option('time_format', 'g:i a')) ?>">
-            <span class="lp-field__hint">Currently: <?= esc_html(the_time(new \DateTimeImmutable())) ?></span>
+        <p class="lp-field" data-lp-format-field>
+            <label for="time-format-preset">Time format</label>
+            <select id="time-format-preset" name="time_format_preset" data-lp-format-preset-select>
+                <?php foreach ($timeFormatPresets as $timeFormatPreset): ?>
+                    <option value="<?= esc_attr($timeFormatPreset) ?>" <?= (!$isCustomTimeFormat && $currentTimeFormat === $timeFormatPreset) ? 'selected' : '' ?>><?= esc_html($dateTimeSample->format($timeFormatPreset)) ?></option>
+                <?php endforeach; ?>
+                <option value="custom" <?= $isCustomTimeFormat ? 'selected' : '' ?>>Custom</option>
+            </select>
+            <input type="text" id="time-format-custom" name="time_format_custom" value="<?= esc_attr($currentTimeFormat) ?>" data-lp-format-custom-input <?= $isCustomTimeFormat ? '' : 'hidden' ?>>
+            <span class="lp-field__hint">Currently: <?= esc_html(the_time($dateTimeSample)) ?></span>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

@@ -55,6 +55,7 @@ use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
+use LumoraPress\Core\Theme\FooterAssets;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptions;
@@ -70,12 +71,18 @@ use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
+use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
+use LumoraPress\Services\Import\CommentImporter;
+use LumoraPress\Services\Import\MediaImporter;
+use LumoraPress\Services\Import\PageImporter;
+use LumoraPress\Services\Import\PostImporter;
+use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -95,6 +102,7 @@ use LumoraPress\Services\UpdateBackupService;
 use LumoraPress\Services\UpdateChecksumManifest;
 use LumoraPress\Services\UpdateManifest;
 use LumoraPress\Services\UpdatePackageValidator;
+use LumoraPress\Services\UpdateProgress;
 use LumoraPress\Services\UpdateService;
 use LumoraPress\Services\UserService;
 
@@ -159,8 +167,13 @@ SiteUrl::set((string) $config->option('site_url', $detectedSiteUrl));
 
 $secureCookies = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 
+// Empty (the default) means storage/sessions inside this install — see
+// config.example.php's own comment. An install can point this elsewhere
+// (outside this directory, a tmpfs, etc.) by setting an absolute path.
+$configuredSessionPath = trim((string) $config->get('session_path', ''));
+
 $sessions = new SessionManager(
-    sessionPath: LUMORA_ROOT . '/storage/sessions',
+    sessionPath: $configuredSessionPath !== '' ? $configuredSessionPath : LUMORA_ROOT . '/storage/sessions',
     secureCookies: $secureCookies,
 );
 $sessions->start();
@@ -351,6 +364,22 @@ $revisions = new RevisionService($database, $tablePrefix, $config);
 $categories = new CategoryService($database, $tablePrefix, $hooks);
 $tags = new TagService($database, $tablePrefix, $hooks);
 $comments = new CommentService($database, $tablePrefix, $hooks);
+
+/*
+ * LPP-004/LPP-005 Phase 1: a shared bulk-content-creation layer used by
+ * both the (future) WordPress WXR importer and the Dummy Content plugin,
+ * so neither duplicates PostService/PageService/UserService/MediaService/
+ * CommentService's create() call shapes. Constructed here since every
+ * service above (posts/pages/categories/tags/comments/media/users) is
+ * already available by this point.
+ */
+$contentImportRegistry = new ContentImportRegistry($database, $tablePrefix);
+$postImporter = new PostImporter($posts, $categories, $tags, $contentImportRegistry);
+$pageImporter = new PageImporter($pages, $contentImportRegistry);
+$userImporter = new UserImporter($users, $contentImportRegistry);
+$mediaImporter = new MediaImporter($media, LUMORA_ROOT . '/content/uploads', $contentImportRegistry);
+$commentImporter = new CommentImporter($comments, $contentImportRegistry);
+
 $redirects = new RedirectService($database, $tablePrefix);
 $permalinks = new PermalinkService($config, $categories, $users);
 
@@ -413,7 +442,15 @@ $widgetsConfig = json_decode((string) $config->option('widgets_config', '{}'), t
 $widgetsConfig = is_array($widgetsConfig) ? $widgetsConfig : [];
 $widgetsConfigNeedsBackfill = false;
 
-foreach (array_keys($widgets->sidebars()) as $sidebarId) {
+/*
+ * WidgetManager::INACTIVE_SIDEBAR_ID (LP-048 "inactive widgets") is a
+ * reserved bucket, not a theme-registered sidebar, so it never appears in
+ * $widgets->sidebars() — loaded here explicitly alongside the real ones so
+ * the admin Widgets screen has it preloaded in memory on every request,
+ * the same way registered sidebars are, rather than only after a POST that
+ * happens to touch it this request.
+ */
+foreach ([...array_keys($widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_ID] as $sidebarId) {
     if (isset($widgetsConfig[$sidebarId]) && is_array($widgetsConfig[$sidebarId])) {
         $widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
 
@@ -516,6 +553,15 @@ FeaturedImages::set($media, $thumbnails, $config);
 require LUMORA_ROOT . '/include/media-functions.php';
 
 /*
+ * FooterAssets (LP-031/LP-070/LP-071's PhotoSwipe/Twitter/Bluesky markup,
+ * previously duplicated verbatim inside every theme's own footer.php) —
+ * registered on 'footer_assets' the same way the Font Awesome plugin
+ * registers its own icon <link> tags on 'head_assets'. A theme's
+ * footer.php only needs to call do_action('footer_assets') once.
+ */
+add_action('footer_assets', [FooterAssets::class, 'render']);
+
+/*
  * Author archive/profile-link helpers (LP-008) — same bridge shape as
  * FeaturedImages above, for the same reason (themes have no route to
  * UserService of their own).
@@ -543,38 +589,37 @@ require LUMORA_ROOT . '/include/permalink-functions.php';
 require LUMORA_ROOT . '/include/content-display-functions.php';
 
 /*
- * The fixed set of paths (relative to LUMORA_ROOT) that make up the core
- * application, as distributed in an official release ZIP. Everything
- * else under LUMORA_ROOT — config/, content/uploads, the rest of
- * content/plugins (i.e. any plugin the administrator installed
- * themselves), custom themes other than "default", and storage/ — is
- * user data and is never touched by a manual update. docs/
- * (CHANGELOG.md/HISTORY.md/TROUBLESHOOTING.md) belongs here alongside
- * README.md/LICENSE.md — it ships with every release, unlike the
- * user-data paths above — but was missing until this fix, so a manual
- * update never overlaid it.
- *
- * content/plugins/font-awesome (LPP-002) is listed explicitly, the same
- * "bundled first-party, not user-installed" treatment content/themes/
- * default already gets — without this, the plugin's own file updates
- * would never reach an existing install, and a site that upgraded from
- * a release before this plugin existed would never receive it at all.
- * A user-installed plugin (anything else under content/plugins/) is
- * still never touched.
+ * comment_form()/comment_list()/comment_avatar_url() — no bridge/service
+ * of their own either (same shape as content-display-functions.php
+ * above): pure orchestration over Csrf/FormTiming, with every value they
+ * need (post, current user, guest field defaults) passed in by the
+ * theme's comments.php from what SiteController already gave it.
  */
-$updateCorePaths = [
-    'app',
-    'admin',
-    'include',
-    'install',
-    'content/themes/default',
-    'content/plugins/font-awesome',
-    'index.php',
-    'version.php',
-    '.htaccess',
-    'README.md',
-    'LICENSE.md',
-    'docs',
+require LUMORA_ROOT . '/include/comment-functions.php';
+
+/*
+ * See core-paths.php's own docblock for what this list is and why it's a
+ * standalone file rather than an inline array literal here.
+ *
+ * Defensive fallback (2026-08-13): this exact file went missing on a real
+ * site mid-update — the update that *introduces* core-paths.php can't
+ * reliably deliver it via the same mechanism that reads it (see
+ * UpdateService::resolveEffectiveCorePaths()'s docblock for the full
+ * chicken-and-egg explanation), and a partially-applied or interrupted
+ * update could plausibly hit the same gap again. Previously this `require`
+ * was unconditional, so a missing file took the entire site down (public
+ * pages included, not just admin) with an opaque 500 instead of degrading.
+ * The hardcoded fallback below is the same list core-paths.php itself
+ * ships, kept in sync by hand — acceptable since this only ever runs when
+ * the real file is already missing, i.e. something has already gone
+ * wrong and staying up with a slightly stale list is strictly better than
+ * a blank error page.
+ */
+$corePathsFile = LUMORA_ROOT . '/core-paths.php';
+$updateCorePaths = is_file($corePathsFile) ? require $corePathsFile : [
+    'app', 'admin', 'assets', 'include', 'install',
+    'content/themes/default', 'content/plugins/font-awesome', 'content/plugins/dummy-content',
+    'index.php', 'version.php', '.htaccess', 'README.md', 'LICENSE.md', 'docs', 'core-paths.php',
 ];
 
 $updateValidator = new UpdatePackageValidator(
@@ -596,6 +641,8 @@ $updateBackups = new UpdateBackupService(
     checksums: $updateChecksums,
 );
 
+$updateProgress = new UpdateProgress(LUMORA_ROOT);
+
 $updates = new UpdateService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -613,6 +660,7 @@ $updates = new UpdateService(
     config: $config,
     users: $users,
     checksums: $updateChecksums,
+    progress: $updateProgress,
 );
 
 $githubUpdates = new GitHubReleaseProvider($config);
@@ -704,6 +752,7 @@ $kernel = new Kernel(
     feeds: $feeds,
     search: $search,
     updates: $updates,
+    updateProgress: $updateProgress,
     githubUpdates: $githubUpdates,
     router: $router,
     maintenance: $maintenance,
@@ -731,6 +780,12 @@ $kernel = new Kernel(
     editorPreferences: $editorPreferences,
     commentModeration: $commentModeration,
     permalinks: $permalinks,
+    contentImportRegistry: $contentImportRegistry,
+    postImporter: $postImporter,
+    pageImporter: $pageImporter,
+    userImporter: $userImporter,
+    mediaImporter: $mediaImporter,
+    commentImporter: $commentImporter,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications);
@@ -750,6 +805,7 @@ $router->get('/', fn (array $params) => $site->home($params));
 $router->get($postRoutePattern, fn (array $params) => $site->singlePost($params));
 $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
 $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
+$router->get('/preview-page/{id}', fn (array $params) => $site->previewPage($params));
 $router->get('/author/{slug}', fn (array $params) => $site->author($params));
 $router->get($permalinks->categoryRoutePattern(), fn (array $params) => $site->category($params));
 $router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($params));
@@ -757,6 +813,7 @@ $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));
 $router->get('/page/{slug}', fn (array $params) => $site->page($params));
+$router->post('/page/{slug}/comment', fn (array $params) => $site->submitPageComment($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));
 $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
 $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));

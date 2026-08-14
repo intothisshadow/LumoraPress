@@ -192,7 +192,7 @@ final class CoreWidgets
             echo '</ul></section>';
         });
 
-        $widgets->registerWidget('recent_comments', 'Recent Comments', static function (array $settings) use ($comments, $posts): void {
+        $widgets->registerWidget('recent_comments', 'Recent Comments', static function (array $settings) use ($comments, $posts, $pages): void {
             $title = (string) ($settings['title'] ?? '');
             $limit = max(1, (int) ($settings['limit'] ?? 5));
             $list = $comments->recentApproved($limit);
@@ -206,14 +206,22 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
 
             foreach ($list as $entry) {
-                // A real Post lookup (rather than the postname_permalink()
-                // slug-only helper) so a custom permalink structure using
-                // %category%/%author% resolves correctly here too — this
-                // widget's default limit (5) keeps the extra query cheap.
-                $entryPost = $posts->findBySlug($entry['postSlug']);
-                $url = ($entryPost !== null ? post_permalink($entryPost) : site_url('post/' . $entry['postSlug']))
-                    . '#comment-' . $entry['comment']->id;
-                echo '<li>' . esc_html($entry['comment']->guestName) . ' on <a href="' . esc_url($url) . '">' . esc_html($entry['postTitle']) . '</a></li>';
+                // A real Post/Page lookup (rather than the
+                // postname_permalink() slug-only helper) so a custom
+                // permalink structure using %category%/%author% resolves
+                // correctly here too — this widget's default limit (5)
+                // keeps the extra query cheap.
+                if ($entry['contentType'] === 'page') {
+                    $entryPage = $pages->findBySlug($entry['contentSlug']);
+                    $url = ($entryPage !== null ? page_permalink($entryPage) : site_url('page/' . $entry['contentSlug']))
+                        . '#comment-' . $entry['comment']->id;
+                } else {
+                    $entryPost = $posts->findBySlug($entry['contentSlug']);
+                    $url = ($entryPost !== null ? post_permalink($entryPost) : site_url('post/' . $entry['contentSlug']))
+                        . '#comment-' . $entry['comment']->id;
+                }
+
+                echo '<li>' . esc_html($entry['comment']->guestName) . ' on <a href="' . esc_url($url) . '">' . esc_html($entry['contentTitle']) . '</a></li>';
             }
 
             echo '</ul></section>';

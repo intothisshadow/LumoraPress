@@ -12,12 +12,17 @@
  * @source https://github.com/intothisshadow/LumoraPress
  * @since 0.5.0
  */
-/** @var \LumoraPress\Models\Page $page */
+/**
+ * @var \LumoraPress\Models\Page $page
+ * @var array<int, \LumoraPress\Models\Page> $page_ancestors
+ * @var array<string, mixed> $comment_data Everything comments_template() needs — see SiteController::commentTemplateDataForPage().
+ */
 get_header(['page' => $page]);
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <article class="lp-page">
+            <?php the_page_breadcrumbs($page, $page_ancestors ?? []); ?>
             <h1 class="lp-page-title"><?= esc_html($page->title) ?></h1>
             <?php if (has_post_thumbnail($page)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
@@ -26,6 +31,7 @@ get_header(['page' => $page]);
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($page->content, $page->contentFormat) ?></div>
         </article>
+        <?php comments_template($comment_data); ?>
     </main>
     <?php get_sidebar(); ?>
 </div>

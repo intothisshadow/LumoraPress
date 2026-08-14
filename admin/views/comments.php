@@ -39,7 +39,17 @@ $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newS
         return;
     }
 
-    $post = $kernel->posts->findById($previousComment->postId);
+    // Exactly one of postId/pageId is set (see Comment's own docblock).
+    $permalink = home_url();
+
+    if ($previousComment->pageId !== null) {
+        $page = $kernel->pages->findById($previousComment->pageId);
+        $permalink = $page !== null ? page_permalink($page) : $permalink;
+    } else {
+        $post = $kernel->posts->findById($previousComment->postId);
+        $permalink = $post !== null ? post_permalink($post) : $permalink;
+    }
+
     $akismetComment = [
         'comment_type' => 'comment',
         'comment_author' => $previousComment->guestName,
@@ -49,7 +59,7 @@ $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newS
         'user_ip' => $previousComment->ipAddress ?? '0.0.0.0',
         'user_agent' => $previousComment->userAgent,
         'referrer' => null,
-        'permalink' => $post !== null ? post_permalink($post) : home_url(),
+        'permalink' => $permalink,
     ];
 
     if ($newStatus === CommentStatus::Spam) {
@@ -255,7 +265,7 @@ if ($action === 'edit') {
                             </th>
                             <th scope="col">Author</th>
                             <th scope="col">Comment</th>
-                            <th scope="col">Post</th>
+                            <th scope="col">Post / Page</th>
                             <th scope="col">Status</th>
                             <th scope="col">Date</th>
                             <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
@@ -278,9 +288,17 @@ if ($action === 'edit') {
                                         <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
                                     </a>
                                 </td>
-                                <?php $rowPost = $kernel->posts->findById($comment->postId); ?>
+                                <?php
+                                if ($row['contentType'] === 'page') {
+                                    $rowPage = $kernel->pages->findById($comment->pageId);
+                                    $rowPermalink = ($rowPage !== null ? page_permalink($rowPage) : home_url('page/' . $row['contentSlug'])) . '#comment-' . (int) $comment->id;
+                                } else {
+                                    $rowPost = $kernel->posts->findById($comment->postId);
+                                    $rowPermalink = ($rowPost !== null ? post_permalink($rowPost) : home_url('post/' . $row['contentSlug'])) . '#comment-' . (int) $comment->id;
+                                }
+                                ?>
                                 <td>
-                                    <a href="<?= esc_url(($rowPost !== null ? post_permalink($rowPost) : home_url('post/' . $row['postSlug'])) . '#comment-' . (int) $comment->id) ?>"><?= esc_html($row['postTitle']) ?></a>
+                                    <a href="<?= esc_url($rowPermalink) ?>"><?= esc_html($row['contentTitle']) ?></a>
                                 </td>
                                 <td>
                                     <span class="lp-status-badge lp-status-badge--<?= esc_attr($comment->status->value) ?>">

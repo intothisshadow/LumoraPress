@@ -1,24 +1,26 @@
 /**
  * LP-026 Manual Update (ZIP Upload): drag-and-drop onto the upload box,
- * and a real upload-progress bar for the ZIP itself. The server-rendered
- * "step-by-step status" (Update Summary / install progress) already
- * covers everything after the upload finishes — this only covers getting
- * the (often tens-of-MB) archive to the server in the first place, which
- * a plain synchronous form POST gives no feedback for at all.
+ * and a real upload-progress bar for the ZIP itself. LP-086 adds a second,
+ * stage-checklist progress indicator (Validating package… Checking
+ * compatibility…) covering what happens *after* the byte transfer
+ * finishes but before the Update Summary page renders — extraction and
+ * validation of a large archive can itself take a real moment, which the
+ * byte-progress bar above has nothing left to show once it hits 100%.
  *
  * The endpoint returns a full re-rendered HTML page either way (the
  * Update Summary panel on success, or the same form with an error banner)
  * rather than JSON, so on completion the response document simply
  * replaces this one — the same outcome a normal form submission would
- * have produced, just with a progress bar during the upload itself.
+ * have produced, just with visible progress throughout the wait.
  *
  * Markup contract (see admin/views/maintenance/updates.php):
- *   <div data-lp-update-upload>
+ *   <div data-lp-update-upload data-lp-update-progress-url="...?ajax=progress">
  *     <form enctype="multipart/form-data">
  *       <input type="file">
  *       <div data-lp-update-upload-progress hidden>
  *         <div data-lp-update-upload-progress-bar></div>
  *       </div>
+ *       <ul data-lp-update-upload-stages hidden></ul>
  *       <button type="submit">...</button>
  *     </form>
  *   </div>
@@ -37,10 +39,73 @@
         var fileInput = container.querySelector('input[type="file"]');
         var progressWrap = container.querySelector('[data-lp-update-upload-progress]');
         var progressBar = progressWrap ? progressWrap.querySelector('[data-lp-update-upload-progress-bar]') : null;
+        var stagesList = container.querySelector('[data-lp-update-upload-stages]');
+        var progressUrl = container.dataset.lpUpdateProgressUrl;
         var submitButton = form ? form.querySelector('button[type="submit"]') : null;
 
         if (!form || !fileInput) {
             return;
+        }
+
+        // Renders UpdateProgress::read()'s stage list — a small, self-
+        // contained duplicate of update-progress.js's identical helper
+        // rather than a shared module, since the two files' polling starts
+        // from different triggers (xhr.upload completing here vs. the
+        // form submit itself there) and have no other code in common.
+        function renderStages(state) {
+            if (!stagesList) {
+                return;
+            }
+
+            stagesList.innerHTML = '';
+
+            if (!state || !state.stages || state.stages.length === 0) {
+                stagesList.hidden = true;
+
+                return;
+            }
+
+            stagesList.hidden = false;
+
+            state.stages.forEach(function (stage) {
+                var item = document.createElement('li');
+                item.className = 'lp-update-progress__item is-' + stage.status;
+
+                var marker = document.createElement('span');
+                marker.className = 'lp-update-progress__marker';
+                marker.setAttribute('aria-hidden', 'true');
+                marker.textContent = stage.status === 'done' ? '✓' : (stage.status === 'error' ? '✕' : '');
+
+                var label = document.createElement('span');
+                label.textContent = stage.label;
+
+                item.appendChild(marker);
+                item.appendChild(label);
+                stagesList.appendChild(item);
+            });
+        }
+
+        function startStagePolling() {
+            if (!stagesList || !progressUrl || typeof fetch !== 'function') {
+                return function stop() {};
+            }
+
+            var stopped = false;
+            var timer = window.setInterval(function () {
+                fetch(progressUrl, { credentials: 'same-origin' })
+                    .then(function (response) { return response.ok ? response.json() : null; })
+                    .then(function (state) {
+                        if (!stopped && state) {
+                            renderStages(state);
+                        }
+                    })
+                    .catch(function () {});
+            }, 700);
+
+            return function stop() {
+                stopped = true;
+                window.clearInterval(timer);
+            };
         }
 
         ['dragenter', 'dragover'].forEach(function (eventName) {
@@ -94,6 +159,8 @@
                 submitButton.disabled = true;
             }
 
+            var stopStagePolling = function () {};
+
             xhr.upload.addEventListener('progress', function (progressEvent) {
                 if (!progressEvent.lengthComputable || !progressBar) {
                     return;
@@ -104,13 +171,24 @@
                 progressWrap.setAttribute('aria-valuenow', String(percent));
             });
 
+            // The byte transfer itself is done once this fires — the
+            // server is now extracting/validating the archive, which is
+            // what the stage checklist below covers. The upload's own
+            // percentage bar stays at 100% throughout that.
+            xhr.upload.addEventListener('loadend', function () {
+                stopStagePolling = startStagePolling();
+            });
+
             xhr.addEventListener('load', function () {
+                stopStagePolling();
                 document.open();
                 document.write(xhr.responseText);
                 document.close();
             });
 
             xhr.addEventListener('error', function () {
+                stopStagePolling();
+
                 if (submitButton) {
                     submitButton.disabled = false;
                 }

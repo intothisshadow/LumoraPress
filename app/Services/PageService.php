@@ -23,6 +23,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
+use LumoraPress\Models\PageVisibility;
 use RuntimeException;
 
 /**
@@ -60,14 +61,17 @@ final class PageService
         ?string $slug = null,
         ContentFormat $contentFormat = ContentFormat::Markdown,
         ?array $featuredImageCrop = null,
+        PageVisibility $visibility = PageVisibility::Public,
+        bool $commentsOpen = true,
     ): Page {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
+        $menuOrder = $this->nextMenuOrder($parentId);
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, slug, content, content_format, excerpt, status, author_id, parent_id, featured_image_id, featured_image_crop, published_at, created_at, updated_at)
-             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :author_id, :parent_id, :featured_image_id, :featured_image_crop, :published_at, :created_at, :updated_at)',
+                (title, slug, content, content_format, excerpt, status, visibility, comment_status, author_id, parent_id, menu_order, featured_image_id, featured_image_crop, published_at, created_at, updated_at)
+             VALUES (:title, :slug, :content, :content_format, :excerpt, :status, :visibility, :comment_status, :author_id, :parent_id, :menu_order, :featured_image_id, :featured_image_crop, :published_at, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'slug' => $slug,
@@ -75,8 +79,11 @@ final class PageService
                 'content_format' => $contentFormat->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
+                'visibility' => $visibility->value,
+                'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'author_id' => $authorId,
                 'parent_id' => $parentId,
+                'menu_order' => $menuOrder,
                 'featured_image_id' => $featuredImageId,
                 'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
                 'published_at' => $this->resolvePublishedAt($status, $publishedAt, $now)?->format('Y-m-d H:i:s'),
@@ -123,6 +130,8 @@ final class PageService
         ?string $slug = null,
         ?ContentFormat $contentFormat = null,
         ?array $featuredImageCrop = null,
+        ?PageVisibility $visibility = null,
+        bool $commentsOpen = true,
     ): Page {
         $existing = $this->findById($id);
 
@@ -141,7 +150,7 @@ final class PageService
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET title = :title, slug = :slug, content = :content, content_format = :content_format, excerpt = :excerpt,
-                    status = :status, parent_id = :parent_id, featured_image_id = :featured_image_id, featured_image_crop = :featured_image_crop,
+                    status = :status, visibility = :visibility, comment_status = :comment_status, parent_id = :parent_id, featured_image_id = :featured_image_id, featured_image_crop = :featured_image_crop,
                     published_at = :published_at, updated_at = :updated_at
               WHERE id = :id',
             [
@@ -151,6 +160,8 @@ final class PageService
                 'content_format' => ($contentFormat ?? $existing->contentFormat)->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
+                'visibility' => ($visibility ?? $existing->visibility)->value,
+                'comment_status' => $commentsOpen ? 'open' : 'closed',
                 'parent_id' => $parentId,
                 'featured_image_id' => $featuredImageId,
                 'featured_image_crop' => $featuredImageId !== null && $featuredImageCrop !== null ? json_encode($featuredImageCrop) : null,
@@ -194,8 +205,252 @@ final class PageService
         }
     }
 
+    /**
+     * Mirrors PostService::duplicate() — see its docblock. The duplicate
+     * is never parented under the original (parent_id is not copied): an
+     * unattached draft is safer than silently doubling a subtree, and the
+     * admin can reassign a parent from the tree view afterward if wanted.
+     */
+    public function duplicate(int $id, int $authorId): ?Page
+    {
+        $original = $this->findById($id);
+
+        if ($original === null) {
+            return null;
+        }
+
+        $duplicate = $this->create(
+            title: $original->title . ' (Copy)',
+            content: $original->content,
+            excerpt: $original->excerpt,
+            authorId: $authorId,
+            status: PageStatus::Draft,
+            featuredImageId: $original->featuredImageId,
+            contentFormat: $original->contentFormat,
+            featuredImageCrop: $original->featuredImageCrop,
+        );
+
+        $this->updateSeo($duplicate->id, $original->metaTitle, $original->metaDescription);
+
+        return $this->findById($duplicate->id);
+    }
+
+    /**
+     * Backs the admin list's Quick Edit row — updates only the handful
+     * of fields that inline form exposes (title, slug, status, parent),
+     * routing through the same `update()` used by the full editor with
+     * every other field (including the existing published/scheduled
+     * date) passed through unchanged, rather than a separate
+     * partial-UPDATE query. The admin view only ever offers Draft or
+     * Published as Quick Edit options — Quick Edit's inline form has no
+     * publish-date field, so scheduling a page remains a
+     * full-editor-only action — but this method itself works correctly
+     * for any status, since it always preserves whatever `publishedAt`
+     * the page already had.
+     */
+    public function quickUpdate(int $id, string $title, PageStatus $status, ?int $parentId, ?string $slug = null): ?Page
+    {
+        $existing = $this->findById($id);
+
+        if ($existing === null) {
+            return null;
+        }
+
+        return $this->update(
+            $id,
+            $title,
+            $existing->content,
+            $existing->excerpt,
+            $status,
+            $existing->publishedAt,
+            $parentId,
+            $existing->featuredImageId,
+            $slug,
+            $existing->contentFormat,
+            featuredImageCrop: $existing->featuredImageCrop,
+            visibility: $existing->visibility,
+            commentsOpen: $existing->commentsOpen,
+        );
+    }
+
+    /**
+     * Soft-deletes a page (LP-009 Trash) — mirrors PostService::trash()
+     * exactly (status flips to Trashed, trashed_at records when, the row
+     * stays). Trashed pages are excluded from paginateForAdmin()'s
+     * default "All" view and listAllForTree() the same way trashed posts
+     * are hidden from every other admin list view. There is no automatic
+     * purge — delete() (via the admin UI's "Delete Permanently" action,
+     * only offered for already-trashed pages) is the only way to
+     * actually remove one.
+     */
+    public function trash(int $id): bool
+    {
+        $trashed = $this->database->execute(
+            'UPDATE ' . $this->table() . " SET status = 'trashed', trashed_at = :trashed_at WHERE id = :id",
+            ['trashed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
+
+        if ($trashed) {
+            $this->hooks?->doAction('page_deleted', $id);
+        }
+
+        return $trashed;
+    }
+
+    /**
+     * Restores a trashed page — always back to Draft, never straight
+     * back to its previous status, matching PostService::restore()'s
+     * documented fail-securely rationale (silently resurfacing a trashed
+     * page as publicly visible again without a human deciding to
+     * republish it would be surprising).
+     */
+    public function restore(int $id): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . " SET status = 'draft', trashed_at = NULL WHERE id = :id",
+            ['id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Directly changes a page's status without touching any other field
+     * — backs the admin list's per-row and bulk "Mark as Draft"/
+     * "Publish" actions, mirroring PostService::setStatus(). Scheduled
+     * is deliberately not reachable through this method since scheduling
+     * also needs a publish date; use update() for that.
+     */
+    public function setStatus(int $id, PageStatus $status): bool
+    {
+        $existing = $this->findById($id);
+
+        if ($existing === null) {
+            return false;
+        }
+
+        $now = new DateTimeImmutable();
+        $publishedAt = $this->resolvePublishedAt($status, null, $now, $existing->publishedAt);
+
+        $changed = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET status = :status, published_at = :published_at, updated_at = :updated_at WHERE id = :id',
+            [
+                'status' => $status->value,
+                'published_at' => $publishedAt?->format('Y-m-d H:i:s'),
+                'updated_at' => $now->format('Y-m-d H:i:s'),
+                'id' => $id,
+            ],
+        ) > 0;
+
+        if ($changed) {
+            $page = $this->findById($id);
+
+            if ($page !== null) {
+                $this->hooks?->doAction('page_saved', $page);
+            }
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Directly changes a page's visibility without touching any other
+     * field — mirrors PostService::setVisibility() exactly.
+     */
+    public function setVisibility(int $id, PageVisibility $visibility): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET visibility = :visibility WHERE id = :id',
+            ['visibility' => $visibility->value, 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Bulk form of setVisibility() — mirrors PostService::
+     * bulkSetVisibility() exactly.
+     *
+     * @param array<int, int> $ids
+     * @return int how many pages were updated
+     */
+    public function bulkSetVisibility(array $ids, PageVisibility $visibility): int
+    {
+        $updated = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->setVisibility($id, $visibility)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Directly changes a page's parent without touching any other field
+     * — backs the admin list's bulk "Change parent to..." action. A page
+     * can never become its own parent (mirrors create()/update()'s same
+     * guard); the moved page is placed at the end of its new sibling
+     * group via nextMenuOrder(), the same position a brand-new page
+     * under that parent would get.
+     */
+    public function setParent(int $id, ?int $parentId): bool
+    {
+        if ($parentId === $id) {
+            $parentId = null;
+        }
+
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET parent_id = :parent_id, menu_order = :menu_order WHERE id = :id',
+            ['parent_id' => $parentId, 'menu_order' => $this->nextMenuOrder($parentId), 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Mirrors PostService::reassignAuthor() — backs the admin list's
+     * bulk "Change author to&hellip;" action.
+     */
+    public function reassignAuthor(int $id, int $authorId): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET author_id = :author_id WHERE id = :id',
+            ['author_id' => $authorId, 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Bulk form of reassignAuthor() — mirrors PostService::
+     * bulkReassignAuthor() exactly.
+     *
+     * @param array<int, int> $ids
+     * @return int how many pages were reassigned
+     */
+    public function bulkReassignAuthor(array $ids, int $authorId): int
+    {
+        $reassigned = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->reassignAuthor($id, $authorId)) {
+                $reassigned++;
+            }
+        }
+
+        return $reassigned;
+    }
+
+    /**
+     * Permanently removes a page. Unlike PostService::delete(), there's
+     * no self-referencing hierarchy on posts to worry about, but pages
+     * have parent_id with no FK constraint (see the base migration) — a
+     * deleted page's children would otherwise be left pointing at a
+     * parent_id that no longer exists. Direct children are reparented to
+     * top-level (parent_id = NULL) first, the same "orphan on delete"
+     * treatment WordPress itself uses for pages with children.
+     */
     public function delete(int $id): bool
     {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE parent_id = :parent_id',
+            ['parent_id' => $id],
+        );
+
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
 
         if ($deleted) {
@@ -276,8 +531,10 @@ final class PageService
     }
 
     /**
-     * Pages visible to public site visitors: published outright, or
-     * scheduled with a published_at time that has already passed.
+     * Pages visible to public site visitors: published outright (or
+     * scheduled with a published_at time that has already passed), and
+     * not Private (LP-009's "Private pages" — mirrors
+     * PostService::publicWhereClause()'s identical visibility AND).
      *
      * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -287,7 +544,7 @@ final class PageService
         $perPage = max(1, $perPage);
         $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
-        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now)) AND visibility = 'public'";
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
@@ -312,17 +569,66 @@ final class PageService
     }
 
     /**
-     * All pages regardless of status, for the admin page list.
+     * Every page for the admin page list, excluding Trash from the
+     * default "All" view — mirrors PostService::paginateForAdmin()'s
+     * identical trash-exclusion default; pass PageStatus::Trashed
+     * explicitly to view the Trash tab itself.
      *
      * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
      */
-    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PageStatus $statusFilter = null): array
+    /**
+     * @param array{term?: string, authorId?: int, parentId?: int, dateFrom?: string, dateTo?: string} $filters
+     */
+    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PageStatus $statusFilter = null, array $filters = []): array
     {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
 
-        $where = $statusFilter !== null ? 'WHERE status = :status' : '';
-        $params = $statusFilter !== null ? ['status' => $statusFilter->value] : [];
+        $conditions = [];
+        $params = [];
+
+        if ($statusFilter !== null) {
+            $conditions[] = 'status = :status';
+            $params['status'] = $statusFilter->value;
+        } else {
+            $conditions[] = "status != 'trashed'";
+        }
+
+        // A single search box matching either the title or the content —
+        // classic WordPress's Pages list does the same rather than
+        // offering separate title/content search fields. Two distinct
+        // placeholders bound to the same value, not :term reused twice —
+        // real (non-emulated) MySQL prepared statements reject a named
+        // placeholder used more than once in one query (see
+        // PHP-TEST-SUITE.md's "Known gaps" for the bug this already
+        // caused once in listAllForParentSelect()).
+        if (($filters['term'] ?? '') !== '') {
+            $conditions[] = '(title LIKE :term_title OR content LIKE :term_content)';
+            $params['term_title'] = '%' . $filters['term'] . '%';
+            $params['term_content'] = '%' . $filters['term'] . '%';
+        }
+
+        if (($filters['authorId'] ?? 0) > 0) {
+            $conditions[] = 'author_id = :author_id';
+            $params['author_id'] = (int) $filters['authorId'];
+        }
+
+        if (($filters['parentId'] ?? 0) > 0) {
+            $conditions[] = 'parent_id = :parent_id';
+            $params['parent_id'] = (int) $filters['parentId'];
+        }
+
+        if (($filters['dateFrom'] ?? '') !== '') {
+            $conditions[] = 'created_at >= :date_from';
+            $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
+        }
+
+        if (($filters['dateTo'] ?? '') !== '') {
+            $conditions[] = 'created_at <= :date_to';
+            $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
+        }
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " {$where}",
@@ -397,6 +703,148 @@ final class PageService
         );
     }
 
+    /**
+     * Every non-trashed page as a flat, depth-tagged list in hierarchical
+     * document order (a parent immediately followed by its own children
+     * in menu_order, then the next sibling) — backs the admin "All" tab's
+     * tree view (LP-009 Hierarchy UI). One unpaginated query is
+     * acceptable here: pages are evergreen/structural content (About,
+     * Contact, FAQ, ...), not the tens-of-thousands-of-rows table Posts
+     * can be.
+     *
+     * @return array<int, array{page: Page, depth: int}>
+     */
+    public function listAllForTree(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE status != 'trashed' ORDER BY parent_id, menu_order, id",
+        );
+        $pages = array_map($this->hydrate(...), $rows);
+
+        return $this->flattenForTree($pages, null, 0);
+    }
+
+    /**
+     * @param array<int, Page> $pages
+     * @return array<int, array{page: Page, depth: int}>
+     */
+    private function flattenForTree(array $pages, ?int $parentId, int $depth): array
+    {
+        $result = [];
+
+        foreach ($pages as $page) {
+            if ($page->parentId !== $parentId) {
+                continue;
+            }
+
+            $result[] = ['page' => $page, 'depth' => $depth];
+            $result = [...$result, ...$this->flattenForTree($pages, $page->id, $depth + 1)];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Moves $draggedId to a position immediately before/after $targetId
+     * among their shared siblings (LP-009 Hierarchy UI drag-and-drop) —
+     * same "splice out, splice back in" algorithm as menus.php's
+     * reposition_item handler, rewritten against real SQL rows instead of
+     * an in-memory JSON-array splice, since pages (unlike menus) are
+     * individual DB rows with no whole-tree blob to rewrite. $targetId
+     * must share $draggedId's parentId — sortable.js's client-side
+     * same-parent guard is the primary defense; a request that fails
+     * this check (a stale/tampered target id, or a different-parent
+     * target) is a silent no-op, matching that existing precedent.
+     * Re-parenting stays the "Parent Page" dropdown's/bulk "Change
+     * parent" job — this method never changes parent_id.
+     */
+    public function reorder(int $draggedId, int $targetId, string $position): bool
+    {
+        $dragged = $this->findById($draggedId);
+
+        if ($dragged === null) {
+            return false;
+        }
+
+        $siblings = $this->database->fetchAll(
+            $dragged->parentId === null
+                ? 'SELECT id FROM ' . $this->table() . ' WHERE parent_id IS NULL ORDER BY menu_order, id'
+                : 'SELECT id FROM ' . $this->table() . ' WHERE parent_id = :parent_id ORDER BY menu_order, id',
+            $dragged->parentId === null ? [] : ['parent_id' => $dragged->parentId],
+        );
+
+        $ids = array_map(static fn (array $row): int => (int) $row['id'], $siblings);
+        $remaining = array_values(array_filter($ids, static fn (int $id): bool => $id !== $draggedId));
+
+        $targetIndex = array_search($targetId, $remaining, true);
+
+        if ($targetIndex === false) {
+            return false;
+        }
+
+        $insertAt = $position === 'after' ? $targetIndex + 1 : $targetIndex;
+        array_splice($remaining, $insertAt, 0, [$draggedId]);
+
+        $this->database->transaction(function () use ($remaining): void {
+            foreach ($remaining as $order => $id) {
+                $this->database->execute(
+                    'UPDATE ' . $this->table() . ' SET menu_order = :menu_order WHERE id = :id',
+                    ['menu_order' => $order, 'id' => $id],
+                );
+            }
+        });
+
+        return true;
+    }
+
+    /**
+     * The next menu_order value for a new sibling under $parentId (max
+     * existing sibling + 1, or 0 if there are none yet) — so a newly
+     * created page lands at the end of its sibling group instead of
+     * colliding with an existing page at 0.
+     */
+    private function nextMenuOrder(?int $parentId): int
+    {
+        $max = $parentId === null
+            ? $this->database->fetchColumn('SELECT MAX(menu_order) FROM ' . $this->table() . ' WHERE parent_id IS NULL')
+            : $this->database->fetchColumn('SELECT MAX(menu_order) FROM ' . $this->table() . ' WHERE parent_id = :parent_id', ['parent_id' => $parentId]);
+
+        return $max === null ? 0 : ((int) $max) + 1;
+    }
+
+    /**
+     * Walks the parent_id chain from $pageId up to the root, root-first
+     * — backs the public "breadcrumbs" theme API
+     * (get_page_breadcrumbs()/the_page_breadcrumbs() in
+     * include/content-display-functions.php). Returns an empty array for
+     * a top-level page. Capped at 50 hops as a defensive guard against a
+     * pathological cycle reaching this method some other way — normal
+     * create()/update() already block direct self-parenting and one-level
+     * cycles, so this is belt-and-suspenders, not a new invariant.
+     *
+     * @return array<int, Page>
+     */
+    public function ancestors(int $pageId): array
+    {
+        $chain = [];
+        $current = $this->findById($pageId);
+        $hops = 0;
+
+        while ($current !== null && $current->parentId !== null && $hops < 50) {
+            $parent = $this->findById($current->parentId);
+
+            if ($parent === null) {
+                break;
+            }
+
+            $chain[] = $parent;
+            $current = $parent;
+            $hops++;
+        }
+
+        return array_reverse($chain);
+    }
+
     private function resolvePublishedAt(
         PageStatus $status,
         ?DateTimeImmutable $publishedAt,
@@ -404,7 +852,13 @@ final class PageService
         ?DateTimeImmutable $existingPublishedAt = null,
     ): ?DateTimeImmutable {
         return match ($status) {
-            PageStatus::Draft => null,
+            // Trashed is never actually reached through this path — trash()
+            // sets status/trashed_at directly via its own SQL, not through
+            // create()/update()/setStatus() — this arm exists purely so the
+            // match stays exhaustive over PageStatus, mirroring
+            // PostService::resolvePublishedAt()'s identical defensive arm.
+            // PendingReview has no publish date either, same as Posts.
+            PageStatus::Draft, PageStatus::PendingReview, PageStatus::Trashed => null,
             PageStatus::Published => $publishedAt ?? $existingPublishedAt ?? $now,
             PageStatus::Scheduled => $publishedAt ?? $existingPublishedAt,
         };
@@ -468,6 +922,10 @@ final class PageService
             featuredImageCrop: self::decodeCrop($row['featured_image_crop'] ?? null),
             metaTitle: isset($row['meta_title']) && $row['meta_title'] !== '' ? (string) $row['meta_title'] : null,
             metaDescription: isset($row['meta_description']) && $row['meta_description'] !== '' ? (string) $row['meta_description'] : null,
+            trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
+            menuOrder: isset($row['menu_order']) ? (int) $row['menu_order'] : 0,
+            visibility: PageVisibility::tryFrom((string) ($row['visibility'] ?? '')) ?? PageVisibility::Public,
+            commentsOpen: ($row['comment_status'] ?? 'open') === 'open',
         );
     }
 

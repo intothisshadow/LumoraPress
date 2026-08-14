@@ -31,4 +31,12 @@ return [
 
     'timezone' => 'UTC',
     'locale' => 'en',
+
+    // Where PHP session files are written. Empty string (the default)
+    // means storage/sessions inside this install. Set an absolute path
+    // to write sessions elsewhere instead (a location outside this
+    // directory, a tmpfs, etc.) — if the path doesn't exist or isn't
+    // writable, PHP's own session.save_path ini setting is used instead
+    // (see SessionManager::start()).
+    'session_path' => '',
 ];

@@ -41,12 +41,18 @@ use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentService;
+use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
+use LumoraPress\Services\Import\CommentImporter;
+use LumoraPress\Services\Import\MediaImporter;
+use LumoraPress\Services\Import\PageImporter;
+use LumoraPress\Services\Import\PostImporter;
+use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -62,6 +68,7 @@ use LumoraPress\Services\TagService;
 use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
 use LumoraPress\Services\ThumbnailService;
+use LumoraPress\Services\UpdateProgress;
 use LumoraPress\Services\UpdateService;
 use LumoraPress\Services\UserService;
 
@@ -95,6 +102,7 @@ final class Kernel
         public readonly FeedService $feeds,
         public readonly SearchService $search,
         public readonly UpdateService $updates,
+        public readonly UpdateProgress $updateProgress,
         public readonly GitHubReleaseProvider $githubUpdates,
         public readonly Router $router,
         public readonly MaintenanceGate $maintenance,
@@ -122,6 +130,12 @@ final class Kernel
         public readonly EditorPreferenceService $editorPreferences,
         public readonly CommentModerationService $commentModeration,
         public readonly PermalinkService $permalinks,
+        public readonly ContentImportRegistry $contentImportRegistry,
+        public readonly PostImporter $postImporter,
+        public readonly PageImporter $pageImporter,
+        public readonly UserImporter $userImporter,
+        public readonly MediaImporter $mediaImporter,
+        public readonly CommentImporter $commentImporter,
     ) {
     }
 }

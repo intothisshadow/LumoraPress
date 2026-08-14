@@ -93,6 +93,8 @@ final class HtmlToMarkdownConverter
             'strong', 'b' => '**' . trim($inner) . '**',
             'em', 'i' => '*' . trim($inner) . '*',
             'del', 's' => '~~' . trim($inner) . '~~',
+            'u' => '++' . trim($inner) . '++',
+            'span' => $this->renderSpan($node, $inner),
             'code' => str_contains($inner, "\n") ? $this->renderFencedCode($node, $inner) : '`' . $inner . '`',
             'pre' => $this->renderPre($node),
             'blockquote' => "\n" . $this->prefixLines(trim($inner), '> ') . "\n\n",
@@ -104,6 +106,29 @@ final class HtmlToMarkdownConverter
             'input' => '',
             default => $inner,
         };
+    }
+
+    /**
+     * A `<span class="has-{color}-color">` (LP-016's fixed-palette font
+     * color) round-trips to MarkdownParser's `[text]{.color}` marker;
+     * only a recognized MarkdownParser::FONT_COLORS name converts, so a
+     * span this app didn't itself generate (e.g. the LP-079 More tag
+     * marker) falls through to its plain inner text like any other
+     * unhandled tag.
+     */
+    private function renderSpan(DOMElement $span, string $inner): string
+    {
+        foreach (explode(' ', $span->getAttribute('class')) as $class) {
+            if (str_starts_with($class, 'has-') && str_ends_with($class, '-color')) {
+                $color = substr($class, 4, -6);
+
+                if (in_array($color, MarkdownParser::FONT_COLORS, true)) {
+                    return '[' . trim($inner) . ']{.' . $color . '}';
+                }
+            }
+        }
+
+        return $inner;
     }
 
     private function renderPre(DOMElement $pre): string

@@ -60,12 +60,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $folderId = (int) ($_POST['folder_id'] ?? 0);
         $isAjax = ($_POST['ajax'] ?? '') === '1';
 
+        // admin/index.php's ob_start() buffer already holds layout-header.php's
+        // HTML shell by the time this runs — discard it before sending a
+        // JSON response, or that buffered HTML would still flush to the
+        // client ahead of/around this JSON on exit, breaking
+        // multi-upload.js's response.json() parse (every file "fails" with
+        // a network error even though the upload itself succeeded — see
+        // the identical comment in admin/views/posts/new.php's
+        // editor_upload handler, the pattern this branch was always meant
+        // to match but didn't).
+        if ($isAjax) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            header('Content-Type: application/json');
+        }
+
         if (!isset($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
             $error = 'Please choose a file to upload.';
 
             if ($isAjax) {
                 http_response_code(422);
-                header('Content-Type: application/json');
                 echo json_encode(['error' => $error, 'csrfToken' => Csrf::token('upload')]);
                 exit;
             }
@@ -84,7 +100,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                  * fail CSRF verification.
                  */
                 if ($isAjax) {
-                    header('Content-Type: application/json');
                     echo json_encode([
                         'id' => $uploaded['id'],
                         'fileName' => $uploaded['file_name'],
@@ -100,7 +115,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 if ($isAjax) {
                     http_response_code(422);
-                    header('Content-Type: application/json');
                     echo json_encode(['error' => $error, 'csrfToken' => Csrf::token('upload')]);
                     exit;
                 }

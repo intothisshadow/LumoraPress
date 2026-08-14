@@ -27,8 +27,13 @@ use RuntimeException;
 /**
  * Media Manager (LP-005): validated uploads (images, documents, archives,
  * audio, video), virtual-folder assignment, metadata, and search/filtering.
- * Advanced image management (editing, cropping, galleries) is intentionally
- * out of scope — that remains the domain of Lumora Gallery.
+ * Full-blown gallery display/organization of large image collections is
+ * intentionally out of scope for this class — that's Lumora Gallery's
+ * domain, a separate sibling application. Note that isn't an image-editing
+ * deferral: Lumora Gallery itself has no image-editing/cropping capability
+ * either (by design, and won't) — this project's own limited image
+ * operations (LP-080's featured-image crop, thumbnail generation) live
+ * directly in MediaService/ThumbnailService, not offloaded anywhere.
  *
  * Folder assignment is purely organizational — file_path (the physical
  * location) and the public URL built from it are never touched by move(),

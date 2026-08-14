@@ -20,6 +20,7 @@ namespace LumoraPress\Services;
 use DateTimeImmutable;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 
 /**
@@ -61,6 +62,29 @@ final class CommentModerationService
         return $reference->modify('+' . $closeAfterDays . ' days') > new DateTimeImmutable();
     }
 
+    /**
+     * Mirrors commentsOpenFor(Post) exactly, for Pages. A separate
+     * overload rather than a Post|Page union parameter since PHP has no
+     * common interface between the two models to read commentsOpen/
+     * publishedAt/createdAt off of generically.
+     */
+    public function commentsOpenForPage(Page $page): bool
+    {
+        if (!$page->commentsOpen || $this->config->option('comments_enabled', '1') === '0') {
+            return false;
+        }
+
+        $closeAfterDays = (int) $this->config->option('comment_close_after_days', '0');
+
+        if ($closeAfterDays <= 0) {
+            return true;
+        }
+
+        $reference = $page->publishedAt ?? $page->createdAt;
+
+        return $reference->modify('+' . $closeAfterDays . ' days') > new DateTimeImmutable();
+    }
+
     public function requiresRegistrationToComment(): bool
     {
         return $this->config->option('comment_require_registration', '0') === '1';
@@ -80,6 +104,10 @@ final class CommentModerationService
      * The default "Allow comments" state for a brand-new post (Settings >
      * Discussion's "Allow comments on new posts") — only consulted when
      * creating a post, never overrides an existing post's own toggle.
+     * Pages' new-page default reuses this exact same option rather than
+     * a separate "new pages" setting — Settings > Discussion has no
+     * Pages-specific fields, only a Posts-shaped set that Pages'
+     * Discussion box in the admin editor borrows for this one default.
      */
     public function defaultCommentsOpenForNewPosts(): bool
     {

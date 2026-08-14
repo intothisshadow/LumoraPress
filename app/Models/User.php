@@ -41,6 +41,14 @@ final class User
          * Gravatar — see UserService::gravatarUrl().
          */
         public readonly ?int $avatarMediaId = null,
+        /**
+         * LP-083: raw JSON-encoded box order/collapse state for the Post
+         * and Page editor sidebars, keyed by screen type. Kept as an
+         * undecoded string here — UserService::getEditorLayoutPreferences()
+         * decodes and slices it per screen type, since only the caller
+         * knows which screen it's asking about.
+         */
+        public readonly ?string $editorLayoutPreferences = null,
     ) {
     }
 

@@ -25,6 +25,7 @@ declare(strict_types=1);
  */
 
 register_sidebar('primary', 'Primary Sidebar', 'Appears alongside posts and pages.');
+register_sidebar('footer', 'Footer Widget Area', 'Appears in the site footer, above the footer navigation.');
 
 register_nav_menu('primary', 'Primary Menu');
 register_nav_menu('footer', 'Footer Menu');

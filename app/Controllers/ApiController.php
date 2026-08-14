@@ -243,6 +243,7 @@ final class ApiController
             'published_at' => $page->publishedAt?->format(DateTimeImmutable::ATOM),
             'created_at' => $page->createdAt->format(DateTimeImmutable::ATOM),
             'updated_at' => $page->updatedAt->format(DateTimeImmutable::ATOM),
+            'comments_open' => $page->commentsOpen,
         ];
     }
 
@@ -619,6 +620,7 @@ final class ApiController
             featuredImageId: isset($body['featured_image_id']) ? (int) $body['featured_image_id'] : null,
             slug: isset($body['slug']) ? (string) $body['slug'] : null,
             contentFormat: ContentFormat::tryFrom((string) ($body['content_format'] ?? '')) ?? ContentFormat::Markdown,
+            commentsOpen: (bool) ($body['comments_open'] ?? true),
         );
 
         ApiResponse::json($this->pageToArray($page), 201);
@@ -675,6 +677,7 @@ final class ApiController
             featuredImageId: array_key_exists('featured_image_id', $body) ? ($body['featured_image_id'] !== null ? (int) $body['featured_image_id'] : null) : $existing->featuredImageId,
             slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
             contentFormat: isset($body['content_format']) ? ContentFormat::tryFrom((string) $body['content_format']) : null,
+            commentsOpen: (bool) ($body['comments_open'] ?? $existing->commentsOpen),
         );
 
         ApiResponse::json($this->pageToArray($page));

@@ -139,6 +139,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+require __DIR__ . '/../partials/editor-layout-save.php';
+
 $postService = $kernel->posts;
 $canPublish = $currentUser->can('publish_posts');
 $canEditOthersPosts = $currentUser->can('edit_others_posts');
@@ -471,6 +473,33 @@ $editorMediaLibrary = array_map(
 $postMeta = $post !== null ? $postService->metaForPost($post->id) : [];
 $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
 ?>
+<?php
+$screenType = 'post';
+$boxTitles = [
+    'publish' => 'Publish',
+    'featured_image' => 'Featured Image',
+    'categories' => 'Categories',
+    'tags' => 'Tags',
+    'comments' => 'Discussion',
+    'seo' => 'SEO (optional)',
+    'custom_fields' => 'Custom Fields',
+    'author' => 'Author',
+];
+$collapsibleBoxes = ['seo', 'custom_fields', 'author'];
+$availableBoxes = ['publish', 'featured_image', 'categories', 'tags', 'comments', 'seo', 'custom_fields'];
+
+if ($canEditOthersPosts && $post !== null) {
+    $availableBoxes[] = 'author';
+}
+
+$savedLayout = $kernel->users->getEditorLayoutPreferences($currentUser->id, $screenType);
+$savedOrder = array_values(array_intersect($savedLayout['order'], $availableBoxes));
+// Saved order first, then any box not already in it appended at the end
+// (covers a first-ever visit, and a future box id added after a user's
+// preferences were last saved).
+$boxOrder = array_values(array_unique(array_merge($savedOrder, $availableBoxes)));
+$collapsedBoxes = array_values(array_intersect($savedLayout['collapsed'], $collapsibleBoxes));
+?>
 <section class="lp-admin__panel">
     <form method="post" action="<?= esc_url(admin_url('posts/new')) ?>" enctype="multipart/form-data">
         <?= Csrf::field('post_save') ?>
@@ -479,270 +508,305 @@ $allUsers = $canEditOthersPosts ? $kernel->users->listAll() : [];
             <input type="hidden" name="id" value="<?= (int) $post->id ?>">
         <?php endif; ?>
 
-        <p class="lp-field">
-            <label for="post-title">Title</label>
-            <input type="text" id="post-title" name="title" value="<?= esc_attr($post->title ?? '') ?>" required>
-        </p>
+        <div class="lp-editor-layout">
+            <div class="lp-editor-layout__main">
+                <p class="lp-field">
+                    <label for="post-title">Title</label>
+                    <input type="text" id="post-title" name="title" value="<?= esc_attr($post->title ?? '') ?>" required>
+                </p>
 
-        <?php if ($post !== null && $post->status === PostStatus::Published): ?>
-            <p class="lp-field lp-permalink">
-                <span class="lp-permalink__label">Permalink:</span>
-                <a class="lp-permalink__url" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener"><?= esc_html(post_permalink($post)) ?></a>
-                <a class="lp-button lp-button--secondary lp-permalink__view" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener">View Post</a>
-            </p>
-        <?php endif; ?>
-
-        <?php $permalinkPreviewBase = $kernel->permalinks->postUrlPreviewBase($post); ?>
-        <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url($permalinkPreviewBase) ?>">
-            <label for="post-slug">Slug</label>
-            <input type="text" id="post-slug" name="slug" value="<?= esc_attr($post->slug ?? '') ?>">
-            <span class="lp-field__hint">Leave blank to generate one automatically from the title.</span>
-            <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html($permalinkPreviewBase . ($post->slug ?? '')) ?></code></span>
-        </p>
-
-        <?php $activeContentFormat = $post->contentFormat ?? get_active_editor($currentUser->id); ?>
-        <p class="lp-field">
-            <label for="post-content-format">Editor</label>
-            <select id="post-content-format" name="content_format" data-lp-content-format-select>
-                <?php foreach (ContentFormat::cases() as $formatOption): ?>
-                    <option value="<?= esc_attr($formatOption->value) ?>" <?= $activeContentFormat === $formatOption ? 'selected' : '' ?>>
-                        <?= esc_html($formatOption->label()) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </p>
-
-        <div
-            class="lp-field lp-content-editor"
-            data-lp-content-editor
-            data-format="<?= esc_attr($activeContentFormat->value) ?>"
-            data-upload-url="<?= esc_url(admin_url('posts/new')) ?>"
-            data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
-            data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
-            data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
-            data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
-            data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
-        >
-            <label for="post-content">Content</label>
-            <textarea id="post-content" name="content" rows="12"><?= esc_html($post->content ?? '') ?></textarea>
-        </div>
-
-        <p class="lp-field">
-            <label for="post-excerpt">Excerpt</label>
-            <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
-            <span class="lp-field__hint">
-                Shown as this post's preview on the front page and archives (Settings for this are on
-                <a href="<?= esc_url(admin_url('appearance/theme-options')) ?>">Appearance &rsaquo; Theme Options &rsaquo; Post Display</a>).
-                Leave blank to use the content up to a Read More tag in the editor above, or an automatically
-                generated excerpt if there's no Read More tag either.
-            </span>
-        </p>
-
-        <fieldset class="lp-field">
-            <legend>SEO (optional)</legend>
-
-            <label for="post-meta-title">SEO title</label>
-            <input type="text" id="post-meta-title" name="meta_title" value="<?= esc_attr($post->metaTitle ?? '') ?>" placeholder="Defaults to the title above">
-            <span class="lp-field__hint">Overrides the browser tab title and search-result headline only — the title above is unchanged everywhere else on the site.</span>
-
-            <label for="post-meta-description">Meta description</label>
-            <textarea id="post-meta-description" name="meta_description" rows="2" placeholder="Defaults to the excerpt above"><?= esc_html($post->metaDescription ?? '') ?></textarea>
-            <span class="lp-field__hint">Shown in search results and social share previews. Leave blank to use the excerpt.</span>
-        </fieldset>
-
-        <fieldset class="lp-field">
-            <legend>Featured Image</legend>
-
-            <?php if ($currentFeaturedImage !== null): ?>
-                <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
-                <label class="lp-field--checkbox">
-                    <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
-                </label>
-
-                <div class="lp-featured-crop" data-lp-featured-crop>
-                    <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>
-                        <?= ($post->featuredImageCrop ?? null) !== null ? 'Edit Crop' : 'Add Crop' ?>
-                    </button>
-
-                    <div class="lp-featured-crop__editor" data-lp-featured-crop-editor hidden>
-                        <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
-                            <img src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="" data-lp-featured-crop-image>
-                            <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
-                                <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
-                            </div>
-                        </div>
-                        <p class="lp-field__hint">Drag to select the area to use as the featured image. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
-                        <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear Crop</button>
-                    </div>
-
-                    <input type="hidden" name="featured_image_crop_for_id" value="<?= (int) $currentFeaturedImage['id'] ?>">
-                    <input type="hidden" name="featured_image_crop_x" data-lp-featured-crop-x value="<?= esc_attr((string) ($post->featuredImageCrop['x'] ?? '')) ?>">
-                    <input type="hidden" name="featured_image_crop_y" data-lp-featured-crop-y value="<?= esc_attr((string) ($post->featuredImageCrop['y'] ?? '')) ?>">
-                    <input type="hidden" name="featured_image_crop_width" data-lp-featured-crop-width value="<?= esc_attr((string) ($post->featuredImageCrop['width'] ?? '')) ?>">
-                    <input type="hidden" name="featured_image_crop_height" data-lp-featured-crop-height value="<?= esc_attr((string) ($post->featuredImageCrop['height'] ?? '')) ?>">
-                </div>
-            <?php endif; ?>
-
-            <label for="post-featured-image-select">Choose from Media Manager</label>
-            <select id="post-featured-image-select" name="featured_image_id">
-                <option value="0">(None)</option>
-                <?php foreach ($imageOptions as $imageOption): ?>
-                    <option value="<?= (int) $imageOption['id'] ?>" <?= ($post?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
-                        <?= esc_html((string) $imageOption['file_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-
-            <label for="post-featured-image-upload">Or upload a new image</label>
-            <input type="file" id="post-featured-image-upload" name="featured_image_upload" accept="image/*">
-        </fieldset>
-
-        <fieldset class="lp-field lp-field--checklist" data-lp-category-field>
-            <legend>Categories</legend>
-            <div data-lp-category-list>
-                <?php foreach ($allCategories as $categoryOption): ?>
-                    <label class="lp-field--checkbox">
-                        <input
-                            type="checkbox"
-                            name="category_ids[]"
-                            value="<?= (int) $categoryOption->id ?>"
-                            <?= in_array($categoryOption->id, $assignedCategoryIds, true) ? 'checked' : '' ?>
-                        >
-                        <?= esc_html($categoryOption->name) ?>
-                    </label>
-                <?php endforeach; ?>
-            </div>
-
-            <?php if ($currentUser->can('edit_posts')): ?>
-                <details class="lp-category-quick-add" data-lp-category-quick-add data-add-url="<?= esc_url(admin_url('posts/new')) ?>" data-add-csrf="<?= esc_attr(Csrf::token('add_category')) ?>">
-                    <summary>+ Add New Category</summary>
-                    <p class="lp-field">
-                        <label class="lp-visually-hidden" for="post-new-category-name">New category name</label>
-                        <input type="text" id="post-new-category-name" data-lp-category-name-input placeholder="New category name">
-                        <button type="button" class="lp-button lp-button--secondary" data-lp-category-add-button>Add New Category</button>
+                <?php if ($post !== null && $post->status === PostStatus::Published): ?>
+                    <p class="lp-field lp-permalink">
+                        <span class="lp-permalink__label">Permalink:</span>
+                        <a class="lp-permalink__url" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener"><?= esc_html(post_permalink($post)) ?></a>
+                        <a class="lp-button lp-button--secondary lp-permalink__view" href="<?= esc_url(post_permalink($post)) ?>" target="_blank" rel="noopener">View Post</a>
                     </p>
-                    <p class="lp-field__hint" data-lp-category-add-error hidden></p>
-                </details>
-            <?php endif; ?>
-        </fieldset>
+                <?php endif; ?>
 
-        <div class="lp-field lp-tag-input" data-lp-tag-input data-suggestions="<?= esc_attr(json_encode($allTagNames)) ?>">
-            <label for="post-tags">Tags</label>
-            <input
-                type="text"
-                id="post-tags"
-                name="tags"
-                value="<?= esc_attr(implode(', ', $assignedTagNames)) ?>"
-                placeholder="Comma-separated, e.g. news, opinion"
+                <?php $permalinkPreviewBase = $kernel->permalinks->postUrlPreviewBase($post); ?>
+                <p class="lp-field" data-lp-url-preview data-base-url="<?= esc_url($permalinkPreviewBase) ?>">
+                    <label for="post-slug">Slug</label>
+                    <input type="text" id="post-slug" name="slug" value="<?= esc_attr($post->slug ?? '') ?>">
+                    <span class="lp-field__hint">Leave blank to generate one automatically from the title.</span>
+                    <span class="lp-field__hint">URL: <code data-lp-url-preview-value><?= esc_html($permalinkPreviewBase . ($post->slug ?? '')) ?></code></span>
+                </p>
+
+                <?php $activeContentFormat = $post->contentFormat ?? get_active_editor($currentUser->id); ?>
+                <p class="lp-field">
+                    <label for="post-content-format">Editor</label>
+                    <select id="post-content-format" name="content_format" data-lp-content-format-select>
+                        <?php foreach (ContentFormat::cases() as $formatOption): ?>
+                            <option value="<?= esc_attr($formatOption->value) ?>" <?= $activeContentFormat === $formatOption ? 'selected' : '' ?>>
+                                <?= esc_html($formatOption->label()) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </p>
+
+                <div
+                    class="lp-field lp-content-editor"
+                    data-lp-content-editor
+                    data-format="<?= esc_attr($activeContentFormat->value) ?>"
+                    data-upload-url="<?= esc_url(admin_url('posts/new')) ?>"
+                    data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
+                    data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
+                    data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
+                    data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+                    data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
+                >
+                    <label for="post-content">Content</label>
+                    <textarea id="post-content" name="content" rows="12"><?= esc_html($post->content ?? '') ?></textarea>
+                </div>
+
+                <p class="lp-field">
+                    <label for="post-excerpt">Excerpt</label>
+                    <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
+                    <span class="lp-field__hint">
+                        Shown as this post's preview on the front page and archives (Settings for this are on
+                        <a href="<?= esc_url(admin_url('appearance/theme-options')) ?>">Appearance &rsaquo; Theme Options &rsaquo; Post Display</a>).
+                        Leave blank to use the content up to a Read More tag in the editor above, or an automatically
+                        generated excerpt if there's no Read More tag either.
+                    </span>
+                </p>
+            </div>
+
+            <aside
+                class="lp-editor-layout__sidebar"
+                data-lp-sortable-group="editor-sidebar"
+                data-lp-sortable-ajax-url="<?= esc_url(admin_url('posts/new')) ?>"
+                data-lp-sortable-ajax-csrf="<?= esc_attr(Csrf::token('editor_layout_' . $screenType)) ?>"
+                data-lp-editor-screen-type="<?= esc_attr($screenType) ?>"
             >
-            <span class="lp-field__hint">Separate multiple tags with commas. New tags are created automatically.</span>
-        </div>
+                <?php foreach ($boxOrder as $boxId): ?>
+                    <?php
+                    $isCollapsed = in_array($boxId, $collapsedBoxes, true);
+                    $isCollapsible = in_array($boxId, $collapsibleBoxes, true);
+                    ?>
+                    <div class="lp-sidebar-box<?= $isCollapsed ? ' lp-sidebar-box--collapsed' : '' ?>" data-lp-sortable-item data-lp-sortable-id="<?= esc_attr($boxId) ?>">
+                        <div class="lp-sidebar-box__header" data-lp-drag-handle>
+                            <span class="lp-sidebar-box__title"><?= esc_html($boxTitles[$boxId] ?? $boxId) ?></span>
+                            <?php if ($isCollapsible): ?>
+                                <button type="button" class="lp-sidebar-box__toggle" data-lp-sidebar-box-toggle aria-expanded="<?= $isCollapsed ? 'false' : 'true' ?>" aria-label="Toggle <?= esc_attr($boxTitles[$boxId] ?? $boxId) ?>">
+                                    <span aria-hidden="true">&#9662;</span>
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                        <div class="lp-sidebar-box__content">
+                            <?php switch ($boxId):
+                                case 'publish': ?>
+                                    <?php if ($canPublish): ?>
+                                        <p class="lp-field">
+                                            <label for="post-status">Status</label>
+                                            <select id="post-status" name="status">
+                                                <?php foreach ($statusOptions as $option): ?>
+                                                    <option value="<?= esc_attr($option->value) ?>" <?= ($post?->status ?? PostStatus::Draft) === $option ? 'selected' : '' ?>>
+                                                        <?= esc_html($option->label()) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </p>
 
-        <?php
-        // Settings > Discussion's "Allow comments on new posts" (LP-047)
-        // only sets the default for a brand-new post's checkbox below — an
-        // existing post's own saved comments_open value always wins.
-        $defaultCommentsOpen = $post !== null ? $post->commentsOpen : $kernel->commentModeration->defaultCommentsOpenForNewPosts();
-        ?>
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="comments_open" value="1" <?= $defaultCommentsOpen ? 'checked' : '' ?>>
-            Allow comments on this post
-        </label>
+                                        <p class="lp-field">
+                                            <label for="post-published-at">Publish date</label>
+                                            <input
+                                                type="datetime-local"
+                                                id="post-published-at"
+                                                name="published_at"
+                                                value="<?= esc_attr($post?->publishedAt?->format('Y-m-d\TH:i') ?? '') ?>"
+                                            >
+                                        </p>
 
-        <fieldset class="lp-field" data-lp-custom-fields>
-            <legend>Custom Fields</legend>
-            <div data-lp-custom-fields-rows>
-                <?php foreach ([...$postMeta, ['key' => '', 'value' => '']] as $metaPair): ?>
-                    <div class="lp-custom-fields__row">
-                        <input type="text" name="meta_keys[]" value="<?= esc_attr($metaPair['key']) ?>" placeholder="Field name">
-                        <input type="text" name="meta_values[]" value="<?= esc_attr($metaPair['value']) ?>" placeholder="Value">
-                        <button type="button" class="lp-button lp-button--link" data-lp-custom-fields-remove>Remove</button>
+                                        <p class="lp-field">
+                                            <label for="post-visibility">Visibility</label>
+                                            <select id="post-visibility" name="visibility">
+                                                <?php foreach (PostVisibility::cases() as $visibilityOption): ?>
+                                                    <option value="<?= esc_attr($visibilityOption->value) ?>" <?= ($post?->visibility ?? PostVisibility::Public) === $visibilityOption ? 'selected' : '' ?>>
+                                                        <?= esc_html($visibilityOption->label()) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </p>
+
+                                        <label class="lp-field--checkbox">
+                                            <input type="checkbox" name="is_sticky" value="1" <?= ($post->isSticky ?? false) ? 'checked' : '' ?>>
+                                            Stick this post to the top of the homepage
+                                        </label>
+
+                                        <p class="lp-field">
+                                            <label for="post-unpublish-at">Unpublish date (optional)</label>
+                                            <input
+                                                type="datetime-local"
+                                                id="post-unpublish-at"
+                                                name="unpublish_at"
+                                                value="<?= esc_attr($post?->unpublishAt?->format('Y-m-d\TH:i') ?? '') ?>"
+                                            >
+                                        </p>
+                                    <?php else: ?>
+                                        <p class="lp-field">
+                                            <label for="post-status">Status</label>
+                                            <select id="post-status" name="status">
+                                                <option value="<?= esc_attr(PostStatus::Draft->value) ?>" <?= ($post?->status ?? PostStatus::Draft) !== PostStatus::PendingReview ? 'selected' : '' ?>>Draft</option>
+                                                <option value="<?= esc_attr(PostStatus::PendingReview->value) ?>" <?= ($post?->status ?? PostStatus::Draft) === PostStatus::PendingReview ? 'selected' : '' ?>>Submit for Review</option>
+                                            </select>
+                                            <span class="lp-field__hint">An editor or administrator can publish this post once it's submitted for review.</span>
+                                        </p>
+                                    <?php endif; ?>
+
+                                    <div class="lp-sidebar-box__actions">
+                                        <button type="submit" class="lp-button lp-button--primary">Save Post</button>
+                                        <?php if ($post !== null): ?>
+                                            <a class="lp-button" href="<?= esc_url(site_url('preview/' . $post->id)) ?>" target="_blank" rel="noopener">Preview</a>
+                                        <?php endif; ?>
+                                        <a class="lp-button" href="<?= esc_url(admin_url('posts/all-posts')) ?>">Cancel</a>
+                                    </div>
+                                    <?php break;
+
+                                case 'featured_image': ?>
+                                    <?php if ($currentFeaturedImage !== null): ?>
+                                        <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+                                        <label class="lp-field--checkbox">
+                                            <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
+                                        </label>
+
+                                        <div class="lp-featured-crop" data-lp-featured-crop>
+                                            <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>
+                                                <?= ($post->featuredImageCrop ?? null) !== null ? 'Edit Crop' : 'Add Crop' ?>
+                                            </button>
+
+                                            <div class="lp-featured-crop__editor" data-lp-featured-crop-editor hidden>
+                                                <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
+                                                    <img src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="" data-lp-featured-crop-image>
+                                                    <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
+                                                        <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
+                                                    </div>
+                                                </div>
+                                                <p class="lp-field__hint">Drag to select the area to use as the featured image. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
+                                                <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear Crop</button>
+                                            </div>
+
+                                            <input type="hidden" name="featured_image_crop_for_id" value="<?= (int) $currentFeaturedImage['id'] ?>">
+                                            <input type="hidden" name="featured_image_crop_x" data-lp-featured-crop-x value="<?= esc_attr((string) ($post->featuredImageCrop['x'] ?? '')) ?>">
+                                            <input type="hidden" name="featured_image_crop_y" data-lp-featured-crop-y value="<?= esc_attr((string) ($post->featuredImageCrop['y'] ?? '')) ?>">
+                                            <input type="hidden" name="featured_image_crop_width" data-lp-featured-crop-width value="<?= esc_attr((string) ($post->featuredImageCrop['width'] ?? '')) ?>">
+                                            <input type="hidden" name="featured_image_crop_height" data-lp-featured-crop-height value="<?= esc_attr((string) ($post->featuredImageCrop['height'] ?? '')) ?>">
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <label for="post-featured-image-select">Choose from Media Manager</label>
+                                    <select id="post-featured-image-select" name="featured_image_id">
+                                        <option value="0">(None)</option>
+                                        <?php foreach ($imageOptions as $imageOption): ?>
+                                            <option value="<?= (int) $imageOption['id'] ?>" <?= ($post?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
+                                                <?= esc_html((string) $imageOption['file_name']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+
+                                    <label for="post-featured-image-upload">Or upload a new image</label>
+                                    <input type="file" id="post-featured-image-upload" name="featured_image_upload" accept="image/*">
+                                    <?php break;
+
+                                case 'categories': ?>
+                                    <div class="lp-field lp-field--checklist" data-lp-category-field>
+                                        <div data-lp-category-list>
+                                            <?php foreach ($allCategories as $categoryOption): ?>
+                                                <label class="lp-field--checkbox">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="category_ids[]"
+                                                        value="<?= (int) $categoryOption->id ?>"
+                                                        <?= in_array($categoryOption->id, $assignedCategoryIds, true) ? 'checked' : '' ?>
+                                                    >
+                                                    <?= esc_html($categoryOption->name) ?>
+                                                </label>
+                                            <?php endforeach; ?>
+                                        </div>
+
+                                        <?php if ($currentUser->can('edit_posts')): ?>
+                                            <details class="lp-category-quick-add" data-lp-category-quick-add data-add-url="<?= esc_url(admin_url('posts/new')) ?>" data-add-csrf="<?= esc_attr(Csrf::token('add_category')) ?>">
+                                                <summary>+ Add New Category</summary>
+                                                <p class="lp-field">
+                                                    <label class="lp-visually-hidden" for="post-new-category-name">New category name</label>
+                                                    <input type="text" id="post-new-category-name" data-lp-category-name-input placeholder="New category name">
+                                                    <button type="button" class="lp-button lp-button--secondary" data-lp-category-add-button>Add New Category</button>
+                                                </p>
+                                                <p class="lp-field__hint" data-lp-category-add-error hidden></p>
+                                            </details>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php break;
+
+                                case 'tags': ?>
+                                    <div class="lp-field lp-tag-input" data-lp-tag-input data-suggestions="<?= esc_attr(json_encode($allTagNames)) ?>">
+                                        <label for="post-tags">Tags</label>
+                                        <input
+                                            type="text"
+                                            id="post-tags"
+                                            name="tags"
+                                            value="<?= esc_attr(implode(', ', $assignedTagNames)) ?>"
+                                            placeholder="Comma-separated, e.g. news, opinion"
+                                        >
+                                        <span class="lp-field__hint">Separate multiple tags with commas. New tags are created automatically.</span>
+                                    </div>
+                                    <?php break;
+
+                                case 'comments': ?>
+                                    <?php
+                                    // Settings > Discussion's "Allow comments on new posts" (LP-047)
+                                    // only sets the default for a brand-new post's checkbox below — an
+                                    // existing post's own saved comments_open value always wins.
+                                    $defaultCommentsOpen = $post !== null ? $post->commentsOpen : $kernel->commentModeration->defaultCommentsOpenForNewPosts();
+                                    ?>
+                                    <label class="lp-field--checkbox">
+                                        <input type="checkbox" name="comments_open" value="1" <?= $defaultCommentsOpen ? 'checked' : '' ?>>
+                                        Allow comments on this post
+                                    </label>
+                                    <?php break;
+
+                                case 'seo': ?>
+                                    <label for="post-meta-title">SEO title</label>
+                                    <input type="text" id="post-meta-title" name="meta_title" value="<?= esc_attr($post->metaTitle ?? '') ?>" placeholder="Defaults to the title above">
+                                    <span class="lp-field__hint">Overrides the browser tab title and search-result headline only — the title above is unchanged everywhere else on the site.</span>
+
+                                    <label for="post-meta-description">Meta description</label>
+                                    <textarea id="post-meta-description" name="meta_description" rows="2" placeholder="Defaults to the excerpt above"><?= esc_html($post->metaDescription ?? '') ?></textarea>
+                                    <span class="lp-field__hint">Shown in search results and social share previews. Leave blank to use the excerpt.</span>
+                                    <?php break;
+
+                                case 'custom_fields': ?>
+                                    <div data-lp-custom-fields>
+                                        <div data-lp-custom-fields-rows>
+                                            <?php foreach ([...$postMeta, ['key' => '', 'value' => '']] as $metaPair): ?>
+                                                <div class="lp-custom-fields__row">
+                                                    <input type="text" name="meta_keys[]" value="<?= esc_attr($metaPair['key']) ?>" placeholder="Field name">
+                                                    <input type="text" name="meta_values[]" value="<?= esc_attr($metaPair['value']) ?>" placeholder="Value">
+                                                    <button type="button" class="lp-button lp-button--link" data-lp-custom-fields-remove>Remove</button>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <button type="button" class="lp-button lp-button--secondary" data-lp-custom-fields-add>Add Custom Field</button>
+                                        <span class="lp-field__hint">Simple key/value data a theme or plugin can read against this post.</span>
+                                    </div>
+                                    <?php break;
+
+                                case 'author': ?>
+                                    <p class="lp-field">
+                                        <label for="post-author">Author</label>
+                                        <select id="post-author" name="author_id">
+                                            <?php foreach ($allUsers as $userOption): ?>
+                                                <option value="<?= (int) $userOption->id ?>" <?= $post->authorId === $userOption->id ? 'selected' : '' ?>>
+                                                    <?= esc_html($userOption->displayName) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </p>
+                                    <?php break;
+                            endswitch; ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
-            </div>
-            <button type="button" class="lp-button lp-button--secondary" data-lp-custom-fields-add>Add Custom Field</button>
-            <span class="lp-field__hint">Simple key/value data a theme or plugin can read against this post.</span>
-        </fieldset>
-
-        <?php if ($canEditOthersPosts && $post !== null): ?>
-            <p class="lp-field">
-                <label for="post-author">Author</label>
-                <select id="post-author" name="author_id">
-                    <?php foreach ($allUsers as $userOption): ?>
-                        <option value="<?= (int) $userOption->id ?>" <?= $post->authorId === $userOption->id ? 'selected' : '' ?>>
-                            <?= esc_html($userOption->displayName) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </p>
-        <?php endif; ?>
-
-        <?php if ($canPublish): ?>
-            <p class="lp-field">
-                <label for="post-status">Status</label>
-                <select id="post-status" name="status">
-                    <?php foreach ($statusOptions as $option): ?>
-                        <option value="<?= esc_attr($option->value) ?>" <?= ($post?->status ?? PostStatus::Draft) === $option ? 'selected' : '' ?>>
-                            <?= esc_html($option->label()) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </p>
-
-            <p class="lp-field">
-                <label for="post-published-at">Publish date</label>
-                <input
-                    type="datetime-local"
-                    id="post-published-at"
-                    name="published_at"
-                    value="<?= esc_attr($post?->publishedAt?->format('Y-m-d\TH:i') ?? '') ?>"
-                >
-                <span class="lp-field__hint">Required to schedule a post. On a Draft, this is optional and just a planned date to note when you intend to publish — the post stays unpublished until you switch its status, and the date carries over automatically if you do.</span>
-            </p>
-
-            <p class="lp-field">
-                <label for="post-visibility">Visibility</label>
-                <select id="post-visibility" name="visibility">
-                    <?php foreach (PostVisibility::cases() as $visibilityOption): ?>
-                        <option value="<?= esc_attr($visibilityOption->value) ?>" <?= ($post?->visibility ?? PostVisibility::Public) === $visibilityOption ? 'selected' : '' ?>>
-                            <?= esc_html($visibilityOption->label()) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <span class="lp-field__hint">Private posts are only visible to logged-in staff (the author, or anyone who can edit posts).</span>
-            </p>
-
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="is_sticky" value="1" <?= ($post->isSticky ?? false) ? 'checked' : '' ?>>
-                Stick this post to the top of the homepage
-            </label>
-
-            <p class="lp-field">
-                <label for="post-unpublish-at">Unpublish date (optional)</label>
-                <input
-                    type="datetime-local"
-                    id="post-unpublish-at"
-                    name="unpublish_at"
-                    value="<?= esc_attr($post?->unpublishAt?->format('Y-m-d\TH:i') ?? '') ?>"
-                >
-                <span class="lp-field__hint">Leave blank to keep this post published indefinitely. Once this time passes, the post is automatically no longer publicly visible — the stored status is unchanged, so republishing just means clearing or moving this date.</span>
-            </p>
-        <?php else: ?>
-            <p class="lp-field">
-                <label for="post-status">Status</label>
-                <select id="post-status" name="status">
-                    <option value="<?= esc_attr(PostStatus::Draft->value) ?>" <?= ($post?->status ?? PostStatus::Draft) !== PostStatus::PendingReview ? 'selected' : '' ?>>Draft</option>
-                    <option value="<?= esc_attr(PostStatus::PendingReview->value) ?>" <?= ($post?->status ?? PostStatus::Draft) === PostStatus::PendingReview ? 'selected' : '' ?>>Submit for Review</option>
-                </select>
-                <span class="lp-field__hint">An editor or administrator can publish this post once it's submitted for review.</span>
-            </p>
-        <?php endif; ?>
-
-        <button type="submit" class="lp-button lp-button--primary">Save Post</button>
-        <?php if ($post !== null): ?>
-            <a class="lp-button" href="<?= esc_url(site_url('preview/' . $post->id)) ?>" target="_blank" rel="noopener">Preview</a>
-        <?php endif; ?>
-        <a class="lp-button" href="<?= esc_url(admin_url('posts/all-posts')) ?>">Cancel</a>
+            </aside>
+        </div>
     </form>
 </section>
 

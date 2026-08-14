@@ -27,7 +27,9 @@ use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
+use LumoraPress\Models\User;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentModerationService;
@@ -92,6 +94,7 @@ final class SiteController
                 $this->theme->render('page.php', [
                     'page_title' => $homepagePage->title,
                     'page' => $homepagePage,
+                    'comment_data' => $this->commentTemplateDataForPage($homepagePage, $this->auth->user()),
                 ]);
 
                 return;
@@ -176,17 +179,37 @@ final class SiteController
         $this->theme->render('single.php', [
             'page_title' => $post->title,
             'post' => $post,
-            'comments_open' => $this->commentsOpenFor($post),
-            ...$this->commentThreadViewData($post),
-            'current_user' => $this->auth->user(),
+            'comment_data' => $this->commentTemplateData($post, $this->auth->user()),
         ]);
     }
 
     /**
-     * View data for the comment thread shared by singlePost() and
-     * previewPost() — pagination, ordering, threading, and avatar display
-     * are all Settings > Discussion (LP-047) options rather than hardcoded
-     * as publicTreeForPost() always was before this ticket.
+     * Everything comments_template() needs for $post, bundled into one
+     * array a theme's single.php forwards straight through
+     * (comments_template($comment_data)) instead of re-listing each key by
+     * hand. Before this, single.php had to name all ~15 keys itself —
+     * meaning a new field added here later would silently never reach
+     * comments.php until every theme's single.php was also updated to
+     * list it. Shared by singlePost() and previewPost().
+     *
+     * @return array<string, mixed>
+     */
+    private function commentTemplateData(Post $post, ?User $currentUser): array
+    {
+        return [
+            'post' => $post,
+            'current_user' => $currentUser,
+            'comments_open' => $this->commentsOpenFor($post),
+            ...$this->commentThreadViewData($post),
+        ];
+    }
+
+    /**
+     * Pagination, ordering, threading, and avatar display view data for
+     * $post's comment thread — all Settings > Discussion (LP-047) options
+     * rather than hardcoded as publicTreeForPost() always was before that
+     * ticket. Merged into commentTemplateData() above; kept as its own
+     * method since it has nothing to do with $currentUser/comments_open.
      *
      * @return array<string, mixed>
      */
@@ -218,6 +241,63 @@ final class SiteController
             'comment_pagination_enabled' => $this->config->option('comment_pagination_enabled', '0') === '1',
             'comment_max_nesting_level' => $maxNesting,
             'comment_count' => $this->comments->countForPost($post->id),
+            'avatars_enabled' => $this->config->option('avatars_enabled', '1') !== '0',
+            'avatar_rating' => strtolower((string) $this->config->option('avatar_max_rating', 'G')),
+            'avatar_default' => $this->avatarDefaultParam(),
+            'comment_cookies_consent_enabled' => $this->config->option('comment_cookies_consent_enabled', '0') === '1',
+            'comment_author_name_required' => $this->commentModeration->isAuthorNameRequired(),
+            'comment_author_email_required' => $this->commentModeration->isAuthorEmailRequired(),
+            'comment_saved_guest_name' => is_string($_COOKIE['lp_commenter_name'] ?? null) ? $_COOKIE['lp_commenter_name'] : '',
+            'comment_saved_guest_email' => is_string($_COOKIE['lp_commenter_email'] ?? null) ? $_COOKIE['lp_commenter_email'] : '',
+            'comment_saved_guest_url' => is_string($_COOKIE['lp_commenter_url'] ?? null) ? $_COOKIE['lp_commenter_url'] : '',
+        ];
+    }
+
+    /**
+     * Mirrors commentTemplateData(Post) exactly, for Pages.
+     *
+     * @return array<string, mixed>
+     */
+    private function commentTemplateDataForPage(Page $page, ?User $currentUser): array
+    {
+        return [
+            'page' => $page,
+            'current_user' => $currentUser,
+            'comments_open' => $this->commentModeration->commentsOpenForPage($page),
+            ...$this->commentThreadViewDataForPage($page),
+        ];
+    }
+
+    /**
+     * Mirrors commentThreadViewData(Post) exactly, for Pages.
+     *
+     * @return array<string, mixed>
+     */
+    private function commentThreadViewDataForPage(Page $page): array
+    {
+        $order = (string) $this->config->option('comment_order', 'asc');
+        $threaded = $this->config->option('comment_threading_enabled', '1') !== '0';
+        $maxNesting = max(0, (int) $this->config->option('comment_max_nesting_level', '5'));
+
+        if ($this->config->option('comment_pagination_enabled', '0') !== '1') {
+            $pagination = $this->comments->paginateForPage($page->id, 1, 100000, $order, $threaded);
+        } else {
+            $perPage = max(1, (int) $this->config->option('comment_per_page', '50'));
+            $requestedPage = isset($_GET['cpage']) ? max(1, (int) $_GET['cpage']) : null;
+
+            $pagination = $this->comments->paginateForPage($page->id, $requestedPage ?? 1, $perPage, $order, $threaded);
+
+            if ($requestedPage === null && $this->config->option('comment_default_page', 'last') === 'last' && $pagination['totalPages'] > 1) {
+                $pagination = $this->comments->paginateForPage($page->id, $pagination['totalPages'], $perPage, $order, $threaded);
+            }
+        }
+
+        return [
+            'comment_tree' => $pagination['comments'],
+            'comment_pagination' => $pagination,
+            'comment_pagination_enabled' => $this->config->option('comment_pagination_enabled', '0') === '1',
+            'comment_max_nesting_level' => $maxNesting,
+            'comment_count' => $this->comments->countForPage($page->id),
             'avatars_enabled' => $this->config->option('avatars_enabled', '1') !== '0',
             'avatar_rating' => strtolower((string) $this->config->option('avatar_max_rating', 'G')),
             'avatar_default' => $this->avatarDefaultParam(),
@@ -442,6 +522,178 @@ final class SiteController
     }
 
     /**
+     * Mirrors submitComment() exactly, for Pages. Kept as a separate
+     * method rather than a Post|Page-generalized one — the two content
+     * types have no shared interface to dispatch through generically,
+     * and this method is entirely local logic (no shared helper calls
+     * that would otherwise need their own Post/Page branching beyond
+     * what CommentService/CommentModerationService/
+     * CommentNotificationService already expose as parallel methods).
+     *
+     * Uses a distinct CSRF action prefix ('comment_submit_page_' rather
+     * than 'comment_submit_') — a post and a page can share the same
+     * numeric id (each table's ids start from 1), and Csrf::verify()
+     * keys tokens by action name alone, so an unprefixed action name
+     * would let a page-5 comment form's token collide with a post-5
+     * comment form's token in the same session (see comment_form()'s
+     * own docblock for the exact "same action name, different form"
+     * mistake this project has already been bitten by once).
+     *
+     * @param array<string, string> $params
+     */
+    public function submitPageComment(array $params): void
+    {
+        $slug = $params['slug'] ?? '';
+        $page = $slug !== '' ? $this->pages->findBySlug($slug) : null;
+
+        if ($page === null || !$page->isPubliclyVisible()) {
+            $this->notFound();
+
+            return;
+        }
+
+        $redirectTo = page_permalink($page);
+
+        if (!$this->commentModeration->commentsOpenForPage($page)) {
+            header('Location: ' . $redirectTo . '#comments');
+            exit;
+        }
+
+        $rawParentId = (int) ($_POST['parent_id'] ?? 0);
+        $csrfAction = 'comment_submit_page_' . $page->id . '_' . ($rawParentId > 0 ? $rawParentId : 'root');
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify($csrfAction, $token)) {
+            header('Location: ' . $redirectTo . '?comment=error#comment-form');
+            exit;
+        }
+
+        if (trim((string) ($_POST['comment_website'] ?? '')) !== '') {
+            header('Location: ' . $redirectTo . '#comment-form');
+            exit;
+        }
+
+        $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
+        $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
+
+        if (!FormTiming::verify($formTime, $formTimeHmac)) {
+            header('Location: ' . $redirectTo . '#comment-form');
+            exit;
+        }
+
+        $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
+
+        if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
+            header('Location: ' . $redirectTo . '?comment=flood#comment-form');
+            exit;
+        }
+
+        $authUser = $this->auth->user();
+
+        if ($authUser === null && $this->commentModeration->requiresRegistrationToComment()) {
+            header('Location: ' . $redirectTo . '?comment=login_required#comment-form');
+            exit;
+        }
+
+        $content = trim((string) ($_POST['content'] ?? ''));
+        $parentId = $rawParentId > 0 ? $rawParentId : null;
+
+        $userId = $authUser?->id;
+        $guestName = $authUser !== null ? $authUser->displayName : trim((string) ($_POST['guest_name'] ?? ''));
+        $guestEmail = $authUser !== null ? $authUser->email : trim((string) ($_POST['guest_email'] ?? ''));
+        $guestUrl = trim((string) ($_POST['guest_url'] ?? ''));
+        $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
+
+        if ($authUser === null) {
+            if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {
+                $guestName = __('Anonymous');
+            }
+
+            if ($guestEmail === '' && !$this->commentModeration->isAuthorEmailRequired()) {
+                $guestEmail = 'anonymous@' . ((string) (parse_url(home_url(), PHP_URL_HOST) ?: 'invalid.example'));
+            }
+        }
+
+        if ($content === '' || $guestName === '' || filter_var($guestEmail, FILTER_VALIDATE_EMAIL) === false) {
+            header('Location: ' . $redirectTo . '?comment=error#comment-form');
+            exit;
+        }
+
+        if ($parentId !== null) {
+            $parent = $this->comments->findById($parentId);
+
+            if ($parent === null || $parent->pageId !== $page->id) {
+                $parentId = null;
+            }
+        }
+
+        $status = $this->commentModeration->determineStatus(
+            userId: $userId,
+            isTrustedModerator: $authUser?->can('moderate_comments') ?? false,
+            guestName: $guestName,
+            guestEmail: $guestEmail,
+            guestUrl: $guestUrl,
+            content: $content,
+        );
+
+        if ($this->akismet->isEnabled()) {
+            $isSpam = $this->akismet->checkComment([
+                'comment_type' => 'comment',
+                'comment_author' => $guestName,
+                'comment_author_email' => $guestEmail,
+                'comment_author_url' => $guestUrl,
+                'comment_content' => $content,
+                'user_ip' => $ipAddress,
+                'user_agent' => $userAgent,
+                'referrer' => is_string($_SERVER['HTTP_REFERER'] ?? null) ? $_SERVER['HTTP_REFERER'] : null,
+                'permalink' => $redirectTo,
+            ]);
+
+            if ($isSpam === true) {
+                $status = CommentStatus::Spam;
+            }
+        }
+
+        if (apply_filters('comment_is_spam', false, $guestName, $guestEmail, $guestUrl, $content, $ipAddress) === true) {
+            $status = CommentStatus::Spam;
+        }
+
+        $comment = $this->comments->create(
+            postId: null,
+            parentId: $parentId,
+            userId: $userId,
+            guestName: $guestName,
+            guestEmail: $guestEmail,
+            guestUrl: $guestUrl,
+            content: $content,
+            status: $status,
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
+            pageId: $page->id,
+        );
+
+        do_action('comment_posted', $comment);
+
+        if ($status !== CommentStatus::Spam) {
+            $this->commentNotifications->notifyNewCommentOnPage($comment, $page);
+        }
+
+        if ($authUser === null && $this->config->option('comment_cookies_consent_enabled', '0') === '1' && ($_POST['comment_save_info'] ?? '') === '1') {
+            $expires = time() + (86400 * 90);
+            setcookie('lp_commenter_name', $guestName, $expires, '/');
+            setcookie('lp_commenter_email', $guestEmail, $expires, '/');
+            setcookie('lp_commenter_url', $guestUrl ?? '', $expires, '/');
+        }
+
+        $flag = $status === CommentStatus::Approved ? 'posted' : 'pending';
+        $anchor = $status === CommentStatus::Approved ? '#comment-' . $comment->id : '#comment-form';
+
+        header('Location: ' . $redirectTo . '?comment=' . $flag . $anchor);
+        exit;
+    }
+
+    /**
      * A post accepts comments only if the post itself and the site as a
      * whole allow it, and — Settings > Discussion's "Automatically close
      * comments after N days" — the post isn't past that window. Delegates
@@ -466,6 +718,18 @@ final class SiteController
         $user = $this->auth->user();
 
         return $user !== null && ($user->can('edit_posts') || $user->id === $post->authorId);
+    }
+
+    /**
+     * Mirrors canViewPrivatePost() exactly — Pages reuse the Posts
+     * capabilities, since no dedicated page capabilities exist yet (see
+     * admin/views/pages/new.php's identical reasoning for $canEditPage).
+     */
+    private function canViewPrivatePage(Page $page): bool
+    {
+        $user = $this->auth->user();
+
+        return $user !== null && ($user->can('edit_posts') || $user->id === $page->authorId);
     }
 
     /**
@@ -496,9 +760,36 @@ final class SiteController
         $this->theme->render('single.php', [
             'page_title' => $post->title,
             'post' => $post,
-            'comments_open' => $this->commentsOpenFor($post),
-            ...$this->commentThreadViewData($post),
-            'current_user' => $user,
+            'comment_data' => $this->commentTemplateData($post, $user),
+        ]);
+    }
+
+    /**
+     * Mirrors previewPost() exactly, for Pages — a distinct
+     * `/preview-page/{id}` route (not `/preview/{id}`) since post and
+     * page ids each start from 1 in their own tables and would
+     * otherwise collide. Deliberately never cached, same reasoning as
+     * previewPost()'s own docblock.
+     *
+     * @param array<string, string> $params
+     */
+    public function previewPage(array $params): void
+    {
+        $id = (int) ($params['id'] ?? 0);
+        $page = $id > 0 ? $this->pages->findById($id) : null;
+        $user = $this->auth->user();
+
+        if ($page === null || $user === null || !($user->can('edit_others_posts') || $user->id === $page->authorId)) {
+            $this->notFound();
+
+            return;
+        }
+
+        $this->theme->render('page.php', [
+            'page_title' => $page->title,
+            'page' => $page,
+            'page_ancestors' => $this->pages->ancestors($page->id),
+            'comment_data' => $this->commentTemplateDataForPage($page, $user),
         ]);
     }
 
@@ -661,7 +952,7 @@ final class SiteController
         $slug = $params['slug'] ?? '';
         $page = $slug !== '' ? $this->pages->findBySlug($slug) : null;
 
-        if ($page === null || !$page->isPubliclyVisible()) {
+        if ($page === null || !$page->isVisibleToViewer($this->canViewPrivatePage($page))) {
             $this->notFound();
 
             return;
@@ -682,6 +973,15 @@ final class SiteController
         $this->theme->render('page.php', [
             'page_title' => $page->title,
             'page' => $page,
+            // LP-009 Hierarchy UI breadcrumbs: root-first ancestor chain,
+            // empty for a top-level page. Computed here (not inside the
+            // theme API) since theme templates only ever receive curated
+            // $vars, never a raw service — see
+            // get_page_breadcrumbs()/the_page_breadcrumbs() in
+            // include/content-display-functions.php, which are pure
+            // formatting functions over this array.
+            'page_ancestors' => $this->pages->ancestors($page->id),
+            'comment_data' => $this->commentTemplateDataForPage($page, $this->auth->user()),
         ]);
     }
 

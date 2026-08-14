@@ -27,6 +27,16 @@ Version: 0.1.0
     --lp-error-bg: #fcf0f1;
     --lp-error-border: #d63638;
     --lp-error-text: #7a1a1c;
+    /* LP-016's fixed font-color palette (both editors) — see the
+       .has-{color}-color rules below for why this is a hardcoded set of
+       named colors rather than a free-pick color. */
+    --lp-color-red: #c0392b;
+    --lp-color-orange: #d35400;
+    --lp-color-yellow: #9a7d0a;
+    --lp-color-green: #1e8449;
+    --lp-color-blue: #2471a3;
+    --lp-color-purple: #7d3c98;
+    --lp-color-gray: #616a6b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +54,15 @@ Version: 0.1.0
         --lp-error-bg: #3a1f20;
         --lp-error-border: #d63638;
         --lp-error-text: #f2b8b9;
+        /* Lightened for contrast against the dark background — the light
+           values above read as muddy/low-contrast on --lp-bg's dark tone. */
+        --lp-color-red: #e57368;
+        --lp-color-orange: #e8954a;
+        --lp-color-yellow: #d9b93d;
+        --lp-color-green: #4fbb7d;
+        --lp-color-blue: #5fa8dd;
+        --lp-color-purple: #b07fd0;
+        --lp-color-gray: #9aa0a6;
     }
 }
 
@@ -284,6 +303,49 @@ img {
     margin-top: 0;
 }
 
+/* LP-009 Hierarchy UI breadcrumbs — content/page.php only renders this
+   for a page with at least one ancestor (see the_page_breadcrumbs()'s
+   own docblock); a top-level page shows no breadcrumb trail at all. */
+
+.lp-breadcrumbs {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+}
+
+.lp-breadcrumbs__list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4em;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-breadcrumbs__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+}
+
+.lp-breadcrumbs__link {
+    color: var(--lp-text-muted);
+    text-decoration: underline;
+}
+
+.lp-breadcrumbs__link:hover {
+    color: var(--lp-accent);
+}
+
+.lp-breadcrumbs__separator {
+    color: var(--lp-text-muted);
+}
+
+.lp-breadcrumbs__item--current {
+    color: var(--lp-text);
+    font-weight: 600;
+}
+
 .lp-empty-state {
     color: var(--lp-text-muted);
     font-style: italic;
@@ -498,6 +560,43 @@ img {
 
 .lp-post__content .has-text-align-justify {
     text-align: justify;
+}
+
+/*
+ * LP-016's fixed font-color palette (both editors) — a hardcoded set of
+ * named colors rather than a free-pick color, applied as a class on a
+ * <span> instead of an inline style="color:..." since HtmlSanitizer
+ * never allows a style attribute at all. Names must match the palette
+ * content-editor.js offers and MarkdownParser::FONT_COLORS accepts.
+ * Colors themselves are tokens (--lp-color-*, defined above) so dark
+ * mode can lighten them for contrast rather than hardcoding a value here.
+ */
+.lp-post__content .has-red-color {
+    color: var(--lp-color-red);
+}
+
+.lp-post__content .has-orange-color {
+    color: var(--lp-color-orange);
+}
+
+.lp-post__content .has-yellow-color {
+    color: var(--lp-color-yellow);
+}
+
+.lp-post__content .has-green-color {
+    color: var(--lp-color-green);
+}
+
+.lp-post__content .has-blue-color {
+    color: var(--lp-color-blue);
+}
+
+.lp-post__content .has-purple-color {
+    color: var(--lp-color-purple);
+}
+
+.lp-post__content .has-gray-color {
+    color: var(--lp-color-gray);
 }
 
 .lp-post__content .lp-toc {
@@ -1113,6 +1212,25 @@ img {
     gap: 0.75rem;
     align-items: center;
     text-align: center;
+}
+
+/* Footer Widget Area (LP-048): renders above the footer navigation/
+   copyright row, only when at least one widget is assigned. Widgets
+   themselves reuse .lp-widget/.lp-widget__* unchanged from the sidebar —
+   only this wrapper (a wrapping row of cards instead of a single stacked
+   column) is new. */
+.lp-site-footer__widgets {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+    padding: 1.5rem 1.5rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    text-align: left;
+}
+
+.lp-site-footer__widgets .lp-widget {
+    flex: 1 1 220px;
 }
 
 .lp-site-footer__copyright {

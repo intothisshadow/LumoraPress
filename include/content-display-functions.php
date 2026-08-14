@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 
 /**
@@ -143,5 +144,62 @@ if (!function_exists('the_excerpt')) {
     function the_excerpt(Post $post): void
     {
         echo esc_html(get_the_excerpt($post));
+    }
+}
+
+if (!function_exists('get_page_breadcrumbs')) {
+    /**
+     * $page's breadcrumb trail as {title, url} pairs, root-first, not
+     * including $page itself (a template appends the current page's own
+     * title after these, exactly as it already has $page->title
+     * available). $ancestors is the root-first Page[] chain a caller
+     * already computed via PageService::ancestors() — SiteController::page()
+     * passes it in as the 'page_ancestors' template var, since theme
+     * templates only ever receive curated $vars, never a raw service
+     * (LP-009's Hierarchy UI). Links stay flat ('page/{slug}') regardless
+     * of nesting depth — hierarchical URLs are a separate, not-yet-built
+     * ticket.
+     *
+     * @param array<int, Page> $ancestors
+     * @return array<int, array{title: string, url: string}>
+     */
+    function get_page_breadcrumbs(array $ancestors): array
+    {
+        return array_map(
+            static fn (Page $ancestor): array => ['title' => $ancestor->title, 'url' => page_permalink($ancestor)],
+            $ancestors,
+        );
+    }
+}
+
+if (!function_exists('the_page_breadcrumbs')) {
+    /**
+     * Renders $ancestors (see get_page_breadcrumbs()) as an escaped
+     * <nav>/<ol> breadcrumb trail, ending in $page's own (unlinked)
+     * title. Outputs nothing for a top-level page ($ancestors === []) —
+     * a single-entry trail with nothing to navigate to isn't useful.
+     * Styling belongs entirely to the active theme's stylesheet
+     * (.lp-breadcrumbs and friends — see content/themes/default/style.css),
+     * per this project's Public-Facing CSS Rule.
+     *
+     * @param array<int, Page> $ancestors
+     */
+    function the_page_breadcrumbs(Page $page, array $ancestors): void
+    {
+        if ($ancestors === []) {
+            return;
+        }
+
+        echo '<nav class="lp-breadcrumbs" aria-label="Breadcrumb"><ol class="lp-breadcrumbs__list">';
+
+        foreach (get_page_breadcrumbs($ancestors) as $crumb) {
+            echo '<li class="lp-breadcrumbs__item">'
+                . '<a class="lp-breadcrumbs__link" href="' . esc_url($crumb['url']) . '">' . esc_html($crumb['title']) . '</a>'
+                . '<span class="lp-breadcrumbs__separator" aria-hidden="true">/</span>'
+                . '</li>';
+        }
+
+        echo '<li class="lp-breadcrumbs__item lp-breadcrumbs__item--current" aria-current="page">' . esc_html($page->title) . '</li>';
+        echo '</ol></nav>';
     }
 }

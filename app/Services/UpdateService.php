@@ -82,6 +82,14 @@ final class UpdateService
      *     an in-memory PressConfig just to construct a service.
      * @param ?UserService $users Nullable for the same reason — when
      *     absent, "Warn about active users" always reports no problems.
+     * @param ?UpdateProgress $progress Nullable for the same reason —
+     *     when absent, checkUpload()/install() simply report no live
+     *     stage progress (every `$this->progress?->` call below is a
+     *     no-op), rather than every existing test call site needing a
+     *     progress double just to construct a service. Unlike every other
+     *     nullable dependency here, callers never `reset()` through this
+     *     property — see this class's own stage-reporting docblocks for
+     *     why that responsibility belongs to the view instead.
      */
     public function __construct(
         private readonly Database $database,
@@ -100,6 +108,7 @@ final class UpdateService
         private readonly ?PressConfig $config = null,
         private readonly ?UserService $users = null,
         private readonly ?UpdateChecksumManifest $checksums = null,
+        private readonly ?UpdateProgress $progress = null,
     ) {
     }
 
@@ -116,7 +125,16 @@ final class UpdateService
     {
         $installedVersion = $this->installedVersion();
 
+        // reset() for this operation's stage list is the view's job, not
+        // this method's — see the constructor docblock's $progress note.
+        // A caller that never reset() first (or has no progress reporter
+        // wired at all) simply gets a no-op here, same as every other
+        // $this->progress?-> call in this class.
+        $this->progress?->stage('validate');
+
         $result = $this->validator->validateAndStage($uploadedZipPath, $installedVersion, $allowDowngrade);
+
+        $this->progress?->stage('compatibility');
 
         // Compatibility Checks: PHP version/extensions/writability are
         // already validated above (they depend on the uploaded package
@@ -134,6 +152,11 @@ final class UpdateService
         // so both are warnings, not blocking problems.
         array_push($result['warnings'], ...$this->activeUserProblems($currentUserId));
         array_push($result['warnings'], ...$this->modifiedCoreFileProblems());
+
+        $this->progress?->complete(
+            $result['blocking'] === [],
+            $result['blocking'] === [] ? 'Ready to install.' : 'Please resolve the issues below and try again.',
+        );
 
         if ($result['blocking'] === []) {
             $pendingPath = rtrim($result['staging_path'], '/') . '/' . self::PENDING_FILE;
@@ -418,16 +441,24 @@ final class UpdateService
         try {
             $this->hooks->doAction('lumora_press_before_update', $fromVersion, $toVersion);
 
+            $this->progress?->stage('backup_files');
             $filesBackupPath = $this->backups->backupFiles($fromVersion);
+
+            $this->progress?->stage('backup_database');
             $databaseBackupPath = $this->backups->backupDatabase($fromVersion);
 
+            $this->progress?->stage('apply_files');
             $effectiveRoot = rtrim($stagingPath . '/' . $rootPrefix, '/');
+            $effectiveCorePaths = $this->resolveEffectiveCorePaths($effectiveRoot);
 
-            foreach ($this->corePaths as $corePath) {
+            foreach ($effectiveCorePaths as $corePath) {
                 $this->overlayPath($effectiveRoot . '/' . $corePath, rtrim($this->installRoot, '/') . '/' . $corePath);
             }
 
+            $this->progress?->stage('migrate');
             (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->migrate();
+
+            $this->progress?->stage('clear_cache');
 
             if (function_exists('opcache_reset')) {
                 opcache_reset();
@@ -441,6 +472,8 @@ final class UpdateService
                 throw new RuntimeException('The installed version did not match the update package after applying it.');
             }
 
+            $this->progress?->stage('cleanup');
+
             /*
              * install/ is one of $corePaths, so a release package that
              * ships it just re-extracted it onto the installation above —
@@ -453,12 +486,13 @@ final class UpdateService
              */
             (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
 
-            $this->removeObsoleteCorePaths();
-            $this->checksums?->write($this->checksums->computeForCorePaths($this->corePaths));
+            $this->removeObsoleteCorePaths($effectiveCorePaths);
+            $this->checksums?->write($this->checksums->computeForCorePaths($effectiveCorePaths));
 
             $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, UpdateStatus::Success);
+            $this->progress?->complete(true, "Successfully updated from {$fromVersion} to {$toVersion}.");
 
             return [
                 'status' => UpdateStatus::Success,
@@ -491,6 +525,7 @@ final class UpdateService
             $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, $status, $message, $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, $status);
+            $this->progress?->complete(false, $message);
 
             return [
                 'status' => $status,
@@ -717,28 +752,62 @@ final class UpdateService
 
     /**
      * Removes top-level `corePaths` entries that were part of a previous
-     * install/restore but aren't part of the current `$corePaths`
-     * configuration — the only case a corePath entry can go stale, since
-     * $corePaths is a value only ever set by this codebase's own
-     * bootstrap.php, never derived from an uploaded release ZIP or
-     * touched by an admin, a plugin, or any file outside the fixed
-     * corePaths list. Deliberately compares against the *configured*
-     * corePaths, not "what this specific release happened to contain" —
-     * see UpdateManifest's own docblock for why.
+     * install/restore but aren't part of $corePaths (the *effective* set
+     * just installed — see resolveEffectiveCorePaths()) — the only case a
+     * corePath entry can go stale, since it's a value only ever set by
+     * this codebase's own core-paths.php, never derived from an uploaded
+     * release ZIP or touched by an admin, a plugin, or any file outside
+     * the fixed corePaths list. Deliberately compares against the
+     * *configured* corePaths, not "what this specific release happened to
+     * contain" — see UpdateManifest's own docblock for why.
      *
      * A missing/never-written manifest reads back as [], so the very
      * first run after this exists is always a safe no-op: nothing is
      * removed, tracking simply begins from that point on.
+     *
+     * @param array<int, string> $corePaths
      */
-    private function removeObsoleteCorePaths(): void
+    private function removeObsoleteCorePaths(array $corePaths): void
     {
-        $obsolete = array_diff($this->manifest->read(), $this->corePaths);
+        $obsolete = array_diff($this->manifest->read(), $corePaths);
 
         foreach ($obsolete as $relativePath) {
             $this->deletePath(rtrim($this->installRoot, '/') . '/' . $relativePath);
         }
 
-        $this->manifest->write($this->corePaths);
+        $this->manifest->write($corePaths);
+    }
+
+    /**
+     * The corePaths list this install() run should actually overlay: the
+     * currently-running (old) code's own $this->corePaths, unioned with
+     * whatever the *staged, not-yet-installed* package's own
+     * core-paths.php declares — see that file's docblock for the full
+     * "chicken-and-egg" problem this closes. A package built before
+     * core-paths.php existed (or one that's otherwise missing/malformed)
+     * just falls back to $this->corePaths alone, exactly today's
+     * pre-fix behavior — never an error, since a missing declaration here
+     * is not itself a reason to fail an update.
+     *
+     * @return array<int, string>
+     */
+    private function resolveEffectiveCorePaths(string $effectiveRoot): array
+    {
+        $declaredPathsFile = $effectiveRoot . '/core-paths.php';
+
+        if (!is_file($declaredPathsFile)) {
+            return $this->corePaths;
+        }
+
+        $declared = require $declaredPathsFile;
+
+        if (!is_array($declared)) {
+            return $this->corePaths;
+        }
+
+        $declared = array_values(array_filter($declared, 'is_string'));
+
+        return array_values(array_unique([...$this->corePaths, ...$declared]));
     }
 
     private function deletePath(string $path): void
