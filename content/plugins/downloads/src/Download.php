@@ -1,0 +1,61 @@
+<?php
+
+/**
+ * A single downloadable item: title/description/category sitting on top of a Media item or a Redirect.
+ *
+ * @package LumoraPress
+ * @subpackage Plugins
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.6.0
+ */
+
+declare(strict_types=1);
+
+namespace LumoraPress\Plugins\Downloads;
+
+use DateTimeImmutable;
+
+/**
+ * $url, $fileSizeBytes, and $targetUrl are all resolved by
+ * DownloadService::hydrate() — a File download's $url is its Media
+ * item's download endpoint and $fileSizeBytes comes from that same row
+ * ($targetUrl stays null); a Url download's $url is its Redirect's own
+ * source path (not the raw external target, so hit-counting via
+ * RedirectService::recordHit() still applies), $fileSizeBytes stays
+ * null, and $targetUrl is the real external destination — the value an
+ * edit form needs to show/submit, since re-submitting $url itself would
+ * point the redirect at this site's own local URL instead of the real
+ * external destination.
+ */
+final class Download
+{
+    public function __construct(
+        public readonly int $id,
+        public readonly string $title,
+        public readonly string $description,
+        public readonly ?int $folderId,
+        public readonly DownloadType $type,
+        public readonly ?int $mediaId,
+        public readonly ?int $redirectId,
+        public readonly string $url,
+        public readonly ?int $fileSizeBytes,
+        public readonly ?string $targetUrl,
+        public readonly DateTimeImmutable $createdAt,
+        public readonly DateTimeImmutable $updatedAt,
+        public readonly ?DateTimeImmutable $trashedAt = null,
+    ) {
+    }
+
+    /**
+     * Computed, not stored — see DownloadStatus's own docblock for why
+     * this table has no status column of its own.
+     */
+    public function status(): DownloadStatus
+    {
+        return $this->trashedAt === null ? DownloadStatus::Live : DownloadStatus::Trashed;
+    }
+}

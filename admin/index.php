@@ -18,6 +18,7 @@ declare(strict_types=1);
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
+use LumoraPress\Models\ThemePreference;
 
 /** @var \LumoraPress\Core\Kernel $kernel */
 if (!isset($kernel)) {
@@ -270,6 +271,31 @@ if (!$kernel->auth->check()) {
 $currentUser = $kernel->auth->user();
 
 /*
+ * LP-087: the sidebar's quick theme toggle (rendered in every
+ * layout-header.php request via an empty-action self-submitting form)
+ * is handled here, before routing to any specific view, so it works
+ * identically from every admin screen without every view needing to
+ * know about it. Redirects back to the exact URL the toggle was
+ * clicked from — REQUEST_URI still holds the current page's own
+ * page/subpage query string at this point, since routing hasn't
+ * happened yet.
+ */
+if (
+    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+    && ($_POST['form'] ?? null) === 'quick_theme_toggle'
+    && Csrf::verify('quick_theme_toggle', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)
+) {
+    $requestedThemePreference = ThemePreference::tryFrom((string) ($_POST['theme_preference'] ?? ''));
+
+    if ($requestedThemePreference !== null) {
+        $kernel->users->updateThemePreference($currentUser->id, $requestedThemePreference);
+    }
+
+    header('Location: ' . ($_SERVER['REQUEST_URI'] ?? admin_url('dashboard')));
+    exit;
+}
+
+/*
  * LP-026 "Warn about active users": the only source of "who's currently
  * active" data available (there's no DB-backed session table — see
  * SessionManager's docblock), stamped once per authenticated admin page
@@ -311,6 +337,26 @@ $fontAwesomeActive = in_array('font-awesome', $activePlugins, true);
  * file precomputes before requiring a view.
  */
 $dummyContentActive = in_array('dummy-content', $activePlugins, true);
+/*
+ * LPP-004: unlike Dummy Content above, WordPress Importer's screen lives
+ * at the Maintenance > Import menu entry, which already exists
+ * unconditionally (see $menu below) — this only gates the *content* of
+ * admin/views/maintenance/import.php, the same "hidden when inactive"
+ * reasoning applied at the section level rather than the menu-entry
+ * level, since removing the whole menu entry would also hide it from an
+ * admin trying to find and activate the plugin in the first place.
+ */
+$wordPressImporterActive = in_array('wordpress-importer', $activePlugins, true);
+/*
+ * LPP-008: unlike Dummy Content/WordPress Importer above, Downloads
+ * gets a real top-level menu entry of its own (mirroring Font
+ * Awesome's own gated submenu-entry precedent, just at the top level
+ * instead of nested under Appearance) — its admin screens are its
+ * entire reason to exist, so hiding the whole entry while inactive (and
+ * showing it once activated from Plugins) is the right shape, not a
+ * gated section on an existing always-present screen.
+ */
+$downloadsActive = in_array('downloads', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -338,6 +384,19 @@ $menu = [
             'thumbnails' => ['label' => 'Thumbnails', 'icon' => '🔲', 'capability' => 'upload_files'],
         ],
     ],
+    ...($downloadsActive ? [
+        'downloads' => [
+            'label' => 'Downloads',
+            'icon' => '⬇️',
+            'capability' => 'upload_files',
+            'default_child' => 'all-downloads',
+            'children' => [
+                'all-downloads' => ['label' => 'All Downloads', 'icon' => '📋', 'capability' => 'upload_files'],
+                'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
+                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
+            ],
+        ],
+    ] : []),
     'pages' => [
         'label' => 'Pages',
         'icon' => '📄',
