@@ -6,6 +6,146 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Downloads &rsaquo; All Downloads redesign + Shortcodes docs (LPP-009):
+  the admin All Downloads screen is now a real list table — ID,
+  Category, Type, Status, and Date columns, a category filter,
+  sortable column headers, status-count tabs, bulk actions, and
+  pagination — replacing the original grouped-by-category `<details>`
+  layout. Downloads can now be moved to Trash and restored (a new
+  `trashed_at` column, mirroring Posts/Pages) rather than only deleted
+  outright; Trash empties via a Delete Permanently action. A new
+  Duplicate row action clones a download (sharing its underlying Media
+  item/Redirect rather than copying it — permanently deleting one copy
+  no longer breaks the other's link, since the underlying file/redirect
+  is only removed once nothing references it). Editing a download now
+  has its own screen (Downloads &rsaquo; Add New doubles as the editor
+  via `?id=`, the same convention Posts/Pages already use) instead of
+  an inline expand-in-place form. New Downloads &rsaquo; Shortcodes
+  admin page documents `[lumora_downloads]`'s `category`/`category_id`/
+  `show_size` attributes with real examples drawn from the site's own
+  categories.
+- Downloads plugin (LPP-008): a new bundled, inactive-by-default plugin
+  (its own top-level Downloads admin menu entry, once activated from
+  Plugins) to manage downloadable files and links directly — add a new
+  download (an uploaded file or an external URL), give it a title,
+  description, and category, and see every download grouped by category
+  in one place. A download doesn't reimplement file storage or URL
+  redirection: a file-type download is a normal Media Manager item and
+  a url-type download is a normal Redirect (keeping its own hit
+  counting), with a new `downloads` table adding the title/description/
+  category identity neither had on its own. If the WordPress Importer
+  plugin (LPP-004/LPP-007) is also active, a download added here
+  automatically shows up in its `[sdm_show_dl_from_category]` shortcode
+  output too, with no changes to that plugin — the category a download
+  is filed under is passed straight through to the underlying Media/
+  Redirect row, the same way an imported download already worked.
+  A migrated WordPress download now also gets a real `downloads` table
+  row of its own, so it appears on this plugin's own admin screen too,
+  not just Media Manager/Settings > Redirects. Show downloads anywhere
+  with the new `[lumora_downloads category="..."]` (or
+  `category_id="..."`) shortcode this plugin registers — a fresh
+  shortcode of its own, distinct from `[sdm_show_dl_from_category]`.
+- WordPress Importer plugin (LPP-004), first pass: a new bundled,
+  inactive-by-default plugin (Maintenance &rsaquo; Import, once activated
+  from Plugins) migrates an existing WordPress site into Lumora Press via
+  a direct database connection (host/port/database/username/password/
+  table prefix — the site's own live server or a locally restored backup
+  copy, either way) plus a local copy of its `wp-content/uploads` folder.
+  Imports users (with WordPress role mapped to the closest Lumora Press
+  role), categories (preserving parent/child hierarchy) and tags, media
+  attachments, pages (preserving parent/child hierarchy), posts (with
+  their categories/tags/featured image), and comments on posts
+  (preserving threading) — each content type independently toggleable.
+  Slugs, publish dates, and (for users/comments/media) their original
+  WordPress timestamps are preserved rather than stamped "now". Media
+  is copied into the same year/month (or other custom) folder it lived
+  in on the source site, rather than every imported file landing in
+  today's single upload folder. A Remove All Imported Content action
+  rolls back exactly what one import created, the same provenance-tracked
+  pattern the Dummy Content plugin (LPP-005) already uses; a "Test
+  Connection" check runs before the real import.
+
+  Deferred to a later pass (see `TODO-PLUGINS.md`'s `LPP-004` entry for
+  the full list): the WXR `.xml` upload path, site settings/menus/
+  widgets migration, dry-run preview, resuming an interrupted import,
+  comments on imported pages, and full URL/link rewriting beyond a
+  best-effort rewrite of imported media's own URLs in post/page content.
+  Built on the same shared import layer LPP-005 introduced
+  (`ContentImportRegistry` plus `PostImporter`/`PageImporter`/
+  `UserImporter`/`MediaImporter`/`CommentImporter`), which gained three
+  small additive changes to preserve source timestamps: `UserService::create()`,
+  `CommentService::create()`, and `MediaService::registerExistingFile()`
+  each accept a new optional trailing date parameter (defaulting to "now",
+  matching every existing caller's behavior unchanged).
+
+  Also imports the Simple Download Monitor plugin's own downloads, if
+  the source site has it installed — a download whose file already lives
+  on the source site becomes a real Media Manager item, organized into a
+  Folder matching Simple Download Monitor's own category (preserving
+  parent/child hierarchy); a download that only links to an external URL
+  (e.g. a GitHub release — common when a host restricts `.zip` uploads)
+  becomes a Redirect instead, giving it a stable local URL and a real
+  hit counter without hosting the file. A page/post still containing the
+  `[sdm_show_dl_from_category]` shortcode is flagged in the import
+  warnings; see LPP-007 below for what actually renders it now. Each
+  download's real historical count is preserved too — Simple Download
+  Monitor's own `sdm_count_offset` plus its download-event log, added
+  together, seeded onto the migrated Media item or Redirect instead of
+  every download silently restarting at 0. If the Downloads plugin
+  (LPP-008) is also active, each migrated download also gets a row on
+  that plugin's own admin screen, not just Media Manager/Settings >
+  Redirects.
+- Downloads listing display (LPP-007): the WordPress Importer plugin
+  now renders the exact `[sdm_show_dl_from_category category_slug="..."
+  show_size="1"]` shortcode a migrated page/post still contains,
+  instead of leaving it as inert text — a real, styled list of every
+  download in the matching Media Manager Folder, mixing locally-hosted
+  files and external-link Redirects in one list, sorted by name. No
+  manual page editing needed for content already imported by LPP-004.
+  `Redirect`s gained an optional `folder_id` (nullable, additive
+  migration) so an external-link download can be grouped the same way a
+  real Media item already was. New `.lp-downloads-list` styling added
+  to both the default theme and the `duskline` custom theme (per this
+  project's Public-Facing CSS Rule and Custom Theme Rules). A category
+  is matched by slugifying its Folder's name against the shortcode's
+  `category_slug` attribute, since Folders have no slug column of their
+  own — works for every category on this project's real source site,
+  but not guaranteed if a WordPress category's slug was hand-edited away
+  from its name.
+- Font Awesome diagnostics (LPP-002): the Appearance &rsaquo; Font Awesome
+  settings screen gained a Diagnostics section showing the active version,
+  delivery method, and source, plus a heuristic check that flags a likely
+  duplicate Font Awesome load — a hardcoded reference found in the active
+  theme's own files or another active plugin's main file, independently of
+  this plugin. Detection only; removing the conflicting reference is still
+  a manual step once flagged.
+- Developer documentation (LP-008): two new reference docs for theme and
+  plugin authors — `docs/THEME-DEVELOPMENT.md` (the template-tag API,
+  template hierarchy, and widget/menu/Theme Options registration) and
+  `docs/DEVELOPER-APIS.md` (every hook and filter core fires, plugin
+  file structure and lifecycle). Previously undocumented outside reading
+  the source directly.
+- Admin dark mode toggle (LP-087): the admin's color scheme no longer
+  has to follow whatever your OS/browser is set to. My Profile gained
+  a new "Appearance" panel with a Light / Dark / Follow System choice,
+  saved per account like the existing Default Editor setting; a small
+  sun/moon button in the sidebar also gives a one-click Light/Dark
+  switch from any admin screen without visiting Profile. The choice
+  applies server-side before the stylesheet even loads, so there's no
+  flash of the wrong theme on page load.
+- Admin panel/card section titles (LP-091, e.g. "Backups", "Appearance")
+  now sit on a tinted accent-color header bar spanning the full width
+  of their panel, matching the treatment the Post/Page editor's sidebar
+  boxes already had, instead of a plain heading with a thin underline —
+  makes it faster to visually scan a page and see where one section
+  ends and the next begins.
+- Sidebar expand/collapse-all (LP-092): a small ⊞/⊟ icon button, one
+  above the admin sidebar's nav and one below it, opens or closes every
+  collapsible menu section (Posts, Media Manager, Pages, Appearance,
+  Settings, Maintenance) at once instead of clicking each one
+  individually. Stays in sync with expanding/collapsing sections one at
+  a time, and remembers the result the same way individual sections
+  already did.
 - Merge categories (LP-010): a new "Merge into…" bulk action on the
   admin Categories list moves every post from the selected source
   categories to a chosen target category (without duplicating a post
@@ -219,6 +359,42 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- The Pages widget and Categories widget (LP-104) now render a real
+  nested list — a child page or subcategory indents under its parent
+  instead of appearing in the same flat, alphabetized list as everything
+  else. Both widgets' top level (and every nesting level's siblings) are
+  alphabetical. The Pages widget's "Number of pages to show" setting was
+  removed: a hard item limit is ambiguous against a tree (it could cut a
+  parent's children off, or orphan a child whose parent fell outside the
+  limit), so — matching WordPress's own core Pages widget, which has
+  never had such a setting either — it now always lists every published
+  page.
+- Appearance &rsaquo; Menus' "Add Items" panel (LP-103) now indents child
+  pages and subcategories under their parent, matching the "All Pages"
+  admin list's existing tree view, instead of listing everything flat
+  and alphabetized with no indication of hierarchy. Posts and Tags have
+  no hierarchy in this app and stay flat as before.
+- The default theme's homepage post listing (LP-102) no longer shows a
+  "Welcome to {Site Name}" heading above the post list — it didn't
+  correspond to any real content, unlike `single.php`/`page.php`/
+  `archive.php`'s own headings, which title the actual post/page/archive
+  being viewed.
+- Pagination controls, both on the frontend (post archives, search,
+  category/tag listings) and in the admin (Posts, Pages, Comments,
+  Users, Media Manager) (LP-100), now truncate long page ranges with
+  `…` ellipses instead of rendering a button for every page — a site
+  with dozens of pages previously produced a wall of numbered squares
+  wrapping across several rows. Previous/Next and First/Last controls
+  were also added alongside the numbered pages. All of this lives in
+  the single shared `render_pagination()` helper already used by every
+  frontend template and every admin list view, so no markup diverged
+  between the two surfaces.
+- The default theme's front page and archive listings (LP-094) now
+  show each post's featured image as a full-width banner above the
+  title, instead of a small square thumbnail beside it — matching a
+  classic blog/fansite layout. The existing "Show featured image in
+  listings" Theme Option still controls whether it appears at all;
+  there's no separate setting for the layout itself.
 - Pages (LP-009): the admin sidebar's single "Pages" entry is now a
   submenu with **All Pages** and **New Page** children, matching Posts'
   existing menu structure. The single `admin/views/pages.php` view
@@ -233,14 +409,130 @@ All notable changes to Lumora Press are documented in this file.
   (LP-082) — an internal refactor with no user-facing behavior change,
   except that a form whose session token has expired now shows an error
   message instead of silently reloading the page with no feedback.
+- Posts' form-handling logic (quick draft, trash, restore, delete
+  permanently, duplicate, bulk actions, save, and revision restore) now
+  lives in a dedicated `PostsController` class the same way (LP-082) —
+  again an internal refactor with no user-facing behavior change, except
+  that the Quick Draft form and bulk actions now show an error message
+  instead of silently reloading the page if their session token expired.
+  The post editor's image upload, format-conversion, and inline
+  category-add requests moved into the same class — purely internal,
+  no behavior change at all this time.
 - Settings &rsaquo; General's Date format and Time format fields are now
   dropdowns of common presets (each showing a live-rendered example)
   with a "Custom" option that reveals a free-text field for any other
   PHP `date()` format string, replacing the previous always-visible
   plain text input.
+- Admin visual polish, pass 3 (LP-085): the Post/Page editor's sidebar
+  boxes (LP-083) now get the same shadow and panel-radius treatment as
+  the rest of the admin panel instead of looking flatter than
+  everything around them; the Dashboard's Recent Posts and Recent
+  Comments widgets, and the Users list's role column, now show the
+  same colored status-badge pills already used elsewhere
+  (Posts/Pages/Comments lists) instead of plain text; the Login/Forgot
+  Password/Reset Password screen gained the same card shadow and
+  corner radius every other panel in the admin already has; and the
+  shared card shadow itself (`--lp-admin-shadow`/`--lp-admin-shadow-hover`,
+  used by every panel, sidebar box, and plugin/theme/media card) is
+  noticeably more visible than before, since the previous value was too
+  subtle to read as a shadow at all against the admin's light-gray
+  background; and the Post/Page editor sidebar's box headers ("Publish",
+  "Featured Image", "Categories", "Tags", etc.) now sit on a tinted
+  accent-color background with an accent-colored title, replacing the
+  plain white header bar that gave the sidebar no visual separation
+  between a box's title and its own content.
 
 ### Fixed
 
+- The WordPress Importer plugin (`content/plugins/wordpress-importer`)
+  was missing from the update pipeline's core-paths list (`core-paths.php`
+  and its hardcoded fallback in `include/bootstrap.php`), even though
+  README.md already documented it as one of the bundled plugins a manual
+  or automatic update preserves. UpdateService's `install()` never
+  actually overlaid it, so an update could silently leave a site's copy
+  of the plugin stale instead of replacing it with the newer bundled
+  version. Added to both lists, matching the existing pattern for
+  Font Awesome, Dummy Content, and Downloads.
+- The admin Posts and Pages list screens' "Date" column (both the flat
+  table and the Pages tree view) showed each item's `updated_at`
+  (database row modification time) instead of its actual publish date
+  — invisible for hand-authored content, where the two are normally the
+  same moment, but glaringly wrong for anything backdated, most visibly
+  every post/page brought in via the new WordPress Importer (LPP-004):
+  a post originally published in 2018 showed today's date. Now shows
+  `published_at` (falling back to `updated_at` for a Draft or other
+  status with no publish date yet), matching how the public-facing
+  theme has always displayed "the date" of a post or page. The same
+  screens' sort order and "Created from"/"Created to" date-range filter
+  (`PostService`/`PageService::paginateForAdmin()`) had the identical
+  problem — both always used `created_at`, so "newest first" sorted by
+  when a row was inserted rather than the content's own date, clustering
+  every backdated/imported item at the top regardless of how old it
+  actually was. Both now sort/filter by `COALESCE(published_at, created_at)`
+  too, and the filter fields are relabeled "Date from"/"Date to" to
+  match.
+- The admin sidebar had no mobile layout at all (LP-096) — at phone
+  widths it kept its fixed desktop width, squeezing the main content
+  into a column so narrow that ordinary text wrapped one character
+  per line. The sidebar now becomes a hamburger-triggered off-canvas
+  drawer below 782px width (dismissible via a backdrop tap or Escape),
+  matching the breakpoint already used elsewhere in the admin; nothing
+  changes above that width. Two related phone-width overflow bugs
+  found while fixing the above are fixed alongside it: the Post/Page
+  editor's whole layout could be forced far wider than the screen by
+  its own unwrapped toolbar row, and every admin list table (Posts,
+  Pages, Comments, Categories, Tags, Users, Redirects, ...) could
+  overflow its card with no way to reach the cut-off columns — list
+  tables now scroll horizontally within their own card instead.
+- The Theme Options "Content width" setting (Appearance &rsaquo;
+  Theme Options &rsaquo; Layout) silently overrode a theme's own
+  chosen content width even when the administrator had never touched
+  that setting (LP-095) — it always emitted a `960px` default,
+  loaded after the active theme's own stylesheet, so a theme's own
+  `--lp-max-width` never actually took effect. Now defaults to "Use
+  theme default" and only overrides the theme's own value when an
+  administrator explicitly picks a specific width.
+- Markdown editor toolbar buttons (Bold, Italic, headings, etc.) were
+  nearly invisible in dark mode (LP-088) — the existing color override
+  targeted `<a>` tags, but this project's bundled EasyMDE build
+  actually renders toolbar buttons as `<button><i></i></button>`, so
+  the rule matched nothing and every icon fell back to EasyMDE's own
+  hardcoded black.
+- Form fields (inputs, textareas, selects) used the exact same
+  background color as the panel they sat inside (LP-088), making it
+  hard to tell what was editable at a glance, most visible in dark
+  mode but present in light mode too — now use their own subtly
+  distinct background.
+- Links across the admin (Posts/Pages list titles, breadcrumbs,
+  sidebar nav, pagination, and more) could silently fall back to the
+  browser's default purple "visited" color instead of the theme's own
+  palette once clicked (LP-089), so two rows using identical markup
+  could render in two different colors purely based on the visitor's
+  own click history. Every link-color rule in the admin now has a
+  matching `:visited` style.
+- Action buttons across the admin were inconsistently styled — some
+  screens' main "Save"/"Create"/"Activate" action used the same plain
+  white/colorless button as an incidental "Filter" or "Cancel" button
+  right next to it (LP-090), giving no visual signal for which one
+  mattered. The neutral button style itself also blended into its
+  surrounding panel, reading as unstyled rather than intentionally
+  plain. 53 buttons across the admin were individually reviewed and
+  given the correct primary/secondary treatment, and the neutral style
+  now has its own subtle background.
+- The Post/Page editor's SEO and Custom Fields sidebar boxes (LP-093)
+  now start collapsed the first time a user ever opens either editor,
+  matching classic WordPress's own postbox defaults for optional/
+  secondary fields, instead of rendering fully expanded until the user
+  manually collapses them once. A user's own saved preference — including
+  explicitly leaving everything expanded — is never overridden by this;
+  it only applies before any preference has ever been saved.
+- Dashboard's Recent Posts/Recent Comments status badges (e.g.
+  "Scheduled", "Pending", "Approved") could render as an oversized blob
+  instead of a compact pill whenever they sat next to a title long
+  enough to wrap onto two lines — the list row's flexbox stretched the
+  badge to match the row's full height by default, and a 999px border
+  radius turned that stretched shape into a blob that swallowed its own
+  text.
 - Manual/automatic updates could silently fail to deliver a newly-added
   bundled file or plugin (e.g. the new Dummy Content plugin) to a site
   running code from before that addition existed — the updater only ever
