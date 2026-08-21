@@ -74,6 +74,38 @@ final class MediaStatsService
     }
 
     /**
+     * Sets a media item's download count directly, rather than
+     * incrementing it — for preserving a historical count from an
+     * external source (e.g. LPP-004's WordPress import, seeding a
+     * migrated download's count from Simple Download Monitor's own
+     * total) instead of every migrated item silently restarting at 0.
+     * Overwrites any existing row's count outright; not meant to be
+     * called from the real /media/{id}/download click path, which stays
+     * on recordDownload()'s increment.
+     */
+    public function seed(int $mediaId, int $count, ?DateTimeImmutable $lastDownloadedAt = null): void
+    {
+        $exists = ((int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE media_id = :media_id',
+            ['media_id' => $mediaId],
+        )) > 0;
+
+        $lastDownloadedAtValue = $lastDownloadedAt?->format('Y-m-d H:i:s');
+
+        if ($exists) {
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET downloads = :downloads, last_downloaded_at = :last_downloaded_at WHERE media_id = :media_id',
+                ['downloads' => $count, 'last_downloaded_at' => $lastDownloadedAtValue, 'media_id' => $mediaId],
+            );
+        } else {
+            $this->database->execute(
+                'INSERT INTO ' . $this->table() . ' (media_id, downloads, last_downloaded_at) VALUES (:media_id, :downloads, :last_downloaded_at)',
+                ['media_id' => $mediaId, 'downloads' => $count, 'last_downloaded_at' => $lastDownloadedAtValue],
+            );
+        }
+    }
+
+    /**
      * @return array{downloads: int, lastDownloadedAt: ?DateTimeImmutable}
      */
     public function get(int $mediaId): array

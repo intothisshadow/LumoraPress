@@ -26,7 +26,8 @@ declare(strict_types=1);
  * themselves), custom themes other than "default", and storage/ — is user
  * data and is never touched by a manual or automatic update.
  * content/themes/default and the bundled first-party plugins
- * (content/plugins/font-awesome, content/plugins/dummy-content) get the
+ * (content/plugins/font-awesome, content/plugins/dummy-content,
+ * content/plugins/wordpress-importer, content/plugins/downloads) get the
  * same "bundled, not user-installed" treatment. docs/ (CHANGELOG.md/
  * HISTORY.md/TROUBLESHOOTING.md) ships with every release, unlike the
  * user-data paths above.
@@ -42,6 +43,8 @@ return [
     'content/themes/default',
     'content/plugins/font-awesome',
     'content/plugins/dummy-content',
+    'content/plugins/wordpress-importer',
+    'content/plugins/downloads',
     'index.php',
     'version.php',
     '.htaccess',

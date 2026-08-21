@@ -38,6 +38,12 @@ final class ImportedUser
          * has no external identity to preserve).
          */
         public readonly ?string $externalId = null,
+        /**
+         * A source system's original registration date (e.g. WordPress's
+         * user_registered), preserved instead of stamping "now" — null
+         * for dummy content, which has no original date to preserve.
+         */
+        public readonly ?\DateTimeImmutable $registeredAt = null,
     ) {
     }
 }

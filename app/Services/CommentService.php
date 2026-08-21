@@ -59,6 +59,10 @@ final class CommentService
      * Exactly one of $postId/$pageId should be passed — see Comment's
      * own docblock for why this is a nullable pair rather than a
      * polymorphic content_id/content_type column.
+     *
+     * $commentedAt lets a bulk importer (e.g. LPP-004's WordPress import)
+     * preserve a source comment's original date instead of always
+     * stamping "now" — every other caller leaves it null.
      */
     public function create(
         ?int $postId,
@@ -72,8 +76,9 @@ final class CommentService
         ?string $ipAddress,
         ?string $userAgent,
         ?int $pageId = null,
+        ?DateTimeImmutable $commentedAt = null,
     ): Comment {
-        $now = new DateTimeImmutable();
+        $now = $commentedAt ?? new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '

@@ -56,6 +56,7 @@ final class CommentImporter
             status: $data->status,
             ipAddress: null,
             userAgent: null,
+            commentedAt: $data->commentedAt,
         );
 
         $this->registry->record($batchId, $source, 'comment', $comment->id, $data->externalId);

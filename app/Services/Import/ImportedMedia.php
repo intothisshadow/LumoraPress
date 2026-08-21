@@ -41,6 +41,22 @@ final class ImportedMedia
          * original WordPress id, or null for dummy content.
          */
         public readonly ?string $externalId = null,
+        /**
+         * A source system's original upload date (e.g. WordPress's
+         * attachment post_date), preserved instead of stamping "now" —
+         * null for dummy content, which has no original date to preserve.
+         */
+        public readonly ?\DateTimeImmutable $uploadedAt = null,
+        /**
+         * A source's own folder structure to preserve on disk (e.g. a
+         * WordPress attachment's `_wp_attached_file` directory portion —
+         * usually "2020/03", but a plugin-managed upload can sit under an
+         * arbitrary custom path) — sanitized by MediaImporter before use,
+         * so an untrusted value here can never escape the uploads root.
+         * Null (the default, and always for dummy content) falls back to
+         * today's year/month, matching this app's own upload() layout.
+         */
+        public readonly ?string $relativeDirectory = null,
     ) {
     }
 }

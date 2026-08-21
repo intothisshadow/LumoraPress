@@ -619,6 +619,7 @@ $corePathsFile = LUMORA_ROOT . '/core-paths.php';
 $updateCorePaths = is_file($corePathsFile) ? require $corePathsFile : [
     'app', 'admin', 'assets', 'include', 'install',
     'content/themes/default', 'content/plugins/font-awesome', 'content/plugins/dummy-content',
+    'content/plugins/wordpress-importer', 'content/plugins/downloads',
     'index.php', 'version.php', '.htaccess', 'README.md', 'LICENSE.md', 'docs', 'core-paths.php',
 ];
 

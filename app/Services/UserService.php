@@ -19,6 +19,7 @@ namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\ThemePreference;
 use LumoraPress\Models\User;
 use LumoraPress\Models\UserRole;
 
@@ -170,8 +171,19 @@ final class UserService
         return $this->hydrate($row);
     }
 
-    public function create(string $username, string $email, string $password, UserRole $role, ?string $displayName = null): User
-    {
+    /**
+     * $registeredAt lets a bulk importer (e.g. LPP-004's WordPress import)
+     * preserve a source account's original registration date instead of
+     * always stamping "now" — every other caller leaves it null.
+     */
+    public function create(
+        string $username,
+        string $email,
+        string $password,
+        UserRole $role,
+        ?string $displayName = null,
+        ?\DateTimeImmutable $registeredAt = null,
+    ): User {
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
                 (username, email, password_hash, display_name, role, created_at)
@@ -182,7 +194,7 @@ final class UserService
                 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
                 'display_name' => $displayName ?? $username,
                 'role' => $role->value,
-                'created_at' => date('Y-m-d H:i:s'),
+                'created_at' => ($registeredAt ?? new \DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
 
@@ -246,6 +258,21 @@ final class UserService
         $this->database->execute(
             'UPDATE ' . $this->table() . ' SET preferred_editor = :preferred_editor WHERE id = :id',
             ['preferred_editor' => $format?->value, 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+    }
+
+    /**
+     * LP-087: unlike updateEditorPreference(), $preference is never null —
+     * Auto (follow the OS/browser setting) is itself a stored value here,
+     * since there's no site-wide theme setting to defer to.
+     */
+    public function updateThemePreference(int $id, ThemePreference $preference): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET theme_preference = :theme_preference WHERE id = :id',
+            ['theme_preference' => $preference->value, 'id' => $id],
         );
 
         unset($this->findByIdCache[$id]);
@@ -539,6 +566,9 @@ final class UserService
             trashedAt: isset($row['trashed_at']) ? new \DateTimeImmutable((string) $row['trashed_at']) : null,
             avatarMediaId: isset($row['avatar_media_id']) ? (int) $row['avatar_media_id'] : null,
             editorLayoutPreferences: isset($row['editor_layout_preferences']) ? (string) $row['editor_layout_preferences'] : null,
+            themePreference: isset($row['theme_preference'])
+                ? (ThemePreference::tryFrom((string) $row['theme_preference']) ?? ThemePreference::Auto)
+                : ThemePreference::Auto,
         );
     }
 

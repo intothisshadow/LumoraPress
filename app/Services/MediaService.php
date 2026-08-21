@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use Closure;
+use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Services\Storage\LocalFilesystemStorage;
@@ -247,6 +248,10 @@ final class MediaService
      * upload to validate or move, just a row to insert. Mirrors the same
      * INSERT shape upload()/MediaImportService::import() already use.
      *
+     * $uploadedAt lets a bulk importer (e.g. LPP-004's WordPress import)
+     * preserve a source attachment's original upload date instead of
+     * always stamping "now" — every other caller leaves it null.
+     *
      * @return array<string, mixed>
      */
     public function registerExistingFile(
@@ -258,6 +263,7 @@ final class MediaService
         ?int $height,
         int $uploadedByUserId,
         ?int $folderId,
+        ?DateTimeImmutable $uploadedAt = null,
     ): array {
         $absolutePath = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
         $fileHash = is_file($absolutePath) ? (hash_file('sha256', $absolutePath) ?: null) : null;
@@ -276,7 +282,7 @@ final class MediaService
                 'uploaded_by' => $uploadedByUserId,
                 'folder_id' => $folderId,
                 'file_hash' => $fileHash,
-                'uploaded_at' => date('Y-m-d H:i:s'),
+                'uploaded_at' => ($uploadedAt ?? new DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
 

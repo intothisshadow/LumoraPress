@@ -46,6 +46,12 @@ final class ImportedComment
          * against it.
          */
         public readonly ?string $externalId = null,
+        /**
+         * A source system's original comment date (e.g. WordPress's
+         * comment_date), preserved instead of stamping "now" — null for
+         * dummy content, which has no original date to preserve.
+         */
+        public readonly ?\DateTimeImmutable $commentedAt = null,
     ) {
     }
 }

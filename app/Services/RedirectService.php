@@ -38,19 +38,27 @@ final class RedirectService
     }
 
     /**
+     * $folderId lets a redirect represent a Media Manager Folder's
+     * external-link "download" (e.g. LPP-004's WordPress import, for a
+     * Simple Download Monitor file that only links off-site) so it can
+     * be listed alongside that folder's real Media items — every other
+     * caller leaves it null, since a plain URL redirect has no folder
+     * concept of its own.
+     *
      * @return array<string, mixed>
      */
-    public function create(string $sourcePath, string $targetUrl, int $statusCode = 301): array
+    public function create(string $sourcePath, string $targetUrl, int $statusCode = 301, ?int $folderId = null): array
     {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
-            'INSERT INTO ' . $this->table() . ' (source_path, target_url, status_code, created_at, updated_at)
-             VALUES (:source_path, :target_url, :status_code, :created_at, :updated_at)',
+            'INSERT INTO ' . $this->table() . ' (source_path, target_url, status_code, folder_id, created_at, updated_at)
+             VALUES (:source_path, :target_url, :status_code, :folder_id, :created_at, :updated_at)',
             [
                 'source_path' => ltrim($sourcePath, '/'),
                 'target_url' => $targetUrl,
                 'status_code' => $statusCode,
+                'folder_id' => $folderId,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -115,6 +123,34 @@ final class RedirectService
     public function listAll(): array
     {
         return $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' ORDER BY created_at DESC');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listByFolder(int $folderId): array
+    {
+        return $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE folder_id = :folder_id ORDER BY source_path ASC',
+            ['folder_id' => $folderId],
+        );
+    }
+
+    /**
+     * Sets a redirect's hit count directly, rather than incrementing it
+     * — mirrors MediaStatsService::seed()'s reasoning: preserving a
+     * historical count from an external source (LPP-004's WordPress
+     * import, seeding a migrated download's count from Simple Download
+     * Monitor's own total) instead of every migrated redirect silently
+     * restarting at 0. Not meant to be called from recordHit()'s own
+     * real-request increment path.
+     */
+    public function setHitCount(int $id, int $count): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET hit_count = :count WHERE id = :id',
+            ['count' => $count, 'id' => $id],
+        ) > 0;
     }
 
     public function recordHit(int $id): void

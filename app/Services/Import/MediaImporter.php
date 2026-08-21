@@ -22,9 +22,12 @@ use LumoraPress\Services\MediaService;
 use RuntimeException;
 
 /**
- * Copies $data->absolutePath into the uploads directory (year/month
- * layout, matching MediaService::upload()'s own naming) and registers it
- * via MediaService::registerExistingFile() — deliberately not
+ * Copies $data->absolutePath into the uploads directory (under
+ * $data->relativeDirectory when the source has its own folder structure
+ * worth preserving, sanitized via sanitizeRelativeDirectory() below;
+ * today's year/month otherwise, matching MediaService::upload()'s own
+ * naming) and registers it via MediaService::registerExistingFile() —
+ * deliberately not
  * MediaImportService (LP-041), whose allow-list/mirroring machinery is
  * built for the FTP-scan admin screen and would need a plugin's own
  * temp/download directory added to its allow-list for no benefit here.
@@ -67,7 +70,9 @@ final class MediaImporter
 
         $displayName = $data->fileName ?? basename($data->absolutePath);
         $safeName = $this->media->sanitizeFilename(pathinfo($displayName, PATHINFO_FILENAME));
-        $relativePath = date('Y') . '/' . date('m') . '/' . $safeName . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
+        $directory = $data->relativeDirectory !== null ? $this->sanitizeRelativeDirectory($data->relativeDirectory) : '';
+        $directory = $directory !== '' ? $directory : (date('Y') . '/' . date('m'));
+        $relativePath = $directory . '/' . $safeName . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
         $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
 
         if (!is_dir(dirname($destination)) && !mkdir(dirname($destination), 0755, true) && !is_dir(dirname($destination))) {
@@ -99,6 +104,7 @@ final class MediaImporter
             height: $height,
             uploadedByUserId: $data->uploadedByUserId,
             folderId: $data->folderId,
+            uploadedAt: $data->uploadedAt,
         );
 
         if ($data->altText !== null || $data->caption !== null || $data->description !== null) {
@@ -109,5 +115,30 @@ final class MediaImporter
         $this->registry->record($batchId, $source, 'media', (int) $media['id'], $data->externalId);
 
         return $media;
+    }
+
+    /**
+     * Reduces $directory to a safe relative path under the uploads root:
+     * splits on '/', strips every character outside [a-zA-Z0-9-_] from
+     * each segment (the same allow-list MediaService::sanitizeFilename()
+     * already uses for filenames), and drops any segment that sanitizes
+     * to empty — a ".." traversal segment strips to nothing and is
+     * dropped, never preserved or replaced with a placeholder, so this
+     * can never resolve outside $this->uploadsPath regardless of what a
+     * source database's own path value contains.
+     */
+    private function sanitizeRelativeDirectory(string $directory): string
+    {
+        $segments = [];
+
+        foreach (explode('/', $directory) as $segment) {
+            $clean = trim(preg_replace('/[^a-zA-Z0-9\-_]+/', '-', $segment) ?? '', '-');
+
+            if ($clean !== '') {
+                $segments[] = strtolower($clean);
+            }
+        }
+
+        return implode('/', $segments);
     }
 }
