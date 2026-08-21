@@ -116,3 +116,27 @@ $settings = $service->settings();
         <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
     </form>
 </section>
+
+<?php $conflicts = $service->detectConflicts(); ?>
+<section class="lp-admin__panel">
+    <h2>Diagnostics</h2>
+    <ul class="lp-admin__meta-list">
+        <li><span>Active Version</span><span><?= esc_html($settings['delivery'] === 'self_hosted' ? 'Self-hosted (version not tracked)' : $settings['version']) ?></span></li>
+        <li><span>Source</span><span><?= $settings['enabled'] ? 'Core &mdash; Font Awesome plugin' : 'Not loaded (disabled)' ?></span></li>
+        <li><span>Delivery</span><span><?= $settings['delivery'] === 'self_hosted' ? 'Self-hosted' : 'Official CDN (jsDelivr)' ?></span></li>
+    </ul>
+
+    <?php if ($conflicts === []): ?>
+        <p class="lp-field__hint">No other Font Awesome references detected in the active theme or other active plugins.</p>
+    <?php else: ?>
+        <div class="lp-alert lp-alert--error">
+            <p>Possible duplicate Font Awesome loading detected — the active theme or another active plugin appears to reference Font Awesome on its own, independently of this plugin:</p>
+            <ul>
+                <?php foreach ($conflicts as $conflict): ?>
+                    <li><?= esc_html($conflict['source']) ?> (<?= esc_html($conflict['file']) ?>)</li>
+                <?php endforeach; ?>
+            </ul>
+            <p>Remove the theme's/plugin's own reference to avoid loading Font Awesome twice.</p>
+        </div>
+    <?php endif; ?>
+</section>

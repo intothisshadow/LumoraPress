@@ -23,13 +23,18 @@ so no theme or plugin has to bundle its own copy.
     additional icon pack alongside Font Awesome's own.
 - Disabled by default, so activating this plugin makes no external request
   on its own — nothing loads until you enable it in Settings.
+- A **Diagnostics** section on the same Settings screen shows the active
+  version, delivery method, and source, plus a heuristic check for another
+  Font Awesome reference hardcoded into the active theme or another active
+  plugin (a likely duplicate-loading conflict) — detection only; removing
+  the conflicting reference is a manual step once flagged.
 
 ## Deferred (see TODO-PLUGINS.md's LPP-002 for the full checklist)
 
 Font Awesome Pro / Kit support, SVG rendering mode, the icon picker
 (TinyMCE toolbar button, EasyMDE button, menus/widgets/theme options
-integration), the admin diagnostics page (active version/source/conflict
-detection), and icon metadata caching/search are not built yet.
+integration), automatically preventing a detected duplicate-loading
+conflict, and icon metadata caching/search are not built yet.
 
 ## Notes
 

@@ -34,6 +34,7 @@ namespace LumoraPress\Plugins\FontAwesome;
 require_once __DIR__ . '/src/FontAwesomeService.php';
 
 $fontAwesome = FontAwesomeService::instance();
+$fontAwesome->configurePluginsPath(dirname(__DIR__));
 
 add_filter('lp_fontawesome_enabled', static fn (bool $enabled): bool => $fontAwesome->isEnabled());
 

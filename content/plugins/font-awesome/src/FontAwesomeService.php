@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\FontAwesome;
 
 use LumoraPress\Core\ActiveConfig;
+use LumoraPress\Core\Theme\ActiveTheme;
+use RuntimeException;
 
 /**
  * Core logic for the bundled Font Awesome plugin (LPP-002): resolves
@@ -69,6 +71,15 @@ final class FontAwesomeService
     /** @var array<string, array{label: string}> */
     private array $iconPacks = [];
 
+    /**
+     * Set once at plugin load time via configurePluginsPath() (font-awesome.php
+     * doesn't have constructor-injection access to Kernel's own $pluginsPath —
+     * same reason ActiveConfig/ActiveTheme exist as static bridges rather than
+     * being passed in directly). Left null in unit tests, where detectConflicts()
+     * simply skips the plugin-scan half rather than erroring.
+     */
+    private ?string $pluginsPath = null;
+
     /** @var array{enabled: bool, delivery: string, version: string, self_hosted_url: string, compatibility_mode: bool}|null */
     private ?array $settingsCache = null;
 
@@ -92,6 +103,91 @@ final class FontAwesomeService
     public function iconPackKeys(): array
     {
         return array_keys($this->iconPacks);
+    }
+
+    public function configurePluginsPath(string $pluginsPath): void
+    {
+        $this->pluginsPath = rtrim($pluginsPath, '/');
+    }
+
+    /**
+     * Heuristic duplicate-loading check (LPP-002's "detect duplicate Font
+     * Awesome instances" checklist item): scans the active theme's own
+     * template/stylesheet files and every other active plugin's main file
+     * for a hardcoded Font Awesome reference this plugin doesn't already
+     * know about, so enabling this plugin on top of a theme/plugin that
+     * bundles its own copy is at least visible on the diagnostics page
+     * rather than silently loading two copies. Detection only — this
+     * plugin has no way to suppress a theme's own hardcoded `<link>` (see
+     * printHeadLinks()'s own docblock for why it can't gate on content
+     * inspection), so "prevent duplicate loading" stays a human action:
+     * remove the theme/plugin's own reference once flagged here.
+     *
+     * @return array<int, array{source: string, file: string}>
+     */
+    public function detectConflicts(): array
+    {
+        $conflicts = [];
+
+        $themePath = null;
+        $themeLabel = 'active theme';
+
+        try {
+            $themePath = ActiveTheme::instance()->themePath();
+            $themeLabel = ActiveTheme::instance()->activeTheme() ?? $themeLabel;
+        } catch (RuntimeException) {
+            // No theme bound to this request (e.g. a CLI/test context) — nothing to scan.
+        }
+
+        if ($themePath !== null) {
+            foreach (['header.php', 'footer.php', 'functions.php', 'style.css'] as $file) {
+                if ($this->fileMentionsFontAwesome($themePath . '/' . $file)) {
+                    $conflicts[] = ['source' => "Theme: {$themeLabel}", 'file' => $file];
+                }
+            }
+        }
+
+        if ($this->pluginsPath !== null) {
+            foreach ($this->activePluginSlugs() as $slug) {
+                if ($slug === 'font-awesome') {
+                    continue;
+                }
+
+                $mainFile = $this->pluginsPath . '/' . $slug . '/' . $slug . '.php';
+
+                if ($this->fileMentionsFontAwesome($mainFile)) {
+                    $conflicts[] = ['source' => "Plugin: {$slug}", 'file' => $slug . '.php'];
+                }
+            }
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function activePluginSlugs(): array
+    {
+        $stored = ActiveConfig::instance()->option('active_plugins', '[]');
+        $decoded = is_string($stored) ? json_decode($stored, true) : null;
+
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter($decoded, 'is_string'));
+    }
+
+    private function fileMentionsFontAwesome(string $path): bool
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return false;
+        }
+
+        $contents = file_get_contents($path);
+
+        return $contents !== false && preg_match('/font[\s\-]?awesome/i', $contents) === 1;
     }
 
     /**
