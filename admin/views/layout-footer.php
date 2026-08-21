@@ -22,6 +22,8 @@ if (!isset($kernel)) {
     </main>
 </div>
 <script src="<?= esc_url(admin_asset_url('js/nav-toggle.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/sidebar-scroll.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/mobile-nav-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/dynamic-style.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/admin-tabs.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/tag-input.js')) ?>" defer></script>

@@ -296,7 +296,7 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
                 <?= Csrf::field('continue_import') ?>
                 <input type="hidden" name="form" value="continue_import">
                 <input type="hidden" name="import_token" value="<?= esc_attr($importTokenParam) ?>">
-                <button type="submit" class="lp-button">Continue</button>
+                <button type="submit" class="lp-button lp-button--primary">Continue</button>
             </form>
         <?php else: ?>
             <p>Done.</p>

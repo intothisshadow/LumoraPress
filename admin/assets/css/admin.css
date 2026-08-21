@@ -23,17 +23,35 @@
     --lp-admin-warning-text: #664d03;
     --lp-admin-radius: 4px;
     --lp-admin-panel-radius: 10px;
-    --lp-admin-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
-    --lp-admin-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 4px 10px rgba(16, 24, 40, 0.08);
+    --lp-admin-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 8px rgba(16, 24, 40, 0.1);
+    --lp-admin-shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.1), 0 8px 16px rgba(16, 24, 40, 0.12);
     --lp-admin-focus-ring: rgba(34, 113, 177, 0.18);
     --lp-admin-chip-bg: rgba(34, 113, 177, 0.07);
     --lp-admin-chip-border: rgba(34, 113, 177, 0.3);
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
+    /* LP-088/LP-090: form fields and neutral buttons previously reused
+       --lp-admin-panel-bg (identical to the card they sit inside), so
+       there was no visual signal that they were interactive surfaces
+       rather than part of the panel's own background. Kept close to
+       each other but distinguishable, so a field doesn't read as a
+       button or vice versa. */
+    --lp-admin-field-bg: #f3f4f6;
+    --lp-admin-button-bg: #f6f6f7;
 }
 
+/*
+ * LP-087: dark tokens are declared twice on purpose — once gated by the
+ * OS/browser's prefers-color-scheme (for the Auto preference, the
+ * default), and once under :root[data-theme="dark"] (for a user who
+ * explicitly chose Dark regardless of their system setting). The
+ * :not([data-theme="light"]) guard on the media-query block stops an
+ * explicit Light choice from being overridden back to dark by a dark
+ * system preference. Keep both blocks' values identical — see
+ * admin/views/layout-header.php for where the attribute comes from.
+ */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --lp-admin-bg: #101214;
         --lp-admin-sidebar-bg: #17191c;
         --lp-admin-sidebar-fg: #e4e6e8;
@@ -52,14 +70,46 @@
         --lp-admin-warning-bg: #332b0f;
         --lp-admin-warning-border: #dba617;
         --lp-admin-warning-text: #f0d68a;
-        --lp-admin-shadow: 0 1px 2px rgba(0, 0, 0, 0.24), 0 1px 3px rgba(0, 0, 0, 0.3);
-        --lp-admin-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.35);
+        --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
+        --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
         --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
         --lp-admin-chip-bg: rgba(76, 155, 232, 0.12);
         --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
         --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
         --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+        --lp-admin-field-bg: #24282c;
+        --lp-admin-button-bg: #26292d;
     }
+}
+
+:root[data-theme="dark"] {
+    --lp-admin-bg: #101214;
+    --lp-admin-sidebar-bg: #17191c;
+    --lp-admin-sidebar-fg: #e4e6e8;
+    --lp-admin-sidebar-fg-muted: #9aa0a6;
+    --lp-admin-accent: #4c9be8;
+    --lp-admin-accent-hover: #6cb0ef;
+    --lp-admin-text: #e4e6e8;
+    --lp-admin-border: #33383d;
+    --lp-admin-panel-bg: #1b1e21;
+    --lp-admin-error-bg: #3a1f20;
+    --lp-admin-error-border: #d63638;
+    --lp-admin-error-text: #f2b8b9;
+    --lp-admin-success-bg: #10281a;
+    --lp-admin-success-border: #2fb344;
+    --lp-admin-success-text: #8fe3a3;
+    --lp-admin-warning-bg: #332b0f;
+    --lp-admin-warning-border: #dba617;
+    --lp-admin-warning-text: #f0d68a;
+    --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
+    --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
+    --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
+    --lp-admin-chip-bg: rgba(76, 155, 232, 0.12);
+    --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
+    --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
+    --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+    --lp-admin-field-bg: #24282c;
+    --lp-admin-button-bg: #26292d;
 }
 
 * {
@@ -102,6 +152,23 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg);
     display: flex;
     flex-direction: column;
+    /*
+     * Pinned to the viewport and independently scrollable, rather than
+     * scrolling away as part of the normal page flow — without this, a
+     * tall main-content page (or, with several sections manually
+     * expanded via the "expand all" toggle above, a tall nav list
+     * itself) meant scrolling down to reach a sidebar link like
+     * Maintenance > Updates, then landing back at the top of a freshly
+     * loaded page after clicking it (every admin navigation is a real
+     * page load here, not an SPA route change — the browser has no
+     * reason to preserve where you'd scrolled to). Reported directly by
+     * Ariane. Overridden back to a fixed off-canvas drawer at mobile
+     * widths below, where this behavior doesn't apply.
+     */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
 }
 
 .lp-admin__brand {
@@ -124,7 +191,43 @@ body.lp-admin-login {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.lp-admin__site-link a {
+/*
+ * LP-092: expand/collapse-all controls, one above the nav and one below
+ * it (inside .lp-admin__user) — both share this class and stay in sync
+ * via admin/assets/js/nav-toggle.js. Symbol-only by design (no visible
+ * text), so sized as a small icon button rather than a full-width row;
+ * .lp-admin__sidebar and .lp-admin__user are both flex columns, so
+ * align-self keeps it from stretching to the sidebar's full width like
+ * a stray no-content flex child otherwise would.
+ */
+.lp-admin__nav-toggle-all {
+    align-self: flex-start;
+    margin: 0.5rem 1rem;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--lp-admin-radius);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lp-admin__nav-toggle-all:hover,
+.lp-admin__nav-toggle-all:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+/* LP-089: every link-color rule below gets a matching :visited variant
+   in its own selector list (not a separate duplicated rule) so a link's
+   color never depends on the visitor's own click history — browsers
+   only let :visited override its own restricted property set via an
+   explicit :visited selector, so a rule with no :visited companion
+   silently falls back to the UA default purple once clicked. */
+.lp-admin__site-link a,
+.lp-admin__site-link a:visited {
     color: var(--lp-admin-sidebar-fg-muted);
     text-decoration: none;
     font-size: 0.85rem;
@@ -145,7 +248,8 @@ body.lp-admin-login {
     padding: 0.5rem 0;
 }
 
-.lp-admin__nav-item a {
+.lp-admin__nav-item a,
+.lp-admin__nav-item a:visited {
     display: flex;
     align-items: center;
     padding: 0.65rem 1rem;
@@ -296,7 +400,8 @@ body.lp-admin-login {
     font-weight: 700;
 }
 
-.lp-admin__breadcrumbs a {
+.lp-admin__breadcrumbs a,
+.lp-admin__breadcrumbs a:visited {
     color: var(--lp-admin-accent);
     font-weight: 600;
     text-decoration: none;
@@ -323,8 +428,51 @@ body.lp-admin-login {
     font-size: 0.9rem;
 }
 
+.lp-admin__user-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
 .lp-admin__user-name {
     color: var(--lp-admin-sidebar-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lp-admin__theme-toggle-form {
+    flex-shrink: 0;
+}
+
+/* LP-087 — a quick Light/Dark switch always visible in the sidebar,
+   independent of the full Light/Dark/Follow System choice on the
+   Profile page's Appearance panel. */
+.lp-admin__theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.lp-admin__theme-toggle:hover,
+.lp-admin__theme-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.lp-admin__theme-toggle:focus-visible {
+    outline: 2px solid var(--lp-admin-accent);
+    outline-offset: 1px;
 }
 
 .lp-admin__logout {
@@ -342,6 +490,95 @@ body.lp-admin-login {
     font-size: 1.5rem;
     font-weight: 700;
     letter-spacing: -0.01em;
+}
+
+/*
+ * LP-096: the shell (.lp-admin__shell/.lp-admin__sidebar above) has
+ * always been a plain flex row with a fixed-width sidebar — fine down to
+ * tablet width, but with nothing narrower than that ever collapsing it,
+ * a phone-width viewport squeezed .lp-admin__content into a column so
+ * narrow (min-width: 0 above lets it shrink that far) that ordinary
+ * words wrapped one character at a time. Below 782px (the same
+ * breakpoint already used for the Media Manager/editor-sidebar/Menus/
+ * Theme-editor two-column layouts elsewhere in this file), the sidebar
+ * becomes an off-canvas drawer instead: fixed position, off-screen by
+ * default, toggled via .lp-mobile-nav-open on .lp-admin__shell by
+ * mobile-nav-toggle.js. Above this breakpoint none of this applies —
+ * .lp-admin__mobile-nav-toggle/.lp-admin__sidebar-backdrop stay
+ * display: none year-round otherwise, so the toggle button is never
+ * reachable in the desktop tab order either.
+ */
+.lp-admin__mobile-nav-toggle,
+.lp-admin__sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 782px) {
+    .lp-admin__mobile-nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+        padding: 0.5rem 0.9rem;
+        border: 1px solid var(--lp-admin-border);
+        border-radius: var(--lp-admin-radius);
+        background: var(--lp-admin-panel-bg);
+        color: var(--lp-admin-text);
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--lp-admin-shadow);
+    }
+
+    .lp-admin__mobile-nav-toggle:hover,
+    .lp-admin__mobile-nav-toggle:focus-visible {
+        background: var(--lp-admin-field-bg);
+    }
+
+    .lp-admin__mobile-nav-toggle:focus-visible {
+        outline: 2px solid var(--lp-admin-accent);
+        outline-offset: 1px;
+    }
+
+    .lp-admin__shell {
+        overflow-x: hidden;
+    }
+
+    .lp-admin__sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 200;
+        height: 100vh;
+        max-width: 85vw;
+        box-shadow: var(--lp-admin-shadow-hover);
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+    }
+
+    .lp-admin__shell.lp-mobile-nav-open .lp-admin__sidebar {
+        transform: translateX(0);
+    }
+
+    .lp-admin__sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 190;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    .lp-admin__shell.lp-mobile-nav-open .lp-admin__sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .lp-admin__content {
+        padding: 1.25rem;
+    }
 }
 
 /* Panels and widgets */
@@ -369,12 +606,23 @@ body.lp-admin-login {
     transition: box-shadow 0.15s ease;
 }
 
+/*
+ * LP-091: bled to the panel's own edges via negative margin (exactly
+ * offsetting .lp-admin__panel/.lp-admin__widget's uniform 1.5rem
+ * padding, so this only works because every panel shares that same
+ * padding value — see the base rule above) rather than an inset
+ * background, so the title reads as a real header bar instead of a
+ * plain heading with no visual weight of its own. Matches
+ * .lp-sidebar-box__header's existing tint treatment.
+ */
 .lp-admin__panel > h2:first-child,
 .lp-admin__widget > h2:first-child {
-    margin-top: 0;
-    margin-bottom: 1.1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--lp-admin-border);
+    margin: -1.5rem -1.5rem 1.1rem;
+    padding: 0.85rem 1.5rem 0.75rem;
+    background: var(--lp-admin-chip-bg);
+    border-bottom: 1px solid var(--lp-admin-chip-border);
+    border-top-left-radius: var(--lp-admin-panel-radius);
+    border-top-right-radius: var(--lp-admin-panel-radius);
     font-size: 1.05rem;
     font-weight: 600;
     letter-spacing: -0.005em;
@@ -406,10 +654,11 @@ body.lp-admin-login {
     display: flex;
     align-items: center;
     gap: 0.55rem;
-    margin-top: 0;
-    margin-bottom: 0;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--lp-admin-border);
+    margin: -1.5rem -1.5rem 0;
+    padding: 0.85rem 1.5rem 0.75rem;
+    background: var(--lp-admin-chip-bg);
+    border-bottom: 1px solid var(--lp-admin-chip-border);
+    border-radius: var(--lp-admin-panel-radius) var(--lp-admin-panel-radius) 0 0;
     font-size: 1.05rem;
     font-weight: 600;
     letter-spacing: -0.005em;
@@ -493,11 +742,20 @@ body.lp-admin-login {
 .lp-admin__meta-list li {
     display: flex;
     justify-content: space-between;
+    /* Flex items stretch to the row's full height by default — with a
+       two-line-wrapped title (a long post/comment title) and a
+       999px-radius status badge as the other flex item, that stretch
+       turned the badge into a tall blob instead of a compact pill. */
+    align-items: center;
     gap: 1rem;
     padding: 0.55rem 0;
     border-bottom: 1px solid var(--lp-admin-border);
     font-size: 0.9rem;
     line-height: 1.5;
+}
+
+.lp-admin__meta-list li .lp-status-badge {
+    flex-shrink: 0;
 }
 
 .lp-admin__meta-list li:last-child {
@@ -524,8 +782,11 @@ body.lp-admin-login {
  * .lp-theme-editor__node-label--file already uses.
  */
 .lp-admin__meta-list a,
+.lp-admin__meta-list a:visited,
 .lp-folder-tree__item a,
-.lp-thumbnails__list a {
+.lp-folder-tree__item a:visited,
+.lp-thumbnails__list a,
+.lp-thumbnails__list a:visited {
     color: var(--lp-admin-text);
     text-decoration: none;
 }
@@ -1153,12 +1414,23 @@ body.lp-admin-login {
     color: var(--lp-admin-text);
 }
 
-.EasyMDEContainer .editor-toolbar a {
+/*
+ * LP-088: this project's bundled EasyMDE build renders toolbar items as
+ * <button><i class="fa fa-*"></i></button>, not the <a> tags upstream
+ * EasyMDE uses — so the `a` selector this rule used to have never
+ * matched anything, and every icon fell back to EasyMDE's own hardcoded
+ * black, all but invisible against a dark panel background. `button`
+ * covers both the icon buttons and the plain-text "|" separators;
+ * `i` is targeted explicitly too since color doesn't reliably cascade
+ * into Font Awesome's icon glyphs in every browser.
+ */
+.EasyMDEContainer .editor-toolbar button,
+.EasyMDEContainer .editor-toolbar button i {
     color: var(--lp-admin-text) !important;
 }
 
-.EasyMDEContainer .editor-toolbar a.active,
-.EasyMDEContainer .editor-toolbar a:hover {
+.EasyMDEContainer .editor-toolbar button.active,
+.EasyMDEContainer .editor-toolbar button:hover {
     background: var(--lp-admin-bg);
     border-color: var(--lp-admin-border);
 }
@@ -1266,8 +1538,11 @@ body.lp-admin-login {
 }
 
 @media (max-width: 782px) {
+    /* LP-096: bare `1fr` has an implicit min-content floor, not 0 — see
+       the identical fix/explanation on .lp-editor-layout's own mobile
+       override for why this must be minmax(0, 1fr) instead. */
     .lp-media-manager {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -1787,7 +2062,10 @@ body.lp-admin-login {
     padding: 0.55rem 0.7rem;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
-    background: var(--lp-admin-panel-bg);
+    /* LP-088: was --lp-admin-panel-bg, identical to the panel the field
+       sits inside — no visual cue that this was an editable surface
+       rather than static panel background. */
+    background: var(--lp-admin-field-bg);
     color: var(--lp-admin-text);
     font-size: 1rem;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1815,7 +2093,7 @@ select {
     padding: 0.55rem 0.7rem;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
-    background: var(--lp-admin-panel-bg);
+    background: var(--lp-admin-field-bg);
     color: var(--lp-admin-text);
     font-size: 1rem;
     width: auto;
@@ -2061,12 +2339,18 @@ select:focus {
     color: #fff;
 }
 
+/*
+ * LP-090: was --lp-admin-panel-bg (identical to the panel/page around
+ * it), which read as an unstyled plain HTML button rather than a
+ * deliberately neutral one. --lp-admin-button-bg gives it just enough
+ * of its own fill to register as a real button at a glance.
+ */
 .lp-button {
     display: inline-block;
     padding: 0.55rem 1.1rem;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
-    background: var(--lp-admin-panel-bg);
+    background: var(--lp-admin-button-bg);
     color: var(--lp-admin-text);
     font-size: 0.95rem;
     font-weight: 500;
@@ -2098,7 +2382,7 @@ select:focus {
 }
 
 .lp-button--secondary {
-    background: transparent;
+    background: var(--lp-admin-button-bg);
     border-color: var(--lp-admin-border);
     color: var(--lp-admin-text);
 }
@@ -2197,7 +2481,8 @@ select:focus {
     padding: 2rem;
     background: var(--lp-admin-panel-bg);
     border: 1px solid var(--lp-admin-border);
-    border-radius: var(--lp-admin-radius);
+    border-radius: var(--lp-admin-panel-radius);
+    box-shadow: var(--lp-admin-shadow);
 }
 
 .lp-login__brand {
@@ -2211,7 +2496,8 @@ select:focus {
     font-size: 0.9rem;
 }
 
-.lp-login__links a {
+.lp-login__links a,
+.lp-login__links a:visited {
     color: var(--lp-admin-accent);
 }
 
@@ -2257,7 +2543,8 @@ select:focus {
     font-size: 0.85rem;
 }
 
-.lp-admin__filters a {
+.lp-admin__filters a,
+.lp-admin__filters a:visited {
     color: var(--lp-admin-sidebar-fg-muted);
     text-decoration: none;
 }
@@ -2306,6 +2593,35 @@ select:focus {
     overflow: hidden;
 }
 
+/*
+ * LP-096: an HTML table's cells never shrink below their content's
+ * min-content width (long titles, status badges, a date column) —
+ * .lp-table's own `width: 100%` above is a ceiling, not a floor, so at
+ * phone widths every admin list table (Posts, Pages, Comments,
+ * Categories, Tags, Users, Redirects, ...) silently overflowed its card
+ * with no way to reach the clipped columns (the shell's own
+ * `overflow-x: hidden`, added earlier in this same ticket to keep the
+ * off-canvas sidebar from causing page-level scroll, was clipping this
+ * invisibly rather than just leaving it reachable via page scroll).
+ * Scrolling the table itself horizontally, rather than redesigning
+ * every list into stacked cards, keeps this a small CSS-only fix
+ * consistent with LP-085's own "CSS-only where possible" precedent —
+ * every column stays reachable, just via a swipe instead of a resize.
+ * Placed here (rather than alongside this ticket's other rules,
+ * further up the file) deliberately — the base `.lp-table` rule above
+ * also sets `overflow: hidden` for its border-radius-clipping trick, so
+ * this override must come after it in source order to actually win the
+ * cascade; media-query scoping alone doesn't grant extra specificity.
+ */
+@media (max-width: 782px) {
+    .lp-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 100%;
+    }
+}
+
 .lp-table th,
 .lp-table td {
     padding: 0.7rem 0.85rem;
@@ -2341,7 +2657,8 @@ select:focus {
  * click target, so it stays accent-colored by default rather than
  * defaulting to body text.
  */
-.lp-table td a {
+.lp-table td a,
+.lp-table td a:visited {
     color: var(--lp-admin-accent);
     text-decoration: none;
 }
@@ -2396,6 +2713,13 @@ select:focus {
     color: var(--lp-admin-error-text);
 }
 
+/* Downloads list (LPP-009) — reuses the same success tokens as
+   --published/--approved rather than inventing a new color for "live". */
+.lp-status-badge--live {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
 .lp-admin__bulk-actions {
     display: flex;
     align-items: center;
@@ -2406,6 +2730,23 @@ select:focus {
 .lp-status-badge--pending,
 .lp-status-badge--pending_review,
 .lp-status-badge--warning {
+    background: var(--lp-admin-warning-bg);
+    color: var(--lp-admin-warning-text);
+}
+
+/* User role badges (Users list) reuse the same status/warning/success
+   tokens rather than inventing a separate color scale for roles. */
+.lp-status-badge--role-administrator {
+    background: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-status-badge--role-editor {
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
+.lp-status-badge--role-author {
     background: var(--lp-admin-warning-bg);
     color: var(--lp-admin-warning-text);
 }
@@ -2465,7 +2806,8 @@ select:focus {
     margin-top: 0.2rem;
 }
 
-.lp-update__release-notes-body a {
+.lp-update__release-notes-body a,
+.lp-update__release-notes-body a:visited {
     color: var(--lp-admin-accent);
 }
 
@@ -2688,7 +3030,8 @@ select:focus {
  * view for the subset of actions that are genuinely destructive
  * (Delete/Delete Permanently/Remove/Revoke/Trash).
  */
-.lp-button--link {
+.lp-button--link,
+.lp-button--link:visited {
     display: inline-flex;
     align-items: center;
     background: var(--lp-admin-chip-bg);
@@ -2753,6 +3096,7 @@ select:focus {
 }
 
 .lp-pagination__item a,
+.lp-pagination__item a:visited,
 .lp-pagination__item span {
     display: inline-block;
     min-width: 2rem;
@@ -2768,6 +3112,23 @@ select:focus {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
     color: #fff;
+}
+
+.lp-pagination__item--nav a,
+.lp-pagination__item--nav span {
+    font-weight: 600;
+}
+
+.lp-pagination__item--nav.is-disabled span {
+    color: var(--lp-admin-border);
+    cursor: not-allowed;
+}
+
+.lp-pagination__item--ellipsis span {
+    min-width: 1.5rem;
+    padding: 0.35rem 0.2rem;
+    border: none;
+    color: var(--lp-admin-border);
 }
 
 .lp-nav-menu {
@@ -2898,8 +3259,19 @@ select:focus {
 }
 
 @media (max-width: 782px) {
+    /*
+     * LP-096: a bare `1fr` track has an implicit minimum of `auto` (its
+     * content's min-content size), not 0 — EasyMDE's own toolbar row
+     * doesn't wrap or shrink, so without the explicit minmax(0, ...)
+     * floor here, that single 1fr track (and everything nested inside
+     * it: .lp-editor-layout__main, .EasyMDEContainer, the toolbar) grew
+     * to the toolbar's full unwrapped width instead of the viewport's,
+     * silently overflowing every phone-width screen this form appears
+     * on. Same underlying CSS Grid "blowout" behavior the desktop rule
+     * above already avoids via its own minmax(0, 1fr) first track.
+     */
     .lp-editor-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -2912,7 +3284,9 @@ select:focus {
 .lp-sidebar-box {
     background: var(--lp-admin-panel-bg);
     border: 1px solid var(--lp-admin-border);
-    border-radius: var(--lp-admin-radius);
+    border-radius: var(--lp-admin-panel-radius);
+    box-shadow: var(--lp-admin-shadow);
+    overflow: hidden;
 }
 
 .lp-sidebar-box__header {
@@ -2922,7 +3296,8 @@ select:focus {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     cursor: grab;
-    border-bottom: 1px solid var(--lp-admin-border);
+    background: var(--lp-admin-chip-bg);
+    border-bottom: 1px solid var(--lp-admin-chip-border);
 }
 
 .lp-sidebar-box--collapsed .lp-sidebar-box__header {
@@ -2931,6 +3306,7 @@ select:focus {
 
 .lp-sidebar-box__title {
     font-weight: 600;
+    color: var(--lp-admin-accent);
 }
 
 .lp-sidebar-box__toggle {
@@ -3064,8 +3440,11 @@ select:focus {
 }
 
 @media (max-width: 782px) {
+    /* LP-096: bare `1fr` has an implicit min-content floor, not 0 — see
+       the identical fix/explanation on .lp-editor-layout's own mobile
+       override for why this must be minmax(0, 1fr) instead. */
     .lp-menus-editor {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -3172,8 +3551,11 @@ select:focus {
 }
 
 @media (max-width: 782px) {
+    /* LP-096: bare `1fr` has an implicit min-content floor, not 0 — see
+       the identical fix/explanation on .lp-editor-layout's own mobile
+       override for why this must be minmax(0, 1fr) instead. */
     .lp-theme-editor {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

@@ -526,7 +526,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
             <?= Csrf::field('backup_now') ?>
             <input type="hidden" name="form" value="backup_now">
-            <button type="submit" class="lp-button">Back up now</button>
+            <button type="submit" class="lp-button lp-button--primary">Back up now</button>
         </form>
 
         <?php if ($backups === []): ?>

@@ -618,13 +618,17 @@ final class PageService
             $params['parent_id'] = (int) $filters['parentId'];
         }
 
+        // Filters/sorts by the page's own date (published_at, falling
+        // back to created_at for a Draft or other status with no
+        // publish date yet) rather than created_at alone — see
+        // PostService::paginateForAdmin()'s identical note.
         if (($filters['dateFrom'] ?? '') !== '') {
-            $conditions[] = 'created_at >= :date_from';
+            $conditions[] = 'COALESCE(published_at, created_at) >= :date_from';
             $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
         }
 
         if (($filters['dateTo'] ?? '') !== '') {
-            $conditions[] = 'created_at <= :date_to';
+            $conditions[] = 'COALESCE(published_at, created_at) <= :date_to';
             $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
         }
 
@@ -639,7 +643,7 @@ final class PageService
 
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " {$where}"
-                . " ORDER BY created_at DESC LIMIT {$perPage} OFFSET {$offset}",
+                . " ORDER BY COALESCE(published_at, created_at) DESC LIMIT {$perPage} OFFSET {$offset}",
             $params,
         );
 
@@ -686,20 +690,29 @@ final class PageService
     }
 
     /**
-     * A flat {id, title, slug} list for the admin Menus screen's "Add
-     * Pages" checkbox list (LP-049) — separate from
+     * A depth-tagged {id, title, slug, depth} list, in the same
+     * hierarchical document order as listAllForTree(), for the admin
+     * Menus screen's "Add Pages" checkbox list (LP-049) — separate from
      * listAllForParentSelect() above since that method's shape/exclusion
      * rules are specific to the parent-page picker, not menu building.
+     * Built on listAllForTree() rather than a flat alphabetical query
+     * (LP-103) so a child page renders indented under its parent in the
+     * Add Items panel, matching the "All Pages" tree view; trashed pages
+     * are excluded as a side effect of that reuse, which they always
+     * should have been.
      *
-     * @return array<int, array{id: int, title: string, slug: string}>
+     * @return array<int, array{id: int, title: string, slug: string, depth: int}>
      */
     public function listAllForMenuSelect(): array
     {
-        $rows = $this->database->fetchAll('SELECT id, title, slug FROM ' . $this->table() . ' ORDER BY title ASC');
-
         return array_map(
-            static fn (array $row): array => ['id' => (int) $row['id'], 'title' => (string) $row['title'], 'slug' => (string) $row['slug']],
-            $rows,
+            static fn (array $row): array => [
+                'id' => $row['page']->id,
+                'title' => $row['page']->title,
+                'slug' => $row['page']->slug,
+                'depth' => $row['depth'],
+            ],
+            $this->listAllForTree(),
         );
     }
 
@@ -718,6 +731,50 @@ final class PageService
     {
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " WHERE status != 'trashed' ORDER BY parent_id, menu_order, id",
+        );
+        $pages = array_map($this->hydrate(...), $rows);
+
+        return $this->flattenForTree($pages, null, 0);
+    }
+
+    /**
+     * The same shape as listAllForTree(), but restricted to what a Guest
+     * visitor may actually see — mirrors paginatePublished()'s exact
+     * visibility rule (published, or scheduled with a past publish date,
+     * AND public visibility) rather than listAllForTree()'s "everything
+     * not trashed" — backs the Pages widget's nested output (LP-104),
+     * which must never leak a draft, scheduled-future, or private page
+     * into public-facing markup just because it happens to be some
+     * visible page's child.
+     *
+     * A page whose real parent isn't itself in this filtered, public set
+     * (e.g. its parent is a draft) is dropped entirely rather than
+     * promoted to top level or attached at the wrong depth — the same
+     * "only ever nest under a genuinely present parent" behavior
+     * flattenForTree() already has for listAllForTree()/
+     * listAllForMenuSelect().
+     *
+     * Ordered by title rather than listAllForTree()'s manual menu_order —
+     * the widget's own top level (and each depth's siblings) render
+     * alphabetically, matching the flat alphabetical order the widget
+     * always used before LP-104, and CategoryService::listAllForTree()'s
+     * identical alphabetical-siblings behavior. flattenForTree() preserves
+     * this query's relative ordering when it filters by parentId at each
+     * recursion, so a single global `ORDER BY title` is enough to make
+     * every depth's siblings alphabetical, not just the top level.
+     *
+     * @return array<int, array{page: Page, depth: int}>
+     */
+    public function publicTreeForWidget(): array
+    {
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . "
+                WHERE (status = 'published' OR (status = 'scheduled' AND published_at <= :now))
+                  AND visibility = 'public'
+             ORDER BY title ASC",
+            ['now' => $now],
         );
         $pages = array_map($this->hydrate(...), $rows);
 

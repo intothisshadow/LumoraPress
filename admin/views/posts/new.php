@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\PostsController;
 use LumoraPress\Core\Content\TextDiff;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
@@ -28,6 +29,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
+$controller = new PostsController($kernel->posts, $kernel->categories, $kernel->tags, $kernel->revisions, $kernel->media, $kernel->thumbnails, $kernel->content);
+
 /*
  * Editor image upload (LP-015/LP-016), format-switch conversion, and
  * inline category creation (LP-008) are all JSON-responding sub-actions
@@ -35,9 +38,13 @@ if (!isset($kernel)) {
  * small AJAX-only endpoint has nowhere else to live without adding an
  * unwanted visible nav entry. Handled before the CSRF-gated form dispatch
  * below since these fire from JS on this same edit screen, not the save
- * form itself.
+ * form itself. POST handling itself lives in PostsController (LP-082);
+ * this view only discards the buffered HTML shell, sets the JSON
+ * Content-Type, dispatches to the matching controller method (which
+ * echoes the JSON body directly rather than returning a value — see
+ * uploadEditorImage()'s own docblock for why), and exits.
  */
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_upload') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category'], true)) {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs (views/{page}/{subpage}.php is
     // required after layout-header.php unconditionally) — discard it
@@ -49,93 +56,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     header('Content-Type: application/json');
 
-    if (!$currentUser->can('upload_files') || !Csrf::verify('editor_upload', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Not permitted.']);
-        exit;
-    }
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-        http_response_code(422);
-        echo json_encode(['error' => 'Upload failed.', 'csrfToken' => Csrf::token('editor_upload')]);
-        exit;
-    }
+    match ($_POST['form']) {
+        'editor_upload' => $controller->uploadEditorImage($_FILES, $currentUser->id, $currentUser->can('upload_files'), $csrfToken),
+        'convert_content' => $controller->convertContent($_POST, $csrfToken),
+        'add_category' => $controller->quickAddCategory($_POST, $currentUser->can('edit_posts'), $csrfToken),
+    };
 
-    try {
-        $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
-
-        /*
-         * Csrf::verify() is single-use (app/Core/Security/Csrf.php) — a
-         * second image upload without a full page reload would otherwise
-         * fail CSRF verification against the already-consumed token from
-         * the initial page load. content-editor.js's uploadFile() writes
-         * this fresh token back into data-upload-csrf for the next call,
-         * matching the same pattern admin/views/media/upload.php's
-         * ajax=1 branch already uses for the Media Manager.
-         */
-        echo json_encode([
-            'data' => ['filePath' => $kernel->media->url($uploaded)],
-            'url' => $kernel->media->url($uploaded),
-            'csrfToken' => Csrf::token('editor_upload'),
-        ]);
-    } catch (\Throwable $exception) {
-        http_response_code(422);
-        echo json_encode(['error' => $exception->getMessage(), 'csrfToken' => Csrf::token('editor_upload')]);
-    }
-
-    exit;
-}
-
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'convert_content') {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    header('Content-Type: application/json');
-
-    if (!Csrf::verify('convert_content', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
-        exit;
-    }
-
-    $from = ContentFormat::tryFrom((string) ($_POST['from'] ?? ''));
-    $to = ContentFormat::tryFrom((string) ($_POST['to'] ?? ''));
-
-    if ($from === null || $to === null) {
-        http_response_code(422);
-        echo json_encode(['error' => 'Unknown format.']);
-        exit;
-    }
-
-    echo json_encode(['content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $from, $to)]);
-    exit;
-}
-
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'add_category') {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    header('Content-Type: application/json');
-
-    if (!$currentUser->can('edit_posts') || !Csrf::verify('add_category', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Not permitted.']);
-        exit;
-    }
-
-    $name = trim((string) ($_POST['name'] ?? ''));
-
-    if ($name === '') {
-        http_response_code(422);
-        echo json_encode(['error' => 'A category name is required.']);
-        exit;
-    }
-
-    $category = $kernel->categories->findOrCreateByName($name);
-
-    echo json_encode(['data' => ['id' => $category->id, 'name' => $category->name]]);
     exit;
 }
 
@@ -153,241 +81,30 @@ $error = null;
  */
 $canEditPost = static fn (Post $post): bool => $canEditOthersPosts || $post->authorId === $currentUser->id;
 
+/*
+ * POST handling for 'save'/'restore_revision' lives in PostsController
+ * (LP-082, following the ThemesController precedent — see DECISIONS.md);
+ * this view only reads the request, dispatches to the matching controller
+ * method, and turns the returned AdminActionResult into either a redirect
+ * or an inline $error string. The 'editor_upload'/'convert_content'/
+ * 'add_category' JSON sub-actions are dispatched separately above, before
+ * this block, since they exit immediately with a JSON body instead of
+ * rendering the rest of this page.
+ */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'save' && Csrf::verify('post_save', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $id = (int) ($_POST['id'] ?? 0);
-        $existing = $id > 0 ? $postService->findById($id) : null;
+    if ($form === 'save' || $form === 'restore_revision') {
+        $result = $form === 'save'
+            ? $controller->save($_POST, $_FILES, $currentUser->id, $canPublish, $canEditOthersPosts, $csrfToken)
+            : $controller->restoreRevision($_POST, $currentUser->id, $canEditOthersPosts, $csrfToken);
 
-        if ($id > 0 && ($existing === null || !$canEditPost($existing))) {
-            header('Location: ' . admin_url('posts/all-posts') . '?error=forbidden');
-            exit;
+        if ($result->redirectUrl !== null) {
+            redirect($result->redirectUrl);
         }
 
-        $title = trim((string) ($_POST['title'] ?? ''));
-        $content = (string) ($_POST['content'] ?? '');
-        $excerpt = trim((string) ($_POST['excerpt'] ?? ''));
-        $metaTitle = trim((string) ($_POST['meta_title'] ?? ''));
-        $metaDescription = trim((string) ($_POST['meta_description'] ?? ''));
-        $slug = trim((string) ($_POST['slug'] ?? ''));
-        $requestedStatus = PostStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PostStatus::Draft;
-        $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
-        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
-
-        // Contributors and anyone else without publish_posts can save as a
-        // Draft or submit for review (Pending Review, LP-008), but never
-        // set Published/Scheduled/Trashed themselves.
-        $status = $canPublish
-            ? $requestedStatus
-            : ($requestedStatus === PostStatus::PendingReview ? PostStatus::PendingReview : PostStatus::Draft);
-
-        // Publish date: required to actually schedule a post (Scheduled),
-        // optional as a planned date on a Draft (LP-018 "Draft scheduling")
-        // that carries forward automatically if the post is later switched
-        // to Scheduled. Gated by $canPublish, same as Visibility/Sticky/
-        // Schedule unpublishing below — a Contributor's form never renders
-        // this field at all (see the $canPublish branch further down).
-        $publishedAt = null;
-
-        if ($canPublish && ($status === PostStatus::Scheduled || $status === PostStatus::Draft)) {
-            $rawPublishedAt = trim((string) ($_POST['published_at'] ?? ''));
-
-            try {
-                $publishedAt = $rawPublishedAt !== '' ? new DateTimeImmutable($rawPublishedAt) : null;
-            } catch (\Exception) {
-                $publishedAt = null;
-            }
-        }
-
-        // Visibility/Sticky (LP-008) are publish-time decisions, same
-        // gate as Status/Schedule above.
-        $visibility = $canPublish
-            ? (PostVisibility::tryFrom((string) ($_POST['visibility'] ?? '')) ?? PostVisibility::Public)
-            : ($existing?->visibility ?? PostVisibility::Public);
-        $isSticky = $canPublish ? ($_POST['is_sticky'] ?? null) !== null : ($existing?->isSticky ?? false);
-
-        // Schedule unpublishing (LP-008) — same gate; a blank field means
-        // "no scheduled unpublish", not "leave the existing one alone",
-        // since the field always round-trips the current value back
-        // through the form (see the edit form below).
-        $unpublishAt = null;
-        $clearUnpublishAt = false;
-
-        if ($canPublish) {
-            $rawUnpublishAt = trim((string) ($_POST['unpublish_at'] ?? ''));
-
-            if ($rawUnpublishAt === '') {
-                $clearUnpublishAt = true;
-            } else {
-                try {
-                    $unpublishAt = new DateTimeImmutable($rawUnpublishAt);
-                } catch (\Exception) {
-                    $unpublishAt = null;
-                    $clearUnpublishAt = true;
-                }
-            }
-        }
-
-        // Featured image resolution (LP-040): upload wins over the
-        // existing-image select, which wins over "remove", which wins
-        // over just keeping the current value — same precedence
-        // admin/views/pages.php uses.
-        $featuredImageId = $existing?->featuredImageId;
-
-        if (($_POST['remove_featured_image'] ?? '') === '1') {
-            $featuredImageId = null;
-        }
-
-        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
-
-        if ($selectedFeaturedImageId > 0) {
-            $featuredImageId = $selectedFeaturedImageId;
-        }
-
-        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
-                $kernel->thumbnails->generate($uploadedFeaturedImage);
-                $featuredImageId = (int) $uploadedFeaturedImage['id'];
-            } catch (\Throwable $exception) {
-                $error = 'Featured image upload failed: ' . $exception->getMessage();
-            }
-        }
-
-        // Manual crop (LP-040): the hidden featured_image_crop_for_id
-        // field records which media id the on-screen rectangle was drawn
-        // against. If the featured image changed in this same request
-        // (a fresh upload, a different Media Manager selection, or
-        // removal) that rectangle no longer applies to anything — it's
-        // silently dropped rather than persisted against the wrong image.
-        $featuredImageCrop = null;
-        $cropForId = (int) ($_POST['featured_image_crop_for_id'] ?? 0);
-
-        if ($cropForId > 0 && $cropForId === $featuredImageId) {
-            $cropX = $_POST['featured_image_crop_x'] ?? '';
-            $cropY = $_POST['featured_image_crop_y'] ?? '';
-            $cropWidth = $_POST['featured_image_crop_width'] ?? '';
-            $cropHeight = $_POST['featured_image_crop_height'] ?? '';
-
-            if (
-                is_numeric($cropX) && is_numeric($cropY) && is_numeric($cropWidth) && is_numeric($cropHeight)
-                && (int) $cropWidth > 0 && (int) $cropHeight > 0
-            ) {
-                $featuredImageCrop = [
-                    'x' => max(0, (int) $cropX),
-                    'y' => max(0, (int) $cropY),
-                    'width' => (int) $cropWidth,
-                    'height' => (int) $cropHeight,
-                ];
-            }
-        }
-
-        if ($error === null) {
-            try {
-                // LP-017: snapshot the pre-update content as a revision
-                // before it's overwritten. Nothing to snapshot on create —
-                // there is no prior state yet.
-                if ($existing !== null) {
-                    $kernel->revisions->save(
-                        RevisionableType::Post,
-                        $existing->id,
-                        $existing->title,
-                        $existing->content,
-                        $existing->excerpt,
-                        $existing->contentFormat,
-                        $currentUser->id,
-                    );
-                }
-
-                $post = $existing === null
-                    ? $postService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $featuredImageId, slug: $slug !== '' ? $slug : null, commentsOpen: $commentsOpen, contentFormat: $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, isSticky: $isSticky, unpublishAt: $unpublishAt)
-                    : $postService->update($id, $title, $content, $excerpt, $status, $publishedAt, $featuredImageId, $slug !== '' ? $slug : null, $commentsOpen, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, isSticky: $isSticky, unpublishAt: $unpublishAt, clearUnpublishAt: $clearUnpublishAt);
-
-                $kernel->categories->assignToPost($post->id, is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : []);
-                $kernel->tags->assignToPost($post->id, explode(',', (string) ($_POST['tags'] ?? '')));
-                $postService->updateSeo($post->id, $metaTitle, $metaDescription);
-
-                // Author reassignment (LP-008) — Editor/Administrator only,
-                // same edit_others_posts gate that already lets them edit
-                // another author's post at all.
-                if ($canEditOthersPosts) {
-                    $reassignAuthorId = (int) ($_POST['author_id'] ?? 0);
-
-                    if ($reassignAuthorId > 0) {
-                        $postService->reassignAuthor($post->id, $reassignAuthorId);
-                    }
-                }
-
-                // Custom fields (LP-008) — a repeatable key/value row
-                // editor; meta_keys[]/meta_values[] are parallel arrays
-                // built by the same index client-side.
-                $metaKeys = is_array($_POST['meta_keys'] ?? null) ? $_POST['meta_keys'] : [];
-                $metaValues = is_array($_POST['meta_values'] ?? null) ? $_POST['meta_values'] : [];
-                $metaPairs = [];
-
-                foreach ($metaKeys as $metaIndex => $metaKey) {
-                    $metaPairs[] = ['key' => (string) $metaKey, 'value' => (string) ($metaValues[$metaIndex] ?? '')];
-                }
-
-                $postService->replaceMetaForPost($post->id, $metaPairs);
-
-                header('Location: ' . admin_url('posts/new') . '?id=' . $post->id . '&saved=1');
-                exit;
-            } catch (\InvalidArgumentException $exception) {
-                $error = $exception->getMessage();
-            }
-        }
-    } elseif ($form === 'restore_revision') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $revisionId = (int) ($_POST['revision_id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('post_restore_revision_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/new') . '?id=' . $id);
-            exit;
-        }
-
-        $existing = $id > 0 ? $postService->findById($id) : null;
-        $revision = $revisionId > 0 ? $kernel->revisions->find($revisionId) : null;
-
-        if (
-            $existing !== null
-            && $canEditPost($existing)
-            && $revision !== null
-            && $revision->contentType === RevisionableType::Post
-            && $revision->contentId === $existing->id
-        ) {
-            // Snapshot the current (pre-restore) state too, so restoring is
-            // itself undoable — mirrors the snapshot-before-overwrite done
-            // on every normal save above.
-            $kernel->revisions->save(
-                RevisionableType::Post,
-                $existing->id,
-                $existing->title,
-                $existing->content,
-                $existing->excerpt,
-                $existing->contentFormat,
-                $currentUser->id,
-            );
-
-            $postService->update(
-                $existing->id,
-                $revision->title,
-                $revision->content,
-                $revision->excerpt,
-                $existing->status,
-                $existing->publishedAt,
-                $existing->featuredImageId,
-                $existing->slug,
-                $existing->commentsOpen,
-                $revision->contentFormat,
-                featuredImageCrop: $existing->featuredImageCrop,
-            );
-        }
-
-        header('Location: ' . admin_url('posts/new') . '?id=' . $id . '&restored=1');
-        exit;
+        $error = $result->errorMessage;
     }
 }
 
@@ -499,6 +216,21 @@ $savedOrder = array_values(array_intersect($savedLayout['order'], $availableBoxe
 // preferences were last saved).
 $boxOrder = array_values(array_unique(array_merge($savedOrder, $availableBoxes)));
 $collapsedBoxes = array_values(array_intersect($savedLayout['collapsed'], $collapsibleBoxes));
+
+/*
+ * updateEditorLayoutPreferences() always writes order and collapsed
+ * together as one snapshot (see UserService), so a real save never
+ * leaves order empty — an empty $savedLayout['order'] reliably means
+ * this user has never customized this screen's sidebar at all, not
+ * that they explicitly saved zero collapsed boxes. SEO and Custom
+ * Fields default to collapsed on that first-ever visit, matching
+ * classic WordPress's own postbox defaults for optional/secondary
+ * fields; Author reassignment (also collapsible) stays expanded by
+ * default since it's a more consequential field to leave hidden.
+ */
+if ($savedLayout['order'] === []) {
+    $collapsedBoxes = array_values(array_intersect(['seo', 'custom_fields'], $collapsibleBoxes));
+}
 ?>
 <section class="lp-admin__panel">
     <form method="post" action="<?= esc_url(admin_url('posts/new')) ?>" enctype="multipart/form-data">

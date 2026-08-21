@@ -41,8 +41,6 @@ get_header();
 <?php endif; ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
-        <h1 class="lp-page-title">Welcome to <?= esc_html(site_name()) ?></h1>
-
         <?php if ($posts === []): ?>
             <p class="lp-empty-state">No posts have been published yet.</p>
         <?php else: ?>
@@ -51,7 +49,7 @@ get_header();
                     <article class="lp-post-list__item">
                         <?php if (theme_option('show_featured_image_in_listings') !== '0' && has_post_thumbnail($post)): ?>
                             <div class="lp-post-list__thumbnail">
-                                <?php the_post_thumbnail_lightbox($post, 'small'); ?>
+                                <?php the_post_thumbnail_lightbox($post, 'large'); ?>
                             </div>
                         <?php endif; ?>
                         <div class="lp-post-list__body">

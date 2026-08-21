@@ -320,7 +320,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                     </p>
                     <div class="lp-admin__inline-form">
                         <?= Csrf::field('tfe_create_file') ?>
-                        <button type="submit" name="form" value="create_file" class="lp-button">Create File</button>
+                        <button type="submit" name="form" value="create_file" class="lp-button lp-button--primary">Create File</button>
                     </div>
                 </form>
                 <form method="post" action="<?= esc_url(admin_url('appearance/editor')) ?>" class="lp-theme-editor__create-form">
@@ -331,7 +331,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
                     </p>
                     <div class="lp-admin__inline-form">
                         <?= Csrf::field('tfe_create_folder') ?>
-                        <button type="submit" name="form" value="create_folder" class="lp-button">Create Folder</button>
+                        <button type="submit" name="form" value="create_folder" class="lp-button lp-button--primary">Create Folder</button>
                     </div>
                 </form>
             </details>

@@ -211,14 +211,17 @@ final class ThemeOptions
             section: 'layout',
             type: ThemeOptionType::Select,
             label: 'Content width',
-            default: '960px',
+            default: '',
             cssVariable: '--lp-max-width',
+            help: 'Leave set to "Use theme default" to keep the active theme\'s own chosen width (e.g. duskline\'s own 1160px) — only pick a specific width here to force every theme to that same value regardless of its own design.',
             choices: [
+                '' => 'Use theme default',
                 '720px' => 'Narrow',
                 '960px' => 'Default',
                 '1200px' => 'Wide',
                 'none' => 'Full width',
             ],
+            allowEmpty: true,
         ));
 
         // LP-079: kept as its own section rather than folded into Layout

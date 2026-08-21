@@ -424,7 +424,7 @@ $allFolders = $folderService->listAll();
                     <?= Csrf::field('regenerate_thumbnails') ?>
                     <input type="hidden" name="form" value="regenerate_thumbnails">
                     <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
-                    <button type="submit" class="lp-button">Regenerate thumbnails</button>
+                    <button type="submit" class="lp-button lp-button--primary">Regenerate thumbnails</button>
                 </form>
             </div>
 
@@ -504,7 +504,7 @@ $allFolders = $folderService->listAll();
                     <span class="lp-field__hint">A WebVTT (.vtt) file uploaded to the Media Manager.</span>
                 </p>
 
-                <button type="submit" class="lp-button">Save</button>
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
             </form>
         <?php elseif (str_starts_with((string) $editingMedia['mime_type'], 'audio/')): ?>
             <audio class="lp-media-edit__audio" src="<?= esc_url($mediaService->url($editingMedia)) ?>" controls preload="metadata"></audio>
@@ -543,7 +543,7 @@ $allFolders = $folderService->listAll();
                     <label for="media-replacement">Replacement file</label>
                     <input type="file" id="media-replacement" name="replacement" accept=".<?= esc_attr($existingExtension) ?>" required>
                 </p>
-                <button type="submit" class="lp-button">Replace</button>
+                <button type="submit" class="lp-button lp-button--primary">Replace</button>
             </form>
         </details>
 
@@ -760,7 +760,7 @@ $allFolders = $folderService->listAll();
             echo '<input type="hidden" name="parent_id" value="' . (int) ($folder->parentId ?? 0) . '">';
             echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
             echo '<input type="text" name="name" value="' . esc_attr($folder->name) . '">';
-            echo '<button type="submit" class="lp-button">Rename</button>';
+            echo '<button type="submit" class="lp-button lp-button--primary">Rename</button>';
             echo '</form>';
             echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-confirm="Delete this folder? It must be empty.">';
             echo Csrf::field('delete_folder_' . $folder->id);
@@ -844,7 +844,7 @@ $allFolders = $folderService->listAll();
                             <?php endforeach; ?>
                         </select>
                     </p>
-                    <button type="submit" class="lp-button">Create</button>
+                    <button type="submit" class="lp-button lp-button--primary">Create</button>
                 </form>
             </details>
         </aside>

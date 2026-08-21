@@ -93,7 +93,7 @@ if ($currentUser->can('manage_options')) {
                 <?php foreach ($recentPosts as $recentPost): ?>
                     <li>
                         <span><a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $recentPost->id ?>"><?= esc_html($recentPost->title) ?></a></span>
-                        <span><?= esc_html($recentPost->status->label()) ?></span>
+                        <span class="lp-status-badge lp-status-badge--<?= esc_attr($recentPost->status->value) ?>"><?= esc_html($recentPost->status->label()) ?></span>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -114,7 +114,7 @@ if ($currentUser->can('manage_options')) {
                                 <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['contentTitle']) ?>&rdquo;
                             </a>
                         </span>
-                        <span><?= esc_html($row['comment']->status->label()) ?></span>
+                        <span class="lp-status-badge lp-status-badge--<?= esc_attr($row['comment']->status->value) ?>"><?= esc_html($row['comment']->status->label()) ?></span>
                     </li>
                 <?php endforeach; ?>
             </ul>

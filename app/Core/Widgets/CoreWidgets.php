@@ -132,8 +132,10 @@ final class CoreWidgets
 
         $widgets->registerWidget('pages', 'Pages', static function (array $settings) use ($pages): void {
             $title = (string) ($settings['title'] ?? '');
-            $limit = max(1, (int) ($settings['limit'] ?? 10));
-            $list = $pages->paginatePublished(1, $limit)['pages'];
+            // No "number to show" limit (LP-104) — see
+            // PageService::publicTreeForWidget()'s docblock for why a
+            // nested tree can't honor one the way the old flat list did.
+            $list = $pages->publicTreeForWidget();
 
             if ($list === []) {
                 return;
@@ -142,18 +144,17 @@ final class CoreWidgets
             echo '<section class="lp-widget lp-widget--pages">';
             self::renderTitle($title);
             echo '<ul class="lp-widget__list">';
-
-            foreach ($list as $page) {
-                echo '<li><a href="' . esc_url(site_url('page/' . $page->slug)) . '">' . esc_html($page->title) . '</a></li>';
-            }
-
+            self::renderNestedList(
+                $list,
+                static fn (array $row): string => '<a href="' . esc_url(site_url('page/' . $row['page']->slug)) . '">' . esc_html($row['page']->title) . '</a>',
+            );
             echo '</ul></section>';
         });
 
         $widgets->registerWidget('categories', 'Categories', static function (array $settings) use ($categories): void {
             $title = (string) ($settings['title'] ?? '');
             $showCount = ($settings['show_count'] ?? '') === '1';
-            $list = $categories->listAllWithPostCounts();
+            $list = $categories->listAllForTree();
 
             if ($list === []) {
                 return;
@@ -162,13 +163,19 @@ final class CoreWidgets
             echo '<section class="lp-widget lp-widget--categories">';
             self::renderTitle($title);
             echo '<ul class="lp-widget__list">';
+            self::renderNestedList(
+                $list,
+                static function (array $row) use ($categories, $showCount): string {
+                    $category = $row['category'];
+                    $html = '<a href="' . esc_url(category_permalink($category)) . '">' . esc_html($category->name) . '</a>';
 
-            foreach ($list as $entry) {
-                echo '<li><a href="' . esc_url(category_permalink($entry['category'])) . '">' . esc_html($entry['category']->name) . '</a>'
-                    . ($showCount ? ' <span class="lp-widget__count">(' . (int) $entry['postCount'] . ')</span>' : '')
-                    . '</li>';
-            }
+                    if ($showCount) {
+                        $html .= ' <span class="lp-widget__count">(' . $categories->postCount($category->id) . ')</span>';
+                    }
 
+                    return $html;
+                },
+            );
             echo '</ul></section>';
         });
 
@@ -352,6 +359,54 @@ final class CoreWidgets
     {
         if ($title !== '') {
             echo '<h3 class="lp-widget__title">' . esc_html($title) . '</h3>';
+        }
+    }
+
+    /**
+     * Renders a flat, depth-tagged list (the shape
+     * PageService::publicTreeForWidget()/CategoryService::listAllForTree()
+     * both produce) as a real nested <ul><li> tree — the Pages and
+     * Categories widgets' shared building block (LP-104). $itemHtml gets
+     * one row and returns that row's already-escaped <li> inner content
+     * (an <a> tag, optionally with a trailing count span); this function
+     * only handles the tree structure around it.
+     *
+     * A child's <ul> nests inside its parent's still-open <li>, closed
+     * again once a subsequent row's depth drops back to or below the
+     * parent's — the standard "flat depth list -> nested markup"
+     * approach, since building a real tree in PHP first and recursing
+     * over it would need the same shape the SQL layer already avoids
+     * requiring (see publicTreeForWidget()'s own docblock on why a flat,
+     * ORDER-BY-title query is enough here).
+     *
+     * @param array<int, array{depth: int}> $rows
+     * @param callable(array{depth: int}): string $itemHtml
+     */
+    private static function renderNestedList(array $rows, callable $itemHtml): void
+    {
+        $currentDepth = 0;
+        $first = true;
+
+        foreach ($rows as $row) {
+            $depth = $row['depth'];
+
+            if ($first) {
+                echo '<li>';
+            } elseif ($depth > $currentDepth) {
+                echo '<ul class="lp-widget__list lp-widget__list--nested"><li>';
+            } elseif ($depth < $currentDepth) {
+                echo str_repeat('</li></ul>', $currentDepth - $depth) . '</li><li>';
+            } else {
+                echo '</li><li>';
+            }
+
+            echo $itemHtml($row);
+            $currentDepth = $depth;
+            $first = false;
+        }
+
+        if (!$first) {
+            echo str_repeat('</li></ul>', $currentDepth) . '</li>';
         }
     }
 }

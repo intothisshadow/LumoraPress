@@ -162,14 +162,22 @@ if (!function_exists('core_asset_url')) {
 
 if (!function_exists('render_pagination')) {
     /**
-     * Renders a simple numbered pagination nav for the current path,
-     * preserving it while swapping only the "paged" query parameter.
+     * Renders a numbered pagination nav for the current path, preserving
+     * it while swapping only the "paged" query parameter. Adds
+     * Previous/Next and First/Last controls, and truncates long page
+     * ranges to the pages nearest the start, the end, and the current
+     * page (joined by ellipses) instead of rendering a button per page —
+     * a flat wall of buttons was the original behaviour and became
+     * unusable on listings with dozens of pages (LP-100).
      *
      * @param array{page: int, totalPages: int} $pagination
      */
     function render_pagination(array $pagination, string $label = 'Posts pagination'): void
     {
-        if ($pagination['totalPages'] <= 1) {
+        $current = $pagination['page'];
+        $total = $pagination['totalPages'];
+
+        if ($total <= 1) {
             return;
         }
 
@@ -177,25 +185,74 @@ if (!function_exists('render_pagination')) {
         $path = (string) parse_url($requestUri, PHP_URL_PATH);
         parse_str((string) parse_url($requestUri, PHP_URL_QUERY), $query);
 
-        echo '<nav class="lp-pagination" aria-label="' . esc_attr($label) . '"><ul class="lp-pagination__list">';
-
-        for ($page = 1; $page <= $pagination['totalPages']; $page++) {
-            $isCurrent = $page === $pagination['page'];
-
+        $urlForPage = static function (int $page) use ($path, $query): string {
             if ($page > 1) {
                 $query['paged'] = $page;
             } else {
                 unset($query['paged']);
             }
 
-            $url = $path . ($query !== [] ? '?' . http_build_query($query) : '');
+            return $path . ($query !== [] ? '?' . http_build_query($query) : '');
+        };
 
+        // Renders a Previous/Next/First/Last control: a link when $targetPage
+        // is reachable, or a disabled span at the start/end of the range so
+        // the control's position in the row never shifts between pages.
+        $renderNav = static function (string $visibleText, string $srText, ?int $targetPage) use ($urlForPage): void {
+            $classes = 'lp-pagination__item lp-pagination__item--nav' . ($targetPage === null ? ' is-disabled' : '');
+            $inner = esc_html($visibleText) . ($srText !== '' ? '<span class="lp-visually-hidden">' . esc_html($srText) . '</span>' : '');
+
+            echo '<li class="' . esc_attr($classes) . '">';
+            echo $targetPage === null
+                ? '<span aria-disabled="true">' . $inner . '</span>'
+                : '<a href="' . esc_url($urlForPage($targetPage)) . '">' . $inner . '</a>';
+            echo '</li>';
+        };
+
+        $renderPage = static function (int $page, bool $isCurrent) use ($urlForPage): void {
             echo '<li class="lp-pagination__item' . ($isCurrent ? ' is-current' : '') . '">';
             echo $isCurrent
                 ? '<span aria-current="page">' . esc_html((string) $page) . '</span>'
-                : '<a href="' . esc_url($url) . '">' . esc_html((string) $page) . '</a>';
+                : '<a href="' . esc_url($urlForPage($page)) . '">' . esc_html((string) $page) . '</a>';
             echo '</li>';
+        };
+
+        $renderEllipsis = static function (): void {
+            echo '<li class="lp-pagination__item lp-pagination__item--ellipsis"><span aria-hidden="true">&hellip;</span></li>';
+        };
+
+        echo '<nav class="lp-pagination" aria-label="' . esc_attr($label) . '"><ul class="lp-pagination__list">';
+
+        $renderNav('First', '', $current > 1 ? 1 : null);
+        $renderNav('Prev', ' page', $current > 1 ? $current - 1 : null);
+
+        // Always show the first two and last two pages, plus one page on
+        // either side of the current page, joined by ellipses for any gap
+        // wider than one page — keeps the row short and scannable no
+        // matter how many total pages there are.
+        $edge = 2;
+        $sibling = 1;
+        $lastRendered = 0;
+
+        for ($page = 1; $page <= $total; $page++) {
+            $withinStartEdge = $page <= $edge;
+            $withinEndEdge = $page > $total - $edge;
+            $withinCurrentWindow = $page >= $current - $sibling && $page <= $current + $sibling;
+
+            if (!$withinStartEdge && !$withinEndEdge && !$withinCurrentWindow) {
+                continue;
+            }
+
+            if ($page - $lastRendered > 1) {
+                $renderEllipsis();
+            }
+
+            $renderPage($page, $page === $current);
+            $lastRendered = $page;
         }
+
+        $renderNav('Next', ' page', $current < $total ? $current + 1 : null);
+        $renderNav('Last', '', $current < $total ? $total : null);
 
         echo '</ul></nav>';
     }

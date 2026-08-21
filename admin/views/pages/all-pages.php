@@ -397,11 +397,11 @@ if ($isTreeView) {
                     </select>
                 </p>
                 <p class="lp-field">
-                    <label for="pages-date-from">Created from</label>
+                    <label for="pages-date-from">Date from</label>
                     <input type="date" id="pages-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
                 </p>
                 <p class="lp-field">
-                    <label for="pages-date-to">Created to</label>
+                    <label for="pages-date-to">Date to</label>
                     <input type="date" id="pages-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
                 </p>
                 <button type="submit" class="lp-button">Filter</button>
@@ -507,7 +507,7 @@ if ($isTreeView) {
                                         <?= esc_html($listedPage->status->label()) ?>
                                     </span>
                                 </td>
-                                <td><?= esc_html($listedPage->updatedAt->format('M j, Y')) ?></td>
+                                <td><?= esc_html(($listedPage->publishedAt ?? $listedPage->updatedAt)->format('M j, Y')) ?></td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($canEditPage($listedPage)): ?>
                                         <?php if ($isTrashView): ?>
@@ -625,7 +625,7 @@ if ($isTreeView) {
                         <span class="lp-status-badge lp-status-badge--<?= esc_attr($listedPage->status->value) ?>">
                             <?= esc_html($listedPage->status->label()) ?>
                         </span>
-                        <span class="lp-pages-tree__date"><?= esc_html($listedPage->updatedAt->format('M j, Y')) ?></span>
+                        <span class="lp-pages-tree__date"><?= esc_html(($listedPage->publishedAt ?? $listedPage->updatedAt)->format('M j, Y')) ?></span>
                         <?php if ($canEditPage($listedPage)): ?>
                             <?php $treeDuplicateFormId = 'page-duplicate-form-' . $listedPage->id; ?>
                             <span class="lp-admin__inline-form">

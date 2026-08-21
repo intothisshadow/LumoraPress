@@ -113,7 +113,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <input type="hidden" name="form" value="bulk_regenerate_thumbnails">
                 <input type="hidden" name="missing_only" value="<?= $thumbMissingOnly ? '1' : '0' ?>">
                 <input type="hidden" name="offset" value="<?= $thumbNextOffset ?>">
-                <button type="submit" class="lp-button">Continue</button>
+                <button type="submit" class="lp-button lp-button--primary">Continue</button>
             </form>
         <?php else: ?>
             <p>Done.</p>
@@ -214,7 +214,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <input type="checkbox" name="missing_only" value="1" checked>
             Only generate missing thumbnails
         </label>
-        <button type="submit" class="lp-button">Bulk regenerate thumbnails</button>
+        <button type="submit" class="lp-button lp-button--primary">Bulk regenerate thumbnails</button>
     </form>
     <form method="post" action="<?= esc_url(admin_url('media/thumbnails')) ?>" class="lp-admin__inline-form">
         <?= Csrf::field('cleanup_orphaned_thumbnails') ?>

@@ -409,6 +409,42 @@ final class CategoryService
     }
 
     /**
+     * Non-trashed categories as a flat, depth-tagged list in hierarchical
+     * document order (a parent immediately followed by its own children,
+     * alphabetical among siblings, then the next sibling) — backs the
+     * admin Menus screen's "Add Categories" panel (LP-103), mirroring
+     * PageService::listAllForTree()'s shape so a subcategory renders
+     * indented under its parent there instead of in the same flat,
+     * alphabetized list listAll() produces.
+     *
+     * @return array<int, array{category: Category, depth: int}>
+     */
+    public function listAllForTree(): array
+    {
+        return $this->flattenForTree($this->listAll(), null, 0);
+    }
+
+    /**
+     * @param array<int, Category> $categories
+     * @return array<int, array{category: Category, depth: int}>
+     */
+    private function flattenForTree(array $categories, ?int $parentId, int $depth): array
+    {
+        $result = [];
+
+        foreach ($categories as $category) {
+            if ($category->parentId !== $parentId) {
+                continue;
+            }
+
+            $result[] = ['category' => $category, 'depth' => $depth];
+            $result = [...$result, ...$this->flattenForTree($categories, $category->id, $depth + 1)];
+        }
+
+        return $result;
+    }
+
+    /**
      * Excludes trashed categories — a post keeps its post_categories row
      * for a trashed category (trashing never touches assignments), but it
      * must stop appearing as a clickable badge/link once its own archive

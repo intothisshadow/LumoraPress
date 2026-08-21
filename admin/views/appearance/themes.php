@@ -143,7 +143,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                                 <?= $activateCsrfField ?>
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                <button type="submit" class="lp-button">Activate</button>
+                                <button type="submit" class="lp-button lp-button--primary">Activate</button>
                             </form>
                         <?php endif; ?>
                     </div>

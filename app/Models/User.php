@@ -49,6 +49,13 @@ final class User
          * knows which screen it's asking about.
          */
         public readonly ?string $editorLayoutPreferences = null,
+        /**
+         * LP-087: the admin color scheme this user chose. Always has a
+         * value (defaults to Auto — follow the OS/browser setting) since,
+         * unlike preferredEditor, there is no site-wide theme setting to
+         * defer to via null.
+         */
+        public readonly ThemePreference $themePreference = ThemePreference::Auto,
     ) {
     }
 

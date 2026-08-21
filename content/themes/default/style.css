@@ -653,8 +653,16 @@ img {
     gap: 2rem;
 }
 
+/*
+ * Full-width, above-the-title featured image (design reference: a
+ * classic fansite hero-banner layout) rather than a small side
+ * thumbnail — column direction stacks .lp-post-list__thumbnail above
+ * .lp-post-list__body since both are already siblings in that DOM
+ * order in index.php/archive.php.
+ */
 .lp-post-list__item {
     display: flex;
+    flex-direction: column;
     gap: 1.25rem;
     padding-bottom: 2rem;
     border-bottom: 1px solid var(--lp-border);
@@ -666,16 +674,22 @@ img {
 }
 
 .lp-post-list__thumbnail {
-    flex-shrink: 0;
     display: block;
+    width: 100%;
 }
 
 .lp-post-list__thumbnail img {
     display: block;
-    width: 120px;
-    height: 120px;
+    width: 100%;
+    height: 320px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: var(--lp-radius);
+}
+
+@media (max-width: 720px) {
+    .lp-post-list__thumbnail img {
+        height: 200px;
+    }
 }
 
 .lp-post-list__body {
@@ -848,6 +862,23 @@ img {
     color: #fff;
 }
 
+.lp-pagination__item--nav a,
+.lp-pagination__item--nav span {
+    font-weight: 600;
+}
+
+.lp-pagination__item--nav.is-disabled span {
+    color: var(--lp-border);
+    cursor: not-allowed;
+}
+
+.lp-pagination__item--ellipsis span {
+    min-width: 1.5rem;
+    padding: 0.35rem 0.2rem;
+    border: none;
+    color: var(--lp-border);
+}
+
 /* =========================================================
    Sidebar & widgets
    ========================================================= */
@@ -894,6 +925,18 @@ img {
 .lp-widget__count {
     color: var(--lp-text-muted);
     font-size: 0.85em;
+}
+
+/* Nested Pages/Categories widget output (LP-104) — a child page's or
+   subcategory's own <ul> lives inside its parent's <li>, indented by
+   padding rather than margin so the parent's own bottom border (if a
+   theme adds one later) wouldn't get cut short by a child list sitting
+   outside it. */
+
+.lp-widget__list--nested {
+    margin-top: 0.5rem;
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--lp-border);
 }
 
 .lp-widget__nav-menu {
@@ -1365,4 +1408,57 @@ img {
     width: 100%;
     height: 100%;
     border: 0;
+}
+
+/* =========================================================
+   Downloads List (LPP-007)
+   ========================================================= */
+/*
+ * Rendered by the WordPress Importer plugin's DownloadsShortcode
+ * (LPP-004/LPP-007) in place of a migrated [sdm_show_dl_from_category]
+ * shortcode — one list per Folder, mixing real Media Manager downloads
+ * with external-link Redirects.
+ */
+.lp-downloads-list {
+    margin: 1.5em 0;
+    padding: 1em 1.25em;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+}
+
+.lp-downloads-list__title {
+    margin: 0 0 0.75em;
+    font-size: 1.1em;
+}
+
+.lp-downloads-list__items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-downloads-list__item {
+    padding: 0.5em 0;
+    border-top: 1px solid var(--lp-border);
+}
+
+.lp-downloads-list__item:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.lp-downloads-list__link {
+    font-weight: 600;
+}
+
+.lp-downloads-list__size {
+    color: var(--lp-text-muted);
+    font-size: 0.9em;
+}
+
+.lp-downloads-list__description {
+    margin-top: 0.25em;
+    color: var(--lp-text-muted);
+    font-size: 0.95em;
 }

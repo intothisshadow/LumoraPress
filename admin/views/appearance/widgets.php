@@ -62,7 +62,13 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
         'search' => [$titleField],
         'nav_menu' => [$titleField, ['key' => 'location', 'label' => 'Menu', 'type' => 'select', 'options' => $kernel->menus->locations()]],
-        'pages' => [$titleField, ['key' => 'limit', 'label' => 'Number of pages to show', 'type' => 'number']],
+        // No "number to show" limit (LP-104) — the widget now renders every
+        // page as a nested tree, matching WordPress's own core Pages
+        // widget, which has never had one either. A hard item limit on a
+        // tree is ambiguous (it can orphan a shown child whose parent fell
+        // outside the cut, or include a childless parent while excluding
+        // its children), so the widget always shows the full page tree.
+        'pages' => [$titleField],
         'categories' => [$titleField, ['key' => 'show_count', 'label' => 'Show post counts', 'type' => 'checkbox']],
         'recent_posts' => [$titleField, ['key' => 'limit', 'label' => 'Number of posts to show', 'type' => 'number']],
         'recent_comments' => [$titleField, ['key' => 'limit', 'label' => 'Number of comments to show', 'type' => 'number']],
@@ -498,7 +504,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                         <option value="<?= esc_attr($type) ?>"><?= esc_html($info['label']) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="submit" class="lp-button">Add Widget</button>
+                <button type="submit" class="lp-button lp-button--primary">Add Widget</button>
             </form>
         <?php endif; ?>
     </section>

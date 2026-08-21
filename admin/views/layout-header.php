@@ -20,15 +20,43 @@
 /** @var array<int, array{label: string, url: string|null}> $breadcrumbs */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\ThemePreference;
+
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
 }
 
 $version = require LUMORA_ROOT . '/version.php';
+
+/*
+ * LP-087: rendered server-side from the already-authenticated
+ * $currentUser, before the stylesheet is even requested, so there's no
+ * flash-of-wrong-theme and no cookie/JS needed. Auto (the default)
+ * omits the attribute entirely, leaving admin.css's
+ * prefers-color-scheme media query as the sole source of truth — same
+ * as before this feature existed.
+ */
+$themeAttribute = match ($currentUser->themePreference) {
+    ThemePreference::Light => ' data-theme="light"',
+    ThemePreference::Dark => ' data-theme="dark"',
+    ThemePreference::Auto => '',
+};
+
+/*
+ * LP-087: the sidebar's quick toggle only ever switches between Light and
+ * Dark, never Auto — starting from Auto, clicking it commits to Dark
+ * first (an arbitrary but predictable direction). Getting back to "follow
+ * the system" is a deliberate choice made on the Profile page's
+ * Appearance panel, not something the quick toggle cycles through.
+ */
+$isDarkPreference = $currentUser->themePreference === ThemePreference::Dark;
+$nextThemePreference = $isDarkPreference ? ThemePreference::Light : ThemePreference::Dark;
+$themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark mode';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"<?= $themeAttribute ?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -38,11 +66,12 @@ $version = require LUMORA_ROOT . '/version.php';
 <body class="lp-admin">
 <a class="lp-skip-link" href="#lp-admin-content">Skip to content</a>
 <div class="lp-admin__shell">
-    <aside class="lp-admin__sidebar">
+    <aside class="lp-admin__sidebar" id="lp-admin-mobile-sidebar">
         <div class="lp-admin__brand">
             Lumora Press
             <span class="lp-admin__version"><?= esc_html((string) $version['version']) ?></span>
         </div>
+        <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
         <div class="lp-admin__site-link">
             <a href="<?= esc_url(site_url()) ?>" target="_blank" rel="noopener">&larr; View Site</a>
         </div>
@@ -87,11 +116,34 @@ $version = require LUMORA_ROOT . '/version.php';
             </ul>
         </nav>
         <div class="lp-admin__user">
-            <span class="lp-admin__user-name"><?= esc_html($currentUser->displayName) ?></span>
+            <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
+            <div class="lp-admin__user-row">
+                <span class="lp-admin__user-name"><?= esc_html($currentUser->displayName) ?></span>
+                <form method="post" action="" class="lp-admin__theme-toggle-form">
+                    <?= Csrf::field('quick_theme_toggle') ?>
+                    <input type="hidden" name="form" value="quick_theme_toggle">
+                    <input type="hidden" name="theme_preference" value="<?= esc_attr($nextThemePreference->value) ?>">
+                    <button type="submit" class="lp-admin__theme-toggle" title="<?= esc_attr($themeToggleLabel) ?>" aria-label="<?= esc_attr($themeToggleLabel) ?>">
+                        <?= $isDarkPreference ? '☀️' : '🌙' ?>
+                    </button>
+                </form>
+            </div>
             <a class="lp-admin__logout" href="<?= esc_url(admin_url('logout')) ?>">Log Out</a>
         </div>
     </aside>
+    <?php /* LP-096: dismissible backdrop behind the mobile off-canvas sidebar drawer; hidden entirely above the 782px breakpoint (see admin.css), and above it via display:none regardless of state. */ ?>
+    <div class="lp-admin__sidebar-backdrop" data-lp-mobile-nav-backdrop></div>
     <main id="lp-admin-content" class="lp-admin__content">
+        <?php /* LP-096: hamburger toggle for the mobile off-canvas sidebar; hidden entirely above the 782px breakpoint via admin.css, not just visually collapsed, so it's never in the desktop tab order. */ ?>
+        <button
+            type="button"
+            class="lp-admin__mobile-nav-toggle"
+            data-lp-mobile-nav-toggle
+            aria-expanded="false"
+            aria-controls="lp-admin-mobile-sidebar"
+        >
+            <span aria-hidden="true">&#9776;</span> Menu
+        </button>
         <?php if (count($breadcrumbs) > 1): ?>
             <nav class="lp-admin__breadcrumbs" aria-label="Breadcrumb">
                 <ol>

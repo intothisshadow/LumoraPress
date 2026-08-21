@@ -887,13 +887,20 @@ final class PostService
             $params['tag_id'] = (int) $filters['tagId'];
         }
 
+        // Filters/sorts by the post's own date (published_at, falling
+        // back to created_at for a Draft or other status with no
+        // publish date yet) rather than created_at alone — matches the
+        // admin list's own "Date" column and the public theme's
+        // the_date(), so "newest first"/a date-range filter reflects
+        // the post's actual date instead of when its database row was
+        // inserted (e.g. a bulk import's own timestamp).
         if (($filters['dateFrom'] ?? '') !== '') {
-            $conditions[] = 'p.created_at >= :date_from';
+            $conditions[] = 'COALESCE(p.published_at, p.created_at) >= :date_from';
             $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
         }
 
         if (($filters['dateTo'] ?? '') !== '') {
-            $conditions[] = 'p.created_at <= :date_to';
+            $conditions[] = 'COALESCE(p.published_at, p.created_at) <= :date_to';
             $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
         }
 
@@ -908,7 +915,7 @@ final class PostService
 
         $rows = $this->database->fetchAll(
             'SELECT p.* FROM ' . $this->table() . " p{$joins} {$where}"
-                . " ORDER BY p.created_at DESC LIMIT {$perPage} OFFSET {$offset}",
+                . " ORDER BY COALESCE(p.published_at, p.created_at) DESC LIMIT {$perPage} OFFSET {$offset}",
             $params,
         );
 

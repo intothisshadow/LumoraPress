@@ -36,7 +36,7 @@ $archive_description ??= null;
                     <article class="lp-post-list__item">
                         <?php if (theme_option('show_featured_image_in_listings') !== '0' && has_post_thumbnail($post)): ?>
                             <div class="lp-post-list__thumbnail">
-                                <?php the_post_thumbnail_lightbox($post, 'small'); ?>
+                                <?php the_post_thumbnail_lightbox($post, 'large'); ?>
                             </div>
                         <?php endif; ?>
                         <div class="lp-post-list__body">

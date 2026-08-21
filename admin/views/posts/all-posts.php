@@ -15,11 +15,10 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\PostsController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
-use LumoraPress\Models\PostVisibility;
-use LumoraPress\Models\RevisionableType;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -30,6 +29,7 @@ $postService = $kernel->posts;
 $canPublish = $currentUser->can('publish_posts');
 $canDeletePosts = $currentUser->can('delete_posts');
 $canEditOthersPosts = $currentUser->can('edit_others_posts');
+$canEditPosts = $currentUser->can('edit_posts');
 
 $error = null;
 
@@ -39,181 +39,37 @@ $error = null;
  */
 $canEditPost = static fn (Post $post): bool => $canEditOthersPosts || $post->authorId === $currentUser->id;
 
+/*
+ * POST handling itself lives in PostsController (LP-082, following the
+ * ThemesController precedent — see DECISIONS.md); this view only reads
+ * the request, dispatches to the matching controller method, and turns
+ * the returned AdminActionResult into either a redirect or an inline
+ * $error string.
+ */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'quick_draft' && Csrf::verify('quick_draft', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $title = trim((string) ($_POST['title'] ?? ''));
+    if ($form !== '') {
+        $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->tags, $kernel->revisions, $kernel->media, $kernel->thumbnails, $kernel->content);
 
-        if ($title !== '') {
-            $post = $postService->create(
-                title: $title,
-                content: trim((string) ($_POST['content'] ?? '')),
-                excerpt: '',
-                authorId: $currentUser->id,
-                status: PostStatus::Draft,
-            );
+        $result = match ($form) {
+            'quick_draft' => $controller->quickDraft($_POST, $currentUser->id, $csrfToken),
+            'trash' => $controller->trash($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
+            'restore_post' => $controller->restorePost($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
+            'delete_permanently' => $controller->deletePermanently($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
+            'duplicate' => $controller->duplicate($_POST, $currentUser->id, $canEditOthersPosts, $csrfToken),
+            'bulk_action' => $controller->bulkAction($_POST, $currentUser->id, $canPublish, $canDeletePosts, $canEditOthersPosts, $canEditPosts, $csrfToken),
+            default => null,
+        };
 
-            header('Location: ' . admin_url('posts/new') . '?id=' . $post->id);
-            exit;
-        }
-
-        $error = 'A title is required to save a draft.';
-    } elseif ($form === 'trash') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('post_trash_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/all-posts'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $postService->findById($id) : null;
-
-        if ($existing !== null && $canDeletePosts && $canEditPost($existing)) {
-            $postService->trash($id);
-        }
-
-        header('Location: ' . admin_url('posts/all-posts') . '?trashed=1');
-        exit;
-    } elseif ($form === 'restore_post') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('post_restore_post_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/all-posts'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $postService->findById($id) : null;
-
-        if ($existing !== null && $canDeletePosts && $canEditPost($existing)) {
-            $postService->restore($id);
-        }
-
-        header('Location: ' . admin_url('posts/all-posts') . '?status=' . PostStatus::Trashed->value . '&post_restored=1');
-        exit;
-    } elseif ($form === 'delete_permanently') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('post_delete_permanently_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/all-posts'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $postService->findById($id) : null;
-
-        // Permanent delete is only offered (and only honoured) for posts
-        // already in the Trash — Move to Trash is the only reachable path
-        // to actually removing a post from every other status, the same
-        // "delete means trash first" guardrail WordPress's own list table
-        // enforces.
-        if ($existing !== null && $existing->status === PostStatus::Trashed && $canDeletePosts && $canEditPost($existing)) {
-            $kernel->revisions->deleteAllFor(RevisionableType::Post, $id);
-            $postService->delete($id);
-        }
-
-        header('Location: ' . admin_url('posts/all-posts') . '?status=' . PostStatus::Trashed->value . '&post_deleted=1');
-        exit;
-    } elseif ($form === 'duplicate') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('post_duplicate_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/all-posts'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $postService->findById($id) : null;
-
-        if ($existing !== null && $canEditPost($existing)) {
-            $duplicate = $postService->duplicate($id, $currentUser->id);
-
-            if ($duplicate !== null) {
-                $kernel->categories->assignToPost(
-                    $duplicate->id,
-                    array_map(static fn ($category) => (string) $category->id, $kernel->categories->categoriesForPost($existing->id)),
-                );
-                $kernel->tags->assignToPost(
-                    $duplicate->id,
-                    array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($existing->id)),
-                );
-                $postService->replaceMetaForPost($duplicate->id, $postService->metaForPost($existing->id));
-
-                header('Location: ' . admin_url('posts/new') . '?id=' . $duplicate->id . '&duplicated=1');
-                exit;
-            }
-        }
-
-        header('Location: ' . admin_url('posts/all-posts'));
-        exit;
-    } elseif ($form === 'bulk_action' && Csrf::verify('posts_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $bulkAction = (string) ($_POST['bulk_action'] ?? '');
-        $ids = array_values(array_filter(array_map('intval', is_array($_POST['post_ids'] ?? null) ? $_POST['post_ids'] : [])));
-        $editableIds = array_values(array_filter($ids, static function (int $id) use ($postService, $canEditPost): bool {
-            $existing = $postService->findById($id);
-
-            return $existing !== null && $canEditPost($existing);
-        }));
-
-        // Change author/Change category/Change visibility (LP-008) act on
-        // the whole editable selection in one PostService/CategoryService
-        // call rather than per-id inside the loop below, since they're not
-        // gated per-post the way trash/publish/etc. already are one row at
-        // a time.
-        if ($bulkAction === 'change_author' && $canEditOthersPosts) {
-            $targetAuthorId = (int) ($_POST['target_author_id'] ?? 0);
-
-            if ($targetAuthorId > 0) {
-                $postService->bulkReassignAuthor($editableIds, $targetAuthorId);
+        if ($result !== null) {
+            if ($result->redirectUrl !== null) {
+                redirect($result->redirectUrl);
             }
 
-            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
+            $error = $result->errorMessage;
         }
-
-        if ($bulkAction === 'add_category' && $currentUser->can('edit_posts')) {
-            $targetCategoryId = (int) ($_POST['target_category_id'] ?? 0);
-
-            if ($targetCategoryId > 0) {
-                $kernel->categories->bulkAddToPosts($editableIds, $targetCategoryId);
-            }
-
-            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
-        }
-
-        if (($bulkAction === 'set_public' || $bulkAction === 'set_private') && $canPublish) {
-            $postService->bulkSetVisibility($editableIds, $bulkAction === 'set_private' ? PostVisibility::Private : PostVisibility::Public);
-
-            header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
-        }
-
-        foreach ($editableIds as $id) {
-            $existing = $postService->findById($id);
-
-            if ($existing === null) {
-                continue;
-            }
-
-            if ($bulkAction === 'trash' && $canDeletePosts) {
-                $postService->trash($id);
-            } elseif ($bulkAction === 'restore' && $canDeletePosts) {
-                $postService->restore($id);
-            } elseif ($bulkAction === 'delete_permanently' && $canDeletePosts && $existing->status === PostStatus::Trashed) {
-                $kernel->revisions->deleteAllFor(RevisionableType::Post, $id);
-                $postService->delete($id);
-            } elseif ($bulkAction === 'draft' && $canPublish) {
-                $postService->setStatus($id, PostStatus::Draft);
-            } elseif ($bulkAction === 'publish' && $canPublish) {
-                $postService->setStatus($id, PostStatus::Published);
-            }
-        }
-
-        header('Location: ' . admin_url('posts/all-posts') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-        exit;
     }
 }
 ?>
@@ -331,11 +187,11 @@ $allTagsForFilter = $kernel->tags->listAll();
                     </select>
                 </p>
                 <p class="lp-field">
-                    <label for="posts-date-from">Created from</label>
+                    <label for="posts-date-from">Date from</label>
                     <input type="date" id="posts-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
                 </p>
                 <p class="lp-field">
-                    <label for="posts-date-to">Created to</label>
+                    <label for="posts-date-to">Date to</label>
                     <input type="date" id="posts-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
                 </p>
                 <button type="submit" class="lp-button">Filter</button>
@@ -424,7 +280,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                                     <?= esc_html($listedPost->status->label()) ?>
                                 </span>
                             </td>
-                            <td><?= esc_html($listedPost->updatedAt->format('M j, Y')) ?></td>
+                            <td><?= esc_html(($listedPost->publishedAt ?? $listedPost->updatedAt)->format('M j, Y')) ?></td>
                             <td class="lp-admin__row-actions">
                                 <?php if ($canEditPost($listedPost)): ?>
                                     <?php if ($isTrashView): ?>

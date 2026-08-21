@@ -530,7 +530,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                                 </td>
                                 <td><?= esc_html($listedUser->displayName) ?></td>
                                 <td><?= esc_html($listedUser->email) ?></td>
-                                <td><?= esc_html($listedUser->role->label()) ?></td>
+                                <td><span class="lp-status-badge lp-status-badge--role-<?= esc_attr($listedUser->role->value) ?>"><?= esc_html($listedUser->role->label()) ?></span></td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($isTrashView): ?>
                                         <?php $restoreFormId = 'user-restore-form-' . $listedUser->id; ?>

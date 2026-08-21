@@ -418,7 +418,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                     <option value="<?= esc_attr($menuId) ?>" <?= $menuId === $currentMenuId ? 'selected' : '' ?>><?= esc_html($menu['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <noscript><button type="submit" class="lp-button">Select</button></noscript>
+            <noscript><button type="submit" class="lp-button lp-button--primary">Select</button></noscript>
         </form>
     <?php endif; ?>
 
@@ -427,7 +427,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
         <input type="hidden" name="form" value="create_menu">
         <label class="lp-visually-hidden" for="new-menu-name">New menu name</label>
         <input type="text" id="new-menu-name" name="name" placeholder="New menu name">
-        <button type="submit" class="lp-button">Create Menu</button>
+        <button type="submit" class="lp-button lp-button--primary">Create Menu</button>
     </form>
 </section>
 
@@ -441,7 +441,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
             <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
             <label class="lp-visually-hidden" for="rename-menu-name">Menu name</label>
             <input type="text" id="rename-menu-name" name="name" value="<?= esc_attr($currentMenu['name']) ?>">
-            <button type="submit" class="lp-button">Rename</button>
+            <button type="submit" class="lp-button lp-button--primary">Rename</button>
         </form>
 
         <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-menus-manage-form">
@@ -479,26 +479,31 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                         <label for="custom-link-label">Link Text</label>
                         <input type="text" id="custom-link-label" name="label">
                     </p>
-                    <button type="submit" class="lp-button">Add to Menu</button>
+                    <button type="submit" class="lp-button lp-button--primary">Add to Menu</button>
                 </form>
             </details>
 
             <?php
             $addPanels = [
+                // Pages and Categories are hierarchical (LP-103) — items
+                // carry a 'depth' so the checkbox list below can indent a
+                // child under its parent, matching the admin "All Pages"
+                // tree view. Posts and Tags have no hierarchy in this app,
+                // so their items stay flat/alphabetical with no depth.
                 'add_pages' => ['label' => 'Pages', 'items' => array_map(
-                    static fn (array $page): array => ['id' => $page['id'], 'label' => $page['title']],
+                    static fn (array $page): array => ['id' => $page['id'], 'label' => $page['title'], 'depth' => $page['depth']],
                     $kernel->pages->listAllForMenuSelect(),
                 )],
                 'add_posts' => ['label' => 'Posts', 'items' => array_map(
-                    static fn (array $post): array => ['id' => $post['id'], 'label' => $post['title']],
+                    static fn (array $post): array => ['id' => $post['id'], 'label' => $post['title'], 'depth' => 0],
                     $kernel->posts->listAllForMenuSelect(),
                 )],
                 'add_categories' => ['label' => 'Categories', 'items' => array_map(
-                    static fn ($category): array => ['id' => $category->id, 'label' => $category->name],
-                    $kernel->categories->listAll(),
+                    static fn (array $row): array => ['id' => $row['category']->id, 'label' => $row['category']->name, 'depth' => $row['depth']],
+                    $kernel->categories->listAllForTree(),
                 )],
                 'add_tags' => ['label' => 'Tags', 'items' => array_map(
-                    static fn ($tag): array => ['id' => $tag->id, 'label' => $tag->name],
+                    static fn ($tag): array => ['id' => $tag->id, 'label' => $tag->name, 'depth' => 0],
                     $kernel->tags->listAll(),
                 )],
             ];
@@ -516,7 +521,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                             <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
                             <ul class="lp-menus-add-panel__list">
                                 <?php foreach ($panel['items'] as $option): ?>
-                                    <li>
+                                    <li<?= $option['depth'] > 0 ? ' data-style-margin-left="' . ((int) $option['depth'] * 1.5) . 'rem"' : '' ?>>
                                         <label class="lp-field--checkbox">
                                             <input type="checkbox" name="selected_ids[]" value="<?= (int) $option['id'] ?>">
                                             <?= esc_html($option['label']) ?>
@@ -524,7 +529,7 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
-                            <button type="submit" class="lp-button">Add to Menu</button>
+                            <button type="submit" class="lp-button lp-button--primary">Add to Menu</button>
                         </form>
                     <?php endif; ?>
                 </details>

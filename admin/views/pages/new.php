@@ -388,6 +388,20 @@ $savedOrder = array_values(array_intersect($savedLayout['order'], $availableBoxe
 // preferences were last saved).
 $boxOrder = array_values(array_unique(array_merge($savedOrder, $availableBoxes)));
 $collapsedBoxes = array_values(array_intersect($savedLayout['collapsed'], $collapsibleBoxes));
+
+/*
+ * updateEditorLayoutPreferences() always writes order and collapsed
+ * together as one snapshot (see UserService), so a real save never
+ * leaves order empty — an empty $savedLayout['order'] reliably means
+ * this user has never customized this screen's sidebar at all, not
+ * that they explicitly saved zero collapsed boxes. SEO defaults to
+ * collapsed on that first-ever visit, matching classic WordPress's
+ * own postbox defaults for optional/secondary fields — see the
+ * matching comment in admin/views/posts/new.php.
+ */
+if ($savedLayout['order'] === []) {
+    $collapsedBoxes = array_values(array_intersect(['seo'], $collapsibleBoxes));
+}
 ?>
 <section class="lp-admin__panel">
     <form method="post" action="<?= esc_url(admin_url('pages/new')) ?>" enctype="multipart/form-data">

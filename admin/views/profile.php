@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\ThemePreference;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -53,6 +54,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 exit;
             }
         }
+    } elseif ($form === 'theme_preference' && Csrf::verify('theme_preference', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $selected = trim((string) ($_POST['theme_preference'] ?? ''));
+        $preference = ThemePreference::tryFrom($selected);
+
+        if ($preference === null) {
+            $error = 'Please choose a valid theme.';
+        } else {
+            $kernel->users->updateThemePreference($currentUser->id, $preference);
+
+            header('Location: ' . admin_url('profile') . '?saved=1');
+            exit;
+        }
     }
 }
 ?>
@@ -65,6 +78,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
 <?php endif; ?>
+
+<section class="lp-admin__panel">
+    <h2>Appearance</h2>
+
+    <form method="post" action="<?= esc_url(admin_url('profile')) ?>">
+        <?= Csrf::field('theme_preference') ?>
+        <input type="hidden" name="form" value="theme_preference">
+
+        <p class="lp-field">
+            <label for="theme-preference">Admin color scheme</label>
+            <select id="theme-preference" name="theme_preference">
+                <?php foreach (ThemePreference::cases() as $themeOption): ?>
+                    <option value="<?= esc_attr($themeOption->value) ?>" <?= $currentUser->themePreference === $themeOption ? 'selected' : '' ?>>
+                        <?= esc_html($themeOption->label()) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">"Follow System" matches your OS or browser's own light/dark setting.</span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
+    </form>
+</section>
 
 <section class="lp-admin__panel">
     <h2>Editor</h2>
