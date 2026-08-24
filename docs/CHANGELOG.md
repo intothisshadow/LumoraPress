@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: post-import thumbnail regeneration and content
+  verification (LPP-004 Post-Import): two finalization stages now
+  always run at the end of every import. Imported media only ever had
+  its metadata recorded, not its thumbnail size variants (unlike a
+  normal admin upload) — those are now regenerated automatically. A
+  verification pass then confirms every row the batch created still
+  resolves, and that a post/page's own featured image still resolves to
+  a real Media item, adding any problem found to the same warnings list
+  every other stage already reports through.
 - WordPress Importer: dry run, resumable imports, live progress, and a
   stage delay (LPP-004 Import Options): a new "Preview (Dry Run)" form
   reports approximate per-content-type counts from the source database

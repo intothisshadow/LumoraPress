@@ -54,6 +54,7 @@ use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\TagService;
+use LumoraPress\Services\ThumbnailService;
 use LumoraPress\Services\UserService;
 use RuntimeException;
 use Throwable;
@@ -76,7 +77,12 @@ use Throwable;
  * separate pass afterward. Menus/Widgets are imported last because menu
  * items need Pages/Posts/Categories already imported (to resolve a menu
  * item's real permalink) and widgets need nothing but are ordered after
- * for symmetry with Stage 8's own "Menus, Widgets" naming.
+ * for symmetry with Stage 8's own "Menus, Widgets" naming. Two
+ * finalization stages (Post-Import) always run last, regardless of
+ * which content types were selected: regenerateThumbnails() (media
+ * imported here never goes through the normal upload-time thumbnail
+ * generation path) and verifyImport() (a defensive integrity check over
+ * everything this batch actually created).
  *
  * Scope for this first pass (see LPP-004's own TODO entry for the full
  * list of what's deferred): no WXR .xml path, no skip-vs-overwrite-
@@ -154,6 +160,7 @@ final class WordPressImportService
         private readonly PageService $pages,
         private readonly MediaService $media,
         private readonly MediaStatsService $mediaStats,
+        private readonly ThumbnailService $thumbnails,
         private readonly CommentService $comments,
         private readonly CategoryService $categories,
         private readonly TagService $tags,
@@ -236,6 +243,13 @@ final class WordPressImportService
      * content is built, menus/widgets last since they depend on
      * pages/posts/categories/tags already existing.
      *
+     * 'thumbnails' and 'verify' (Post-Import) are always appended last,
+     * unconditionally — neither is a content type with its own toggle;
+     * they're finalization steps for whatever *did* get imported. Both
+     * degrade to a real no-op when there's nothing to do (an empty
+     * `idsForBatch()` loop), so including them even when, say, every
+     * content type was deselected costs nothing.
+     *
      * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool} $options
      * @return array<int, string>
      */
@@ -254,7 +268,11 @@ final class WordPressImportService
             'widgets' => $options['widgets'] ?? true,
         ];
 
-        return array_values(array_filter(array_keys($requested), static fn (string $stage): bool => $requested[$stage]));
+        $stages = array_values(array_filter(array_keys($requested), static fn (string $stage): bool => $requested[$stage]));
+        $stages[] = 'thumbnails';
+        $stages[] = 'verify';
+
+        return $stages;
     }
 
     /**
@@ -275,6 +293,8 @@ final class WordPressImportService
             'comments' => 'Importing comments',
             'menus' => 'Importing menus',
             'widgets' => 'Importing widgets',
+            'thumbnails' => 'Regenerating thumbnails',
+            'verify' => 'Verifying imported content',
             default => ucfirst(str_replace('_', ' ', $stage)),
         };
     }
@@ -561,6 +581,88 @@ final class WordPressImportService
             case 'widgets':
                 $this->importWidgets($batchId);
                 break;
+            case 'thumbnails':
+                $this->regenerateThumbnails($batchId);
+                break;
+            case 'verify':
+                $this->verifyImport($batchId);
+                break;
+        }
+    }
+
+    /**
+     * Post-Import — regenerates size variants for every image this batch
+     * imported. Both importMedia() and importDownloads() bring files in
+     * via MediaImporter::importFromLocalFile() -> MediaService::
+     * registerExistingFile(), which only ever inserts the media row's own
+     * metadata (dimensions, hash) — unlike a normal admin upload
+     * (admin/views/media/upload.php), nothing along that path calls
+     * ThumbnailService at all, so an imported image would otherwise have
+     * no thumbnail rows until something else happened to regenerate them.
+     * ThumbnailService::regenerate() itself already no-ops safely for a
+     * non-image file, a missing source file, or a corrupt/unsupported
+     * image (see its own docblock) — never throws — so every id
+     * recorded under this batch is regenerated unconditionally rather
+     * than pre-filtering by mime type here too.
+     */
+    private function regenerateThumbnails(string $batchId): void
+    {
+        foreach ($this->registry->idsForBatch($batchId, 'media') as $entry) {
+            $this->thumbnails->regenerate($entry['contentId']);
+        }
+    }
+
+    /**
+     * Post-Import — a defensive integrity check, not a redundant repeat
+     * of what run() already caught inline: every id this batch's own
+     * ContentImportRegistry rows point at should still resolve to a
+     * real row (catching, for instance, something else deleting content
+     * mid-import, or a future regression in one of the Importer
+     * classes), and a post/page's own featured_image_id should still
+     * resolve to a real Media row rather than a media id whose own
+     * import step failed *after* the post/page referencing it had
+     * already been created. Findings are appended to warnings() the
+     * same way every other stage's own problems are, rather than a
+     * separate report — the admin already reads one combined warnings
+     * list after every import.
+     */
+    private function verifyImport(string $batchId): void
+    {
+        $lookups = [
+            'user' => fn (int $id): bool => $this->users->findById($id) !== null,
+            'category' => fn (int $id): bool => $this->categories->findById($id) !== null,
+            'tag' => fn (int $id): bool => $this->tags->findById($id) !== null,
+            'folder' => fn (int $id): bool => $this->folders->findById($id) !== null,
+            'media' => fn (int $id): bool => $this->media->find($id) !== null,
+            'page' => fn (int $id): bool => $this->pages->findById($id) !== null,
+            'post' => fn (int $id): bool => $this->posts->findById($id) !== null,
+            'comment' => fn (int $id): bool => $this->comments->findById($id) !== null,
+            'redirect' => fn (int $id): bool => $this->redirects->find($id) !== null,
+            'download' => fn (int $id): bool => $this->downloads === null || $this->downloads->findById($id) !== null,
+        ];
+
+        foreach ($lookups as $contentType => $exists) {
+            foreach ($this->registry->idsForBatch($batchId, $contentType) as $entry) {
+                if (!$exists($entry['contentId'])) {
+                    $this->warnings[] = "Verification: imported {$contentType} #{$entry['contentId']} could not be found after import.";
+                }
+            }
+        }
+
+        foreach ($this->registry->idsForBatch($batchId, 'post') as $entry) {
+            $post = $this->posts->findById($entry['contentId']);
+
+            if ($post?->featuredImageId !== null && $this->media->find($post->featuredImageId) === null) {
+                $this->warnings[] = "Verification: post #{$post->id} (\"{$post->title}\") has a featured image reference that no longer resolves.";
+            }
+        }
+
+        foreach ($this->registry->idsForBatch($batchId, 'page') as $entry) {
+            $page = $this->pages->findById($entry['contentId']);
+
+            if ($page?->featuredImageId !== null && $this->media->find($page->featuredImageId) === null) {
+                $this->warnings[] = "Verification: page #{$page->id} (\"{$page->title}\") has a featured image reference that no longer resolves.";
+            }
         }
     }
 

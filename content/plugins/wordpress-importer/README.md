@@ -103,6 +103,16 @@ direct database connection plus a local copy of the source site's
   never a local/staging copy, to avoid hammering a shared-hosting
   site's database and web server back-to-back for the whole import's
   duration.
+- **Post-import finalization**: two more stages always run last,
+  regardless of which content types were selected. Thumbnail size
+  variants are regenerated for every imported image — the import path
+  only ever inserts a media row's own metadata, unlike a normal admin
+  upload, so nothing generates thumbnails for it otherwise. A
+  verification pass then confirms every id this batch created still
+  resolves to a real row, and that a post/page's own featured image
+  still resolves to a real Media item — any problem found is added to
+  the same warnings list every other stage's own problems already
+  appear in.
 
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-004 for the full checklist)
 
@@ -115,9 +125,8 @@ key to write into yet. There's still no skip-vs-overwrite-existing-
 content choice — idempotency is a hard "one import at a time, remove or
 resume before starting another" guard, matching Dummy Content; real
 skip/overwrite semantics would need matching each row by external id
-across every importer type. Internal post-to-post/page link rewriting,
-a redirect-mapping report, and regenerating thumbnail size variants
-aren't built either.
+across every importer type. Internal post-to-post/page link rewriting
+and a redirect-mapping report aren't built either.
 
 ## Notes
 
