@@ -52,6 +52,8 @@ use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Theme\ActiveAuth;
+use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
@@ -579,10 +581,14 @@ require LUMORA_ROOT . '/include/author-functions.php';
  * Authors/FeaturedImages above, for the same reason (themes have no route
  * to PermalinkService of their own). ActivePages backs the same file's
  * privacy_policy_url(), which needs to resolve the configured Privacy
- * Policy Page id to a live Page.
+ * Policy Page id to a live Page. ActiveCategories backs post_categories()/
+ * the_post_categories(); ActiveAuth backs edit_post_link()/edit_page_link(),
+ * which need to know who (if anyone) is currently signed in.
  */
 Permalinks::set($permalinks);
 ActivePages::set($pages);
+ActiveCategories::set($categories);
+ActiveAuth::set($auth);
 require LUMORA_ROOT . '/include/permalink-functions.php';
 
 /*

@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- New theme template tags: `post_categories()`/`the_post_categories()`
+  (the Categories a post belongs to, rendered as a linked list) and
+  `edit_post_link()`/`edit_page_link()` (an admin edit-screen link,
+  shown only to a signed-in visitor actually allowed to edit that
+  specific post/page — the same permission check the admin list
+  screens already use).
 - Privacy Policy Page: a new Settings &rsaquo; Privacy admin screen lets
   an administrator name an existing Page as the site's privacy policy.
   A new `privacy_policy_url()` template tag resolves it for themes —
