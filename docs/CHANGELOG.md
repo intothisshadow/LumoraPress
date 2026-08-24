@@ -6,6 +6,21 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: HTML-aware image reference rewriting (LPP-004 URL
+  & Link Migration): the original plain string-replace over each
+  attachment's exact full-size guid URL is replaced with a real HTML
+  parse (`ContentImageRewriter`) that resolves both the full-size path
+  and any WordPress-generated derivative filename (`cover-300x200.jpg`
+  — previously left pointing at the old site) back to the same
+  imported attachment. `srcset`/`sizes` and WordPress-only classes
+  (`wp-image-123`, `size-large`) are stripped; alignment classes are
+  kept as-is, since the default theme's own editor already uses the
+  same class names; `alt`/`width`/`height`/`title` are left untouched;
+  `<figure>`/`<figcaption>` wrappers and an image wrapped in
+  `<a href="...">` are handled correctly instead of only rewriting a
+  bare `<img>`. A WordPress `[gallery]` shortcode or gallery block has
+  no single `<img src>` to resolve and is flagged in the import
+  warnings per affected post/page instead of silently left broken.
 - WordPress Importer: Site Settings write-back (LPP-004 Stage 1): the
   source site's title, tagline, timezone, date/time format, and
   permalink structure can now optionally be imported (its own

@@ -27,9 +27,16 @@ direct database connection plus a local copy of the source site's
   comments on pages, a current limitation of the shared import layer).
   Slugs and publish dates are preserved throughout.
 - Imported attachments' own URLs are rewritten inside post/page content
-  to point at the new local copy — full-size images only; a resized
-  variant filename WordPress commonly embeds inline isn't generated or
-  rewritten.
+  to point at the new local copy — a real HTML parse (`ContentImageRewriter`),
+  not a plain string replace, so it resolves both an attachment's
+  full-size path and any WordPress-generated derivative filename
+  (`cover-300x200.jpg`) back to the same imported attachment, strips
+  `srcset`/`sizes` and WordPress-only classes (`wp-image-123`,
+  `size-large`) while keeping alignment classes as-is, leaves `alt`/
+  `width`/`height`/`title` untouched, and correctly handles `<figure>`/
+  `<figcaption>` wrappers and an image wrapped in `<a href="...">`. A
+  WordPress `[gallery]` shortcode or gallery block has no single
+  `<img src>` to resolve and is flagged in the warnings instead.
 - Every WordPress menu (each `nav_menu` taxonomy term) becomes a named,
   reusable Lumora Press menu — custom links, and links to an already-
   imported page/post/category/tag, resolved to their real permalink and
@@ -83,8 +90,8 @@ Discussion, Media, and Privacy settings have no Lumora Press config
 key to write into yet. There's no dry-run preview, no resuming an
 interrupted import, and no skip-vs-overwrite-existing-content choice —
 idempotency is a hard
-"one import at a time" guard instead, matching Dummy Content. General
-internal post-to-post link rewriting, a redirect-mapping report, and
+"one import at a time" guard instead, matching Dummy Content. Internal
+post-to-post/page link rewriting, a redirect-mapping report, and
 regenerating thumbnail size variants aren't built either.
 
 ## Notes

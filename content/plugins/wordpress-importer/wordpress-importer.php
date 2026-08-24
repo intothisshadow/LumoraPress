@@ -32,6 +32,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\WordPressImporter;
 
 require_once __DIR__ . '/src/WordPressSource.php';
+require_once __DIR__ . '/src/ContentImageRewriter.php';
 require_once __DIR__ . '/src/WordPressImportService.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 

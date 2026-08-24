@@ -230,7 +230,7 @@ final class WordPressImportService
             $wpTagTermIdToLocalId = $this->importTags($batchId);
         }
 
-        [$wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl] = ($options['media'] ?? true)
+        [$wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl] = ($options['media'] ?? true)
             ? $this->importMedia($batchId, $wpUserIdToLocalId)
             : [[], []];
 
@@ -239,11 +239,11 @@ final class WordPressImportService
         }
 
         $wpPageIdToLocalId = ($options['pages'] ?? true)
-            ? $this->importPages($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl)
+            ? $this->importPages($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl)
             : [];
 
         $wpPostIdToLocalId = ($options['posts'] ?? true)
-            ? $this->importPosts($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl)
+            ? $this->importPosts($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl)
             : [];
 
         if (($options['comments'] ?? true) && $wpPostIdToLocalId !== []) {
@@ -796,12 +796,12 @@ final class WordPressImportService
 
     /**
      * @param array<int, int> $wpUserIdToLocalId
-     * @return array{0: array<int, int>, 1: array<string, string>} [wpAttachmentId => local media id, oldUrl => newUrl]
+     * @return array{0: array<int, int>, 1: array<string, string>} [wpAttachmentId => local media id, old _wp_attached_file relative path (e.g. "2020/03/cover.png") => new Lumora media URL]
      */
     private function importMedia(string $batchId, array $wpUserIdToLocalId): array
     {
         $wpAttachmentIdToLocalMediaId = [];
-        $oldUrlToNewUrl = [];
+        $oldRelativePathToNewUrl = [];
 
         foreach ($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES) as $attachment) {
             $meta = $this->source->postMeta($attachment['ID']);
@@ -848,13 +848,10 @@ final class WordPressImportService
             }
 
             $wpAttachmentIdToLocalMediaId[$attachment['ID']] = (int) $media['id'];
-
-            if ($attachment['guid'] !== '') {
-                $oldUrlToNewUrl[$attachment['guid']] = $this->media->url($media);
-            }
+            $oldRelativePathToNewUrl[$relativePath] = $this->media->url($media);
         }
 
-        return [$wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl];
+        return [$wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl];
     }
 
     /**
@@ -864,7 +861,7 @@ final class WordPressImportService
      * @param array<int, string> $statuses
      * @param array<int, int> $wpUserIdToLocalId
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
-     * @param array<string, string> $oldUrlToNewUrl
+     * @param array<string, string> $oldRelativePathToNewUrl
      * @return array<string, int> wpPageId (string) => local page id
      */
     private function importPages(
@@ -872,9 +869,10 @@ final class WordPressImportService
         array $statuses,
         array $wpUserIdToLocalId,
         array $wpAttachmentIdToLocalMediaId,
-        array $oldUrlToNewUrl,
+        array $oldRelativePathToNewUrl,
     ): array {
         $externalMap = [];
+        $imageRewriter = new ContentImageRewriter();
 
         foreach ($this->source->posts(['page'], $statuses) as $wpPage) {
             $meta = $this->source->postMeta($wpPage['ID']);
@@ -882,9 +880,15 @@ final class WordPressImportService
                 ? ($wpAttachmentIdToLocalMediaId[(int) $meta['_thumbnail_id']] ?? null)
                 : null;
 
+            $rewritten = $imageRewriter->rewrite($wpPage['post_content'], $oldRelativePathToNewUrl);
+
+            foreach ($rewritten['warnings'] as $warning) {
+                $this->warnings[] = "Page #{$wpPage['ID']} (\"{$wpPage['post_title']}\"): {$warning}";
+            }
+
             $data = new ImportedPage(
                 title: $this->resolveTitle($wpPage['post_title']),
-                content: $this->rewriteContentUrls($wpPage['post_content'], $oldUrlToNewUrl),
+                content: $rewritten['content'],
                 excerpt: $wpPage['post_excerpt'],
                 authorId: $wpUserIdToLocalId[$wpPage['post_author']] ?? 1,
                 status: $this->mapPageStatus($wpPage['post_status']),
@@ -913,7 +917,7 @@ final class WordPressImportService
      * @param array<int, string> $statuses
      * @param array<int, int> $wpUserIdToLocalId
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
-     * @param array<string, string> $oldUrlToNewUrl
+     * @param array<string, string> $oldRelativePathToNewUrl
      * @return array<int, int> wpPostId => local post id
      */
     private function importPosts(
@@ -921,9 +925,10 @@ final class WordPressImportService
         array $statuses,
         array $wpUserIdToLocalId,
         array $wpAttachmentIdToLocalMediaId,
-        array $oldUrlToNewUrl,
+        array $oldRelativePathToNewUrl,
     ): array {
         $map = [];
+        $imageRewriter = new ContentImageRewriter();
 
         foreach ($this->source->posts(['post'], $statuses) as $wpPost) {
             $meta = $this->source->postMeta($wpPost['ID']);
@@ -931,9 +936,15 @@ final class WordPressImportService
                 ? ($wpAttachmentIdToLocalMediaId[(int) $meta['_thumbnail_id']] ?? null)
                 : null;
 
+            $rewritten = $imageRewriter->rewrite($wpPost['post_content'], $oldRelativePathToNewUrl);
+
+            foreach ($rewritten['warnings'] as $warning) {
+                $this->warnings[] = "Post #{$wpPost['ID']} (\"{$wpPost['post_title']}\"): {$warning}";
+            }
+
             $data = new ImportedPost(
                 title: $this->resolveTitle($wpPost['post_title']),
-                content: $this->rewriteContentUrls($wpPost['post_content'], $oldUrlToNewUrl),
+                content: $rewritten['content'],
                 excerpt: $wpPost['post_excerpt'],
                 authorId: $wpUserIdToLocalId[$wpPost['post_author']] ?? 1,
                 status: $this->mapPostStatus($wpPost['post_status']),
@@ -1335,28 +1346,6 @@ final class WordPressImportService
         if (str_contains($content, '[sdm_show_dl')) {
             $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [sdm_show_dl...] shortcode — Simple Download Monitor's download listing has no Lumora Press equivalent yet, so it will show as plain text.";
         }
-    }
-
-    /**
-     * Plain string search/replace over old attachment URLs found during
-     * the media step — a documented first-pass limitation, not a full
-     * HTML-aware rewrite (see this feature's implementation plan). Only
-     * matches a full-size attachment's own guid URL; WordPress inline
-     * `<img>` tags commonly reference a resized variant filename (e.g.
-     * `image-300x200.jpg`) that this import never generates or maps, so
-     * those references are left pointing at the old site. Regenerating
-     * size variants and rewriting every reference is deferred (see the
-     * ticket's "Regenerate thumbnails" / URL migration scope).
-     *
-     * @param array<string, string> $oldUrlToNewUrl
-     */
-    private function rewriteContentUrls(string $content, array $oldUrlToNewUrl): string
-    {
-        if ($oldUrlToNewUrl === []) {
-            return $content;
-        }
-
-        return str_replace(array_keys($oldUrlToNewUrl), array_values($oldUrlToNewUrl), $content);
     }
 
     /**
