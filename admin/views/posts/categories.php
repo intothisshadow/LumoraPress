@@ -179,7 +179,7 @@ if ($action === 'edit') {
 <?php if ($action === 'edit' || $action === 'new'): ?>
     <?php
     $category = $editingCategory;
-    $parentOptions = $categoryService->listAllForParentSelect($category?->id);
+    $parentOptions = $categoryService->listAllForParentPicker($category?->id);
     ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>">
@@ -211,7 +211,7 @@ if ($action === 'edit') {
                     <option value="0">(No parent)</option>
                     <?php foreach ($parentOptions as $option): ?>
                         <option value="<?= (int) $option['id'] ?>" <?= ($category?->parentId ?? 0) === $option['id'] ? 'selected' : '' ?>>
-                            <?= esc_html($option['name']) ?>
+                            <?= str_repeat('&nbsp;&nbsp;&nbsp;', $option['depth']) . esc_html($option['name']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>

@@ -690,6 +690,41 @@ final class PageService
     }
 
     /**
+     * A depth-tagged {id, title, depth} list for the New/Edit Page
+     * "Parent Page" picker (LP-105) — combines listAllForTree()'s
+     * hierarchical document order with listAllForParentSelect()'s own
+     * cycle-prevention exclusion ($excludeId itself and its direct
+     * children; deeper cycles are the same accepted gap that method
+     * already documents), so the picker can render indented like the
+     * "All Pages" tree view while still ruling out choices that would
+     * make a page its own ancestor.
+     *
+     * @return array<int, array{id: int, title: string, depth: int}>
+     */
+    public function listAllForParentPicker(?int $excludeId = null): array
+    {
+        $flattened = array_map(
+            static fn (array $row): array => ['id' => $row['page']->id, 'title' => $row['page']->title, 'parentId' => $row['page']->parentId, 'depth' => $row['depth']],
+            $this->listAllForTree(),
+        );
+
+        if ($excludeId === null) {
+            return array_map(
+                static fn (array $row): array => ['id' => $row['id'], 'title' => $row['title'], 'depth' => $row['depth']],
+                $flattened,
+            );
+        }
+
+        return array_values(array_map(
+            static fn (array $row): array => ['id' => $row['id'], 'title' => $row['title'], 'depth' => $row['depth']],
+            array_filter(
+                $flattened,
+                static fn (array $row): bool => $row['id'] !== $excludeId && $row['parentId'] !== $excludeId,
+            ),
+        ));
+    }
+
+    /**
      * A depth-tagged {id, title, slug, depth} list, in the same
      * hierarchical document order as listAllForTree(), for the admin
      * Menus screen's "Add Pages" checkbox list (LP-049) — separate from

@@ -345,7 +345,7 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
     array_map(static fn (PageStatus $status): string => $status->label() . ' (' . $statusCounts[$status->value] . ')', PageStatus::cases()),
 )];
 
-$allPagesForParentFilter = $pageService->listAllForParentSelect();
+$allPagesForParentFilter = $pageService->listAllForParentPicker();
 $allUsersForFilter = $kernel->users->listAll();
 
 if ($isTreeView) {
@@ -392,7 +392,7 @@ if ($isTreeView) {
                     <select id="pages-parent-filter" name="parent">
                         <option value="0">All pages</option>
                         <?php foreach ($allPagesForParentFilter as $parentFilterOption): ?>
-                            <option value="<?= (int) $parentFilterOption['id'] ?>" <?= $parentFilter === $parentFilterOption['id'] ? 'selected' : '' ?>><?= esc_html($parentFilterOption['title']) ?></option>
+                            <option value="<?= (int) $parentFilterOption['id'] ?>" <?= $parentFilter === $parentFilterOption['id'] ? 'selected' : '' ?>><?= str_repeat('&nbsp;&nbsp;&nbsp;', $parentFilterOption['depth']) . esc_html($parentFilterOption['title']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </p>
@@ -460,7 +460,7 @@ if ($isTreeView) {
                     <select name="target_parent_id">
                         <option value="0">(No parent)</option>
                         <?php foreach ($allPagesForParentFilter as $parentFilterOption): ?>
-                            <option value="<?= (int) $parentFilterOption['id'] ?>"><?= esc_html($parentFilterOption['title']) ?></option>
+                            <option value="<?= (int) $parentFilterOption['id'] ?>"><?= str_repeat('&nbsp;&nbsp;&nbsp;', $parentFilterOption['depth']) . esc_html($parentFilterOption['title']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <select name="target_author_id">
@@ -572,7 +572,7 @@ if ($isTreeView) {
                                                     <select id="page-quick-edit-parent-<?= (int) $listedPage->id ?>" name="parent_id" form="<?= esc_attr($quickEditFormId) ?>">
                                                         <option value="0">(No parent)</option>
                                                         <?php foreach ($allPagesForParentFilter as $parentOption): ?>
-                                                            <option value="<?= (int) $parentOption['id'] ?>" <?= $listedPage->parentId === $parentOption['id'] ? 'selected' : '' ?>><?= esc_html($parentOption['title']) ?></option>
+                                                            <option value="<?= (int) $parentOption['id'] ?>" <?= $listedPage->parentId === $parentOption['id'] ? 'selected' : '' ?>><?= str_repeat('&nbsp;&nbsp;&nbsp;', $parentOption['depth']) . esc_html($parentOption['title']) ?></option>
                                                         <?php endforeach; ?>
                                                     </select>
                                                 </p>

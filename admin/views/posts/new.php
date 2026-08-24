@@ -141,7 +141,7 @@ if ($editingId !== null) {
 <?php
 $post = $editingPost;
 $statusOptions = [PostStatus::Draft, PostStatus::Published, PostStatus::Scheduled];
-$allCategories = $kernel->categories->listAll();
+$categoryTree = $kernel->categories->listAllForTree();
 $assignedCategoryIds = $post !== null
     ? array_map(static fn ($category) => $category->id, $kernel->categories->categoriesForPost($post->id))
     : [];
@@ -440,19 +440,22 @@ if ($savedLayout['order'] === []) {
 
                                 case 'categories': ?>
                                     <div class="lp-field lp-field--checklist" data-lp-category-field>
-                                        <div data-lp-category-list>
-                                            <?php foreach ($allCategories as $categoryOption): ?>
-                                                <label class="lp-field--checkbox">
-                                                    <input
-                                                        type="checkbox"
-                                                        name="category_ids[]"
-                                                        value="<?= (int) $categoryOption->id ?>"
-                                                        <?= in_array($categoryOption->id, $assignedCategoryIds, true) ? 'checked' : '' ?>
-                                                    >
-                                                    <?= esc_html($categoryOption->name) ?>
-                                                </label>
+                                        <ul class="lp-menus-add-panel__list" data-lp-category-list>
+                                            <?php foreach ($categoryTree as $categoryRow): ?>
+                                                <?php $categoryOption = $categoryRow['category']; ?>
+                                                <li<?= $categoryRow['depth'] > 0 ? ' data-style-margin-left="' . ((int) $categoryRow['depth'] * 1.5) . 'rem"' : '' ?>>
+                                                    <label class="lp-field--checkbox">
+                                                        <input
+                                                            type="checkbox"
+                                                            name="category_ids[]"
+                                                            value="<?= (int) $categoryOption->id ?>"
+                                                            <?= in_array($categoryOption->id, $assignedCategoryIds, true) ? 'checked' : '' ?>
+                                                        >
+                                                        <?= esc_html($categoryOption->name) ?>
+                                                    </label>
+                                                </li>
                                             <?php endforeach; ?>
-                                        </div>
+                                        </ul>
 
                                         <?php if ($currentUser->can('edit_posts')): ?>
                                             <details class="lp-category-quick-add" data-lp-category-quick-add data-add-url="<?= esc_url(admin_url('posts/new')) ?>" data-add-csrf="<?= esc_attr(Csrf::token('add_category')) ?>">

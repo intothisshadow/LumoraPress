@@ -329,7 +329,7 @@ if ($editingId !== null) {
 <?php
 $page = $editingPage;
 $statusOptions = [PageStatus::Draft, PageStatus::PendingReview, PageStatus::Published, PageStatus::Scheduled];
-$parentOptions = $pageService->listAllForParentSelect($page?->id);
+$parentOptions = $pageService->listAllForParentPicker($page?->id);
 $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
 $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
 /*
@@ -612,17 +612,25 @@ if ($savedLayout['order'] === []) {
                                     <?php break;
 
                                 case 'parent': ?>
-                                    <p class="lp-field">
-                                        <label for="page-parent">Parent Page</label>
-                                        <select id="page-parent" name="parent_id">
-                                            <option value="0">(No parent)</option>
+                                    <fieldset class="lp-field">
+                                        <legend>Parent Page</legend>
+                                        <ul class="lp-menus-add-panel__list">
+                                            <li>
+                                                <label class="lp-field--radio">
+                                                    <input type="radio" name="parent_id" value="0" <?= ($page?->parentId ?? 0) === 0 ? 'checked' : '' ?>>
+                                                    (No parent)
+                                                </label>
+                                            </li>
                                             <?php foreach ($parentOptions as $option): ?>
-                                                <option value="<?= (int) $option['id'] ?>" <?= ($page?->parentId ?? 0) === $option['id'] ? 'selected' : '' ?>>
-                                                    <?= esc_html($option['title']) ?>
-                                                </option>
+                                                <li<?= $option['depth'] > 0 ? ' data-style-margin-left="' . ((int) $option['depth'] * 1.5) . 'rem"' : '' ?>>
+                                                    <label class="lp-field--radio">
+                                                        <input type="radio" name="parent_id" value="<?= (int) $option['id'] ?>" <?= ($page?->parentId ?? 0) === $option['id'] ? 'checked' : '' ?>>
+                                                        <?= esc_html($option['title']) ?>
+                                                    </label>
+                                                </li>
                                             <?php endforeach; ?>
-                                        </select>
-                                    </p>
+                                        </ul>
+                                    </fieldset>
                                     <?php break;
                             endswitch; ?>
                         </div>

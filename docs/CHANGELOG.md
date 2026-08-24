@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- New Post's Categories checklist and New Page's Parent Page field now
+  render nested by depth in a scrollable, height-capped list instead of
+  a flat unbounded one (LP-105) — matching Appearance &rsaquo; Menus'
+  own "Add Items" panel. Several more admin category/parent `<select>`
+  pickers (Categories' own "Parent Category" field, Settings &rsaquo;
+  Reading's two homepage page pickers, All Pages' parent filter/Quick
+  Edit/bulk-move, and All Posts' category filter/bulk-add) now indent
+  by depth the same way (LP-106).
 - Admin sidebar: Pages now sits directly after Posts (LP-111), matching
   Posts and Pages' status as the two primary content types, ahead of
   Media Manager/Comments/etc.

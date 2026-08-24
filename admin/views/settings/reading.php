@@ -64,7 +64,7 @@ if ($form === 'homepage_settings' && Csrf::verify('homepage_settings', is_string
 $homepageDisplay = (string) $kernel->config->option('homepage_display', 'posts');
 $homepagePageId = (int) $kernel->config->option('homepage_page_id', '0');
 $homepagePostsPageId = (int) $kernel->config->option('homepage_posts_page_id', '0');
-$pageOptions = $kernel->pages->listAllForParentSelect();
+$pageOptions = $kernel->pages->listAllForParentPicker();
 $postsPerPage = (string) $kernel->config->option('posts_per_page', '10');
 $discourageSearchEngines = $kernel->config->option('discourage_search_engines', '0') !== '0';
 ?>
@@ -103,7 +103,7 @@ $discourageSearchEngines = $kernel->config->option('discourage_search_engines', 
                 <option value="0">(Select a page)</option>
                 <?php foreach ($pageOptions as $pageOption): ?>
                     <option value="<?= (int) $pageOption['id'] ?>" <?= $homepagePageId === (int) $pageOption['id'] ? 'selected' : '' ?>>
-                        <?= esc_html($pageOption['title']) ?>
+                        <?= str_repeat('&nbsp;&nbsp;&nbsp;', $pageOption['depth']) . esc_html($pageOption['title']) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -116,7 +116,7 @@ $discourageSearchEngines = $kernel->config->option('discourage_search_engines', 
                 <option value="0">(None)</option>
                 <?php foreach ($pageOptions as $pageOption): ?>
                     <option value="<?= (int) $pageOption['id'] ?>" <?= $homepagePostsPageId === (int) $pageOption['id'] ? 'selected' : '' ?>>
-                        <?= esc_html($pageOption['title']) ?>
+                        <?= str_repeat('&nbsp;&nbsp;&nbsp;', $pageOption['depth']) . esc_html($pageOption['title']) ?>
                     </option>
                 <?php endforeach; ?>
             </select>

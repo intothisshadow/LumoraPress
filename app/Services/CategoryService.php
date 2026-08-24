@@ -409,6 +409,44 @@ final class CategoryService
     }
 
     /**
+     * A depth-tagged {id, name, depth} list for the admin's various
+     * "Parent Category"/category-filter pickers (LP-106) — combines
+     * listAllForTree()'s hierarchical document order with
+     * listAllForParentSelect()'s own cycle-prevention exclusion
+     * ($excludeId itself and its direct children; deeper cycles are the
+     * same accepted gap that method already documents) so a picker can
+     * render indented by depth while still ruling out choices that
+     * would make a category its own ancestor. Pass no $excludeId for a
+     * plain depth-tagged list with nothing excluded (category filters,
+     * bulk-action targets — anywhere a parent/child loop isn't a
+     * concern).
+     *
+     * @return array<int, array{id: int, name: string, depth: int}>
+     */
+    public function listAllForParentPicker(?int $excludeId = null): array
+    {
+        $flattened = array_map(
+            static fn (array $row): array => ['id' => $row['category']->id, 'name' => $row['category']->name, 'parentId' => $row['category']->parentId, 'depth' => $row['depth']],
+            $this->listAllForTree(),
+        );
+
+        if ($excludeId === null) {
+            return array_map(
+                static fn (array $row): array => ['id' => $row['id'], 'name' => $row['name'], 'depth' => $row['depth']],
+                $flattened,
+            );
+        }
+
+        return array_values(array_map(
+            static fn (array $row): array => ['id' => $row['id'], 'name' => $row['name'], 'depth' => $row['depth']],
+            array_filter(
+                $flattened,
+                static fn (array $row): bool => $row['id'] !== $excludeId && $row['parentId'] !== $excludeId,
+            ),
+        ));
+    }
+
+    /**
      * Non-trashed categories as a flat, depth-tagged list in hierarchical
      * document order (a parent immediately followed by its own children,
      * alphabetical among siblings, then the next sibling) — backs the

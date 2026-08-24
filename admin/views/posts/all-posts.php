@@ -134,7 +134,7 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
     array_map(static fn (PostStatus $status): string => $status->label() . ' (' . $statusCounts[$status->value] . ')', PostStatus::cases()),
 )];
 $allUsersForFilter = $kernel->users->listAll();
-$allCategoriesForFilter = $kernel->categories->listAll();
+$allCategoriesForFilter = $kernel->categories->listAllForParentPicker();
 $allTagsForFilter = $kernel->tags->listAll();
 ?>
 
@@ -173,7 +173,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                     <select id="posts-category-filter" name="category">
                         <option value="0">All categories</option>
                         <?php foreach ($allCategoriesForFilter as $filterCategory): ?>
-                            <option value="<?= (int) $filterCategory->id ?>" <?= $categoryFilter === $filterCategory->id ? 'selected' : '' ?>><?= esc_html($filterCategory->name) ?></option>
+                            <option value="<?= (int) $filterCategory['id'] ?>" <?= $categoryFilter === $filterCategory['id'] ? 'selected' : '' ?>><?= str_repeat('&nbsp;&nbsp;&nbsp;', $filterCategory['depth']) . esc_html($filterCategory['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </p>
@@ -240,7 +240,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                 <select name="target_category_id">
                     <option value="0">(Choose a category)</option>
                     <?php foreach ($allCategoriesForFilter as $bulkCategoryOption): ?>
-                        <option value="<?= (int) $bulkCategoryOption->id ?>"><?= esc_html($bulkCategoryOption->name) ?></option>
+                        <option value="<?= (int) $bulkCategoryOption['id'] ?>"><?= str_repeat('&nbsp;&nbsp;&nbsp;', $bulkCategoryOption['depth']) . esc_html($bulkCategoryOption['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>

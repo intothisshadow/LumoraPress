@@ -7,13 +7,17 @@
  * appends a new checked checkbox to the Categories checklist in place —
  * no page reload, no redirect.
  *
- * Markup contract (see admin/views/posts.php):
+ * Markup contract (see admin/views/posts/new.php):
  *   <details data-lp-category-quick-add data-add-url="..." data-add-csrf="...">
- *     <div data-lp-category-list>...existing checkboxes...</div>
+ *     <ul data-lp-category-list>...existing <li> checkboxes...</ul>
  *     <input data-lp-category-name-input>
  *     <button data-lp-category-add-button>
  *     <p data-lp-category-add-error hidden></p>
  *   </details>
+ *
+ * A quick-added category has no parent, so it always appends as a new
+ * top-level <li> (no data-style-margin-left) rather than trying to slot
+ * into the existing depth-nested list (LP-105).
  */
 (function () {
     'use strict';
@@ -64,6 +68,7 @@
                 return;
             }
 
+            var item = document.createElement('li');
             var label = document.createElement('label');
             label.className = 'lp-field--checkbox';
 
@@ -75,7 +80,8 @@
 
             label.appendChild(checkbox);
             label.appendChild(document.createTextNode(' ' + category.name));
-            list.appendChild(label);
+            item.appendChild(label);
+            list.appendChild(item);
         }
 
         function submit() {
