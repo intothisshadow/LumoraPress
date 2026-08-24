@@ -6,6 +6,27 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: Menus & Classic Widgets (LPP-004 Stage 8): each
+  WordPress nav menu now becomes a named, reusable Lumora Press menu —
+  custom links and links to already-imported pages/posts/categories/
+  tags, resolved to their real permalink and preserving parent/child
+  nesting. A menu item pointing at content that wasn't imported is
+  skipped with a warning rather than creating a broken link. Menus are
+  never auto-assigned to a theme location, since WordPress doesn't
+  store a location's human-readable name in its database, only an
+  opaque per-theme slug — assign each imported menu from Appearance
+  &rsaquo; Menus &rsaquo; Manage Locations once the import finishes.
+  Classic widgets import too, but only types with a direct Lumora Press
+  equivalent (Text, Custom HTML, Search, Pages, Categories, Recent
+  Posts, Recent Comments, Archives, Tag Cloud, Meta) — every other
+  widget type (WordPress's own Navigation Menu widget, and any
+  plugin-provided widget type) is skipped, aggregated into one warning
+  per type. A widget's own sidebar is matched to a Lumora Press widget
+  area by a small id-based heuristic; anything that doesn't confidently
+  match — including WordPress's own inactive-widgets bucket — lands in
+  Inactive Widgets instead of being dropped. Remove All Imported
+  Content now restores the exact pre-import menus/widgets configuration
+  it snapshotted before the import touched them.
 - Downloads &rsaquo; All Downloads redesign + Shortcodes docs (LPP-009):
   the admin All Downloads screen is now a real list table — ID,
   Category, Type, Status, and Date columns, a category filter,

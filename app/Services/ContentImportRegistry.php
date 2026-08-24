@@ -61,21 +61,51 @@ final class ContentImportRegistry
         return bin2hex(random_bytes(16));
     }
 
-    public function record(string $batchId, string $source, string $contentType, int $contentId, ?string $externalId = null): void
+    /**
+     * $snapshotValue is for content that isn't a real, individually
+     * delete()-able row at all (LPP-004 Stage 8: WordPress-imported menus/
+     * widgets, which persist as JSON blobs in the options table via
+     * MenuManager/WidgetManager rather than a dedicated table — see
+     * WordPressImportService::importMenus()/importWidgets()). A caller
+     * recording one of these passes the *entire pre-import option value*
+     * here (with $contentId as an arbitrary placeholder, since nothing
+     * ever looks the row up by id) so rollback can restore it verbatim via
+     * snapshotForBatch() instead of trying to delete individual items by
+     * id the way every other content type does.
+     */
+    public function record(string $batchId, string $source, string $contentType, int $contentId, ?string $externalId = null, ?string $snapshotValue = null): void
     {
         $this->database->execute(
             'INSERT INTO ' . $this->table() . '
-                (batch_id, source, content_type, content_id, external_id, created_at)
-             VALUES (:batch_id, :source, :content_type, :content_id, :external_id, :created_at)',
+                (batch_id, source, content_type, content_id, external_id, snapshot_value, created_at)
+             VALUES (:batch_id, :source, :content_type, :content_id, :external_id, :snapshot_value, :created_at)',
             [
                 'batch_id' => $batchId,
                 'source' => $source,
                 'content_type' => $contentType,
                 'content_id' => $contentId,
                 'external_id' => $externalId,
+                'snapshot_value' => $snapshotValue,
                 'created_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
+    }
+
+    /**
+     * The snapshot_value recorded for $batchId/$contentType — see
+     * record()'s own docblock. Assumes at most one such row per
+     * batch/content-type pair (true for every current caller, one snapshot
+     * per option name per batch).
+     */
+    public function snapshotForBatch(string $batchId, string $contentType): ?string
+    {
+        $row = $this->database->fetchOne(
+            'SELECT snapshot_value FROM ' . $this->table() . '
+                WHERE batch_id = :batch_id AND content_type = :content_type',
+            ['batch_id' => $batchId, 'content_type' => $contentType],
+        );
+
+        return $row !== null && $row['snapshot_value'] !== null ? (string) $row['snapshot_value'] : null;
     }
 
     /**

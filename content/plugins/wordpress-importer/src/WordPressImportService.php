@@ -18,6 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\WordPressImporter;
 
 use DateTimeImmutable;
+use LumoraPress\Core\Menus\MenuManager;
+use LumoraPress\Core\PressConfig;
+use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
@@ -32,13 +35,18 @@ use LumoraPress\Services\FolderService;
 use LumoraPress\Services\Import\CommentImporter;
 use LumoraPress\Services\Import\ImportedComment;
 use LumoraPress\Services\Import\ImportedMedia;
+use LumoraPress\Services\Import\ImportedMenu;
+use LumoraPress\Services\Import\ImportedMenuItem;
 use LumoraPress\Services\Import\ImportedPage;
 use LumoraPress\Services\Import\ImportedPost;
 use LumoraPress\Services\Import\ImportedUser;
+use LumoraPress\Services\Import\ImportedWidgetInstance;
 use LumoraPress\Services\Import\MediaImporter;
+use LumoraPress\Services\Import\MenuImporter;
 use LumoraPress\Services\Import\PageImporter;
 use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
+use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\PageService;
@@ -60,14 +68,18 @@ use Throwable;
  * (Simple Download Monitor's own post type, folder-organized via its
  * `sdm_categories` taxonomy — see importDownloads()) -> Pages -> Posts
  * -> Comments (Posts only — see this class's own docblock on
- * comments()). Media is imported before Pages/Posts specifically so
+ * comments()) -> Menus -> Widgets (Stage 8 — see importMenus()/
+ * importWidgets()). Media is imported before Pages/Posts specifically so
  * in-content `<img>` URLs pointing at the old site can be rewritten to
  * the new local media URL while content is being built, not as a
- * separate pass afterward.
+ * separate pass afterward. Menus/Widgets are imported last because menu
+ * items need Pages/Posts/Categories already imported (to resolve a menu
+ * item's real permalink) and widgets need nothing but are ordered after
+ * for symmetry with Stage 8's own "Menus, Widgets" naming.
  *
  * Scope for this first pass (see LPP-004's own TODO entry for the full
- * list of what's deferred): no WXR .xml path, no site settings/menus/
- * widgets write-back, no dry-run/resume/overwrite-existing semantics.
+ * list of what's deferred): no WXR .xml path, no site settings
+ * write-back, no dry-run/resume/overwrite-existing semantics.
  * Idempotency follows DummyContentGenerator's own hard guard — run()
  * refuses to start while a previous 'wordpress_import' batch still
  * exists; removeAll() must be called first.
@@ -100,6 +112,8 @@ final class WordPressImportService
         private readonly PageImporter $pageImporter,
         private readonly MediaImporter $mediaImporter,
         private readonly CommentImporter $commentImporter,
+        private readonly MenuImporter $menuImporter,
+        private readonly WidgetImporter $widgetImporter,
         private readonly UserService $users,
         private readonly PostService $posts,
         private readonly PageService $pages,
@@ -110,6 +124,9 @@ final class WordPressImportService
         private readonly TagService $tags,
         private readonly FolderService $folders,
         private readonly RedirectService $redirects,
+        private readonly MenuManager $menus,
+        private readonly WidgetManager $widgets,
+        private readonly PressConfig $config,
         private readonly ContentImportRegistry $registry,
         private readonly string $sourceUploadsPath,
         /**
@@ -160,7 +177,7 @@ final class WordPressImportService
     }
 
     /**
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, statuses?: array<int, string>} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, statuses?: array<int, string>} $options
      * @return array<string, int>
      */
     public function run(array $options): array
@@ -179,9 +196,12 @@ final class WordPressImportService
 
         $wpUserIdToLocalId = ($options['users'] ?? true) ? $this->importUsers($batchId) : [];
 
+        $wpCategoryTermIdToLocalId = [];
+        $wpTagTermIdToLocalId = [];
+
         if ($options['categories'] ?? true) {
-            $this->importCategories($batchId);
-            $this->importTags($batchId);
+            $wpCategoryTermIdToLocalId = $this->importCategories($batchId);
+            $wpTagTermIdToLocalId = $this->importTags($batchId);
         }
 
         [$wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl] = ($options['media'] ?? true)
@@ -192,9 +212,9 @@ final class WordPressImportService
             $this->importDownloads($batchId, $wpUserIdToLocalId);
         }
 
-        if ($options['pages'] ?? true) {
-            $this->importPages($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl);
-        }
+        $wpPageIdToLocalId = ($options['pages'] ?? true)
+            ? $this->importPages($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl)
+            : [];
 
         $wpPostIdToLocalId = ($options['posts'] ?? true)
             ? $this->importPosts($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldUrlToNewUrl)
@@ -202,6 +222,14 @@ final class WordPressImportService
 
         if (($options['comments'] ?? true) && $wpPostIdToLocalId !== []) {
             $this->importComments($batchId, $wpPostIdToLocalId, $wpUserIdToLocalId);
+        }
+
+        if ($options['menus'] ?? true) {
+            $this->importMenus($batchId, $wpPageIdToLocalId, $wpPostIdToLocalId, $wpCategoryTermIdToLocalId, $wpTagTermIdToLocalId);
+        }
+
+        if ($options['widgets'] ?? true) {
+            $this->importWidgets($batchId);
         }
 
         return $this->registry->countsForBatch($batchId);
@@ -212,6 +240,14 @@ final class WordPressImportService
      * docblock reasoning: comments before the posts they belong to,
      * posts/pages before their authors, media/categories/tags last.
      *
+     * Menus/widgets have no per-id delete path at all — see
+     * ContentImportRegistry::record()'s own docblock on why — so instead
+     * of appearing in the id-loop below, their pre-import
+     * `nav_menus`/`widgets_config` option snapshots (recorded by
+     * importMenus()/importWidgets()) are written straight back,
+     * restoring exactly what was there before the import ran, whether
+     * that was nothing or a site's own existing menus/widgets.
+     *
      * @return array<string, int>
      */
     public function removeAll(): array
@@ -221,6 +257,18 @@ final class WordPressImportService
         foreach ($this->existingBatchIds() as $batchId) {
             foreach ($this->registry->countsForBatch($batchId) as $type => $count) {
                 $totals[$type] = ($totals[$type] ?? 0) + $count;
+            }
+
+            $navMenusSnapshot = $this->registry->snapshotForBatch($batchId, 'nav_menus_snap');
+
+            if ($navMenusSnapshot !== null) {
+                $this->config->setOption('nav_menus', $navMenusSnapshot);
+            }
+
+            $widgetsSnapshot = $this->registry->snapshotForBatch($batchId, 'widgets_snap');
+
+            if ($widgetsSnapshot !== null) {
+                $this->config->setOption('widgets_config', $widgetsSnapshot);
             }
 
             foreach (['comment', 'post', 'page', 'download', 'media', 'redirect', 'folder', 'category', 'tag', 'user'] as $contentType) {
@@ -298,8 +346,13 @@ final class WordPressImportService
      * directly, and PostImporter already resolves names via
      * CategoryService::findOrCreateByName() (which will find the exact
      * rows created here by name) — see PostImporter's own docblock.
+     *
+     * The returned map is used by importMenus() (Stage 8) to resolve a
+     * menu item pointing at a category term.
+     *
+     * @return array<int, int> wpTermId => local category id
      */
-    private function importCategories(string $batchId): void
+    private function importCategories(string $batchId): array
     {
         $remaining = $this->source->terms('category');
         $localIdByWpTermId = [];
@@ -339,14 +392,27 @@ final class WordPressImportService
 
             $remaining = $stillRemaining;
         }
+
+        return $localIdByWpTermId;
     }
 
-    private function importTags(string $batchId): void
+    /**
+     * The returned map is used by importMenus() (Stage 8) to resolve a
+     * menu item pointing at a tag term.
+     *
+     * @return array<int, int> wpTermId => local tag id
+     */
+    private function importTags(string $batchId): array
     {
+        $localIdByWpTermId = [];
+
         foreach ($this->source->terms('post_tag') as $term) {
             $tag = $this->tags->findOrCreateByName($term['name']);
             $this->registry->record($batchId, self::SOURCE, 'tag', $tag->id);
+            $localIdByWpTermId[$term['term_id']] = $tag->id;
         }
+
+        return $localIdByWpTermId;
     }
 
     /**
@@ -595,10 +661,14 @@ final class WordPressImportService
     }
 
     /**
+     * The returned map is used by importMenus() (Stage 8) to resolve a
+     * menu item pointing at a page.
+     *
      * @param array<int, string> $statuses
      * @param array<int, int> $wpUserIdToLocalId
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
      * @param array<string, string> $oldUrlToNewUrl
+     * @return array<string, int> wpPageId (string) => local page id
      */
     private function importPages(
         string $batchId,
@@ -606,7 +676,7 @@ final class WordPressImportService
         array $wpUserIdToLocalId,
         array $wpAttachmentIdToLocalMediaId,
         array $oldUrlToNewUrl,
-    ): void {
+    ): array {
         $externalMap = [];
 
         foreach ($this->source->posts(['page'], $statuses) as $wpPage) {
@@ -638,6 +708,8 @@ final class WordPressImportService
                 $this->warnings[] = "Page #{$wpPage['ID']} (\"{$wpPage['post_title']}\"): {$exception->getMessage()}";
             }
         }
+
+        return $externalMap;
     }
 
     /**
@@ -731,6 +803,324 @@ final class WordPressImportService
                 }
             }
         }
+    }
+
+    /**
+     * WordPress's own nav_menu taxonomy (LPP-004 Stage 8) — each term is
+     * a menu, each member post (post_type = nav_menu_item, tied to its
+     * menu's term via term_relationships exactly like a category on a
+     * post) is one item, its real data living in postmeta
+     * (_menu_item_type/_menu_item_object/_menu_item_object_id for what
+     * it points at, _menu_item_menu_item_parent for nesting — yes,
+     * WordPress core really does double up "menu_item" in that meta key
+     * name). A menu is always imported as a named Lumora Press menu;
+     * WordPress's own per-theme location slug (e.g. "menu-1") is never
+     * auto-assigned to a Lumora Press location — see this feature's
+     * implementation plan for why that's a real, honest scope boundary
+     * rather than a shortcut: WordPress never stores a location's
+     * human-readable label in the database at all, only the theme's own
+     * opaque slug, so there is no reliable way to guess which Lumora
+     * Press location (primary/footer/social/secondary) it actually
+     * meant. The admin finishes that one manual step via the
+     * already-built Appearance > Menus > Manage Locations screen.
+     *
+     * The pre-import "nav_menus" option value is snapshotted before any
+     * menu is created, so removeAll() can restore it verbatim — see
+     * ContentImportRegistry::record()'s own docblock on why menus can't
+     * use the normal per-id delete path every other content type does.
+     *
+     * @param array<string, int> $wpPageIdToLocalId
+     * @param array<int, int> $wpPostIdToLocalId
+     * @param array<int, int> $wpCategoryTermIdToLocalId
+     * @param array<int, int> $wpTagTermIdToLocalId
+     */
+    private function importMenus(
+        string $batchId,
+        array $wpPageIdToLocalId,
+        array $wpPostIdToLocalId,
+        array $wpCategoryTermIdToLocalId,
+        array $wpTagTermIdToLocalId,
+    ): void {
+        $this->registry->record($batchId, self::SOURCE, 'nav_menus_snap', 0, null, (string) $this->config->option('nav_menus', '{}'));
+
+        $navMenuItemTermIds = $this->source->navMenuItemTermTaxonomyIds();
+        $itemsByMenuTermId = [];
+
+        foreach ($this->source->posts(['nav_menu_item'], ['publish']) as $wpItem) {
+            $menuTermId = $navMenuItemTermIds[$wpItem['ID']] ?? null;
+
+            if ($menuTermId !== null) {
+                $itemsByMenuTermId[$menuTermId][] = $wpItem;
+            }
+        }
+
+        foreach ($this->source->terms('nav_menu') as $term) {
+            $items = [];
+
+            foreach ($itemsByMenuTermId[$term['term_id']] ?? [] as $wpItem) {
+                $meta = $this->source->postMeta($wpItem['ID']);
+                $resolved = $this->resolveMenuItemTarget($meta, $wpPageIdToLocalId, $wpPostIdToLocalId, $wpCategoryTermIdToLocalId, $wpTagTermIdToLocalId);
+
+                if ($resolved === null) {
+                    $this->warnings[] = "Menu item #{$wpItem['ID']} in menu \"{$term['name']}\": target content wasn't imported, skipped.";
+                    continue;
+                }
+
+                $label = $wpItem['post_title'] !== '' ? $wpItem['post_title'] : $resolved['label'];
+                $classes = @unserialize($meta['_menu_item_classes'] ?? '', ['allowed_classes' => false]);
+                $parentExternalId = ($meta['_menu_item_menu_item_parent'] ?? '0') !== '0' ? $meta['_menu_item_menu_item_parent'] : null;
+
+                $items[] = new ImportedMenuItem(
+                    label: $label !== '' ? $label : $resolved['url'],
+                    url: $resolved['url'],
+                    order: $wpItem['menu_order'],
+                    target: ($meta['_menu_item_target'] ?? '') === '_blank' ? '_blank' : '_self',
+                    cssClass: is_array($classes) ? trim(implode(' ', $classes)) : '',
+                    rel: $meta['_menu_item_xfn'] ?? '',
+                    parentExternalId: $parentExternalId,
+                    externalId: (string) $wpItem['ID'],
+                );
+            }
+
+            $menuData = new ImportedMenu(name: $term['name'], items: $items, externalId: (string) $term['term_id']);
+
+            try {
+                $this->menuImporter->import($batchId, self::SOURCE, $menuData);
+            } catch (Throwable $exception) {
+                $this->warnings[] = "Menu \"{$term['name']}\": {$exception->getMessage()}";
+            }
+        }
+
+        $this->config->setOption('nav_menus', json_encode($this->menus->menus()));
+    }
+
+    /**
+     * Resolves a WordPress menu item's postmeta into a plain
+     * label/url pair, or null when its target wasn't imported (its
+     * content type's own toggle was off, or the id genuinely isn't
+     * found) — a 'custom' link has no such dependency and always
+     * resolves. Every id map here was already built by an earlier import
+     * step in run(); this never queries the source database for
+     * anything beyond what's already in $meta.
+     *
+     * @param array<string, string> $meta
+     * @param array<string, int> $wpPageIdToLocalId
+     * @param array<int, int> $wpPostIdToLocalId
+     * @param array<int, int> $wpCategoryTermIdToLocalId
+     * @param array<int, int> $wpTagTermIdToLocalId
+     * @return array{label: string, url: string}|null
+     */
+    private function resolveMenuItemTarget(
+        array $meta,
+        array $wpPageIdToLocalId,
+        array $wpPostIdToLocalId,
+        array $wpCategoryTermIdToLocalId,
+        array $wpTagTermIdToLocalId,
+    ): ?array {
+        $type = $meta['_menu_item_type'] ?? 'custom';
+        $object = $meta['_menu_item_object'] ?? '';
+        $objectId = (int) ($meta['_menu_item_object_id'] ?? 0);
+
+        if ($type === 'custom') {
+            $url = $meta['_menu_item_url'] ?? '';
+
+            return $url !== '' ? ['label' => '', 'url' => $url] : null;
+        }
+
+        if ($type === 'post_type' && $object === 'page') {
+            $page = ($wpPageIdToLocalId[(string) $objectId] ?? null) !== null ? $this->pages->findById($wpPageIdToLocalId[(string) $objectId]) : null;
+
+            return $page !== null ? ['label' => $page->title, 'url' => page_permalink($page)] : null;
+        }
+
+        if ($type === 'post_type' && $object === 'post') {
+            $post = ($wpPostIdToLocalId[$objectId] ?? null) !== null ? $this->posts->findById($wpPostIdToLocalId[$objectId]) : null;
+
+            return $post !== null ? ['label' => $post->title, 'url' => post_permalink($post)] : null;
+        }
+
+        if ($type === 'taxonomy' && $object === 'category') {
+            $category = ($wpCategoryTermIdToLocalId[$objectId] ?? null) !== null ? $this->categories->findById($wpCategoryTermIdToLocalId[$objectId]) : null;
+
+            return $category !== null ? ['label' => $category->name, 'url' => category_permalink($category)] : null;
+        }
+
+        if ($type === 'taxonomy' && $object === 'post_tag') {
+            $tag = ($wpTagTermIdToLocalId[$objectId] ?? null) !== null ? $this->tags->findById($wpTagTermIdToLocalId[$objectId]) : null;
+
+            return $tag !== null ? ['label' => $tag->name, 'url' => tag_permalink($tag)] : null;
+        }
+
+        // An unrecognized type/object combination (a custom post type,
+        // WooCommerce product category, etc.) — no Lumora Press
+        // equivalent to link to.
+        return null;
+    }
+
+    /**
+     * Classic widget instances (LPP-004 Stage 8) — WordPress stores these
+     * as one `widget_{type}` option per type (a PHP-serialized array
+     * keyed by instance number) plus a `sidebars_widgets` option mapping
+     * each sidebar id to an ordered list of "type-index" slugs (e.g.
+     * "text-6"). Only widget types with a direct Lumora Press equivalent
+     * are imported (see WIDGET_TYPE_MAP) — every other `widget_*` option
+     * name (the overwhelming majority on a real multi-plugin site) is
+     * skipped, aggregated into one warning per type rather than one line
+     * per instance. Area assignment is a small id-based heuristic (see
+     * matchSidebar()); anything that doesn't confidently match — including
+     * WordPress's own `wp_inactive_widgets` bucket — lands in Lumora
+     * Press's existing Inactive Widgets bucket instead of being dropped,
+     * so nothing is ever silently lost, just left for the admin to place.
+     *
+     * The pre-import "widgets_config" option value is snapshotted before
+     * any widget is added, so removeAll() can restore it verbatim — same
+     * reasoning as importMenus()'s own snapshot.
+     */
+    private function importWidgets(string $batchId): void
+    {
+        $this->registry->record($batchId, self::SOURCE, 'widgets_snap', 0, null, (string) $this->config->option('widgets_config', '{}'));
+
+        $sidebarsWidgetsRaw = $this->source->option('sidebars_widgets');
+        $sidebarsWidgets = $sidebarsWidgetsRaw !== null ? @unserialize($sidebarsWidgetsRaw, ['allowed_classes' => false]) : null;
+
+        if (!is_array($sidebarsWidgets)) {
+            return;
+        }
+
+        $widgetTypeMap = [
+            'text' => 'text', 'custom_html' => 'custom_html', 'search' => 'search',
+            'pages' => 'pages', 'categories' => 'categories', 'recent-posts' => 'recent_posts',
+            'recent-comments' => 'recent_comments', 'archives' => 'archives',
+            'tag_cloud' => 'tag_cloud', 'meta' => 'meta',
+        ];
+
+        $widgetOptions = $this->source->optionsLike('widget_');
+        $instances = [];
+        $skippedByType = [];
+
+        foreach ($sidebarsWidgets as $sourceSidebarId => $widgetSlugs) {
+            if (!is_string($sourceSidebarId) || $sourceSidebarId === 'array_version' || !is_array($widgetSlugs)) {
+                continue;
+            }
+
+            $isSourceInactive = $sourceSidebarId === 'wp_inactive_widgets';
+            $targetSidebarId = $isSourceInactive ? WidgetManager::INACTIVE_SIDEBAR_ID : $this->matchSidebar($sourceSidebarId);
+            $unmatchedButActive = !$isSourceInactive && $targetSidebarId === null;
+            $targetSidebarId ??= WidgetManager::INACTIVE_SIDEBAR_ID;
+            $order = 0;
+
+            foreach ($widgetSlugs as $slug) {
+                if (!is_string($slug) || !preg_match('/^(.+)-(\d+)$/', $slug, $matches)) {
+                    continue;
+                }
+
+                $wpType = $matches[1];
+                $instanceKey = (int) $matches[2];
+                $lumoraType = $widgetTypeMap[$wpType] ?? null;
+
+                if ($lumoraType === null) {
+                    $skippedByType[$wpType] = ($skippedByType[$wpType] ?? 0) + 1;
+                    continue;
+                }
+
+                $decoded = isset($widgetOptions['widget_' . $wpType])
+                    ? @unserialize($widgetOptions['widget_' . $wpType], ['allowed_classes' => false])
+                    : null;
+                $settingsRaw = is_array($decoded) ? ($decoded[$instanceKey] ?? null) : null;
+
+                if (!is_array($settingsRaw)) {
+                    continue;
+                }
+
+                if ($unmatchedButActive) {
+                    $this->warnings[] = "Widget \"{$slug}\" was in sidebar \"{$sourceSidebarId}\", which has no matching area — moved to Inactive Widgets.";
+                }
+
+                $instances[] = new ImportedWidgetInstance(
+                    type: $lumoraType,
+                    settings: $this->translateWidgetSettings($lumoraType, $settingsRaw),
+                    targetSidebarId: $targetSidebarId,
+                    order: $order++,
+                    externalId: $slug,
+                );
+            }
+        }
+
+        if ($skippedByType !== []) {
+            $parts = [];
+
+            foreach ($skippedByType as $type => $count) {
+                $parts[] = "{$type} ({$count})";
+            }
+
+            $this->warnings[] = count($skippedByType) . ' unsupported widget type(s) skipped (no Lumora Press equivalent): ' . implode(', ', $parts) . '.';
+        }
+
+        if ($instances !== []) {
+            $this->widgetImporter->import($batchId, self::SOURCE, $instances);
+        }
+
+        $config = [];
+
+        foreach ([...array_keys($this->widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_ID] as $sidebarId) {
+            $config[$sidebarId] = $this->widgets->widgetsFor($sidebarId);
+        }
+
+        $this->config->setOption('widgets_config', json_encode($config));
+    }
+
+    /**
+     * A small, deliberately narrow heuristic tuned to WordPress's own
+     * common sidebar-id conventions found in real source data (e.g.
+     * "sidebar-1", "footer-1".."footer-4", "header-sidebar-1") — not a
+     * generic fuzzy-matching algorithm. "footer" is checked first since
+     * it's unambiguous; "sidebar" only matches Lumora Press's "primary"
+     * area when the source id doesn't also contain "header" (a real
+     * "header-sidebar-1" area exists in production data and is
+     * genuinely ambiguous — it lands in Inactive Widgets instead of
+     * being guessed wrong). Anything else returns null, meaning
+     * "no confident match" — the caller routes that to Inactive Widgets
+     * rather than dropping it.
+     */
+    private function matchSidebar(string $sourceSidebarId): ?string
+    {
+        $normalized = strtolower($sourceSidebarId);
+        $registered = array_keys($this->widgets->sidebars());
+
+        if (str_contains($normalized, 'footer') && in_array('footer', $registered, true)) {
+            return 'footer';
+        }
+
+        if (str_contains($normalized, 'sidebar') && !str_contains($normalized, 'header') && in_array('primary', $registered, true)) {
+            return 'primary';
+        }
+
+        return null;
+    }
+
+    /**
+     * Translates a WordPress classic widget instance's own setting keys
+     * onto Lumora Press's own (see CoreWidgets for the full field list
+     * per type) — title is common to every type; anything else falls
+     * back to title-only, which is always a safe default even for a
+     * type with more settings (e.g. archives/search/meta/tag_cloud have
+     * no other required setting).
+     *
+     * @param array<string, mixed> $wp
+     * @return array<string, mixed>
+     */
+    private function translateWidgetSettings(string $lumoraType, array $wp): array
+    {
+        $title = (string) ($wp['title'] ?? '');
+
+        return match ($lumoraType) {
+            'text' => ['title' => $title, 'text' => (string) ($wp['text'] ?? '')],
+            'custom_html' => ['title' => $title, 'html' => (string) ($wp['content'] ?? '')],
+            'categories' => ['title' => $title, 'show_count' => !empty($wp['count'])],
+            'recent_posts' => ['title' => $title, 'limit' => isset($wp['number']) ? (int) $wp['number'] : 5],
+            'recent_comments' => ['title' => $title, 'limit' => isset($wp['number']) ? (int) $wp['number'] : 5],
+            default => ['title' => $title],
+        };
     }
 
     /**

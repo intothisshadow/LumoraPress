@@ -80,9 +80,11 @@ use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\Import\CommentImporter;
 use LumoraPress\Services\Import\MediaImporter;
+use LumoraPress\Services\Import\MenuImporter;
 use LumoraPress\Services\Import\PageImporter;
 use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
+use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -379,6 +381,8 @@ $pageImporter = new PageImporter($pages, $contentImportRegistry);
 $userImporter = new UserImporter($users, $contentImportRegistry);
 $mediaImporter = new MediaImporter($media, LUMORA_ROOT . '/content/uploads', $contentImportRegistry);
 $commentImporter = new CommentImporter($comments, $contentImportRegistry);
+$menuImporter = new MenuImporter($menus, $contentImportRegistry);
+$widgetImporter = new WidgetImporter($widgets, $contentImportRegistry);
 
 $redirects = new RedirectService($database, $tablePrefix);
 $permalinks = new PermalinkService($config, $categories, $users);
@@ -787,6 +791,8 @@ $kernel = new Kernel(
     userImporter: $userImporter,
     mediaImporter: $mediaImporter,
     commentImporter: $commentImporter,
+    menuImporter: $menuImporter,
+    widgetImporter: $widgetImporter,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);

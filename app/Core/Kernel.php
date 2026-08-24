@@ -50,9 +50,11 @@ use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\Import\CommentImporter;
 use LumoraPress\Services\Import\MediaImporter;
+use LumoraPress\Services\Import\MenuImporter;
 use LumoraPress\Services\Import\PageImporter;
 use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
+use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -136,6 +138,8 @@ final class Kernel
         public readonly UserImporter $userImporter,
         public readonly MediaImporter $mediaImporter,
         public readonly CommentImporter $commentImporter,
+        public readonly MenuImporter $menuImporter,
+        public readonly WidgetImporter $widgetImporter,
     ) {
     }
 }

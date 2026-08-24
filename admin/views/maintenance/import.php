@@ -85,6 +85,8 @@ if ($wordPressImporterActive) {
             pageImporter: $kernel->pageImporter,
             mediaImporter: $kernel->mediaImporter,
             commentImporter: $kernel->commentImporter,
+            menuImporter: $kernel->menuImporter,
+            widgetImporter: $kernel->widgetImporter,
             users: $kernel->users,
             posts: $kernel->posts,
             pages: $kernel->pages,
@@ -95,6 +97,9 @@ if ($wordPressImporterActive) {
             tags: $kernel->tags,
             folders: $kernel->folders,
             redirects: $kernel->redirects,
+            menus: $kernel->menus,
+            widgets: $kernel->widgets,
+            config: $kernel->config,
             registry: $kernel->contentImportRegistry,
             sourceUploadsPath: rtrim($formValues['uploads_path'], '/'),
             downloads: $downloadsService,
@@ -116,6 +121,8 @@ if ($wordPressImporterActive) {
         pageImporter: $kernel->pageImporter,
         mediaImporter: $kernel->mediaImporter,
         commentImporter: $kernel->commentImporter,
+        menuImporter: $kernel->menuImporter,
+        widgetImporter: $kernel->widgetImporter,
         users: $kernel->users,
         posts: $kernel->posts,
         pages: $kernel->pages,
@@ -126,6 +133,9 @@ if ($wordPressImporterActive) {
         tags: $kernel->tags,
         folders: $kernel->folders,
         redirects: $kernel->redirects,
+        menus: $kernel->menus,
+        widgets: $kernel->widgets,
+        config: $kernel->config,
         registry: $kernel->contentImportRegistry,
         sourceUploadsPath: '',
         downloads: $downloadsService,
@@ -180,6 +190,8 @@ if ($wordPressImporterActive) {
                 'pages' => isset($_POST['include_pages']),
                 'posts' => isset($_POST['include_posts']),
                 'comments' => isset($_POST['include_comments']),
+                'menus' => isset($_POST['include_menus']),
+                'widgets' => isset($_POST['include_widgets']),
             ]);
 
             // The service instance (and its in-memory warnings() log)
@@ -253,10 +265,10 @@ if ($wordPressImporterActive) {
         <h2>WordPress Importer</h2>
 
         <p class="lp-field__hint">
-            Imports users, categories, tags, media, pages, posts, and
-            comments from an existing WordPress site via a direct database
-            connection plus a local copy of its <code>wp-content/uploads</code>
-            folder. The database can be the WordPress site's own live
+            Imports users, categories, tags, media, pages, posts, comments,
+            menus, and classic widgets from an existing WordPress site via
+            a direct database connection plus a local copy of its
+            <code>wp-content/uploads</code> folder. The database can be the WordPress site's own live
             server (point the host field at it directly) or a local copy
             you've restored from a backup — either way, the uploads folder
             must already be readable on this server's local filesystem; it
@@ -276,14 +288,20 @@ if ($wordPressImporterActive) {
             $pluralLabels = [
                 'post' => 'posts', 'page' => 'pages', 'user' => 'users',
                 'category' => 'categories', 'tag' => 'tags', 'comment' => 'comments', 'media' => 'media',
+                'nav_menu' => 'menus', 'widget_instance' => 'widgets',
             ];
+            // "*_snap" entries are internal pre-import option snapshots
+            // (see WordPressImportService::removeAll()'s docblock) — not
+            // real imported content, so they're excluded from this
+            // user-facing summary line entirely.
+            $displayCounts = array_filter($summary['counts'], static fn (string $type): bool => !str_ends_with($type, '_snap'), ARRAY_FILTER_USE_KEY);
             ?>
             <p class="lp-field__hint">
                 <strong>Last imported:</strong>
                 <?= esc_html(implode(', ', array_map(
                     static fn (string $type, int $count): string => "{$count} " . ($count === 1 ? $type : ($pluralLabels[$type] ?? $type . 's')),
-                    array_keys($summary['counts']),
-                    array_values($summary['counts']),
+                    array_keys($displayCounts),
+                    array_values($displayCounts),
                 ))) ?>
                 <?php if ($summary['createdAt'] !== null): ?>
                     at <?= esc_html($summary['createdAt']->format('Y-m-d H:i')) ?>
@@ -416,6 +434,14 @@ if ($wordPressImporterActive) {
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="include_comments" value="1" checked>
                         Comments (on imported posts only — not pages)
+                    </label>
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="include_menus" value="1" checked>
+                        Menus (each becomes a named menu — not auto-assigned to a location; do that afterward from Appearance &rsaquo; Menus)
+                    </label>
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="include_widgets" value="1" checked>
+                        Widgets (only types with a Lumora Press equivalent; the rest are skipped and listed in the warnings below)
                     </label>
                 </p>
 

@@ -168,12 +168,12 @@ final class WordPressSource
     }
 
     /**
-     * @return array<int, array{term_id: int, name: string, slug: string, parent: int}>
+     * @return array<int, array{term_id: int, term_taxonomy_id: int, name: string, slug: string, parent: int}>
      */
     public function terms(string $taxonomy): array
     {
         $rows = $this->source->fetchAll(
-            'SELECT t.term_id, t.name, t.slug, tt.parent
+            'SELECT t.term_id, tt.term_taxonomy_id, t.name, t.slug, tt.parent
                FROM ' . $this->table('term_taxonomy') . ' tt
                JOIN ' . $this->table('terms') . ' t ON t.term_id = tt.term_id
               WHERE tt.taxonomy = :taxonomy
@@ -184,6 +184,7 @@ final class WordPressSource
         return array_map(
             static fn (array $row): array => [
                 'term_id' => (int) $row['term_id'],
+                'term_taxonomy_id' => (int) $row['term_taxonomy_id'],
                 'name' => (string) $row['name'],
                 'slug' => (string) $row['slug'],
                 'parent' => (int) $row['parent'],
@@ -193,9 +194,91 @@ final class WordPressSource
     }
 
     /**
+     * Every `nav_menu_item` post's WordPress menu (taxonomy `nav_menu`)
+     * term id, in one query — purpose-built for LPP-004 Stage 8's menu
+     * import, joining term_relationships/term_taxonomy directly rather
+     * than calling termIdsForPost() once per item (WordPress ties a menu
+     * item to its menu the exact same way a post is tied to a category —
+     * via term_relationships — so this is that same join, just scoped to
+     * one taxonomy and returned in bulk).
+     *
+     * @return array<int, int> nav_menu_item post id => nav_menu term id
+     */
+    public function navMenuItemTermTaxonomyIds(): array
+    {
+        $rows = $this->source->fetchAll(
+            'SELECT tr.object_id, t.term_id
+               FROM ' . $this->table('term_relationships') . ' tr
+               JOIN ' . $this->table('term_taxonomy') . ' tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+               JOIN ' . $this->table('terms') . ' t ON t.term_id = tt.term_id
+              WHERE tt.taxonomy = :taxonomy',
+            ['taxonomy' => 'nav_menu'],
+        );
+
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[(int) $row['object_id']] = (int) $row['term_id'];
+        }
+
+        return $map;
+    }
+
+    /**
+     * A single option's raw value by its exact name — used for
+     * `sidebars_widgets` and `theme_mods_{stylesheet}` (LPP-004 Stage 8),
+     * neither of which fits siteOptions()'s fixed allowlist above.
+     */
+    public function option(string $name): ?string
+    {
+        $row = $this->source->fetchOne(
+            'SELECT option_value FROM ' . $this->table('options') . ' WHERE option_name = :name',
+            ['name' => $name],
+        );
+
+        return $row !== null ? (string) $row['option_value'] : null;
+    }
+
+    /**
+     * Every option whose name starts with $prefix — the one deliberately
+     * widened read this class makes (see class docblock's "never a bare
+     * SELECT *" rule). Needed for classic widget instances specifically:
+     * a real WordPress site can have 70+ distinct `widget_*` option names
+     * once every plugin that ever registered a widget is counted, so
+     * there is no fixed allowlist to write the way siteOptions() does —
+     * $prefix is always a hardcoded literal from calling code (e.g.
+     * `'widget_'`), never user input, and the LIKE pattern's value is
+     * still parameterized, so this stays just as safe as the narrower
+     * queries elsewhere in this class while covering data siteOptions()'s
+     * own approach structurally cannot. $prefix's own characters are not
+     * escaped against LIKE's `%`/`_` wildcards — deliberately: every real
+     * caller passes a fixed literal like `'widget_'` with no wildcard
+     * meaning of its own, so escaping would add complexity (and a
+     * database-portable `ESCAPE` clause is more fragile than it looks —
+     * see this method's own regression test) for no real protection.
+     *
+     * @return array<string, string>
+     */
+    public function optionsLike(string $prefix): array
+    {
+        $rows = $this->source->fetchAll(
+            'SELECT option_name, option_value FROM ' . $this->table('options') . ' WHERE option_name LIKE :prefix',
+            ['prefix' => $prefix . '%'],
+        );
+
+        $options = [];
+
+        foreach ($rows as $row) {
+            $options[(string) $row['option_name']] = (string) $row['option_value'];
+        }
+
+        return $options;
+    }
+
+    /**
      * @param array<int, string> $postTypes
      * @param array<int, string> $statuses
-     * @return array<int, array{ID: int, post_author: int, post_date: string, post_content: string, post_title: string, post_excerpt: string, post_status: string, post_name: string, post_parent: int, guid: string, post_type: string}>
+     * @return array<int, array{ID: int, post_author: int, post_date: string, post_content: string, post_title: string, post_excerpt: string, post_status: string, post_name: string, post_parent: int, guid: string, post_type: string, menu_order: int}>
      */
     public function posts(array $postTypes, array $statuses): array
     {
@@ -215,7 +298,7 @@ final class WordPressSource
         }
 
         $rows = $this->source->fetchAll(
-            'SELECT ID, post_author, post_date, post_content, post_title, post_excerpt, post_status, post_name, post_parent, guid, post_type
+            'SELECT ID, post_author, post_date, post_content, post_title, post_excerpt, post_status, post_name, post_parent, guid, post_type, menu_order
                FROM ' . $this->table('posts') . '
               WHERE post_type IN (' . implode(', ', $typePlaceholders) . ')
                 AND post_status IN (' . implode(', ', $statusPlaceholders) . ')
@@ -236,6 +319,7 @@ final class WordPressSource
                 'post_parent' => (int) $row['post_parent'],
                 'guid' => (string) $row['guid'],
                 'post_type' => (string) $row['post_type'],
+                'menu_order' => (int) $row['menu_order'],
             ],
             $rows,
         );

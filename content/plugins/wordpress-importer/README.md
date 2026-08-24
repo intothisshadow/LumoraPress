@@ -1,9 +1,9 @@
 # WordPress Importer
 
 Migrates an existing WordPress site into Lumora Press: users, categories,
-tags, media, pages, posts, and comments — via a direct database
-connection plus a local copy of the source site's `wp-content/uploads`
-folder.
+tags, media, pages, posts, comments, menus, and classic widgets — via a
+direct database connection plus a local copy of the source site's
+`wp-content/uploads` folder.
 
 ## What this plugin does (first-pass scope)
 
@@ -30,6 +30,31 @@ folder.
   to point at the new local copy — full-size images only; a resized
   variant filename WordPress commonly embeds inline isn't generated or
   rewritten.
+- Every WordPress menu (each `nav_menu` taxonomy term) becomes a named,
+  reusable Lumora Press menu — custom links, and links to an already-
+  imported page/post/category/tag, resolved to their real permalink and
+  preserving parent/child nesting. A menu item pointing at content that
+  wasn't imported (its own toggle was off, or it's genuinely missing) is
+  skipped, listed in the warnings. **Menus are never auto-assigned to a
+  theme location** — WordPress doesn't store a location's human-readable
+  name in its database, only an opaque per-theme slug, so there's no
+  reliable way to guess which Lumora Press location it meant. Assign
+  each imported menu from Appearance › Menus › Manage Locations once the
+  import finishes.
+- Classic widgets import too, but only the types with a direct Lumora
+  Press equivalent (Text, Custom HTML, Search, Pages, Categories, Recent
+  Posts, Recent Comments, Archives, Tag Cloud, Meta) — every other
+  widget type (WordPress's own Navigation Menu widget, and any
+  plugin-provided widget type) is skipped, aggregated into one warning
+  per type rather than one line per instance, since a real multi-plugin
+  site can easily register 50+ distinct widget types with no Lumora
+  Press equivalent at all. A widget's own sidebar is matched to a Lumora
+  Press widget area by a small id-based heuristic (e.g. WordPress's
+  `sidebar-1`/`footer-2` → this theme's `primary`/`footer`); anything
+  that doesn't confidently match — including WordPress's own inactive-
+  widgets bucket — lands in Lumora Press's existing Inactive Widgets
+  list instead of being dropped, so nothing imported is ever silently
+  lost.
 - Every imported record is tagged (via the shared
   `ContentImportRegistry`/`*Importer` layer this plugin shares with the
   Dummy Content plugin) so **Remove All Imported Content** deletes
@@ -42,9 +67,9 @@ folder.
 The WXR `.xml` export upload path is a separate, not-yet-built import
 source. Site settings (title, tagline, timezone, permalink structure,
 etc.) are read and shown as a preview during Test Connection, never
-written back automatically. Menus and classic widgets aren't migrated.
-There's no dry-run preview, no resuming an interrupted import, and no
-skip-vs-overwrite-existing-content choice — idempotency is a hard
+written back automatically. There's no dry-run preview, no resuming an
+interrupted import, and no skip-vs-overwrite-existing-content choice —
+idempotency is a hard
 "one import at a time" guard instead, matching Dummy Content. General
 internal post-to-post link rewriting, a redirect-mapping report, and
 regenerating thumbnail size variants aren't built either.
