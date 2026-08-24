@@ -563,6 +563,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Content imported via the WordPress Importer could render with
+  double-encoded HTML entities — e.g. a category named "TV & Movies" in
+  the source site showing up as the literal text "TV &amp;amp; Movies"
+  instead of "TV & Movies" (LP-113). WordPress HTML-entity-encodes
+  plain-text fields before storing them; the importer was reading that
+  already-encoded value verbatim and letting it be encoded a second time
+  at render. Fixed at the source for every future import (term names,
+  post/page titles and excerpts, comment author names/content, user
+  display names, media alt text), and a new "Fix Double-Encoded Text"
+  tool on Maintenance &rsaquo; Tools repairs content already affected by
+  it from an import made before this fix.
 - The WordPress Importer plugin (`content/plugins/wordpress-importer`)
   was missing from the update pipeline's core-paths list (`core-paths.php`
   and its hardcoded fallback in `include/bootstrap.php`), even though

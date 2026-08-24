@@ -1707,7 +1707,15 @@ final class WordPressImportService
                 absolutePath: $absolutePath,
                 uploadedByUserId: $authorId,
                 fileName: basename($relativePath),
-                altText: ($meta['_wp_attachment_image_alt'] ?? '') !== '' ? $meta['_wp_attachment_image_alt'] : null,
+                // _wp_attachment_image_alt is a plain-text field rendered
+                // via esc_attr() — postMeta() returns raw postmeta values
+                // as-is (some meta keys carry serialized/structural data
+                // that must not be entity-decoded), so unlike
+                // WordPressSource's own fixed-shape methods, the decode
+                // for this one known plain-text key happens here at its
+                // point of use (LP-113 — see WordPressSource::
+                // decodeEntities()'s docblock for the underlying bug).
+                altText: ($meta['_wp_attachment_image_alt'] ?? '') !== '' ? html_entity_decode($meta['_wp_attachment_image_alt'], ENT_QUOTES, 'UTF-8') : null,
                 caption: $attachment['post_excerpt'] !== '' ? $attachment['post_excerpt'] : null,
                 description: $attachment['post_content'] !== '' ? $attachment['post_content'] : null,
                 externalId: (string) $attachment['ID'],

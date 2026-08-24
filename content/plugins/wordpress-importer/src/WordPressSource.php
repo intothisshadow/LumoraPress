@@ -40,6 +40,27 @@ use Throwable;
 final class WordPressSource
 {
     /**
+     * WordPress HTML-entity-encodes plain-text fields (term names, post/
+     * page titles and excerpts, display names, comment author names/
+     * content) before storing them — typing "TV & Movies" into wp-admin
+     * saves `TV &amp; Movies` in the database. Lumora Press's own
+     * esc_html()/esc_attr() (include/helpers.php) then re-encode that
+     * already-encoded value on the way out, producing `TV &amp;amp;
+     * Movies` in the rendered HTML source — which a browser displays as
+     * the literal text "TV &amp; Movies" rather than "TV & Movies"
+     * (LP-113). Every plain-text field read by this class must be
+     * decoded exactly once, here at the read boundary, before any
+     * importer or service ever stores it — mirrors the identical
+     * html_entity_decode() WordPressImportService::importSiteSettings()
+     * already applies to blogname/blogdescription, extended to every
+     * other plain-text field this class reads.
+     */
+    private static function decodeEntities(string $value): string
+    {
+        return html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
      * The only option_name values this class ever reads — see class
      * docblock for why a full table scan is never acceptable here.
      *
@@ -160,7 +181,7 @@ final class WordPressSource
                 'ID' => (int) $row['ID'],
                 'user_login' => (string) $row['user_login'],
                 'user_email' => (string) $row['user_email'],
-                'display_name' => (string) $row['display_name'],
+                'display_name' => self::decodeEntities((string) $row['display_name']),
                 'user_registered' => (string) $row['user_registered'],
             ],
             $rows,
@@ -218,7 +239,7 @@ final class WordPressSource
             static fn (array $row): array => [
                 'term_id' => (int) $row['term_id'],
                 'term_taxonomy_id' => (int) $row['term_taxonomy_id'],
-                'name' => (string) $row['name'],
+                'name' => self::decodeEntities((string) $row['name']),
                 'slug' => (string) $row['slug'],
                 'parent' => (int) $row['parent'],
             ],
@@ -345,8 +366,13 @@ final class WordPressSource
                 'post_author' => (int) $row['post_author'],
                 'post_date' => (string) $row['post_date'],
                 'post_content' => (string) $row['post_content'],
-                'post_title' => (string) $row['post_title'],
-                'post_excerpt' => (string) $row['post_excerpt'],
+                // post_title/post_excerpt are plain-text fields rendered
+                // via esc_html() (unlike post_content, which is stored as
+                // real HTML and correctly interpreted by HtmlSanitizer's
+                // DOM parser regardless of any entity-encoding within it)
+                // — see decodeEntities()'s docblock.
+                'post_title' => self::decodeEntities((string) $row['post_title']),
+                'post_excerpt' => self::decodeEntities((string) $row['post_excerpt']),
                 'post_status' => (string) $row['post_status'],
                 'post_name' => (string) $row['post_name'],
                 'post_parent' => (int) $row['post_parent'],
@@ -400,7 +426,7 @@ final class WordPressSource
             ['object_id' => $postId, 'taxonomy' => $taxonomy],
         );
 
-        return array_map(static fn (array $row): string => (string) $row['name'], $rows);
+        return array_map(static fn (array $row): string => self::decodeEntities((string) $row['name']), $rows);
     }
 
     /**
@@ -444,11 +470,14 @@ final class WordPressSource
                 'comment_post_ID' => (int) $row['comment_post_ID'],
                 'comment_parent' => (int) $row['comment_parent'],
                 'user_id' => (int) $row['user_id'],
-                'comment_author' => (string) $row['comment_author'],
+                // comment_author/comment_content are both rendered via
+                // esc_html() (format_comment_content(), include/
+                // helpers.php) — see decodeEntities()'s docblock.
+                'comment_author' => self::decodeEntities((string) $row['comment_author']),
                 'comment_author_email' => (string) $row['comment_author_email'],
                 'comment_author_url' => (string) $row['comment_author_url'],
                 'comment_date' => (string) $row['comment_date'],
-                'comment_content' => (string) $row['comment_content'],
+                'comment_content' => self::decodeEntities((string) $row['comment_content']),
                 'comment_approved' => (string) $row['comment_approved'],
             ],
             $rows,

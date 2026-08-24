@@ -78,6 +78,7 @@ use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
+use LumoraPress\Services\EntityDecodeRepairService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
@@ -386,6 +387,8 @@ $mediaImporter = new MediaImporter($media, LUMORA_ROOT . '/content/uploads', $co
 $commentImporter = new CommentImporter($comments, $contentImportRegistry);
 $menuImporter = new MenuImporter($menus, $contentImportRegistry);
 $widgetImporter = new WidgetImporter($widgets, $contentImportRegistry);
+
+$entityDecodeRepair = new EntityDecodeRepairService($database, $tablePrefix);
 
 $redirects = new RedirectService($database, $tablePrefix);
 $permalinks = new PermalinkService($config, $categories, $users);
@@ -803,6 +806,7 @@ $kernel = new Kernel(
     commentImporter: $commentImporter,
     menuImporter: $menuImporter,
     widgetImporter: $widgetImporter,
+    entityDecodeRepair: $entityDecodeRepair,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);
