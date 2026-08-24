@@ -186,6 +186,7 @@ return.
 | `page_permalink(Page $page): string` | A page's URL — always flat `page/{slug}`; pages have no configurable structure. |
 | `category_permalink(Category $category): string` / `tag_permalink(Tag $tag): string` | Category/tag archive URLs, honoring the configured base prefix. |
 | `search_result_permalink(SearchResult $result): string` | Dispatches by the result's type to the right permalink builder above. |
+| `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it (footer, comment form notice, etc.) is entirely up to the theme — nothing links to it automatically. |
 | `site_url(string $path = ''): string` | Root-relative URL under the site's base path. Use for any internal link. |
 | `home_url(string $path = ''): string` | Absolute URL (scheme + host + base path) — needed for RSS, outbound email, and canonical/OG tags, where a relative URL won't do. |
 | `admin_url(string $page = ''): string` | URL into `/admin`. |

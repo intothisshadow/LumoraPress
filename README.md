@@ -295,6 +295,9 @@ them via FTP/SFTP or your hosting file manager).
   holds, disallowed-keyword rejection, a `comment_is_spam` filter for
   spam-detection plugins), admin/author email notifications, and avatars
   (Gravatar rating/default, or a locally uploaded default image).
+- **Privacy Policy Page** — a Settings &rsaquo; Privacy screen to name an
+  existing Page as the site's privacy policy, exposed to themes via the
+  `privacy_policy_url()` template tag.
 - **RSS & Atom feeds** — a site-wide feed of published posts, plus a
   per-category feed (`/category/{slug}/feed`) for each category.
 - **Search** — full-text search across posts and pages.

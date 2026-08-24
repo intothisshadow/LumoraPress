@@ -568,6 +568,11 @@ final class WordPressImportService
                 break;
             case 'pages':
                 $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+
+                if ($options['site_settings'] ?? false) {
+                    $this->applyPageDependentSiteSettings($maps['wpPageIdToLocalId']);
+                }
+
                 break;
             case 'posts':
                 $maps['wpPostIdToLocalId'] = $this->importPosts($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
@@ -972,29 +977,31 @@ final class WordPressImportService
 
     /**
      * LPP-004 Stage 1 — the site-wide `options` values a WordPress
-     * install exposes on Settings > General/Permalinks, mapped onto the
-     * subset Lumora Press has a real config key for
-     * (`PressConfig::option()`, the same keys admin/views/settings/
-     * general.php and admin/views/settings/permalinks.php read/write).
-     * Homepage settings, Reading settings, Discussion settings, Media
-     * settings, and Privacy settings — all on the ticket's own Stage 1
-     * checklist — are deliberately never touched here: none of them has
-     * a Lumora Press config key at all (no static front page, no
-     * comment-moderation-threshold setting, no media-size settings, no
-     * privacy-policy-page setting exist in this codebase yet), so there
-     * is nothing to write them into. Adding placeholder keys just to
-     * hold imported values nobody reads yet would be worse than leaving
-     * them out — see CLAUDE.md's "don't add speculative infrastructure"
-     * guidance.
+     * install exposes on Settings > General/Permalinks/Reading/
+     * Discussion/Media/Privacy, mapped onto the subset Lumora Press has
+     * a real config key for (`PressConfig::option()`, the same keys the
+     * corresponding admin/views/settings/*.php screens read/write).
      *
-     * The pre-import value of every key this method *does* write is
-     * snapshotted as one JSON blob (content type 'site_settings_snap',
-     * $contentId 0 as an arbitrary placeholder — nothing ever looks this
-     * row up by id) before anything is overwritten, mirroring
-     * importMenus()/importWidgets()'s own snapshot-and-restore pattern
-     * for the same reason: none of these are a real, individually
-     * delete()-able content row, so removeAll() restores the exact
-     * pre-import values instead.
+     * Homepage and Privacy settings reference a WordPress *page ID*
+     * (`page_on_front`/`page_for_posts`/`wp_page_for_privacy_policy`),
+     * which can't be resolved until the 'pages' stage has actually
+     * imported that page and assigned it a local ID — this method only
+     * ever runs as the (early) 'site_settings' stage, before 'pages'.
+     * That resolution instead happens in
+     * applyPageDependentSiteSettings(), called from the 'pages' case in
+     * executeStage() once its wpPageIdToLocalId map exists. Every key
+     * either method writes is still snapshotted here, up front, since
+     * nothing else touches these keys in between.
+     *
+     * The pre-import value of every key this method (and
+     * applyPageDependentSiteSettings()) writes is snapshotted as one
+     * JSON blob (content type 'site_settings_snap', $contentId 0 as an
+     * arbitrary placeholder — nothing ever looks this row up by id)
+     * before anything is overwritten, mirroring importMenus()/
+     * importWidgets()'s own snapshot-and-restore pattern for the same
+     * reason: none of these are a real, individually delete()-able
+     * content row, so removeAll() restores the exact pre-import values
+     * instead.
      */
     private function importSiteSettings(string $batchId): void
     {
@@ -1007,6 +1014,47 @@ final class WordPressImportService
             'date_format' => $this->config->option('date_format', 'F j, Y'),
             'time_format' => $this->config->option('time_format', 'g:i a'),
             'permalink_structure' => $this->config->option('permalink_structure', '/post/%postname%/'),
+            // Homepage — resolved in applyPageDependentSiteSettings().
+            'homepage_display' => $this->config->option('homepage_display', 'posts'),
+            'homepage_page_id' => $this->config->option('homepage_page_id', ''),
+            'homepage_posts_page_id' => $this->config->option('homepage_posts_page_id', ''),
+            // Reading.
+            'posts_per_page' => $this->config->option('posts_per_page', '10'),
+            'discourage_search_engines' => $this->config->option('discourage_search_engines', '0'),
+            'feed_item_limit' => $this->config->option('feed_item_limit', '10'),
+            'feed_full_content' => $this->config->option('feed_full_content', '1'),
+            // Discussion.
+            'comment_default_status_for_new_posts' => $this->config->option('comment_default_status_for_new_posts', 'open'),
+            'comment_moderation_manual_all' => $this->config->option('comment_moderation_manual_all', '0'),
+            'comment_moderation_auto_approve_previous' => $this->config->option('comment_moderation_auto_approve_previous', '1'),
+            'comment_close_after_days' => $this->config->option('comment_close_after_days', '0'),
+            'comment_threading_enabled' => $this->config->option('comment_threading_enabled', '1'),
+            'comment_max_nesting_level' => $this->config->option('comment_max_nesting_level', '5'),
+            'comment_pagination_enabled' => $this->config->option('comment_pagination_enabled', '0'),
+            'comment_per_page' => $this->config->option('comment_per_page', '50'),
+            'comment_default_page' => $this->config->option('comment_default_page', 'last'),
+            'comment_order' => $this->config->option('comment_order', 'asc'),
+            'comment_notify_admin_new' => $this->config->option('comment_notify_admin_new', '1'),
+            'comment_notify_admin_moderation' => $this->config->option('comment_notify_admin_moderation', '1'),
+            'comment_author_name_required' => $this->config->option('comment_author_name_required', '1'),
+            'comment_author_email_required' => $this->config->option('comment_author_email_required', '1'),
+            'comment_require_registration' => $this->config->option('comment_require_registration', '0'),
+            'comment_moderation_keywords' => $this->config->option('comment_moderation_keywords', ''),
+            'comment_disallowed_keywords' => $this->config->option('comment_disallowed_keywords', ''),
+            'comment_moderation_link_limit' => $this->config->option('comment_moderation_link_limit', '0'),
+            'avatars_enabled' => $this->config->option('avatars_enabled', '1'),
+            'avatar_max_rating' => $this->config->option('avatar_max_rating', 'G'),
+            'avatar_default' => $this->config->option('avatar_default', 'mp'),
+            // Media.
+            'thumbnail_size_small_width' => $this->config->option('thumbnail_size_small_width', '150'),
+            'thumbnail_size_small_height' => $this->config->option('thumbnail_size_small_height', '150'),
+            'thumbnail_size_small_mode' => $this->config->option('thumbnail_size_small_mode', 'crop'),
+            'thumbnail_size_medium_width' => $this->config->option('thumbnail_size_medium_width', '300'),
+            'thumbnail_size_medium_height' => $this->config->option('thumbnail_size_medium_height', '300'),
+            'thumbnail_size_large_width' => $this->config->option('thumbnail_size_large_width', '1024'),
+            'thumbnail_size_large_height' => $this->config->option('thumbnail_size_large_height', '1024'),
+            // Privacy — resolved in applyPageDependentSiteSettings().
+            'privacy_policy_page_id' => $this->config->option('privacy_policy_page_id', ''),
         ];
 
         $this->registry->record($batchId, self::SOURCE, 'site_settings_snap', 0, null, json_encode($previous));
@@ -1041,6 +1089,214 @@ final class WordPressImportService
 
         if ($structure !== null) {
             $this->config->setOption('permalink_structure', $structure);
+        }
+
+        // Reading.
+        if (is_numeric($wpOptions['posts_per_page'] ?? '')) {
+            $this->config->setOption('posts_per_page', (string) max(1, min(200, (int) $wpOptions['posts_per_page'])));
+        }
+
+        if (($wpOptions['blog_public'] ?? '') !== '') {
+            $this->config->setOption('discourage_search_engines', $wpOptions['blog_public'] === '0' ? '1' : '0');
+        }
+
+        if (is_numeric($wpOptions['posts_per_rss'] ?? '')) {
+            $this->config->setOption('feed_item_limit', (string) max(1, min(100, (int) $wpOptions['posts_per_rss'])));
+        }
+
+        if (($wpOptions['rss_use_excerpt'] ?? '') !== '') {
+            $this->config->setOption('feed_full_content', $wpOptions['rss_use_excerpt'] === '1' ? '0' : '1');
+        }
+
+        // Discussion.
+        if (in_array($wpOptions['default_comment_status'] ?? '', ['open', 'closed'], true)) {
+            $this->config->setOption('comment_default_status_for_new_posts', $wpOptions['default_comment_status']);
+        }
+
+        if (($wpOptions['comment_moderation'] ?? '') !== '') {
+            $this->config->setOption('comment_moderation_manual_all', $wpOptions['comment_moderation'] === '1' ? '1' : '0');
+        }
+
+        if (($wpOptions['comment_whitelist'] ?? '') !== '') {
+            $this->config->setOption('comment_moderation_auto_approve_previous', $wpOptions['comment_whitelist'] === '1' ? '1' : '0');
+        }
+
+        if (($wpOptions['close_comments_for_old_posts'] ?? '') === '1') {
+            $days = is_numeric($wpOptions['close_comments_days_old'] ?? '') ? (int) $wpOptions['close_comments_days_old'] : 14;
+            $this->config->setOption('comment_close_after_days', (string) max(0, $days));
+        } elseif (($wpOptions['close_comments_for_old_posts'] ?? '') === '0') {
+            $this->config->setOption('comment_close_after_days', '0');
+        }
+
+        if (($wpOptions['thread_comments'] ?? '') !== '') {
+            $this->config->setOption('comment_threading_enabled', $wpOptions['thread_comments'] === '1' ? '1' : '0');
+        }
+
+        if (is_numeric($wpOptions['thread_comments_depth'] ?? '')) {
+            $this->config->setOption('comment_max_nesting_level', (string) max(1, min(20, (int) $wpOptions['thread_comments_depth'])));
+        }
+
+        if (($wpOptions['page_comments'] ?? '') !== '') {
+            $this->config->setOption('comment_pagination_enabled', $wpOptions['page_comments'] === '1' ? '1' : '0');
+        }
+
+        if (is_numeric($wpOptions['comments_per_page'] ?? '')) {
+            $this->config->setOption('comment_per_page', (string) max(1, min(500, (int) $wpOptions['comments_per_page'])));
+        }
+
+        if (($wpOptions['default_comments_page'] ?? '') !== '') {
+            $this->config->setOption('comment_default_page', $wpOptions['default_comments_page'] === 'oldest' ? 'first' : 'last');
+        }
+
+        if (in_array($wpOptions['comment_order'] ?? '', ['asc', 'desc'], true)) {
+            $this->config->setOption('comment_order', $wpOptions['comment_order']);
+        }
+
+        if (($wpOptions['comments_notify'] ?? '') !== '') {
+            $this->config->setOption('comment_notify_admin_new', $wpOptions['comments_notify'] === '1' ? '1' : '0');
+        }
+
+        if (($wpOptions['moderation_notify'] ?? '') !== '') {
+            $this->config->setOption('comment_notify_admin_moderation', $wpOptions['moderation_notify'] === '1' ? '1' : '0');
+        }
+
+        if (($wpOptions['require_name_email'] ?? '') !== '') {
+            $required = $wpOptions['require_name_email'] === '1' ? '1' : '0';
+            $this->config->setOption('comment_author_name_required', $required);
+            $this->config->setOption('comment_author_email_required', $required);
+        }
+
+        if (($wpOptions['comment_registration'] ?? '') !== '') {
+            $this->config->setOption('comment_require_registration', $wpOptions['comment_registration'] === '1' ? '1' : '0');
+        }
+
+        if (trim($wpOptions['moderation_keys'] ?? '') !== '') {
+            $this->config->setOption('comment_moderation_keywords', trim($wpOptions['moderation_keys']));
+        }
+
+        // WordPress 5.5 renamed 'blacklist_keys' to 'disallowed_keys' —
+        // prefer the current name, fall back to the legacy one.
+        $disallowedKeys = trim(($wpOptions['disallowed_keys'] ?? '') !== '' ? $wpOptions['disallowed_keys'] : ($wpOptions['blacklist_keys'] ?? ''));
+
+        if ($disallowedKeys !== '') {
+            $this->config->setOption('comment_disallowed_keywords', $disallowedKeys);
+        }
+
+        if (is_numeric($wpOptions['comment_max_links'] ?? '')) {
+            $this->config->setOption('comment_moderation_link_limit', (string) max(0, (int) $wpOptions['comment_max_links']));
+        }
+
+        if (($wpOptions['show_avatars'] ?? '') !== '') {
+            $this->config->setOption('avatars_enabled', $wpOptions['show_avatars'] === '1' ? '1' : '0');
+        }
+
+        $avatarRating = strtoupper((string) ($wpOptions['avatar_rating'] ?? ''));
+
+        if (in_array($avatarRating, ['G', 'PG', 'R', 'X'], true)) {
+            $this->config->setOption('avatar_max_rating', $avatarRating);
+        }
+
+        $avatarDefault = $this->resolveAvatarDefault((string) ($wpOptions['avatar_default'] ?? ''));
+
+        if ($avatarDefault !== null) {
+            $this->config->setOption('avatar_default', $avatarDefault);
+        }
+
+        // Media — WordPress's own "Thumbnail"/"Medium"/"Large" sizes map
+        // directly onto Lumora Press's small/medium/large (both use the
+        // same 150×150/300×300/1024×1024 defaults).
+        if (is_numeric($wpOptions['thumbnail_size_w'] ?? '') && is_numeric($wpOptions['thumbnail_size_h'] ?? '')) {
+            $this->config->setOption('thumbnail_size_small_width', (string) max(1, (int) $wpOptions['thumbnail_size_w']));
+            $this->config->setOption('thumbnail_size_small_height', (string) max(1, (int) $wpOptions['thumbnail_size_h']));
+        }
+
+        if (($wpOptions['thumbnail_crop'] ?? '') !== '') {
+            $this->config->setOption('thumbnail_size_small_mode', $wpOptions['thumbnail_crop'] === '1' ? 'crop' : 'fit');
+        }
+
+        if (is_numeric($wpOptions['medium_size_w'] ?? '') && is_numeric($wpOptions['medium_size_h'] ?? '')) {
+            $this->config->setOption('thumbnail_size_medium_width', (string) max(1, (int) $wpOptions['medium_size_w']));
+            $this->config->setOption('thumbnail_size_medium_height', (string) max(1, (int) $wpOptions['medium_size_h']));
+        }
+
+        if (is_numeric($wpOptions['large_size_w'] ?? '') && is_numeric($wpOptions['large_size_h'] ?? '')) {
+            $this->config->setOption('thumbnail_size_large_width', (string) max(1, (int) $wpOptions['large_size_w']));
+            $this->config->setOption('thumbnail_size_large_height', (string) max(1, (int) $wpOptions['large_size_h']));
+        }
+    }
+
+    /**
+     * WordPress's `avatar_default` option names a handful of built-in
+     * generator styles Lumora Press's own avatar_default field
+     * (admin/views/settings/discussion.php) mirrors by name, plus two
+     * WordPress-only values with no Lumora Press equivalent:
+     * 'gravatar_default' (Gravatar's own logo) and legacy aliases for
+     * "Mystery Person" ('mystery'/'mm'). Returns null for anything
+     * unrecognized so the caller leaves the existing setting untouched
+     * rather than storing a value discussion.php doesn't know how to
+     * render.
+     */
+    private function resolveAvatarDefault(string $wpValue): ?string
+    {
+        return match ($wpValue) {
+            'mystery', 'mm' => 'mp',
+            'identicon', 'wavatar', 'retro', 'monsterid', 'robohash', 'blank' => $wpValue,
+            default => null,
+        };
+    }
+
+    /**
+     * Resolves Homepage and Privacy settings once the 'pages' stage has
+     * run — see importSiteSettings()'s own docblock for why these three
+     * keys can't be written any earlier: each is a WordPress page ID
+     * (`page_on_front`, `page_for_posts`, `wp_page_for_privacy_policy`)
+     * that only maps to a local page ID after that page has actually
+     * been imported. Called from executeStage()'s 'pages' case, gated on
+     * the same $options['site_settings'] opt-in importSiteSettings()
+     * itself is gated on.
+     *
+     * A source page ID that doesn't resolve (the page wasn't imported —
+     * excluded by the selected statuses, or import failed) is skipped
+     * with a warning rather than writing a dangling local page ID that
+     * would silently 404.
+     *
+     * @param array<string, int> $wpPageIdToLocalId
+     */
+    private function applyPageDependentSiteSettings(array $wpPageIdToLocalId): void
+    {
+        $wpOptions = $this->source->siteOptions();
+
+        if (($wpOptions['show_on_front'] ?? 'posts') === 'page') {
+            $wpFrontPageId = (string) ((int) ($wpOptions['page_on_front'] ?? '0'));
+            $localFrontPageId = $wpFrontPageId !== '0' ? ($wpPageIdToLocalId[$wpFrontPageId] ?? null) : null;
+
+            if ($localFrontPageId !== null) {
+                $this->config->setOption('homepage_display', 'page');
+                $this->config->setOption('homepage_page_id', (string) $localFrontPageId);
+
+                $wpPostsPageId = (string) ((int) ($wpOptions['page_for_posts'] ?? '0'));
+                $localPostsPageId = $wpPostsPageId !== '0' ? ($wpPageIdToLocalId[$wpPostsPageId] ?? null) : null;
+
+                if ($localPostsPageId !== null && $localPostsPageId !== $localFrontPageId) {
+                    $this->config->setOption('homepage_posts_page_id', (string) $localPostsPageId);
+                }
+            } else {
+                $this->warnings[] = 'Site settings: the source site\'s static homepage was not imported — kept "Your latest posts" instead.';
+            }
+        } else {
+            $this->config->setOption('homepage_display', 'posts');
+        }
+
+        $wpPrivacyPageId = (string) ((int) ($wpOptions['wp_page_for_privacy_policy'] ?? '0'));
+
+        if ($wpPrivacyPageId !== '0') {
+            $localPrivacyPageId = $wpPageIdToLocalId[$wpPrivacyPageId] ?? null;
+
+            if ($localPrivacyPageId !== null) {
+                $this->config->setOption('privacy_policy_page_id', (string) $localPrivacyPageId);
+            } else {
+                $this->warnings[] = 'Site settings: the source site\'s privacy policy page was not imported, so no privacy policy page was set.';
+            }
         }
     }
 

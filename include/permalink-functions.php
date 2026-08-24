@@ -15,6 +15,8 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Core\ActiveConfig;
+use LumoraPress\Core\Theme\ActivePages;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Page;
@@ -65,6 +67,29 @@ if (!function_exists('tag_permalink')) {
     function tag_permalink(Tag $tag): string
     {
         return Permalinks::service()->tagUrl($tag);
+    }
+}
+
+if (!function_exists('privacy_policy_url')) {
+    /**
+     * The site's configured Privacy Policy Page's URL (Settings >
+     * Privacy), or null when none is set or the configured page no
+     * longer exists/isn't publicly visible — a theme decides for itself
+     * whether/where to link it (e.g. a footer credit line, a comment
+     * form notice), matching page_permalink()'s "themes own their own
+     * markup" shape rather than this being auto-inserted anywhere.
+     */
+    function privacy_policy_url(): ?string
+    {
+        $pageId = (int) ActiveConfig::instance()->option('privacy_policy_page_id', '0');
+
+        if ($pageId <= 0) {
+            return null;
+        }
+
+        $page = ActivePages::pages()->findById($pageId);
+
+        return $page !== null && $page->isPubliclyVisible() ? page_permalink($page) : null;
     }
 }
 

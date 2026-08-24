@@ -57,6 +57,30 @@ final class WordPressSource
         // itself lives in a subdirectory) — 'home' is the one actual
         // page/post permalinks are built from.
         'home', 'siteurl',
+        // Homepage (Settings > Reading's "Your homepage displays").
+        // page_on_front/page_for_posts are WordPress page IDs, resolved
+        // to local page IDs by WordPressImportService once the 'pages'
+        // stage has run — see its applyPageDependentSiteSettings().
+        'show_on_front', 'page_on_front', 'page_for_posts',
+        // Reading.
+        'posts_per_page', 'posts_per_rss', 'rss_use_excerpt', 'blog_public',
+        // Discussion.
+        'default_comment_status', 'comment_moderation', 'comment_whitelist',
+        'close_comments_for_old_posts', 'close_comments_days_old',
+        'thread_comments', 'thread_comments_depth', 'page_comments',
+        'comments_per_page', 'default_comments_page', 'comment_order',
+        'comments_notify', 'moderation_notify', 'require_name_email',
+        'comment_registration', 'moderation_keys',
+        // WordPress 5.5 renamed 'blacklist_keys' to 'disallowed_keys' —
+        // both are read so an older source database still resolves.
+        'disallowed_keys', 'blacklist_keys', 'comment_max_links',
+        'show_avatars', 'avatar_rating', 'avatar_default',
+        // Media (Settings > Media's thumbnail/medium/large dimensions).
+        'thumbnail_size_w', 'thumbnail_size_h', 'thumbnail_crop',
+        'medium_size_w', 'medium_size_h', 'large_size_w', 'large_size_h',
+        // Privacy — also a WordPress page ID, resolved the same way as
+        // page_on_front/page_for_posts above.
+        'wp_page_for_privacy_policy',
     ];
 
     public function __construct(

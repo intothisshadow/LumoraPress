@@ -6,6 +6,22 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Privacy Policy Page: a new Settings &rsaquo; Privacy admin screen lets
+  an administrator name an existing Page as the site's privacy policy.
+  A new `privacy_policy_url()` template tag resolves it for themes —
+  whether and where to link it (footer, comment form notice, etc.) is
+  left entirely up to the theme.
+- WordPress Importer: Homepage, Reading, Discussion, Media, and Privacy
+  settings write-back (LPP-004 Stage 1, completing the Site Settings
+  group started earlier): "Your homepage displays," blog pagination
+  size, search engine visibility, every comment moderation/threading/
+  notification/avatar setting, thumbnail/medium/large image dimensions,
+  and the privacy policy page can now all be imported alongside the
+  site title/tagline/timezone/permalink structure already covered,
+  under the same opt-in "Site settings" checkbox on Maintenance &rsaquo;
+  Import. A source homepage or privacy policy page that wasn't actually
+  imported is skipped with a warning rather than pointing at content
+  that doesn't exist locally.
 - WordPress Importer: internal link rewriting between imported posts
   and pages (LPP-004 URL & Link Migration): a plain in-content
   `<a href="...">` carries no structured reference to what it points at

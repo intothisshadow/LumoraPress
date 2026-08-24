@@ -225,6 +225,18 @@ if ($wordPressImporterActive) {
                     'Date format' => $wpOptions['date_format'] ?? '',
                     'Time format' => $wpOptions['time_format'] ?? '',
                     'Permalink structure' => $wpOptions['permalink_structure'] ?? '',
+                    'Homepage' => ($wpOptions['show_on_front'] ?? 'posts') === 'page'
+                        ? 'Static page (WordPress page ID ' . ($wpOptions['page_on_front'] ?? '?') . ')'
+                        : 'Latest posts',
+                    'Blog pages show at most' => ($wpOptions['posts_per_page'] ?? '') !== '' ? $wpOptions['posts_per_page'] . ' posts' : '',
+                    'Discourage search engines' => ($wpOptions['blog_public'] ?? '1') === '0' ? 'Yes' : 'No',
+                    'Comments on new posts' => ucfirst((string) ($wpOptions['default_comment_status'] ?? 'open')),
+                    'Comment must be manually approved' => ($wpOptions['comment_moderation'] ?? '0') === '1' ? 'Yes' : 'No',
+                    'Show avatars' => ($wpOptions['show_avatars'] ?? '1') === '0' ? 'No' : 'Yes',
+                    'Thumbnail size' => (($wpOptions['thumbnail_size_w'] ?? '') !== '' ? $wpOptions['thumbnail_size_w'] . '×' . ($wpOptions['thumbnail_size_h'] ?? '?') : ''),
+                    'Privacy policy page' => ((int) ($wpOptions['wp_page_for_privacy_policy'] ?? '0')) > 0
+                        ? 'WordPress page ID ' . $wpOptions['wp_page_for_privacy_policy']
+                        : '(none)',
                 ];
             }
         } catch (\Throwable $exception) {
@@ -624,15 +636,17 @@ if ($wordPressImporterActive) {
                 <p class="lp-field">
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="include_site_settings" value="1">
-                        Site title, tagline, timezone, date/time format, and permalink structure
+                        Site, Homepage, Reading, Discussion, Media, and Privacy settings
                     </label>
                     <span class="lp-field__hint">
-                        Overwrites this site's own Settings &rsaquo; General/Permalinks values with the
-                        source site's. Off by default — leave unchecked to keep this site's existing settings.
-                        A source permalink structure using a tag Lumora Press doesn't support (e.g.
-                        <code>%post_id%</code>) is skipped and noted in the warnings below rather than applied.
-                        Homepage, Reading, Discussion, Media, and Privacy settings have no Lumora Press
-                        equivalent yet and are never imported.
+                        Overwrites this site's own Settings &rsaquo; General/Permalinks/Reading/Discussion/
+                        Media/Privacy values with the source site's. Off by default — leave unchecked to keep
+                        this site's existing settings. A source permalink structure using a tag Lumora Press
+                        doesn't support (e.g. <code>%post_id%</code>) is skipped and noted in the warnings
+                        below rather than applied. The Homepage and Privacy Policy Page settings each name a
+                        WordPress page — only applied once the "Pages" content type below has actually
+                        imported that page; a page that wasn't imported is skipped and noted in the warnings
+                        instead of pointing at content that doesn't exist here.
                     </span>
                 </p>
 

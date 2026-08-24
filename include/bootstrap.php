@@ -52,6 +52,7 @@ use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Theme\ActivePages;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
@@ -576,9 +577,12 @@ require LUMORA_ROOT . '/include/author-functions.php';
 /*
  * Post/category/tag permalink helpers (LP-078) — same bridge shape as
  * Authors/FeaturedImages above, for the same reason (themes have no route
- * to PermalinkService of their own).
+ * to PermalinkService of their own). ActivePages backs the same file's
+ * privacy_policy_url(), which needs to resolve the configured Privacy
+ * Policy Page id to a live Page.
  */
 Permalinks::set($permalinks);
+ActivePages::set($pages);
 require LUMORA_ROOT . '/include/permalink-functions.php';
 
 /*
