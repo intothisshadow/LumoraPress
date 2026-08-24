@@ -58,7 +58,7 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     $titleField = ['key' => 'title', 'label' => 'Title', 'type' => 'text'];
 
     return match ($widgetType) {
-        'text' => [$titleField, ['key' => 'text', 'label' => 'Content', 'type' => 'textarea']],
+        'text' => [$titleField, ['key' => 'text', 'label' => 'Content', 'type' => 'wysiwyg']],
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
         'search' => [$titleField],
         'nav_menu' => [$titleField, ['key' => 'location', 'label' => 'Menu', 'type' => 'select', 'options' => $kernel->menus->locations()]],
@@ -110,6 +110,10 @@ $renderWidgetSettingsFields = static function (array $widget, array $fields): vo
 
             <?php if ($field['type'] === 'textarea'): ?>
                 <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="4"><?= esc_html((string) $value) ?></textarea>
+            <?php elseif ($field['type'] === 'wysiwyg'): ?>
+                <div class="lp-widget-wysiwyg" data-lp-widget-wysiwyg-container data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>">
+                    <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="6" data-lp-widget-wysiwyg><?= esc_html((string) $value) ?></textarea>
+                </div>
             <?php elseif ($field['type'] === 'code'): ?>
                 <textarea id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" rows="6" class="lp-code-textarea"><?= esc_html((string) $value) ?></textarea>
             <?php elseif ($field['type'] === 'number'): ?>

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Registers Lumora Press's built-in widget types (LP-048): Text, Custom HTML, Search, Navigation Menu, Statistics, Social Links, and more.
+ * Registers Lumora Press's built-in widget types (LP-048): Text/HTML, Custom HTML, Search, Navigation Menu, Statistics, Social Links, and more.
  *
  * @package LumoraPress
  * @subpackage Widgets
@@ -18,10 +18,12 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Widgets;
 
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
 use LumoraPress\Models\PostStatus;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
+use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\TagService;
@@ -29,7 +31,7 @@ use LumoraPress\Services\UserService;
 
 /**
  * Registers Lumora Press's built-in widget types (LP-048) against a
- * WidgetManager — Text, Custom HTML, Search, Navigation Menu, Pages,
+ * WidgetManager — Text/HTML, Custom HTML, Search, Navigation Menu, Pages,
  * Categories, Recent Posts, Recent Comments, Archives, Tag Cloud, Meta,
  * Statistics, and Social Links. Themes remain free to register additional
  * widget types of their own (content/themes/default/functions.php no
@@ -78,14 +80,21 @@ final class CoreWidgets
         TagService $tags,
         CommentService $comments,
         UserService $users,
+        ContentRenderer $content,
     ): void {
-        $widgets->registerWidget('text', 'Text', static function (array $settings): void {
+        $widgets->registerWidget('text', 'Text/HTML', static function (array $settings) use ($content): void {
             $title = (string) ($settings['title'] ?? '');
             $text = (string) ($settings['text'] ?? '');
 
             echo '<section class="lp-widget lp-widget--text">';
             self::renderTitle($title);
-            echo '<div class="lp-widget__content">' . nl2br(esc_html($text)) . '</div>';
+            // Routed through the same ContentRenderer/HtmlSanitizer
+            // pipeline a post/page's Html-format content uses (LP-016) —
+            // this widget's WYSIWYG field submits client-authored markup
+            // (TinyMCE output), which is untrusted the same way, unlike
+            // the Custom HTML widget below (admin-typed code, trusted at
+            // the manage_themes/manage_options level).
+            echo '<div class="lp-widget__content">' . $content->render($text, ContentFormat::Html) . '</div>';
             echo '</section>';
         });
 

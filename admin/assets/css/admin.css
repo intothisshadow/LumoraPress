@@ -1413,6 +1413,14 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
+/* Text/HTML widget WYSIWYG (LP-112) — the textarea's own fallback sizing
+   before widget-editor.js's TinyMCE instance replaces it (and if that
+   script fails to load, the plain textarea it degrades to). */
+.lp-widget-wysiwyg textarea {
+    width: 100%;
+    min-height: 160px;
+}
+
 /* EasyMDE/TinyMCE ship their own chrome, so only the handful of tokens
    that bleed into the surrounding admin layout are overridden here —
    not a full re-skin of either library. */

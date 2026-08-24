@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Text widget is now a Text/HTML widget (LP-112): its Content field is a
+  lightweight WYSIWYG editor (bold/italic/underline/strikethrough, lists,
+  blockquote, link, alignment, and a Source Code view), and the widget now
+  renders real formatted HTML instead of escaped plain text with line
+  breaks. Submitted markup is routed through the same sanitizer every
+  post/page's HTML-format content already goes through before it's
+  rendered publicly.
 - New theme template tags: `post_categories()`/`the_post_categories()`
   (the Categories a post belongs to, rendered as a linked list) and
   `edit_post_link()`/`edit_page_link()` (an admin edit-screen link,

@@ -434,7 +434,7 @@ add_action('page_saved', static function (\LumoraPress\Models\Page $page) use ($
  * doesn't matter: registerWidget() only populates a lookup map queried
  * later at render time.
  */
-CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users);
+CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users, $content);
 
 /*
  * Persisted widget assignments (LP-048) — one JSON option keyed by
