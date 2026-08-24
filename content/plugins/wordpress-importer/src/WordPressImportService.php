@@ -79,15 +79,33 @@ use Throwable;
  * for symmetry with Stage 8's own "Menus, Widgets" naming.
  *
  * Scope for this first pass (see LPP-004's own TODO entry for the full
- * list of what's deferred): no WXR .xml path, no dry-run/resume/
- * overwrite-existing semantics. Site settings write-back (Stage 1)
- * covers title/tagline/timezone/date & time format/permalink structure
- * only — see importSiteSettings() for why Homepage/Reading/Discussion/
- * Media/Privacy settings stay out of scope (no Lumora Press equivalent
- * exists to write them into).
- * Idempotency follows DummyContentGenerator's own hard guard — run()
- * refuses to start while a previous 'wordpress_import' batch still
- * exists; removeAll() must be called first.
+ * list of what's deferred): no WXR .xml path, no skip-vs-overwrite-
+ * existing-content semantics. Site settings write-back (Stage 1) covers
+ * title/tagline/timezone/date & time format/permalink structure only —
+ * see importSiteSettings() for why Homepage/Reading/Discussion/Media/
+ * Privacy settings stay out of scope (no Lumora Press equivalent exists
+ * to write them into).
+ *
+ * Idempotency still follows DummyContentGenerator's own hard guard —
+ * starting a *new* import refuses to begin while a previous
+ * 'wordpress_import' batch still exists; removeAll() must be called
+ * first. What changed (Import Options — dry run, resume, stage delay):
+ * run() itself no longer executes every stage inline in one pass. It's
+ * a thin loop over startOrResume()/runNextStage() — the same two
+ * primitives the admin view uses directly to drive a real progress bar
+ * and offer Resume after an interruption. Each stage's cross-stage id
+ * maps (wpUserIdToLocalId and friends) and completed-stage list are
+ * persisted to the database (ContentImportRegistry's 'progress_snap'
+ * snapshot, via the new upsertSnapshot()) after every single stage, not
+ * just at the end — so if the PHP process running an import dies
+ * mid-way (a host's execution time limit, the admin's own browser
+ * losing its connection with `ignore_user_abort()` off, the default),
+ * whatever got recorded survives and inProgressBatch() can find it.
+ * Resuming re-enters at the next incomplete stage rather than
+ * restarting from scratch; it can only be resumed with the *original*
+ * request's own options (including source DB credentials — the
+ * connection itself is per-request and never persisted, so resuming
+ * still requires the admin to re-enter them, same as before).
  */
 final class WordPressImportService
 {
@@ -194,71 +212,380 @@ final class WordPressImportService
     }
 
     /**
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
      * @return array<string, int>
      */
     public function run(array $options): array
     {
+        $started = $this->startOrResume($options);
+
+        do {
+            $result = $this->runNextStage($started['batchId']);
+        } while ($result['done'] === false);
+
+        return $result['counts'];
+    }
+
+    /**
+     * The ordered stage list a given set of options will actually run —
+     * pure and side-effect-free, so both runNextStage() (to know what's
+     * left) and the admin view (to render a full stage checklist up
+     * front, including stages not reached yet) can share it. Order
+     * matches this class's own docblock on why it's fixed: media before
+     * pages/posts so in-content image URLs can be rewritten while
+     * content is built, menus/widgets last since they depend on
+     * pages/posts/categories/tags already existing.
+     *
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool} $options
+     * @return array<int, string>
+     */
+    public function plannedStages(array $options): array
+    {
+        $requested = [
+            'site_settings' => $options['site_settings'] ?? false,
+            'users' => $options['users'] ?? true,
+            'categories' => $options['categories'] ?? true,
+            'media' => $options['media'] ?? true,
+            'downloads' => $options['downloads'] ?? true,
+            'pages' => $options['pages'] ?? true,
+            'posts' => $options['posts'] ?? true,
+            'comments' => $options['comments'] ?? true,
+            'menus' => $options['menus'] ?? true,
+            'widgets' => $options['widgets'] ?? true,
+        ];
+
+        return array_values(array_filter(array_keys($requested), static fn (string $stage): bool => $requested[$stage]));
+    }
+
+    /**
+     * A short human label per stage key, for the admin view's progress
+     * checklist — a plain lookup, not translated content, since it only
+     * ever describes this plugin's own fixed, internal stage names.
+     */
+    public static function stageLabel(string $stage): string
+    {
+        return match ($stage) {
+            'site_settings' => 'Importing site settings',
+            'users' => 'Importing users',
+            'categories' => 'Importing categories & tags',
+            'media' => 'Importing media',
+            'downloads' => 'Importing downloads',
+            'pages' => 'Importing pages',
+            'posts' => 'Importing posts',
+            'comments' => 'Importing comments',
+            'menus' => 'Importing menus',
+            'widgets' => 'Importing widgets',
+            default => ucfirst(str_replace('_', ' ', $stage)),
+        };
+    }
+
+    /**
+     * Starts a fresh import, or resumes an already-incomplete one found
+     * via inProgressBatch() — resuming always continues with that
+     * batch's *original* options (including which content types were
+     * selected), never the freshly-submitted $options, since changing
+     * what's selected partway through a batch would leave its already-
+     * completed stages inconsistent with the rest. A genuinely complete
+     * batch still refuses to start a new import until it's removed —
+     * the same guard this method replaces from the old single-pass
+     * run().
+     *
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
+     * @return array{batchId: string, resumed: bool}
+     */
+    public function startOrResume(array $options): array
+    {
         if ($this->source === null) {
             throw new RuntimeException('No source database connection was provided.');
+        }
+
+        $inProgress = $this->inProgressBatch();
+
+        if ($inProgress !== null) {
+            return ['batchId' => $inProgress['batchId'], 'resumed' => true];
         }
 
         if ($this->existingBatchIds() !== []) {
             throw new RuntimeException('A WordPress import already exists. Remove it before importing again.');
         }
 
-        $this->warnings = [];
-        $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
+        $options['statuses'] ??= ['publish', 'draft', 'pending', 'future', 'private'];
         $batchId = $this->registry->newBatch();
 
-        // Site settings are opt-in only (unlike every other content type
-        // below, which defaults to true) — this is the one step that
-        // overwrites the *target* site's own existing configuration
-        // rather than adding new content alongside it, so it should never
-        // happen unless the admin explicitly asked for it.
-        if ($options['site_settings'] ?? false) {
-            $this->importSiteSettings($batchId);
+        $this->persistState($batchId, [
+            'options' => $options,
+            'completedStages' => [],
+            'warnings' => [],
+            'maps' => [],
+        ]);
+
+        return ['batchId' => $batchId, 'resumed' => false];
+    }
+
+    /**
+     * Runs exactly the next not-yet-completed stage for $batchId and
+     * persists the result (which stage just finished, the accumulated
+     * cross-stage id maps, and warnings so far) before returning — so
+     * whether the caller is run()'s own loop or the admin view driving
+     * stages one at a time for a live progress bar, every stage's
+     * progress survives independently of whether a *later* stage in the
+     * same run ever gets the chance to execute at all.
+     *
+     * @return array{stage: ?string, done: bool, counts: array<string, int>, warnings: array<int, string>}
+     */
+    public function runNextStage(string $batchId): array
+    {
+        if ($this->source === null) {
+            throw new RuntimeException('No source database connection was provided.');
         }
 
-        $wpUserIdToLocalId = ($options['users'] ?? true) ? $this->importUsers($batchId) : [];
+        $state = $this->loadState($batchId);
 
-        $wpCategoryTermIdToLocalId = [];
-        $wpTagTermIdToLocalId = [];
+        if ($state === null) {
+            throw new RuntimeException('No in-progress import was found for this batch.');
+        }
+
+        $options = $state['options'] ?? [];
+        $planned = $this->plannedStages($options);
+        $completed = $state['completedStages'] ?? [];
+        $remaining = array_values(array_diff($planned, $completed));
+
+        $this->warnings = $state['warnings'] ?? [];
+
+        if ($remaining === []) {
+            return ['stage' => null, 'done' => true, 'counts' => $this->registry->countsForBatch($batchId), 'warnings' => $this->warnings];
+        }
+
+        $stage = $remaining[0];
+        $maps = $state['maps'] ?? [];
+
+        // Only delays *between* stages, never before the very first one —
+        // $completed being non-empty is exactly "a previous stage in this
+        // batch already ran". Meant for a live production source only
+        // (see this option's own admin-facing hint), so it's opt-in and
+        // 0 (no delay) unless the admin explicitly set it.
+        $delayMs = (int) ($options['stage_delay_ms'] ?? 0);
+
+        if ($delayMs > 0 && $completed !== []) {
+            usleep($delayMs * 1000);
+        }
+
+        $this->executeStage($batchId, $stage, $options, $maps);
+
+        $completed[] = $stage;
+
+        $this->persistState($batchId, [
+            'options' => $options,
+            'completedStages' => $completed,
+            'warnings' => $this->warnings,
+            'maps' => $maps,
+        ]);
+
+        return [
+            'stage' => $stage,
+            'done' => array_diff($planned, $completed) === [],
+            'counts' => $this->registry->countsForBatch($batchId),
+            'warnings' => $this->warnings,
+        ];
+    }
+
+    /**
+     * The one batch (per this source) that's been started but hasn't
+     * finished every stage its own options called for — null if there
+     * either isn't one, or the only existing batch predates this
+     * feature (no 'progress_snap' state at all, e.g. an import created
+     * by an older version of this plugin), which is treated as already
+     * complete rather than resumable, matching that version's own
+     * always-fully-synchronous behavior.
+     *
+     * @return array{batchId: string, completedStages: array<int, string>, plannedStages: array<int, string>}|null
+     */
+    public function inProgressBatch(): ?array
+    {
+        foreach ($this->existingBatchIds() as $batchId) {
+            $state = $this->loadState($batchId);
+
+            if ($state === null) {
+                continue;
+            }
+
+            $planned = $this->plannedStages($state['options'] ?? []);
+            $completed = $state['completedStages'] ?? [];
+
+            if (array_diff($planned, $completed) !== []) {
+                return ['batchId' => $batchId, 'completedStages' => $completed, 'plannedStages' => $planned];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Approximate, upper-bound counts of what a real import *would*
+     * bring in per content type, read straight from the source with no
+     * writes to this site at all — "approximate" because it can't
+     * replicate every real-import skip condition (a missing uploads
+     * file, a malformed row, an unsupported widget type) without
+     * actually attempting each one, so the real import can land on a
+     * lower count than this preview showed. Good enough for the "am I
+     * pointed at the right database, and roughly how much content is
+     * this going to bring in" check a dry run is meant to answer.
+     *
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, statuses?: array<int, string>} $options
+     * @return array<string, int>
+     */
+    public function dryRunCounts(array $options): array
+    {
+        if ($this->source === null) {
+            throw new RuntimeException('No source database connection was provided.');
+        }
+
+        $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
+        $counts = [];
+
+        if ($options['users'] ?? true) {
+            $counts['user'] = count($this->source->users());
+        }
 
         if ($options['categories'] ?? true) {
-            $wpCategoryTermIdToLocalId = $this->importCategories($batchId);
-            $wpTagTermIdToLocalId = $this->importTags($batchId);
+            $counts['category'] = count($this->source->terms('category'));
+            $counts['tag'] = count($this->source->terms('post_tag'));
         }
 
-        [$wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl] = ($options['media'] ?? true)
-            ? $this->importMedia($batchId, $wpUserIdToLocalId)
-            : [[], []];
+        if ($options['media'] ?? true) {
+            $counts['media'] = count($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES));
+        }
+
+        $sourcePosts = ($options['posts'] ?? true) ? $this->source->posts(['post'], $statuses) : [];
 
         if ($options['downloads'] ?? true) {
-            $this->importDownloads($batchId, $wpUserIdToLocalId);
+            $counts['download'] = count($this->source->posts(['sdm_downloads'], ['publish']));
         }
 
-        $wpPageIdToLocalId = ($options['pages'] ?? true)
-            ? $this->importPages($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl)
-            : [];
+        if ($options['pages'] ?? true) {
+            $counts['page'] = count($this->source->posts(['page'], $statuses));
+        }
 
-        $wpPostIdToLocalId = ($options['posts'] ?? true)
-            ? $this->importPosts($batchId, $statuses, $wpUserIdToLocalId, $wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl)
-            : [];
+        if ($options['posts'] ?? true) {
+            $counts['post'] = count($sourcePosts);
+        }
 
-        if (($options['comments'] ?? true) && $wpPostIdToLocalId !== []) {
-            $this->importComments($batchId, $wpPostIdToLocalId, $wpUserIdToLocalId);
+        if (($options['comments'] ?? true) && $sourcePosts !== []) {
+            $commentCount = 0;
+
+            foreach ($sourcePosts as $wpPost) {
+                $commentCount += count($this->source->comments($wpPost['ID']));
+            }
+
+            $counts['comment'] = $commentCount;
         }
 
         if ($options['menus'] ?? true) {
-            $this->importMenus($batchId, $wpPageIdToLocalId, $wpPostIdToLocalId, $wpCategoryTermIdToLocalId, $wpTagTermIdToLocalId);
+            $counts['nav_menu'] = count($this->source->terms('nav_menu'));
         }
 
         if ($options['widgets'] ?? true) {
-            $this->importWidgets($batchId);
+            $counts['widget_instance'] = $this->countSourceWidgetSlugs();
         }
 
-        return $this->registry->countsForBatch($batchId);
+        return $counts;
+    }
+
+    /**
+     * Every raw widget slug WordPress has assigned to any sidebar
+     * (active or inactive) — an upper bound for dryRunCounts()'s own
+     * widget count, since the real import only counts a type with a
+     * Lumora Press equivalent (see importWidgets()) and this doesn't
+     * replicate that filtering.
+     */
+    private function countSourceWidgetSlugs(): int
+    {
+        $sidebarsWidgetsRaw = $this->source->option('sidebars_widgets');
+        $sidebarsWidgets = $sidebarsWidgetsRaw !== null ? @unserialize($sidebarsWidgetsRaw, ['allowed_classes' => false]) : null;
+
+        if (!is_array($sidebarsWidgets)) {
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($sidebarsWidgets as $key => $slugs) {
+            if (is_string($key) && $key !== 'array_version' && is_array($slugs)) {
+                $count += count($slugs);
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param array<string, string> $options
+     * @param array<string, mixed> $maps
+     */
+    private function executeStage(string $batchId, string $stage, array $options, array &$maps): void
+    {
+        $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
+
+        switch ($stage) {
+            case 'site_settings':
+                $this->importSiteSettings($batchId);
+                break;
+            case 'users':
+                $maps['wpUserIdToLocalId'] = $this->importUsers($batchId);
+                break;
+            case 'categories':
+                $maps['wpCategoryTermIdToLocalId'] = $this->importCategories($batchId);
+                $maps['wpTagTermIdToLocalId'] = $this->importTags($batchId);
+                break;
+            case 'media':
+                [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                break;
+            case 'downloads':
+                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                break;
+            case 'pages':
+                $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+                break;
+            case 'posts':
+                $maps['wpPostIdToLocalId'] = $this->importPosts($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+                break;
+            case 'comments':
+                if (($maps['wpPostIdToLocalId'] ?? []) !== []) {
+                    $this->importComments($batchId, $maps['wpPostIdToLocalId'], $maps['wpUserIdToLocalId'] ?? []);
+                }
+
+                break;
+            case 'menus':
+                $this->importMenus($batchId, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? [], $maps['wpCategoryTermIdToLocalId'] ?? [], $maps['wpTagTermIdToLocalId'] ?? []);
+                break;
+            case 'widgets':
+                $this->importWidgets($batchId);
+                break;
+        }
+    }
+
+    /**
+     * @return array{options: array<string, mixed>, completedStages: array<int, string>, warnings: array<int, string>, maps: array<string, mixed>}|null
+     */
+    private function loadState(string $batchId): ?array
+    {
+        $raw = $this->registry->snapshotForBatch($batchId, 'progress_snap');
+
+        if ($raw === null) {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param array{options: array<string, mixed>, completedStages: array<int, string>, warnings: array<int, string>, maps: array<string, mixed>} $state
+     */
+    private function persistState(string $batchId, array $state): void
+    {
+        $this->registry->upsertSnapshot($batchId, self::SOURCE, 'progress_snap', (string) json_encode($state));
     }
 
     /**

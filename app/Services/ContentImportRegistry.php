@@ -92,6 +92,30 @@ final class ContentImportRegistry
     }
 
     /**
+     * Like record() with a $snapshotValue, but updates an existing
+     * snapshot row for $batchId/$contentType in place instead of always
+     * inserting a new one — needed for state that's rewritten repeatedly
+     * within a single batch (LPP-004's stage-by-stage import progress,
+     * updated after every stage rather than once at the end) rather than
+     * written once up front, the way nav_menus_snap/widgets_snap/
+     * site_settings_snap are. record() alone would leave every prior
+     * write behind as a separate row, and snapshotForBatch()'s query has
+     * no ORDER BY to reliably pick the newest one back out again.
+     */
+    public function upsertSnapshot(string $batchId, string $source, string $contentType, string $snapshotValue): void
+    {
+        $affected = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET snapshot_value = :snapshot_value
+                WHERE batch_id = :batch_id AND content_type = :content_type',
+            ['snapshot_value' => $snapshotValue, 'batch_id' => $batchId, 'content_type' => $contentType],
+        );
+
+        if ($affected === 0) {
+            $this->record($batchId, $source, $contentType, 0, null, $snapshotValue);
+        }
+    }
+
+    /**
      * The snapshot_value recorded for $batchId/$contentType — see
      * record()'s own docblock. Assumes at most one such row per
      * batch/content-type pair (true for every current caller, one snapshot

@@ -6,6 +6,23 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: dry run, resumable imports, live progress, and a
+  stage delay (LPP-004 Import Options): a new "Preview (Dry Run)" form
+  reports approximate per-content-type counts from the source database
+  without importing anything. A real import now persists its progress
+  to the database after every single stage (Site Settings, Users,
+  Categories & Tags, Media, Downloads, Pages, Posts, Comments, Menus,
+  Widgets) rather than only at the end — if the process running it is
+  ever interrupted (a host's execution time limit, a lost connection),
+  revisiting Maintenance &rsaquo; Import offers to **Resume Import**
+  from exactly where it stopped (the original run's own content-type
+  selection is reused automatically) or **Discard This Import**
+  instead. A live per-stage progress checklist shows what's currently
+  running while a Start/Resume Import request is in flight, reusing the
+  same polling mechanism Maintenance &rsaquo; Updates already has — no
+  new JS or CSS needed. An optional delay-between-stages field is meant
+  for a live production source, to avoid hammering a shared-hosting
+  site's database and web server back-to-back for the whole import.
 - WordPress Importer: HTML-aware image reference rewriting (LPP-004 URL
   & Link Migration): the original plain string-replace over each
   attachment's exact full-size guid URL is replaced with a real HTML

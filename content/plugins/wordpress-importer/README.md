@@ -77,8 +77,32 @@ direct database connection plus a local copy of the source site's
   `ContentImportRegistry`/`*Importer` layer this plugin shares with the
   Dummy Content plugin) so **Remove All Imported Content** deletes
   exactly what one import created and nothing else.
-- Import refuses to run again while a previous import's content still
-  exists — remove it first, then import again.
+- Import refuses to start a *second* one while a previous import's
+  content still exists — remove it first, or resume it (see below) if
+  it's still incomplete.
+- **Preview (Dry Run)**: reads the source database and reports
+  approximate counts per content type without importing anything —
+  "approximate" because a missing uploads file, malformed row, or
+  unsupported widget type is only ever caught during a real import, so
+  the real count can land lower.
+- **Resumable, with a live progress bar**: a real import runs stage by
+  stage (Site Settings, Users, Categories & Tags, Media, Downloads,
+  Pages, Posts, Comments, Menus, Widgets), persisting its progress to
+  the database after every single stage — not just at the end. If the
+  process running it is ever interrupted (a host's execution time
+  limit, a lost connection), revisiting Maintenance → Import offers to
+  **Resume Import** from exactly where it stopped (re-enter the same
+  connection details; the content-type selection from the original run
+  is reused automatically and can't be changed mid-resume) or
+  **Discard This Import** instead. A live progress checklist (reusing
+  the same polling mechanism Maintenance → Updates already has) shows
+  which stage is currently running while a Start/Resume Import request
+  is in flight.
+- **Delay between stages**: an optional `stage_delay_ms` field on the
+  Start/Resume Import form — meant only for a live production source,
+  never a local/staging copy, to avoid hammering a shared-hosting
+  site's database and web server back-to-back for the whole import's
+  duration.
 
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-004 for the full checklist)
 
@@ -87,17 +111,20 @@ source. Of the WordPress site settings shown as a preview during Test
 Connection, only title/tagline/timezone/date & time format/permalink
 structure can be applied (opt-in, see above) — Homepage, Reading,
 Discussion, Media, and Privacy settings have no Lumora Press config
-key to write into yet. There's no dry-run preview, no resuming an
-interrupted import, and no skip-vs-overwrite-existing-content choice —
-idempotency is a hard
-"one import at a time" guard instead, matching Dummy Content. Internal
-post-to-post/page link rewriting, a redirect-mapping report, and
-regenerating thumbnail size variants aren't built either.
+key to write into yet. There's still no skip-vs-overwrite-existing-
+content choice — idempotency is a hard "one import at a time, remove or
+resume before starting another" guard, matching Dummy Content; real
+skip/overwrite semantics would need matching each row by external id
+across every importer type. Internal post-to-post/page link rewriting,
+a redirect-mapping report, and regenerating thumbnail size variants
+aren't built either.
 
 ## Notes
 
-- Runs as one long synchronous admin request rather than a background
-  job — this codebase has no queue/cron/worker infrastructure yet.
-  Don't navigate away while an import is in progress.
+- Runs as one long synchronous admin request per Start/Resume Import
+  click rather than a background job — this codebase has no queue/cron/
+  worker infrastructure yet. Don't navigate away while an import is in
+  progress; if it's interrupted anyway, resuming picks up where it left
+  off rather than starting over.
 - Database credentials are never persisted anywhere — re-entered on
-  every Test Connection / Start Import submission.
+  every Test Connection / Preview / Start / Resume Import submission.
