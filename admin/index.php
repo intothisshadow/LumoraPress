@@ -372,6 +372,16 @@ $menu = [
             'tags' => ['label' => 'Tags', 'icon' => '🏷️', 'capability' => 'edit_posts'],
         ],
     ],
+    'pages' => [
+        'label' => 'Pages',
+        'icon' => '📄',
+        'capability' => 'edit_posts',
+        'default_child' => 'all-pages',
+        'children' => [
+            'all-pages' => ['label' => 'All Pages', 'icon' => '📋', 'capability' => 'edit_posts'],
+            'new' => ['label' => 'New Page', 'icon' => '🆕', 'capability' => 'edit_posts'],
+        ],
+    ],
     'media' => [
         'label' => 'Media Manager',
         'icon' => '🖼️',
@@ -397,16 +407,6 @@ $menu = [
             ],
         ],
     ] : []),
-    'pages' => [
-        'label' => 'Pages',
-        'icon' => '📄',
-        'capability' => 'edit_posts',
-        'default_child' => 'all-pages',
-        'children' => [
-            'all-pages' => ['label' => 'All Pages', 'icon' => '📋', 'capability' => 'edit_posts'],
-            'new' => ['label' => 'New Page', 'icon' => '🆕', 'capability' => 'edit_posts'],
-        ],
-    ],
     'comments' => ['label' => 'Comments', 'icon' => '💬', 'capability' => 'moderate_comments'],
     'appearance' => [
         'label' => 'Appearance',

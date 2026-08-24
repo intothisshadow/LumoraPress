@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Admin sidebar: Pages now sits directly after Posts (LP-111), matching
+  Posts and Pages' status as the two primary content types, ahead of
+  Media Manager/Comments/etc.
+- All Posts/All Pages: a "View" row action for Published rows (LP-116),
+  linking straight to the post/page's live permalink in a new tab —
+  Draft/Pending Review/Scheduled rows keep using the editor's own
+  Preview link instead, since they have no live permalink yet.
 - Text widget is now a Text/HTML widget (LP-112): its Content field is a
   lightweight WYSIWYG editor (bold/italic/underline/strikethrough, lists,
   blockquote, link, alignment, and a Source Code view), and the widget now

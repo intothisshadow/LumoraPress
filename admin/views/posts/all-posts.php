@@ -301,6 +301,9 @@ $allTagsForFilter = $kernel->tags->listAll();
                                             </span>
                                         <?php endif; ?>
                                     <?php else: ?>
+                                        <?php if ($listedPost->status === PostStatus::Published): ?>
+                                            <a href="<?= esc_url(post_permalink($listedPost)) ?>" target="_blank" rel="noopener">View</a>
+                                        <?php endif; ?>
                                         <?php $duplicateFormId = 'post-duplicate-form-' . $listedPost->id; ?>
                                         <span class="lp-admin__inline-form">
                                             <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_duplicate_' . $listedPost->id)) ?>" form="<?= esc_attr($duplicateFormId) ?>">
