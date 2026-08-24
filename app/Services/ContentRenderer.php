@@ -257,25 +257,25 @@ final class ContentRenderer
             $height = (int) $img->getAttribute('height');
             $linkHref = $link->getAttribute('href');
 
-            // The <img>'s own width/height only describe the *linked*
-            // file's real dimensions when the link points at the exact
-            // same file the <img> displays (the self-link case, or an
-            // editor-authored link with matching size) — otherwise (an
-            // author- or Markdown-linked thumbnail pointing at a larger
-            // original, or no width/height at all, which every
-            // Markdown-authored image hits) they're either wrong or
-            // absent. PhotoSwipe uses data-pswp-width/height to size the
-            // slide *before* the real image finishes loading, not just
-            // as a caption hint — a missing or wrong value visibly
-            // stretches/distorts the displayed image, it's not cosmetic.
-            // resolveImageDimensions() reads the real file directly in
-            // either case.
-            if ($width <= 0 || $height <= 0 || $linkHref !== $img->getAttribute('src')) {
-                $resolved = $this->resolveImageDimensions($linkHref);
+            // The <img>'s own width/height attributes are only trusted
+            // as a last resort. They're expected to match the *linked*
+            // file's real dimensions in the self-link case, but imported
+            // WordPress content breaks that: the importer rewrites
+            // src/href to the full-size original (it never generates
+            // derivative sizes) while deliberately leaving width/height
+            // at the old post's smaller display size (see
+            // ContentImageRewriter::rewriteImage()) — so a self-link's
+            // attributes can still be stale. Resolving the real file
+            // directly is cheap (a local getimagesize() header read) and
+            // removes that assumption entirely. PhotoSwipe uses
+            // data-pswp-width/height to size the slide *before* the real
+            // image finishes loading, not just as a caption hint — a
+            // wrong value visibly stretches/distorts or undersizes the
+            // displayed image, it's not cosmetic.
+            $resolved = $this->resolveImageDimensions($linkHref);
 
-                if ($resolved !== null) {
-                    [$width, $height] = $resolved;
-                }
+            if ($resolved !== null) {
+                [$width, $height] = $resolved;
             }
 
             if ($width > 0) {

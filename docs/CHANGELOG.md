@@ -563,6 +563,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A lightbox opened from a post/page image imported via the WordPress
+  Importer could display the image at its old, much smaller thumbnail
+  size instead of its real full resolution (e.g. a 1920×1080 photo
+  opening the lightbox at 250×141). The importer intentionally rewrites
+  every `<img src>` to the full-size original but leaves `width`/`height`
+  at the source post's old display size; `ContentRenderer`'s lightbox
+  pass wrongly trusted those attributes as the linked file's real
+  dimensions whenever an image was self-linked (`href` equal to `src`).
+  It now always resolves the real file's dimensions from disk in that
+  case, falling back to the attributes only when the file can't be read.
 - Content imported via the WordPress Importer could render with
   double-encoded HTML entities — e.g. a category named "TV & Movies" in
   the source site showing up as the literal text "TV &amp;amp; Movies"
