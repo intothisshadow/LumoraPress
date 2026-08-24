@@ -243,12 +243,13 @@ final class WordPressImportService
      * content is built, menus/widgets last since they depend on
      * pages/posts/categories/tags already existing.
      *
-     * 'thumbnails' and 'verify' (Post-Import) are always appended last,
-     * unconditionally — neither is a content type with its own toggle;
-     * they're finalization steps for whatever *did* get imported. Both
-     * degrade to a real no-op when there's nothing to do (an empty
-     * `idsForBatch()` loop), so including them even when, say, every
-     * content type was deselected costs nothing.
+     * 'internal_links', 'thumbnails', and 'verify' are always appended
+     * last, unconditionally — none of the three is a content type with
+     * its own toggle; they're finalization steps for whatever *did* get
+     * imported. All three degrade to a real no-op when there's nothing
+     * to do (an empty `idsForBatch()` loop, or no post/page slugs to
+     * link to), so including them even when, say, every content type
+     * was deselected costs nothing.
      *
      * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool} $options
      * @return array<int, string>
@@ -269,6 +270,7 @@ final class WordPressImportService
         ];
 
         $stages = array_values(array_filter(array_keys($requested), static fn (string $stage): bool => $requested[$stage]));
+        $stages[] = 'internal_links';
         $stages[] = 'thumbnails';
         $stages[] = 'verify';
 
@@ -293,6 +295,7 @@ final class WordPressImportService
             'comments' => 'Importing comments',
             'menus' => 'Importing menus',
             'widgets' => 'Importing widgets',
+            'internal_links' => 'Updating internal links',
             'thumbnails' => 'Regenerating thumbnails',
             'verify' => 'Verifying imported content',
             default => ucfirst(str_replace('_', ' ', $stage)),
@@ -581,6 +584,9 @@ final class WordPressImportService
             case 'widgets':
                 $this->importWidgets($batchId);
                 break;
+            case 'internal_links':
+                $this->rewriteInternalLinks($statuses, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? []);
+                break;
             case 'thumbnails':
                 $this->regenerateThumbnails($batchId);
                 break;
@@ -588,6 +594,197 @@ final class WordPressImportService
                 $this->verifyImport($batchId);
                 break;
         }
+    }
+
+    /**
+     * URL & Link Migration — rewrites in-content `<a href>` links between
+     * imported posts/pages so they point at the new local URL instead of
+     * the old site. Runs after both 'pages' and 'posts' (needs every
+     * local id already assigned, and rewrites cross-references between
+     * the two content types), which means it re-saves each imported
+     * post/page's content a second time via PostService::update()/
+     * PageService::update() rather than doing this inline during
+     * import() the way ContentImageRewriter's image pass does — image
+     * URLs are already known the moment media import finishes, but a
+     * link's *target* post/page might not be imported yet if it comes
+     * later in iteration order, so this has to be a genuinely separate
+     * pass once everything exists. See InternalLinkRewriter's own
+     * docblock for how a plain URL string (no structured metadata the
+     * way a menu item has) gets matched back to a WordPress post/page id
+     * without needing to reconstruct the source's permalink structure.
+     * Category/tag/author archive links are a deliberate scope boundary
+     * — left untouched, same as any other link this class doesn't
+     * recognize.
+     *
+     * update() requires every field, not just content — each post/page's
+     * own current values are re-passed unchanged rather than risking a
+     * default clobbering something (PageService::update()'s own
+     * $commentsOpen, for instance, has no "keep existing" fallback at
+     * all if omitted).
+     *
+     * @param array<int, string> $statuses
+     * @param array<string, int> $wpPageIdToLocalId
+     * @param array<int, int> $wpPostIdToLocalId
+     */
+    private function rewriteInternalLinks(array $statuses, array $wpPageIdToLocalId, array $wpPostIdToLocalId): void
+    {
+        if ($wpPageIdToLocalId === [] && $wpPostIdToLocalId === []) {
+            return;
+        }
+
+        $sourceHost = (string) (parse_url($this->source->siteOptions()['home'] ?? '', PHP_URL_HOST) ?: parse_url($this->source->siteOptions()['siteurl'] ?? '', PHP_URL_HOST) ?: '');
+
+        [$postIdToNewUrl, $postSlugToNewUrl, $postGuidToNewUrl] = $this->buildPostLinkMaps($statuses, $wpPostIdToLocalId);
+        [$pageIdToNewUrl, $pageSlugToNewUrl, $pageGuidToNewUrl] = $this->buildPageLinkMaps($statuses, $wpPageIdToLocalId);
+
+        $rewriter = new InternalLinkRewriter(
+            $sourceHost,
+            $postIdToNewUrl,
+            $postSlugToNewUrl,
+            $postGuidToNewUrl,
+            $pageIdToNewUrl,
+            $pageSlugToNewUrl,
+            $pageGuidToNewUrl,
+        );
+
+        foreach ($wpPostIdToLocalId as $localPostId) {
+            $post = $this->posts->findById($localPostId);
+
+            if ($post === null) {
+                continue;
+            }
+
+            $rewritten = $rewriter->rewrite($post->content);
+
+            if (!$rewritten['changed']) {
+                continue;
+            }
+
+            $this->posts->update(
+                id: $post->id,
+                title: $post->title,
+                content: $rewritten['content'],
+                excerpt: $post->excerpt,
+                status: $post->status,
+                publishedAt: $post->publishedAt,
+                featuredImageId: $post->featuredImageId,
+                slug: $post->slug,
+                commentsOpen: $post->commentsOpen,
+                contentFormat: $post->contentFormat,
+                featuredImageCrop: $post->featuredImageCrop,
+                visibility: $post->visibility,
+                isSticky: $post->isSticky,
+                unpublishAt: $post->unpublishAt,
+            );
+        }
+
+        foreach ($wpPageIdToLocalId as $localPageId) {
+            $page = $this->pages->findById($localPageId);
+
+            if ($page === null) {
+                continue;
+            }
+
+            $rewritten = $rewriter->rewrite($page->content);
+
+            if (!$rewritten['changed']) {
+                continue;
+            }
+
+            $this->pages->update(
+                id: $page->id,
+                title: $page->title,
+                content: $rewritten['content'],
+                excerpt: $page->excerpt,
+                status: $page->status,
+                publishedAt: $page->publishedAt,
+                parentId: $page->parentId,
+                featuredImageId: $page->featuredImageId,
+                slug: $page->slug,
+                contentFormat: $page->contentFormat,
+                featuredImageCrop: $page->featuredImageCrop,
+                visibility: $page->visibility,
+                commentsOpen: $page->commentsOpen,
+            );
+        }
+    }
+
+    /**
+     * @param array<int, string> $statuses
+     * @param array<int, int> $wpPostIdToLocalId
+     * @return array{0: array<int, string>, 1: array<string, string>, 2: array<string, string>}
+     */
+    private function buildPostLinkMaps(array $statuses, array $wpPostIdToLocalId): array
+    {
+        $idMap = [];
+        $slugMap = [];
+        $guidMap = [];
+
+        foreach ($this->source->posts(['post'], $statuses) as $wpPost) {
+            $localId = $wpPostIdToLocalId[$wpPost['ID']] ?? null;
+
+            if ($localId === null) {
+                continue;
+            }
+
+            $post = $this->posts->findById($localId);
+
+            if ($post === null) {
+                continue;
+            }
+
+            $newUrl = post_permalink($post);
+            $idMap[$wpPost['ID']] = $newUrl;
+
+            if ($wpPost['post_name'] !== '') {
+                $slugMap[$wpPost['post_name']] = $newUrl;
+            }
+
+            if ($wpPost['guid'] !== '') {
+                $guidMap[$wpPost['guid']] = $newUrl;
+            }
+        }
+
+        return [$idMap, $slugMap, $guidMap];
+    }
+
+    /**
+     * @param array<int, string> $statuses
+     * @param array<string, int> $wpPageIdToLocalId
+     * @return array{0: array<int, string>, 1: array<string, string>, 2: array<string, string>}
+     */
+    private function buildPageLinkMaps(array $statuses, array $wpPageIdToLocalId): array
+    {
+        $idMap = [];
+        $slugMap = [];
+        $guidMap = [];
+
+        foreach ($this->source->posts(['page'], $statuses) as $wpPage) {
+            $localId = $wpPageIdToLocalId[(string) $wpPage['ID']] ?? null;
+
+            if ($localId === null) {
+                continue;
+            }
+
+            $page = $this->pages->findById($localId);
+
+            if ($page === null) {
+                continue;
+            }
+
+            $newUrl = page_permalink($page);
+            $idMap[$wpPage['ID']] = $newUrl;
+
+            if ($wpPage['post_name'] !== '') {
+                $slugMap[$wpPage['post_name']] = $newUrl;
+            }
+
+            if ($wpPage['guid'] !== '') {
+                $guidMap[$wpPage['guid']] = $newUrl;
+            }
+        }
+
+        return [$idMap, $slugMap, $guidMap];
     }
 
     /**

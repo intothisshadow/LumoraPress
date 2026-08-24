@@ -103,6 +103,15 @@ direct database connection plus a local copy of the source site's
   never a local/staging copy, to avoid hammering a shared-hosting
   site's database and web server back-to-back for the whole import's
   duration.
+- **Internal links between imported posts/pages** are also rewritten —
+  a plain in-content `<a href="...">` carries no structured reference
+  the way a menu item does, so this tries three independent,
+  permalink-structure-agnostic ways to identify what it really pointed
+  at: a `?p=123`/`?page_id=123` query parameter, an exact match against
+  the post/page's own `guid`, or the link's last path segment matched
+  against a slug — always scoped to the source site's own domain, so an
+  unrelated external link is never touched. Category/tag/author archive
+  links are a deliberate scope boundary and are left as-is.
 - **Post-import finalization**: two more stages always run last,
   regardless of which content types were selected. Thumbnail size
   variants are regenerated for every imported image — the import path
@@ -125,8 +134,9 @@ key to write into yet. There's still no skip-vs-overwrite-existing-
 content choice — idempotency is a hard "one import at a time, remove or
 resume before starting another" guard, matching Dummy Content; real
 skip/overwrite semantics would need matching each row by external id
-across every importer type. Internal post-to-post/page link rewriting
-and a redirect-mapping report aren't built either.
+across every importer type. A redirect-mapping report (a
+downloadable/visible old-URL → new-URL table for server-level
+redirects) isn't built either.
 
 ## Notes
 

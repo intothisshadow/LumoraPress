@@ -6,6 +6,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: internal link rewriting between imported posts
+  and pages (LPP-004 URL & Link Migration): a plain in-content
+  `<a href="...">` carries no structured reference to what it points at
+  the way a menu item does, so a new always-on stage tries three
+  independent, permalink-structure-agnostic ways to identify the
+  target — a `?p=123`/`?page_id=123` query parameter, an exact match
+  against the post/page's own `guid`, or the link's last path segment
+  matched against a slug — always scoped to the source site's own
+  domain, so an unrelated external link sharing a slug or query param
+  is never touched. Category/tag/author archive links are a deliberate
+  scope boundary and are left as-is.
 - WordPress Importer: post-import thumbnail regeneration and content
   verification (LPP-004 Post-Import): two finalization stages now
   always run at the end of every import. Imported media only ever had

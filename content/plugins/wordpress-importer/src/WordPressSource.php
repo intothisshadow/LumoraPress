@@ -48,6 +48,15 @@ final class WordPressSource
     private const SITE_OPTION_KEYS = [
         'blogname', 'blogdescription', 'timezone_string', 'gmt_offset',
         'permalink_structure', 'date_format', 'time_format',
+        // 'home'/'siteurl' (LPP-004 URL & Link Migration) — the source
+        // site's own base URL, read so internal in-content links can be
+        // scoped to the source's own domain rather than rewriting a link
+        // to some unrelated external site that happens to share a path
+        // segment. WordPress keeps these as two separate options
+        // (siteurl can differ from home on a install where WordPress
+        // itself lives in a subdirectory) — 'home' is the one actual
+        // page/post permalinks are built from.
+        'home', 'siteurl',
     ];
 
     public function __construct(
