@@ -55,6 +55,17 @@ direct database connection plus a local copy of the source site's
   widgets bucket — lands in Lumora Press's existing Inactive Widgets
   list instead of being dropped, so nothing imported is ever silently
   lost.
+- **Site settings** (title, tagline, timezone, date/time format,
+  permalink structure) can optionally be imported too — its own
+  checkbox on the Start Import form, unchecked by default since it's
+  the one step that overwrites this site's own existing settings
+  rather than adding new content alongside it. Test Connection shows a
+  read-only preview of the source's values first. A source permalink
+  structure using a tag with no Lumora Press equivalent (e.g.
+  WordPress's own `%post_id%`) is skipped and flagged in the warnings
+  rather than applied. Homepage, Reading, Discussion, Media, and
+  Privacy settings have no Lumora Press equivalent to write into yet
+  and are never imported.
 - Every imported record is tagged (via the shared
   `ContentImportRegistry`/`*Importer` layer this plugin shares with the
   Dummy Content plugin) so **Remove All Imported Content** deletes
@@ -65,9 +76,11 @@ direct database connection plus a local copy of the source site's
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-004 for the full checklist)
 
 The WXR `.xml` export upload path is a separate, not-yet-built import
-source. Site settings (title, tagline, timezone, permalink structure,
-etc.) are read and shown as a preview during Test Connection, never
-written back automatically. There's no dry-run preview, no resuming an
+source. Of the WordPress site settings shown as a preview during Test
+Connection, only title/tagline/timezone/date & time format/permalink
+structure can be applied (opt-in, see above) — Homepage, Reading,
+Discussion, Media, and Privacy settings have no Lumora Press config
+key to write into yet. There's no dry-run preview, no resuming an
 interrupted import, and no skip-vs-overwrite-existing-content choice —
 idempotency is a hard
 "one import at a time" guard instead, matching Dummy Content. General

@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\WordPressImporter;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Widgets\WidgetManager;
@@ -78,8 +79,12 @@ use Throwable;
  * for symmetry with Stage 8's own "Menus, Widgets" naming.
  *
  * Scope for this first pass (see LPP-004's own TODO entry for the full
- * list of what's deferred): no WXR .xml path, no site settings
- * write-back, no dry-run/resume/overwrite-existing semantics.
+ * list of what's deferred): no WXR .xml path, no dry-run/resume/
+ * overwrite-existing semantics. Site settings write-back (Stage 1)
+ * covers title/tagline/timezone/date & time format/permalink structure
+ * only — see importSiteSettings() for why Homepage/Reading/Discussion/
+ * Media/Privacy settings stay out of scope (no Lumora Press equivalent
+ * exists to write them into).
  * Idempotency follows DummyContentGenerator's own hard guard — run()
  * refuses to start while a previous 'wordpress_import' batch still
  * exists; removeAll() must be called first.
@@ -94,6 +99,18 @@ final class WordPressImportService
      * caller-selectable $statuses option.
      */
     private const ATTACHMENT_STATUSES = ['inherit'];
+
+    /**
+     * The only permalink tokens PermalinkService actually replaces (see
+     * that class's own buildPostUrl()) — a source structure containing
+     * any other token (WordPress core also supports %post_id%, %hour%,
+     * %minute%, %second%) would leave that token as dead literal text in
+     * every generated URL, so importSiteSettings() refuses to apply a
+     * structure containing one instead of silently producing broken URLs.
+     *
+     * @var array<int, string>
+     */
+    private const SUPPORTED_PERMALINK_TOKENS = ['%postname%', '%year%', '%monthnum%', '%day%', '%category%', '%author%'];
 
     /** @var array<int, string> */
     private array $warnings = [];
@@ -177,7 +194,7 @@ final class WordPressImportService
     }
 
     /**
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, statuses?: array<int, string>} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>} $options
      * @return array<string, int>
      */
     public function run(array $options): array
@@ -193,6 +210,15 @@ final class WordPressImportService
         $this->warnings = [];
         $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
         $batchId = $this->registry->newBatch();
+
+        // Site settings are opt-in only (unlike every other content type
+        // below, which defaults to true) — this is the one step that
+        // overwrites the *target* site's own existing configuration
+        // rather than adding new content alongside it, so it should never
+        // happen unless the admin explicitly asked for it.
+        if ($options['site_settings'] ?? false) {
+            $this->importSiteSettings($batchId);
+        }
 
         $wpUserIdToLocalId = ($options['users'] ?? true) ? $this->importUsers($batchId) : [];
 
@@ -259,6 +285,18 @@ final class WordPressImportService
                 $totals[$type] = ($totals[$type] ?? 0) + $count;
             }
 
+            $siteSettingsSnapshot = $this->registry->snapshotForBatch($batchId, 'site_settings_snap');
+
+            if ($siteSettingsSnapshot !== null) {
+                $previousSiteSettings = json_decode($siteSettingsSnapshot, true);
+
+                if (is_array($previousSiteSettings)) {
+                    foreach ($previousSiteSettings as $key => $value) {
+                        $this->config->setOption((string) $key, $value);
+                    }
+                }
+            }
+
             $navMenusSnapshot = $this->registry->snapshotForBatch($batchId, 'nav_menus_snap');
 
             if ($navMenusSnapshot !== null) {
@@ -304,6 +342,165 @@ final class WordPressImportService
             'user' => $this->users->delete($id),
             default => null,
         };
+    }
+
+    /**
+     * LPP-004 Stage 1 — the site-wide `options` values a WordPress
+     * install exposes on Settings > General/Permalinks, mapped onto the
+     * subset Lumora Press has a real config key for
+     * (`PressConfig::option()`, the same keys admin/views/settings/
+     * general.php and admin/views/settings/permalinks.php read/write).
+     * Homepage settings, Reading settings, Discussion settings, Media
+     * settings, and Privacy settings — all on the ticket's own Stage 1
+     * checklist — are deliberately never touched here: none of them has
+     * a Lumora Press config key at all (no static front page, no
+     * comment-moderation-threshold setting, no media-size settings, no
+     * privacy-policy-page setting exist in this codebase yet), so there
+     * is nothing to write them into. Adding placeholder keys just to
+     * hold imported values nobody reads yet would be worse than leaving
+     * them out — see CLAUDE.md's "don't add speculative infrastructure"
+     * guidance.
+     *
+     * The pre-import value of every key this method *does* write is
+     * snapshotted as one JSON blob (content type 'site_settings_snap',
+     * $contentId 0 as an arbitrary placeholder — nothing ever looks this
+     * row up by id) before anything is overwritten, mirroring
+     * importMenus()/importWidgets()'s own snapshot-and-restore pattern
+     * for the same reason: none of these are a real, individually
+     * delete()-able content row, so removeAll() restores the exact
+     * pre-import values instead.
+     */
+    private function importSiteSettings(string $batchId): void
+    {
+        $wpOptions = $this->source->siteOptions();
+
+        $previous = [
+            'site_name' => $this->config->option('site_name', ''),
+            'site_tagline' => $this->config->option('site_tagline', ''),
+            'timezone' => $this->config->option('timezone', 'UTC'),
+            'date_format' => $this->config->option('date_format', 'F j, Y'),
+            'time_format' => $this->config->option('time_format', 'g:i a'),
+            'permalink_structure' => $this->config->option('permalink_structure', '/post/%postname%/'),
+        ];
+
+        $this->registry->record($batchId, self::SOURCE, 'site_settings_snap', 0, null, json_encode($previous));
+
+        $blogname = html_entity_decode($wpOptions['blogname'] ?? '', ENT_QUOTES, 'UTF-8');
+
+        if (trim($blogname) !== '') {
+            $this->config->setOption('site_name', $blogname);
+        }
+
+        $blogdescription = html_entity_decode($wpOptions['blogdescription'] ?? '', ENT_QUOTES, 'UTF-8');
+
+        if (trim($blogdescription) !== '') {
+            $this->config->setOption('site_tagline', $blogdescription);
+        }
+
+        $timezone = $this->resolveTimezone($wpOptions['timezone_string'] ?? '', $wpOptions['gmt_offset'] ?? '');
+
+        if ($timezone !== null) {
+            $this->config->setOption('timezone', $timezone);
+        }
+
+        if (($wpOptions['date_format'] ?? '') !== '') {
+            $this->config->setOption('date_format', $wpOptions['date_format']);
+        }
+
+        if (($wpOptions['time_format'] ?? '') !== '') {
+            $this->config->setOption('time_format', $wpOptions['time_format']);
+        }
+
+        $structure = $this->resolvePermalinkStructure($wpOptions['permalink_structure'] ?? '');
+
+        if ($structure !== null) {
+            $this->config->setOption('permalink_structure', $structure);
+        }
+    }
+
+    /**
+     * WordPress prefers `timezone_string` (a real IANA identifier, e.g.
+     * "Europe/Helsinki") but falls back to a plain numeric UTC offset
+     * (`gmt_offset`, e.g. "2" or "-5.5") when the admin picked "UTC+2"
+     * from the dropdown instead of a city — Lumora Press's own timezone
+     * setting only ever accepts a real IANA identifier (see
+     * admin/views/settings/general.php's own validation against
+     * DateTimeZone::listIdentifiers()), so a numeric offset needs
+     * translating. `Etc/GMT` zones only exist at whole-hour offsets and
+     * use inverted sign conventions from gmt_offset's own (UTC+2 is
+     * "Etc/GMT-2", not "Etc/GMT+2") — a fractional offset (India's
+     * UTC+5:30, for instance) has no `Etc/GMT` equivalent at all and is
+     * left unresolved (null) rather than silently rounded to the wrong
+     * zone.
+     *
+     * `Etc/GMT*` identifiers only appear in
+     * `DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC)`, not the
+     * plain `DateTimeZone::listIdentifiers()` admin/views/settings/
+     * general.php's own timezone dropdown validates/populates from — a
+     * real, working identifier either way
+     * (`date_default_timezone_set()` in include/bootstrap.php accepts it
+     * regardless), but a resolved `Etc/GMT` value won't show
+     * pre-selected in that dropdown until the admin picks something from
+     * it directly. A cosmetic gap in that screen, not a functional one
+     * here.
+     */
+    private function resolveTimezone(string $timezoneString, string $gmtOffset): ?string
+    {
+        $identifiers = DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC);
+
+        if ($timezoneString !== '' && in_array($timezoneString, $identifiers, true)) {
+            return $timezoneString;
+        }
+
+        if ($gmtOffset === '' || !is_numeric($gmtOffset)) {
+            return null;
+        }
+
+        $offset = (float) $gmtOffset;
+
+        if ($offset !== floor($offset) || $offset < -12.0 || $offset > 14.0) {
+            return null;
+        }
+
+        $etcOffset = -(int) $offset;
+        $identifier = 'Etc/GMT' . ($etcOffset >= 0 ? '+' . $etcOffset : (string) $etcOffset);
+
+        return in_array($identifier, $identifiers, true) ? $identifier : null;
+    }
+
+    /**
+     * Mirrors admin/views/settings/permalinks.php's own validation
+     * exactly (must contain %postname%, only letters/numbers/hyphens/
+     * underscores/slashes/%tag% characters) plus one check that page has
+     * no reason to make: every %tag% token actually present must be one
+     * PermalinkService::buildPostUrl() knows how to replace (see
+     * SUPPORTED_PERMALINK_TOKENS), since an unresolved token would be
+     * left as dead literal text in every post URL rather than causing an
+     * error anywhere obvious.
+     */
+    private function resolvePermalinkStructure(string $wpStructure): ?string
+    {
+        $structure = trim($wpStructure);
+
+        if ($structure === '' || !str_contains($structure, '%postname%')) {
+            return null;
+        }
+
+        if (preg_match('/^[a-zA-Z0-9%_\-\/]+$/', $structure) !== 1) {
+            return null;
+        }
+
+        preg_match_all('/%[a-z_]+%/', $structure, $tokenMatches);
+
+        foreach ($tokenMatches[0] as $token) {
+            if (!in_array($token, self::SUPPORTED_PERMALINK_TOKENS, true)) {
+                $this->warnings[] = "Site settings: source permalink structure \"{$wpStructure}\" uses an unsupported tag ({$token}) — kept this site's existing permalink structure instead.";
+
+                return null;
+            }
+        }
+
+        return '/' . trim($structure, '/') . '/';
     }
 
     /**

@@ -21,6 +21,9 @@
     --lp-admin-warning-bg: #fcf9e8;
     --lp-admin-warning-border: #dba617;
     --lp-admin-warning-text: #664d03;
+    --lp-admin-info-bg: #eef6fc;
+    --lp-admin-info-border: #2271b1;
+    --lp-admin-info-text: #0d3a5c;
     --lp-admin-radius: 4px;
     --lp-admin-panel-radius: 10px;
     --lp-admin-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 8px rgba(16, 24, 40, 0.1);
@@ -70,6 +73,9 @@
         --lp-admin-warning-bg: #332b0f;
         --lp-admin-warning-border: #dba617;
         --lp-admin-warning-text: #f0d68a;
+        --lp-admin-info-bg: #16232e;
+        --lp-admin-info-border: #4c9be8;
+        --lp-admin-info-text: #a9d3f5;
         --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
         --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
         --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
@@ -101,6 +107,9 @@
     --lp-admin-warning-bg: #332b0f;
     --lp-admin-warning-border: #dba617;
     --lp-admin-warning-text: #f0d68a;
+    --lp-admin-info-bg: #16232e;
+    --lp-admin-info-border: #4c9be8;
+    --lp-admin-info-text: #a9d3f5;
     --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
     --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
     --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
@@ -2464,6 +2473,13 @@ select:focus {
     border: 1px solid var(--lp-admin-warning-border);
     border-left-width: 4px;
     color: var(--lp-admin-warning-text);
+}
+
+.lp-alert--info {
+    background: var(--lp-admin-info-bg);
+    border: 1px solid var(--lp-admin-info-border);
+    border-left-width: 4px;
+    color: var(--lp-admin-info-text);
 }
 
 /* Login screen */

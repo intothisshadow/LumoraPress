@@ -29,6 +29,7 @@ if (!isset($kernel)) {
 
 $importError = null;
 $testResult = null;
+$sitePreview = null;
 $summary = null;
 $warnings = [];
 
@@ -159,11 +160,24 @@ if ($wordPressImporterActive) {
             } elseif (!is_dir($formValues['uploads_path'])) {
                 $testResult = ['ok' => false, 'message' => 'Connected to the database, but the uploads folder path does not exist or is not readable by the web server.'];
             } else {
-                $siteName = $source->siteOptions()['blogname'] ?? null;
+                $wpOptions = $source->siteOptions();
+                $siteName = $wpOptions['blogname'] ?? null;
                 $testResult = [
                     'ok' => true,
                     'message' => 'Connected successfully, and the uploads folder is readable.'
                         . ($siteName !== null && $siteName !== '' ? " Source site: \"{$siteName}\"." : ''),
+                ];
+
+                // A preview only — nothing here is written anywhere. See
+                // "Site settings" below for the opt-in checkbox that
+                // actually applies these on Start Import.
+                $sitePreview = [
+                    'Site title' => html_entity_decode($wpOptions['blogname'] ?? '', ENT_QUOTES, 'UTF-8'),
+                    'Tagline' => html_entity_decode($wpOptions['blogdescription'] ?? '', ENT_QUOTES, 'UTF-8'),
+                    'Timezone' => ($wpOptions['timezone_string'] ?? '') !== '' ? $wpOptions['timezone_string'] : (($wpOptions['gmt_offset'] ?? '') !== '' ? 'UTC' . ($wpOptions['gmt_offset'][0] === '-' ? '' : '+') . $wpOptions['gmt_offset'] : ''),
+                    'Date format' => $wpOptions['date_format'] ?? '',
+                    'Time format' => $wpOptions['time_format'] ?? '',
+                    'Permalink structure' => $wpOptions['permalink_structure'] ?? '',
                 ];
             }
         } catch (\Throwable $exception) {
@@ -183,6 +197,7 @@ if ($wordPressImporterActive) {
         try {
             $service = $buildImportService();
             $service->run([
+                'site_settings' => isset($_POST['include_site_settings']),
                 'users' => isset($_POST['include_users']),
                 'categories' => isset($_POST['include_categories']),
                 'media' => isset($_POST['include_media']),
@@ -261,6 +276,17 @@ if ($wordPressImporterActive) {
         <div class="lp-alert <?= $testResult['ok'] ? 'lp-alert--success' : 'lp-alert--error' ?>"><?= esc_html($testResult['message']) ?></div>
     <?php endif; ?>
 
+    <?php if ($sitePreview !== null): ?>
+        <div class="lp-alert lp-alert--info">
+            <strong>Source site settings (preview only — nothing is applied yet):</strong>
+            <ul>
+                <?php foreach ($sitePreview as $label => $value): ?>
+                    <li><?= esc_html($label) ?>: <?= $value !== '' ? '<code>' . esc_html($value) . '</code>' : '<em>(not set)</em>' ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
     <section class="lp-admin__panel">
         <h2>WordPress Importer</h2>
 
@@ -280,7 +306,10 @@ if ($wordPressImporterActive) {
             counter) when it only links to an external URL. Any page
             still using <code>[sdm_show_dl_from_category]</code>
             automatically renders a real list of those downloads after
-            import — no manual page editing needed.
+            import — no manual page editing needed. Site title, tagline,
+            timezone, date/time format, and permalink structure can
+            optionally be imported too (off by default — see "Site
+            settings" below).
         </p>
 
         <?php if ($summary !== null): ?>
@@ -402,6 +431,23 @@ if ($wordPressImporterActive) {
                 <p class="lp-field">
                     <label for="wp-import-2-uploads-path">Uploads folder path (server filesystem)</label>
                     <input type="text" id="wp-import-2-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
+                </p>
+
+                <h4>Site settings</h4>
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="include_site_settings" value="1">
+                        Site title, tagline, timezone, date/time format, and permalink structure
+                    </label>
+                    <span class="lp-field__hint">
+                        Overwrites this site's own Settings &rsaquo; General/Permalinks values with the
+                        source site's. Off by default — leave unchecked to keep this site's existing settings.
+                        A source permalink structure using a tag Lumora Press doesn't support (e.g.
+                        <code>%post_id%</code>) is skipped and noted in the warnings below rather than applied.
+                        Homepage, Reading, Discussion, Media, and Privacy settings have no Lumora Press
+                        equivalent yet and are never imported.
+                    </span>
                 </p>
 
                 <h4>Content to import</h4>

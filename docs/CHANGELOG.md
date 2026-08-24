@@ -6,6 +6,23 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: Site Settings write-back (LPP-004 Stage 1): the
+  source site's title, tagline, timezone, date/time format, and
+  permalink structure can now optionally be imported (its own
+  checkbox on the Start Import form, off by default, since this is the
+  one import step that overwrites the target site's own existing
+  settings rather than adding new content alongside it). Test
+  Connection now shows a read-only preview of the source's values
+  first. A numeric UTC-offset timezone (rather than a named one) is
+  translated to the closest whole-hour zone; a source permalink
+  structure using a tag Lumora Press doesn't support (e.g. WordPress's
+  own `%post_id%`) is left untouched and flagged in the import
+  warnings instead of leaving broken literal text in every URL. Remove
+  All Imported Content restores the exact pre-import settings it
+  snapshotted before the import touched them, the same pattern Stage
+  8's menu/widget rollback already uses. Homepage, Reading, Discussion,
+  Media, and Privacy settings are still not imported — Lumora Press has
+  no config key for any of them yet.
 - WordPress Importer: Menus & Classic Widgets (LPP-004 Stage 8): each
   WordPress nav menu now becomes a named, reusable Lumora Press menu —
   custom links and links to already-imported pages/posts/categories/
