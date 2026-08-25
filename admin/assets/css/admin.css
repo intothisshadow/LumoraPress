@@ -2399,8 +2399,9 @@ select:focus {
 .lp-field__hint {
     display: block;
     margin-top: 0.35rem;
-    color: var(--lp-admin-sidebar-fg-muted);
-    font-size: 0.8rem;
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
+    font-size: 0.875rem;
+    line-height: 1.5;
 }
 
 /* LP-078: Settings > Permalinks structure presets. */
