@@ -726,17 +726,17 @@ final class WordPressImportService
                 $maps['wpUserIdToLocalId'] = $this->importUsers($batchId);
                 break;
             case 'categories':
-                $maps['wpCategoryTermIdToLocalId'] = $this->importCategories($batchId);
-                $maps['wpTagTermIdToLocalId'] = $this->importTags($batchId);
+                $maps['wpCategoryTermIdToLocalId'] = $this->importCategories($batchId, $existingContentMode);
+                $maps['wpTagTermIdToLocalId'] = $this->importTags($batchId, $existingContentMode);
                 break;
             case 'media':
                 [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
                 break;
             case 'nextgen_galleries':
-                $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
                 break;
             case 'downloads':
-                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
                 break;
             case 'pages':
                 $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
@@ -1873,7 +1873,7 @@ final class WordPressImportService
      *
      * @return array<int, int> wpTermId => local category id
      */
-    private function importCategories(string $batchId): array
+    private function importCategories(string $batchId, ?ExistingContentMode $existingContentMode = null): array
     {
         $remaining = $this->source->terms('category');
         $localIdByWpTermId = [];
@@ -1892,9 +1892,7 @@ final class WordPressImportService
                     continue;
                 }
 
-                $category = $this->categories->create($term['name'], '', $parentId);
-                $this->registry->record($batchId, self::SOURCE, 'category', $category->id);
-                $localIdByWpTermId[$term['term_id']] = $category->id;
+                $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateCategory($batchId, $term, $parentId, $existingContentMode);
                 $progressed = true;
             }
 
@@ -1903,9 +1901,7 @@ final class WordPressImportService
                 // 'category' taxonomy at all (data oddity) — create the
                 // rest top-level rather than looping forever.
                 foreach ($stillRemaining as $term) {
-                    $category = $this->categories->create($term['name'], '', null);
-                    $this->registry->record($batchId, self::SOURCE, 'category', $category->id);
-                    $localIdByWpTermId[$term['term_id']] = $category->id;
+                    $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateCategory($batchId, $term, null, $existingContentMode);
                 }
 
                 $stillRemaining = [];
@@ -1918,18 +1914,57 @@ final class WordPressImportService
     }
 
     /**
+     * @param array{term_id: int, name: string, parent: int} $term
+     */
+    private function createOrUpdateCategory(string $batchId, array $term, ?int $parentId, ?ExistingContentMode $existingContentMode): int
+    {
+        $externalId = (string) $term['term_id'];
+        $existingId = $existingContentMode !== null
+            ? $this->registry->existingLocalId(self::SOURCE, 'category', $externalId)
+            : null;
+
+        if ($existingId !== null) {
+            if ($existingContentMode === ExistingContentMode::Overwrite) {
+                $this->categories->update($existingId, $term['name'], '', $parentId);
+            }
+
+            return $existingId;
+        }
+
+        $category = $this->categories->create($term['name'], '', $parentId);
+        $this->registry->record($batchId, self::SOURCE, 'category', $category->id, $externalId);
+
+        return $category->id;
+    }
+
+    /**
      * The returned map is used by importMenus() (Stage 8) to resolve a
      * menu item pointing at a tag term.
      *
      * @return array<int, int> wpTermId => local tag id
      */
-    private function importTags(string $batchId): array
+    private function importTags(string $batchId, ?ExistingContentMode $existingContentMode = null): array
     {
         $localIdByWpTermId = [];
 
         foreach ($this->source->terms('post_tag') as $term) {
+            $externalId = (string) $term['term_id'];
+            $existingId = $existingContentMode !== null
+                ? $this->registry->existingLocalId(self::SOURCE, 'tag', $externalId)
+                : null;
+
+            if ($existingId !== null) {
+                if ($existingContentMode === ExistingContentMode::Overwrite) {
+                    $this->tags->update($existingId, $term['name'], '');
+                }
+
+                $localIdByWpTermId[$term['term_id']] = $existingId;
+
+                continue;
+            }
+
             $tag = $this->tags->findOrCreateByName($term['name']);
-            $this->registry->record($batchId, self::SOURCE, 'tag', $tag->id);
+            $this->registry->record($batchId, self::SOURCE, 'tag', $tag->id, $externalId);
             $localIdByWpTermId[$term['term_id']] = $tag->id;
         }
 
@@ -1947,7 +1982,7 @@ final class WordPressImportService
      *
      * @return array<int, int> wpTermId => local folder id
      */
-    private function importFolders(string $batchId): array
+    private function importFolders(string $batchId, ?ExistingContentMode $existingContentMode = null): array
     {
         $remaining = $this->source->terms('sdm_categories');
         $localIdByWpTermId = [];
@@ -1964,9 +1999,12 @@ final class WordPressImportService
         // mixing the two. Only created when there's at least one category
         // to nest under it, so a source site using Simple Download
         // Monitor without categories doesn't get an empty "Downloads"
-        // folder for nothing.
-        $downloadsFolder = $this->folders->create('Downloads', null);
-        $this->registry->record($batchId, self::SOURCE, 'folder', $downloadsFolder->id);
+        // folder for nothing. Has no WordPress term of its own to key
+        // off, unlike every other folder here — given a fixed synthetic
+        // external id instead, so a Skip/Overwrite re-import finds the
+        // same wrapper folder instead of creating a duplicate "Downloads"
+        // tree.
+        $downloadsFolderId = $this->createOrUpdateFolder($batchId, 'Downloads', null, 'sdm-downloads-root', $existingContentMode);
 
         while ($remaining !== []) {
             $stillRemaining = [];
@@ -1974,7 +2012,7 @@ final class WordPressImportService
 
             foreach ($remaining as $term) {
                 if ($term['parent'] === 0) {
-                    $parentId = $downloadsFolder->id;
+                    $parentId = $downloadsFolderId;
                 } elseif (isset($localIdByWpTermId[$term['parent']])) {
                     $parentId = $localIdByWpTermId[$term['parent']];
                 } else {
@@ -1982,17 +2020,13 @@ final class WordPressImportService
                     continue;
                 }
 
-                $folder = $this->folders->create($term['name'], $parentId);
-                $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                $localIdByWpTermId[$term['term_id']] = $folder->id;
+                $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], $parentId, (string) $term['term_id'], $existingContentMode);
                 $progressed = true;
             }
 
             if (!$progressed) {
                 foreach ($stillRemaining as $term) {
-                    $folder = $this->folders->create($term['name'], $downloadsFolder->id);
-                    $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                    $localIdByWpTermId[$term['term_id']] = $folder->id;
+                    $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], $downloadsFolderId, (string) $term['term_id'], $existingContentMode);
                 }
 
                 $stillRemaining = [];
@@ -2002,6 +2036,35 @@ final class WordPressImportService
         }
 
         return $localIdByWpTermId;
+    }
+
+    /**
+     * Shared by importFolders()/importMediaFolders()/
+     * importNextGenGalleries() — all three hand a Media Manager Folder
+     * the same three FolderService calls (create/update/registry
+     * record), differing only in what external id identifies "this
+     * folder" across separate import runs (a real WordPress term id, a
+     * NextGEN album/gallery id, or the synthetic "Downloads" wrapper's
+     * fixed id).
+     */
+    private function createOrUpdateFolder(string $batchId, string $name, ?int $parentId, string $externalId, ?ExistingContentMode $existingContentMode): int
+    {
+        $existingId = $existingContentMode !== null
+            ? $this->registry->existingLocalId(self::SOURCE, 'folder', $externalId)
+            : null;
+
+        if ($existingId !== null) {
+            if ($existingContentMode === ExistingContentMode::Overwrite) {
+                $this->folders->update($existingId, $name, $parentId);
+            }
+
+            return $existingId;
+        }
+
+        $folder = $this->folders->create($name, $parentId);
+        $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id, $externalId);
+
+        return $folder->id;
     }
 
     /**
@@ -2044,9 +2107,9 @@ final class WordPressImportService
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
      * @param array<string, string> $oldRelativePathToNewUrl
      */
-    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl): void
+    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl, ?ExistingContentMode $existingContentMode = null): void
     {
-        $wpFolderIdByWpTermId = $this->importFolders($batchId);
+        $wpFolderIdByWpTermId = $this->importFolders($batchId, $existingContentMode);
         $imageRewriter = new ContentImageRewriter();
 
         foreach ($this->source->posts(['sdm_downloads'], ['publish']) as $download) {
@@ -2062,6 +2125,40 @@ final class WordPressImportService
             }
 
             $folderId = $this->resolveDownloadFolder($download['ID'], $wpFolderIdByWpTermId);
+
+            // DownloadService::update() already updates everything an
+            // Overwrite needs in one call — a File-typed download's
+            // underlying Media description, or a Url-typed one's
+            // *existing* Redirect target url in place (never creating a
+            // second one) — so a matched download needs none of the
+            // file-existence/media-import work below, mirroring
+            // importMedia()'s own "Skip/Overwrite never need this
+            // attachment's file at all" precedent. Only reachable when
+            // the Downloads plugin (LPP-008) is active, since that's the
+            // only place a 'download' registry row is ever recorded;
+            // otherwise this download's underlying Media/Redirect can
+            // still individually match further down via their own
+            // registry rows.
+            $existingDownloadId = $existingContentMode !== null && $this->downloads !== null
+                ? $this->registry->existingLocalId(self::SOURCE, 'download', (string) $download['ID'])
+                : null;
+
+            if ($existingDownloadId !== null) {
+                if ($existingContentMode === ExistingContentMode::Overwrite) {
+                    $description = ($meta['sdm_description'] ?? '') !== '' ? $meta['sdm_description'] : $download['post_content'];
+                    $rewrittenDescription = $imageRewriter->rewrite($description, $oldRelativePathToNewUrl);
+                    $description = $rewrittenDescription['content'];
+
+                    foreach ($rewrittenDescription['warnings'] as $warning) {
+                        $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): {$warning}";
+                    }
+
+                    $this->downloads->update($existingDownloadId, $download['post_title'], $description, $folderId, $uploadUrl, ContentFormat::Html);
+                }
+
+                continue;
+            }
+
             $authorId = $wpUserIdToLocalId[$download['post_author']] ?? 1;
             $stats = $this->source->sdmDownloadStats($download['ID']);
             // Simple Download Monitor's own editor always stores this field
@@ -2086,7 +2183,11 @@ final class WordPressImportService
                 $relativePath = substr($relativePath, strlen('wp-content/uploads/'));
                 $absolutePath = rtrim($this->sourceUploadsPath, '/') . '/' . $relativePath;
 
-                if (!is_file($absolutePath)) {
+                $existingMediaId = $existingContentMode !== null
+                    ? $this->registry->existingLocalId(self::SOURCE, 'media', (string) $download['ID'])
+                    : null;
+
+                if ($existingMediaId === null && !is_file($absolutePath)) {
                     $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): file not found at {$absolutePath}, skipped.";
                     continue;
                 }
@@ -2103,7 +2204,7 @@ final class WordPressImportService
                 );
 
                 try {
-                    $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data);
+                    $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
                     $this->mediaStats->seed((int) $media['id'], $stats['count'], $stats['lastDownloadedAt']);
 
                     if ($this->downloads !== null) {
@@ -2185,7 +2286,7 @@ final class WordPressImportService
      *
      * @return array<int, int> wpTermId => local folder id
      */
-    private function importMediaFolders(string $batchId): array
+    private function importMediaFolders(string $batchId, ?ExistingContentMode $existingContentMode = null): array
     {
         $remaining = $this->source->terms('media_folder');
         $localIdByWpTermId = [];
@@ -2208,9 +2309,7 @@ final class WordPressImportService
                     continue;
                 }
 
-                $folder = $this->folders->create($term['name'], $parentId);
-                $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                $localIdByWpTermId[$term['term_id']] = $folder->id;
+                $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], $parentId, (string) $term['term_id'], $existingContentMode);
                 $progressed = true;
             }
 
@@ -2220,9 +2319,7 @@ final class WordPressImportService
                 // the rest top-level rather than looping forever,
                 // matching importCategories()'s own fallback.
                 foreach ($stillRemaining as $term) {
-                    $folder = $this->folders->create($term['name'], null);
-                    $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                    $localIdByWpTermId[$term['term_id']] = $folder->id;
+                    $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], null, (string) $term['term_id'], $existingContentMode);
                 }
 
                 $stillRemaining = [];
@@ -2270,7 +2367,7 @@ final class WordPressImportService
     {
         $wpAttachmentIdToLocalMediaId = [];
         $oldRelativePathToNewUrl = [];
-        $wpMediaFolderIdToLocalId = $this->importMediaFolders($batchId);
+        $wpMediaFolderIdToLocalId = $this->importMediaFolders($batchId, $existingContentMode);
 
         foreach ($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES) as $attachment) {
             $meta = $this->source->postMeta($attachment['ID']);
@@ -2381,7 +2478,7 @@ final class WordPressImportService
      *
      * @param array<int, int> $wpUserIdToLocalId
      */
-    private function importNextGenGalleries(string $batchId, array $wpUserIdToLocalId): void
+    private function importNextGenGalleries(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode = null): void
     {
         if ($this->sourceGalleryPath === null || $this->sourceGalleryPath === '') {
             return;
@@ -2392,9 +2489,7 @@ final class WordPressImportService
 
         foreach ($albums as $album) {
             $albumName = $album['name'] !== '' ? $album['name'] : $album['slug'];
-            $folder = $this->folders->create($albumName, null);
-            $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-            $wpAlbumIdToLocalFolderId[$album['id']] = $folder->id;
+            $wpAlbumIdToLocalFolderId[$album['id']] = $this->createOrUpdateFolder($batchId, $albumName, null, (string) $album['id'], $existingContentMode);
         }
 
         $wpGalleryGidToAlbumId = $this->buildGalleryIdToAlbumId($albums);
@@ -2406,8 +2501,7 @@ final class WordPressImportService
             $folderName = $gallery['title'] !== '' ? $gallery['title'] : $gallery['name'];
             $parentAlbumId = $wpGalleryGidToAlbumId[$gallery['gid']] ?? null;
             $parentFolderId = $parentAlbumId !== null ? ($wpAlbumIdToLocalFolderId[$parentAlbumId] ?? null) : null;
-            $folder = $this->folders->create($folderName, $parentFolderId);
-            $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
+            $folderId = $this->createOrUpdateFolder($batchId, $folderName, $parentFolderId, (string) $gallery['gid'], $existingContentMode);
 
             foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
                 if ($picture['exclude'] === 1) {
@@ -2427,7 +2521,7 @@ final class WordPressImportService
                     fileName: $picture['filename'],
                     altText: $picture['alttext'] !== '' ? $picture['alttext'] : null,
                     description: $picture['description'] !== '' ? $picture['description'] : null,
-                    folderId: $folder->id,
+                    folderId: $folderId,
                     // Prefixed to keep NextGEN's own pid numbering from
                     // colliding with a WordPress attachment ID in the
                     // same batch's 'media' provenance records — the two
@@ -2439,7 +2533,7 @@ final class WordPressImportService
                 );
 
                 try {
-                    $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data);
+                    $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
                 } catch (Throwable $exception) {
                     $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): {$exception->getMessage()}";
                 }

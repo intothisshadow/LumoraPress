@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: "Skip existing content"/"Overwrite existing
+  content" now also cover Categories, Tags, Folders (both the Media
+  Library Folders plugin and Simple Download Monitor's own category
+  tree), Downloads, and NextGEN Gallery images/albums/galleries —
+  previously only Posts, Pages, Comments, and Media's main attachment
+  stage were covered, so a re-import against the same source duplicated
+  every category, tag, folder, download, and NextGEN picture instead of
+  leaving them alone or updating them in place.
 - WordPress Importer: two more WordPress/Jetpack media constructs a
   migrated post/page's content can't fully resolve are now detected
   and flagged as an import warning, matching the existing `[gallery]`

@@ -137,22 +137,24 @@ a local copy of the source site's `wp-content/uploads` folder.
   after it was already imported once before no longer has to mean
   remove-and-start-over. A "When content already exists" dropdown on the
   Import form offers Skip (leave an already-imported Post, Page,
-  Comment, or Media attachment completely unchanged, only import what's
-  genuinely new since last time) or Overwrite (update each one in place
-  with the source's current values — a full field update for Posts/
-  Pages including replacing their categories/tags/custom fields, content
-  and moderation status only for Comments, and alt text/caption/
-  description/folder only for Media — Overwrite never replaces a Media
-  item's underlying file). Every match is by the source's own id, not
-  name/slug, via the same provenance tracking that backs "Remove All
-  Imported Content" — a reused or updated row is never re-recorded under
-  the new batch, so removing the new batch alone can never delete
-  content the earlier one still owns. Users are unaffected: they already
-  always reuse a matching existing account by username/email regardless
-  of this setting. **Not yet covered by Skip/Overwrite**: Categories,
-  Tags, Folders (Media Library Folders and Simple Download Monitor's own
-  category tree), Downloads, and NextGEN Gallery images all still create
-  or reapply fresh content on every import.
+  Comment, Media attachment, Category, Tag, Folder, Download, or NextGEN
+  Gallery image/album/gallery folder completely unchanged, only import
+  what's genuinely new since last time) or Overwrite (update each one in
+  place with the source's current values — a full field update for
+  Posts/Pages including replacing their categories/tags/custom fields,
+  content and moderation status only for Comments, alt text/caption/
+  description/folder only for Media and NextGEN images, name/parent for
+  Categories/Tags/Folders, and title/description/folder/target-URL for
+  Downloads — Overwrite never replaces a Media item's underlying file,
+  or a Download's own uploaded file). A Download's external-link
+  (Redirect-backed) type updates the *existing* redirect's target URL in
+  place rather than creating a new one. Every match is by the source's
+  own id, not name/slug, via the same provenance tracking that backs
+  "Remove All Imported Content" — a reused or updated row is never
+  re-recorded under the new batch, so removing the new batch alone can
+  never delete content the earlier one still owns. Users are unaffected:
+  they already always reuse a matching existing account by username/
+  email regardless of this setting.
 - **Dry run**: a single Import form handles both a preview and a real
   import — check "Dry run (preview only — makes no changes)" above the
   Import button to read the source database and report approximate
@@ -218,10 +220,7 @@ Of the WordPress site settings shown as a preview during Test
 Connection, only title/tagline/timezone/date & time format/permalink
 structure can be applied (opt-in, see above) — Homepage, Reading,
 Discussion, Media, and Privacy settings have no Lumora Press config
-key to write into yet. Skip/Overwrite existing content (see above)
-doesn't yet cover Categories, Tags, Folders, Downloads, or NextGEN
-Gallery images — all five still always create/reapply fresh content on
-every import.
+key to write into yet.
 
 ## Notes
 
