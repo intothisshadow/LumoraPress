@@ -613,6 +613,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A download's Description imported via the WordPress Importer could
+  render with raw, un-rendered HTML tags visible as literal text (e.g.
+  `<p><img ...></p>` shown as plain text instead of an image) on the
+  `[lumora_downloads]` shortcode's public listing. Simple Download
+  Monitor's `sdm_description` postmeta is always raw HTML, but
+  `importDownloads()` never told `DownloadService::recordExisting()`
+  that, so it silently defaulted to plain-text format and got escaped
+  at render — unrelated to LPP-010's new format-aware rendering itself,
+  which only made the pre-existing gap visible for the first time.
+  `importDownloads()` now passes the HTML format explicitly for every
+  imported download, matching how imported posts/pages already do.
 - A trashed page could still be selected as a Parent Page, a Settings
   &rsaquo; Reading homepage/posts-page, or a Settings &rsaquo; Privacy
   policy page (LP-109) — `PageService::listAllForParentSelect()` had no

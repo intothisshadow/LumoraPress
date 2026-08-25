@@ -1606,6 +1606,9 @@ final class WordPressImportService
             $folderId = $this->resolveDownloadFolder($download['ID'], $wpFolderIdByWpTermId);
             $authorId = $wpUserIdToLocalId[$download['post_author']] ?? 1;
             $stats = $this->source->sdmDownloadStats($download['ID']);
+            // Simple Download Monitor's own editor always stores this field
+            // as raw HTML (see both recordExisting() calls below), never
+            // Markdown/plain text — matches how post/page content is tagged.
             $description = ($meta['sdm_description'] ?? '') !== '' ? $meta['sdm_description'] : '';
 
             $uploadsMarker = '/wp-content/uploads/';
@@ -1636,7 +1639,7 @@ final class WordPressImportService
                     $this->mediaStats->seed((int) $media['id'], $stats['count'], $stats['lastDownloadedAt']);
 
                     if ($this->downloads !== null) {
-                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::File, (int) $media['id'], null);
+                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::File, (int) $media['id'], null, ContentFormat::Html);
                         $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                     }
                 } catch (Throwable $exception) {
@@ -1654,7 +1657,7 @@ final class WordPressImportService
                 $this->registry->record($batchId, self::SOURCE, 'redirect', (int) $redirect['id'], (string) $download['ID']);
 
                 if ($this->downloads !== null) {
-                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::Url, null, (int) $redirect['id']);
+                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::Url, null, (int) $redirect['id'], ContentFormat::Html);
                     $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                 }
             } catch (Throwable $exception) {
