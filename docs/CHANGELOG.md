@@ -578,6 +578,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A trashed page could still be selected as a Parent Page, a Settings
+  &rsaquo; Reading homepage/posts-page, or a Settings &rsaquo; Privacy
+  policy page (LP-109) — `PageService::listAllForParentSelect()` had no
+  status filter at all, unlike its `CategoryService` counterpart.
+- A trashed post could still be selected and added from Appearance
+  &rsaquo; Menus' "Add Items" panel (LP-108) —
+  `PostService::listAllForMenuSelect()` had no status filter at all.
+  Draft/Pending Review/Private/Scheduled posts remain selectable, as
+  intended.
 - A lightbox opened from a post/page image imported via the WordPress
   Importer could display the image at its old, much smaller thumbnail
   size instead of its real full resolution (e.g. a 1920×1080 photo

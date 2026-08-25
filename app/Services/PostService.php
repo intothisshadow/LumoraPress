@@ -816,8 +816,11 @@ final class PostService
      * A flat {id, title, slug} list for the admin Menus screen's "Add
      * Posts" checkbox list (LP-049) — mirrors
      * PageService::listAllForParentSelect()'s shape. Regardless of
-     * status, same as that method: an editor building a menu may
-     * knowingly link to a not-yet-published post.
+     * non-trashed status, same as that method: an editor building a
+     * menu may knowingly link to a not-yet-published post. Trashed
+     * posts are excluded (LP-108) — unlike a Draft/Pending/Scheduled
+     * post, a trashed one isn't a genuine, if premature, choice to link
+     * to.
      *
      * @return array<int, array{id: int, title: string, slug: string}>
      */
@@ -826,7 +829,7 @@ final class PostService
         $limit = max(1, $limit);
 
         $rows = $this->database->fetchAll(
-            'SELECT id, title, slug FROM ' . $this->table() . " ORDER BY created_at DESC LIMIT {$limit}",
+            'SELECT id, title, slug FROM ' . $this->table() . " WHERE status != 'trashed' ORDER BY created_at DESC LIMIT {$limit}",
         );
 
         return array_map(

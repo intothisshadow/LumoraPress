@@ -661,13 +661,20 @@ final class PageService
      * excluding $excludeId itself and its direct children (so a page can't
      * be made the parent of its own parent one level up — deeper cycles
      * are an accepted gap for this basic, non-tree parent selector).
+     * Trashed pages are excluded (LP-109) — unlike
+     * PostService::listAllForMenuSelect()'s intentionally-inclusive
+     * non-trashed statuses (see that method's own docblock), nothing
+     * here suggested trashed pages belonged in a parent/front-page
+     * picker; this brings the query in line with
+     * CategoryService::listAllForParentSelect()'s existing `WHERE
+     * trashed_at IS NULL`.
      *
      * @return array<int, array{id: int, title: string}>
      */
     public function listAllForParentSelect(?int $excludeId = null): array
     {
         if ($excludeId === null) {
-            $rows = $this->database->fetchAll('SELECT id, title FROM ' . $this->table() . ' ORDER BY title ASC');
+            $rows = $this->database->fetchAll("SELECT id, title FROM " . $this->table() . " WHERE status != 'trashed' ORDER BY title ASC");
         } else {
             // Two distinct placeholders for the same value: with real
             // (non-emulated) prepared statements — see Database::connect()'s
@@ -676,9 +683,9 @@ final class PageService
             // own parameter, so reusing :id twice with a single bound value
             // throws "SQLSTATE[HY093]: Invalid parameter number" at runtime.
             $rows = $this->database->fetchAll(
-                'SELECT id, title FROM ' . $this->table() . '
-                    WHERE id != :exclude_id AND (parent_id IS NULL OR parent_id != :exclude_id_2)
-                 ORDER BY title ASC',
+                "SELECT id, title FROM " . $this->table() . "
+                    WHERE status != 'trashed' AND id != :exclude_id AND (parent_id IS NULL OR parent_id != :exclude_id_2)
+                 ORDER BY title ASC",
                 ['exclude_id' => $excludeId, 'exclude_id_2' => $excludeId],
             );
         }
