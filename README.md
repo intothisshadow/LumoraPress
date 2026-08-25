@@ -256,7 +256,7 @@ them via FTP/SFTP or your hosting file manager).
 
 ## Current Status
 
-**Version 0.6.0**
+**Version 0.7.0**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme

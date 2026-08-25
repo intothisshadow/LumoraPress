@@ -4,8 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-26
+
 ### Added
 
+- WordPress Importer reaches version 1.0 — every checklist item on its
+  own ticket (LPP-004) is now complete.
 - An admin/staff account's login username must now be different from
   its Display Name (the name shown publicly as a post's author byline)
   — required for every role except Subscriber, both in the installer's

@@ -4133,3 +4133,2609 @@ construction), so this never resolves an arbitrary external address —
 `ContentRenderer` still has no `MediaService`/database dependency, only
 a direct, narrowly-scoped filesystem read.
 
+---
+
+## 0.7.0 (2026-08-26)
+
+### LP-008. Posts
+
+**Partially implemented (2026-07-21), substantially extended (2026-08-01).**
+The 2026-07-21 note below undersold how much had already landed via other
+tickets by the time this pass started — Categories/Tags (LP-010/LP-011),
+Featured Images (LP-040), the Markdown/WYSIWYG content editor (LP-015/
+LP-016), Revisions (LP-017), category/tag archives and search
+(LP-010/LP-011/LP-014) were all already wired into `admin/views/posts.php`
+and the front end. Checkboxes below have been corrected to reflect that,
+and this pass additionally added: Trash with restore (`PostStatus::Trashed`,
+a new `trashed_at` column, `PostService::trash()`/`restore()`), Duplicate
+existing posts (`PostService::duplicate()`), and Bulk Actions (checkbox
+selection + Move to Trash/Restore/Delete Permanently/Publish/Mark as Draft)
+on the admin Posts list, plus status-count tabs (`All (12)`, `Trash (3)`,
+...). Restoring a trashed post always returns it to Draft rather than its
+prior status — a deliberate "don't silently resurface previously-published
+content" safety choice, see `PostService::restore()`'s docblock. The REST
+API (LP-021) explicitly cannot set or carry a post into Trashed through its
+`status` field — see `ApiController::canSetStatus()`'s docblock — trashing/
+restoring/permanent-delete are admin-UI-only flows for now.
+
+**Extended further (2026-08-04).** Publishing Workflow: Pending Review
+status, Private posts (`PostVisibility`, independent of status), Sticky
+posts (pinned on the homepage only), and Schedule unpublishing
+(`unpublish_at`, computed live like scheduled publishing already is) —
+all via a new migration (`0026_add_publishing_workflow_to_posts.sql`).
+Editor: Custom Fields (new `post_meta` table + repeatable key/value row
+editor), a Preview button (`/preview/{id}`, bypasses the visibility gate
+for the post's author/an editor rather than issuing a shareable link),
+and client-side URL preview. Authors: reassignment on the edit screen,
+public `/author/{slug}` archives and profile links (author slugs are
+computed from username via `UserService`, since there was no stored
+slug column). Admin Posts list: a Search &amp; Filter panel (title,
+author, category, tag, date range) backed by an extended
+`paginateForAdmin()`, plus three new Bulk Actions (Change author, Change
+category — additive, not a replace — and Change visibility). Validation:
+a title length cap and Html-format content sanitization at save time
+(`HtmlSanitizer`, in addition to the pre-existing render-time
+sanitization — the REST API exposes raw stored content directly).
+Configurable permalink structure was explicitly scoped out of this pass
+(deliberate call, confirmed with Ariane before starting) — it needed a
+token-based routing rework this pass didn't attempt. That work was later
+built as its own ticket, LP-078 ("Permalink Structure & Settings"),
+which also consolidates the identical requests LP-009/LP-010/LP-011 had
+listed separately. See `docs/CHANGELOG.md`'s entry for this date.
+
+Original 2026-07-21 note, for history: "a first, real increment shipped
+before this ticket's full scope was reviewed: `LumoraPress\Services\PostService`
+(create/edit/delete, automatic slug generation with duplicate resolution,
+draft/published/scheduled status), the admin Posts screen (list/create/
+edit/delete with role-aware permission checks and a status filter), and
+front-end rendering (homepage/archive/single templates, paginated)."
+
+### Goal
+
+Implement a modern, full-featured Posts system that serves as the core content management component of Lumora Press. The system should provide an intuitive writing experience while remaining lightweight, performant, and suitable for personal blogs, fansites, and content-focused websites.
+
+### Features
+
+#### Core Content
+
+- [x] Create posts
+
+- [x] Edit existing posts
+
+- [x] Delete posts — soft-delete (Trash) by default; see below
+
+- [x] Duplicate existing posts — `PostService::duplicate()`, clones as a new Draft titled "{title} (Copy)"; categories/tags are copied too, comments are not
+
+  
+
+- [x] Bulk delete — "Move to Trash" bulk action; "Delete Permanently" bulk action from within the Trash view
+
+- [x] Trash with restore functionality — `PostStatus::Trashed` + `trashed_at` column; Trash is its own status filter tab, excluded from the default "All" view
+
+- [x] Permanent delete — only reachable for posts already in the Trash (admin UI enforces this; `ApiController` never accepts "trashed" as a settable status at all)
+
+#### Publishing Workflow
+
+- [x] Drafts
+- [x] Published posts
+- [x] Scheduled posts — visibility is computed live (`published_at <= NOW()`), no background job
+- [x] Pending review — `PostStatus::PendingReview`; a Contributor (no `publish_posts`) gets a "Submit for Review" option instead of only Draft; an Editor/Administrator can then publish it
+- [x] Private posts — `PostVisibility` (Public/Private), independent of status; `Post::isVisibleToViewer()` allows a Private post through only for the author or a user with `edit_posts`, everywhere else (`isPubliclyVisible()`) it's excluded
+- [x] Sticky posts — `is_sticky` column; pinned to the top of the homepage listing only (`PostService::paginatePublished()`'s `ORDER BY is_sticky DESC, published_at DESC`), deliberately not applied to category/tag/author/date archives
+- [x] Publish immediately
+- [x] Schedule publication
+- [x] Schedule unpublishing (optional) — nullable `unpublish_at` column; visibility is computed live the same way scheduled *publishing* already is (no background job), via the shared `PostService::publicWhereClause()`
+
+#### Post Editor
+
+- [x] Title field
+
+- [x] Slug editor
+
+- [x] Excerpt field
+
+- [x] Content editor — Markdown (EasyMDE) or WYSIWYG (TinyMCE), switchable with best-effort format conversion (LP-015/LP-016)
+
+- [x] Featured image — Media Manager picker + direct upload, with remove/replace (LP-040)
+
+- [x] Categories — checkbox list (LP-010)
+
+- [x] Tags — comma-separated input with autocomplete suggestions (LP-011)
+
+  
+
+- [x] Custom fields — a repeatable key/value row editor (progressive enhancement; plain fields still work with JS off), backed by a new `post_meta` table and `PostService::metaForPost()`/`replaceMetaForPost()`/`metaValue()`. Simple key/value list scope only, not a typed/plugin-registered fields schema.
+
+  
+
+- [x] Post status panel — status dropdown + scheduled publish-date field (publish_posts capability only)
+
+- [x] Preview button — `/preview/{id}` renders `single.php` exactly as it will look publicly, bypassing the status/visibility gate entirely (not a shareable signed URL) for the post's author or anyone with `edit_others_posts`
+
+- [x] Save Draft
+
+- [x] Publish
+
+- [x] Update
+
+#### URLs & Permalinks
+
+- [x] Automatic slug generation
+
+- [x] Manual slug editing
+
+- [x] Duplicate slug detection — numeric-suffix resolution (`hello-world`, `hello-world-2`, …)
+
+- [x] URL preview — `admin/assets/js/url-preview.js`, live-updates as the slug (or title, if slug is blank) is typed; client-side approximation only, the server's own `generateUniqueSlug()` remains authoritative on save
+
+- Configurable permalink structure — built and done; see LP-078 ("Permalink Structure & Settings"), which consolidates this with LP-009/LP-010/LP-011's identical requests rather than tracking it separately in each ticket
+
+- [x] Link to published post. Before Slug. — `admin/views/posts/new.php`: a "Permalink:" row (linked URL + "View Post" button, opening in a new tab) rendered above the Slug field, shown only once a post's status is `Published` (a Draft/Scheduled/Pending Review post has no live URL to link to — Preview already covers that case via the existing Preview button below the form)
+
+#### Authors
+
+- [x] Multiple user support — every post stores an `author_id`
+- [x] Author assignment — an Author select on the edit screen, `edit_others_posts`-gated, backed by `PostService::reassignAuthor()`
+- [x] Author archives — `/author/{slug}` (`SiteController::author()`), reusing `PostService::paginateByAuthor()`. The slug is computed from the username (`UserService::authorSlug()`/`findByAuthorSlug()`), not a stored column — there was no user-slug field to reuse.
+- [x] Author profile links — `the_author_link()` (`include/author-functions.php`, via a new `Authors` theme bridge mirroring `FeaturedImages`), wired into `single.php`/`index.php`/`archive.php`'s post meta lines
+- [x] Permission checks — `publish_posts`/`edit_others_posts`/`delete_posts` enforced in `admin/views/posts.php`
+
+#### Featured Images
+
+- [x] Upload featured image
+- [x] Select existing media
+- [x] Remove featured image
+- [x] Automatic thumbnail generation
+- [x] Theme integration
+
+#### Categories & Tags
+
+- [x] Assign categories
+
+- [x] Assign tags
+
+- [x] Create categories while editing — "+ Add New Category" reveals a name field under the Categories checklist; posts to a JSON `add_category` sub-action (same pattern as the content editor's image upload/format-conversion endpoints) and appends the new checkbox in place, so the rest of the in-progress post isn't lost. `CategoryService::findOrCreateByName()` (mirroring `TagService::findOrCreateByName()`) reuses an existing category case-insensitively instead of creating a near-duplicate.
+
+- [x] Create tags while editing — new tag names typed into the tag input are created automatically on save
+
+- [x] Multiple categories
+
+  
+
+#### Visibility
+
+- [x] Public — `PostVisibility::Public`, the default
+
+- [x] Private — `PostVisibility::Private`; visible only to the post's author or a user with `edit_posts` (see Publishing Workflow's "Private posts" above)
+
+  
+
+#### Comments
+
+- [x] Enable comments per post — "Allow comments on this post" checkbox, backed by the `comment_status` column
+- [x] Disable comments per post — same checkbox/column
+
+#### Metadata
+
+- [x] Creation date
+
+- [x] Last modified date
+
+- [x] Publication date
+
+- [x] Author
+
+  
+
+#### Search & Filtering
+
+- [x] Search by title — public `/search` (LP-014) covers title matches via the MySQL fulltext index added for it; the admin Posts list also gained its own plain `LIKE`-based title search box (`PostService::paginateForAdmin()`'s `term` filter) since the fulltext index only serves the public search page
+- [x] Search by content — same fulltext index/search covers content too
+- [x] Filter by author — admin-list filter UI, `paginateForAdmin()`'s `authorId` filter
+- [x] Filter by category — admin-list filter UI, `paginateForAdmin()`'s `categoryId` filter (joins `post_categories`)
+- [x] Filter by tag — admin-list filter UI, `paginateForAdmin()`'s `tagId` filter (joins `post_tags`)
+- [x] Filter by status — admin Posts list has All/Draft/Pending Review/Published/Scheduled/Trash tabs, each showing a live count
+- [x] Filter by date — admin-list filter UI, `paginateForAdmin()`'s `dateFrom`/`dateTo` filters against `created_at`
+
+#### Bulk Actions
+
+- [x] Delete — "Move to Trash" (outside Trash view) / "Delete Permanently" (inside Trash view)
+
+- [x] Restore — "Restore" bulk action, only offered inside the Trash view
+
+- [x] Change author — "Change author to…" bulk action, `edit_others_posts`-gated, `PostService::bulkReassignAuthor()`
+
+- [x] Change category — "Add category…" bulk action, `CategoryService::bulkAddToPosts()`; additive (adds the chosen category to every selected post without touching categories already assigned), not a destructive replace
+
+- [x] Change status — "Publish" / "Mark as Draft" bulk actions (Scheduled excluded from bulk, since scheduling needs a per-post publish date)
+
+- [x] Change visibility — "Set Public" / "Set Private" bulk actions, `PostService::bulkSetVisibility()`
+
+  
+
+---
+
+### Task List
+
+#### Database
+
+- [x] Design posts database schema
+- [x] Create migration scripts — `install/migrations/0004_create_posts_table.sql`, extended by `0010_add_comment_status_to_posts.sql`, `0011_add_fulltext_index_to_posts_and_pages.sql`, `0016_add_content_format_to_posts_and_pages.sql`, `0018_add_trashed_at_to_posts.sql`, `0026_add_publishing_workflow_to_posts.sql` (visibility/is_sticky/unpublish_at), `0027_create_post_meta_table.sql`
+- [x] Create indexes for performance — unique slug, `(status, published_at)`, `author_id`, fulltext `(title, content)`/`(title)`
+- [x] Support future extensibility — nullable `featured_image_id` column (now used by LP-040); `trashed_at` similarly ready for a future auto-purge feature
+
+#### Backend
+
+- [x] Create Post model
+- [x] Create Post service layer
+- [x] Implement CRUD operations
+- [x] Implement publishing workflow
+- [x] Implement slug generation
+- [x] Implement validation — title is required and capped at `MAX_TITLE_LENGTH` (191, matching the `title` column width), throwing `InvalidArgumentException` on either failure; Html-format content is also run through `HtmlSanitizer` at save time (`sanitizeStoredContent()`), not just at render time — defense in depth, since the REST API exposes the raw `content` column directly, not only the sanitized `content_html`
+- [x] Implement permissions
+- [x] Implement search — via `SearchService`/the fulltext index (LP-014), not a `PostService` method of its own
+- [x] Implement filtering — status, plus category/tag/author/month via dedicated `paginateBy*()` methods
+- [x] Implement pagination
+
+#### Admin Interface
+
+- [x] Build Posts listing page
+
+- [x] Build Create Post page
+
+- [x] Build Edit Post page
+
+  
+
+- [x] Add bulk actions — Trash/Restore/Delete Permanently/Publish/Mark as Draft
+
+- [x] Add confirmation dialogs — JS `confirm()` on Trash/Delete Permanently
+
+- [x] Improve usability for large numbers of posts — pagination + status-count tabs, plus a Search &amp; Filter panel (title search, author/category/tag/date filters)
+
+#### Frontend
+
+- [x] Single post template
+- [x] Blog index
+- [x] Category archives — `/category/{slug}`
+- [x] Tag archives — `/tag/{slug}`
+- [x] Author archives — see Authors section above
+- [x] RSS integration — posts appear in the site-wide feed (LP-013); per-author/category/tag feeds are a separate, still-unimplemented LP-013 item
+- [x] Search integration — `/search` (LP-014)
+
+#### Performance
+
+- [x] Optimize database queries — traced the theme API calls a listing template (`index.php`/`archive.php`) makes per post: `has_post_thumbnail()` + `the_post_thumbnail_lightbox()` together call `post_thumbnail_media()` up to 5 times per item (each a `MediaService::find()` query) plus `ThumbnailService::thumbnailsFor()` twice, and `the_author_link()` calls `UserService::findById()` once per post — identical repeat queries whenever the same media/author id appears more than once in one render. Fixed at the source: `MediaService::find()`, `UserService::findById()`, and `ThumbnailService::thumbnailsFor()` now memoize by id for the life of the (per-request) service instance, evicted by every write method that can change a cached row, rather than rewriting every call site
+- [x] Cache common queries where appropriate — the per-request memoization above; archive/category/tag/author/search routes were already opted into `CacheManager`'s HTTP-level page caching (LP-037, via `markCacheableForGuests()`) before this pass
+- [x] Optimize archive pages — same memoization; `archive.php`'s post-thumbnail/author-link calls were the primary source of repeat queries on a page with several posts
+- [x] Optimize search performance — already fulltext-indexed (`MATCH() AGAINST()`, LP-014) with a bounded `LIMIT` per query in `SearchService`, and the `/search` route already opts into HTTP-level page caching; no further change needed
+
+#### Security
+
+- [x] CSRF protection
+- [x] Permission checks
+- [x] Input validation — see "Implement validation" above (title length cap, Html-content sanitization at save time)
+- [x] Output escaping
+- [x] XSS protection
+
+#### Testing
+
+- [x] Unit tests — `Unit/Services/PostServiceTest.php` (including Trash/Restore/Duplicate/setStatus/countByStatus, and this session's Pending Review/Private/Sticky/unpublish/Custom Fields/admin-filter/title-validation/content-sanitization additions), `Unit/Models/PostTest.php` (new — `isPubliclyVisible()`/`isVisibleToViewer()`), `Unit/Services/UserServiceTest.php`/`CategoryServiceTest.php` (author-slug/bulk-add-category additions), `Unit/Controllers/ApiControllerTest.php` (including the "trashed" API guard)
+- [x] Integration tests — closed via LP-082's `admin/views/posts/all-posts.php` + `new.php` extraction (`PostsControllerTest.php`, 27 tests exercising every admin form action end to end at the controller layer)
+- [x] Editor testing — `new.php`'s three AJAX sub-actions (editor image upload, Markdown/HTML conversion, inline category quick-add) extracted into `PostsController` and covered by 10 new `PostsControllerTest.php` tests; the client-side editor UI itself has no automated coverage by design (this project has no JS test framework — see CLAUDE.md's project philosophy), verified manually instead
+- [x] Permission testing — ownership/capability logic now lives in `PostsController` (LP-082) and is directly unit-tested there, no longer only reachable by hand-testing `admin/views/posts.php`
+- [x] Slug generation testing
+- [x] PHP 8.2 compatibility — full Docker matrix run by the developer for the 0.2.0 release; see `PHP Test Suite/TEST_LOG.md`
+- [x] PHP 8.3 compatibility — same run
+- [x] PHP 8.4 compatibility — same run
+
+**Implemented (2026-08-17) — closed this ticket's last two Testing gaps via
+LP-082.** `admin/views/posts/all-posts.php` (quick draft, trash, restore,
+delete permanently, duplicate, bulk actions) and `admin/views/posts/new.php`
+(save, restore revision) had their POST-handling business logic —
+including the author/contributor ownership gate this ticket's own
+"Permission testing" line named — extracted into
+`LumoraPress\Controllers\Admin\PostsController`, following the
+`ThemesController` pattern LP-082 established (`AdminActionResult` instead
+of `header()`/`exit`, see `DECISIONS.md`). New
+`PostsControllerTest.php` (27 tests) exercises every action end to end:
+success paths, ownership/capability denial (an author/contributor can't
+touch another author's post; capability-gated bulk actions refuse without
+the matching permission), and CSRF failure. Both views are now thin
+dispatch wrappers with no behavior change except that `quick_draft` and
+`bulk_action`'s previously-silent CSRF failures now surface an inline
+error message, matching the fix already applied to Themes.
+`SqliteDatabaseFactory::withPostsControllerFixtures()` added to back the
+new tests. Full PHP 8.2/8.3/8.4 × MariaDB 11 Docker matrix run clean
+(`PHP Test Suite/TEST_LOG.md`) — only 3 pre-existing, unrelated
+`ThemeOptionsTest` failures (a stale `content_width` default assertion,
+flagged separately). `admin/views/posts/categories.php` and `tags.php`
+remain out of scope for both this ticket and LP-082's own checklist.
+
+**Implemented (2026-08-18) — closed "Editor testing" too.**
+`new.php`'s three AJAX-only JSON sub-actions (editor image upload,
+Markdown/HTML format conversion, inline category quick-add) had real
+capability/CSRF/error-handling branching but were still inline with
+`header()`/`exit`, same as everything else this ticket's Testing section
+already fixed — extracted into `PostsController::uploadEditorImage()`/
+`convertContent()`/`quickAddCategory()`. Since these are JSON endpoints,
+not redirects, they echo their response body directly (never `exit`)
+instead of returning `AdminActionResult`, mirroring `ApiController`'s own
+existing "no exit, echo directly" convention rather than inventing a new
+pattern — and deliberately keep the editor's pre-existing JSON contract
+(`content-editor.js`'s exact `data.filePath`/`url`/`csrfToken`/plain
+`error` shape) rather than switching to `ApiResponse`'s REST envelope,
+which would have broken the already-shipped client JS. 10 new tests in
+`PostsControllerTest.php` (37 total now) capture the echoed body via
+`ob_start()`/`ob_get_clean()`, the same technique `ApiControllerTest.php`
+already uses. Manually verified against the throwaway dev install by
+calling each endpoint's real route directly from the browser console
+(`fetch()` against the actual CSRF token/URL each field already carries)
+rather than through the UI's `window.confirm()`-gated format-switch
+control, which CDP-driven automation can't click through — all three
+returned the expected JSON. The client-side editor UI itself (format
+switching, spell-check, fullscreen, autosave) has no automated test
+coverage and isn't getting any: this project deliberately has no
+JS test framework or Node.js dependency (CLAUDE.md's project
+philosophy), so that half of "Editor testing" is out of scope by
+design, not an oversight.
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Update CHANGELOG.md — Trash/Duplicate/Bulk Actions logged in `CHANGELOG.md`'s `[Unreleased]` section
+- [x] Document developer APIs — `docs/DEVELOPER-APIS.md` (new): the full hook/filter reference, plugin file structure and lifecycle, and a service-layer pointer
+- [x] Document theme integration — `docs/THEME-DEVELOPMENT.md` (new): required theme files, the template hierarchy, the complete template-tag API, widget/menu/Theme Options registration, and the dark-mode CSS-variable convention
+
+**Implemented (2026-08-18) — closed LP-008's last two Documentation
+items.** Two new reference docs under `LumoraPress/docs/`, deliberately
+kept out of `README.md` (already long and installer/user-facing) rather
+than added there: `THEME-DEVELOPMENT.md` (every template-tag function
+grouped by category, the template hierarchy — confirming there is no
+per-slug template-override cascade the way classic WordPress has one —
+widget/nav-menu/Theme Options registration, and the dark-mode CSS-
+variable convention) and `DEVELOPER-APIS.md` (every hook/filter actually
+fired anywhere in core, grouped by lifecycle area, cross-referenced
+against what the two shipped plugins — Font Awesome, Dummy Content —
+actually use in practice; plugin file structure/header format and
+lifecycle; a pointer into the service layer). Both researched directly
+from the current codebase (every function/hook confirmed against its
+real call site, not assumed from memory) rather than written
+aspirationally, and both documents call out real rough edges rather than
+smoothing them over: `post_deleted`/`page_deleted` fire identically for
+trash *and* permanent delete with no way to distinguish; `comment_posted`
+isn't fired by the REST API's comment endpoint; `media_saved` only
+covers upload/register/replace, not metadata/move updates; there's no
+plugin activation/deactivation hook and no admin-menu-registration API.
+Added to `CLAUDE.md`'s "After Every Code Change" checklist (alongside
+`README.md`/`CHANGELOG.md`) so both stay synchronized with the API
+surface going forward rather than drifting stale. The same two docs also
+close the identical "Document developer APIs"/"Document theme
+integration"/"Document template system"/"Document category APIs"/
+"Document Tag APIs" checklist lines in LP-009/LP-010/LP-011, since the
+hook and template-tag reference covers every content type together
+rather than being Posts-specific — see those tickets' own Documentation
+sections.
+
+#### Success Criteria
+
+- Users can comfortably write and manage large numbers of posts.
+- The editor is intuitive and responsive.
+- Publishing workflows are reliable.
+- Posts integrate seamlessly with themes, search, RSS, comments, and future plugins.
+- The implementation remains lightweight, extensible, and consistent with Lumora Press's overall philosophy.
+
+---
+
+### LP-079. Front Page & Archive Post Display
+
+### Goal
+
+Implement WordPress-style post display behavior for the front page and post archives, with theme options controlling whether posts display their full content or an excerpt.
+
+Use the two provided reference images in `/mnt/Winterfell/Coding/Github/Scripts/Lumora Press/` as visual examples:
+
+- **Lumora Press current layout.jpg** — compact posts with no featured image.
+- **Game of Thrones fansite sample.jpg** — traditional blog layout with large featured images, excerpts, metadata, thumbnails, sidebar, and Read More-style presentation.
+
+### Theme Options
+
+Under **Appearance → Theme Options**, add a dedicated new tab (sibling to
+the existing Colors/Typography/Layout tabs on that page — see
+`ThemeOptionSection`/`ThemeOptions::registerStandardOptions()`) rather
+than adding these fields to an existing tab. The Theme Options page
+already accumulates fields fast as features land; a same-page "Front Page
+/ Archive Posts" group would make an already-long settings page longer
+still, whereas a new tab keeps Post Display/Featured Image/Excerpt
+Length/Read More Text scannable as their own concern.
+
+**Do not call this tab "Layout"** — `ThemeOptions::registerStandardOptions()`
+already registers a `layout` section (`ThemeOptions.php:207`) controlling
+the site's header/content/footer *width*, an unrelated concern. Reusing
+that name (or that section) for post-display options would conflate two
+different settings groups under one label. Pick a distinct name/key
+instead, e.g. `post_display` / "Post Display" or `front_page_archives` /
+"Front Page & Archives".
+
+#### Post Display
+
+- [x] **Full Content**
+  - [x] Display the complete post using the equivalent of WordPress `the_content()`.
+  - [x] Do not display an excerpt or Read More link when the complete post is being shown.
+- [x] **Excerpt**
+  - [x] Display the post using the equivalent of WordPress `the_excerpt()`.
+  - [x] Display a Read More / Continue Reading link to the full post.
+
+#### Featured Image
+
+- [x] Option to show/hide the featured image in post listings.
+- [x] Allow the active theme to control the image's size, position, and styling.
+
+#### Automatic Excerpt Length
+
+- [x] Allow the administrator to specify the number of words used for automatically generated excerpts.
+- [x] Use the manually assigned excerpt when one exists.
+- [x] If no manual excerpt exists, generate the excerpt from the post content.
+- [x] Strip/handle HTML safely when generating automatic excerpts.
+- [x] Append an ellipsis when appropriate.
+
+#### Read More Text
+
+- [x] Configurable Read More text.
+- [x] Default: `Continue reading →`
+
+### Manual Excerpts
+
+Implement a proper **Excerpt** field when creating/editing posts.
+
+- [x] Allow authors to enter a custom excerpt. — already existed (LP-008); not rebuilt, just wired into the new priority chain.
+- [x] `the_excerpt()`-style behavior should prioritize the manually entered excerpt.
+- [x] Fall back to an automatically generated excerpt when no manual excerpt exists.
+
+### More / Read More Tag
+
+Implement WordPress-style **More tag** support.
+
+- [x] Allow authors to insert a **More / Read More** break into post content.
+- [x] Store the break in the post content using a suitable Lumora Press equivalent of WordPress's `<!--more-->`.
+- [x] When viewing posts in excerpt/list/archive contexts, use the More tag as the author's chosen cutoff point when appropriate.
+- [x] Display the configured Read More text/link after the preview.
+- [x] Ensure the More tag does not appear as raw markup when viewing the full post.
+- [x] Full single-post views should display the complete content using `the_content()`-style behavior.
+
+### Content Template Functions
+
+Create clear, reusable template/content functions modeled after the classic WordPress approach:
+
+- [x] **`the_content()` equivalent**
+  - [x] Outputs the full post content.
+  - [x] Handles the More tag correctly.
+  - [x] Used for single-post/full-content views.
+- [x] **`the_excerpt()` equivalent**
+  - [x] Outputs the manual excerpt when available.
+  - [x] Otherwise generates an automatic excerpt.
+  - [x] Respects the configured excerpt length.
+  - [x] Handles the More tag where appropriate.
+  - [x] Used for front-page/archive excerpt views.
+- [x] Provide corresponding **return-value functions** where useful, equivalent to WordPress's `get_the_content()` / `get_the_excerpt()`, so themes and plugins can retrieve content without immediately outputting it.
+- [x] Keep these functions reusable by themes and plugins rather than embedding post-display logic directly into individual templates.
+
+### Reference Layouts
+
+Use the supplied screenshots as **design/reference examples**, not as a requirement to copy the exact styling.
+
+#### Lumora Press current layout
+
+The current Lumora Press front page demonstrates a compact presentation:
+
+- Post title
+- Author/date metadata
+- No featured image, Featured image
+- Short post preview
+- Continue Reading link
+
+This should remain possible through the new options.
+
+#### Game of Thrones fansite sample
+
+Use the supplied **Game of Thrones fansite screenshot** as an example of a more traditional content-heavy blog layout:
+
+- Large featured image
+- Post title
+- Author/date/category metadata
+- Post excerpt
+- Read More / full-post link
+- Optional smaller related images/thumbnails
+- Multiple posts displayed sequentially
+- Sidebar alongside the main post column
+
+The implementation should make this type of layout possible through the theme/template system without hard-coding the Game of Thrones-specific design.
+
+### Example Configurations
+
+The system should make configurations such as these possible:
+
+**Modern/Compact**
+
+> No featured image + automatic excerpt + Continue Reading
+
+**Traditional Blog**
+
+> Large featured image + excerpt + Continue Reading
+
+**Author-Controlled**
+
+> Featured image + content up to More tag + Continue Reading
+
+**Full Blog**
+
+> Featured image + full post content
+
+### Compatibility & Edge Cases
+
+Ensure correct behavior for:
+
+- [x] Posts with manual excerpts — always wins, checked first in `get_the_excerpt()`.
+- [x] Posts without excerpts — falls through to the More tag, then auto-generation.
+- [x] Posts containing a More tag — content up to the tag is used as-is, unlimited by `excerpt_length`.
+- [x] Posts containing both a manual excerpt and More tag — manual excerpt wins outright (matches classic WordPress's own precedence).
+- [x] Posts with/without featured images — unchanged `has_post_thumbnail()` check, now additionally gated by the "Show featured image" option.
+- [x] HTML and formatted content — `content_plain_text()`/`toPlainText()` render-then-strip, so Markdown/HTML syntax never leaks into an excerpt.
+- [x] Short posts that do not need truncation — `make_excerpt()` returns text unchanged (no ellipsis) when under the word limit, unchanged pre-existing behavior.
+- [x] Pagination — untouched, orthogonal to this ticket.
+- [x] Single-post pages — always full content (`single.php` calls `the_content()`/`render_content()` unconditionally, never affected by the Post Display option).
+- [x] Front page — `index.php` updated.
+- [x] Category/tag/author/date archives — all four render through the one updated `archive.php` template (`SiteController::category()`/`tag()`/`author()`/`archive()`/`archiveByMonth()` all render it).
+- [x] Responsive/mobile layouts — no viewport-specific changes needed; reuses existing responsive `.lp-post-list`/`.lp-post__content` rules.
+
+### Goal
+
+Follow the **classic WordPress content model** where practical rather than creating a Lumora-specific system unnecessarily:
+
+**Full post → `the_content()`**
+**Post preview → `the_excerpt()`**
+**Author-selected cutoff → More tag**
+**Visual presentation → Theme/template**
+
+**Implemented.** `ContentRenderer` gained `hasMoreTag()`/`splitAtMoreTag()`,
+operating on a post's *raw* stored content before rendering — required
+since `HtmlSanitizer` strips HTML comments outright and an Html-format
+post's raw content is itself sanitized at save time, so an
+`<!--more-->`-style comment could never survive being stored for that
+format at all. Two markers are recognized: the literal text `<!--more-->`
+(Markdown/Plain, which are never sanitized at save time) and
+`<span class="lp-more-tag">...</span>` (Html/WYSIWYG — every tag/attribute
+already permitted by `HtmlSanitizer`'s existing allowlist, so it survives
+sanitization). `include/content-display-functions.php` is new
+(`the_content()`/`get_the_content()`/`the_excerpt()`/`get_the_excerpt()`)
+— pure orchestration needing no new bridge/service, since every dependency
+(`render_content()`/`content_plain_text()`/`content_split_at_more_tag()`,
+`make_excerpt()`, `theme_option()`) was already globally available. Theme
+Options gained a fourth section, "Post Display" (`post_display_mode`,
+`show_featured_image_in_listings`, `excerpt_length`, `read_more_text`) —
+kept separate from the existing `layout` section per this ticket's own
+amendment above. `content/themes/default/index.php`/`archive.php` both
+updated (the latter previously had no Read More link at all — now
+consistent with the homepage). Both content editors (EasyMDE/TinyMCE)
+gained a "Insert Read More Tag" toolbar button. Covered by
+`Unit/Services/ContentRendererTest.php` (More tag detection/splitting) and
+new `Unit/ContentDisplayFunctionsTest.php`; `Unit/Core/Theme/
+ThemeOptionsTest.php` updated for the new section/field counts.
+
+**Fixed same day:** the first pass had `index.php`/`archive.php` only
+check `post_display_mode` — a post's own Read More tag was silently
+ignored whenever the site was set to "Full Content" (reported by Ariane:
+"Read more not working... post mode is in fact to show full"). Classic
+WordPress's own `the_content()` always respects `<!--more-->` on a
+listing page regardless of the "show full/excerpt" setting — an author's
+explicit cutoff should win over the site-wide default either way. Added
+`post_has_more_tag()`/`get_the_content_up_to_more_tag()` (the latter
+returns the *rendered* HTML up to the cutoff, preserving formatting/
+images — unlike `get_the_excerpt()`, which is always plain text); both
+templates now check for a More tag first, before falling back to
+`post_display_mode`. Regression-tested in
+`Unit/ContentDisplayFunctionsTest.php`.
+
+Full PHP 8.2/8.3/8.4 matrix run via `./run-tests-all-php.sh` — see `PHP Test
+Suite/TEST_LOG.md`.
+
+### LP-081. Update Installed Theme via ZIP Upload
+
+**Implemented.** `ThemeInstaller::install()`/`update()` now share validation
+(`validateArchive()`) and a small `openZip()` helper; `update()` extracts to
+a `.updating-{random}` staging directory, then swaps it over the live theme
+directory via `.replaced-{random}` displacement + two `rename()` calls,
+restoring the displaced original if the second rename fails. Validation
+(entry count/path safety/size/style.css header) runs before any directory is
+touched, so a ZIP that fails validation never disturbs the existing theme at
+all — confirmed by
+`testUpdateLeavesTheOriginalThemeIntactWhenTheArchiveFailsValidation()`.
+`admin/views/appearance/themes.php` gained the `update_theme` form (in each
+theme's details `<template>`, outside the `!$info->isActive` guard so the
+active theme can be updated too) and the `?updated=` flash message. 7 new
+tests in `ThemeInstallerTest.php`; full `Unit/` suite (1184 tests) still
+green.
+
+### Goal
+
+Appearance &rsaquo; Themes currently only lets an administrator *install* a
+brand-new theme from a ZIP (`ThemeInstaller::install()`) — re-uploading a
+newer ZIP for an *already-installed* theme (including the currently active
+one) hard-fails with "A theme named X is already installed. Remove it
+first or rename the archive," which forces a destructive delete-then-
+reinstall cycle (impossible at all for the active theme, since active
+themes can't be deleted) just to pick up a fix or new version of a theme's
+own files. Add an in-place "Update from ZIP" action per theme.
+
+### Prior Art
+
+Lumora Gallery already built the sibling feature (LG-043,
+`include/services/ThemeService.php`'s `updateFromZip()`/`processZip()`),
+including a comment there flagging this exact gap in LumoraPress's
+`ThemeInstaller`. Mirror its approach — extract to a staging directory,
+validate, then swap the staged folder over the live one via two `rename()`
+calls with the previous version restored on any failure — adapted to this
+project's own conventions (`ThemeInstaller`'s existing ZIP-safety checks,
+scoped-per-slug `Csrf` action names, `admin/views/appearance/themes.php`'s
+existing form-dispatch pattern) rather than copied verbatim. No dependency
+on Lumora Gallery is introduced — its file is reference material only, per
+this project's stated independence from that codebase.
+
+### Checklist
+
+- [x] `ThemeInstaller::update(string $zipPath, string $slug): ThemeInfo` —
+      shares the existing ZIP-safety validation (entry count, path
+      traversal, uncompressed size, root-prefix unwrapping, style.css +
+      "Theme Name:" header requirement) with `install()`, but targets an
+      already-installed `$slug` instead of deriving a new one, and requires
+      the destination to already exist (the inverse of `install()`'s
+      check).
+- [x] Staged extract + rename-swap: extract to a temp directory first,
+      then `rename()` the live theme directory aside, `rename()` the
+      staged directory into its place, and only remove the displaced
+      original once the swap succeeds — on any failure after the first
+      rename, the displaced original is renamed back so a failed update
+      never leaves the theme half-installed or missing.
+- [x] Updating the currently *active* theme is allowed (unlike Activate/
+      Delete, which only operate on inactive themes) — a site owner should
+      be able to update the theme they're actually using without
+      deactivating it first.
+- [x] `admin/views/appearance/themes.php`: new `update_theme` form
+      (file upload, `enctype="multipart/form-data"`) inside each theme's
+      existing details `<template>` panel, CSRF action name scoped to the
+      theme slug (`update_theme_{slug}`, following the same collision-
+      avoidance convention as `activate_theme_{slug}`/`delete_theme_{slug}`
+      — see the fix for the earlier `activate_theme` double-`Csrf::field()`
+      bug in this same file). `data-lp-confirm` warns that updating
+      overwrites the theme's current files before the browser submits.
+- [x] A new `?updated={slug}` success flash message, matching the existing
+      `?installed=`/`?deleted=` pattern.
+- [x] Unit tests in `ThemeInstallerTest.php`: successful update overwrites
+      existing files and adds new ones, rejects a missing destination
+      theme, rejects the same ZIP-safety violations `install()` already
+      rejects, and — the one genuinely new behavior — a failure partway
+      through the swap leaves the original theme directory intact and
+      unchanged (simulate via a non-writable staged extract or an
+      unreadable destination, matching however `UpdatePackageValidatorTest`
+      / `ThemeInstallerTest`'s existing failure-injection style handles an
+      equivalent case, if any precedent exists there).
+
+### LP-085. Admin UI Visual Polish Pass 3: Full Screen Audit
+
+### Goal
+
+Ariane's feedback (2026-08-11, after using the new LP-083 Post/Page
+editor sidebar): the admin UI "is all very flat and colorless now."
+This is the third such pass — **not a from-scratch redesign**:
+
+- `LP-055` (2026-08-01, see `docs/HISTORY.md`) gave the shared
+  `.lp-admin__panel`/`.lp-table`/`.lp-button`/`.lp-field`/`.lp-alert`/
+  card classes shadows, radius, focus rings, tinted table headers, and
+  a restyled breadcrumb trail.
+- `LP-063` (2026-08-04, see `docs/HISTORY.md`) followed up with a
+  screenshot-driven audit that caught three categories LP-055 missed:
+  unwrapped `<select>` dropdowns with no chrome, plain list-item links
+  falling back to browser-default blue/underline, and the Media Manager
+  grid never getting the card treatment.
+
+Both were real, shipped passes — so "still flat and colorless" six
+months later means either regressions, screens neither pass actually
+screenshotted, or components that exist today but didn't in early
+August (most notably LP-083's whole sidebar-box system, built
+2026-08-11, which has never been through a polish pass at all — see
+its own follow-up fixes this same session for the kind of overflow/
+spacing issues a first pass typically finds). Treat this the same way
+LP-063 did: **audit first with real screenshots against the live site,
+catalog specific flat/colorless elements, then fix them** — don't
+guess at fixes without a screenshot in hand, and don't re-touch
+anything LP-055/LP-063 already fixed unless it visibly regressed.
+
+### Known likely candidates (starting points for the audit, not a
+### substitute for it)
+
+- **LP-083's sidebar boxes** (`admin/assets/css/admin.css`'s
+  `.lp-sidebar-box*` rules, added today) — box headers/content currently
+  use only `--lp-admin-panel-bg`/`--lp-admin-border`, no shadow or the
+  panel-radius treatment LP-055 gave `.lp-admin__panel`; likely the
+  most immediate source of "flat" in Ariane's feedback given the timing.
+- **Status/role indicators with no color at all**: Post/Page status
+  (Draft/Published/Scheduled/Pending Review — currently plain `<select>`
+  text, no colored badge anywhere it's *displayed* rather than edited,
+  e.g. the All Posts/Pages list tables), Comment moderation status,
+  User role. Classic WordPress uses colored status text/badges here;
+  this codebase doesn't yet, anywhere.
+- **Screens never explicitly screenshotted by LP-055 or LP-063**: Login/
+  Forgot Password/Reset Password, Users, API Tokens, Profile, the
+  Font Awesome plugin admin page, System Information, Logs, Redirects,
+  Embeds, Security/Cache/Maintenance Mode/Discussion/Reading/Permalinks
+  settings tabs, Categories/Tags. Most inherit the shared classes
+  LP-055 already styled, but neither pass has a screenshot on record
+  confirming any of them actually look right.
+- **Category/tag chips and similar small metadata pills** — check
+  whether they use the existing `--lp-admin-chip-bg`/`--lp-admin-chip-border`
+  tokens (already defined in `admin.css`'s `:root`, per LP-055/063's own
+  additions) or still render as plain text/unstyled `<li>`s.
+
+### Checklist
+
+- [x] Screenshot every admin screen listed above (plus any missed) on
+      the live site, light and dark mode both, and catalog specific
+      flat/colorless elements per screen — same methodology LP-063 used.
+- [x] Give `.lp-sidebar-box` (LP-083) the same shadow/panel-radius
+      treatment `.lp-admin__panel` already has, so the editor sidebar
+      doesn't look like a step backward from the rest of the admin.
+- [x] Decide on and implement colored status indicators for Post/Page
+      status and Comment moderation status wherever they're displayed
+      (not just the edit-form `<select>`), reusing the existing success/
+      warning/error/chip token set rather than inventing new colors.
+- [x] Fix every specific flat/colorless element the audit catalogs,
+      scoped to `admin/assets/css/admin.css` (CSS-only where possible,
+      matching LP-055/LP-063's own "no PHP template changes needed"
+      precedent) unless a screen genuinely lacks the wrapper markup to
+      hook a fix onto.
+- [x] Confirm dark-mode variants for every new/changed rule, added at
+      the same time per this project's own CSS-authoring rule — not
+      deferred.
+- [x] Manual before/after screenshot comparison for every screen
+      touched, shared with Ariane.
+
+### Audit findings (2026-08-17)
+
+Screenshotted against the local dev install
+(`http://localhost/lumorapress-preview/`, both light and dark) rather
+than guessing: Dashboard, Users, Settings (General, Permalinks,
+Reading, Discussion, Cache, Maintenance Mode, Security, Embeds,
+Redirects), Plugins, Categories, Tags, Login, Forgot/Reset Password,
+Profile, API Tokens, System Information, and Logs (a placeholder stub
+— nothing to polish). The Font Awesome plugin has no dedicated
+settings page to audit (LPP-002's first-pass scope never added one).
+
+Most screens already looked correct — LP-055/LP-063's shared classes
+(`.lp-admin__panel`/`.lp-table`/`.lp-field`/`.lp-button`) are applied
+consistently everywhere. Two concrete defects were found and fixed:
+
+- `.lp-login` (Login/Forgot Password/Reset Password — all three share
+  this one class) had never received the LP-055 panel treatment at
+  all: no `box-shadow`, and the smaller 4px `--lp-admin-radius` instead
+  of the 10px `--lp-admin-panel-radius` every other card surface uses.
+  The single most "flat" screen in the whole admin, since it's the
+  first thing anyone sees and floats alone on a plain background with
+  nothing else on the page for contrast.
+- Dashboard's Recent Posts/Recent Comments status badges could inflate
+  into an oversized blob instead of a compact pill whenever they sat
+  next to a title long enough to wrap onto two lines —
+  `.lp-admin__meta-list li`'s flexbox stretched the badge to the row's
+  full height by default (`align-items: stretch`), and a 999px border
+  radius turned that stretched shape into a blob swallowing its own
+  text. Fixed with `align-items: center` plus `flex-shrink: 0` on the
+  badge.
+
+The `.lp-sidebar-box` shadow/radius fix and the Dashboard/Users colored
+status badges (both already noted as "known likely candidates" above)
+were implemented earlier in the same session, before the full
+screenshot audit ran.
+
+**Follow-up (same day):** Ariane flagged the Dashboard's white cards as
+still "so flat" after the above — the shared `--lp-admin-shadow`/
+`--lp-admin-shadow-hover` tokens themselves (used by every panel,
+sidebar box, and plugin/theme/media card, not just Dashboard) were a
+near-invisible Tailwind-`shadow-sm`-equivalent value, too subtle to
+read as a shadow at all against the admin's light-gray page background.
+Strengthened both tokens (light and dark) in `admin.css`'s `:root`;
+since every card-like surface already consumes these two tokens rather
+than hardcoding shadow values, this one change lifted all of them at
+once with no other CSS or template edits needed.
+
+Ariane then asked for the sidebar box title bars ("Publish", "Featured
+Image", "Categories", "Tags") to be colored rather than gray/plain.
+`.lp-sidebar-box__header` had no background of its own before (just a
+border-bottom), so it inherited the box's own white/dark panel color —
+same flatness complaint, different element. Gave it
+`--lp-admin-chip-bg`/`--lp-admin-chip-border` (the existing soft
+accent-tint tokens already used for row-action chips and the tag
+input) plus an accent-colored title, reusing the same color language
+instead of introducing a new one. Verified in both light and dark on
+the Post editor's sidebar.
+
+### LP-086. Visible Update Progress (Staged Download & Install)
+
+### Goal
+
+Give both update paths on the Maintenance &rsaquo; Updates page — the
+GitHub "Download & Install" flow (LP-027) and the manual ZIP "Confirm &
+Install" flow (LP-026) — a live, stage-by-stage progress indicator while
+a download or install is running, the same "visible stages" UX Lumora
+Gallery (`/mnt/Winterfell/Coding/Github/Scripts/Lumora Gallery`) and
+FanUpdate Redux (`/mnt/Winterfell/Coding/Github/Scripts/FanUpdateRedux`)
+already have — instead of a form POST the browser just sits on with zero
+feedback until it either redirects or re-renders, however long that
+takes.
+
+### Architecture note
+
+Lumora Gallery's own updater decomposes its pipeline into independently
+resumable stages, each its own AJAX round-trip driven by repeated `POST`
+calls from the browser. Lumora Press's `UpdateService::install()` (and
+the GitHub download-then-validate flow) stayed a single atomic PHP
+request instead — the existing backup-then-apply-then-migrate sequence's
+automatic rollback-on-failure guarantee depends on running inside one
+try/catch, and splitting it across separate HTTP requests would mean
+either giving up that guarantee or rebuilding it as a resumable state
+machine, a much larger change than this ticket's actual goal (visibility
+into a process that already works). Instead: the long-running request
+writes its current stage to a small on-disk JSON file
+(`UpdateProgress`/`storage/updates/progress.json`) as it goes, and a
+separate, lightweight polling request (`?ajax=progress` on the same
+page) reads it back every ~700ms while the main request is still in
+flight — the same "one long request, a second cheap one polls its
+progress" pattern, without touching install()'s transactional structure
+at all.
+
+This only works because the long-running request releases PHP's session
+file lock (`session_write_close()`) before starting the slow part —
+without that, the polling request (sharing the same session cookie)
+would simply queue behind the session lock and never see anything until
+the main request was already done.
+
+### Features
+
+- [x] Live stage checklist for GitHub "Download & Install" (Checking
+      GitHub for the release &rarr; Downloading release package &rarr;
+      Validating package &rarr; Checking compatibility)
+- [x] Live stage checklist for manual-upload "Confirm & Install"
+      (Backing up files &rarr; Backing up database &rarr; Applying
+      update files &rarr; Running database migrations &rarr; Clearing
+      caches &rarr; Finishing up) — the actual apply-to-disk step, and by
+      far the longest one in the whole pipeline
+- [x] Live stage checklist for the manual ZIP upload's post-transfer
+      validation (Validating package &rarr; Checking compatibility),
+      shown once the existing byte-upload progress bar (LP-026) reaches
+      100% and the server starts extracting/validating the archive
+- [x] Failed stages render distinctly from completed ones (a red "error"
+      marker on whichever stage was active when a run failed, with any
+      stage never reached left "pending" rather than falsely marked
+      done) — the real point of failure stays visible, not laundered
+      into a generic error banner alone
+- [x] `session_write_close()` before every long-running branch (`upload`,
+      `install`, `github_download`), so the polling endpoint sharing the
+      same session isn't blocked behind PHP's own session file lock for
+      the operation's entire duration
+- [x] `?ajax=progress` polling endpoint (`admin/views/maintenance/
+      updates.php`) reading `UpdateProgress::read()` — no CSRF check (it
+      only ever reads on-disk state, nothing to protect), still gated on
+      the same admin session + `manage_options` capability every other
+      branch of the page requires
+
+Declined (2026-08-13): byte-level download percentage for the GitHub
+download stage, fully resumable/interruption-safe staged HTTP requests
+matching Lumora Gallery's architecture, and automated browser/JS test
+coverage for the stage-checklist UI. See `DECISIONS.md` for why.
+
+### Implementation notes
+
+**Backend:** `LumoraPress\Services\UpdateProgress` (new,
+`storage/updates/progress.json`, same on-disk-JSON convention as
+`UpdateManifest`/`UpdateChecksumManifest`) exposes `reset(operation,
+stages)`, `stage(key)`, `complete(success, message)`, and `read()`.
+Writes are write-then-rename for atomicity, so a poller reading mid-write
+never sees a truncated JSON document. `reset()` is always called by the
+view (`updates.php`), never by `UpdateService` — `checkUpload()`/
+`install()` only ever call `stage()`/`complete()` against whatever list
+the view already declared, since the GitHub flow's four stages span both
+view-level code (`check`/`download`) and a single `checkUpload()` call
+(`validate`/`compatibility`) that must report into the *same* list rather
+than resetting it out from under the two stages that already ran.
+`UpdateService` gained an optional, nullable `?UpdateProgress $progress`
+constructor parameter (same optional-DI pattern as `$users`/`$checksums`)
+so every existing test call site keeps compiling unchanged.
+
+**Frontend:** `admin/assets/js/update-progress.js` (new) intercepts the
+"Confirm & Install" and "Download & Install" `<form>` submits via
+`fetch()`, starts polling `?ajax=progress` immediately, and replaces the
+document with the eventual response the same way `update-upload.js`
+already did for the manual-upload byte-progress bar — `install()`'s
+success path is a redirect, which `fetch()` follows automatically, so
+`response.redirected`/`response.url` covers both that and the
+GitHub-flow's direct-render outcome. `update-upload.js` itself gained a
+second, small polling loop (a deliberate near-duplicate of
+`update-progress.js`'s renderer rather than a shared module — the two
+files' polling starts from different triggers and share no other code)
+that begins once `xhr.upload`'s `loadend` fires, i.e. once the byte
+transfer itself is done and the byte-progress bar has nothing further to
+show. New `.lp-update-progress`/`.lp-update-progress__item`/
+`.lp-update-progress__marker` rules in `admin/assets/css/admin.css`
+render the checklist (pending/spinning-active/done-check/error-cross).
+
+**A `session_write_close()` bug found and fixed during manual
+verification:** the naive first pass called `session_write_close()`
+right before each long operation and never reopened it. That works for
+`install()`'s success path (a redirect, which needs no further session
+access) — but every *other* outcome (a validation failure, a caught
+exception, the GitHub/manual-upload flows' direct render) falls through
+to rendering the rest of the page, which calls `Csrf::field()` for the
+Confirm & Install / Cancel / Check-for-Updates forms still on it.
+`Csrf::ensureSession()` throws once `session_status()` isn't
+`PHP_SESSION_ACTIVE` — exactly what `session_write_close()` had just
+made true — so every one of those paths 500'd with "Session must be
+started before using CSRF protection," caught only by `ErrorHandler`'s
+own generic "Something went wrong" page. Fixed by calling `session_start()`
+again immediately after each long operation finishes (all three
+branches — `upload`/`install`/`github_download` — except `install()`'s
+success path, which already exited via redirect before reaching it):
+reopening briefly at that point is safe, since by then the operation
+(and whatever a poller needed the session lock's *absence* for) is
+already done.
+
+**Tests:** `PHP Test Suite/Unit/Services/UpdateProgressTest.php` (new, 9
+cases) covers `UpdateProgress` in isolation — reset/stage/complete
+transitions, the "unknown stage key" no-op guard, corrupt-JSON fallback,
+and that a fresh `reset()` fully replaces a previous run's stages rather
+than merging into them. `Integration/UpdateServiceIntegrationTest.php`
+gained `testInstallReportsStageProgressThroughToCompletion()`, wiring a
+real `UpdateProgress` through a full `checkUpload()`/`install()` run
+against a real MySQL/MariaDB server and asserting every declared stage
+ends "done" — this confirms `UpdateProgress`/`UpdateService`'s own
+stage-reporting logic, but not the `session_write_close()` bug above,
+since it constructs `UpdateService` directly and never goes through
+`updates.php`'s session handling at all; only the live manual
+verification below caught that one. Full
+`./run-tests-all-php.sh` Docker matrix (MariaDB 11 + PHP 8.2/8.3/8.4):
+1313 tests, 2 pre-existing failures unrelated to this ticket
+(`ThumbnailServiceTest::testGenerateAppliesExifOrientationBeforeResizing`,
+an EXIF-orientation/GD environment difference; `MediaServiceTest`'s
+`docx` MIME-detection case) — every Update-related test, including the
+two new ones above, passed on all three PHP versions.
+
+Manually verified end-to-end in a throwaway install (a temp copy + Docker
+MariaDB, never the real project source tree) with a real browser — this
+is how the `session_write_close()` CSRF crash above was actually caught
+in the first place. Confirmed: the Manual Update tab's byte-progress bar
+correctly handed off to the validate/compatibility stage checklist
+(`Update Summary` rendered correctly from a package matching the
+installed corePaths); "Confirm & Install" correctly intercepted the form
+submit, polled `?ajax=progress` (captured in the browser's own network
+log), and followed `install()`'s redirect on completion. That specific
+install run itself failed a post-overlay integrity check (an artifact of
+the hand-built test package used for verification, not of this ticket's
+code) and rolled back — which, read back from `UpdateProgress::read()`
+immediately afterward, showed exactly the intended failure semantics:
+every stage up to and including the one active when the exception was
+thrown marked `done`/`error` correctly, and the one stage never reached
+(`cleanup`) correctly left `pending` rather than falsely `done`. A full
+successful run reaching `done` on every stage is what the Integration
+test above exercises against a real, correctly-shaped package.
+
+### LP-087. Admin Dark Mode Toggle (Per-User Theme Preference)
+
+### Goal
+
+Ariane asked (2026-08-17, in the same conversation as LP-085) whether
+the admin has a manual light/dark toggle. It doesn't — dark mode is
+currently driven entirely by `@media (prefers-color-scheme: dark)` in
+`admin.css`, with no way to override the OS/browser preference from
+inside the app. Add a real toggle: Light / Dark / Follow System, saved
+per-user (so it's consistent across sessions and devices, and each
+admin user can choose independently — the same reasoning that made the
+Post/Page editor's Default Editor setting (LP-066/LP-067) a per-user
+column rather than a site-wide one).
+
+### Architecture
+
+Follow the existing Default Editor precedent
+(`preferred_editor` on `users`, `ContentFormat` enum,
+`UserService::updateEditorPreference()`, a Profile-page `<select>` +
+POST/redirect/GET, `admin/views/profile.php`) rather than inventing a
+new pattern:
+
+- New `theme_preference` column on `users` (migration), holding
+  `'light'` / `'dark'` / `'auto'`, defaulting to `'auto'` for every
+  existing row so nothing changes for anyone until they explicitly opt
+  in.
+- New `ThemePreference` enum (`Light`/`Dark`/`Auto`) — unlike
+  `ContentFormat`, there is no "site default" to defer to (no site-wide
+  theme setting exists, and inventing one is out of scope here), so
+  `Auto` is a real case, not represented by `null`. `User::$themePreference`
+  is therefore a non-nullable `ThemePreference` property defaulting to
+  `Auto`.
+- No new service class — unlike `EditorPreferenceService`, there's no
+  "registered themes" extensibility point or site-wide lock to model,
+  so resolving the preference is a single property read in
+  `layout-header.php`, not a service method.
+- CSS: `admin.css`'s `:root` dark-mode block currently lives entirely
+  inside `@media (prefers-color-scheme: dark)`. Restructure to the
+  standard three-block pattern so an explicit choice always wins over
+  the system preference in both directions:
+  - `:root { /* light tokens, unchanged */ }`
+  - `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { /* dark tokens */ } }`
+  - `:root[data-theme="dark"] { /* same dark tokens */ }`
+- `admin/views/layout-header.php` renders `data-theme="dark"` or
+  `data-theme="light"` on `<html>` (or omits the attribute entirely for
+  `Auto`) directly from `$currentUser->themePreference` — server-side,
+  before the stylesheet loads, so there's no flash-of-wrong-theme and
+  no cookie/JS needed for any already-authenticated admin page.
+- Login/Forgot Password/Reset Password stay on the pure
+  `prefers-color-scheme` fallback (unchanged) — there's no user to read
+  a preference from before authentication.
+
+### Checklist
+
+- [x] Migration: `ALTER TABLE {prefix}users ADD COLUMN theme_preference VARCHAR(10) NULL`
+- [x] `app/Models/ThemePreference.php` enum (`Light`/`Dark`/`Auto`, `label()`)
+- [x] `User::$themePreference` property + `UserService::hydrate()` branch
+      (`ThemePreference::tryFrom(...) ?? ThemePreference::Auto`)
+- [x] `UserService::updateThemePreference(int $id, ThemePreference $preference): void`
+- [x] Profile page: new "Appearance" panel (mirrors the existing
+      "Editor" panel's markup/CSRF/POST-redirect-GET shape) with a
+      Light/Dark/Follow System `<select>`
+- [x] `layout-header.php`: `data-theme` attribute on `<html>` from
+      `$currentUser->themePreference`
+- [x] `admin.css`: restructure `:root`'s dark-mode block into the
+      three-part `@media`/`[data-theme]` pattern described above
+- [x] Manual verification: toggle each of the three options and confirm
+      the admin renders correctly regardless of the OS-level preference,
+      light and dark both, on at least one screen already covered by
+      LP-085's audit. The Profile page's Appearance dropdown was
+      confirmed working end-to-end (verified via direct DB inspection:
+      a save request actually persisted `theme_preference = 'dark'`,
+      and the resulting page render correctly went dark app-wide,
+      screenshotted in both light and dark). The sidebar quick toggle
+      button (added as a follow-up, see below) was code-reviewed
+      correct in-session, then confirmed working by Ariane's own manual
+      click-test — the browser automation tool used during development
+      failed to deliver click events to that specific button (confirmed
+      via a JS event listener that never fired), an environment
+      limitation, not a code defect.
+
+### Follow-up: sidebar quick toggle (same session)
+
+Ariane asked for a one-click toggle in the sidebar in addition to the
+Profile page's full Light/Dark/Follow System setting. Added:
+
+- `admin/views/layout-header.php`: a small icon button (🌙/☀️) next to
+  the username in `.lp-admin__user`, in its own `method="post"
+  action=""` self-submitting form (empty `action` resolves to
+  whatever admin page is currently loaded, so the same button works
+  identically from every screen without each view needing to know
+  about it).
+- The button only ever toggles between Light and Dark — never Auto.
+  Starting from Auto, clicking it commits to Dark first; getting back
+  to "follow the system" is a deliberate choice made on the Profile
+  page, not something the quick toggle cycles through.
+- `admin/index.php`: a new POST handler right after
+  `$currentUser = $kernel->auth->user();`, before routing to any
+  specific view, so the toggle works the same from Dashboard, Posts,
+  Settings, anywhere. Redirects back to `$_SERVER['REQUEST_URI']` —
+  the exact page the toggle was clicked from — rather than bouncing
+  the admin to the Profile page.
+- `admin.css`: `.lp-admin__user-row`/`.lp-admin__theme-toggle` — a
+  small circular icon button, subtle hover/focus states, no new color
+  tokens (reuses existing sidebar-fg/accent tokens).
+
+### LP-088. Dark Mode Contrast Bugs: Editor Toolbar & Form Field Distinction
+
+### Goal
+
+Two contrast/legibility bugs Ariane spotted (2026-08-17) after using
+the new LP-087 dark mode toggle in dark mode specifically — neither
+was ever caught by LP-055/063/085's earlier passes since none of those
+were done with dark mode actually toggled on and compared side by side.
+
+### Bugs
+
+1. **Markdown editor toolbar buttons are nearly invisible in dark
+   mode.** `admin/assets/css/admin.css`'s `.EasyMDEContainer
+   .editor-toolbar a { color: var(--lp-admin-text) !important; }`
+   (around line 1246) looks like it should already fix this — worth
+   checking first whether EasyMDE's own bundled CSS is winning on
+   specificity/load-order against something more specific than a
+   plain `a` selector (e.g. targeting the icon glyph itself, not the
+   anchor), rather than assuming the token value itself is wrong.
+2. **Form fields blend into their surrounding panel**, making it hard
+   to tell at a glance what's editable vs static text — most visible
+   in dark mode but not exclusively a dark-mode issue. Root cause:
+   `.lp-field input`/`textarea`/`select` (line ~1873) and the
+   standalone `select` fallback (line ~1904) both set
+   `background: var(--lp-admin-panel-bg)` — identical to the panel
+   they sit inside, so there's no contrast between "this is a field"
+   and "this is the panel's own background." Needs a distinct token
+   (e.g. a new `--lp-admin-field-bg`, subtly darker/lighter than
+   `--lp-admin-panel-bg` in each mode) applied to every input/textarea/
+   select, with light and dark values chosen together — not just a
+   dark-mode patch, since the same blending exists in light mode too,
+   just less noticeable there.
+
+### Checklist
+
+- [x] Screenshot the Markdown editor toolbar in dark mode, inspect
+      computed styles to find what's actually overriding the icon
+      color, and fix at the correct specificity/selector
+- [x] Add a distinct field-background token and apply it to every
+      `input`/`textarea`/`select` covered by `.lp-field` and the
+      standalone `select` fallback, in both light and dark
+- [x] Confirm the fix doesn't regress `:focus` state contrast
+      (existing `--lp-admin-focus-ring`/border-color-on-focus rules —
+      untouched by this change, since only `background` was modified)
+- [x] Screenshot before/after in both light and dark, shared with
+      Ariane
+
+### Resolution notes (2026-08-17)
+
+Both bugs fixed:
+
+1. **Editor toolbar.** Root cause confirmed by inspecting the live DOM
+   rather than guessing: this project's bundled EasyMDE build renders
+   toolbar items as `<button><i class="fa fa-*"></i></button>`, not
+   the `<a>` tags upstream EasyMDE uses — so `.EasyMDEContainer
+   .editor-toolbar a { color: ... !important; }` matched nothing at
+   all, and every icon fell back to EasyMDE's own hardcoded black
+   (confirmed via `getComputedStyle`: `rgb(0, 0, 0)` before the fix).
+   Changed the selector to `button`/`button i`; confirmed after the
+   fix the icon color matches `--lp-admin-text` in dark mode exactly.
+2. **Form fields blending into panels.** Added a new
+   `--lp-admin-field-bg` token (light `#f3f4f6`, dark `#24282c`),
+   applied to `.lp-field input`/`textarea`/`select` and the standalone
+   `select` fallback, replacing `--lp-admin-panel-bg`. Confirmed via
+   computed style: field background now `rgb(243, 244, 246)` against
+   a `rgb(255, 255, 255)` panel.
+
+### LP-089. Admin Link Color Cohesion: No `:visited` Styling Anywhere
+
+### Goal
+
+Ariane spotted (2026-08-17) that the Posts list and Pages list look
+inconsistent — Posts' row-title links render as the theme's accent
+blue, Pages' render as the browser's native visited-link purple, even
+though both use the exact same `.lp-table td a` rule
+(`admin/assets/css/admin.css`, ~line 2435). Confirmed root cause: there
+is not a single `:visited` selector anywhere in `admin.css` (grep for
+`:visited` across the whole ~3,300-line file returns zero matches).
+Every link class — `.lp-table td a`, `.lp-admin__meta-list a`,
+`.lp-folder-tree__item a`, `.lp-admin__nav-item a`,
+`.lp-admin__breadcrumbs a`, `.lp-login__links a`,
+`.lp-pagination__item a`, `.lp-admin__filters a`, etc. — only styles
+the default and `:hover`/`:focus-visible` states. A link the browser
+considers "visited" (Ariane has clicked into nearly every Page in this
+example, none of the newer Posts) silently falls back to the browser's
+own default purple instead of the theme's palette, so two rows using
+identical markup/CSS can render two different colors depending purely
+on the visitor's own browsing history — not a real style difference,
+but reads as one.
+
+### Scope
+
+An audit, not a one-line fix — every link-color rule in `admin.css`
+needs a matching `:visited` rule (generally the same color as the
+unvisited state, since an admin table's job is "here's a record you
+can click," not "here's an article you may or may not have read" —
+unlike a public blog's content links, visited-vs-unvisited usually
+isn't meaningful information worth color-coding in an admin UI).
+Where a link currently has no explicit color rule at all and relies on
+inherited/default styling, decide deliberately whether it needs one
+rather than leaving it to accident.
+
+### Checklist
+
+- [x] Enumerate every selector in `admin.css` that styles an `a`
+      element's `color` (or relies on the UA default), across every
+      screen — not just the two tables Ariane happened to compare
+- [x] Add a `:visited` rule alongside each one, matching its own
+      unvisited color (not the browser default), confirmed in both
+      light and dark
+- [x] Re-screenshot Posts and Pages side by side after clicking into
+      several rows on both, to confirm they now render identically
+      regardless of visited history
+- [x] Spot-check a few other link-heavy screens (Dashboard's meta
+      lists, breadcrumbs, pagination, Media Manager's folder tree) for
+      the same issue
+
+### Resolution notes (2026-08-17)
+
+Added a matching `:visited` selector alongside every link-color rule
+in `admin.css` (same color as the unvisited state, added to the
+existing selector list rather than a separate duplicated rule, so
+there's still only one place to update either color in the future):
+`.lp-admin__site-link a`, `.lp-admin__nav-item a`,
+`.lp-admin__breadcrumbs a`, `.lp-admin__meta-list a`/
+`.lp-folder-tree__item a`/`.lp-thumbnails__list a`, `.lp-login__links a`,
+`.lp-admin__filters a`, `.lp-update__release-notes-body a`,
+`.lp-pagination__item a`, `.lp-table td a`, and `.lp-button--link`
+(confirmed used on real `<a>` tags — the Post/Page revision "Compare
+to current" links — not just `<button>`). Scope was deliberately
+limited to each rule's *resting*/default state, not every
+hover/focus/active variant, matching what Ariane's screenshots
+actually showed (a resting list of titles, not an interaction state).
+
+Note: browsers block `getComputedStyle`/JS from ever reporting a
+link's true `:visited` color, by design, to prevent history-sniffing —
+so this could only be spot-checked by actually visiting a link and
+re-screenshotting the list afterward, not scripted the way the other
+LP-088/090/091 fixes were.
+
+### LP-090. Admin Button Color Cohesion: Inconsistent Primary/Secondary Usage
+
+### Goal
+
+Ariane spotted (2026-08-17) that action buttons look arbitrarily blue
+vs white/colorless across the admin — e.g. Theme Options' "Save Post
+Display" is blue while "Reset to Defaults" right next to it is white.
+`admin.css` (~line 2154) does define a real three-tier system —
+`.lp-button` (neutral/white, the base), `.lp-button--primary` (blue,
+the main affirmative action), `.lp-button--secondary` (transparent
+outline, a lower-emphasis action), `.lp-button--danger` (red,
+destructive) — so the Theme Options example is arguably *correct*
+(Save = primary, Reset = a real secondary/cautionary action). The
+actual bug is elsewhere: a grep across `admin/views/` finds **53**
+buttons using the bare, unmodified `.lp-button` class against **75**
+using `.lp-button--primary`, and only 14 files use `.lp-button--secondary`
+at all. Several of those bare `.lp-button` buttons are clearly each
+their form's *main* action with no other button competing for
+"primary" status on the same screen — e.g. `admin/views/media/media.php`'s
+"Save" (line 507) and "Create" (folder, line 847), `admin/views/plugins.php`'s
+"Activate" (line 313), `admin/views/media/import.php`'s "Continue"
+(line 299) — styled identically to a secondary/incidental "Filter" or
+"Search" button elsewhere, with no visual signal for which one matters.
+This reads as arbitrary because it *is* arbitrary in those cases, not
+because the color system itself is wrong.
+
+### Scope
+
+Not "make every button blue" — a deliberate per-screen pass: for each
+form/action group, decide which button (if any) is the primary
+affirmative action and give it `.lp-button--primary`; genuinely
+secondary/lower-stakes actions (Cancel, Filter, Search) can stay
+`.lp-button`/`.lp-button--secondary`; anything destructive gets
+`.lp-button--danger` (worth checking whether "Reset All Theme Options"
+belongs here instead of `--secondary`, since it discards every
+customization at once — a judgment call to make explicitly, not
+inherit from whatever was typed first).
+
+**Design decision (Ariane, 2026-08-17):** the base `.lp-button`'s
+current white/transparent-on-panel-bg look reads as *unstyled* rather
+than *intentionally neutral* — a plain HTML button with no styling
+applied would look the same. Give the base `.lp-button` (and
+`.lp-button--secondary`, which is nearly identical already —
+`background: transparent` against a bordered outline) a very slight
+gray fill instead of white/transparent, distinct enough from the
+panel background to read as a deliberately-styled button rather than
+an unstyled fallback, in both light and dark. Needs its own token
+(e.g. `--lp-admin-button-bg`) rather than reusing `--lp-admin-bg`
+(the page background) or `--lp-admin-panel-bg` (would blend into the
+panel again, the exact complaint here) — chosen with LP-088's
+field-background token (also new) so the two don't end up visually
+indistinguishable from each other.
+
+### Checklist
+
+- [x] Add a slight gray `--lp-admin-button-bg` token (light + dark) and
+      apply it to `.lp-button`'s base `background` (currently
+      `var(--lp-admin-panel-bg)`, i.e. white/blends into the panel) and
+      to `.lp-button--secondary` (currently `background: transparent`)
+      so neutral buttons read as intentionally styled, not unstyled
+- [x] Enumerate every `class="lp-button"` (bare, no modifier) instance
+      across `admin/views/` (53 as of this ticket) and classify each:
+      genuinely secondary (leave as-is), should be `--primary` (its
+      screen's main action), or should be `--danger` (destructive)
+- [x] Apply the correct modifier class per that classification
+- [x] Spot-check every screen with more than one button to confirm
+      exactly one clear primary action per action group, not zero and
+      not multiple competing blues
+- [x] Screenshot before/after for a representative sample (Media
+      Manager, Plugins, Theme Options, Import), shared with Ariane
+
+### Resolution notes (2026-08-17)
+
+- Added `--lp-admin-button-bg` (light `#f6f6f7`, dark `#26292d`) and
+  applied it to the base `.lp-button` and `.lp-button--secondary`
+  rules, replacing `--lp-admin-panel-bg`/`transparent` — addresses all
+  53 bare-`.lp-button` instances at once.
+- Went through all 53 bare `class="lp-button"` instances individually
+  (not a blanket search-and-replace) and reclassified each one that
+  was clearly its form's sole/main action with `.lp-button--primary`:
+  `appearance/editor.php` (Create File, Create Folder),
+  `appearance/menus.php` (Select, Create Menu, Rename, both "Add to
+  Menu" buttons), `appearance/themes.php` (Activate — confirmed
+  consistent with `plugins.php`'s existing Deactivate=`--secondary`
+  pattern), `appearance/widgets.php` (Add Widget),
+  `maintenance/updates.php` (Back up now), `media/import.php`
+  (Continue), `media/media.php` (Regenerate thumbnails, Save, Replace,
+  Rename, Create folder), `media/thumbnails.php` (Bulk regenerate
+  thumbnails, Continue), `plugins.php` (Activate). Deliberately left
+  neutral: Filter/Search/Apply/Cancel/Back/Close buttons, "Clean up
+  orphaned thumbnails" (secondary to "Bulk regenerate" in the same
+  section), "Restore" from a backup (impactful enough not to make
+  routine-easy), and "Verify Key" (sits beside an already-primary Save
+  button in the same form — checked the surrounding markup before
+  classifying, not just the button text in isolation).
+- Confirmed via computed style: "Create Menu" now renders
+  `rgb(34, 113, 177)`/white text (the primary token), and "Reset to
+  Defaults" (a pre-existing `--secondary`) now renders
+  `rgb(246, 246, 247)` against a `rgb(255, 255, 255)` panel — visibly
+  distinct where it was identical before.
+
+### LP-091. Panel/Card Section Title Backgrounds
+
+### Goal
+
+Ariane spotted (2026-08-17) that section titles like "Backups" inside
+a `.lp-admin__panel` read as a plain heading with no visual weight —
+just an accent dot and a thin bottom border on an otherwise blank
+white/dark background — making it slower to visually scan a page and
+spot where one section ends and the next begins. Asked for these
+titles to get a background, matching the tinted-header treatment
+`.lp-sidebar-box__header` already has (LP-085/087).
+
+### Implementation
+
+`.lp-admin__panel > h2:first-child` (and the `<details>/<summary>`
+collapsible variant used by "Search & Filter" panels) now bleeds to
+the panel's own edges via a negative margin exactly offsetting the
+panel's uniform 1.5rem padding — safe specifically because every
+`.lp-admin__panel`/`.lp-admin__widget` shares that same padding value,
+confirmed before relying on it. Given the existing `--lp-admin-chip-bg`/
+`--lp-admin-chip-border` tint tokens (already used for
+`.lp-sidebar-box__header`, row-action chips, and the tag input) rather
+than inventing a new color. Matching top corner radius keeps the
+flush-bleed look clean without needing `overflow: hidden` on the
+panel itself — deliberately avoided, since `.lp-tag-input__suggestions`
+(an absolutely-positioned typeahead dropdown that can appear inside a
+panel) would otherwise get clipped.
+
+### Checklist
+
+- [x] Add the tinted background/border-bottom + flush corner radius to
+      `.lp-admin__panel > h2:first-child`
+- [x] Apply the same treatment to the collapsible `<summary>` variant
+- [x] Verify no `overflow: hidden` was introduced on `.lp-admin__panel`
+      itself (would risk clipping absolutely-positioned children like
+      the tag-input suggestions dropdown)
+- [x] Confirm correct rendering in both light and dark (verified via
+      computed-style inspection: light tint `rgba(34, 113, 177, 0.07)`,
+      dark tint `rgba(76, 155, 232, 0.12)`, both matching the existing
+      chip tokens exactly)
+
+### LP-092. Sidebar Expand/Collapse-All Toggle
+
+### Goal
+
+Ariane asked for a single control that expands or collapses every
+collapsible parent menu section (Posts, Media Manager, Pages,
+Appearance, Settings, Maintenance) at once, placed both above the nav
+(right after the version number) and below it — symbols only, no
+visible text.
+
+### Implementation
+
+Extended the existing `admin/assets/js/nav-toggle.js` (which already
+drives each parent item's individual expand/collapse via
+`.lp-admin__nav-item--parent`'s `is-open` class and a `localStorage`
+override keyed by menu slug) rather than building a separate mechanism.
+Two buttons share one `[data-lp-nav-toggle-all]` selector and stay in
+sync: clicking either one checks whether *any* section is currently
+collapsed — if so, it opens all of them; if every section is already
+open, it closes all of them. Both buttons' symbol and `aria-label`
+update together after every click, including clicks on an individual
+per-item toggle (not just the "all" buttons), so they always reflect
+the true aggregate state.
+
+Symbols only, per the request: ⊞ (U+229E, expand all) / ⊟ (U+229F,
+collapse all), rendered as literal text content, no icon font/SVG
+asset. The visible button carries no text — the meaning lives in the
+`aria-label`, which updates alongside the symbol so screen readers get
+the real "Expand all menu sections"/"Collapse all menu sections"
+wording rather than just a glyph.
+
+### Checklist
+
+- [x] Add the top button markup, right after the version number in
+      `.lp-admin__brand`
+- [x] Add the bottom button markup, inside `.lp-admin__user`
+- [x] Extend `nav-toggle.js` to drive both buttons from one shared
+      aggregate-state function, keeping them in sync with each other
+      and with individual per-item toggles
+- [x] Style as a small icon-only button (not a full-width row) despite
+      `.lp-admin__sidebar`/`.lp-admin__user` both being flex columns
+- [x] Verify via the live DOM: clicking either button opens/closes
+      every section, both buttons' symbol flips together, and the
+      choice persists to `localStorage` the same way individual
+      per-item toggles already did
+
+### LP-093. SEO/Custom Fields Should Default to Collapsed on First Visit
+
+### Goal
+
+Ariane asked whether default-collapsed behavior for the Post/Page
+editor's SEO and Custom Fields sidebar boxes had been lost. Investigated
+before assuming a regression: `git log --all -p` on both
+`admin/views/posts/new.php` and `admin/views/pages/new.php` shows the
+collapse logic hasn't changed since LP-083 first wrote it, and
+LP-083's own spec only ever said these boxes must be *collapsible*,
+never that they default to collapsed — so nothing was lost, this was a
+gap in the original build. Confirmed live: Ariane's account has
+`editor_layout_preferences IS NULL` (never saved a layout), and both
+SEO and Custom Fields rendered expanded.
+
+### Fix
+
+`$collapsedBoxes` in both view files now defaults to `['seo',
+'custom_fields']` (Posts) / `['seo']` (Pages — no Custom Fields box
+exists there) specifically when `$savedLayout['order'] === []`.
+`UserService::updateEditorLayoutPreferences()` always writes order and
+collapsed together as one snapshot, so a real save never leaves order
+empty — an empty order reliably means this exact screen has never been
+customized by this user at all, distinguishing "never touched" from
+"explicitly saved with nothing collapsed" (which must NOT be
+re-collapsed by this default). Author reassignment (also collapsible,
+Posts only) intentionally stays expanded by default — Ariane only
+asked about SEO and Custom Fields, and it's a more consequential field
+to leave hidden by default.
+
+### Checklist
+
+- [x] Confirm via git history that this is a gap, not a regression,
+      before writing any fix
+- [x] Confirm live via the dev install: `editor_layout_preferences`
+      NULL for the test account, both boxes rendering expanded
+- [x] Add the first-visit-only default to `posts/new.php`
+      (`seo`, `custom_fields`)
+- [x] Add the matching default to `pages/new.php` (`seo` only — no
+      Custom Fields box exists on Pages)
+- [x] Verify the edge case: a user with a real saved layout but an
+      empty `collapsed` list (i.e. explicitly left everything expanded)
+      must NOT be re-collapsed by this default — tested directly
+      against the dev install database, confirmed correct
+
+### LP-094. Full-Width Featured Image Above Post (Front Page & Archives)
+
+### Goal
+
+Ariane shared a WordPress Game of Thrones fansite screenshot as a
+design reference and asked whether Lumora Press supported that
+layout — a full-width featured image banner sitting above the post
+title on front-page/archive listings. It didn't: LP-079 deliberately
+left featured-image *placement/sizing* to each theme rather than a
+global setting (only show/hide is a Theme Option), and no theme in
+this codebase (`default`, or the `duskline` custom theme) had ever
+built anything but a small side-thumbnail layout — `content/themes/
+default/style.css` used a fixed 120×120px square beside the post body,
+`custom themes/duskline/style.css` a 140×140px square inside its card.
+Confirmed this was a genuine gap, not a broken setting.
+
+Ariane asked for this to apply to **every theme**, as the standard
+display, **not** gated behind a new Theme Option choice.
+
+### Implementation
+
+For both `content/themes/default` and `custom themes/duskline`
+(applied identically to `index.php` and `archive.php` in each, since
+the two templates duplicate this markup block — the same pre-existing
+duplication LP-079 flagged as optional cleanup, not touched further
+here):
+
+- `the_post_thumbnail_lightbox($post, 'small')` → `'large'` (150×150
+  crop → 1024×1024 fit-mode source), since the image now displays much
+  larger than before.
+- CSS: `.lp-post-list__item` changed from `display: flex` (row) to
+  `flex-direction: column` — the thumbnail and body were already
+  sibling elements in that DOM order, so no markup reordering was
+  needed, only the flex direction. Thumbnail now `width: 100%` with a
+  fixed `320px` (`200px` under `max-width: 720px`) `object-fit: cover`
+  height for a consistent banner crop regardless of the source image's
+  own aspect ratio.
+- `duskline` specifically: since it's a bordered "story card" (unlike
+  `default`'s plain divided list), the card's own `padding` moved from
+  `.lp-post-list__item` onto `.lp-post-list__body`, with `overflow:
+  hidden` added to the item so the banner image's square corners get
+  clipped by the card's existing `border-radius` at the top only —
+  otherwise the image would either overflow the card's rounded corners
+  or need its own separate radius value to keep in sync with the
+  card's.
+
+### Checklist
+
+- [x] Confirm this is a genuine feature gap (not a setting the user
+      was missing) before making any change
+- [x] Apply to `content/themes/default` (`index.php`, `archive.php`,
+      `style.css`)
+- [x] Apply the equivalent to `custom themes/duskline`, adapted to its
+      own card-style visual language rather than copy-pasting
+      `default`'s CSS verbatim
+- [x] Verify on the dev install: front page and a category archive
+      page both screenshotted, image renders full-width above the
+      title on both themes
+- [x] No new Theme Option added — applies unconditionally, per
+      Ariane's explicit direction, using the existing
+      `show_featured_image_in_listings` toggle only for show/hide
+
+### LP-095. Theme's Own Width Should Take Precedence Over Generic Content Width Default
+
+### Goal
+
+Ariane asked whether `duskline`'s own `--lp-max-width: 1160px` was
+being respected, or silently overridden. Investigated: `header.php`
+(both `default` and `duskline`) loads the theme's own `style.css`
+*first*, then `theme_options_css()`'s injected `<style>` block
+*second* — so the site-wide "Content width" Theme Option's
+`--lp-max-width` declaration always wins the cascade regardless of
+what the theme's own stylesheet set, because it's the later `:root`
+rule at equal specificity. Confirmed this was live and active: the dev
+install's `theme_options` row already had an explicit
+`"content_width":"1200px"` saved (from earlier, unrelated testing),
+meaning duskline's real rendered width was 1200px, not its own
+intended 1160px, the whole time — a genuine bug, not a hypothetical.
+
+Ariane asked for the general principle: a theme's own explicit design
+choice should take precedence over a generic core default, for width
+and for future similar cases (e.g. LP-094's featured-image treatment).
+
+### Fix
+
+`content_width`'s field definition (`app/Core/Theme/ThemeOptions.php`)
+now has `default: ''`, `allowEmpty: true`, and a new `'' => 'Use theme
+default'` choice — mirroring the exact pattern the Color fields
+already used for the same "inherit unless explicitly overridden"
+behavior (`ThemeOptions::cssVariables()` already skips emitting a
+declaration when a field's value is `''` and `allowEmpty` is true; no
+change needed to that method itself, only to this one field's
+definition). A site that has never touched this setting now correctly
+shows each theme's own width; a site with an explicit prior choice
+(like the dev install's `1200px`) keeps that choice until the
+administrator resets it — an explicit override, once made, is still
+respected, only the *unset* default no longer forces one.
+
+The general principle (not just this one field) is now documented in
+`CLAUDE.md`'s Theme Philosophy section: any future `$cssVariable`
+Theme Option must default to non-overriding, the same way. Fields read
+directly by a theme's own PHP (like `post_display_mode`) don't have
+this problem — the theme decides whether to honor them at all, so
+they're already theme-controlled by construction; LP-094's featured-
+image treatment is the same, built directly into each theme's own
+CSS with no injected-override mechanism to conflict with.
+
+### Checklist
+
+- [x] Confirm the actual header.php load order (theme stylesheet vs
+      injected options `<style>` block) before assuming a fix was even
+      needed
+- [x] Confirm live on the dev install that this was an active bug, not
+      hypothetical (found an explicit `1200px` override already saved)
+- [x] Add the `'' => 'Use theme default'` choice, `default: ''`, and
+      `allowEmpty: true` to `content_width`
+- [x] Verify via a temporary DB round-trip test: reset to `''` →
+      confirm the injected `<style>` block no longer emits
+      `--lp-max-width` and the computed value becomes duskline's own
+      `1160px` → restore the original explicit `1200px` value
+      afterward so Ariane's real saved setting wasn't altered
+- [x] Confirm the admin Theme Options UI renders the new choice
+      correctly ("Use theme default" first in the dropdown, with
+      explanatory help text)
+- [x] Document the general precedence principle in `CLAUDE.md`'s Theme
+      Philosophy section, not just fix this one field
+
+### LP-097. Media Manager View Modes & Uploaded Date
+
+### Goal
+
+The Media Manager (`admin/views/media/media.php`) only ever renders one
+view — a fixed thumbnail grid (`.lp-media-grid`) — with no way to switch
+to a denser, information-forward list view, and no uploaded date shown
+anywhere in that grid. The file-info/details panel (opened per item)
+shows file type and file size, but not when the file was uploaded
+either — `uploaded_at` is stored on every `media` row and already
+powers the "Uploaded from/to" date-range filter, it just isn't
+displayed anywhere in the UI itself.
+
+### Checklist
+
+- [x] A Thumbnails/List view-mode toggle above the results (mirroring
+      the existing Search & Filter panel's placement), persisted the
+      same way other admin list preferences already are in this
+      codebase (e.g. per-user, not just per-session) rather than
+      resetting to Thumbnails on every page load
+- [x] Thumbnails view: unchanged grid layout, plus the uploaded date
+      shown under/alongside each item's filename
+- [x] List view: a new dense row-based layout (filename, type, size,
+      uploaded date, dimensions where applicable) — matching this
+      project's existing `.lp-table` admin list convention rather than
+      inventing a new table style
+- [x] Uploaded date added to the file-info/details panel, alongside the
+      existing type/size line
+- [x] Both new views keep existing behavior working unchanged: checkbox
+      multi-select for bulk actions, the Search & Filter panel, and the
+      per-item details/edit panel
+
+### Notes
+
+**Implemented (2026-08-25).** No per-user preference mechanism existed
+yet for anything outside the Post/Page editor's own sidebar layout
+(`UserService::getEditorLayoutPreferences()`, keyed by screen type) —
+built a sibling pair, `getListViewMode()`/`setListViewMode()`, on a new
+`list_view_preferences` LONGTEXT column (migration 0045), same
+one-JSON-blob-keyed-by-screen-type shape, shared by this ticket and
+LP-098 below (screen types `'media'`/`'plugins'`). Defaults to `'grid'`
+for an admin who's never touched the toggle, so nobody sees a changed
+default layout unprompted.
+
+The toggle itself is a plain `?layout=grid|list` GET link — this
+screen's Search & Filter/pagination/folder navigation are already
+full-page-reload based, so no AJAX was needed; the chosen mode is
+persisted server-side the moment the link is followed, and every other
+query param on the current URL is preserved via `array_merge($_GET,
+['layout' => $mode])` rather than resetting filters/folder/pagination.
+`render_pagination()` already rebuilds its own links from the current
+full query string, so `layout` carries through pagination automatically
+with no changes needed there.
+
+Verified end-to-end against the dev install: List view renders
+filename/type/size/dimensions/uploaded-date rows; Thumbnails view shows
+the uploaded date under each filename; the file-info panel shows
+"Uploaded {date}"; the choice survives a fresh page load with no query
+string at all (real per-user DB persistence, not session-only); bulk
+select-all/checkboxes and Search & Filter still work in both views.
+
+### LP-098. Plugins Page List View
+
+### Goal
+
+The admin Plugins screen (`admin/views/plugins.php`) only ever renders
+one layout — a card grid (`.lp-plugin-grid`/`.lp-plugin-card`, one card
+per plugin with a screenshot, name, badge, description, and
+Details/Activate/Deactivate actions). Add a list view as an alternative
+to the card grid, for scanning many installed plugins at once.
+
+### Checklist
+
+- [x] A Grid/List view-mode toggle above the results, alongside the
+      existing search box and status filter (`.lp-plugin-toolbar`)
+- [x] List view: a dense row-based layout (name, status badge, version,
+      author, short description, actions) — matching this project's
+      existing `.lp-table` admin list convention rather than inventing
+      a new table style, mirroring LP-097's identical ask for the Media
+      Manager
+- [x] Existing search/filter (`data-lp-plugin-search`/`data-lp-plugin-filter`)
+      and the Details panel/Activate/Deactivate/Delete actions keep
+      working unchanged in both views
+
+### Notes
+
+**Implemented (2026-08-25), same session as LP-097** (which came first
+and built the shared `UserService::getListViewMode()`/
+`setListViewMode()` persistence this ticket reuses under the
+`'plugins'` screen-type key). Unlike Media Manager, this screen's
+search/filter are already fully client-side/JS-driven with no page
+reload at all (`plugin-browser.js`) — reloading on toggle would have
+thrown away whatever an admin had already typed into the search box,
+so the toggle is JS-driven too: both the card grid and a new
+`.lp-plugin-table` list are always rendered server-side, and a
+`data-lp-plugin-view-wrapper[data-view]` attribute (flipped instantly
+by a click, no request in the critical path) picks which one is
+CSS-visible. The choice is then persisted with a fire-and-forget POST
+to a new `set_list_view` JSON sub-action, mirroring
+`admin/views/posts/new.php`'s `editor_upload` sub-action pattern
+(handled before the CSRF-gated form dispatch, JSON response, `exit`)
+— and, like that sub-action, hands back a fresh `Csrf::verify()` token
+on every response so a second toggle click in the same page load
+doesn't 403 (the exact bug LP-115 hit and fixed for its own picker
+earlier this session — applied proactively here from the start).
+
+Both card and table rows carry the same `data-plugin-search`/
+`data-plugin-status` attributes, so `plugin-browser.js`'s existing
+filter logic narrows whichever view is currently visible without
+needing to know which one that is; the "no results" empty-state count
+only counts cards (not both representations of the same plugin) to
+avoid double-counting. The Details dialog trigger's click listener was
+moved from the grid element to their shared wrapper so it fires from
+table rows too — both reference the same per-slug `<template>`.
+
+Verified end-to-end against the dev install: List view renders all
+installed plugins with working Details/Activate/Deactivate; search and
+the status filter narrow the List view exactly as they already did the
+grid; the toggle survives a fresh page load with no query string
+(real per-user DB persistence); two rapid toggle clicks in the same
+session both succeeded (confirming the CSRF-refresh fix actually
+works, not just compiles); List view's table scrolls horizontally on a
+mobile viewport via the existing shared `.lp-table` mobile rule, no
+new CSS needed for that part.
+
+### LP-100. Modernize Pagination Controls (Frontend & Admin)
+
+### Goal
+
+Both the public-facing pagination (`.lp-pagination`, used on post
+archives/search/category/tag listings) and the admin list pagination
+(e.g. Media Manager) currently render as a long flat row of individual
+numbered squares with no truncation — on a site with many pages
+(screenshots showed 74 frontend / 80 admin pages) this produces a wall
+of buttons that wraps across several rows and gives no sense of
+position or a fast way to jump far. Modernize the pagination component
+used in both surfaces.
+
+`render_pagination()` (`LumoraPress/include/helpers.php`) was already the
+single shared implementation called by every frontend template
+(`index.php`, `archive.php`, `search.php`) and every admin list view
+(Posts, Pages, Comments, Users, Media Manager) — no divergent
+implementations existed to unify, so the fix landed entirely inside that
+one function and its two callers' stylesheets (default theme
+`style.css` and `admin.css`), verified live against the dev install's
+Comments list (10 pages) and homepage (74 pages).
+
+### Checklist
+
+- [x] Truncate long page ranges with an ellipsis (e.g. first/last few
+      pages + pages around the current one), rather than rendering
+      every page number
+- [x] Add Previous/Next controls (and consider First/Last) alongside
+      the numbered pages
+- [x] Keep a single shared pagination markup/CSS component reused by
+      both the frontend theme output and the admin UI, rather than two
+      divergent implementations
+- [x] Frontend styling lives in the active theme stylesheet(s) per the
+      Public-Facing CSS Rule in `CLAUDE.md`; admin styling stays in the
+      admin CSS
+- [x] Preserve current-page indication, keyboard/focus accessibility,
+      and existing query-param/URL behavior for both surfaces
+
+### LP-102. Remove Redundant "Welcome to {Site}" Heading From The Homepage Post Listing
+
+### Goal
+
+The default theme's homepage post listing (`content/themes/default/index.php`)
+renders a hardcoded `<h1 class="lp-page-title">Welcome to {site name}</h1>`
+banner above the post list. It doesn't correspond to any real content —
+unlike `single.php`/`page.php`/`archive.php`'s own `<h1>`, which titles the
+actual post/page/archive being viewed — and reads as decorative filler
+directly above a list of posts that already have their own titles.
+Reported directly against a live screenshot of the homepage.
+
+Distinct from `LP-034`'s "Show page titles" wishlist checkbox (a future
+generic Theme Options toggle for page titles across the whole site) —
+this ticket only removes one specific hardcoded string from one
+template, not a new site-wide setting.
+
+### Checklist
+
+- [x] Remove the "Welcome to {site}" `<h1>` from `index.php`'s true
+      homepage branch (`$page_title === null`)
+- [x] Remove the equivalent homepage `<h1>` from the `duskline` custom
+      theme's own `index.php` (Ariane explicitly confirmed removing
+      this from a custom theme, per `CLAUDE.md`'s Custom Theme Rules)
+
+### Notes
+
+The homepage's `<main>` now goes straight from `get_header()` into the
+post list with no interstitial heading — matching `archive.php`'s
+category/tag/date listings, which already only show a heading when
+there's a real title to show (a category name, "Search", etc.).
+No other template was touched: `single.php`, `page.php`, and
+`archive.php` keep their own `<h1>` because it titles genuine
+page-specific content, not filler.
+
+`duskline/index.php` shared the same pattern via
+`$page_title ?? site_name()`, which also fed the h1 for LP-046's
+"Posts page" case (`$page_title` non-null there) — that branch was kept
+intact (`<?php if ($page_title !== null): ?>`), only the genuine-homepage
+fallback to `site_name()` was removed. Its separate tagline paragraph
+(`lp-page-intro`) was untouched — it was never gated on the heading.
+
+### LP-103. Appearance &rsaquo; Menus: Show Pages/Categories Nested In The "Add Items" Panel
+
+### Goal
+
+The Appearance &rsaquo; Menus "Add Items" panel (`admin/views/appearance/menus.php`)
+lists Pages and Categories to add to a menu as flat, alphabetically-sorted
+checkbox lists — `PageService::listAllForMenuSelect()` and
+`CategoryService::listAll()`, neither of which carries parent/child
+depth. Once added, a menu item's own hierarchy is fully supported
+(LP-049's unlimited-depth `parentId`/Parent Item dropdown), and Pages
+themselves are already hierarchical elsewhere in the admin — the "All
+Pages" list renders a real indented tree via
+`PageService::listAllForTree()` (`{page, depth}` pairs, LP-009 Hierarchy
+UI). The Add Items panel is the one place left where that structure
+isn't visible: a child page or subcategory shows up in the same flat
+list as everything else, with no indication of its parent, making it
+hard to find the right item on a site with a deep page/category tree.
+
+Show Pages and Categories indented by depth in the Add Items panel,
+mirroring the existing "All Pages" tree presentation — "nested when
+possible" since Posts and Tags have no hierarchy in this app and should
+stay flat as they are now.
+
+### Checklist
+
+- [x] Pages tab: replace `listAllForMenuSelect()` with a depth-aware
+      variant (reuse `listAllForTree()`'s `{page, depth}` shape, or add
+      an equivalent that also carries `slug` if needed) and indent each
+      checkbox label by depth
+- [x] Categories tab: add a depth-aware listing to `CategoryService`
+      (mirroring `PageService::listAllForTree()`'s "flat rows in,
+      parent_id ordering, depth-tagged tree out" approach) and indent
+      each checkbox label by depth
+- [x] Posts and Tags tabs stay flat/alphabetical — no hierarchy exists
+      for either in this app
+- [x] Indentation is CSS-driven (a `padding-left` scaled by depth, or a
+      depth-based modifier class), not literal leading whitespace/dashes
+      in the label text, so the underlying item label stays clean when
+      actually added to the menu
+- [x] Preserve existing "select checked items, click Add to Menu"
+      behavior and keyboard/focus accessibility — this only changes how
+      the existing list is presented, not how selection works
+
+### Notes
+
+`PageService::listAllForMenuSelect()` was changed in place (rather than
+adding a second method) to return `{id, title, slug, depth}` built on
+top of the existing `listAllForTree()`, since its only caller is this
+one panel. One side effect: it now excludes trashed pages, which the
+old flat `SELECT ... FROM pages` (no `WHERE` at all) never did — a
+trashed page showing up as addable to a menu was already a latent bug,
+not intended behavior, so this is a fix, not a regression.
+
+Added `CategoryService::listAllForTree()` (mirroring
+`PageService::listAllForTree()`'s private `flattenForTree()` recursion,
+built on top of the existing `listAll()` — parent immediately followed
+by its own children, alphabetical among siblings). `listAll()` itself
+was left unchanged since other callers depend on its flat shape.
+
+Indentation reuses the existing `data-style-margin-left` /
+`admin/assets/js/dynamic-style.js` mechanism the Menu Structure list
+already relies on for the same purpose (CSP forbids inline
+`style="..."`, and there's no per-depth CSS class that would work for
+arbitrary depth). Posts (`PostService::listAllForMenuSelect()`, already
+flat) and Tags (`TagService::listAll()`, no hierarchy exists) render
+with `depth => 0` and get no indentation, unchanged from before.
+
+Verified end-to-end against the dev install: a page nested two levels
+deep and a subcategory both rendered indented in their respective
+panels, and adding a nested page to a real menu (then removing it)
+round-tripped correctly through the existing Add/Remove forms with no
+handler changes needed on that side.
+
+### LP-104. Pages/Categories Widgets: Nested Output, Alphabetical Top Level
+
+### Goal
+
+The Pages widget and Categories widget (`CoreWidgets::register()`,
+`app/Core/Widgets/CoreWidgets.php`) both render a flat `<ul><li>` list on
+the frontend with no indication of parent/child hierarchy, even though
+both Pages and Categories are hierarchical content types elsewhere in
+the admin (the "All Pages" tree view, and LP-103's just-added nested
+Appearance &rsaquo; Menus "Add Items" panel). Render both widgets'
+output as a real nested `<ul><li><ul>...` tree instead, with top-level
+items in alphabetical order (children alphabetical among their own
+siblings too) — the same shape LP-103 established for
+`CategoryService::listAllForTree()`/`PageService::listAllForMenuSelect()`.
+
+Neither widget currently has an admin-side picker (their settings are
+just a title field, and `limit`/`show_count` — no list of individual
+pages/categories to check like Menus' Add Items panel had before
+LP-103). "Nested in the admin UI" doesn't apply to either widget the
+same way it did for Menus unless a picker is added first — if Ariane
+wants one, scope that as its own decision when this ticket is picked
+up, rather than assumed here.
+
+### Checklist
+
+- [x] Categories widget: switch from `listAllWithPostCounts()` (flat,
+      alphabetical, unlimited) to a tree-shaped render using
+      `CategoryService::listAllForTree()` (already built by LP-103) —
+      nested `<ul>` per depth level, post count badge unaffected
+- [x] Pages widget: **decision made** — dropped the `limit` setting
+      entirely once nested. Confirmed with Ariane by matching WordPress's
+      own core Pages widget (`WP_Widget_Pages`), which has never had a
+      "number to show" option either — it always lists every published
+      page, nested hierarchically. Matches how the Categories widget has
+      always been unlimited too.
+- [x] New/reused CSS for nested widget lists (`lp-widget__list` gaining
+      a nested `<ul>` per depth) in the active theme's `style.css` per
+      the Public-Facing CSS Rule in `CLAUDE.md` — indentation via a
+      real nested-list selector (`.lp-widget__list .lp-widget__list`),
+      not the admin's `data-style-margin-left` CSP workaround, since
+      this is static server-rendered frontend markup with no per-request
+      dynamic value involved
+- [x] Dark mode covered if the new nesting introduces any new visual
+      treatment (e.g. a connecting line/indent guide) beyond plain
+      indentation — plain `<ul>`-in-`<ul>` indentation needs no new
+      color tokens on its own
+- [x] Propagate the same CSS addition to `custom themes/duskline`
+      (additive only, per `CLAUDE.md`'s Custom Theme Rules)
+- [x] Regression tests confirming nested output for both widgets
+      (`CoreWidgetsTest` or equivalent)
+
+### Notes
+
+Added `PageService::publicTreeForWidget()` — a new method rather than
+reusing `listAllForTree()`/`listAllForMenuSelect()` (LP-103), because
+those two intentionally include every non-trashed page (drafts included)
+for admin-only screens, while the Pages widget is public-facing and must
+apply the same visibility rule `paginatePublished()` already used
+(published, or scheduled with a past date, AND public visibility) — a
+draft or private page must never leak into the tree just because it's
+some visible page's child. Ordered by `title ASC` (not
+`listAllForTree()`'s manual `menu_order`) so both the top level and
+every depth's siblings render alphabetically, per this ticket's own
+title. A page whose real parent isn't itself in this filtered public
+set (e.g. a draft parent) is dropped entirely rather than promoted to
+top level or nested at the wrong depth — same "only ever nest under a
+genuinely present parent" behavior `flattenForTree()` already had.
+
+Removed the Pages widget's "Number of pages to show" settings field
+(`admin/views/appearance/widgets.php`) entirely rather than leaving it
+present-but-ignored — a settings field that silently does nothing is
+worse than no field.
+
+Added a shared `CoreWidgets::renderNestedList()` private helper (flat
+depth-tagged rows in, real nested `<ul><li>` markup out) used by both
+widgets, so the tree-building logic isn't duplicated between them.
+Categories' post-count badge now costs one `CategoryService::postCount()`
+query per category when "Show post counts" is enabled (previously one
+combined query) — accepted as the same small-dataset trade-off
+`PageService::listAllForTree()`'s own docblock already makes for pages
+("evergreen/structural content ... not the tens-of-thousands-of-rows
+table Posts can be").
+
+Verified live against the dev install: the real Categories widget (355
+posts, dozens of categories nested up to 3 levels deep, including two
+same-named categories — "AO3" — correctly kept as separate entries under
+their own distinct parents) and a temporarily-added Pages widget (46
+top-level pages, 20 with children, previously would have been truncated
+at the old default limit of 10) both rendered correctly nested and
+alphabetical. The temporary Pages widget and an unrelated stray
+`Search` widget that ended up added to Primary Sidebar during manual
+browser-driven UI testing were removed afterward by correcting the
+`widgets_config` option directly in the dev database back to its
+original recorded state (Categories in Primary Sidebar, Social Links in
+Footer, no inactive widgets) — not a change to any shipped code, purely
+restoring the dev install's own local config to how the session found
+it.
+
+### LP-105. New Post and New Page pages
+
+### Goal
+
+Both the New Post "Categories" checklist and New Page "Parent Page" field
+(`admin/views/posts/new.php` and `admin/views/pages/new.php`) currently
+render every category/page as a flat, unbounded list — long enough on a
+site with many categories or pages to make the sidebar box grow past a
+comfortable length. Nest them by depth and cap their height, mirroring
+the pattern LP-103 already established for Appearance &rsaquo; Menus'
+"Add Items" panel: a `<ul>` with `data-style-margin-left` per-depth
+indentation (CSP-safe, driven by the existing
+`admin/assets/js/dynamic-style.js`) inside a `max-height` +
+`overflow-y: auto` scrollable container (`.lp-menus-add-panel__list`
+uses `16rem`).
+
+### Checklist
+
+- [x] New Post &rsaquo; Categories box (`case 'categories':` in
+      `admin/views/posts/new.php`): swap
+      `$allCategories = $kernel->categories->listAll()` for
+      `$kernel->categories->listAllForTree()` (already built by LP-103)
+      and render as a nested `<ul>` with `data-style-margin-left` per
+      depth — same shape as Menus' `add_categories` panel — keeping the
+      existing checkbox markup and the "+ Add New Category" quick-add
+      panel unchanged.
+- [x] New Page &rsaquo; Parent Page box (`case 'parent':` in
+      `admin/views/pages/new.php`): replace the `<select id="page-parent"
+      name="parent_id">` with a scrollable `<ul>` of radio buttons
+      (`type="radio" name="parent_id"`, one checked to match the current
+      value), built from a new depth-aware `PageService` method that
+      combines `listAllForTree()`'s depth-tagging with
+      `listAllForParentSelect()`'s exclusion (a page can't be its own
+      parent or direct child's parent). Keep a "(No parent)" radio
+      (value `0`) as the first item, matching the current select's
+      option.
+- [x] CSS: reuse `.lp-menus-add-panel__list` directly, or add a parallel
+      rule block in `admin/assets/css/admin.css` with the same
+      `max-height`/`overflow-y` shape, so both boxes look and behave
+      consistently with the Menus Add Items panel.
+- [x] Verify `dynamic-style.js`'s `data-style-margin-left` handling
+      already runs on both editor screens (it's loaded admin-wide, so
+      this should be automatic — confirm in the browser rather than
+      assuming).
+- [x] Regression tests: existing category-assignment and parent-selection
+      coverage (`PostsController`/`PageService` tests) still passes; add
+      a test for the new `PageService` depth-aware+excluding method
+      mirroring `CategoryServiceTest`'s existing `listAllForTree()`
+      coverage.
+- [x] Verify end-to-end against the dev install: New Post with several
+      nested categories renders indented and scrolls once the list is
+      long; New Page's Parent Page radio list renders indented, excludes
+      the page being edited and its own direct children, and the
+      previously-saved parent stays selected on reload.
+
+### Notes
+
+Scoped deliberately to just these two boxes, per the ticket's own
+wording. While planning this, several other flat category/parent
+`<select>` pickers turned up elsewhere in the admin (Categories admin's
+own "Parent Category" select, Settings &rsaquo; Reading's two homepage
+page pickers, All Pages' parent filter + Quick Edit parent + bulk-move
+target, All Posts' category filter) — answering the ticket's own "are
+there other lists that should be nested and alphabetical?" question.
+Ariane chose to keep those out of this ticket; they're tracked
+separately as LP-106 so this stays a small, reviewable change.
+
+For the New Page Parent Page field specifically, Ariane chose a custom
+scrollable radio list (matching the Categories checklist's look) over
+keeping the native `<select>` with indented option text — a native
+`<select>` can't be capped/scrolled the way a `<ul>` panel can, and
+can't be indented reliably cross-browser with the CSP-safe JS mechanism
+the rest of the app already uses.
+
+### LP-106. Nest & Cap More Flat Category/Parent Pickers
+
+### Goal
+
+LP-105 planning surfaced several more flat, alphabetical-only
+`<select>` pickers across the admin that follow the same
+category/parent-page pattern LP-103/LP-104/LP-105 already nest
+elsewhere. Apply the same "nested by depth, nbsp/indent or scrollable
+panel" treatment to these, following whatever concrete UI pattern
+LP-105 lands on (custom scrollable list vs. indented `<option>` text)
+for consistency:
+
+### Checklist
+
+- [x] Categories admin's own "Parent Category" `<select>`
+      (`admin/views/posts/categories.php`, built from
+      `CategoryService::listAllForParentSelect()`)
+- [x] Settings &rsaquo; Reading's two homepage page pickers
+      (`admin/views/settings/reading.php`, `homepage_page_id` and
+      `homepage_posts_page_id`, built from
+      `PageService::listAllForParentSelect()`)
+- [x] All Pages' parent filter, Quick Edit parent field, and bulk-move
+      "target_parent_id" (`admin/views/pages/all-pages.php`)
+- [x] All Posts' category filter and bulk-move "target_category_id"
+      (`admin/views/posts/all-posts.php`)
+
+### Notes
+
+Split out of LP-105 (2026-08-21) rather than expanding that ticket,
+so the New Post/New Page change stays small and reviewable.
+
+**Implemented (2026-08-25).** LP-105 landed on a custom scrollable
+`<ul>` for its two big sidebar boxes, but that shape doesn't fit these
+four pickers — they're compact `<select>` elements embedded inline in
+filter bars, bulk-action rows, and a per-row Quick Edit form, where a
+full custom list would be a much larger layout change than "nest and
+alphabetize" calls for. A native `<select>` also already scrolls
+natively once its option list gets long, so the "cap" half of LP-105's
+treatment isn't actually needed here. Went with the classic indented-
+`<option>`-text technique instead (`str_repeat('&nbsp;&nbsp;&nbsp;',
+$depth)` prepended to each option's label — repeated `&nbsp;` renders
+reliably inside `<option>` across browsers, unlike a CSS margin) —
+inlined at each of the six call sites rather than a shared helper,
+since it's one line each.
+
+New `CategoryService::listAllForParentPicker(?int $excludeId = null)`
+mirrors the `PageService::listAllForParentPicker()` LP-105 already
+built: `listAllForTree()`'s depth tagging combined with
+`listAllForParentSelect()`'s own cycle-prevention exclusion, with
+`$excludeId` optional for the three pickers (Reading's two homepage
+selects, the All Pages/All Posts filter and bulk-action selects) that
+aren't choosing a *parent* and so have nothing to exclude. Covered by
+two new tests each on `CategoryServiceTest`/`PageServiceTest` mirroring
+their existing `listAllForParentSelect()`/`listAllForTree()` coverage;
+full `Unit/` suite (1525 tests) still green. Browser-verified against
+the dev install: all six pickers render indented by depth in the
+correct document order.
+
+### LP-108. Bug: Trashed Posts Selectable In Appearance › Menus "Add Items" Panel
+
+### Goal
+
+`PostService::listAllForMenuSelect()` (`app/Services/PostService.php`)
+has no `WHERE` clause at all — `SELECT id, title, slug FROM posts ORDER
+BY created_at DESC LIMIT {$limit}` — so a trashed post is selectable
+and addable from the Appearance &rsaquo; Menus "Add Items" panel's Posts
+tab. This is the same latent bug LP-103 found and fixed for
+`PageService::listAllForMenuSelect()` (that method had an identical
+unfiltered query before being rebuilt on top of `listAllForTree()`,
+which excludes trashed pages as a side effect) — the Posts side of the
+same panel was left with the old behavior since LP-103's scope was
+Pages/Categories nesting, not this filter.
+
+The method's own docblock intentionally allows non-published statuses
+through ("an editor building a menu may knowingly link to a
+not-yet-published post") — that part should stay. Only `trashed` should
+be excluded; Draft/Pending Review/Private/Scheduled posts should remain
+selectable exactly as they are now.
+
+### Checklist
+
+- [x] `PostService::listAllForMenuSelect()`: add a `WHERE status !=
+      'trashed'` (or equivalent) condition, excluding only trashed
+      posts — every other status stays selectable, unchanged.
+- [x] Regression test confirming a trashed post no longer appears in
+      `listAllForMenuSelect()`'s results, alongside a non-trashed,
+      non-published post confirming that case is still included.
+- [x] Verify end-to-end against the dev install: trash a post, confirm
+      it no longer appears in the Menus "Add Items" panel's Posts tab.
+
+### Notes
+
+### LP-109. Bug: Trashed Pages Selectable As Parent Page / Static Front Page
+
+### Goal
+
+`PageService::listAllForParentSelect()` (`app/Services/PageService.php`)
+has no status filter at all — neither branch of its `$excludeId === null`
+check restricts by `status`, unlike its sibling
+`CategoryService::listAllForParentSelect()`, which already does `WHERE
+trashed_at IS NULL`. This isn't a documented trade-off the way
+`PostService::listAllForMenuSelect()`'s unfiltered status was (see
+[[LP-108]]) — nothing in `listAllForParentSelect()`'s own docblock
+suggests including trashed pages was intentional, and its category
+counterpart already excludes them, so this looks like a plain oversight.
+
+Three admin pickers share this one method, so a trashed page is
+currently selectable in all three:
+
+- New/Edit Page's "Parent Page" `<select>` (`admin/views/pages/new.php`)
+- Settings &rsaquo; Reading's static front-page/posts-page pickers
+  (`admin/views/settings/reading.php`)
+- The All Pages list's parent filter dropdown
+  (`admin/views/pages/all-pages.php`)
+
+### Checklist
+
+- [x] `PageService::listAllForParentSelect()`: add a `status !=
+      'trashed'` condition to both the `$excludeId === null` and
+      `$excludeId` branches, matching `CategoryService`'s pattern.
+- [x] Regression test confirming a trashed page no longer appears in
+      `listAllForParentSelect()`'s results (both branches), alongside a
+      non-trashed, non-published page confirming that case is still
+      included.
+- [x] Verify end-to-end against the dev install: trash a page, confirm
+      it no longer appears in the New Page "Parent Page" dropdown, the
+      Reading settings static-page pickers, or the All Pages parent
+      filter.
+
+### Notes
+
+**Implemented (2026-08-25).** Of the three pickers named above, New
+Page's Parent Page, Reading's two homepage pickers, and All Pages'
+parent filter were already fixed as a side effect of LP-105/LP-106
+(2026-08-25, same day) — those three now go through the new
+`listAllForParentPicker()` (built on `listAllForTree()`, which already
+excludes trashed pages), not `listAllForParentSelect()` directly.
+`listAllForParentSelect()` itself still needed the fix described above
+since it has one remaining direct caller outside that trio: Settings
+&rsaquo; Privacy's policy-page picker
+(`admin/views/settings/privacy.php`) — verified end-to-end against the
+dev install that a trashed page disappears from that picker too.
+
+### LP-111. Move Pages Up To After Posts In Admin Sidebar
+
+### Goal
+
+In the admin sidebar's current menu order, **Pages** sits below other
+items instead of directly after **Posts**. Since Posts and Pages are
+the two primary content types (per `Project Philosophy` — "Sit down.
+Write. Publish."), Pages should be the second sidebar entry, right
+after Posts, ahead of Comments/Categories/Tags/Media/etc.
+
+### Checklist
+
+- [x] Locate the admin sidebar menu registration/order (likely in the
+      admin bootstrap or a menu-registration service) and move the
+      Pages entry (with its All Pages/New Page submenu) to immediately
+      follow Posts
+- [x] Verify no other menu item's registered order value collides with
+      the new position
+- [x] Verify end-to-end in a real browser: admin sidebar shows Posts,
+      then Pages, then the remaining items in their existing order
+
+### LP-115. Editors: Merge Media Manager Picker With Insert/Edit Image, Add Search & Folder Sort, Bigger Window, Paginate
+
+### Goal
+
+Both editors (`content-editor.js`) currently expose two separate,
+redundant ways to insert an image, on the same toolbar:
+
+- TinyMCE's/EasyMDE's own native "Insert/Edit Image" button (`image` in
+  both toolbars) — a bare URL/alt/upload dialog with no way to browse
+  what's already in the Media Manager.
+- The custom "Insert from Media Manager" button (TinyMCE's `lumoraMedia`,
+  EasyMDE's `media-library`) — opens `openMediaPicker()`'s `<dialog>`: a
+  grid of every existing image, then an Attachment Display Settings step
+  (Size/Link To/Alignment, LP-075).
+
+Combine these into one entry point per editor, and improve the picker
+itself:
+
+- The thumbnail grid has no search and no way to narrow by Folder
+  (`FolderService`/`media_folders` — this app organizes media into
+  Folders, not categories; treating "category" in the request as Folder,
+  since that's the equivalent concept that actually exists here) — on a
+  library of any real size, finding a specific image means scrolling
+  through the entire grid.
+- The dialog itself is small (`.lp-editor-media-dialog`, `admin/assets/css/admin.css`
+  — `width: min(640px, 92vw); max-height: 80vh`), cramped for a photo
+  grid.
+
+### Checklist
+
+#### Merge the two entry points
+
+- [x] Remove TinyMCE's native `image` toolbar button/plugin and EasyMDE's
+      native `image` toolbar button from both editors' toolbar arrays
+      (`content-editor.js`) — `openMediaPicker()`'s dialog becomes the
+      single "Insert Image" entry point for both
+- [x] The native image dialog's one capability the Media Manager picker
+      doesn't currently have is uploading a brand-new file inline — add
+      an "Upload New" control to `openMediaPicker()`'s own dialog
+      (reusing the existing `uploadFile()` helper already in
+      `content-editor.js`) so removing the native dialog isn't a
+      regression; a freshly uploaded image should drop straight into the
+      existing Attachment Display Settings step
+- [x] Rename the toolbar button/tooltip from "Insert from Media Manager"
+      to something reflecting its new combined role (e.g. "Insert
+      Image")
+
+#### Search & folder filtering
+
+- [x] `openMediaPicker()`'s `library` data (passed via
+      `data-media-library` from `admin/views/posts/new.php` and
+      `admin/views/pages/new.php`'s `$editorMediaLibrary`) doesn't
+      currently carry folder membership — add each item's folder id/name
+      to that payload (`FolderService`) so the picker can filter by it
+      client-side without a new request — superseded by the Pagination
+      section below: folder membership is resolved server-side per
+      query instead, since the preloaded payload this item describes no
+      longer exists.
+- [x] Add a search text input to the dialog, filtering the grid
+      client-side by filename/alt text as the admin types — implemented
+      server-side (see Pagination) rather than client-side, for the same
+      reason.
+- [x] Add a Folder `<select>` filter above the grid, mirroring the Media
+      Manager's own folder-select pattern
+      (`admin/views/media/media.php`) — "All Folders" plus each real
+      folder, nested/indented the same way that screen already does
+- [x] Search and folder filter combine (both narrow the same grid
+      together, not either/or)
+
+#### Bigger window
+
+- [x] Enlarge `.lp-editor-media-dialog` (`admin/assets/css/admin.css`) —
+      e.g. `width: min(900px, 95vw)`, a taller `max-height`, and a
+      thumbnail grid with more columns at that width
+- [x] Keep the search/folder controls fixed above an independently
+      scrolling grid, so they stay visible while scrolling a long list
+      (mirrors the existing settings-step layout's fixed action bar)
+- [x] Verify the enlarged dialog still degrades reasonably on a mobile
+      viewport (LP-096's admin mobile pass already covers the rest of
+      the admin UI's responsive behavior — this dialog should match)
+
+#### Pagination (added 2026-08-25, mid-implementation)
+
+Ariane asked, while this ticket was being built, that the picker not
+load every file in one go — the original plan (preload the whole image
+library into one `data-media-library` JSON blob, then filter/search it
+client-side) directly conflicted with that on a library of any real
+size. Replaced with an on-demand, paginated query instead:
+
+- [x] New `PostsController::queryMediaForPicker()` (and pages/new.php's
+      inline mirror, matching that file's existing no-controller
+      convention) — a `media_picker_query` JSON sub-action wrapping
+      `MediaService::query()` (already supports `term`/`folderIds`
+      filters and limit/offset), 40 images per page
+- [x] `openMediaPicker()` fetches page 1 on open, then again on every
+      search keystroke (debounced) or Folder change (reset to page 1),
+      and appends on "Load More" — never preloads the library
+- [x] Grid thumbnails use the smallest available generated size
+      (`sizes.small`/`medium`/`large`, falling back to `full`), not the
+      full-size original, so a 40-item page doesn't mean 40 full-
+      resolution downloads just for square previews
+- [x] `data-media-library` removed entirely from both editor views;
+      only the (small) Folder tree is still preloaded
+      (`data-media-folders`, via new `FolderService::listAllForTree()`)
+      since the filter `<select>` needs it immediately
+
+#### Testing & Docs
+
+- [x] Browser-verify end-to-end in both the Markdown (EasyMDE) and HTML
+      (TinyMCE) editors: search narrows the grid, folder filter narrows
+      the grid, both combined, upload-new-image flows straight into
+      Attachment Display Settings, and the resulting inserted
+      image/markdown is unchanged in shape from before this ticket
+- [x] `README.md`/`CHANGELOG.md` updates once implemented, per this
+      project's standard "After Every Code Change" rule
+
+### Notes
+
+**Implemented (2026-08-25).** Two real bugs turned up only through
+actual browser verification, not code review, and are worth recording:
+
+1. **`Csrf::verify()` is single-use, but the picker calls
+   `media_picker_query` repeatedly** within one dialog session (every
+   search keystroke, folder change, "Load More" click) — the very
+   first search after opening the picker always 403'd until each
+   response was made to hand back a fresh token, the same pattern
+   `uploadEditorImage()` already used for repeat uploads. Regression-
+   tested (`testQueryMediaForPickerReturnsAFreshCsrfTokenForTheNextQuery`).
+2. **`[hidden]` loses to a class's own `display` property.** The
+   dialog's header/grid are toggled via the `hidden` DOM property to
+   switch between the browse and Attachment Display Settings steps, but
+   `.lp-editor-media-dialog__header`/`__grid`'s own `display: flex`/
+   `display: grid` rules (needed for the fixed-header/scrolling-grid
+   layout) have higher specificity than the `[hidden]` attribute's
+   UA-stylesheet `display: none` — both stayed visibly laid out
+   underneath the settings step instead of hiding. Same issue affected
+   the "Load More" button via `.lp-button`'s own `display: inline-block`
+   — general enough (any future hidden `.lp-button`) that the fix
+   (`.lp-button[hidden] { display: none; }`) was added at that shared
+   class rather than one-off per dialog element.
+3. **A grid item's `overflow: hidden` zeroes its contribution to
+   `grid-auto-rows: auto` track sizing.** Found by Ariane after the two
+   fixes above shipped: thumbnails kept shrinking further each time
+   "Load More" added another page, with only the very last (unobstructed)
+   row ever rendering at full size — every row above it was overlapped
+   by the row below, since each row's real track height had collapsed
+   toward 0 while the item's own aspect-ratio-derived box still painted
+   at full size on top of it. Root cause verified live (toggling
+   `overflow` on the grid items in devtools flipped `grid-template-rows`
+   from a string of ~3px tracks back to the correct ~143px ones): per
+   the CSS Sizing spec, a grid item's "automatic minimum size" — its
+   contribution to an `auto` track's sizing — drops to 0 once its own
+   `overflow` isn't `visible`, regardless of any `aspect-ratio` it
+   declares. `.lp-editor-media-dialog__item` needed `overflow: hidden`
+   to clip its image to the item's own rounded corners, which is exactly
+   what triggered the collapse. Fixed by removing `overflow: hidden`
+   from the item entirely and rounding the `<img>`'s own corners
+   instead (`border-radius` on the image, sized to fill the item's box
+   at `width/height: 100%` — no clipping container needed at all, since
+   nothing ever overflows an image that already exactly fills its box).
+   A stale cached copy of the pre-fix CSS in an already-open editor tab
+   briefly looked like the fix hadn't landed — a hard refresh picked up
+   the corrected, `?v={mtime}`-busted stylesheet.
+
+Covered by 4 new `PostsControllerTest` cases (`queryMediaForPicker()`'s
+term/folder filters, the CSRF-refresh regression above, and the
+extended `uploadEditorImage()` `item` payload), 2 new `FolderServiceTest`
+cases (`listAllForTree()`, mirroring Category/PageService's identical
+coverage), and browser-verified end-to-end against the dev install in
+both editors: search, folder filter, Load More pagination, Upload New,
+and final insert output all confirmed working in both Markdown and
+HTML mode, plus a mobile-viewport pass.
+
+### LP-116. All Posts/All Pages: "View" Link For Published Rows
+
+### Goal
+
+`admin/views/posts/all-posts.php`/`admin/views/pages/all-pages.php`'s
+row actions currently only offer Duplicate/Trash (or Restore/Delete
+Permanently in the Trash view) — the title itself is the only link, and
+it always opens the editor. To just check what a published post/page
+actually looks like live, an admin has to open the editor first and use
+its own "Preview"/"View Page" link (`admin/views/posts/new.php`/
+`admin/views/pages/new.php`'s sidebar) — an unnecessary extra hop when
+all they want is to look at the live page.
+
+Add a direct "View" row action, linking straight to
+`post_permalink($listedPost)`/`page_permalink($listedPage)`, opening in
+a new tab (`target="_blank" rel="noopener"`), shown only when the row is
+actually publicly reachable — i.e. `status === Published` (a Draft/
+Pending Review/Scheduled post or page has no live permalink to view;
+that case keeps using the editor's own Preview link, unchanged).
+
+### Checklist
+
+- [x] `admin/views/posts/all-posts.php`: add a "View" action to
+      `.lp-admin__row-actions` for each row where
+      `$listedPost->status === PostStatus::Published`, linking to
+      `post_permalink($listedPost)`
+- [x] `admin/views/pages/all-pages.php`: same, for
+      `$listedPage->status === PageStatus::Published`, linking to
+      `page_permalink($listedPage)` — this file renders rows in **two**
+      places (the flat Trash-view table and the nested tree view for the
+      normal list), both need the same addition
+- [x] Order/placement: "View" first among the row actions (before
+      Duplicate), matching how "Preview"/"View Page" already lead the
+      Publish sidebar box in the editor
+- [x] Verify end-to-end in a real browser: a Published post/page's "View"
+      link opens the correct live URL in a new tab; a Draft/Pending
+      Review/Scheduled row shows no "View" link at all
+
+### LP-122. Insert Media Folder As Thumbnail Gallery In Post/Page Content
+
+### Goal
+
+Media folders are often used to group a set of related images under one
+subject (e.g. "Icons," "Wallpapers" for a given fandom/character). There
+is currently no way to insert a whole folder into a post/page at once —
+an author has to insert each image individually one at a time. Add the
+ability to insert an entire folder as a row of thumbnails in the
+content editor, with the same per-image link-target choice the single
+Insert Image flow already offers (link to none, the full-size image, or
+the individual attachment/media item).
+
+**Implemented (2026-08-26).** A new core service,
+`FolderGalleryShortcode` (`app/Services/FolderGalleryShortcode.php`,
+wired into the `content_html` filter in `include/bootstrap.php`),
+renders `[lumora_folder_gallery folder_id="12" link="full"]` as a row
+of thumbnails resolved at request time — the row always reflects the
+folder's current contents, and a deleted folder or image just means
+fewer/zero thumbnails next render rather than a broken stale reference.
+Modeled directly on the existing `[lumora_downloads]` plugin shortcode
+pattern.
+
+The per-insert link-target choice ended up two options, not three:
+**None** or **Media File** (the full-size image, wrapped in a link that
+joins the post's PhotoSwipe lightbox gallery) — matching exactly what
+Insert Image's own "Link To" select actually offers today. The third
+option this ticket originally described ("link to the individual media
+item's own page") doesn't exist as a concept anywhere in Lumora Press —
+there is no public single-media attachment page/route at all, only a
+raw-file download endpoint. Confirmed with Ariane before implementing;
+building that page is out of scope here and would be its own ticket if
+wanted later.
+
+A new "Insert Folder" toolbar button sits next to Insert Image in both
+the Markdown (EasyMDE) and HTML/WYSIWYG (TinyMCE) editors
+(`admin/assets/js/content-editor.js`) — a lightweight dialog (folder
+`<select>` + Link To `<select>`) reusing the folder list already
+preloaded for Insert Image's own filter dropdown, needing no new
+server query endpoint. This automatically reaches every place
+`content-editor.js` is used (Posts, Pages, and the Downloads plugin's
+own description field), same as Insert Image.
+
+Deliberately **not** built on top of LP-110 ("Shortcode Insert
+Picker") — that ticket's generic shortcode-registration API + picker
+doesn't exist yet and is a separate, larger, not-started ticket. This
+is its own dedicated button, not a consumer of that not-yet-built
+system.
+
+Thumbnail styling (`.lp-folder-gallery`/`__items`/`__item`/`__link`/
+`__thumb`, 150×150 cropped, 100×100 under the existing 720px mobile
+breakpoint) lives in both `content/themes/default/style.css` and
+`custom themes/duskline/style.css` per the Public-Facing CSS Rule and
+Custom Theme Rules. **Real bug found and fixed during browser
+verification:** the thumbnail's fixed `width`/`height` was silently
+overridden back to each image's natural aspect ratio whenever the
+gallery rendered inside `.lp-post__content` — that wrapper's own
+`img { height: auto }` rule is exactly as specific as a single-class
+`.lp-folder-gallery__thumb` selector, so it won on the cascade
+regardless of source order. Fixed by qualifying the selector as
+`img.lp-folder-gallery__thumb` to match that same "class + element"
+specificity tier, the identical mechanism `.lp-downloads-list__description
+img`'s own alignment rules already rely on — caught only by inspecting
+real computed CSS on a live page with real imported production data
+(200 real images), not by the unit tests alone.
+
+Covered by a new `FolderGalleryShortcodeTest.php`
+(`PHP Test Suite/Unit/Services/`, 12 tests) — every image in a folder
+rendered, both `link` modes, the small-thumbnail-URL fallback to the
+full-size file, missing/nonexistent/empty folder all rendering nothing,
+an unrecognized `link` value falling back to `none`, and multiple
+shortcodes in one content string. Full suite (1694 tests) and
+`composer stan` both run clean. Browser-verified end-to-end against the
+dev install with real imported production data (a 200+ image
+"Wallpapers" folder): both editors insert the shortcode correctly, the
+front end renders real thumbnails with correct lightbox links for
+"Media File", correct `no-lightbox`/no-wrapping-`<a>` markup for
+"None", a nonexistent folder renders nothing with no PHP error, and the
+rest of the post's content renders normally around the gallery.
+
+### Checklist
+
+- [x] A new "Insert Folder" option in the content editor (alongside the
+      existing Insert Image entry point) — implemented as its own
+      lightweight dialog (folder + link-to choice) rather than
+      extending the Media Manager grid picker into a "folder-select
+      mode," since the folder list was already available client-side
+      with no need for the picker's own paginated image-grid query
+- [x] Inserted content renders every image currently in the chosen
+      folder as a row of thumbnails — decided and documented above: a
+      live-resolving `[lumora_folder_gallery folder_id="..."]`
+      shortcode, not a static list of image ids frozen at insert time
+- [x] Per-thumbnail link behavior, matching Insert Image's existing
+      options — decided and documented above: two options (None / Media
+      File), not three, since Insert Image itself has no third
+      "attachment page" option and Lumora Press has no such public page
+- [x] Thumbnail row styling lives in the active theme's `style.css` per
+      the Public-Facing CSS Rule (stable classes, responsive wrapping,
+      dark mode via the shared `--lp-*` tokens) — not inline styles in
+      the rendered content
+- [x] Handle an empty folder and a folder that no longer exists (deleted
+      after insert) without a broken/blank render or a PHP error
+- [x] Regression/unit tests for the new render path (shortcode or
+      renderer, whichever approach is chosen) and its link-mode variants
+- [x] Verify end-to-end in a real browser: insert a folder with several
+      images into a post, confirm the thumbnail row renders correctly
+      for each link-mode option, and confirm removing/adding a file to
+      the folder afterward behaves as decided above (live vs. frozen)
+
+### LP-124. Require Admin/Staff Username to Differ From Display Name, Discourage Guessable Usernames
+
+### Goal
+
+A user with a backend/posting role (Administrator, Editor, Author, or
+Contributor) could have an identical login username and public Display
+Name — the installer's own admin-account step even set them to the
+same value by default. Since a post's byline exposes Display Name to
+every visitor, an identical login/Display Name effectively publishes
+half of the account's credentials (the username) to anyone reading the
+site, halving the guesswork an attacker needs for a login/password-
+reset brute-force attempt. Require the login and Display Name to be
+different for every admin/staff role, and discourage (for
+Administrator specifically, reject outright) an obviously guessable
+login username like "admin".
+
+Distinct from LPP-001 "Lumora Shield"'s planned "Stop User
+Enumeration" module (preventing an *attacker* from discovering a valid
+username via response-timing/error-message differences at login) and
+its "Username Blacklist" (a *commenter* username blocklist) — this
+ticket is about the account holder's own username choice at creation
+time, not runtime enumeration defenses.
+
+### Checklist
+
+- [x] New `UserService::usernameMatchesDisplayName()`/
+      `isGuessableAdministratorUsername()` validation-check methods
+      (mirroring the existing `usernameOrEmailExists()`/
+      `usernameOrEmailExistsForOther()` pattern — a check method the
+      caller consults before writing, not an exception thrown inside
+      `create()`/`update()` themselves) — deliberately *not* baked into
+      `create()`/`update()` directly, since those two methods are also
+      called by the WordPress Importer and Dummy Content generator,
+      neither of which should have an otherwise-harmless imported/
+      generated account silently abort the whole batch over this rule.
+      `usernameMatchesDisplayName()` compares trimmed/case-insensitive,
+      applies to Administrator/Editor/Author/Contributor (Subscriber
+      has no posting byline or backend access for the collision to
+      matter); `isGuessableAdministratorUsername()` checks a small
+      fixed blocklist (`admin`, `administrator`, `root`, `webmaster`,
+      `superuser`, `owner`, case-insensitive), consulted only for the
+      Administrator role — the highest-value target, and the one role
+      every WordPress-hardening convention already specifically targets
+      for this same reason
+- [x] Installer's admin-account step (`install/index.php`) surfaces
+      both new validation failures as real inline form errors (matching
+      its existing `$errors[]` pattern), and no longer defaults Display
+      Name to the same value as the username — an empty Display Name
+      field is required to be filled in explicitly, not silently
+      defaulted to a value that would fail the new same-value check
+- [x] Admin "Add/Edit User" screen (`admin/views/users.php`) surfaces
+      both new validation failures as a real inline form error (matching
+      its existing `$error` pattern), and no longer suggests "leave
+      blank to use the username" in the Display Name field's hint text
+- [x] Regression/unit tests in `UserServiceTest.php` for both new
+      validation rules (reject on create/update for each affected role,
+      confirm Subscriber is unaffected, confirm the blocklist only
+      applies to Administrator)
+- [x] Verify end-to-end in a real browser: the installer refuses to
+      proceed with a same-value admin username/Display Name or a
+      blocklisted Administrator username, and the admin Add/Edit User
+      screen refuses the same for a new or edited Editor/Author/
+      Contributor/Administrator account, with a clear error message
+      each time
+
+### Deferred (not attempted this pass)
+
+- No retroactive check/dashboard warning for an *existing* account that
+  already violates this rule from before the feature existed — this
+  ticket only validates going forward, at create/edit time
+- No true "hard to guess" strength scoring (entropy/dictionary check)
+  beyond the small fixed Administrator blocklist above — flagged as a
+  possible future enhancement, not built here
+
