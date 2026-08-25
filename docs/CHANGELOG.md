@@ -537,6 +537,9 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- default theme: refreshed `preview.jpg` (the Appearance › Themes
+  screenshot) to match the theme's current appearance — the previous
+  image predated several since-shipped changes.
 - WordPress Importer: Maintenance › Import's separate "Preview (Dry
   Run)" and "Start Import" forms (LPP-004) are now one form — a "Dry
   run (preview only — makes no changes)" checkbox above the single
