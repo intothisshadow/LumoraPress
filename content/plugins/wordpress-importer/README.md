@@ -67,8 +67,9 @@ a local copy of the source site's `wp-content/uploads` folder.
   `size-large`) while keeping alignment classes as-is, leaves `alt`/
   `width`/`height`/`title` untouched, and correctly handles `<figure>`/
   `<figcaption>` wrappers and an image wrapped in `<a href="...">`. A
-  WordPress `[gallery]` shortcode or gallery block has no single
-  `<img src>` to resolve and is flagged in the warnings instead.
+  WordPress `[gallery]` shortcode, gallery block, Jetpack Tiled Gallery
+  block, or Jetpack `[slideshow]` shortcode has no single `<img src>`
+  to resolve and is flagged in the warnings instead.
 - Every WordPress menu (each `nav_menu` taxonomy term) becomes a named,
   reusable Lumora Press menu — custom links, and links to an already-
   imported page/post/category/tag, resolved to their real permalink and

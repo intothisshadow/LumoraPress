@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: two more WordPress/Jetpack media constructs a
+  migrated post/page's content can't fully resolve are now detected
+  and flagged as an import warning, matching the existing `[gallery]`
+  shortcode/`wp-block-gallery` block handling — Jetpack's Tiled
+  Gallery block and its `[slideshow]` shortcode.
 - WordPress Importer: a real import now finishes on a dedicated Import
   Summary screen instead of a small inline alert — imported counts, an
   "Action needed" section calling out genuine follow-up items
@@ -719,6 +724,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- WordPress Importer: a post/page whose *only* image content was a
+  `[gallery]`/`wp-block-gallery`/Tiled Gallery/`[slideshow]` construct
+  (no other real `<img>`/`<a>` reference anywhere else in the same
+  content) silently produced no warning about it at all — the leftover
+  gallery/slideshow content was left exactly as unresolved as it would
+  have been with a warning, just without the warning itself. Fixed by
+  no longer skipping that detection when the content has no other
+  uploads-path reference to rewrite.
 - A download's Description imported via the WordPress Importer could
   contain an `<img>` still pointing at the original WordPress site's
   domain (e.g. a Simple Download Monitor preview thumbnail such as

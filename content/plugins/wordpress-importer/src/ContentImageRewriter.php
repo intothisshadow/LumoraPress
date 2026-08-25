@@ -68,8 +68,15 @@ final class ContentImageRewriter
      */
     public function rewrite(string $content, array $oldRelativePathToNewUrl): array
     {
+        // Cheap string checks, run unconditionally — a post whose only
+        // image content is a gallery/tiled-gallery/slideshow construct
+        // (no other real <img>/<a> uploads reference anywhere in the
+        // same content) must still be flagged, even though there's
+        // nothing here for the DOM pass below to actually rewrite.
+        $warnings = $this->unsupportedMediaConstructWarnings($content);
+
         if ($oldRelativePathToNewUrl === [] || !str_contains($content, self::UPLOADS_MARKER)) {
-            return ['content' => $content, 'warnings' => []];
+            return ['content' => $content, 'warnings' => $warnings];
         }
 
         $dom = new DOMDocument();
@@ -92,7 +99,7 @@ final class ContentImageRewriter
         libxml_use_internal_errors($previousInternalErrors);
 
         if (!$loaded) {
-            return ['content' => $content, 'warnings' => []];
+            return ['content' => $content, 'warnings' => $warnings];
         }
 
         // getElementsByTagName() returns a live NodeList — collecting it
@@ -109,7 +116,7 @@ final class ContentImageRewriter
 
         return [
             'content' => $dom->saveHTML(),
-            'warnings' => $this->unsupportedGalleryWarning($content),
+            'warnings' => $warnings,
         ];
     }
 
@@ -210,22 +217,51 @@ final class ContentImageRewriter
     }
 
     /**
-     * WordPress's classic `[gallery]` shortcode and the block editor's
-     * `wp-block-gallery` markup both represent a set of images through
-     * something other than a single `<img src>` this class can resolve —
-     * flagged once per affected item (the caller prefixes this with the
-     * post/page's own identity, matching flagUnsupportedShortcodes()'s
-     * existing convention) rather than silently leaving a gallery
-     * pointing at nothing.
+     * WordPress's classic `[gallery]` shortcode, the block editor's
+     * `wp-block-gallery` markup, Jetpack's Tiled Gallery block
+     * (`tiled-gallery` — its own shortcode form, `[gallery
+     * type="rectangular"]`, is already caught by the plain `[gallery`
+     * check above, since it still starts with that same literal text),
+     * and Jetpack's `[slideshow]` shortcode all represent a set of
+     * images through something other than a single `<img src>` this
+     * class can resolve — each flagged once per affected item (the
+     * caller prefixes this with the post/page's own identity, matching
+     * flagUnsupportedShortcodes()'s existing convention) rather than
+     * silently leaving them pointing at nothing.
+     *
+     * Deliberately *not* checked here: a CSS `background-image: url(...)`
+     * referencing `/wp-content/uploads/` (e.g. a Cover block) — real
+     * WordPress Cover block output commonly emits *both* a background-
+     * image style *and* a real `<img>` fallback for the same image, so
+     * flagging every background-image occurrence would warn on an
+     * image that was often already correctly resolved via the `<img>`
+     * pass above, not genuinely left broken. None of these four
+     * (including the two above) were found in the real production
+     * database this ticket's other work was verified against — this
+     * list is scoped from well-documented, stable WordPress/Jetpack
+     * markup conventions, not confirmed production data, unlike a
+     * private plugin's own database schema (see e.g.
+     * WordPressSource::nextGenAlbums()'s own docblock for why that
+     * distinction matters here).
      *
      * @return array<int, string>
      */
-    private function unsupportedGalleryWarning(string $originalContent): array
+    private function unsupportedMediaConstructWarnings(string $originalContent): array
     {
+        $warnings = [];
+
         if (preg_match('/\[gallery\b/', $originalContent) === 1 || str_contains($originalContent, 'wp-block-gallery')) {
-            return ['still contains a WordPress image gallery (shortcode or block) — only plain <img> references are rewritten, so the gallery images may still point at the old site.'];
+            $warnings[] = 'still contains a WordPress image gallery (shortcode or block) — only plain <img> references are rewritten, so the gallery images may still point at the old site.';
         }
 
-        return [];
+        if (str_contains($originalContent, 'tiled-gallery')) {
+            $warnings[] = 'still contains a Jetpack Tiled Gallery block — only plain <img> references are rewritten, so its images may still point at the old site.';
+        }
+
+        if (preg_match('/\[slideshow\b/', $originalContent) === 1) {
+            $warnings[] = 'still contains a Jetpack [slideshow] shortcode — only plain <img> references are rewritten, so its images may still point at the old site.';
+        }
+
+        return $warnings;
     }
 }

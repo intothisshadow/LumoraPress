@@ -310,17 +310,21 @@ final class WordPressImportService
      *
      * Deliberately a fixed set of substrings matched against the exact
      * wording reportUnsupportedPostTypes()/reportUnsupportedPlugins()/
-     * flagUnsupportedShortcodes()/ContentImageRewriter::rewrite() already
-     * produce, rather than a structured warning type threaded through
-     * every one of this class's many warning call sites — those four
-     * are the only "needs a human decision" warnings this importer
-     * currently produces; everything else just documents what was
-     * skipped and why, with nothing further for the admin to act on.
+     * flagUnsupportedShortcodes()/ContentImageRewriter::
+     * unsupportedMediaConstructWarnings() already produce, rather than
+     * a structured warning type threaded through every one of this
+     * class's many warning call sites — those four are the only "needs
+     * a human decision" warnings this importer currently produces;
+     * everything else just documents what was skipped and why, with
+     * nothing further for the admin to act on. `'still contains a '`
+     * alone covers every leftover-shortcode/block variant
+     * flagUnsupportedShortcodes()/unsupportedMediaConstructWarnings()
+     * produce (sdm_show_dl/ngg/gallery/tiled-gallery/slideshow) without
+     * needing to list each one by name here too.
      */
     public static function isActionNeededWarning(string $warning): bool
     {
-        return str_contains($warning, 'still contains a [')
-            || str_contains($warning, 'still contains a WordPress image gallery')
+        return str_contains($warning, 'still contains a ')
             || str_contains($warning, 'were not imported — no Lumora Press equivalent exists for it.')
             || str_contains($warning, 'other active plugin(s) with no Lumora Press equivalent');
     }
