@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: attachments organized with the "Folders" plugin
+  (LPP-004) now import into matching Media Manager folders, preserving
+  the source site's own nesting, instead of every attachment landing
+  with no folder at all. A Simple Download Monitor download's
+  description now also falls back to its post body when the plugin's
+  own Description field was left empty, instead of being silently
+  dropped.
 - Downloads: the Add/Edit Download screens' Description field now uses
   the same shared WYSIWYG/Markdown/HTML editor and format-switching UI
   Posts and Pages already use, instead of a plain textarea (LPP-010).

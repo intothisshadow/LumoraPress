@@ -528,6 +528,48 @@ final class WordPressSource
         return ['count' => $offset + $logCount, 'lastDownloadedAt' => $lastDownloadedAt];
     }
 
+    /**
+     * The "Folders" plugin (`folders/folders.php`, internally still
+     * prefixed `mgmlp_` from an earlier name) stores its whole Media
+     * Library folder tree in one flat junction table,
+     * `{prefix}mgmlp_folders` (post_id => folder_id) — confirmed against
+     * a real production database rather than guessed, per this ticket's
+     * own established practice (see the `sdm_downloads`/`sdm_categories`
+     * schema note elsewhere in this codebase). It does double duty: a
+     * row whose post_id is an `attachment` records which folder that
+     * file sits in, and a row whose post_id is itself a folder (custom
+     * post type `mgmlp_media_folder`) records that folder's own parent
+     * folder — real data confirms `post_parent` is never used for this
+     * (every `mgmlp_media_folder` post carries `post_parent = 0`
+     * regardless of actual nesting depth), so hierarchy must be read
+     * from this table, not from `posts()`. folder_id 0 means "no
+     * folder" / top-level and is excluded from the returned map.
+     *
+     * `{prefix}mgmlp_folders` won't exist at all on a source site that
+     * never ran the Folders plugin — caught the same way
+     * sdmDownloadStats() above catches a missing plugin table.
+     *
+     * @return array<int, int> post_id (attachment or folder) => folder_id
+     */
+    public function mediaLibraryFolderAssignments(): array
+    {
+        try {
+            $rows = $this->source->fetchAll(
+                'SELECT post_id, folder_id FROM ' . $this->table('mgmlp_folders') . ' WHERE folder_id != 0',
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[(int) $row['post_id']] = (int) $row['folder_id'];
+        }
+
+        return $map;
+    }
+
     private function table(string $name): string
     {
         return $this->tablePrefix . $name;

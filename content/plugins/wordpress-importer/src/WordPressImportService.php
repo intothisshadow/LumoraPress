@@ -1609,7 +1609,10 @@ final class WordPressImportService
             // Simple Download Monitor's own editor always stores this field
             // as raw HTML (see both recordExisting() calls below), never
             // Markdown/plain text — matches how post/page content is tagged.
-            $description = ($meta['sdm_description'] ?? '') !== '' ? $meta['sdm_description'] : '';
+            // A description typed directly into the download's own post
+            // body (rather than SDM's dedicated Description field) falls
+            // back to post_content, so it isn't silently dropped.
+            $description = ($meta['sdm_description'] ?? '') !== '' ? $meta['sdm_description'] : $download['post_content'];
 
             $uploadsMarker = '/wp-content/uploads/';
 
@@ -1696,6 +1699,73 @@ final class WordPressImportService
     }
 
     /**
+     * The "Folders" plugin's own Media Library folder tree (see
+     * WordPressSource::mediaLibraryFolderAssignments()'s docblock for the
+     * confirmed real-world schema) — created as real, top-level Media
+     * Manager folders (parentId null for a root folder), unlike
+     * importFolders()'s Downloads-only synthetic "Downloads" wrapper,
+     * since this *is* the site's own regular Media Library organization
+     * rather than a foreign taxonomy being given a home. Returns an empty
+     * map immediately, with no folder created at all, when the source
+     * never ran that plugin — mirrors importFolders()'s own early return.
+     *
+     * @return array<int, int> wpFolderPostId => local folder id
+     */
+    private function importMediaFolders(string $batchId): array
+    {
+        $remaining = $this->source->posts(['mgmlp_media_folder'], ['publish']);
+        $localIdByWpPostId = [];
+
+        if ($remaining === []) {
+            return $localIdByWpPostId;
+        }
+
+        $wpParentByWpPostId = $this->source->mediaLibraryFolderAssignments();
+
+        while ($remaining !== []) {
+            $stillRemaining = [];
+            $progressed = false;
+
+            foreach ($remaining as $folderPost) {
+                $wpParentId = $wpParentByWpPostId[$folderPost['ID']] ?? 0;
+
+                if ($wpParentId === 0) {
+                    $parentId = null;
+                } elseif (isset($localIdByWpPostId[$wpParentId])) {
+                    $parentId = $localIdByWpPostId[$wpParentId];
+                } else {
+                    $stillRemaining[] = $folderPost;
+                    continue;
+                }
+
+                $folder = $this->folders->create($this->resolveTitle($folderPost['post_title']), $parentId);
+                $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
+                $localIdByWpPostId[$folderPost['ID']] = $folder->id;
+                $progressed = true;
+            }
+
+            if (!$progressed) {
+                // Every remaining folder's own parent folder id doesn't
+                // resolve (data oddity, e.g. a parent that was itself
+                // trashed) — create the rest top-level rather than
+                // looping forever, matching importCategories()'s own
+                // fallback.
+                foreach ($stillRemaining as $folderPost) {
+                    $folder = $this->folders->create($this->resolveTitle($folderPost['post_title']), null);
+                    $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
+                    $localIdByWpPostId[$folderPost['ID']] = $folder->id;
+                }
+
+                $stillRemaining = [];
+            }
+
+            $remaining = $stillRemaining;
+        }
+
+        return $localIdByWpPostId;
+    }
+
+    /**
      * @param array<int, int> $wpUserIdToLocalId
      * @return array{0: array<int, int>, 1: array<string, string>} [wpAttachmentId => local media id, old _wp_attached_file relative path (e.g. "2020/03/cover.png") => new Lumora media URL]
      */
@@ -1703,6 +1773,8 @@ final class WordPressImportService
     {
         $wpAttachmentIdToLocalMediaId = [];
         $oldRelativePathToNewUrl = [];
+        $wpMediaFolderIdToLocalId = $this->importMediaFolders($batchId);
+        $wpFolderIdByAttachmentId = $wpMediaFolderIdToLocalId !== [] ? $this->source->mediaLibraryFolderAssignments() : [];
 
         foreach ($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES) as $attachment) {
             $meta = $this->source->postMeta($attachment['ID']);
@@ -1721,11 +1793,14 @@ final class WordPressImportService
             }
 
             $authorId = $wpUserIdToLocalId[$attachment['post_author']] ?? 1;
+            $wpFolderId = $wpFolderIdByAttachmentId[$attachment['ID']] ?? null;
+            $folderId = $wpFolderId !== null ? ($wpMediaFolderIdToLocalId[$wpFolderId] ?? null) : null;
 
             $data = new ImportedMedia(
                 absolutePath: $absolutePath,
                 uploadedByUserId: $authorId,
                 fileName: basename($relativePath),
+                folderId: $folderId,
                 // _wp_attachment_image_alt is a plain-text field rendered
                 // via esc_attr() — postMeta() returns raw postmeta values
                 // as-is (some meta keys carry serialized/structural data
