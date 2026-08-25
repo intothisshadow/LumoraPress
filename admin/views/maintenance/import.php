@@ -549,6 +549,17 @@ if ($wordPressImporterActive) {
          */
         $renderConnectionFields = static function (string $idPrefix) use ($formValues): void {
             ?>
+            <p class="lp-field__hint">
+                Choose <strong>Direct database connection</strong> when you can reach the source
+                site's database directly (its own live server, or a locally restored backup) — it's
+                the only way to also bring in Site Settings, Widgets, and real user roles, none of
+                which a WXR export can carry. Choose <strong>WXR (.xml) export file</strong> when you
+                only have an export file (from WordPress's own Tools &rsaquo; Export, or a host/
+                migration that hands you one) and no database access — it still imports users,
+                categories/tags, media, pages, posts, comments, and menus, but every imported user
+                lands as Subscriber and there's nothing to import for Site Settings or Widgets.
+            </p>
+
             <p class="lp-field lp-field--radio">
                 <label>
                     <input type="radio" name="source_type" value="database" <?= $formValues['source_type'] === 'database' ? 'checked' : '' ?>>
