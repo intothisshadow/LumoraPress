@@ -941,8 +941,28 @@ final class WordPressImportService
             }
 
             foreach (['comment', 'post', 'page', 'download', 'media', 'redirect', 'folder', 'category', 'tag', 'user'] as $contentType) {
-                foreach ($this->registry->idsForBatch($batchId, $contentType) as $entry) {
-                    $this->deleteOne($entry['contentType'], $entry['contentId']);
+                $ids = array_map(
+                    static fn (array $entry): int => $entry['contentId'],
+                    $this->registry->idsForBatch($batchId, $contentType),
+                );
+
+                if ($contentType === 'folder') {
+                    // FolderService::delete() refuses to delete a folder
+                    // that still has child folders — a plain in-order
+                    // delete over idsForBatch()'s own (unordered)
+                    // rows silently leaves an imported parent folder
+                    // behind whenever its child happens to be deleted
+                    // after it, since a nested folder tree (this
+                    // ticket's own Media Library Folders and Downloads
+                    // category imports both create one) has no
+                    // guaranteed row order to rely on.
+                    $this->deleteFoldersDeepestFirst($ids);
+
+                    continue;
+                }
+
+                foreach ($ids as $id) {
+                    $this->deleteOne($contentType, $id);
                 }
             }
 
@@ -950,6 +970,45 @@ final class WordPressImportService
         }
 
         return $totals;
+    }
+
+    /**
+     * Repeatedly attempts to delete every folder in $ids, in passes —
+     * each pass removes whatever's now childless (a leaf, or a folder
+     * whose only children were already deleted in an earlier pass),
+     * regardless of what order $ids arrived in. A folder that still
+     * can't be deleted once no pass makes further progress (e.g. an
+     * admin manually filed extra media into an imported folder before
+     * removing the import) is left behind rather than looping forever —
+     * the same "refuse rather than orphan its contents" behavior
+     * FolderService::delete() already documents for a manual delete.
+     *
+     * @param array<int, int> $ids
+     */
+    private function deleteFoldersDeepestFirst(array $ids): void
+    {
+        $remaining = $ids;
+
+        while ($remaining !== []) {
+            $stillRemaining = [];
+            $progressed = false;
+
+            foreach ($remaining as $id) {
+                if ($this->folders->delete($id)) {
+                    $progressed = true;
+
+                    continue;
+                }
+
+                $stillRemaining[] = $id;
+            }
+
+            if (!$progressed) {
+                break;
+            }
+
+            $remaining = $stillRemaining;
+        }
     }
 
     private function deleteOne(string $contentType, int $id): void
@@ -967,7 +1026,8 @@ final class WordPressImportService
             'download' => $this->downloads?->delete($id),
             'media' => $this->media->delete($id),
             'redirect' => $this->redirects->delete($id),
-            'folder' => $this->folders->delete($id),
+            // 'folder' is never reached here — removeAll() special-cases
+            // it via deleteFoldersDeepestFirst() before this match runs.
             'category' => $this->categories->delete($id),
             'tag' => $this->tags->delete($id),
             'user' => $this->users->delete($id),
@@ -1699,61 +1759,65 @@ final class WordPressImportService
     }
 
     /**
-     * The "Folders" plugin's own Media Library folder tree (see
-     * WordPressSource::mediaLibraryFolderAssignments()'s docblock for the
-     * confirmed real-world schema) — created as real, top-level Media
-     * Manager folders (parentId null for a root folder), unlike
+     * The "Folders" plugin (`folders/folders.php`) organizes the regular
+     * Media Library into a real, standard WordPress taxonomy —
+     * `media_folder`, term_relationships-based exactly like `category` —
+     * confirmed against a real production database (not guessed, per
+     * this ticket's own established practice) rather than against a
+     * second, inactive-looking plugin's own leftover `mgmlp_*` tables,
+     * whose folder names turned out to just mirror the physical
+     * `uploads/YYYY/MM` directory layout rather than anything an admin
+     * ever organized by hand. Needs no new hierarchy-resolution code at
+     * all — the same multi-pass parent walk importCategories() already
+     * does over `terms()`'s own `parent` column — but, unlike
      * importFolders()'s Downloads-only synthetic "Downloads" wrapper,
-     * since this *is* the site's own regular Media Library organization
-     * rather than a foreign taxonomy being given a home. Returns an empty
-     * map immediately, with no folder created at all, when the source
-     * never ran that plugin — mirrors importFolders()'s own early return.
+     * lands a top-level folder at the Media Manager's real root, since
+     * this *is* the site's own regular Media Library organization rather
+     * than a foreign taxonomy being given a home. Returns an empty map,
+     * with no folder created at all, when the source never ran that
+     * plugin (no `media_folder` terms exist) — mirrors importFolders()'s
+     * own early return.
      *
-     * @return array<int, int> wpFolderPostId => local folder id
+     * @return array<int, int> wpTermId => local folder id
      */
     private function importMediaFolders(string $batchId): array
     {
-        $remaining = $this->source->posts(['mgmlp_media_folder'], ['publish']);
-        $localIdByWpPostId = [];
+        $remaining = $this->source->terms('media_folder');
+        $localIdByWpTermId = [];
 
         if ($remaining === []) {
-            return $localIdByWpPostId;
+            return $localIdByWpTermId;
         }
-
-        $wpParentByWpPostId = $this->source->mediaLibraryFolderAssignments();
 
         while ($remaining !== []) {
             $stillRemaining = [];
             $progressed = false;
 
-            foreach ($remaining as $folderPost) {
-                $wpParentId = $wpParentByWpPostId[$folderPost['ID']] ?? 0;
-
-                if ($wpParentId === 0) {
+            foreach ($remaining as $term) {
+                if ($term['parent'] === 0) {
                     $parentId = null;
-                } elseif (isset($localIdByWpPostId[$wpParentId])) {
-                    $parentId = $localIdByWpPostId[$wpParentId];
+                } elseif (isset($localIdByWpTermId[$term['parent']])) {
+                    $parentId = $localIdByWpTermId[$term['parent']];
                 } else {
-                    $stillRemaining[] = $folderPost;
+                    $stillRemaining[] = $term;
                     continue;
                 }
 
-                $folder = $this->folders->create($this->resolveTitle($folderPost['post_title']), $parentId);
+                $folder = $this->folders->create($term['name'], $parentId);
                 $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                $localIdByWpPostId[$folderPost['ID']] = $folder->id;
+                $localIdByWpTermId[$term['term_id']] = $folder->id;
                 $progressed = true;
             }
 
             if (!$progressed) {
-                // Every remaining folder's own parent folder id doesn't
-                // resolve (data oddity, e.g. a parent that was itself
-                // trashed) — create the rest top-level rather than
-                // looping forever, matching importCategories()'s own
-                // fallback.
-                foreach ($stillRemaining as $folderPost) {
-                    $folder = $this->folders->create($this->resolveTitle($folderPost['post_title']), null);
+                // Every remaining term's parent id doesn't exist in the
+                // 'media_folder' taxonomy at all (data oddity) — create
+                // the rest top-level rather than looping forever,
+                // matching importCategories()'s own fallback.
+                foreach ($stillRemaining as $term) {
+                    $folder = $this->folders->create($term['name'], null);
                     $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
-                    $localIdByWpPostId[$folderPost['ID']] = $folder->id;
+                    $localIdByWpTermId[$term['term_id']] = $folder->id;
                 }
 
                 $stillRemaining = [];
@@ -1762,7 +1826,35 @@ final class WordPressImportService
             $remaining = $stillRemaining;
         }
 
-        return $localIdByWpPostId;
+        return $localIdByWpTermId;
+    }
+
+    /**
+     * Mirrors resolveDownloadFolder()'s own "prefer a child term over its
+     * parent" logic for an attachment tagged with more than one
+     * `media_folder` term at once — Media items support only one folder,
+     * so the more specific one is the more useful choice.
+     *
+     * @param array<int, int> $wpMediaFolderIdToLocalId
+     */
+    private function resolveMediaFolder(int $wpAttachmentId, array $wpMediaFolderIdToLocalId): ?int
+    {
+        $candidateTermIds = array_values(array_intersect(
+            $this->source->termIdsForPost($wpAttachmentId, 'media_folder'),
+            array_keys($wpMediaFolderIdToLocalId),
+        ));
+
+        if ($candidateTermIds === []) {
+            return null;
+        }
+
+        foreach ($this->source->terms('media_folder') as $term) {
+            if (in_array($term['term_id'], $candidateTermIds, true) && $term['parent'] !== 0) {
+                return $wpMediaFolderIdToLocalId[$term['term_id']];
+            }
+        }
+
+        return $wpMediaFolderIdToLocalId[$candidateTermIds[0]];
     }
 
     /**
@@ -1774,7 +1866,6 @@ final class WordPressImportService
         $wpAttachmentIdToLocalMediaId = [];
         $oldRelativePathToNewUrl = [];
         $wpMediaFolderIdToLocalId = $this->importMediaFolders($batchId);
-        $wpFolderIdByAttachmentId = $wpMediaFolderIdToLocalId !== [] ? $this->source->mediaLibraryFolderAssignments() : [];
 
         foreach ($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES) as $attachment) {
             $meta = $this->source->postMeta($attachment['ID']);
@@ -1793,8 +1884,9 @@ final class WordPressImportService
             }
 
             $authorId = $wpUserIdToLocalId[$attachment['post_author']] ?? 1;
-            $wpFolderId = $wpFolderIdByAttachmentId[$attachment['ID']] ?? null;
-            $folderId = $wpFolderId !== null ? ($wpMediaFolderIdToLocalId[$wpFolderId] ?? null) : null;
+            $folderId = $wpMediaFolderIdToLocalId !== []
+                ? $this->resolveMediaFolder($attachment['ID'], $wpMediaFolderIdToLocalId)
+                : null;
 
             $data = new ImportedMedia(
                 absolutePath: $absolutePath,
