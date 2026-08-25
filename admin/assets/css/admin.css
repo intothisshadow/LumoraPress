@@ -1457,10 +1457,22 @@ body.lp-admin-login {
     border-radius: var(--lp-admin-radius) !important;
 }
 
+/*
+ * LP-115: enlarged from 640px and given a fixed header/scrolling-grid
+ * split (the same shape .lp-menus-add-panel__list's scrollable list
+ * uses elsewhere) — Search/Folder/Upload New must stay visible while
+ * scrolling a long grid rather than scrolling away with it.
+ */
 .lp-editor-media-dialog {
-    width: min(640px, 92vw);
-    max-height: 80vh;
-    overflow-y: auto;
+    width: min(900px, 95vw);
+    /* A definite height (not just max-height) is required here — the
+       grid's flex: 1 1 0 needs real leftover space to grow into; with
+       no explicit height the column container instead just shrinks to
+       fit its content, leaving the grid with nothing to stretch into. */
+    height: 85vh;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
     padding: 1.25rem;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
@@ -1472,18 +1484,90 @@ body.lp-admin-login {
     background: rgba(0, 0, 0, 0.5);
 }
 
+.lp-editor-media-dialog__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+/* A `display` rule here would otherwise beat the [hidden] attribute's
+   own (much lower-specificity) UA-stylesheet `display: none` — content-
+   editor.js toggles .hidden on this header/the grid to switch between
+   the browse and Attachment Display Settings steps, so both need an
+   explicit override or they'd stay visibly laid out underneath the
+   settings step instead of actually hiding. */
+.lp-editor-media-dialog__header[hidden] {
+    display: none;
+}
+
+.lp-editor-media-dialog__search {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.lp-editor-media-dialog__folder-select {
+    flex: 0 1 220px;
+    min-width: 0;
+}
+
+.lp-editor-media-dialog__upload-button {
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.lp-editor-media-dialog__upload-button.is-uploading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.lp-editor-media-dialog__status {
+    flex-shrink: 0;
+    margin: 0 0 0.75rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+/* LP-115: the grid is the one part of the dialog that actually scrolls
+   — minmax(0, 1fr) both here on the flex axis and the same guard
+   .lp-menus-editor's own mobile override already documents (LP-096) —
+   a bare flex: 1 1 auto has an implicit min-height content floor, not 0. */
 .lp-editor-media-dialog__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 0.5rem;
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
     margin-bottom: 1rem;
 }
 
+/* See .lp-editor-media-dialog__header[hidden]'s identical comment. */
+.lp-editor-media-dialog__grid[hidden] {
+    display: none;
+}
+
+/*
+ * No `overflow: hidden` here, deliberately — verified live (2026-08-25)
+ * that setting it on the grid item itself collapses `grid-auto-rows:
+ * auto` row-track sizing to ~0 (CSS Sizing's "automatic minimum size":
+ * an item with overflow other than `visible` contributes 0 to a track's
+ * min sizing pass, and Chromium's max pass followed that same collapsed
+ * value here). Every row lost its real height, so each item's own
+ * aspect-ratio-derived box overflowed on top of the row below it —
+ * every row but the last (nothing to overlap onto) looked cut off,
+ * getting visually worse the more "Load More" added. Rounding the
+ * corners on the <img> itself instead needs no clipping container at
+ * all, since the image already fills its box exactly (width/height:
+ * 100%, object-fit: cover) — sidesteps the collapse rather than fighting
+ * it.
+ */
 .lp-editor-media-dialog__item {
+    aspect-ratio: 1 / 1;
     padding: 0;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
-    overflow: hidden;
     cursor: pointer;
     background: none;
 }
@@ -1491,8 +1575,22 @@ body.lp-admin-login {
 .lp-editor-media-dialog__item img {
     display: block;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    height: 100%;
+    border-radius: calc(var(--lp-admin-radius) - 1px);
     object-fit: cover;
+}
+
+.lp-editor-media-dialog__load-more {
+    align-self: center;
+    flex-shrink: 0;
+    margin-bottom: 1rem;
+}
+
+/* Prevents the flex column dialog's default cross-axis stretch from
+   making Cancel a full-width button. */
+.lp-editor-media-dialog__close {
+    align-self: flex-start;
+    flex-shrink: 0;
 }
 
 /* LP-075's Attachment Display Settings step (Size / Link To), shown after picking an image, before the grid. */
@@ -1500,6 +1598,23 @@ body.lp-admin-login {
     display: flex;
     gap: 0.5rem;
     margin-top: 1rem;
+}
+
+@media (max-width: 782px) {
+    .lp-editor-media-dialog {
+        height: 90vh;
+        max-height: 90vh;
+    }
+
+    .lp-editor-media-dialog__header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lp-editor-media-dialog__search,
+    .lp-editor-media-dialog__folder-select {
+        flex-basis: auto;
+    }
 }
 
 /* Font color swatch picker (Markdown editor's toolbar button) — same fixed palette TinyMCE's lumoraFontColor menu offers. */
@@ -2373,6 +2488,14 @@ select:focus {
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+/* .lp-button's own `display` would otherwise beat the [hidden]
+   attribute's much-lower-specificity UA-stylesheet `display: none` —
+   caught by LP-115's media picker toggling .lp-button--classed controls
+   (Load More) via .hidden, which stayed visibly laid out without this. */
+.lp-button[hidden] {
+    display: none;
 }
 
 .lp-button:hover {

@@ -29,6 +29,44 @@ if (!isset($kernel)) {
 }
 
 /*
+ * Shared shape for one Media row in the "Insert Image" picker (LP-115)
+ * — see PostsController::buildEditorPickerItem()'s identical docblock
+ * (posts/new.php delegates its JSON sub-actions to PostsController;
+ * pages/new.php has no controller of its own, so this stays inline
+ * here, matching editor_upload/convert_content's existing pattern below).
+ *
+ * @param array<string, mixed> $item
+ * @param array<int, array<string, mixed>> $thumbnailsForItem
+ * @return array<string, mixed>
+ */
+$buildEditorPickerItem = static function (array $item, array $thumbnailsForItem) use ($kernel): array {
+    $sizes = [
+        'full' => [
+            'url' => $kernel->media->url($item),
+            'width' => (int) ($item['width'] ?? 0),
+            'height' => (int) ($item['height'] ?? 0),
+        ],
+    ];
+
+    foreach ($thumbnailsForItem as $thumbnail) {
+        $sizes[(string) $thumbnail['size_name']] = [
+            'url' => $kernel->thumbnails->url($item, (string) $thumbnail['size_name']),
+            'width' => (int) $thumbnail['width'],
+            'height' => (int) $thumbnail['height'],
+        ];
+    }
+
+    return [
+        'id' => (int) $item['id'],
+        'url' => $kernel->media->url($item),
+        'name' => (string) $item['file_name'],
+        'alt' => (string) ($item['alt_text'] ?? ''),
+        'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
+        'sizes' => $sizes,
+    ];
+};
+
+/*
  * Editor image upload and format-switch conversion — see the identical
  * block's docblock in admin/views/posts/new.php for why these live here as
  * JSON sub-actions rather than their own admin page/route.
@@ -56,12 +94,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     try {
         $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
+        // Matches admin/views/media/upload.php's own multi-upload flow —
+        // without this, an image uploaded straight from the editor
+        // (LP-115's "Upload New" picker step) would report no size
+        // options at all in $buildEditorPickerItem() above.
+        $kernel->thumbnails->generate($uploaded);
 
         // See the identical comment in admin/views/posts/new.php's matching
         // block for why a fresh token is returned on every response here.
         echo json_encode([
             'data' => ['filePath' => $kernel->media->url($uploaded)],
             'url' => $kernel->media->url($uploaded),
+            // LP-115: lets a freshly uploaded image drop straight into the
+            // picker's own Attachment Display Settings step, same shape
+            // media_picker_query below returns per item.
+            'item' => $buildEditorPickerItem($uploaded, $kernel->thumbnails->thumbnailsFor((int) $uploaded['id'])),
             'csrfToken' => Csrf::token('editor_upload'),
         ]);
     } catch (\Throwable $exception) {
@@ -69,6 +116,60 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         echo json_encode(['error' => $exception->getMessage(), 'csrfToken' => Csrf::token('editor_upload')]);
     }
 
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'media_picker_query') {
+    // See the identical comment in admin/views/posts/new.php's matching
+    // block for why the output buffer must be discarded here.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('edit_posts') || !Csrf::verify('media_picker_query', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $term = trim((string) ($_POST['term'] ?? ''));
+    $folderId = (int) ($_POST['folder_id'] ?? 0);
+    $page = max(1, (int) ($_POST['page'] ?? 1));
+    $perPage = 40;
+
+    $filters = ['type' => 'image'];
+
+    if ($term !== '') {
+        $filters['term'] = $term;
+    }
+
+    if ($folderId > 0) {
+        $filters['folderIds'] = [$folderId];
+    }
+
+    $result = $kernel->media->query($filters, $perPage, ($page - 1) * $perPage);
+    // One batched query for every item's thumbnails rather than one per
+    // item (LP-075's thumbnailsForMany() precedent) — a 40-item page
+    // would otherwise mean 40 separate thumbnail lookups.
+    $thumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(
+        array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
+    );
+
+    echo json_encode([
+        'items' => array_map(
+            static fn (array $item): array => $buildEditorPickerItem($item, $thumbnailsByMediaId[(int) $item['id']] ?? []),
+            $result['items'],
+        ),
+        'total' => $result['total'],
+        // Csrf::verify() is single-use — the picker fires this query
+        // repeatedly (every search keystroke, folder change, and "Load
+        // More" click) within one dialog session, so each response must
+        // hand back a fresh token the same way editor_upload already
+        // does for repeat uploads.
+        'csrfToken' => Csrf::token('media_picker_query'),
+    ]);
     exit;
 }
 
@@ -333,40 +434,16 @@ $parentOptions = $pageService->listAllForParentPicker($page?->id);
 $imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
 $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
 /*
- * LP-075's Attachment Display Settings step needs, per image, every
- * size it actually has a generated thumbnail for (plus the original
- * as "full") so the size/link-to choice can be resolved entirely
- * client-side with no extra request. thumbnailsForMany() (one query
- * for every image here, not one per image) keeps this from becoming
- * an N+1 query on a library with hundreds of uploads.
+ * LP-115: the "Insert Image" picker's grid used to be preloaded here as
+ * one data-media-library JSON blob (every image in the library, up to
+ * 500 of them) — replaced by an on-demand AJAX query (the
+ * media_picker_query sub-action above) so opening the picker doesn't
+ * require loading the whole library first. Only the (small) Folder tree
+ * is still preloaded, for the picker's Folder filter <select>.
  */
-$editorThumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(array_map(static fn (array $item): int => (int) $item['id'], $imageOptions));
-$editorMediaLibrary = array_map(
-    static function (array $item) use ($kernel, $editorThumbnailsByMediaId): array {
-        $sizes = [
-            'full' => [
-                'url' => $kernel->media->url($item),
-                'width' => (int) ($item['width'] ?? 0),
-                'height' => (int) ($item['height'] ?? 0),
-            ],
-        ];
-
-        foreach ($editorThumbnailsByMediaId[(int) $item['id']] ?? [] as $thumbnail) {
-            $sizes[(string) $thumbnail['size_name']] = [
-                'url' => $kernel->thumbnails->url($item, (string) $thumbnail['size_name']),
-                'width' => (int) $thumbnail['width'],
-                'height' => (int) $thumbnail['height'],
-            ];
-        }
-
-        return [
-            'url' => $kernel->media->url($item),
-            'name' => (string) $item['file_name'],
-            'alt' => (string) ($item['alt_text'] ?? ''),
-            'sizes' => $sizes,
-        ];
-    },
-    $imageOptions,
+$editorFolderTree = array_map(
+    static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
+    $kernel->folders->listAllForTree(),
 );
 ?>
 <?php
@@ -451,7 +528,8 @@ if ($savedLayout['order'] === []) {
                     data-upload-url="<?= esc_url(admin_url('pages/new')) ?>"
                     data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
-                    data-media-library="<?= esc_attr((string) json_encode($editorMediaLibrary)) ?>"
+                    data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
+                    data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
                 >

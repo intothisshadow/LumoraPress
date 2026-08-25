@@ -1,16 +1,25 @@
 /**
  * Content Editor orchestration (LP-015 Markdown / LP-016 WYSIWYG).
  *
- * Markup contract (see admin/views/posts.php / pages.php):
+ * Markup contract (see admin/views/posts/new.php / pages/new.php):
  *   <select data-lp-content-format-select>          — Markdown/HTML/Plain
  *   <div data-lp-content-editor
  *        data-format="markdown|html|plain"
  *        data-upload-url="..."
  *        data-upload-csrf="..."
  *        data-convert-csrf="..."
- *        data-media-library='[{"url":"...","name":"..."}]'>
+ *        data-media-picker-csrf="..."
+ *        data-media-folders='[{"id":1,"name":"...","depth":0}]'>
  *     <textarea>...</textarea>
  *   </div>
+ *
+ * LP-115: the "Insert Image" picker (openMediaPicker() below) no longer
+ * receives a preloaded library array — data-upload-url doubles as the
+ * picker's own query endpoint (POST form=media_picker_query, same page
+ * editor_upload/convert_content already target), paginated 40 images at
+ * a time so opening the picker never has to load a whole library up
+ * front. Only the (small) Folder tree is still preloaded, via
+ * data-media-folders, since the filter <select> needs it immediately.
  *
  * The <textarea> is always the real form field — both EasyMDE and TinyMCE
  * are told to keep it in sync (EasyMDE does this natively; the TinyMCE
@@ -115,21 +124,27 @@
     }
 
     // ------------------------------------------------------------------
-    // Media picker — shared by both editors. Built from the same
-    // already-fetched image list the page rendered into
-    // data-media-library, rather than a separate AJAX endpoint.
+    // Media picker — shared by both editors and by both the "Insert
+    // Image" toolbar button and the native image-dialog replacement
+    // (LP-115: the two used to be separate entry points on the same
+    // toolbar). Queries the "Insert Image" media picker's own
+    // media_picker_query sub-action (POST to data-upload-url — the same
+    // page editor_upload/convert_content already target), paginated 40
+    // images at a time rather than the whole library preloaded up
+    // front, with client-side-triggered search/Folder filtering handled
+    // server-side per request.
     //
-    // LP-075: picking an image is now a two-step flow — the grid, then
+    // LP-075: picking an image is still a two-step flow — the grid, then
     // an "Attachment Display Settings" step (Size / Link To) before the
     // callback fires, mirroring classic WordPress's Insert Media dialog.
-    // Each library item's `sizes` map ({full, small?, medium?, large?},
-    // each {url, width, height} — see posts/new.php's/pages.php's
-    // $editorMediaLibrary) is built server-side so this step needs no
-    // extra request.
+    // Each item's `sizes` map ({full, small?, medium?, large?}, each
+    // {url, width, height} — see PostsController::buildEditorPickerItem())
+    // is built server-side so this step needs no extra request.
     // ------------------------------------------------------------------
 
     var SIZE_LABELS = { small: 'Thumbnail', medium: 'Medium', large: 'Large', full: 'Full Size' };
     var SIZE_ORDER = ['small', 'medium', 'large', 'full'];
+    var MEDIA_PICKER_PAGE_SIZE = 40;
 
     function escapeHtmlAttr(value) {
         return String(value)
@@ -139,26 +154,217 @@
             .replace(/>/g, '&gt;');
     }
 
-    function openMediaPicker(library, onSelect) {
+    // Prefers the smallest generated thumbnail for the grid tile — the
+    // full-size original (possibly several megapixels) would otherwise
+    // load 40-at-a-time for nothing more than a small square preview.
+    function gridThumbnailUrl(item) {
+        var sizes = item.sizes || {};
+
+        return (sizes.small || sizes.medium || sizes.large || sizes.full || { url: item.url }).url;
+    }
+
+    function openMediaPicker(container, onSelect) {
+        var folders = JSON.parse(container.dataset.mediaFolders || '[]');
+        var pickerUrl = container.dataset.uploadUrl;
+        var pickerCsrf = container.dataset.mediaPickerCsrf;
+
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-editor-media-dialog';
 
+        var header = document.createElement('div');
+        header.className = 'lp-editor-media-dialog__header';
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'lp-editor-media-dialog__search';
+        searchInput.placeholder = 'Search by filename or alt text…';
+        searchInput.setAttribute('aria-label', 'Search images');
+
+        var folderSelect = document.createElement('select');
+        folderSelect.className = 'lp-editor-media-dialog__folder-select';
+        folderSelect.setAttribute('aria-label', 'Filter by folder');
+
+        var allFoldersOption = document.createElement('option');
+        allFoldersOption.value = '0';
+        allFoldersOption.textContent = 'All Folders';
+        folderSelect.appendChild(allFoldersOption);
+
+        folders.forEach(function (folder) {
+            var option = document.createElement('option');
+            option.value = String(folder.id);
+            option.textContent = new Array(folder.depth + 1).join('— ') + folder.name;
+            folderSelect.appendChild(option);
+        });
+
+        var uploadLabel = document.createElement('label');
+        uploadLabel.className = 'lp-button lp-button--secondary lp-editor-media-dialog__upload-button';
+        uploadLabel.textContent = 'Upload New';
+        var uploadInput = document.createElement('input');
+        uploadInput.type = 'file';
+        uploadInput.accept = 'image/*';
+        uploadInput.hidden = true;
+        uploadLabel.appendChild(uploadInput);
+
+        header.appendChild(searchInput);
+        header.appendChild(folderSelect);
+        header.appendChild(uploadLabel);
+
+        var status = document.createElement('p');
+        status.className = 'lp-editor-media-dialog__status';
+        status.hidden = true;
+
         var grid = document.createElement('div');
         grid.className = 'lp-editor-media-dialog__grid';
+
+        var loadMoreButton = document.createElement('button');
+        loadMoreButton.type = 'button';
+        loadMoreButton.className = 'lp-button lp-editor-media-dialog__load-more';
+        loadMoreButton.textContent = 'Load More';
+        loadMoreButton.hidden = true;
 
         var settings = document.createElement('div');
         settings.className = 'lp-editor-media-dialog__settings';
         settings.hidden = true;
 
-        if (library.length === 0) {
-            var empty = document.createElement('p');
-            empty.textContent = 'No images in the Media Manager yet.';
-            grid.appendChild(empty);
+        var state = { term: '', folderId: 0, page: 1, loaded: 0, total: 0, requestId: 0 };
+
+        function renderItem(item) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-media-dialog__item';
+
+            var img = document.createElement('img');
+            img.src = gridThumbnailUrl(item);
+            img.alt = item.name;
+            button.appendChild(img);
+
+            button.addEventListener('click', function () {
+                showSettingsStep(item);
+            });
+
+            grid.appendChild(button);
         }
+
+        function showGridStep() {
+            settings.hidden = true;
+            header.hidden = false;
+            grid.hidden = false;
+            status.hidden = state.loaded !== 0;
+            loadMoreButton.hidden = state.loaded >= state.total;
+        }
+
+        function fetchPage(reset) {
+            var requestId = ++state.requestId;
+
+            if (reset) {
+                state.page = 1;
+                state.loaded = 0;
+                grid.innerHTML = '';
+            }
+
+            status.textContent = 'Loading…';
+            status.hidden = false;
+            loadMoreButton.hidden = true;
+
+            var formData = new FormData();
+            formData.append('form', 'media_picker_query');
+            formData.append('csrf_token', pickerCsrf);
+            formData.append('term', state.term);
+            formData.append('folder_id', String(state.folderId));
+            formData.append('page', String(state.page));
+
+            fetch(pickerUrl, { method: 'POST', body: formData })
+                .then(function (response) { return response.json(); })
+                .then(function (json) {
+                    // Csrf::verify() is single-use — every response
+                    // (including a stale one about to be discarded below)
+                    // carries a freshly issued token that must replace
+                    // this one for the *next* query, or that next request
+                    // fails verification (matches uploadFile()'s identical
+                    // pattern). Written back onto the container's own
+                    // dataset too, so the token survives closing and
+                    // reopening the dialog, not just this one session.
+                    if (json.csrfToken) {
+                        pickerCsrf = json.csrfToken;
+                        container.dataset.mediaPickerCsrf = json.csrfToken;
+                    }
+
+                    // A later search/folder change may have already
+                    // started its own request — an out-of-order response
+                    // to this now-stale one must never repopulate the grid.
+                    if (requestId !== state.requestId) {
+                        return;
+                    }
+
+                    var items = json.items || [];
+                    items.forEach(renderItem);
+                    state.loaded += items.length;
+                    state.total = json.total || 0;
+
+                    if (state.loaded === 0) {
+                        status.textContent = state.term !== '' || state.folderId > 0
+                            ? 'No images match your search.'
+                            : 'No images in the Media Manager yet.';
+                        status.hidden = false;
+                    } else {
+                        status.hidden = true;
+                    }
+
+                    loadMoreButton.hidden = state.loaded >= state.total;
+                })
+                .catch(function () {
+                    status.textContent = 'Could not load images. Try again.';
+                    status.hidden = false;
+                });
+        }
+
+        var searchTimer = null;
+        searchInput.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(function () {
+                state.term = searchInput.value.trim();
+                fetchPage(true);
+            }, 300);
+        });
+
+        folderSelect.addEventListener('change', function () {
+            state.folderId = parseInt(folderSelect.value, 10) || 0;
+            fetchPage(true);
+        });
+
+        loadMoreButton.addEventListener('click', function () {
+            state.page += 1;
+            fetchPage(false);
+        });
+
+        uploadInput.addEventListener('change', function () {
+            var file = uploadInput.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            uploadLabel.classList.add('is-uploading');
+
+            uploadFile(container, file)
+                .then(function (json) {
+                    showSettingsStep(json.item);
+                })
+                .catch(function (error) {
+                    window.alert(error.message || 'Upload failed.');
+                })
+                .finally(function () {
+                    uploadLabel.classList.remove('is-uploading');
+                    uploadInput.value = '';
+                });
+        });
 
         function showSettingsStep(item) {
             settings.innerHTML = '';
+            header.hidden = true;
             grid.hidden = true;
+            status.hidden = true;
+            loadMoreButton.hidden = true;
             settings.hidden = false;
 
             var itemSizes = item.sizes || {};
@@ -252,10 +458,7 @@
             backButton.type = 'button';
             backButton.className = 'lp-button';
             backButton.textContent = 'Back';
-            backButton.addEventListener('click', function () {
-                settings.hidden = true;
-                grid.hidden = false;
-            });
+            backButton.addEventListener('click', showGridStep);
 
             actions.appendChild(insertButton);
             actions.appendChild(backButton);
@@ -266,35 +469,23 @@
             settings.appendChild(actions);
         }
 
-        library.forEach(function (item) {
-            var button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'lp-editor-media-dialog__item';
-
-            var img = document.createElement('img');
-            img.src = item.url;
-            img.alt = item.name;
-            button.appendChild(img);
-
-            button.addEventListener('click', function () {
-                showSettingsStep(item);
-            });
-
-            grid.appendChild(button);
-        });
-
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
-        closeButton.className = 'lp-button';
+        closeButton.className = 'lp-button lp-editor-media-dialog__close';
         closeButton.textContent = 'Cancel';
         closeButton.addEventListener('click', function () { dialog.close(); });
 
+        dialog.appendChild(header);
+        dialog.appendChild(status);
         dialog.appendChild(grid);
+        dialog.appendChild(loadMoreButton);
         dialog.appendChild(settings);
         dialog.appendChild(closeButton);
         dialog.addEventListener('close', function () { dialog.remove(); });
         document.body.appendChild(dialog);
         dialog.showModal();
+
+        fetchPage(true);
     }
 
     // ------------------------------------------------------------------
@@ -324,7 +515,13 @@
                     throw new Error(json.error);
                 }
 
-                return json.url;
+                // Resolves with the full response (not just .url) so the
+                // media picker's "Upload New" step (LP-115) can read
+                // json.item straight into showSettingsStep() — callers
+                // that only ever wanted the bare URL (TinyMCE's/EasyMDE's
+                // own inline image-upload hooks below) read json.url off
+                // the same object instead.
+                return json;
             });
     }
 
@@ -434,7 +631,6 @@
 
         return loadScript(EASYMDE_JS).then(function () {
             var EasyMDE = window.EasyMDE;
-            var library = JSON.parse(container.dataset.mediaLibrary || '[]');
             var autosaveId = container.dataset.autosaveId || '';
 
             var editor = new EasyMDE({
@@ -447,7 +643,9 @@
                 status: false,
                 uploadImage: true,
                 imageUploadFunction: function (file, onSuccess, onError) {
-                    uploadFile(container, file).then(onSuccess).catch(function (error) {
+                    uploadFile(container, file).then(function (json) {
+                        onSuccess(json.url);
+                    }).catch(function (error) {
                         onError(error.message || 'Upload failed.');
                     });
                 },
@@ -521,11 +719,11 @@
                     },
                     '|',
                     'code', 'quote', 'unordered-list', 'ordered-list', '|',
-                    'link', 'image',
+                    'link',
                     {
                         name: 'media-library',
                         action: function () {
-                            openMediaPicker(library, function (payload) {
+                            openMediaPicker(container, function (payload) {
                                 var cm = editor.codemirror;
                                 // Markdown has no attribute syntax, so the
                                 // chosen size is expressed purely by which
@@ -555,7 +753,7 @@
                             });
                         },
                         className: 'fa fa-photo',
-                        title: 'Insert from Media Manager',
+                        title: 'Insert Image',
                     },
                     'table', 'horizontal-rule', '|',
                     'preview', 'side-by-side', 'fullscreen', '|',
@@ -590,9 +788,12 @@
     function initWysiwygEditor(container, textarea, statsEl) {
         return loadScript(TINYMCE_JS).then(function () {
             var tinymce = window.tinymce;
-            var library = JSON.parse(container.dataset.mediaLibrary || '[]');
             var autosaveId = container.dataset.autosaveId || '';
-            var basePlugins = 'lists link image table code codesample searchreplace fullscreen wordcount help';
+            // LP-115: the native 'image' plugin/toolbar button is
+            // deliberately not loaded — lumoraMedia (the Media Manager
+            // picker) is this editor's single "Insert Image" entry
+            // point, not a second, redundant bare URL/upload dialog.
+            var basePlugins = 'lists link table code codesample searchreplace fullscreen wordcount help';
 
             // Same has-{color}-color class convention as the align
             // formats below — one custom format per fixed palette color,
@@ -620,7 +821,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | link image lumoraMedia lumoraMoreTag table codesample | '
+                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
@@ -665,7 +866,9 @@
                     relative_urls: false,
                     content_css: (container.dataset.themeStylesheet || undefined),
                     images_upload_handler: function (blobInfo) {
-                        return uploadFile(container, blobInfo.blob());
+                        return uploadFile(container, blobInfo.blob()).then(function (json) {
+                            return json.url;
+                        });
                     },
                     autosave_interval: '15s',
                     autosave_prefix: 'lp-tinymce-autosave-' + autosaveId + '-',
@@ -712,9 +915,9 @@
 
                         editor.ui.registry.addButton('lumoraMedia', {
                             icon: 'image',
-                            tooltip: 'Insert from Media Manager',
+                            tooltip: 'Insert Image',
                             onAction: function () {
-                                openMediaPicker(library, function (payload) {
+                                openMediaPicker(container, function (payload) {
                                     // LP-080: "Link To: None" means no link
                                     // at all — see the identical comment on
                                     // the Markdown insertion above for why

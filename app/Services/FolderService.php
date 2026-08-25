@@ -176,6 +176,42 @@ final class FolderService
     }
 
     /**
+     * Every folder as a flat, depth-tagged list in hierarchical document
+     * order (a parent immediately followed by its own children,
+     * alphabetical among siblings, then the next sibling) — mirrors
+     * CategoryService::listAllForTree()/PageService::listAllForTree()'s
+     * identical shape, for the editor "Insert Image" picker's Folder
+     * filter (LP-115) to render indented the same way those other
+     * nested pickers already do.
+     *
+     * @return array<int, array{folder: Folder, depth: int}>
+     */
+    public function listAllForTree(): array
+    {
+        return $this->flattenForTree($this->listAll(), null, 0);
+    }
+
+    /**
+     * @param array<int, Folder> $folders
+     * @return array<int, array{folder: Folder, depth: int}>
+     */
+    private function flattenForTree(array $folders, ?int $parentId, int $depth): array
+    {
+        $result = [];
+
+        foreach ($folders as $folder) {
+            if ($folder->parentId !== $parentId) {
+                continue;
+            }
+
+            $result[] = ['folder' => $folder, 'depth' => $depth];
+            $result = [...$result, ...$this->flattenForTree($folders, $folder->id, $depth + 1)];
+        }
+
+        return $result;
+    }
+
+    /**
      * Folders whose name contains $term (case-insensitive), plus every
      * ancestor of each match — LP-005's "Folder search". Ancestors are
      * included so the sidebar tree (which can only render a folder once

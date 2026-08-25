@@ -6,6 +6,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Post/Page editors: the "Insert Image" media picker now has a search
+  box and a Folder filter, both narrowing the same grid together
+  (LP-115). Images load a page at a time (40 per page, "Load More" to
+  fetch the next) instead of the whole Media Library loading up front.
+  The dialog is also bigger (900px vs. the old 640px) with a fixed
+  search/folder/upload header above an independently scrolling grid,
+  and gained its own "Upload New" control. TinyMCE's and EasyMDE's
+  separate native "Insert/Edit Image" toolbar buttons are gone —
+  "Insert Image" (the renamed Media Manager picker) is now each
+  editor's single entry point for inserting an image.
 - New Post's Categories checklist and New Page's Parent Page field now
   render nested by depth in a scrollable, height-capped list instead of
   a flat unbounded one (LP-105) — matching Appearance &rsaquo; Menus'

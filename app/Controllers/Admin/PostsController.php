@@ -570,6 +570,11 @@ final class PostsController
 
         try {
             $uploaded = $this->media->upload($files['file'], $currentUserId);
+            // Matches admin/views/media/upload.php's own multi-upload flow
+            // — without this, an image uploaded straight from the editor
+            // (LP-115's "Upload New" picker step) would report no size
+            // options at all in buildEditorPickerItem() below.
+            $this->thumbnails->generate($uploaded);
 
             /*
              * Csrf::verify() is single-use — a second image upload without
@@ -581,12 +586,114 @@ final class PostsController
             echo json_encode([
                 'data' => ['filePath' => $this->media->url($uploaded)],
                 'url' => $this->media->url($uploaded),
+                // LP-115: lets a freshly uploaded image drop straight into
+                // the picker's own Attachment Display Settings step,
+                // same shape queryMediaForPicker() below returns per item.
+                'item' => $this->buildEditorPickerItem($uploaded, $this->thumbnails->thumbnailsFor((int) $uploaded['id'])),
                 'csrfToken' => Csrf::token('editor_upload'),
             ]);
         } catch (Throwable $exception) {
             http_response_code(422);
             echo json_encode(['error' => $exception->getMessage(), 'csrfToken' => Csrf::token('editor_upload')]);
         }
+    }
+
+    /**
+     * Paginated, search/folder-filterable image query (LP-115) for the
+     * "Insert Image" picker's grid — replaces the old single up-to-500-
+     * item `data-media-library` payload embedded on every editor page
+     * load with an on-demand AJAX query, so opening the picker on a
+     * library of any real size doesn't require loading it in full first.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function queryMediaForPicker(array $post, bool $canEditPosts, ?string $csrfToken): void
+    {
+        if (!$canEditPosts || !Csrf::verify('media_picker_query', $csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Not permitted.']);
+
+            return;
+        }
+
+        $term = trim((string) ($post['term'] ?? ''));
+        $folderId = (int) ($post['folder_id'] ?? 0);
+        $page = max(1, (int) ($post['page'] ?? 1));
+        $perPage = 40;
+
+        $filters = ['type' => 'image'];
+
+        if ($term !== '') {
+            $filters['term'] = $term;
+        }
+
+        if ($folderId > 0) {
+            $filters['folderIds'] = [$folderId];
+        }
+
+        $result = $this->media->query($filters, $perPage, ($page - 1) * $perPage);
+        // One batched query for every item's thumbnails rather than one
+        // per item (LP-075's thumbnailsForMany() precedent) — a 40-item
+        // page would otherwise mean 40 separate thumbnail lookups.
+        $thumbnailsByMediaId = $this->thumbnails->thumbnailsForMany(
+            array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
+        );
+
+        echo json_encode([
+            'items' => array_map(
+                fn (array $item): array => $this->buildEditorPickerItem($item, $thumbnailsByMediaId[(int) $item['id']] ?? []),
+                $result['items'],
+            ),
+            'total' => $result['total'],
+            // Csrf::verify() is single-use — the picker fires this query
+            // repeatedly (every search keystroke, folder change, and
+            // "Load More" click) within one dialog session, so each
+            // response must hand back a fresh token the same way
+            // uploadEditorImage() already does for repeat uploads.
+            'csrfToken' => Csrf::token('media_picker_query'),
+        ]);
+    }
+
+    /**
+     * Shared shape for one Media row in the "Insert Image" picker
+     * (LP-115) — a `sizes` map of every size this image actually has a
+     * generated thumbnail for (plus the original as "full"), so the
+     * picker's Attachment Display Settings step (LP-075) can resolve the
+     * size/link-to choice entirely client-side with no extra request.
+     * Used by both uploadEditorImage() (one freshly uploaded item) and
+     * queryMediaForPicker() (a page of existing items) so the two stay
+     * in the same shape content-editor.js's showSettingsStep() expects.
+     *
+     * @param array<string, mixed> $item
+     * @param array<int, array<string, mixed>> $thumbnailsForItem
+     * @return array<string, mixed>
+     */
+    private function buildEditorPickerItem(array $item, array $thumbnailsForItem): array
+    {
+        $sizes = [
+            'full' => [
+                'url' => $this->media->url($item),
+                'width' => (int) ($item['width'] ?? 0),
+                'height' => (int) ($item['height'] ?? 0),
+            ],
+        ];
+
+        foreach ($thumbnailsForItem as $thumbnail) {
+            $sizes[(string) $thumbnail['size_name']] = [
+                'url' => $this->thumbnails->url($item, (string) $thumbnail['size_name']),
+                'width' => (int) $thumbnail['width'],
+                'height' => (int) $thumbnail['height'],
+            ];
+        }
+
+        return [
+            'id' => (int) $item['id'],
+            'url' => $this->media->url($item),
+            'name' => (string) $item['file_name'],
+            'alt' => (string) ($item['alt_text'] ?? ''),
+            'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
+            'sizes' => $sizes,
+        ];
     }
 
     /**
