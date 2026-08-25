@@ -343,6 +343,28 @@ final class WordPressXmlSource implements WordPressSourceInterface
         return ['count' => (int) ($this->postMetaById[$postId]['sdm_count_offset'] ?? 0), 'lastDownloadedAt' => null];
     }
 
+    /**
+     * A WXR export is WordPress's own content export format — it has no
+     * representation of NextGEN Gallery's own `ngg_gallery`/
+     * `ngg_pictures` tables at all (a plugin-specific database table,
+     * same reasoning as sdmDownloadStats()'s own docblock), so this
+     * always returns empty rather than guessing.
+     *
+     * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
+     */
+    public function nextGenGalleries(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<int, array{pid: int, filename: string, description: string, alttext: string, imagedate: string, exclude: int}>
+     */
+    public function nextGenPictures(int $galleryId): array
+    {
+        return [];
+    }
+
     private function parseSiteOptions(DOMXPath $xpath, DOMElement $channel): void
     {
         $title = $this->text($xpath, $channel, 'title');

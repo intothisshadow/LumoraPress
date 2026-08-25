@@ -111,4 +111,19 @@ interface WordPressSourceInterface
      * @return array{count: int, lastDownloadedAt: ?DateTimeImmutable}
      */
     public function sdmDownloadStats(int $postId): array;
+
+    /**
+     * NextGEN Gallery's own `ngg_gallery` table — a flat list, no
+     * hierarchy of its own (unlike `sdm_categories`/`media_folder`).
+     *
+     * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
+     */
+    public function nextGenGalleries(): array;
+
+    /**
+     * NextGEN Gallery's own `ngg_pictures` table, scoped to one gallery.
+     *
+     * @return array<int, array{pid: int, filename: string, description: string, alttext: string, imagedate: string, exclude: int}>
+     */
+    public function nextGenPictures(int $galleryId): array;
 }

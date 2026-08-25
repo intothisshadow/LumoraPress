@@ -26,10 +26,12 @@ a local copy of the source site's `wp-content/uploads` folder.
   import (cleanly — the same "nothing found" outcome a widget-free or
   plugin-free real site already produces from a database connection,
   not an error); every imported user lands as Subscriber, since WXR
-  carries no role data at all (reassign roles manually afterward); and
+  carries no role data at all (reassign roles manually afterward);
   a Simple Download Monitor download's count is its `sdm_count_offset`
   postmeta alone, since the per-visit download log itself is never
-  exported. Users, categories/tags (including custom taxonomies like
+  exported; and NextGEN Gallery galleries have nothing to import at all,
+  since `ngg_gallery`/`ngg_pictures` are plugin-specific database tables
+  a WXR export never carries. Users, categories/tags (including custom taxonomies like
   Simple Download Monitor's `sdm_categories` or the Media Library
   Folders plugin's `media_folder`), media, pages, posts, comments, and menus all import
   from a WXR file exactly as fully as from a database connection.
@@ -92,6 +94,17 @@ a local copy of the source site's `wp-content/uploads` folder.
   widgets bucket — lands in Lumora Press's existing Inactive Widgets
   list instead of being dropped, so nothing imported is ever silently
   lost.
+- **NextGEN Gallery** galleries import too, if the source site ran that
+  plugin: each gallery (`ngg_gallery`) becomes a Media Manager Folder
+  named after the gallery, and its non-excluded pictures (`ngg_pictures`)
+  become real Media items filed into that folder — needs a separate
+  local filesystem copy of the source site's `wp-content/gallery` folder
+  (a sibling of `wp-content/uploads`, entered on its own "Gallery folder
+  path" field; left blank, this step is skipped entirely). A page/post
+  still containing a `[ngg_...]` shortcode is flagged in the warnings
+  rather than rendered — the gallery's images are still imported either
+  way, just not the shortcode display itself. NextGEN's separate album
+  grouping (a set of galleries) isn't imported.
 - A Simple Download Monitor download's own featured image (set the same
   way a Post/Page's featured image is, via `_thumbnail_id`) is imported
   as that download's thumbnail — shown on the Downloads plugin's Add/
@@ -125,8 +138,8 @@ a local copy of the source site's `wp-content/uploads` folder.
   type is only ever caught during a real import, so the real count can
   land lower), or leave it unchecked to actually import.
 - **Resumable, with a live progress bar**: a real import runs stage by
-  stage (Site Settings, Users, Categories & Tags, Media, Downloads,
-  Pages, Posts, Comments, Menus, Widgets), persisting its progress to
+  stage (Site Settings, Users, Categories & Tags, Media, NextGEN Gallery,
+  Downloads, Pages, Posts, Comments, Menus, Widgets), persisting its progress to
   the database after every single stage — not just at the end. If the
   process running it is ever interrupted (a host's execution time
   limit, a lost connection), revisiting Maintenance → Import offers to

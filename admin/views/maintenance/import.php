@@ -82,6 +82,7 @@ $formValues = [
     'db_prefix' => is_string($_POST['db_prefix'] ?? null) ? $_POST['db_prefix'] : 'wp_',
     'wxr_path' => is_string($_POST['wxr_path'] ?? null) ? $_POST['wxr_path'] : '',
     'uploads_path' => is_string($_POST['uploads_path'] ?? null) ? $_POST['uploads_path'] : '',
+    'gallery_path' => is_string($_POST['gallery_path'] ?? null) ? $_POST['gallery_path'] : '',
     'wp_config_path' => is_string($_POST['wp_config_path'] ?? null) ? $_POST['wp_config_path'] : '',
 ];
 
@@ -160,6 +161,7 @@ if ($wordPressImporterActive) {
             registry: $kernel->contentImportRegistry,
             sourceUploadsPath: rtrim($formValues['uploads_path'], '/'),
             downloads: $downloadsService,
+            sourceGalleryPath: $formValues['gallery_path'] !== '' ? rtrim($formValues['gallery_path'], '/') : null,
         );
     };
 
@@ -200,7 +202,7 @@ if ($wordPressImporterActive) {
     );
 
     /**
-     * @return array{site_settings: bool, users: bool, categories: bool, media: bool, downloads: bool, pages: bool, posts: bool, comments: bool, menus: bool, widgets: bool, stage_delay_ms: int}
+     * @return array{site_settings: bool, users: bool, categories: bool, media: bool, nextgen_galleries: bool, downloads: bool, pages: bool, posts: bool, comments: bool, menus: bool, widgets: bool, stage_delay_ms: int}
      */
     $optionsFromPost = static function (): array {
         return [
@@ -208,6 +210,7 @@ if ($wordPressImporterActive) {
             'users' => isset($_POST['include_users']),
             'categories' => isset($_POST['include_categories']),
             'media' => isset($_POST['include_media']),
+            'nextgen_galleries' => isset($_POST['include_nextgen_galleries']),
             'downloads' => isset($_POST['include_downloads']),
             'pages' => isset($_POST['include_pages']),
             'posts' => isset($_POST['include_posts']),
@@ -484,6 +487,7 @@ if ($wordPressImporterActive) {
             'post' => 'posts', 'page' => 'pages', 'user' => 'users',
             'category' => 'categories', 'tag' => 'tags', 'comment' => 'comments', 'media' => 'media',
             'download' => 'downloads', 'nav_menu' => 'menus', 'widget_instance' => 'widgets',
+            'nextgen_gallery' => 'NextGEN galleries', 'nextgen_picture' => 'NextGEN Gallery images',
         ];
         ?>
         <div class="lp-alert lp-alert--info">
@@ -541,6 +545,17 @@ if ($wordPressImporterActive) {
                 folder organization imports into matching Media Manager
                 Folders, preserving the source site's own nesting, instead
                 of every attachment landing with no folder at all.
+            </li>
+            <li>
+                <strong>NextGEN Gallery</strong> — each gallery's images
+                import as real Media items filed into a Media Manager
+                Folder named after the gallery. Requires a local filesystem
+                copy of the source site's own <code>wp-content/gallery</code>
+                folder (separate from the uploads folder above — see the
+                "Gallery folder path" field below). Any page still using a
+                <code>[ngg_...]</code> shortcode is listed in the warnings
+                below rather than rendered, since NextGEN's own gallery
+                display has no Lumora Press equivalent yet.
             </li>
         </ul>
 
@@ -767,6 +782,15 @@ if ($wordPressImporterActive) {
                     <label for="<?= esc_attr($idPrefix) ?>-uploads-path">Uploads folder path (server filesystem)</label>
                     <input type="text" id="<?= esc_attr($idPrefix) ?>-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
                 </p>
+                <p class="lp-field">
+                    <label for="<?= esc_attr($idPrefix) ?>-gallery-path">Gallery folder path (server filesystem)</label>
+                    <input type="text" id="<?= esc_attr($idPrefix) ?>-gallery-path" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>" placeholder="/path/to/wp-content/gallery">
+                    <span class="lp-field__hint">
+                        Only needed for "NextGEN Gallery" below — a local filesystem copy of the source
+                        site's <code>wp-content/gallery</code> folder (a sibling of <code>wp-content/uploads</code>
+                        above, not a subfolder of it). Leave blank if the source site never ran NextGEN Gallery.
+                    </span>
+                </p>
 
                 <h4>Site settings</h4>
 
@@ -803,6 +827,10 @@ if ($wordPressImporterActive) {
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="include_media" value="1" checked>
                         Media (attachments)
+                    </label>
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="include_nextgen_galleries" value="1" checked>
+                        NextGEN Gallery galleries (if installed — requires the "Gallery folder path" above)
                     </label>
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="include_downloads" value="1" checked>

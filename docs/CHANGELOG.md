@@ -6,6 +6,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: NextGEN Gallery galleries and their images can now
+  be imported (LPP-004) — each gallery becomes a Media Manager Folder
+  named after the gallery, and its images become real Media items filed
+  into it (alt text, description, and original image date preserved).
+  Needs a separate local filesystem copy of the source site's
+  `wp-content/gallery` folder (a new "Gallery folder path" field on
+  Maintenance › Import), since NextGEN stores images there rather than
+  under `wp-content/uploads`. A page/post still containing a
+  `[ngg_...]` shortcode is listed in the import warnings rather than
+  rendered.
 - WordPress Importer: a WordPress WXR (`.xml`) export file can now be
   used as an import source, alongside the existing direct database
   connection (LPP-004) — a new "Source type" choice on Maintenance ›

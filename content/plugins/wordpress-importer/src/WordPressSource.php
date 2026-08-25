@@ -528,6 +528,89 @@ final class WordPressSource implements WordPressSourceInterface
         return ['count' => $offset + $logCount, 'lastDownloadedAt' => $lastDownloadedAt];
     }
 
+    /**
+     * NextGEN Gallery's own `ngg_gallery` table, one row per gallery —
+     * confirmed against a real production database (this ticket's own
+     * established practice): `path` is the gallery's actual on-disk
+     * folder name under `wp-content/gallery/` (e.g.
+     * `/wp-content/gallery/some-gallery-name/`), *not* necessarily the
+     * same as `slug` — the two can differ when a gallery was renamed
+     * after creation, so importNextGenGalleries() resolves a picture's
+     * file location from `path`, never `slug`.
+     *
+     * Unlike siteOptions()'s fixed-allowlist tables, `ngg_gallery` is
+     * itself a plugin-specific table that won't exist at all on a
+     * source site that never ran NextGEN Gallery — caught the same way
+     * sdmDownloadStats() catches a missing `sdm_downloads` table.
+     *
+     * Plain-text fields here (`name`, `title`, `galdesc`) are
+     * deliberately not run through decodeEntities() — NextGEN Gallery
+     * has its own admin save routine, entirely separate from
+     * `wp_insert_post()`/`wp_insert_term()`, so decodeEntities()'s own
+     * rationale (WordPress's *own* KSES filtering double-encoding on
+     * the way out) doesn't clearly apply, and no real NextGEN data
+     * examined so far contains an HTML entity to confirm either way.
+     *
+     * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
+     */
+    public function nextGenGalleries(): array
+    {
+        try {
+            $rows = $this->source->fetchAll(
+                'SELECT gid, name, slug, path, title, galdesc, author FROM ' . $this->table('ngg_gallery') . ' ORDER BY gid ASC',
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $row): array => [
+                'gid' => (int) $row['gid'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+                'path' => (string) $row['path'],
+                'title' => (string) $row['title'],
+                'galdesc' => (string) $row['galdesc'],
+                'author' => (int) $row['author'],
+            ],
+            $rows,
+        );
+    }
+
+    /**
+     * NextGEN Gallery's own `ngg_pictures` table, scoped to one gallery
+     * — see nextGenGalleries()'s own docblock for why plain-text fields
+     * here aren't run through decodeEntities() either.
+     *
+     * @return array<int, array{pid: int, filename: string, description: string, alttext: string, imagedate: string, exclude: int}>
+     */
+    public function nextGenPictures(int $galleryId): array
+    {
+        try {
+            $rows = $this->source->fetchAll(
+                'SELECT pid, filename, description, alttext, imagedate, exclude
+                   FROM ' . $this->table('ngg_pictures') . '
+                  WHERE galleryid = :gallery_id
+                  ORDER BY sortorder ASC, pid ASC',
+                ['gallery_id' => $galleryId],
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $row): array => [
+                'pid' => (int) $row['pid'],
+                'filename' => (string) $row['filename'],
+                'description' => (string) $row['description'],
+                'alttext' => (string) $row['alttext'],
+                'imagedate' => (string) $row['imagedate'],
+                'exclude' => (int) $row['exclude'],
+            ],
+            $rows,
+        );
+    }
+
     private function table(string $name): string
     {
         return $this->tablePrefix . $name;

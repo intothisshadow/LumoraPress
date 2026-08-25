@@ -66,7 +66,9 @@ use Throwable;
  * import()/importOrReuse() calls into the shared Importer layer.
  *
  * Ordering mirrors the dependency chain the Importer layer already
- * requires: Users -> Categories/Tags -> Media (attachments) -> Downloads
+ * requires: Users -> Categories/Tags -> Media (attachments) -> NextGEN
+ * Gallery galleries (a separate plugin table, folder-organized one
+ * folder per gallery — see importNextGenGalleries()) -> Downloads
  * (Simple Download Monitor's own post type, folder-organized via its
  * `sdm_categories` taxonomy — see importDownloads()) -> Pages -> Posts
  * -> Comments (Posts only — see this class's own docblock on
@@ -187,6 +189,18 @@ final class WordPressImportService
          * docblock.
          */
         private readonly ?DownloadService $downloads = null,
+        /**
+         * A local filesystem copy of the source site's
+         * `wp-content/gallery` folder — NextGEN Gallery's own image
+         * store, a sibling of `wp-content/uploads`, never a subfolder of
+         * it, so it needs its own path rather than being derived from
+         * $sourceUploadsPath. Null (the default) when the admin didn't
+         * supply one — importNextGenGalleries() then skips entirely
+         * rather than trying to read from an empty path, the same
+         * "nothing to do" degradation every other optional content type
+         * already has when its own source data doesn't exist.
+         */
+        private readonly ?string $sourceGalleryPath = null,
     ) {
     }
 
@@ -227,7 +241,7 @@ final class WordPressImportService
     }
 
     /**
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
      * @return array<string, int>
      */
     public function run(array $options): array
@@ -259,7 +273,7 @@ final class WordPressImportService
      * link to), so including them even when, say, every content type
      * was deselected costs nothing.
      *
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool} $options
      * @return array<int, string>
      */
     public function plannedStages(array $options): array
@@ -269,6 +283,7 @@ final class WordPressImportService
             'users' => $options['users'] ?? true,
             'categories' => $options['categories'] ?? true,
             'media' => $options['media'] ?? true,
+            'nextgen_galleries' => $options['nextgen_galleries'] ?? true,
             'downloads' => $options['downloads'] ?? true,
             'pages' => $options['pages'] ?? true,
             'posts' => $options['posts'] ?? true,
@@ -297,6 +312,7 @@ final class WordPressImportService
             'users' => 'Importing users',
             'categories' => 'Importing categories & tags',
             'media' => 'Importing media',
+            'nextgen_galleries' => 'Importing NextGEN Gallery images',
             'downloads' => 'Importing downloads',
             'pages' => 'Importing pages',
             'posts' => 'Importing posts',
@@ -321,7 +337,7 @@ final class WordPressImportService
      * the same guard this method replaces from the old single-pass
      * run().
      *
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
      * @return array{batchId: string, resumed: bool}
      */
     public function startOrResume(array $options): array
@@ -462,7 +478,7 @@ final class WordPressImportService
      * pointed at the right database, and roughly how much content is
      * this going to bring in" check a dry run is meant to answer.
      *
-     * @param array{users?: bool, categories?: bool, media?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, statuses?: array<int, string>} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, statuses?: array<int, string>} $options
      * @return array<string, int>
      */
     public function dryRunCounts(array $options): array
@@ -485,6 +501,22 @@ final class WordPressImportService
 
         if ($options['media'] ?? true) {
             $counts['media'] = count($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES));
+        }
+
+        if ($options['nextgen_galleries'] ?? true) {
+            $galleries = $this->source->nextGenGalleries();
+            $counts['nextgen_gallery'] = count($galleries);
+            $pictureCount = 0;
+
+            foreach ($galleries as $gallery) {
+                foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
+                    if ($picture['exclude'] !== 1) {
+                        $pictureCount++;
+                    }
+                }
+            }
+
+            $counts['nextgen_picture'] = $pictureCount;
         }
 
         $sourcePosts = ($options['posts'] ?? true) ? $this->source->posts(['post'], $statuses) : [];
@@ -570,6 +602,9 @@ final class WordPressImportService
                 break;
             case 'media':
                 [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                break;
+            case 'nextgen_galleries':
+                $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? []);
                 break;
             case 'downloads':
                 $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? []);
@@ -1953,6 +1988,88 @@ final class WordPressImportService
     }
 
     /**
+     * NextGEN Gallery's own `ngg_gallery`/`ngg_pictures` tables — each
+     * gallery becomes a real Media Manager Folder named after the
+     * gallery (its `title`, falling back to `name` when a gallery was
+     * never given one), and each of its non-excluded pictures becomes a
+     * real Media item filed into that folder — mirroring how Simple
+     * Download Monitor categories and the "Media Library Folders"
+     * plugin are already handled above. Unlike either of those, a
+     * gallery is a flat list with no hierarchy of its own, so this needs
+     * none of resolveDownloadFolder()/resolveMediaFolder()'s multi-term
+     * "prefer the more specific parent" logic — one gallery, one folder,
+     * always at the Media Manager's real root.
+     *
+     * A gallery's own `path` column (e.g.
+     * `/wp-content/gallery/some-gallery-name/`) names its actual on-disk
+     * folder — not necessarily the same as `slug` (see
+     * WordPressSource::nextGenGalleries()'s own docblock) — so a
+     * picture's file is resolved from $sourceGalleryPath plus that exact
+     * folder name plus its own `filename`, never from `slug`.
+     *
+     * Out of scope for this pass (see this ticket's own TODO entry): the
+     * `[ngg_...]` shortcodes themselves are never rendered — a page/post
+     * still containing one is flagged as an import warning by
+     * flagUnsupportedShortcodes() instead, same as
+     * `[sdm_show_dl_from_category]`'s own handling. NextGEN's separate
+     * album grouping (`ngg_album`, a set of galleries) also isn't
+     * imported — this ticket only asked for galleries and their media.
+     *
+     * @param array<int, int> $wpUserIdToLocalId
+     */
+    private function importNextGenGalleries(string $batchId, array $wpUserIdToLocalId): void
+    {
+        if ($this->sourceGalleryPath === null || $this->sourceGalleryPath === '') {
+            return;
+        }
+
+        foreach ($this->source->nextGenGalleries() as $gallery) {
+            $galleryDirName = basename(rtrim($gallery['path'], '/'));
+            $absoluteGalleryDir = rtrim($this->sourceGalleryPath, '/') . '/' . $galleryDirName;
+            $authorId = $wpUserIdToLocalId[$gallery['author']] ?? 1;
+            $folderName = $gallery['title'] !== '' ? $gallery['title'] : $gallery['name'];
+            $folder = $this->folders->create($folderName, null);
+            $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
+
+            foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
+                if ($picture['exclude'] === 1) {
+                    continue;
+                }
+
+                $absolutePath = $absoluteGalleryDir . '/' . $picture['filename'];
+
+                if (!is_file($absolutePath)) {
+                    $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): file not found at {$absolutePath}, skipped.";
+                    continue;
+                }
+
+                $data = new ImportedMedia(
+                    absolutePath: $absolutePath,
+                    uploadedByUserId: $authorId,
+                    fileName: $picture['filename'],
+                    altText: $picture['alttext'] !== '' ? $picture['alttext'] : null,
+                    description: $picture['description'] !== '' ? $picture['description'] : null,
+                    folderId: $folder->id,
+                    // Prefixed to keep NextGEN's own pid numbering from
+                    // colliding with a WordPress attachment ID in the
+                    // same batch's 'media' provenance records — the two
+                    // are entirely separate id spaces that can (and in
+                    // practice do) overlap numerically.
+                    externalId: 'ngg-' . $picture['pid'],
+                    uploadedAt: $this->parseWpDate($picture['imagedate']),
+                    relativeDirectory: $galleryDirName,
+                );
+
+                try {
+                    $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data);
+                } catch (Throwable $exception) {
+                    $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): {$exception->getMessage()}";
+                }
+            }
+        }
+    }
+
+    /**
      * The returned map is used by importMenus() (Stage 8) to resolve a
      * menu item pointing at a page.
      *
@@ -2430,19 +2547,24 @@ final class WordPressImportService
     }
 
     /**
-     * WordPress shortcodes this import has no equivalent for (currently
-     * just Simple Download Monitor's own display shortcode) are left as
-     * literal, inert text in imported content — this import brings the
-     * underlying download data in via importDownloads() above, but has
-     * no shortcode processor of its own to make `[sdm_show_dl_...]`
-     * actually render anything. Flagged as a warning per occurrence so
-     * every affected page/post is visible in the import summary rather
-     * than silently shipping broken-looking content.
+     * WordPress shortcodes this import has no equivalent for (Simple
+     * Download Monitor's own display shortcode, and NextGEN Gallery's
+     * own gallery-embed shortcode) are left as literal, inert text in
+     * imported content — this import brings the underlying download/
+     * gallery-image data in via importDownloads()/importNextGenGalleries()
+     * above, but has no shortcode processor of its own to make either
+     * one actually render anything. Flagged as a warning per occurrence
+     * so every affected page/post is visible in the import summary
+     * rather than silently shipping broken-looking content.
      */
     private function flagUnsupportedShortcodes(int $wpId, string $title, string $content): void
     {
         if (str_contains($content, '[sdm_show_dl')) {
             $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [sdm_show_dl...] shortcode — Simple Download Monitor's download listing has no Lumora Press equivalent yet, so it will show as plain text.";
+        }
+
+        if (str_contains($content, '[ngg')) {
+            $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [ngg...] shortcode — NextGEN Gallery's own gallery display has no Lumora Press equivalent yet, so it will show as plain text. The gallery's images were still imported into Media Manager.";
         }
     }
 
