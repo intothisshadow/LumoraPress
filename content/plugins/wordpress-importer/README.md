@@ -91,11 +91,13 @@ direct database connection plus a local copy of the source site's
 - Import refuses to start a *second* one while a previous import's
   content still exists — remove it first, or resume it (see below) if
   it's still incomplete.
-- **Preview (Dry Run)**: reads the source database and reports
-  approximate counts per content type without importing anything —
-  "approximate" because a missing uploads file, malformed row, or
-  unsupported widget type is only ever caught during a real import, so
-  the real count can land lower.
+- **Dry run**: a single Import form handles both a preview and a real
+  import — check "Dry run (preview only — makes no changes)" above the
+  Import button to read the source database and report approximate
+  counts per content type without importing anything ("approximate"
+  because a missing uploads file, malformed row, or unsupported widget
+  type is only ever caught during a real import, so the real count can
+  land lower), or leave it unchecked to actually import.
 - **Resumable, with a live progress bar**: a real import runs stage by
   stage (Site Settings, Users, Categories & Tags, Media, Downloads,
   Pages, Posts, Comments, Menus, Widgets), persisting its progress to

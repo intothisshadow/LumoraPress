@@ -64,8 +64,8 @@ $warnings = [];
 /*
  * Connection fields are never persisted between requests — re-typed (or
  * resubmitted via the hidden fields below) on every Test Connection /
- * Preview / Start Import click, the same "credentials aren't stored
- * anywhere" posture this plugin's implementation plan calls for.
+ * Import click, the same "credentials aren't stored anywhere" posture
+ * this plugin's implementation plan calls for.
  */
 $formValues = [
     'db_host' => is_string($_POST['db_host'] ?? null) ? $_POST['db_host'] : 'localhost',
@@ -247,7 +247,7 @@ if ($wordPressImporterActive) {
 
                 // A preview only — nothing here is written anywhere. See
                 // "Site settings" below for the opt-in checkbox that
-                // actually applies these on Start Import.
+                // actually applies these when Import runs for real.
                 $sitePreview = [
                     'Site title' => html_entity_decode($wpOptions['blogname'] ?? '', ENT_QUOTES, 'UTF-8'),
                     'Tagline' => html_entity_decode($wpOptions['blogdescription'] ?? '', ENT_QUOTES, 'UTF-8'),
@@ -274,99 +274,109 @@ if ($wordPressImporterActive) {
         }
     }
 
-    if ($form === 'preview_wordpress_import' && Csrf::verify('preview_wordpress_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        try {
-            $dryRunCounts = $buildImportService()->dryRunCounts($optionsFromPost());
-        } catch (\Throwable $exception) {
-            $importError = 'Could not preview: ' . $exception->getMessage();
-        }
-    }
-
     if ($form === 'start_wordpress_import' && Csrf::verify('start_wordpress_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        // A real site's content can take a while to walk row by row —
-        // this runs as one long synchronous request (matching
-        // DummyContentGenerator's own precedent; see this feature's
-        // implementation plan for why no background-job/polling
-        // infrastructure exists in this codebase yet) rather than
-        // timing out at PHP's default execution limit. Each stage's own
-        // progress is still persisted to the database as it completes
-        // (WordPressImportService::runNextStage()), so an interruption
-        // partway through — a host's own hard execution limit despite
-        // this, a lost connection — leaves a resumable batch behind
-        // rather than losing all progress.
-        set_time_limit(0);
-
-        $importProgress = new ImportProgress(LUMORA_ROOT);
-
-        // See admin/views/maintenance/updates.php's identical pattern
-        // (and UpdateProgress's own docblock) for why this releases the
-        // session lock before a long-running operation: PHP's default
-        // session handler locks the session file for the whole request,
-        // so without this, the polling GET above would simply queue
-        // behind this request and never observe anything until the
-        // import was already done.
-        session_write_close();
-
-        try {
-            $service = $buildImportService();
-            $submittedOptions = $optionsFromPost();
-
-            // A resumable batch always continues with its own original
-            // options (see startOrResume()'s own docblock) — reflected
-            // here too, so the progress bar's declared stage list
-            // matches what will actually run, not what was just
-            // resubmitted on the (possibly stripped-down, selection-less)
-            // Resume form.
-            $preExisting = $service->inProgressBatch();
-            $plannedStages = $preExisting['plannedStages'] ?? $service->plannedStages($submittedOptions);
-            $completedStages = $preExisting['completedStages'] ?? [];
-
-            $importProgress->reset(array_map(
-                static fn (string $stage): array => ['key' => $stage, 'label' => WordPressImportService::stageLabel($stage)],
-                $plannedStages,
-            ));
-
-            foreach ($completedStages as $alreadyDoneStage) {
-                $importProgress->stage($alreadyDoneStage);
+        // Dry run shares this same form/CSRF action with a real import —
+        // see the "Dry run" checkbox's own comment in the view below for
+        // why this is one form instead of two. Branching here (after the
+        // single Csrf::verify() call above) rather than in a separate
+        // elseif condition matters: Csrf::verify() is one-time-use (it
+        // removes the token from the session on a successful check), so
+        // calling it a second time for a second condition on the same
+        // submission would always fail. The Resume form never submits a
+        // dry_run field at all, so an in-progress-batch resume always
+        // takes the real-run branch below regardless.
+        if (isset($_POST['dry_run'])) {
+            try {
+                $dryRunCounts = $buildImportService()->dryRunCounts($optionsFromPost());
+            } catch (\Throwable $exception) {
+                $importError = 'Could not preview: ' . $exception->getMessage();
             }
+        } else {
+            // A real site's content can take a while to walk row by row —
+            // this runs as one long synchronous request (matching
+            // DummyContentGenerator's own precedent; see this feature's
+            // implementation plan for why no background-job/polling
+            // infrastructure exists in this codebase yet) rather than
+            // timing out at PHP's default execution limit. Each stage's own
+            // progress is still persisted to the database as it completes
+            // (WordPressImportService::runNextStage()), so an interruption
+            // partway through — a host's own hard execution limit despite
+            // this, a lost connection — leaves a resumable batch behind
+            // rather than losing all progress.
+            set_time_limit(0);
 
-            $started = $service->startOrResume($submittedOptions);
+            $importProgress = new ImportProgress(LUMORA_ROOT);
 
-            do {
-                $remainingStages = array_values(array_diff($plannedStages, $completedStages));
+            // See admin/views/maintenance/updates.php's identical pattern
+            // (and UpdateProgress's own docblock) for why this releases the
+            // session lock before a long-running operation: PHP's default
+            // session handler locks the session file for the whole request,
+            // so without this, the polling GET above would simply queue
+            // behind this request and never observe anything until the
+            // import was already done.
+            session_write_close();
 
-                if ($remainingStages !== []) {
-                    $importProgress->stage($remainingStages[0]);
+            try {
+                $service = $buildImportService();
+                $submittedOptions = $optionsFromPost();
+
+                // A resumable batch always continues with its own original
+                // options (see startOrResume()'s own docblock) — reflected
+                // here too, so the progress bar's declared stage list
+                // matches what will actually run, not what was just
+                // resubmitted on the (possibly stripped-down, selection-less)
+                // Resume form.
+                $preExisting = $service->inProgressBatch();
+                $plannedStages = $preExisting['plannedStages'] ?? $service->plannedStages($submittedOptions);
+                $completedStages = $preExisting['completedStages'] ?? [];
+
+                $importProgress->reset(array_map(
+                    static fn (string $stage): array => ['key' => $stage, 'label' => WordPressImportService::stageLabel($stage)],
+                    $plannedStages,
+                ));
+
+                foreach ($completedStages as $alreadyDoneStage) {
+                    $importProgress->stage($alreadyDoneStage);
                 }
 
-                $result = $service->runNextStage($started['batchId']);
+                $started = $service->startOrResume($submittedOptions);
 
-                if ($result['stage'] !== null) {
-                    $completedStages[] = $result['stage'];
-                }
-            } while ($result['done'] === false);
+                do {
+                    $remainingStages = array_values(array_diff($plannedStages, $completedStages));
 
-            $importProgress->complete();
+                    if ($remainingStages !== []) {
+                        $importProgress->stage($remainingStages[0]);
+                    }
 
-            // The service instance (and its in-memory warnings() log)
-            // doesn't survive the redirect below — stashed in the
-            // session for one read, the same "flash message" technique
-            // as Csrf's own one-time token, since this screen has no
-            // generic flash-message mechanism to reuse.
-            session_start();
-            $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
+                    $result = $service->runNextStage($started['batchId']);
 
-            header('Location: ' . admin_url('maintenance/import') . '?imported=1');
-            exit;
-        } catch (\Throwable $exception) {
-            $importProgress->complete();
-            $importError = $exception->getMessage();
+                    if ($result['stage'] !== null) {
+                        $completedStages[] = $result['stage'];
+                    }
+                } while ($result['done'] === false);
 
-            // See the 'start_wordpress_import' branch's own
-            // session_write_close() above for why this is needed before
-            // the rest of the page renders — only reached on failure
-            // here, since success already exited via the redirect above.
-            session_start();
+                $importProgress->complete();
+
+                // The service instance (and its in-memory warnings() log)
+                // doesn't survive the redirect below — stashed in the
+                // session for one read, the same "flash message" technique
+                // as Csrf's own one-time token, since this screen has no
+                // generic flash-message mechanism to reuse.
+                session_start();
+                $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
+
+                header('Location: ' . admin_url('maintenance/import') . '?imported=1');
+                exit;
+            } catch (\Throwable $exception) {
+                $importProgress->complete();
+                $importError = $exception->getMessage();
+
+                // See the 'start_wordpress_import' branch's own
+                // session_write_close() above for why this is needed before
+                // the rest of the page renders — only reached on failure
+                // here, since success already exited via the redirect above.
+                session_start();
+            }
         }
     }
 
@@ -650,12 +660,17 @@ if ($wordPressImporterActive) {
             <?php
             /*
              * The "Content to import"/"Site settings"/"Import options"
-             * fields render once via this closure and are echoed inside
-             * both the Preview and Start Import forms below — each form
-             * still POSTs independently with its own CSRF token and its
-             * own copy of every field (see this section's own top-level
-             * comment on why), this just avoids maintaining three
-             * physically separate copies of the same markup in this file.
+             * fields render once via this closure, inside the single
+             * Import form below. Dry run and a real Start/Resume Import
+             * used to be two entirely separate forms with two full
+             * copies of every field — confusing on a long page, and
+             * unnecessary once dry run became just another option
+             * rather than a different destination. They now share one
+             * form/CSRF action ('start_wordpress_import'); a "Dry run"
+             * checkbox decides which the server actually does. This
+             * closure still exists mainly so the Resume form above
+             * (which needs its own smaller field set, not this one) and
+             * this shared block don't duplicate id-prefixing logic.
              */
             $renderSharedImportFields = static function (string $idPrefix) use ($formValues): void {
                 ?>
@@ -764,37 +779,38 @@ if ($wordPressImporterActive) {
             };
             ?>
 
-            <h3>Preview</h3>
+            <h3>Import</h3>
 
-            <p class="lp-field__hint">Re-enter the same connection details above — they aren't carried over from the Test Connection form. Reads the source database only; nothing is imported.</p>
+            <p class="lp-field__hint">Re-enter the same connection details above — they aren't carried over from the Test Connection form.</p>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>">
-                <?= Csrf::field('preview_wordpress_import') ?>
-                <input type="hidden" name="form" value="preview_wordpress_import">
-                <?php $renderSharedImportFields('wp-import-preview'); ?>
-                <button type="submit" class="lp-button lp-button--secondary">Preview (Dry Run)</button>
-            </form>
-
-            <h3>Start import</h3>
-
-            <p class="lp-field__hint">Re-enter the same connection details above again — they aren't carried over from the Preview form either.</p>
-
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/import')) ?>?ajax=progress" data-lp-update-progress-target="lp-import-progress-start">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/import')) ?>?ajax=progress" data-lp-update-progress-target="lp-import-progress">
                 <?= Csrf::field('start_wordpress_import') ?>
                 <input type="hidden" name="form" value="start_wordpress_import">
-                <?php $renderSharedImportFields('wp-import-start'); ?>
+                <?php $renderSharedImportFields('wp-import-run'); ?>
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="dry_run" value="1">
+                        Dry run (preview only — makes no changes)
+                    </label>
+                    <span class="lp-field__hint">
+                        Reads the source database and reports approximate counts per content type for the
+                        selection above, without importing or changing anything. Uncheck to actually import.
+                    </span>
+                </p>
 
                 <div class="lp-alert lp-alert--warning">
                     A real site's content can take a long time to import.
                     This runs as one request — do not navigate away or
                     close the tab while it's in progress. If it's interrupted
                     anyway, revisiting this page offers to resume from where
-                    it left off.
+                    it left off. (Doesn't apply to a dry run above, which
+                    finishes immediately.)
                 </div>
 
-                <ul id="lp-import-progress-start" class="lp-update-progress" hidden></ul>
+                <ul id="lp-import-progress" class="lp-update-progress" hidden></ul>
 
-                <button type="submit" class="lp-button lp-button--primary">Start Import</button>
+                <button type="submit" class="lp-button lp-button--primary">Import</button>
             </form>
         <?php endif; ?>
     </section>

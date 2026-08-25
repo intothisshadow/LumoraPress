@@ -537,6 +537,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- WordPress Importer: Maintenance › Import's separate "Preview (Dry
+  Run)" and "Start Import" forms (LPP-004) are now one form — a "Dry
+  run (preview only — makes no changes)" checkbox above the single
+  Import button replaces having to re-enter the same connection
+  details and content selection twice on a long page to do either.
 - WordPress Importer: a migrated Simple Download Monitor category now
   nests under one top-level "Downloads" Media folder instead of
   landing at the Media Library's own root, keeping a site's download
