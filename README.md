@@ -273,8 +273,10 @@ them via FTP/SFTP or your hosting file manager).
   revision history.
 - **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
   best-effort conversion between formats, text/image alignment, underline,
-  a fixed-palette font color, blockquotes, and an Attachment Display
-  Settings step (size, link-to) when inserting media.
+  a fixed-palette font color, blockquotes, an Attachment Display
+  Settings step (size, link-to) when inserting media, and an Insert
+  Folder button that drops a whole Media folder into the content as a
+  row of thumbnails.
 - **Categories & Tags** — taxonomies for posts, with per-item archive
   pages. Categories support Trash with restore, Merge (moves a
   category's posts and child categories into another before removing

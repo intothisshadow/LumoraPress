@@ -488,6 +488,99 @@
         fetchPage(true);
     }
 
+    /**
+     * LP-122: "Insert Folder" — a much lighter dialog than
+     * openMediaPicker() above, since it needs no paginated grid query
+     * of its own. The folder list is already preloaded via
+     * data-media-folders (LP-115), used until now only for
+     * openMediaPicker()'s own *filter* dropdown — reused here as the
+     * required folder-to-insert choice. onInsert receives
+     * {folderId, link} ('link' is 'none'/'file', matching the Insert
+     * Image "Link To" select's own value/label pair exactly, so the
+     * two pickers stay visually consistent).
+     */
+    function openFolderGalleryPicker(container, onInsert) {
+        var folders = JSON.parse(container.dataset.mediaFolders || '[]');
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog';
+
+        var heading = document.createElement('h2');
+        heading.textContent = 'Insert Folder';
+        heading.className = 'lp-editor-media-dialog__heading';
+
+        var folderField = document.createElement('p');
+        folderField.className = 'lp-field';
+        var folderLabelEl = document.createElement('label');
+        folderLabelEl.textContent = 'Folder';
+        var folderSelect = document.createElement('select');
+
+        folders.forEach(function (folder) {
+            var option = document.createElement('option');
+            option.value = String(folder.id);
+            option.textContent = new Array(folder.depth + 1).join('— ') + folder.name;
+            folderSelect.appendChild(option);
+        });
+
+        folderField.appendChild(folderLabelEl);
+        folderField.appendChild(folderSelect);
+
+        var linkField = document.createElement('p');
+        linkField.className = 'lp-field';
+        var linkLabelEl = document.createElement('label');
+        linkLabelEl.textContent = 'Link To';
+        var linkSelect = document.createElement('select');
+
+        [['none', 'None'], ['file', 'Media File']].forEach(function (pair) {
+            var option = document.createElement('option');
+            option.value = pair[0];
+            option.textContent = pair[1];
+            linkSelect.appendChild(option);
+        });
+
+        linkField.appendChild(linkLabelEl);
+        linkField.appendChild(linkSelect);
+
+        var actions = document.createElement('div');
+        actions.className = 'lp-editor-media-dialog__settings-actions';
+
+        var insertButton = document.createElement('button');
+        insertButton.type = 'button';
+        insertButton.className = 'lp-button lp-button--primary';
+        insertButton.textContent = 'Insert';
+        insertButton.disabled = folders.length === 0;
+        insertButton.addEventListener('click', function () {
+            onInsert({ folderId: parseInt(folderSelect.value, 10) || 0, link: linkSelect.value });
+            dialog.close();
+        });
+
+        var cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'lp-button';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.addEventListener('click', function () { dialog.close(); });
+
+        actions.appendChild(insertButton);
+        actions.appendChild(cancelButton);
+
+        dialog.appendChild(heading);
+
+        if (folders.length === 0) {
+            var status = document.createElement('p');
+            status.className = 'lp-editor-media-dialog__status';
+            status.textContent = 'No Media folders exist yet.';
+            dialog.appendChild(status);
+        } else {
+            dialog.appendChild(folderField);
+            dialog.appendChild(linkField);
+        }
+
+        dialog.appendChild(actions);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
     // ------------------------------------------------------------------
     // Upload helper — shared by both editors.
     // ------------------------------------------------------------------
@@ -755,6 +848,18 @@
                         className: 'fa fa-photo',
                         title: 'Insert Image',
                     },
+                    {
+                        name: 'folder-gallery',
+                        action: function () {
+                            openFolderGalleryPicker(container, function (payload) {
+                                var cm = editor.codemirror;
+                                var link = payload.link === 'file' ? 'full' : 'none';
+                                cm.replaceSelection('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
+                            });
+                        },
+                        className: 'fa fa-th',
+                        title: 'Insert Folder',
+                    },
                     'table', 'horizontal-rule', '|',
                     'preview', 'side-by-side', 'fullscreen', '|',
                     'guide',
@@ -821,7 +926,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraMoreTag table codesample | '
+                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraFolderGallery lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
@@ -952,6 +1057,17 @@
                                         + '>' + image + '</a>';
 
                                     editor.insertContent(link);
+                                });
+                            },
+                        });
+
+                        editor.ui.registry.addButton('lumoraFolderGallery', {
+                            icon: 'gallery',
+                            tooltip: 'Insert Folder',
+                            onAction: function () {
+                                openFolderGalleryPicker(container, function (payload) {
+                                    var link = payload.link === 'file' ? 'full' : 'none';
+                                    editor.insertContent('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
                                 });
                             },
                         });

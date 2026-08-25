@@ -124,7 +124,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `footer_assets` | action | none | Same theme convention, fired right before `</body>`. **Core itself listens here** ([`FooterAssets`](../app/Core/Theme/FooterAssets.php), registered in `include/bootstrap.php`) to emit lightbox/embed script tags — a theme that skips this hook silently breaks `the_post_thumbnail_lightbox()` and auto-embeds. |
 | `get_header` / `get_footer` / `get_sidebar` | action | none | Fired at the top of the corresponding [`get_header()`/`get_footer()`/`get_sidebar()`](../include/theme.php) template-tag function, before the partial is rendered. |
 | `comments_template` | action | none | Fired inside `comments_template()`, before `comments.php` renders. |
-| `content_html` | filter | `string $html, string $rawContent, ContentFormat $format` | [`ContentRenderer`](../app/Services/ContentRenderer.php)`::render()` — the *final* HTML filter, after format-specific rendering, sanitization, and lightbox-attribute injection. Font Awesome's `[icon]`-shortcode handling uses this at priority 20 specifically to run after other subscribers. |
+| `content_html` | filter | `string $html, string $rawContent, ContentFormat $format` | [`ContentRenderer`](../app/Services/ContentRenderer.php)`::render()` — the *final* HTML filter, after format-specific rendering, sanitization, and lightbox-attribute injection. Font Awesome's `[icon]`-shortcode handling uses this at priority 20 specifically to run after other subscribers. Core's own `[lumora_folder_gallery]` shortcode ([`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php)) is also registered here, at the default priority — see Shortcodes below. |
 | `markdown_html` | filter | `string $html, string $rawContent` | Same method, Markdown-only, applied to the parser's raw HTML output *before* sanitization. |
 | `wysiwyg_html` | filter | `string $html` | Same method, HTML-format-only, before sanitization. |
 | `embed_providers` | filter | `array $providers` (`{key, label, match, allow, allowfullscreen, aspect, type?}[]`) | [`EmbedService`](../app/Services/EmbedService.php)`::providers()` — register an auto-embed provider beyond the built-in ones. |
@@ -135,6 +135,21 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `feed_item` | filter | `array{post, authorName, description, content, thumbnailUrl, thumbnailType, thumbnailLength} $item, Post $post` | `FeedService::buildItem()` — applied to every feed `<item>`, both site-wide and per-category. |
 | `feed_generated` | action | `string $format` (`'rss'`/`'atom'`) | `SiteController::feed()`, fired **after** the feed body has already been echoed — output/headers are already sent, so a listener can observe/log but not modify the response. |
 | `gettext` | filter | `string $text, string $domain` | Inside `__()` ([`include/helpers.php`](../include/helpers.php)) — there's no built-in translation loader, this filter is the extension point for one. `_e()` calls `__()` internally, so it's covered too. |
+
+### Shortcodes
+
+There is no shortcode-registration API (see LP-110 in `TODO.md` — a
+generic registration system plus an editor-toolbar picker for *any*
+shortcode is a separate, not-yet-built ticket). A shortcode today is
+just a plugin or core class that hooks the `content_html` filter above
+and does its own `preg_replace_callback()` over a fixed pattern — see
+`content/plugins/downloads/src/DownloadsShortcode.php` for the
+reference plugin implementation, or `FolderGalleryShortcode` below for
+the core equivalent.
+
+| Shortcode | Registered by | Syntax |
+|---|---|---|
+| `[lumora_folder_gallery]` | Core — [`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php), wired in `include/bootstrap.php` | `[lumora_folder_gallery folder_id="12" link="full"]` — renders every image in Media folder `folder_id` as a row of thumbnails. `link` is `none` (default) or `full` (wraps each thumbnail in a link to the full-size image, joining the post's PhotoSwipe lightbox gallery the same way an Insert Image "Link To: Media File" image does). A missing/deleted folder, or a folder with no images, renders nothing. Inserted via the content editor's "Insert Folder" toolbar button (`admin/assets/js/content-editor.js`), next to Insert Image. |
 
 ### Theme Options & settings
 

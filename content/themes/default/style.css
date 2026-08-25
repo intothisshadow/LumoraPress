@@ -1561,3 +1561,59 @@ img {
     margin-left: auto;
     margin-right: auto;
 }
+
+/* =========================================================
+   Folder Gallery (LP-122)
+   ========================================================= */
+/*
+ * Rendered by FolderGalleryShortcode for the [lumora_folder_gallery]
+ * shortcode — inserted via the content editor's "Insert Folder" button
+ * as a row of thumbnails for every image in a chosen Media folder.
+ */
+.lp-folder-gallery {
+    margin: 1.5em 0;
+}
+
+.lp-folder-gallery__items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75em;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-folder-gallery__item {
+    display: block;
+}
+
+.lp-folder-gallery__link,
+.lp-folder-gallery__thumb {
+    display: block;
+}
+
+/*
+ * "img.lp-folder-gallery__thumb", not just ".lp-folder-gallery__thumb"
+ * — this shortcode's output usually lands inside .lp-post__content,
+ * whose own "img { max-width: 100%; height: auto; }" rule (above) is
+ * equally specific to a single-class selector and would otherwise win
+ * on source order alone, collapsing the fixed thumbnail crop back to
+ * each image's natural aspect ratio. Matching its own "class + element"
+ * specificity tier is what makes source order (this rule comes later)
+ * decide it instead — the same mechanism .lp-downloads-list__description
+ * img's own alignment rules above already rely on.
+ */
+img.lp-folder-gallery__thumb {
+    width: 150px;
+    height: 150px;
+    object-fit: cover;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+}
+
+@media (max-width: 720px) {
+    img.lp-folder-gallery__thumb {
+        width: 100px;
+        height: 100px;
+    }
+}

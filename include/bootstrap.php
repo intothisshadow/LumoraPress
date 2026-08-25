@@ -80,6 +80,7 @@ use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\EntityDecodeRepairService;
 use LumoraPress\Services\FeedService;
+use LumoraPress\Services\FolderGalleryShortcode;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
 use LumoraPress\Services\Import\CommentImporter;
@@ -543,6 +544,12 @@ $thumbnails = new ThumbnailService(
     media: $media,
     logDirectory: LUMORA_ROOT . '/storage/logs',
 );
+
+// LP-122: [lumora_folder_gallery] — inserted via the content editor's
+// "Insert Folder" button, alongside Insert Image.
+$folderGallery = new FolderGalleryShortcode($folders, $media, $thumbnails);
+add_filter('content_html', [$folderGallery, 'render']);
+
 $feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content);
 $mediaImport = new MediaImportService(
     database: $database,

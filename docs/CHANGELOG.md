@@ -6,6 +6,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- A new "Insert Folder" button in the content editor toolbar (next to
+  Insert Image, in both the Markdown and HTML/WYSIWYG editors) inserts
+  a whole Media folder into a post/page at once, rendered as a row of
+  thumbnails — previously an author had to insert each image in a
+  folder one at a time. The row always reflects the folder's current
+  contents (an image added or removed later shows up/disappears
+  automatically), and choosing "Link To: Media File" wraps each
+  thumbnail in a link to the full-size image that joins the post's
+  existing lightbox gallery, matching Insert Image's own "Link To"
+  behavior.
 - WordPress Importer: the Detect/Test Connection/Import/Resume forms on
   Maintenance › Import no longer blank out fields an admin already
   entered when submitting one of the other forms — the Gallery folder
