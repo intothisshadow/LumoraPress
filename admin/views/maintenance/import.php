@@ -515,22 +515,34 @@ if ($wordPressImporterActive) {
             settings, widgets, or a plugin's own custom tables, so those
             are only ever imported from a direct database connection; a
             WXR-sourced user also always imports as Subscriber, since WXR
-            carries no role data at all. If the source site has Simple
-            Download Monitor installed, its downloads (including their
-            real download counts, from a database connection — a WXR
-            export's own <code>sdm_count_offset</code> value is used
-            alone, since the per-visit download log itself is never
-            exported) are imported too — organized into matching Media
-            Manager Folders when the file is hosted locally, or as a
-            Redirect (with a working, seeded hit counter) when it only
-            links to an external URL. Any page still using
-            <code>[sdm_show_dl_from_category]</code> automatically renders
-            a real list of those downloads after import — no manual page
-            editing needed. Site title, tagline, timezone, date/time
-            format, and permalink structure can optionally be imported too
-            from a database connection (off by default — see "Site
-            settings" below).
+            carries no role data at all. Site title, tagline, timezone,
+            date/time format, and permalink structure can optionally be
+            imported too from a database connection (off by default — see
+            "Site settings" below).
         </p>
+
+        <p class="lp-field__hint">Also recognizes data from these WordPress plugins, if installed on the source site:</p>
+        <ul class="lp-field__hint">
+            <li>
+                <strong>Simple Download Monitor</strong> — its downloads
+                import as real Media items (filed into matching Media
+                Manager Folders) or Redirects (with a working, seeded hit
+                counter) for an external-URL-only download, carrying their
+                real download counts across from a database connection —
+                a WXR export's own <code>sdm_count_offset</code> value is
+                used alone, since the per-visit download log itself is
+                never exported. Any page still using
+                <code>[sdm_show_dl_from_category]</code> automatically
+                renders a real list of those downloads after import — no
+                manual page editing needed.
+            </li>
+            <li>
+                <strong>Folders</strong> — its Media Library folder
+                organization imports into matching Media Manager Folders,
+                preserving the source site's own nesting, instead of every
+                attachment landing with no folder at all.
+            </li>
+        </ul>
 
         <?php
         /*
