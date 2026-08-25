@@ -697,6 +697,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A download's Description imported via the WordPress Importer could
+  contain an `<img>` still pointing at the original WordPress site's
+  domain (e.g. a Simple Download Monitor preview thumbnail such as
+  "300DPI / 3000&times;3000") — `importPosts()`/`importPages()` already
+  rewrote embedded image references to the new local media URL, but
+  `importDownloads()` never received the URL map needed to do the same
+  for a download's own Description, so any embedded thumbnail image
+  was left permanently unresolvable after import. Fixed by threading
+  the same URL map into `importDownloads()` and rewriting Description
+  the same way post/page content already is.
 - A download's Description with an aligned image (`alignleft`/
   `alignright`/`aligncenter`, e.g. content migrated by the WordPress
   Importer) had no float/clearfix styling on the `[lumora_downloads]`

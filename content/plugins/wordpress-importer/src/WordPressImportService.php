@@ -708,7 +708,7 @@ final class WordPressImportService
                 $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? []);
                 break;
             case 'downloads':
-                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? []);
+                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
                 break;
             case 'pages':
                 $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
@@ -2014,10 +2014,12 @@ final class WordPressImportService
      *
      * @param array<int, int> $wpUserIdToLocalId
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
+     * @param array<string, string> $oldRelativePathToNewUrl
      */
-    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId): void
+    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl): void
     {
         $wpFolderIdByWpTermId = $this->importFolders($batchId);
+        $imageRewriter = new ContentImageRewriter();
 
         foreach ($this->source->posts(['sdm_downloads'], ['publish']) as $download) {
             $meta = $this->source->postMeta($download['ID']);
@@ -2041,6 +2043,13 @@ final class WordPressImportService
             // body (rather than SDM's dedicated Description field) falls
             // back to post_content, so it isn't silently dropped.
             $description = ($meta['sdm_description'] ?? '') !== '' ? $meta['sdm_description'] : $download['post_content'];
+
+            $rewrittenDescription = $imageRewriter->rewrite($description, $oldRelativePathToNewUrl);
+            $description = $rewrittenDescription['content'];
+
+            foreach ($rewrittenDescription['warnings'] as $warning) {
+                $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): {$warning}";
+            }
 
             $uploadsMarker = '/wp-content/uploads/';
 
