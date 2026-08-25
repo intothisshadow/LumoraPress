@@ -2006,6 +2006,41 @@ body.lp-admin-login {
     font-weight: 700;
 }
 
+/* LPP-010: File-typed Download's preview image (Add/Edit Download) —
+   the same image-or-type-badge fallback the Media Manager's own
+   grid/list thumbnails already use (.lp-media-grid__thumb--file/
+   .lp-media-list__thumb--file above), sized for a standalone preview
+   rather than a small grid tile. */
+.lp-download-preview {
+    display: flex;
+    align-items: center;
+}
+
+.lp-download-preview__image {
+    display: block;
+    max-width: 200px;
+    max-height: 200px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    background: var(--lp-admin-sidebar-bg);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-download-preview__file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 96px;
+    height: 96px;
+    background: var(--lp-admin-sidebar-bg);
+    border-radius: var(--lp-admin-radius);
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
 .lp-media-manager__bulk-bar {
     display: flex;
     gap: 0.5rem;

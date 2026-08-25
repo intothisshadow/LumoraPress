@@ -6,6 +6,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Downloads: the Add/Edit Download screens' Description field now uses
+  the same shared WYSIWYG/Markdown/HTML editor and format-switching UI
+  Posts and Pages already use, instead of a plain textarea (LPP-010).
+  For a File-typed download, the Edit screen (and the Add screen
+  immediately after a successful upload) shows a preview of the
+  uploaded file — an image thumbnail for image files, or the same
+  file-type badge the Media Manager already falls back to for other
+  file types (PDF, zip, etc.). The `[lumora_downloads]` shortcode now
+  renders a Markdown/HTML-format description accordingly too, rather
+  than always showing it as escaped plain text.
 - Media Manager: a Thumbnails/List view-mode toggle (LP-097) — List is a
   dense filename/type/size/dimensions/uploaded-date table, and the
   uploaded date now also shows under each Thumbnails item and in the

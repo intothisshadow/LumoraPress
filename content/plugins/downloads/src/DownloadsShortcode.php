@@ -17,9 +17,13 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\Downloads;
 
+use LumoraPress\Core\Content\HtmlSanitizer;
+use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Models\Folder;
+use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\RedirectService;
@@ -48,15 +52,21 @@ final class DownloadsShortcode
     private const PATTERN = '/\[lumora_downloads([^\]]*)\]/i';
 
     /**
-     * All three optional and given together, or none — tests construct
-     * this with real (SQLite-fixture-backed) service instances so
-     * renderShortcodes() never needs a real database connection; the
-     * plugin's own bootstrap constructs this with no arguments, so
-     * services() lazily opens the real one on first actual use.
+     * $injectedDownloads/$injectedFolders are optional and given
+     * together, or none — tests construct this with real
+     * (SQLite-fixture-backed) service instances so renderShortcodes()
+     * never needs a real database connection; the plugin's own
+     * bootstrap constructs this with no arguments, so services() lazily
+     * opens the real one on first actual use. $injectedContent is
+     * accepted independently of the pair above (a description's
+     * Markdown/HTML rendering, LPP-010, needs no database access at
+     * all) so a test can cover rendering without also standing up the
+     * SQLite fixtures the other two require.
      */
     public function __construct(
         private readonly ?DownloadService $injectedDownloads = null,
         private readonly ?FolderService $injectedFolders = null,
+        private readonly ?ContentRenderer $injectedContent = null,
     ) {
     }
 
@@ -99,6 +109,25 @@ final class DownloadsShortcode
     }
 
     /**
+     * A private, database-free ContentRenderer for turning a Download's
+     * Markdown/HTML-format description into safe HTML (LPP-010) —
+     * deliberately never the site's own shared HookManager instance:
+     * this class is itself a `content_html` filter callback (see
+     * downloads.php), and ContentRenderer::render() ends by re-running
+     * that same filter. Reusing the shared HookManager here would mean
+     * every rendered description re-triggers renderShortcodes() (and
+     * every other `content_html` listener) mid-callback. A fresh,
+     * private HookManager has nothing registered on it, so that last
+     * `applyFilters()` call inside render() is a safe no-op — the
+     * Markdown parsing and HtmlSanitizer XSS boundary (the part that
+     * actually matters for untrusted stored content) still run in full.
+     */
+    private function content(): ContentRenderer
+    {
+        return $this->injectedContent ?? new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), new HookManager());
+    }
+
+    /**
      * `category_id` (an exact Folder id) wins if given; otherwise
      * `category` is matched case-insensitively against the Folder's own
      * name — Folders have no slug column, the same constraint the
@@ -137,6 +166,8 @@ final class DownloadsShortcode
      */
     private function renderList(Folder $folder, array $items, bool $showSize): string
     {
+        $content = $this->content();
+
         $html = '<div class="lp-downloads-list">';
         $html .= '<h3 class="lp-downloads-list__title">' . esc_html($folder->name) . '</h3>';
         $html .= '<ul class="lp-downloads-list__items">';
@@ -150,7 +181,11 @@ final class DownloadsShortcode
             }
 
             if ($item->description !== '') {
-                $html .= '<div class="lp-downloads-list__description">' . esc_html($item->description) . '</div>';
+                // Rendered per its own stored $descriptionFormat (LPP-010)
+                // — the same Markdown/HTML/Plain branching a post/page's
+                // content already gets, since the Description field now
+                // uses that same shared editor.
+                $html .= '<div class="lp-downloads-list__description">' . $content->render($item->description, $item->descriptionFormat) . '</div>';
             }
 
             $html .= '</li>';

@@ -20,6 +20,7 @@ namespace LumoraPress\Plugins\Downloads;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Folder;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
@@ -71,6 +72,7 @@ final class DownloadService
         ?array $file,
         ?string $externalUrl,
         int $uploadedByUserId,
+        ContentFormat $descriptionFormat = ContentFormat::Plain,
     ): Download {
         if ($type === DownloadType::File) {
             if ($file === null) {
@@ -94,7 +96,7 @@ final class DownloadService
             $mediaId = null;
         }
 
-        return $this->recordExisting($title, $description, $folderId, $type, $mediaId, $redirectId);
+        return $this->recordExisting($title, $description, $folderId, $type, $mediaId, $redirectId, $descriptionFormat);
     }
 
     /**
@@ -109,17 +111,18 @@ final class DownloadService
      * there would upload the file or create the redirect a second
      * time).
      */
-    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId): Download
+    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain): Download
     {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, description, folder_id, type, media_id, redirect_id, created_at, updated_at)
-             VALUES (:title, :description, :folder_id, :type, :media_id, :redirect_id, :created_at, :updated_at)',
+                (title, description, description_format, folder_id, type, media_id, redirect_id, created_at, updated_at)
+             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :redirect_id, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'description' => $description,
+                'description_format' => $descriptionFormat->value,
                 'folder_id' => $folderId,
                 'type' => $type->value,
                 'media_id' => $mediaId,
@@ -142,9 +145,12 @@ final class DownloadService
      * Changing the underlying *file* of a File-typed download is out of
      * scope — Media Manager's own edit panel doesn't support replacing a
      * file either; delete and re-add covers that case. $externalUrl is
-     * ignored for a File-typed download.
+     * ignored for a File-typed download. $descriptionFormat left null
+     * keeps the download's existing stored format (mirrors
+     * PageService::update()'s identical "null means unchanged"
+     * convention for its own $contentFormat parameter).
      */
-    public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl): bool
+    public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl, ?ContentFormat $descriptionFormat = null): bool
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
 
@@ -164,13 +170,16 @@ final class DownloadService
             $this->media->updateMetadata((int) $row['media_id'], null, null, $description, null);
         }
 
+        $resolvedDescriptionFormat = $descriptionFormat ?? ContentFormat::tryFrom((string) ($row['description_format'] ?? '')) ?? ContentFormat::Plain;
+
         return $this->database->execute(
             'UPDATE ' . $this->table() . '
-                SET title = :title, description = :description, folder_id = :folder_id, updated_at = :updated_at
+                SET title = :title, description = :description, description_format = :description_format, folder_id = :folder_id, updated_at = :updated_at
               WHERE id = :id',
             [
                 'title' => $title,
                 'description' => $description,
+                'description_format' => $resolvedDescriptionFormat->value,
                 'folder_id' => $folderId,
                 'updated_at' => date('Y-m-d H:i:s'),
                 'id' => $id,
@@ -260,6 +269,7 @@ final class DownloadService
             $original->type,
             $original->mediaId,
             $original->redirectId,
+            $original->descriptionFormat,
         );
     }
 
@@ -465,6 +475,7 @@ final class DownloadService
             id: (int) $row['id'],
             title: (string) $row['title'],
             description: (string) ($row['description'] ?? ''),
+            descriptionFormat: ContentFormat::tryFrom((string) ($row['description_format'] ?? '')) ?? ContentFormat::Plain,
             folderId: $row['folder_id'] !== null ? (int) $row['folder_id'] : null,
             type: $type,
             mediaId: $mediaId,

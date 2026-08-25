@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\Downloads;
 
 use DateTimeImmutable;
+use LumoraPress\Models\ContentFormat;
 
 /**
  * $url, $fileSizeBytes, and $targetUrl are all resolved by
@@ -37,6 +38,11 @@ final class Download
         public readonly int $id,
         public readonly string $title,
         public readonly string $description,
+        // Reuses posts/pages' own ContentFormat enum and
+        // `{table}.description_format` column convention (LPP-010)
+        // rather than inventing a parallel one — the Description field
+        // is edited with the exact same shared editor component.
+        public readonly ContentFormat $descriptionFormat,
         public readonly ?int $folderId,
         public readonly DownloadType $type,
         public readonly ?int $mediaId,

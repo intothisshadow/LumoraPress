@@ -12,9 +12,14 @@ Press's own content model.
   sortable columns, Live/Trash status tabs, bulk actions, and
   pagination, the same conventions the Posts/Pages list screens use.
 - **Downloads → Add New**: add a new download — a title, description,
-  and category, plus either an uploaded file or an external URL. A
-  category can also be created inline from the same screen. The same
-  screen doubles as the editor for an existing download (via `?id=`).
+  and category, plus either an uploaded file or an external URL. The
+  Description field uses the same shared WYSIWYG/Markdown/HTML editor
+  Posts and Pages use, with the same format-switching UI. A category
+  can also be created inline from the same screen. The same screen
+  doubles as the editor for an existing download (via `?id=`), where a
+  File-typed download also shows a preview of the uploaded file — an
+  image thumbnail, or a file-type badge for non-image files — visible
+  immediately after a successful upload on Add too.
 - **Downloads → Shortcodes**: reference docs for `[lumora_downloads]`,
   with real examples built from the site's own categories.
 - **Trash**: moving a download to Trash hides it from the public
@@ -63,6 +68,12 @@ from `[sdm_show_dl_from_category]` — it reads from the `downloads`
 table directly rather than Media/Redirects by folder_id, so it only
 ever shows downloads that have a real row here (added through this
 plugin's own UI, or imported while this plugin was active).
+
+A download's description is stored with its own format (a
+`description_format` column, mirroring `posts`/`pages`' own
+`content_format`), so it can be Plain, Markdown, or HTML — the
+shortcode renders it accordingly rather than always as escaped plain
+text.
 
 ## Deferred
 
