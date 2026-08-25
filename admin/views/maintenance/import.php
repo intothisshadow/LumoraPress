@@ -563,6 +563,12 @@ if ($wordPressImporterActive) {
                     comments, and menus, but every imported user lands as Subscriber and there's
                     nothing to import for Site Settings or Widgets.
                 </li>
+                <li>
+                    Either way, you'll also need a local filesystem copy of the source site's
+                    <code>wp-content/uploads</code> folder, readable by this server's PHP process —
+                    neither option fetches files remotely, and a WXR export's own attachment entries
+                    only record where each file used to live, not the file itself.
+                </li>
             </ul>
 
             <p class="lp-field lp-field--radio">
