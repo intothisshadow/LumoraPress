@@ -369,6 +369,17 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
+     * Same reasoning as nextGenGalleries() above — a WXR export has no
+     * representation of NextGEN's `ngg_album` table.
+     *
+     * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
+     */
+    public function nextGenAlbums(): array
+    {
+        return [];
+    }
+
+    /**
      * @return array<int, string>
      */
     public function oldSlugs(int $postId): array

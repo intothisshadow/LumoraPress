@@ -612,6 +612,46 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
+     * NextGEN Gallery's own `ngg_album` table — groups a set of
+     * galleries together. Confirmed against a real production database
+     * (LPP-004's own established practice, not NextGEN's public schema
+     * docs): there is no `gallery_ids` column at all, and member
+     * gallery ids are not a PHP-serialized array either — `sortorder`
+     * is base64-encoded JSON, e.g. `WyI5IiwiOCJd` decoding to
+     * `["9","8"]`. A malformed/empty `sortorder` (either base64 or
+     * JSON decoding fails, or the JSON isn't an array) yields an empty
+     * `galleryIds` list rather than throwing — the album itself still
+     * gets created, just with nothing nested under it yet.
+     *
+     * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
+     */
+    public function nextGenAlbums(): array
+    {
+        try {
+            $rows = $this->source->fetchAll(
+                'SELECT id, name, slug, sortorder FROM ' . $this->table('ngg_album') . ' ORDER BY id ASC',
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(
+            function (array $row): array {
+                $decoded = base64_decode((string) $row['sortorder'], true);
+                $galleryIds = $decoded !== false ? json_decode($decoded, true) : null;
+
+                return [
+                    'id' => (int) $row['id'],
+                    'name' => (string) $row['name'],
+                    'slug' => (string) $row['slug'],
+                    'galleryIds' => is_array($galleryIds) ? array_map('intval', $galleryIds) : [],
+                ];
+            },
+            $rows,
+        );
+    }
+
+    /**
      * @return array<int, string>
      */
     public function oldSlugs(int $postId): array

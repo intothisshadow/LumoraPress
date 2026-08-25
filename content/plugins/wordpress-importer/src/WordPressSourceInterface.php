@@ -128,6 +128,15 @@ interface WordPressSourceInterface
     public function nextGenPictures(int $galleryId): array;
 
     /**
+     * NextGEN Gallery's own `ngg_album` table — groups a set of
+     * galleries together (unlike a gallery itself, which has no
+     * hierarchy of its own).
+     *
+     * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
+     */
+    public function nextGenAlbums(): array;
+
+    /**
      * Every `_wp_old_slug` value ever recorded for one post/page, oldest
      * first — WordPress appends a new row each time a published post's
      * slug changes, so unlike every other meta key this importer reads

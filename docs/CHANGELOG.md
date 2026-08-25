@@ -16,6 +16,11 @@ All notable changes to Lumora Press are documented in this file.
   thumbnail in a link to the full-size image that joins the post's
   existing lightbox gallery, matching Insert Image's own "Link To"
   behavior.
+- WordPress Importer: NextGEN Gallery's own album grouping (`ngg_album`)
+  is now imported — each album becomes a real parent Media Manager
+  Folder, with its member galleries' own folders nested underneath
+  instead of always landing flat at the Media Manager's root. A gallery
+  that belongs to no album keeps its existing root-level placement.
 - WordPress Importer: the Detect/Test Connection/Import/Resume forms on
   Maintenance › Import no longer blank out fields an admin already
   entered when submitting one of the other forms — the Gallery folder

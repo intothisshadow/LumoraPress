@@ -2341,9 +2341,15 @@ final class WordPressImportService
      * `[ngg_...]` shortcodes themselves are never rendered — a page/post
      * still containing one is flagged as an import warning by
      * flagUnsupportedShortcodes() instead, same as
-     * `[sdm_show_dl_from_category]`'s own handling. NextGEN's separate
-     * album grouping (`ngg_album`, a set of galleries) also isn't
-     * imported — this ticket only asked for galleries and their media.
+     * `[sdm_show_dl_from_category]`'s own handling.
+     *
+     * NextGEN's own `ngg_album` grouping is imported too: each album
+     * becomes a real parent Media Manager Folder (mirroring
+     * importFolders()/importMediaFolders()'s own nesting), and each of
+     * its member galleries' folder is created underneath it instead of
+     * at root — see buildGalleryIdToAlbumId()'s own docblock for how a
+     * gallery belonging to more than one album is resolved. A gallery
+     * that belongs to no album keeps today's flat root-level placement.
      *
      * @param array<int, int> $wpUserIdToLocalId
      */
@@ -2353,12 +2359,26 @@ final class WordPressImportService
             return;
         }
 
+        $albums = $this->source->nextGenAlbums();
+        $wpAlbumIdToLocalFolderId = [];
+
+        foreach ($albums as $album) {
+            $albumName = $album['name'] !== '' ? $album['name'] : $album['slug'];
+            $folder = $this->folders->create($albumName, null);
+            $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
+            $wpAlbumIdToLocalFolderId[$album['id']] = $folder->id;
+        }
+
+        $wpGalleryGidToAlbumId = $this->buildGalleryIdToAlbumId($albums);
+
         foreach ($this->source->nextGenGalleries() as $gallery) {
             $galleryDirName = basename(rtrim($gallery['path'], '/'));
             $absoluteGalleryDir = rtrim($this->sourceGalleryPath, '/') . '/' . $galleryDirName;
             $authorId = $wpUserIdToLocalId[$gallery['author']] ?? 1;
             $folderName = $gallery['title'] !== '' ? $gallery['title'] : $gallery['name'];
-            $folder = $this->folders->create($folderName, null);
+            $parentAlbumId = $wpGalleryGidToAlbumId[$gallery['gid']] ?? null;
+            $parentFolderId = $parentAlbumId !== null ? ($wpAlbumIdToLocalFolderId[$parentAlbumId] ?? null) : null;
+            $folder = $this->folders->create($folderName, $parentFolderId);
             $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
 
             foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
@@ -2397,6 +2417,34 @@ final class WordPressImportService
                 }
             }
         }
+    }
+
+    /**
+     * A gallery only ever belongs to one album in every real NextGEN
+     * database examined so far, but nothing stops two albums from both
+     * listing the same gallery id in their own `sortorder` — the first
+     * album (by ascending `id`, i.e. iteration order of $albums, which
+     * nextGenAlbums() already returns `ORDER BY id ASC`) wins, the same
+     * "first match wins" tiebreak importMediaFolders()'s sibling
+     * resolveMediaFolder()/resolveDownloadFolder() already use for an
+     * analogous multi-parent ambiguity.
+     *
+     * @param array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}> $albums
+     * @return array<int, int> NextGEN gallery gid => the NextGEN album id it belongs to
+     */
+    private function buildGalleryIdToAlbumId(array $albums): array
+    {
+        $wpGalleryGidToAlbumId = [];
+
+        foreach ($albums as $album) {
+            foreach ($album['galleryIds'] as $galleryId) {
+                if (!isset($wpGalleryGidToAlbumId[$galleryId])) {
+                    $wpGalleryGidToAlbumId[$galleryId] = $album['id'];
+                }
+            }
+        }
+
+        return $wpGalleryGidToAlbumId;
     }
 
     /**
