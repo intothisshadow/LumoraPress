@@ -19,8 +19,10 @@ namespace LumoraPress\Plugins\WordPressImporter;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\ContentFormat;
@@ -34,6 +36,7 @@ use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\Import\CommentImporter;
+use LumoraPress\Services\Import\ExistingContentMode;
 use LumoraPress\Services\Import\ImportedComment;
 use LumoraPress\Services\Import\ImportedMedia;
 use LumoraPress\Services\Import\ImportedMenu;
@@ -125,6 +128,33 @@ final class WordPressImportService
      * caller-selectable $statuses option.
      */
     private const ATTACHMENT_STATUSES = ['inherit'];
+
+    /**
+     * Post types this importer already has explicit support for —
+     * either queried directly via posts() ('post'/'page'/'attachment'),
+     * imported through a dedicated non-post-type mechanism of their own
+     * (NextGEN Gallery's 'ngg_gallery'/'ngg_pictures', via their own
+     * database tables — see importNextGenGalleries()), or handled
+     * elsewhere in this class ('nav_menu_item' by importMenus(),
+     * 'sdm_downloads' by importDownloads()). 'revision' is WordPress's
+     * own auto-generated post history, not content an admin created, so
+     * it's excluded here too rather than reported as unsupported.
+     * Anything else found by reportUnsupportedPostTypes() has no Lumora
+     * Press equivalent at all.
+     *
+     * @var array<int, string>
+     */
+    private const HANDLED_POST_TYPES = ['post', 'page', 'attachment', 'nav_menu_item', 'revision', 'sdm_downloads', 'ngg_gallery', 'ngg_pictures'];
+
+    /**
+     * Plugin directory slugs (an `active_plugins` entry's own directory
+     * name, e.g. "folders/folders.php" -> "folders") this importer
+     * already recognizes and migrates real data from — see this
+     * plugin's own README for exactly what each one imports.
+     *
+     * @var array<int, string>
+     */
+    private const HANDLED_PLUGIN_SLUGS = ['simple-download-monitor', 'folders', 'nextgen-gallery'];
 
     /**
      * The only permalink tokens PermalinkService actually replaces (see
@@ -233,6 +263,37 @@ final class WordPressImportService
     }
 
     /**
+     * URL & Link Migration — every redirect this batch created (Simple
+     * Download Monitor's own external-URL downloads, and `_wp_old_slug`
+     * entries — see importDownloads()/importOldSlugRedirects()), as a
+     * plain old-URL/new-URL table for the admin to review or export. A
+     * pure ContentImportRegistry + RedirectService read, so — like
+     * lastImportSummary()/removeAll() — it needs no source connection at
+     * all, just a real batch id.
+     *
+     * @return array<int, array{sourcePath: string, targetUrl: string}>
+     */
+    public function redirectMappingReport(string $batchId): array
+    {
+        $report = [];
+
+        foreach ($this->registry->idsForBatch($batchId, 'redirect') as $entry) {
+            $redirect = $this->redirects->find($entry['contentId']);
+
+            if ($redirect === null) {
+                continue;
+            }
+
+            $report[] = [
+                'sourcePath' => (string) $redirect['source_path'],
+                'targetUrl' => (string) $redirect['target_url'],
+            ];
+        }
+
+        return $report;
+    }
+
+    /**
      * @return array<int, string>
      */
     public function warnings(): array
@@ -241,7 +302,7 @@ final class WordPressImportService
     }
 
     /**
-     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int, existing_content?: string} $options
      * @return array<string, int>
      */
     public function run(array $options): array
@@ -335,9 +396,24 @@ final class WordPressImportService
      * completed stages inconsistent with the rest. A genuinely complete
      * batch still refuses to start a new import until it's removed —
      * the same guard this method replaces from the old single-pass
-     * run().
+     * run() — *unless* `$options['existing_content']` is `'skip'` or
+     * `'overwrite'` (Import Options — "Skip existing content"/
+     * "Overwrite existing content"), in which case a brand new batch is
+     * allowed to start right alongside an already-complete one: every
+     * *Importer's own import() call (see ExistingContentMode) resolves
+     * each row's external id against *every* previous batch of this
+     * source via ContentImportRegistry::existingLocalId() — not just
+     * this new batch — and either reuses or updates the row it finds
+     * there instead of creating a duplicate. A row with no previous
+     * match is still created fresh and recorded under this new batch,
+     * same as always. Scoped to Users (already always reused by
+     * username/email, unconditionally — see UserImporter), Posts,
+     * Pages, Comments, and Media's main attachment stage only —
+     * Downloads and NextGEN Gallery images are still always created
+     * fresh on every import, a deliberate first-pass scope boundary
+     * (see this ticket's own TODO entry).
      *
-     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int} $options
+     * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int, existing_content?: string} $options
      * @return array{batchId: string, resumed: bool}
      */
     public function startOrResume(array $options): array
@@ -352,7 +428,9 @@ final class WordPressImportService
             return ['batchId' => $inProgress['batchId'], 'resumed' => true];
         }
 
-        if ($this->existingBatchIds() !== []) {
+        $allowsReimport = in_array($options['existing_content'] ?? null, ['skip', 'overwrite'], true);
+
+        if (!$allowsReimport && $this->existingBatchIds() !== []) {
             throw new RuntimeException('A WordPress import already exists. Remove it before importing again.');
         }
 
@@ -582,12 +660,35 @@ final class WordPressImportService
     }
 
     /**
+     * Import Options — "Skip existing content"/"Overwrite existing
+     * content": `$options['existing_content']` is `'skip'`, `'overwrite'`,
+     * or anything else (including unset) for the default `'block'`
+     * behavior — see startOrResume()'s own guard, which is the only
+     * place `'block'` itself is actually checked; every *Importer call
+     * site below only ever needs to know Skip/Overwrite/"don't bother
+     * checking at all" (null), never the block case, since reaching
+     * executeStage() at all already means block would have refused to
+     * start.
+     *
+     * @param array<string, mixed> $options
+     */
+    private function resolveExistingContentMode(array $options): ?ExistingContentMode
+    {
+        return match ($options['existing_content'] ?? null) {
+            'skip' => ExistingContentMode::Skip,
+            'overwrite' => ExistingContentMode::Overwrite,
+            default => null,
+        };
+    }
+
+    /**
      * @param array<string, string> $options
      * @param array<string, mixed> $maps
      */
     private function executeStage(string $batchId, string $stage, array $options, array &$maps): void
     {
         $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
+        $existingContentMode = $this->resolveExistingContentMode($options);
 
         switch ($stage) {
             case 'site_settings':
@@ -601,7 +702,7 @@ final class WordPressImportService
                 $maps['wpTagTermIdToLocalId'] = $this->importTags($batchId);
                 break;
             case 'media':
-                [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
                 break;
             case 'nextgen_galleries':
                 $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? []);
@@ -610,7 +711,7 @@ final class WordPressImportService
                 $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? []);
                 break;
             case 'pages':
-                $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+                $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
 
                 if ($options['site_settings'] ?? false) {
                     $this->applyPageDependentSiteSettings($maps['wpPageIdToLocalId']);
@@ -618,11 +719,11 @@ final class WordPressImportService
 
                 break;
             case 'posts':
-                $maps['wpPostIdToLocalId'] = $this->importPosts($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
+                $maps['wpPostIdToLocalId'] = $this->importPosts($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
                 break;
             case 'comments':
                 if (($maps['wpPostIdToLocalId'] ?? []) !== []) {
-                    $this->importComments($batchId, $maps['wpPostIdToLocalId'], $maps['wpUserIdToLocalId'] ?? []);
+                    $this->importComments($batchId, $maps['wpPostIdToLocalId'], $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
                 }
 
                 break;
@@ -634,12 +735,14 @@ final class WordPressImportService
                 break;
             case 'internal_links':
                 $this->rewriteInternalLinks($statuses, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? []);
+                $this->importOldSlugRedirects($batchId, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? []);
                 break;
             case 'thumbnails':
                 $this->regenerateThumbnails($batchId);
                 break;
             case 'verify':
                 $this->verifyImport($batchId);
+                $this->reportUnsupportedContent();
                 break;
         }
     }
@@ -836,6 +939,110 @@ final class WordPressImportService
     }
 
     /**
+     * URL & Link Migration — `_wp_old_slug` is WordPress's own automatic
+     * record of every slug a published post/page ever had before its
+     * current one (added by `wp_unique_post_slug()` whenever a slug
+     * changes), so a link a search engine or an old bookmark still uses
+     * doesn't just 404 after migration. A real production source can
+     * carry more than one per post (confirmed against a real database —
+     * two posts with 2 and 3 recorded renames respectively; see
+     * `WordPressSource::oldSlugs()`'s own docblock) — every one of them
+     * gets its own redirect, not just the most recent.
+     *
+     * Runs in the same 'internal_links' stage as rewriteInternalLinks()
+     * (right after it, in executeStage()) — the natural home once every
+     * imported post/page's own final local id and current permalink are
+     * already known, and the ticket item this implements explicitly
+     * folds into that same existing redirect-mapping work.
+     *
+     * Only ever considers a post_id that was actually imported as a Post
+     * or Page this batch — `_wp_old_slug` can just as easily sit on an
+     * attachment or a plugin-specific post type (both confirmed in real
+     * data), neither of which has its own public single page in Lumora
+     * Press to redirect to.
+     *
+     * Skipped, with a warning, rather than silently overwritten or
+     * silently dropped, when the computed old-slug path already has a
+     * redirect (from an earlier stage, or a previous old slug in this
+     * same loop) or matches the post/page's own *current* path — the
+     * latter happens when a slug was changed back to something it used
+     * to be.
+     *
+     * @param array<string, int> $wpPageIdToLocalId
+     * @param array<int, int> $wpPostIdToLocalId
+     */
+    private function importOldSlugRedirects(string $batchId, array $wpPageIdToLocalId, array $wpPostIdToLocalId): void
+    {
+        foreach ($wpPostIdToLocalId as $wpPostId => $localPostId) {
+            $post = $this->posts->findById($localPostId);
+
+            if ($post === null) {
+                continue;
+            }
+
+            $currentUrl = post_permalink($post);
+
+            foreach ($this->source->oldSlugs($wpPostId) as $oldSlug) {
+                $oldUrl = Permalinks::service()->postUrlForSlugAndDate($oldSlug, $post->publishedAt);
+                $this->createOldSlugRedirect($batchId, $wpPostId, $post->title, $oldUrl, $currentUrl);
+            }
+        }
+
+        foreach ($wpPageIdToLocalId as $wpPageIdString => $localPageId) {
+            $page = $this->pages->findById($localPageId);
+
+            if ($page === null) {
+                continue;
+            }
+
+            $currentUrl = page_permalink($page);
+
+            foreach ($this->source->oldSlugs((int) $wpPageIdString) as $oldSlug) {
+                $oldUrl = site_url('page/' . $oldSlug);
+                $this->createOldSlugRedirect($batchId, (int) $wpPageIdString, $page->title, $oldUrl, $currentUrl);
+            }
+        }
+    }
+
+    private function createOldSlugRedirect(string $batchId, int $wpId, string $title, string $oldUrl, string $currentUrl): void
+    {
+        $sourcePath = $this->sourcePathFromUrl($oldUrl);
+
+        if ($sourcePath === $this->sourcePathFromUrl($currentUrl)) {
+            // A slug that was later changed back to a previous value —
+            // the "old" URL is the current one, so there's nothing to
+            // redirect from.
+            return;
+        }
+
+        if ($this->redirects->findBySourcePath($sourcePath) !== null) {
+            $this->warnings[] = "#{$wpId} (\"{$title}\"): a previous slug (\"{$sourcePath}\") already has a redirect — left as-is rather than overwritten.";
+
+            return;
+        }
+
+        $redirect = $this->redirects->create($sourcePath, $currentUrl);
+        $this->registry->record($batchId, self::SOURCE, 'redirect', (int) $redirect['id'], (string) $wpId);
+    }
+
+    /**
+     * A permalink helper (post_permalink()/page_permalink(), both
+     * built on home_url()) always returns a full absolute URL, but
+     * RedirectService::create()'s $sourcePath is matched against the
+     * install's own base-path-stripped request path (see
+     * RedirectService::findBySourcePath()'s own docblock) — so the
+     * host and, for a subdirectory install, the install's own base path
+     * both need stripping first, or a redirect built this way would
+     * never actually match a real incoming request.
+     */
+    private function sourcePathFromUrl(string $url): string
+    {
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?: '/');
+
+        return ltrim(BasePath::stripFrom($path), '/');
+    }
+
+    /**
      * Post-Import — regenerates size variants for every image this batch
      * imported. Both importMedia() and importDownloads() bring files in
      * via MediaImporter::importFromLocalFile() -> MediaService::
@@ -909,6 +1116,110 @@ final class WordPressImportService
                 $this->warnings[] = "Verification: page #{$page->id} (\"{$page->title}\") has a featured image reference that no longer resolves.";
             }
         }
+    }
+
+    /**
+     * Compatibility — a read-only diagnostic scan over the *whole*
+     * source (not just what was selected to import), run once as part
+     * of the always-on 'verify' stage regardless of which content types
+     * were actually selected, since it's reporting on data this import
+     * never touches at all rather than verifying anything it created.
+     */
+    private function reportUnsupportedContent(): void
+    {
+        $this->reportUnsupportedPostTypes();
+        $this->reportUnsupportedPlugins();
+    }
+
+    /**
+     * Every post_type this importer has no explicit support for at all
+     * (see HANDLED_POST_TYPES's own docblock) gets one aggregated
+     * warning naming it and its total row count — e.g. Contact Form 7's
+     * own `wpcf7_contact_form` type, or a business-directory plugin's
+     * own listing type, both confirmed against a real production
+     * database. Never a per-row warning: a real multi-plugin site can
+     * easily carry thousands of rows of a single unsupported type (1866
+     * in one real case, though that particular one — NextGEN Gallery's
+     * own `ngg_pictures` — is itself excluded via HANDLED_POST_TYPES
+     * since its actual content *is* imported, just via a dedicated table
+     * rather than by post_type).
+     */
+    private function reportUnsupportedPostTypes(): void
+    {
+        $unsupported = [];
+
+        foreach ($this->source->postTypeCounts() as $postType => $count) {
+            if ($count > 0 && !in_array($postType, self::HANDLED_POST_TYPES, true)) {
+                $unsupported[$postType] = $count;
+            }
+        }
+
+        if ($unsupported === []) {
+            return;
+        }
+
+        ksort($unsupported);
+
+        foreach ($unsupported as $postType => $count) {
+            $this->warnings[] = "{$count} item" . ($count === 1 ? '' : 's') . " of custom post type \"{$postType}\" were not imported — no Lumora Press equivalent exists for it.";
+        }
+    }
+
+    /**
+     * The source's own `active_plugins` option (a serialized array of
+     * plugin-directory/main-file paths, e.g. "folders/folders.php") —
+     * every one whose own directory slug isn't in HANDLED_PLUGIN_SLUGS
+     * is aggregated into a single warning, rather than one per plugin,
+     * since a real multi-plugin site can easily have 25+ active plugins
+     * with no data of their own to migrate at all (most of a real
+     * production site's own active list turned out to be admin/security/
+     * editor-UI utilities with no content, confirmed against real data —
+     * this warning doesn't try to distinguish those from a plugin that
+     * genuinely has unmigrated content, since that distinction isn't
+     * something this importer can determine generically).
+     *
+     * Never available from a WXR-sourced import — WXR carries no
+     * `wp_options` table at all (WordPressXmlSource::option() always
+     * returns null), so this degrades to "nothing to report" exactly
+     * like every other database-only diagnostic in this class.
+     */
+    private function reportUnsupportedPlugins(): void
+    {
+        $raw = $this->source->option('active_plugins');
+
+        if ($raw === null) {
+            return;
+        }
+
+        $plugins = @unserialize($raw, ['allowed_classes' => false]);
+
+        if (!is_array($plugins)) {
+            return;
+        }
+
+        $unsupported = [];
+
+        foreach ($plugins as $pluginFile) {
+            if (!is_string($pluginFile) || $pluginFile === '') {
+                continue;
+            }
+
+            $slug = strstr($pluginFile, '/', true);
+            $slug = $slug !== false ? $slug : $pluginFile;
+
+            if (!in_array($slug, self::HANDLED_PLUGIN_SLUGS, true)) {
+                $unsupported[$slug] = true;
+            }
+        }
+
+        if ($unsupported === []) {
+            return;
+        }
+
+        $unsupported = array_keys($unsupported);
+        sort($unsupported);
+
+        $this->warnings[] = 'This site also has ' . count($unsupported) . ' other active plugin(s) with no Lumora Press equivalent, so any data of their own was not imported: ' . implode(', ', $unsupported) . '.';
     }
 
     /**
@@ -1918,7 +2229,7 @@ final class WordPressImportService
      * @param array<int, int> $wpUserIdToLocalId
      * @return array{0: array<int, int>, 1: array<string, string>} [wpAttachmentId => local media id, old _wp_attached_file relative path (e.g. "2020/03/cover.png") => new Lumora media URL]
      */
-    private function importMedia(string $batchId, array $wpUserIdToLocalId): array
+    private function importMedia(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode = null): array
     {
         $wpAttachmentIdToLocalMediaId = [];
         $oldRelativePathToNewUrl = [];
@@ -1935,7 +2246,17 @@ final class WordPressImportService
 
             $absolutePath = rtrim($this->sourceUploadsPath, '/') . '/' . $relativePath;
 
-            if (!is_file($absolutePath)) {
+            // Skip/Overwrite never need this attachment's file at all —
+            // MediaImporter::importFromLocalFile() reuses/updates the
+            // already-imported row without touching the filesystem —
+            // so a source whose uploads copy no longer has this file
+            // (or never did) must not block a Skip/Overwrite re-import
+            // over a file that was only ever needed the first time.
+            $existingId = $existingContentMode !== null
+                ? $this->registry->existingLocalId(self::SOURCE, 'media', (string) $attachment['ID'])
+                : null;
+
+            if ($existingId === null && !is_file($absolutePath)) {
                 $this->warnings[] = "Attachment #{$attachment['ID']}: file not found at {$absolutePath}, skipped.";
                 continue;
             }
@@ -1974,7 +2295,7 @@ final class WordPressImportService
             );
 
             try {
-                $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data);
+                $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
             } catch (RuntimeException $exception) {
                 $this->warnings[] = "Attachment #{$attachment['ID']}: {$exception->getMessage()}";
                 continue;
@@ -2085,6 +2406,7 @@ final class WordPressImportService
         array $wpUserIdToLocalId,
         array $wpAttachmentIdToLocalMediaId,
         array $oldRelativePathToNewUrl,
+        ?ExistingContentMode $existingContentMode = null,
     ): array {
         $externalMap = [];
         $imageRewriter = new ContentImageRewriter();
@@ -2118,7 +2440,7 @@ final class WordPressImportService
             $this->flagUnsupportedShortcodes($wpPage['ID'], $wpPage['post_title'], $wpPage['post_content']);
 
             try {
-                $page = $this->pageImporter->import($batchId, self::SOURCE, $data, $externalMap);
+                $page = $this->pageImporter->import($batchId, self::SOURCE, $data, $externalMap, $existingContentMode);
                 $externalMap[(string) $wpPage['ID']] = $page->id;
             } catch (\Throwable $exception) {
                 $this->warnings[] = "Page #{$wpPage['ID']} (\"{$wpPage['post_title']}\"): {$exception->getMessage()}";
@@ -2141,6 +2463,7 @@ final class WordPressImportService
         array $wpUserIdToLocalId,
         array $wpAttachmentIdToLocalMediaId,
         array $oldRelativePathToNewUrl,
+        ?ExistingContentMode $existingContentMode = null,
     ): array {
         $map = [];
         $imageRewriter = new ContentImageRewriter();
@@ -2176,7 +2499,7 @@ final class WordPressImportService
             $this->flagUnsupportedShortcodes($wpPost['ID'], $wpPost['post_title'], $wpPost['post_content']);
 
             try {
-                $post = $this->postImporter->import($batchId, self::SOURCE, $data);
+                $post = $this->postImporter->import($batchId, self::SOURCE, $data, $existingContentMode);
                 $map[$wpPost['ID']] = $post->id;
             } catch (\Throwable $exception) {
                 $this->warnings[] = "Post #{$wpPost['ID']} (\"{$wpPost['post_title']}\"): {$exception->getMessage()}";
@@ -2197,7 +2520,7 @@ final class WordPressImportService
      * @param array<int, int> $wpPostIdToLocalId
      * @param array<int, int> $wpUserIdToLocalId
      */
-    private function importComments(string $batchId, array $wpPostIdToLocalId, array $wpUserIdToLocalId): void
+    private function importComments(string $batchId, array $wpPostIdToLocalId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode = null): void
     {
         foreach ($wpPostIdToLocalId as $wpPostId => $localPostId) {
             $externalMap = [];
@@ -2219,7 +2542,7 @@ final class WordPressImportService
                 );
 
                 try {
-                    $comment = $this->commentImporter->import($batchId, self::SOURCE, $data, $externalMap);
+                    $comment = $this->commentImporter->import($batchId, self::SOURCE, $data, $externalMap, $existingContentMode);
                     $externalMap[(string) $wpComment['comment_ID']] = $comment->id;
                 } catch (\Throwable $exception) {
                     $this->warnings[] = "Comment #{$wpComment['comment_ID']}: {$exception->getMessage()}";

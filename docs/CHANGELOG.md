@@ -6,6 +6,31 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: a re-import against a source already imported once
+  before can now Skip or Overwrite existing content instead of always
+  refusing to start (LPP-004) — a new "When content already exists"
+  option on Maintenance › Import. Skip leaves an already-imported Post,
+  Page, Comment, or Media attachment completely unchanged and only
+  imports what's genuinely new since last time; Overwrite updates each
+  one in place with the source's current values (never replacing a
+  Media item's underlying file, only its alt text/caption/description/
+  folder). Users are unaffected — they already always reuse a matching
+  existing account by username/email. Categories, Tags, Folders,
+  Downloads, and NextGEN Gallery images aren't covered by this option
+  yet and are still always created fresh on every import.
+- WordPress Importer: a redirect mapping report (LPP-004) — every
+  redirect an import created (a Simple Download Monitor download that
+  only linked off-site, or a `_wp_old_slug` entry below) is now shown as
+  a table on Maintenance › Import, with a "Download as CSV" link.
+- WordPress Importer: a post/page's prior slug(s) on the source site
+  (WordPress's own `_wp_old_slug` postmeta, added automatically whenever
+  a published post/page's slug changes) now become real redirects to its
+  new URL (LPP-004), so an old bookmark or search-engine link doesn't
+  just 404 after migration.
+- WordPress Importer: an import now reports any active plugin or custom
+  post type it has no equivalent for (LPP-004) — aggregated into the
+  same warnings list every other skipped item already appears in,
+  rather than silently leaving that content out with no indication.
 - WordPress Importer: NextGEN Gallery galleries and their images can now
   be imported (LPP-004) — each gallery becomes a Media Manager Folder
   named after the gallery, and its images become real Media items filed

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates a Page from an ImportedPage DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
+ * Creates, skips, or overwrites a Page from an ImportedPage DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
  *
  * @package LumoraPress
  * @subpackage Services
@@ -20,6 +20,7 @@ namespace LumoraPress\Services\Import;
 use LumoraPress\Models\Page;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\PageService;
+use RuntimeException;
 
 /**
  * Ordering contract: pages must be imported parent-before-child. The
@@ -41,13 +42,55 @@ final class PageImporter
     }
 
     /**
+     * $existingContentMode is null on every call site except a
+     * deliberate re-import against a source already imported once
+     * before — see ExistingContentMode's own docblock and
+     * PostImporter::import()'s identical shape.
+     *
      * @param array<string, int> $externalIdToLocalId
      */
-    public function import(string $batchId, string $source, ImportedPage $data, array $externalIdToLocalId = []): Page
+    public function import(string $batchId, string $source, ImportedPage $data, array $externalIdToLocalId = [], ?ExistingContentMode $existingContentMode = null): Page
     {
         $parentId = $data->parentExternalId !== null
             ? ($externalIdToLocalId[$data->parentExternalId] ?? null)
             : null;
+
+        $existingId = $existingContentMode !== null && $data->externalId !== null
+            ? $this->registry->existingLocalId($source, 'page', $data->externalId)
+            : null;
+
+        if ($existingId !== null) {
+            $existing = $this->pages->findById($existingId);
+
+            if ($existing === null) {
+                throw new RuntimeException("Page external id \"{$data->externalId}\" was previously imported as #{$existingId}, but that page no longer exists.");
+            }
+
+            if ($existingContentMode === ExistingContentMode::Skip) {
+                return $existing;
+            }
+
+            return $this->pages->update(
+                id: $existingId,
+                title: $data->title,
+                content: $data->content,
+                excerpt: $data->excerpt,
+                status: $data->status,
+                publishedAt: $data->publishedAt,
+                parentId: $parentId,
+                featuredImageId: $data->featuredImageId,
+                slug: $data->slug,
+                contentFormat: $data->contentFormat,
+                featuredImageCrop: $data->featuredImageCrop,
+                // update()'s own $commentsOpen has no "keep existing"
+                // fallback (always defaults to true when omitted) —
+                // ImportedPage carries no commentsOpen field of its own
+                // to overwrite it with, so the row's current value is
+                // explicitly preserved instead of silently reopening
+                // comments an admin had closed locally.
+                commentsOpen: $existing->commentsOpen,
+            );
+        }
 
         $page = $this->pages->create(
             title: $data->title,

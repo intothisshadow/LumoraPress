@@ -83,6 +83,9 @@ final class WordPressXmlSource implements WordPressSourceInterface
     /** @var array<int, array<string, string>> post id => [meta_key => meta_value] */
     private array $postMetaById = [];
 
+    /** @var array<int, array<int, string>> post id => every _wp_old_slug value, oldest first (document order) */
+    private array $oldSlugsById = [];
+
     /**
      * @var array<int, array<int, array{domain: string, nicename: string, name: string}>> post id => its <category> elements
      */
@@ -365,6 +368,22 @@ final class WordPressXmlSource implements WordPressSourceInterface
         return [];
     }
 
+    /**
+     * @return array<int, string>
+     */
+    public function oldSlugs(int $postId): array
+    {
+        return $this->oldSlugsById[$postId] ?? [];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function postTypeCounts(): array
+    {
+        return array_count_values(array_column($this->postsById, 'post_type'));
+    }
+
     private function parseSiteOptions(DOMXPath $xpath, DOMElement $channel): void
     {
         $title = $this->text($xpath, $channel, 'title');
@@ -464,11 +483,20 @@ final class WordPressXmlSource implements WordPressSourceInterface
                 }
 
                 $key = $this->text($xpath, $metaNode, 'wp:meta_key');
+                $value = $this->text($xpath, $metaNode, 'wp:meta_value');
 
                 // First value wins per key — mirrors
                 // WordPressSource::postMeta()'s identical convention.
                 if (!isset($meta[$key])) {
-                    $meta[$key] = $this->text($xpath, $metaNode, 'wp:meta_value');
+                    $meta[$key] = $value;
+                }
+
+                // _wp_old_slug is the one meta key WordPress genuinely
+                // repeats (one row per rename over time) — collected
+                // separately so oldSlugs() below can return all of them,
+                // not just the first $meta[$key] keeps.
+                if ($key === '_wp_old_slug') {
+                    $this->oldSlugsById[$id][] = $value;
                 }
             }
 

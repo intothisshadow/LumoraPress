@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Registers a local file as a media item from an ImportedMedia DTO and records provenance (LPP-004/LPP-005 Phase 1).
+ * Registers, skips, or overwrites a local file as a media item from an ImportedMedia DTO and records provenance (LPP-004/LPP-005 Phase 1).
  *
  * @package LumoraPress
  * @subpackage Services
@@ -48,10 +48,50 @@ final class MediaImporter
     }
 
     /**
+     * $existingContentMode is null on every call site except a
+     * deliberate re-import against a source already imported once
+     * before — see ExistingContentMode's own docblock. Overwrite is
+     * narrower here than for Post/Page: it never re-copies or replaces
+     * the underlying file (MediaService has no "replace this file in
+     * place" primitive that takes a local path rather than an uploaded
+     * $_FILES-shaped array), only alt text/caption/description/folder —
+     * the file itself is left exactly as it was on the first import.
+     * Skip and Overwrite both therefore skip every filesystem/MIME-type
+     * check below entirely once a match is found, unlike a fresh
+     * import.
+     *
      * @return array<string, mixed>
      */
-    public function importFromLocalFile(string $batchId, string $source, ImportedMedia $data): array
+    public function importFromLocalFile(string $batchId, string $source, ImportedMedia $data, ?ExistingContentMode $existingContentMode = null): array
     {
+        $existingId = $existingContentMode !== null && $data->externalId !== null
+            ? $this->registry->existingLocalId($source, 'media', $data->externalId)
+            : null;
+
+        if ($existingId !== null) {
+            $existing = $this->media->find($existingId);
+
+            if ($existing === null) {
+                throw new RuntimeException("Media external id \"{$data->externalId}\" was previously imported as #{$existingId}, but that media item no longer exists.");
+            }
+
+            if ($existingContentMode === ExistingContentMode::Skip) {
+                return $existing;
+            }
+
+            // $existing['notes'] is preserved explicitly — updateMetadata()
+            // has no "keep existing" fallback for any of its four
+            // fields, and ImportedMedia carries no notes field of its
+            // own to overwrite it with.
+            $this->media->updateMetadata($existingId, $data->altText, $data->caption, $data->description, $existing['notes'] !== null ? (string) $existing['notes'] : null);
+
+            if ($data->folderId !== (int) $existing['folder_id']) {
+                $this->media->move($existingId, $data->folderId);
+            }
+
+            return $this->media->find($existingId) ?? $existing;
+        }
+
         if (!is_file($data->absolutePath)) {
             throw new RuntimeException("File not found: {$data->absolutePath}");
         }

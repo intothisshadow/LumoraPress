@@ -126,4 +126,26 @@ interface WordPressSourceInterface
      * @return array<int, array{pid: int, filename: string, description: string, alttext: string, imagedate: string, exclude: int}>
      */
     public function nextGenPictures(int $galleryId): array;
+
+    /**
+     * Every `_wp_old_slug` value ever recorded for one post/page, oldest
+     * first — WordPress appends a new row each time a published post's
+     * slug changes, so unlike every other meta key this importer reads
+     * (postMeta()'s own single-value convenience), a post/page can
+     * genuinely carry more than one.
+     *
+     * @return array<int, string>
+     */
+    public function oldSlugs(int $postId): array;
+
+    /**
+     * Every distinct `post_type` value present in the source, with its
+     * total row count — including a type this importer never explicitly
+     * queries (a custom post type from an unsupported plugin). Used only
+     * for Compatibility's "report unsupported plugins and custom post
+     * types" diagnostic; never drives what actually gets imported.
+     *
+     * @return array<string, int> post_type => count
+     */
+    public function postTypeCounts(): array;
 }

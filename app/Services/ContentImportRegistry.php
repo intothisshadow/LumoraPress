@@ -176,6 +176,33 @@ final class ContentImportRegistry
     }
 
     /**
+     * Like newIdForExternalId() above, but scoped to $source as a whole
+     * rather than one $batchId — resolves an external id back to the
+     * local id it became when imported by *any* previous batch of this
+     * source, not just the batch currently running. Backs Skip/Overwrite
+     * existing-content handling (LPP-004): before creating a new row, a
+     * caller checks whether this exact external id was already imported
+     * by an earlier run of the same source, so a deliberate re-import
+     * against previously-imported content doesn't always duplicate it.
+     * The oldest matching row wins when more than one somehow exists
+     * (shouldn't happen in practice — each external id is only ever
+     * recorded once per content type per source — but ASC keeps this
+     * deterministic rather than relying on undefined row order).
+     */
+    public function existingLocalId(string $source, string $contentType, string $externalId): ?int
+    {
+        $row = $this->database->fetchOne(
+            'SELECT content_id FROM ' . $this->table() . '
+                WHERE source = :source AND content_type = :content_type AND external_id = :external_id
+             ORDER BY created_at ASC, id ASC
+                LIMIT 1',
+            ['source' => $source, 'content_type' => $contentType, 'external_id' => $externalId],
+        );
+
+        return $row !== null ? (int) $row['content_id'] : null;
+    }
+
+    /**
      * Row counts per content type for $batchId — backs an admin screen's
      * "Last generated: 50 posts, 10 pages, ..." summary.
      *

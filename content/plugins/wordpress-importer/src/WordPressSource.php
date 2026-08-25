@@ -611,6 +611,44 @@ final class WordPressSource implements WordPressSourceInterface
         );
     }
 
+    /**
+     * @return array<int, string>
+     */
+    public function oldSlugs(int $postId): array
+    {
+        $rows = $this->source->fetchAll(
+            'SELECT meta_value FROM ' . $this->table('postmeta') . '
+                WHERE post_id = :post_id AND meta_key = :meta_key
+             ORDER BY meta_id ASC',
+            ['post_id' => $postId, 'meta_key' => '_wp_old_slug'],
+        );
+
+        return array_map(static fn (array $row): string => (string) $row['meta_value'], $rows);
+    }
+
+    /**
+     * A single aggregate query, never a row dump — matches the class
+     * docblock's "never a bare SELECT *" rule even though this scans
+     * every row in {prefix}posts, since only post_type and a count ever
+     * leave the database.
+     *
+     * @return array<string, int>
+     */
+    public function postTypeCounts(): array
+    {
+        $rows = $this->source->fetchAll(
+            'SELECT post_type, COUNT(*) AS total FROM ' . $this->table('posts') . ' GROUP BY post_type',
+        );
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $counts[(string) $row['post_type']] = (int) $row['total'];
+        }
+
+        return $counts;
+    }
+
     private function table(string $name): string
     {
         return $this->tablePrefix . $name;

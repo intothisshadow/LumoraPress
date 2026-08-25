@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates a Comment from an ImportedComment DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
+ * Creates, skips, or overwrites a Comment from an ImportedComment DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
  *
  * @package LumoraPress
  * @subpackage Services
@@ -20,6 +20,7 @@ namespace LumoraPress\Services\Import;
 use LumoraPress\Models\Comment;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
+use RuntimeException;
 
 /**
  * Ordering contract: comments are imported after every post they belong
@@ -37,10 +38,39 @@ final class CommentImporter
     }
 
     /**
+     * $existingContentMode is null on every call site except a
+     * deliberate re-import against a source already imported once
+     * before — see ExistingContentMode's own docblock. Overwrite is
+     * narrower here than for Post/Page/Media: CommentService offers no
+     * combined update() at all, only updateContent()/updateStatus() —
+     * a comment's author/parent/date are never changed after creation
+     * by any existing API, so those fields are simply left as they were
+     * on the first import.
+     *
      * @param array<string, int> $externalIdToLocalId
      */
-    public function import(string $batchId, string $source, ImportedComment $data, array $externalIdToLocalId = []): Comment
+    public function import(string $batchId, string $source, ImportedComment $data, array $externalIdToLocalId = [], ?ExistingContentMode $existingContentMode = null): Comment
     {
+        $existingId = $existingContentMode !== null && $data->externalId !== null
+            ? $this->registry->existingLocalId($source, 'comment', $data->externalId)
+            : null;
+
+        if ($existingId !== null) {
+            $existing = $this->comments->findById($existingId);
+
+            if ($existing === null) {
+                throw new RuntimeException("Comment external id \"{$data->externalId}\" was previously imported as #{$existingId}, but that comment no longer exists.");
+            }
+
+            if ($existingContentMode === ExistingContentMode::Skip) {
+                return $existing;
+            }
+
+            $this->comments->updateContent($existingId, $data->content);
+
+            return $this->comments->updateStatus($existingId, $data->status);
+        }
+
         $parentId = $data->parentExternalId !== null
             ? ($externalIdToLocalId[$data->parentExternalId] ?? null)
             : null;

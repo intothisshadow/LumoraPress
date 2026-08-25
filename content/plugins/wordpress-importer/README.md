@@ -129,7 +129,29 @@ a local copy of the source site's `wp-content/uploads` folder.
   exactly what one import created and nothing else.
 - Import refuses to start a *second* one while a previous import's
   content still exists — remove it first, or resume it (see below) if
-  it's still incomplete.
+  it's still incomplete — *unless* "When content already exists" below
+  is set to Skip or Overwrite, in which case a new import is allowed to
+  run right alongside the existing one.
+- **Skip/Overwrite existing content**: re-importing from the same source
+  after it was already imported once before no longer has to mean
+  remove-and-start-over. A "When content already exists" dropdown on the
+  Import form offers Skip (leave an already-imported Post, Page,
+  Comment, or Media attachment completely unchanged, only import what's
+  genuinely new since last time) or Overwrite (update each one in place
+  with the source's current values — a full field update for Posts/
+  Pages including replacing their categories/tags/custom fields, content
+  and moderation status only for Comments, and alt text/caption/
+  description/folder only for Media — Overwrite never replaces a Media
+  item's underlying file). Every match is by the source's own id, not
+  name/slug, via the same provenance tracking that backs "Remove All
+  Imported Content" — a reused or updated row is never re-recorded under
+  the new batch, so removing the new batch alone can never delete
+  content the earlier one still owns. Users are unaffected: they already
+  always reuse a matching existing account by username/email regardless
+  of this setting. **Not yet covered by Skip/Overwrite**: Categories,
+  Tags, Folders (Media Library Folders and Simple Download Monitor's own
+  category tree), Downloads, and NextGEN Gallery images all still create
+  or reapply fresh content on every import.
 - **Dry run**: a single Import form handles both a preview and a real
   import — check "Dry run (preview only — makes no changes)" above the
   Import button to read the source database and report approximate
@@ -164,6 +186,18 @@ a local copy of the source site's `wp-content/uploads` folder.
   against a slug — always scoped to the source site's own domain, so an
   unrelated external link is never touched. Category/tag/author archive
   links are a deliberate scope boundary and are left as-is.
+- **`_wp_old_slug` redirects**: WordPress's own automatic record of every
+  slug a published post/page ever had before its current one (it can
+  carry more than one, if it was renamed more than once) each become a
+  real redirect to the post/page's new URL, so an old bookmark or
+  search-engine link doesn't just 404 after migration — runs in the same
+  stage as the internal-link rewrite above. Skipped, with a warning,
+  when the computed old-slug path already has a redirect, or matches the
+  post/page's own current path.
+- **Redirect mapping report**: every redirect an import created (an
+  off-site Simple Download Monitor download, or a `_wp_old_slug` entry
+  above) is shown as a table on Maintenance → Import once the import
+  finishes, alongside a "Download as CSV" link.
 - **Post-import finalization**: two more stages always run last,
   regardless of which content types were selected. Thumbnail size
   variants are regenerated for every imported image — the import path
@@ -171,9 +205,11 @@ a local copy of the source site's `wp-content/uploads` folder.
   upload, so nothing generates thumbnails for it otherwise. A
   verification pass then confirms every id this batch created still
   resolves to a real row, and that a post/page's own featured image
-  still resolves to a real Media item — any problem found is added to
-  the same warnings list every other stage's own problems already
-  appear in.
+  still resolves to a real Media item; it also reports every active
+  plugin or custom post type this import has no equivalent for at all
+  (aggregated one warning per type/plugin, not one per row) — any
+  problem found is added to the same warnings list every other stage's
+  own problems already appear in.
 
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-004 for the full checklist)
 
@@ -181,13 +217,10 @@ Of the WordPress site settings shown as a preview during Test
 Connection, only title/tagline/timezone/date & time format/permalink
 structure can be applied (opt-in, see above) — Homepage, Reading,
 Discussion, Media, and Privacy settings have no Lumora Press config
-key to write into yet. There's still no skip-vs-overwrite-existing-
-content choice — idempotency is a hard "one import at a time, remove or
-resume before starting another" guard, matching Dummy Content; real
-skip/overwrite semantics would need matching each row by external id
-across every importer type. A redirect-mapping report (a
-downloadable/visible old-URL → new-URL table for server-level
-redirects) isn't built either.
+key to write into yet. Skip/Overwrite existing content (see above)
+doesn't yet cover Categories, Tags, Folders, Downloads, or NextGEN
+Gallery images — all five still always create/reapply fresh content on
+every import.
 
 ## Notes
 

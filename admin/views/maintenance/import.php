@@ -61,6 +61,7 @@ $detectResult = null;
 $sitePreview = null;
 $dryRunCounts = null;
 $summary = null;
+$redirectMappingReport = [];
 $warnings = [];
 
 /*
@@ -202,7 +203,7 @@ if ($wordPressImporterActive) {
     );
 
     /**
-     * @return array{site_settings: bool, users: bool, categories: bool, media: bool, nextgen_galleries: bool, downloads: bool, pages: bool, posts: bool, comments: bool, menus: bool, widgets: bool, stage_delay_ms: int}
+     * @return array{site_settings: bool, users: bool, categories: bool, media: bool, nextgen_galleries: bool, downloads: bool, pages: bool, posts: bool, comments: bool, menus: bool, widgets: bool, stage_delay_ms: int, existing_content: string}
      */
     $optionsFromPost = static function (): array {
         return [
@@ -218,6 +219,7 @@ if ($wordPressImporterActive) {
             'menus' => isset($_POST['include_menus']),
             'widgets' => isset($_POST['include_widgets']),
             'stage_delay_ms' => max(0, (int) ($_POST['stage_delay_ms'] ?? 0)),
+            'existing_content' => in_array($_POST['existing_content'] ?? null, ['skip', 'overwrite'], true) ? $_POST['existing_content'] : '',
         ];
     };
 
@@ -434,6 +436,34 @@ if ($wordPressImporterActive) {
     $registryOnlyService = $buildRegistryOnlyService();
     $inProgress = $registryOnlyService->inProgressBatch();
     $summary = $inProgress === null ? $registryOnlyService->lastImportSummary() : null;
+    $redirectMappingReport = $summary !== null ? $registryOnlyService->redirectMappingReport($summary['batchId']) : [];
+
+    /*
+     * Redirect Mapping report (URL & Link Migration) — a plain GET, same
+     * "read-only, nothing here for CSRF to protect" reasoning as the
+     * ?ajax=progress branch above, gated by the same admin session this
+     * whole page already requires. Streamed rather than saved to disk —
+     * this data already lives in the database (RedirectService +
+     * ContentImportRegistry), so there's nothing to clean up afterward.
+     */
+    if (($_GET['download'] ?? null) === 'redirect_mapping' && $redirectMappingReport !== []) {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="redirect-mapping-' . date('Y-m-d') . '.csv"');
+
+        $output = fopen('php://output', 'wb');
+        fputcsv($output, ['Old URL', 'New URL']);
+
+        foreach ($redirectMappingReport as $row) {
+            fputcsv($output, [$row['sourcePath'], $row['targetUrl']]);
+        }
+
+        fclose($output);
+        exit;
+    }
 }
 ?>
 <h1 class="lp-admin__title">Import</h1>
@@ -669,14 +699,50 @@ if ($wordPressImporterActive) {
                 <?php endif; ?>
             </p>
 
-            <p class="lp-field__hint">Remove the existing import before importing again.</p>
+            <?php if ($redirectMappingReport !== []): ?>
+                <details class="lp-admin__panel">
+                    <summary><strong>Redirect Mapping</strong> (<?= count($redirectMappingReport) ?> old URL<?= count($redirectMappingReport) === 1 ? '' : 's' ?> now redirecting to new ones)</summary>
+                    <p class="lp-field__hint">
+                        Every redirect this import created — a Simple Download
+                        Monitor download that only linked off-site, or a
+                        <code>_wp_old_slug</code> entry for a post/page whose
+                        slug changed on the source site.
+                        <a href="<?= esc_url(admin_url('maintenance/import') . '?download=redirect_mapping') ?>">Download as CSV</a>.
+                    </p>
+                    <table class="lp-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Old URL</th>
+                                <th scope="col">New URL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($redirectMappingReport as $row): ?>
+                                <tr>
+                                    <td><code>/<?= esc_html($row['sourcePath']) ?></code></td>
+                                    <td><code><?= esc_html($row['targetUrl']) ?></code></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </details>
+            <?php endif; ?>
+
+            <p class="lp-field__hint">
+                Remove the existing import before importing again — or, to bring in
+                new content from the same source without starting over, use the
+                Import form below with "Skip existing content" or "Overwrite existing
+                content" selected under Import Options.
+            </p>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-confirm="Remove everything this import created? This cannot be undone.">
                 <?= Csrf::field('remove_wordpress_import') ?>
                 <input type="hidden" name="form" value="remove_wordpress_import">
                 <button type="submit" class="lp-button lp-button--danger">Remove All Imported Content</button>
             </form>
-        <?php elseif ($inProgress !== null): ?>
+        <?php endif; ?>
+
+        <?php if ($inProgress !== null): ?>
             <div class="lp-alert lp-alert--warning">
                 A previous import was interrupted after
                 <?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s)
@@ -868,6 +934,27 @@ if ($wordPressImporterActive) {
                         pauses briefly between each stage (Users, Categories, Media, Pages, Posts, ...) so this
                         import doesn't hammer a shared-hosting site's database and web server back-to-back for its
                         entire duration. Leave at 0 for a local or staging source.
+                    </span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="<?= esc_attr($idPrefix) ?>-existing-content">When content already exists</label>
+                    <select id="<?= esc_attr($idPrefix) ?>-existing-content" name="existing_content">
+                        <option value="">Refuse to start (default) — remove the existing import first</option>
+                        <option value="skip">Skip existing content — leave it unchanged, only import what's new</option>
+                        <option value="overwrite">Overwrite existing content — update it with the source's current values</option>
+                    </select>
+                    <span class="lp-field__hint">
+                        Only matters when re-importing from the <em>same</em> source after content from it was
+                        already imported before ("Last imported" above). Every Post, Page, Comment, and Media
+                        attachment this import creates is matched back to the source's own id, so "Skip"/
+                        "Overwrite" can tell "already imported this one" apart from "genuinely new since last
+                        time" — Users already always reuse a matching existing account regardless of this
+                        setting. Downloads and NextGEN Gallery images are always created fresh either way, not
+                        yet covered by this setting. "Overwrite" never replaces a Media item's underlying file,
+                        only its alt text/caption/description/folder, and never changes a Comment's author or
+                        thread position, only its content/status — see this plugin's own README for the exact
+                        boundaries of what each type's Overwrite actually updates.
                     </span>
                 </p>
                 <?php
