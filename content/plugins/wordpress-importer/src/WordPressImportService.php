@@ -1510,13 +1510,29 @@ final class WordPressImportService
         $remaining = $this->source->terms('sdm_categories');
         $localIdByWpTermId = [];
 
+        if ($remaining === []) {
+            return $localIdByWpTermId;
+        }
+
+        // Every sdm_categories term nests under one top-level "Downloads"
+        // folder rather than landing at the Media Library's own root — a
+        // migrated site's downloads are Simple Download Monitor's own
+        // category tree, not part of the site's regular media
+        // organization, so keeping them under a single parent avoids
+        // mixing the two. Only created when there's at least one category
+        // to nest under it, so a source site using Simple Download
+        // Monitor without categories doesn't get an empty "Downloads"
+        // folder for nothing.
+        $downloadsFolder = $this->folders->create('Downloads', null);
+        $this->registry->record($batchId, self::SOURCE, 'folder', $downloadsFolder->id);
+
         while ($remaining !== []) {
             $stillRemaining = [];
             $progressed = false;
 
             foreach ($remaining as $term) {
                 if ($term['parent'] === 0) {
-                    $parentId = null;
+                    $parentId = $downloadsFolder->id;
                 } elseif (isset($localIdByWpTermId[$term['parent']])) {
                     $parentId = $localIdByWpTermId[$term['parent']];
                 } else {
@@ -1532,7 +1548,7 @@ final class WordPressImportService
 
             if (!$progressed) {
                 foreach ($stillRemaining as $term) {
-                    $folder = $this->folders->create($term['name'], null);
+                    $folder = $this->folders->create($term['name'], $downloadsFolder->id);
                     $this->registry->record($batchId, self::SOURCE, 'folder', $folder->id);
                     $localIdByWpTermId[$term['term_id']] = $folder->id;
                 }

@@ -493,6 +493,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- WordPress Importer: a migrated Simple Download Monitor category now
+  nests under one top-level "Downloads" Media folder instead of
+  landing at the Media Library's own root, keeping a site's download
+  categories visually separate from its regular media organization.
 - The Pages widget and Categories widget (LP-104) now render a real
   nested list — a child page or subcategory indents under its parent
   instead of appearing in the same flat, alphabetized list as everything
