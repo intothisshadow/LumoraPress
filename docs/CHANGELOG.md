@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: a new "Auto-detect from wp-config.php" option on
+  Maintenance › Import (LPP-004) pre-fills the database connection
+  fields and the uploads folder path from a locally readable copy of
+  the source site's own `wp-config.php` — read as plain text only,
+  never executed. Every field stays fully editable either way; manual
+  entry still works exactly as before.
 - WordPress Importer: attachments organized with the "Folders" plugin
   (LPP-004) now import into matching Media Manager folders, preserving
   the source site's own nesting, instead of every attachment landing

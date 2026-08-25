@@ -15,6 +15,17 @@ direct database connection plus a local copy of the source site's
   either way works the same; the uploads folder must always be readable
   on this server's local filesystem, since nothing here fetches files
   remotely.
+- **Auto-detect from wp-config.php**: point the "Path to wp-config.php"
+  field at a locally readable copy of the source install's own
+  `wp-config.php` and click Detect to pre-fill the database host/port/
+  name/username/password/table prefix fields, plus the uploads folder
+  path (resolved relative to `wp-config.php`'s own directory, honoring
+  a customized `WP_CONTENT_DIR`/`UPLOADS` constant when present). Every
+  pre-filled field stays fully editable — this is a shortcut, not a
+  requirement, and every field can still be typed in by hand instead or
+  afterward. `wp-config.php` is only ever pattern-matched as plain
+  text, never executed, since it's untrusted input from an arbitrary
+  external site's filesystem.
 - Imports, each independently toggleable: users (WordPress role mapped
   to the closest Lumora Press role, reusing an existing account by
   username/email rather than duplicating it), categories (preserving

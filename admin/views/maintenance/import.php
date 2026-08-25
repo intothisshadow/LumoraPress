@@ -20,6 +20,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\WordPressImporter\ImportProgress;
+use LumoraPress\Plugins\WordPressImporter\WordPressConfigParser;
 use LumoraPress\Plugins\WordPressImporter\WordPressImportService;
 use LumoraPress\Plugins\WordPressImporter\WordPressSource;
 
@@ -54,6 +55,7 @@ if ($wordPressImporterActive && ($_GET['ajax'] ?? null) === 'progress') {
 
 $importError = null;
 $testResult = null;
+$detectResult = null;
 $sitePreview = null;
 $dryRunCounts = null;
 $summary = null;
@@ -73,6 +75,7 @@ $formValues = [
     'db_password' => is_string($_POST['db_password'] ?? null) ? $_POST['db_password'] : '',
     'db_prefix' => is_string($_POST['db_prefix'] ?? null) ? $_POST['db_prefix'] : 'wp_',
     'uploads_path' => is_string($_POST['uploads_path'] ?? null) ? $_POST['uploads_path'] : '',
+    'wp_config_path' => is_string($_POST['wp_config_path'] ?? null) ? $_POST['wp_config_path'] : '',
 ];
 
 if ($wordPressImporterActive) {
@@ -190,6 +193,33 @@ if ($wordPressImporterActive) {
     };
 
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+
+    if ($form === 'detect_wp_config' && Csrf::verify('detect_wp_config', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        try {
+            $detected = (new WordPressConfigParser())->parse($formValues['wp_config_path']);
+
+            // Only overwrite fields wp-config.php actually named — a
+            // password-less local dev database, for example, has no
+            // DB_PASSWORD-driven value here, so the admin's own manual
+            // entry (or the field's existing default) is left as-is
+            // rather than being blanked out.
+            foreach ($detected as $key => $value) {
+                $formValues[$key] = $value;
+            }
+
+            $missing = array_diff(['db_host', 'db_name', 'db_user', 'db_prefix'], array_keys($detected));
+
+            $detectResult = ['ok' => true, 'message' => $missing === []
+                ? 'Detected database connection details from wp-config.php.'
+                : 'Detected some database connection details from wp-config.php — enter the rest (' . implode(', ', $missing) . ') by hand.'];
+
+            if (!isset($detected['uploads_path'])) {
+                $detectResult['message'] .= ' Could not locate the uploads folder relative to wp-config.php — enter its path manually.';
+            }
+        } catch (\Throwable $exception) {
+            $detectResult = ['ok' => false, 'message' => 'Could not read wp-config.php: ' . $exception->getMessage()];
+        }
+    }
 
     if ($form === 'test_wordpress_connection' && Csrf::verify('test_wordpress_connection', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         try {
@@ -398,6 +428,10 @@ if ($wordPressImporterActive) {
         <div class="lp-alert <?= $testResult['ok'] ? 'lp-alert--success' : 'lp-alert--error' ?>"><?= esc_html($testResult['message']) ?></div>
     <?php endif; ?>
 
+    <?php if ($detectResult !== null): ?>
+        <div class="lp-alert <?= $detectResult['ok'] ? 'lp-alert--success' : 'lp-alert--error' ?>"><?= esc_html($detectResult['message']) ?></div>
+    <?php endif; ?>
+
     <?php if ($sitePreview !== null): ?>
         <div class="lp-alert lp-alert--info">
             <strong>Source site settings (preview only — nothing is applied yet):</strong>
@@ -548,6 +582,29 @@ if ($wordPressImporterActive) {
             // multiple buttons on one page silently breaks every button
             // but the last one rendered.
             ?>
+            <h3>Auto-detect from wp-config.php</h3>
+
+            <p class="lp-field__hint">
+                If the source site's <code>wp-config.php</code> is readable on this server's local
+                filesystem (the same requirement as the uploads folder path below), point this at it to
+                pre-fill the database connection and uploads folder fields below. Nothing is read from
+                <code>wp-config.php</code> beyond its <code>DB_*</code>/<code>$table_prefix</code>/
+                <code>WP_CONTENT_DIR</code>/<code>UPLOADS</code> values — it is never executed. Every
+                pre-filled field below stays fully editable; use this as a shortcut, not a requirement.
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-detect-form">
+                <?= Csrf::field('detect_wp_config') ?>
+                <input type="hidden" name="form" value="detect_wp_config">
+
+                <p class="lp-field">
+                    <label for="wp-import-wp-config-path">Path to wp-config.php</label>
+                    <input type="text" id="wp-import-wp-config-path" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>" placeholder="/path/to/wordpress/wp-config.php">
+                </p>
+
+                <button type="submit" class="lp-button lp-button--secondary">Detect from wp-config.php</button>
+            </form>
+
             <h3>Source database</h3>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-test-form">
