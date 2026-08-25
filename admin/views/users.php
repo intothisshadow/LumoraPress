@@ -112,10 +112,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $role = UserRole::Subscriber;
         }
 
-        if ($username === '' || $email === '') {
-            $error = 'Username and email are required.';
+        // LP-124: an identical login username and Display Name
+        // effectively publishes half of an admin/staff account's
+        // credentials via the public post byline (author_name() renders
+        // Display Name) — required to differ for every role except
+        // Subscriber, which has no posting byline or backend access for
+        // the collision to matter. Administrator additionally can't use
+        // an obviously guessable username like "admin".
+        $isStaffRole = $role !== UserRole::Subscriber;
+
+        if ($username === '' || $email === '' || ($isStaffRole && $displayName === '')) {
+            $error = $isStaffRole && $username !== '' && $email !== ''
+                ? 'Username, email, and Display Name are required.'
+                : 'Username and email are required.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
+        } elseif ($isStaffRole && $userService->usernameMatchesDisplayName($username, $displayName)) {
+            $error = 'Username and Display Name must be different — Display Name is shown publicly on posts.';
+        } elseif ($role === UserRole::Administrator && $userService->isGuessableAdministratorUsername($username)) {
+            $error = 'That username is too easy to guess. Choose something less obvious than "admin".';
         } elseif ($existing === null && $password === '') {
             $error = 'A password is required for a new user.';
         } elseif ($password !== '' && strlen($password) < 10) {
@@ -356,6 +371,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
             <p class="lp-field">
                 <label for="user-username">Username</label>
                 <input type="text" id="user-username" name="username" value="<?= esc_attr($user->username ?? '') ?>" required>
+                <span class="lp-field__hint">For an Administrator, avoid an obvious value like "admin".</span>
             </p>
 
             <p class="lp-field">
@@ -366,7 +382,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
             <p class="lp-field">
                 <label for="user-display-name">Display Name</label>
                 <input type="text" id="user-display-name" name="display_name" value="<?= esc_attr($user->displayName ?? '') ?>">
-                <span class="lp-field__hint">Leave blank to use the username.</span>
+                <span class="lp-field__hint">Shown publicly as the author name on posts. Required, and must be different from the Username above, for every role except Subscriber.</span>
             </p>
 
             <p class="lp-field">

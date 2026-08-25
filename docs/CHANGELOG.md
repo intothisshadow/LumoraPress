@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- An admin/staff account's login username must now be different from
+  its Display Name (the name shown publicly as a post's author byline)
+  — required for every role except Subscriber, both in the installer's
+  admin-account step (which also gained a proper Display Name field
+  instead of silently reusing the username) and the admin Add/Edit User
+  screen. An Administrator account additionally can't use an obviously
+  guessable username like "admin".
 - WordPress Importer: "Skip existing content"/"Overwrite existing
   content" now also cover Categories, Tags, Folders (both the Media
   Library Folders plugin and Simple Download Monitor's own category

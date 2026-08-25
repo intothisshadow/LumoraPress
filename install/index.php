@@ -168,16 +168,21 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
         $timezone = trim((string) ($_POST['timezone'] ?? 'UTC'));
         $locale = trim((string) ($_POST['locale'] ?? 'en'));
         $adminUsername = trim((string) ($_POST['admin_username'] ?? ''));
+        $adminDisplayName = trim((string) ($_POST['admin_display_name'] ?? ''));
         $adminEmail = trim((string) ($_POST['admin_email'] ?? ''));
         $adminPassword = (string) ($_POST['admin_password'] ?? '');
         $adminPasswordConfirm = (string) ($_POST['admin_password_confirm'] ?? '');
 
-        if ($siteName === '' || $siteUrl === '' || $adminUsername === '' || $adminEmail === '' || $adminPassword === '') {
+        if ($siteName === '' || $siteUrl === '' || $adminUsername === '' || $adminDisplayName === '' || $adminEmail === '' || $adminPassword === '') {
             $errors[] = 'Please fill in all required fields.';
         } elseif (!filter_var($siteUrl, FILTER_VALIDATE_URL)) {
             $errors[] = 'Please enter a valid website URL.';
         } elseif (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Please enter a valid email address.';
+        } elseif (UserService::usernameMatchesDisplayName($adminUsername, $adminDisplayName)) {
+            $errors[] = 'Username and Display Name must be different — Display Name is shown publicly on posts.';
+        } elseif (UserService::isGuessableAdministratorUsername($adminUsername)) {
+            $errors[] = 'That username is too easy to guess. Choose something less obvious than "admin".';
         } elseif (strlen($adminPassword) < 10) {
             $errors[] = 'Password must be at least 10 characters long.';
         } elseif ($adminPassword !== $adminPasswordConfirm) {
@@ -206,7 +211,7 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
                     throw new RuntimeException('That username or email is already in use.');
                 }
 
-                $users->create($adminUsername, $adminEmail, $adminPassword, UserRole::Administrator, $adminUsername);
+                $users->create($adminUsername, $adminEmail, $adminPassword, UserRole::Administrator, $adminDisplayName);
 
                 PressConfig::generate($root . '/config/config.php', [
                     'db_host' => $dbConfig['db_host'],

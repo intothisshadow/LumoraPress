@@ -149,6 +149,41 @@ final class UserService
         return $row !== null;
     }
 
+    /**
+     * Obviously guessable usernames for the highest-value role —
+     * mirrors the same first thing every WordPress-hardening
+     * convention checks for. Not applied to Editor/Author/Contributor,
+     * where a login username being *somewhat* guessable is a smaller
+     * blast radius than for Administrator.
+     */
+    private const GUESSABLE_ADMINISTRATOR_USERNAMES = ['admin', 'administrator', 'root', 'webmaster', 'superuser', 'owner'];
+
+    /**
+     * A post's public byline is the account's Display Name
+     * (author_name(), include/author-functions.php), so an identical
+     * login username and Display Name effectively publishes half of an
+     * admin/staff account's credentials to every site visitor. Checked
+     * explicitly by the installer's admin-account step and the admin
+     * Add/Edit User screen before calling create()/update() below —
+     * deliberately not enforced inside create()/update() themselves,
+     * since those are also called by the WordPress Importer and Dummy
+     * Content generator, and an otherwise-harmless imported/generated
+     * account shouldn't abort the whole batch over this rule. Static,
+     * like isGuessableAdministratorUsername() below — a pure string
+     * comparison with no database dependency, callable (e.g. from the
+     * installer's admin-account step) before a real Database
+     * connection even exists yet.
+     */
+    public static function usernameMatchesDisplayName(string $username, string $displayName): bool
+    {
+        return mb_strtolower(trim($username)) === mb_strtolower(trim($displayName));
+    }
+
+    public static function isGuessableAdministratorUsername(string $username): bool
+    {
+        return in_array(mb_strtolower(trim($username)), self::GUESSABLE_ADMINISTRATOR_USERNAMES, true);
+    }
+
     public function verifyCredentials(string $usernameOrEmail, string $password): ?User
     {
         $row = $this->database->fetchOne(

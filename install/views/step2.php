@@ -68,6 +68,12 @@ $timezones = DateTimeZone::listIdentifiers();
             <p class="lp-field">
                 <label for="admin_username">Administrator Username</label>
                 <input type="text" id="admin_username" name="admin_username" value="<?= esc_attr((string) ($_POST['admin_username'] ?? '')) ?>" required autocomplete="username">
+                <span class="lp-field__hint">Used to log in — avoid an obvious value like "admin". Keep this different from the Display Name below, since Display Name is shown publicly on posts.</span>
+            </p>
+            <p class="lp-field">
+                <label for="admin_display_name">Administrator Display Name</label>
+                <input type="text" id="admin_display_name" name="admin_display_name" value="<?= esc_attr((string) ($_POST['admin_display_name'] ?? '')) ?>" required>
+                <span class="lp-field__hint">Shown publicly as the author name on posts — must be different from the Username above.</span>
             </p>
             <p class="lp-field">
                 <label for="admin_email">Administrator Email</label>
