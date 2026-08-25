@@ -226,7 +226,7 @@ if ($action === 'edit') {
 
     <?php
     $trashedCount = $categoryService->trashedCount();
-    $statusLinks = ['' => 'All', 'trash' => 'Trash (' . $trashedCount . ')'];
+    $statusLinks = ['' => 'All (' . $categoryService->count() . ')', 'trash' => 'Trash (' . $trashedCount . ')'];
     $rows = $isTrashView ? $categoryService->listTrashedWithPostCounts() : $categoryService->listAllWithPostCounts();
     ?>
 

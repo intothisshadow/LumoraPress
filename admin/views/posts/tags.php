@@ -84,7 +84,7 @@ if ($action === 'edit') {
     }
 }
 ?>
-<h1 class="lp-admin__title">Tags</h1>
+<h1 class="lp-admin__title">Tags (<?= (int) $tagService->count() ?>)</h1>
 
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>

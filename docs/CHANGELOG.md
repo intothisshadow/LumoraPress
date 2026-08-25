@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Categories: the admin Categories list now shows an "All (N)" total
+  count alongside "Trash (N)" (LP-010), matching Posts'/Pages' own
+  status-tab convention.
+- Tags: the admin Tags list's heading now shows a total tag count,
+  "Tags (N)" (LP-011).
 - WordPress Importer: a Simple Download Monitor download's own featured
   image is now imported as that download's thumbnail (LPP-004), shown
   on the Downloads plugin's Add/Edit screen as a representative preview

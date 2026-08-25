@@ -175,6 +175,17 @@ final class TagService
     }
 
     /**
+     * Total tag count — the admin list's "Tags (N)" heading, matching
+     * Posts'/Pages'/Categories' own status-count conventions. A single
+     * COUNT() rather than count(listAll()), which would otherwise fetch
+     * and hydrate every row just to discard them.
+     */
+    public function count(): int
+    {
+        return (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table());
+    }
+
+    /**
      * @return array<int, array{tag: Tag, postCount: int}>
      */
     public function listAllWithPostCounts(): array

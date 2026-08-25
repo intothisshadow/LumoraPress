@@ -381,6 +381,21 @@ final class CategoryService
     }
 
     /**
+     * Non-trashed category count — the admin list's "All (N)" status
+     * link, matching Posts'/Pages' own status-count tabs. A single
+     * COUNT() rather than count(listAll()), since the admin view needs
+     * this total even while viewing the Trash tab, where listAll()'s
+     * full row set (and its unrelated ORDER BY name) would otherwise be
+     * fetched for nothing.
+     */
+    public function count(): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE trashed_at IS NULL',
+        );
+    }
+
+    /**
      * A flat list of {id, name} suitable for a "Parent Category" <select>,
      * excluding $excludeId itself and its direct children (so a category
      * can't be made the parent of its own parent one level up — deeper
