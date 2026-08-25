@@ -439,6 +439,14 @@ if ($wordPressImporterActive) {
         unset($_SESSION['lp_wordpress_import_warnings']);
     }
 
+    // Separates a genuine follow-up action (an unsupported plugin/post
+    // type, a leftover shortcode with no rendering equivalent) from a
+    // routine per-item warning, so the post-import summary screen below
+    // can surface "you should look at this" items in their own section
+    // instead of burying them in one long flat list.
+    $actionNeededWarnings = array_values(array_filter($warnings, [WordPressImportService::class, 'isActionNeededWarning']));
+    $routineWarnings = array_values(array_filter($warnings, static fn (string $warning): bool => !WordPressImportService::isActionNeededWarning($warning)));
+
     $registryOnlyService = $buildRegistryOnlyService();
     $inProgress = $registryOnlyService->inProgressBatch();
     $summary = $inProgress === null ? $registryOnlyService->lastImportSummary() : null;
@@ -474,22 +482,99 @@ if ($wordPressImporterActive) {
 ?>
 <h1 class="lp-admin__title">Import</h1>
 
-<?php if ($wordPressImporterActive): ?>
-    <?php if ($imported): ?>
+<?php
+/*
+ * A consolidated, one-time "Import Summary" screen, shown immediately
+ * after a real import run completes — before the admin is returned to
+ * the normal Import screen below. $imported is only ever true right
+ * after the redirect start_wordpress_import's run branch sends here
+ * (?imported=1); a `return` mid-view is safe since admin/index.php
+ * still requires views/layout-footer.php afterward regardless of
+ * where this file itself stops.
+ */
+if ($wordPressImporterActive && $imported):
+    $pluralLabels = [
+        'post' => 'posts', 'page' => 'pages', 'user' => 'users',
+        'category' => 'categories', 'tag' => 'tags', 'comment' => 'comments', 'media' => 'media',
+        'nav_menu' => 'menus', 'widget_instance' => 'widgets',
+    ];
+    $displayCounts = $summary !== null
+        ? array_filter($summary['counts'], static fn (string $type): bool => !str_ends_with($type, '_snap'), ARRAY_FILTER_USE_KEY)
+        : [];
+    ?>
+    <section class="lp-admin__panel">
         <div class="lp-alert lp-alert--success">WordPress import complete.</div>
 
-        <?php if ($warnings !== []): ?>
+        <?php if ($displayCounts !== []): ?>
+            <p class="lp-field__hint">
+                <strong>Imported:</strong>
+                <?= esc_html(implode(', ', array_map(
+                    static fn (string $type, int $count): string => "{$count} " . ($count === 1 ? $type : ($pluralLabels[$type] ?? $type . 's')),
+                    array_keys($displayCounts),
+                    array_values($displayCounts),
+                ))) ?>
+            </p>
+        <?php endif; ?>
+
+        <?php if ($actionNeededWarnings !== []): ?>
             <div class="lp-alert lp-alert--warning">
-                <strong><?= count($warnings) ?> item<?= count($warnings) === 1 ? '' : 's' ?> skipped or had a problem:</strong>
+                <strong>Action needed — <?= count($actionNeededWarnings) ?> item<?= count($actionNeededWarnings) === 1 ? '' : 's' ?>:</strong>
                 <ul>
-                    <?php foreach ($warnings as $warning): ?>
+                    <?php foreach ($actionNeededWarnings as $warning): ?>
                         <li><?= esc_html($warning) ?></li>
                     <?php endforeach; ?>
                 </ul>
             </div>
         <?php endif; ?>
-    <?php endif; ?>
 
+        <?php if ($redirectMappingReport !== []): ?>
+            <details class="lp-admin__panel">
+                <summary><strong>Redirect Mapping</strong> (<?= count($redirectMappingReport) ?> old URL<?= count($redirectMappingReport) === 1 ? '' : 's' ?> now redirecting to new ones)</summary>
+                <p class="lp-field__hint">
+                    Every redirect this import created — a Simple Download
+                    Monitor download that only linked off-site, or a
+                    <code>_wp_old_slug</code> entry for a post/page whose
+                    slug changed on the source site.
+                    <a href="<?= esc_url(admin_url('maintenance/import') . '?download=redirect_mapping') ?>">Download as CSV</a>.
+                </p>
+                <table class="lp-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Old URL</th>
+                            <th scope="col">New URL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($redirectMappingReport as $row): ?>
+                            <tr>
+                                <td><code>/<?= esc_html($row['sourcePath']) ?></code></td>
+                                <td><code><?= esc_html($row['targetUrl']) ?></code></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </details>
+        <?php endif; ?>
+
+        <?php if ($routineWarnings !== []): ?>
+            <details class="lp-admin__panel">
+                <summary><?= count($routineWarnings) ?> other item<?= count($routineWarnings) === 1 ? '' : 's' ?> skipped or had a problem</summary>
+                <ul>
+                    <?php foreach ($routineWarnings as $warning): ?>
+                        <li><?= esc_html($warning) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </details>
+        <?php endif; ?>
+
+        <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('maintenance/import')) ?>">Continue</a></p>
+    </section>
+    <?php
+    return;
+endif;
+?>
+
+<?php if ($wordPressImporterActive): ?>
     <?php if ($removed): ?>
         <div class="lp-alert lp-alert--success">All imported content was removed.</div>
     <?php endif; ?>

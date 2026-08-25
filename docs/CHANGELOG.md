@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: a real import now finishes on a dedicated Import
+  Summary screen instead of a small inline alert — imported counts, an
+  "Action needed" section calling out genuine follow-up items
+  (unsupported active plugins/custom post types, leftover shortcodes
+  with no rendering equivalent) separately from routine per-item
+  warnings, the Redirect Mapping table, and a Continue link back to
+  the normal Import screen.
 - A new "Insert Folder" button in the content editor toolbar (next to
   Insert Image, in both the Markdown and HTML/WYSIWYG editors) inserts
   a whole Media folder into a post/page at once, rendered as a row of

@@ -302,6 +302,30 @@ final class WordPressImportService
     }
 
     /**
+     * Distinguishes a genuine follow-up action from a routine per-item
+     * warning (a missing file, a skipped duplicate, and the like) —
+     * used by the post-import summary screen (admin/views/maintenance/
+     * import.php) to surface "you should look at this" items in their
+     * own section rather than buried in a long flat warnings list.
+     *
+     * Deliberately a fixed set of substrings matched against the exact
+     * wording reportUnsupportedPostTypes()/reportUnsupportedPlugins()/
+     * flagUnsupportedShortcodes()/ContentImageRewriter::rewrite() already
+     * produce, rather than a structured warning type threaded through
+     * every one of this class's many warning call sites — those four
+     * are the only "needs a human decision" warnings this importer
+     * currently produces; everything else just documents what was
+     * skipped and why, with nothing further for the admin to act on.
+     */
+    public static function isActionNeededWarning(string $warning): bool
+    {
+        return str_contains($warning, 'still contains a [')
+            || str_contains($warning, 'still contains a WordPress image gallery')
+            || str_contains($warning, 'were not imported — no Lumora Press equivalent exists for it.')
+            || str_contains($warning, 'other active plugin(s) with no Lumora Press equivalent');
+    }
+
+    /**
      * @param array{users?: bool, categories?: bool, media?: bool, nextgen_galleries?: bool, downloads?: bool, pages?: bool, posts?: bool, comments?: bool, menus?: bool, widgets?: bool, site_settings?: bool, statuses?: array<int, string>, stage_delay_ms?: int, existing_content?: string} $options
      * @return array<string, int>
      */
@@ -2946,6 +2970,13 @@ final class WordPressImportService
         if (str_contains($content, '[ngg')) {
             $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [ngg...] shortcode — NextGEN Gallery's own gallery display has no Lumora Press equivalent yet, so it will show as plain text. The gallery's images were still imported into Media Manager.";
         }
+
+        // WordPress core's own built-in [gallery]/wp-block-gallery
+        // shortcode/block is deliberately *not* checked here —
+        // ContentImageRewriter::rewrite() already flags it (see that
+        // class's own docblock) at the point the content is actually
+        // rewritten, so a duplicate check here would double the warning
+        // for the same post.
     }
 
     /**
