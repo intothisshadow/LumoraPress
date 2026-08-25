@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: the Detect/Test Connection/Import/Resume forms on
+  Maintenance › Import no longer blank out fields an admin already
+  entered when submitting one of the other forms — the Gallery folder
+  path and wp-config.php path fields used to reset after Test
+  Connection, and every connection/path field used to reset after
+  Detect from wp-config.php. The Resume form also gained its own
+  Gallery folder path field, needed to resume a batch whose plan still
+  includes a NextGEN Gallery stage.
 - WordPress Importer: a re-import against a source already imported once
   before can now Skip or Overwrite existing content instead of always
   refusing to start (LPP-004) — a new "When content already exists"

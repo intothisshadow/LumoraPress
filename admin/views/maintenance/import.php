@@ -65,10 +65,16 @@ $redirectMappingReport = [];
 $warnings = [];
 
 /*
- * Connection fields are never persisted between requests — re-typed (or
- * resubmitted via the hidden fields below) on every Test Connection /
- * Import click, the same "credentials aren't stored anywhere" posture
- * this plugin's implementation plan calls for.
+ * Connection fields are never persisted server-side between requests —
+ * nothing is written to the session or database, the same "credentials
+ * aren't stored anywhere" posture this plugin's implementation plan
+ * calls for. Within a single request/response, though, every field an
+ * admin has entered so far is carried forward via hidden inputs on
+ * whichever of the Detect/Test Connection/Import forms didn't itself
+ * collect that field — so clicking "Test Connection" (which only POSTs
+ * the connection + uploads-path fields) doesn't blank out the Gallery
+ * folder path or wp-config.php path fields that live on the other two
+ * forms further down the same page.
  */
 $formValues = [
     // 'database' (a live/local-copy MySQL connection) or 'wxr' (a local
@@ -761,6 +767,12 @@ if ($wordPressImporterActive) {
                     <label for="wp-import-resume-uploads-path">Uploads folder path (server filesystem)</label>
                     <input type="text" id="wp-import-resume-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
                 </p>
+                <p class="lp-field">
+                    <label for="wp-import-resume-gallery-path">Gallery folder path (server filesystem)</label>
+                    <input type="text" id="wp-import-resume-gallery-path" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>" placeholder="/path/to/wp-content/gallery">
+                    <span class="lp-field__hint">Only needed if the interrupted import's plan includes a NextGEN Gallery stage.</span>
+                </p>
+                <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
 
                 <ul id="lp-import-progress-resume" class="lp-update-progress" hidden></ul>
 
@@ -804,6 +816,24 @@ if ($wordPressImporterActive) {
                     <input type="text" id="wp-import-wp-config-path" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>" placeholder="/path/to/wordpress/wp-config.php">
                 </p>
 
+                <?php
+                // This form only ever collects wp_config_path — every other
+                // field already entered on the Test Connection/Import forms
+                // further down the page is carried forward as a hidden input
+                // so submitting Detect doesn't blank them out (see this
+                // file's own comment above $formValues for why).
+                ?>
+                <input type="hidden" name="source_type" value="<?= esc_attr($formValues['source_type']) ?>">
+                <input type="hidden" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
+                <input type="hidden" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
+                <input type="hidden" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>">
+                <input type="hidden" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>">
+                <input type="hidden" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
+                <input type="hidden" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>">
+                <input type="hidden" name="wxr_path" value="<?= esc_attr($formValues['wxr_path']) ?>">
+                <input type="hidden" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>">
+                <input type="hidden" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>">
+
                 <button type="submit" class="lp-button lp-button--secondary">Detect from wp-config.php</button>
             </form>
 
@@ -822,6 +852,14 @@ if ($wordPressImporterActive) {
                     <input type="text" id="wp-import-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
                     <span class="lp-field__hint">An absolute path this server's PHP process can read — the source site's <code>wp-content/uploads</code> folder.</span>
                 </p>
+
+                <?php
+                // Carried forward so Test Connection doesn't blank out
+                // fields that live only on the Detect/Import forms — see
+                // this file's own comment above $formValues for why.
+                ?>
+                <input type="hidden" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>">
+                <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
 
                 <button type="submit" class="lp-button lp-button--secondary">Test Connection</button>
             </form>
@@ -857,6 +895,14 @@ if ($wordPressImporterActive) {
                         above, not a subfolder of it). Leave blank if the source site never ran NextGEN Gallery.
                     </span>
                 </p>
+
+                <?php
+                // Carried forward so submitting Import doesn't blank out
+                // the wp-config.php path field that lives only on the
+                // Detect form — see this file's own comment above
+                // $formValues for why.
+                ?>
+                <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
 
                 <h4>Site settings</h4>
 
@@ -963,7 +1009,7 @@ if ($wordPressImporterActive) {
 
             <h3>Import</h3>
 
-            <p class="lp-field__hint">Re-enter the same connection details above — they aren't carried over from the Test Connection form.</p>
+            <p class="lp-field__hint">Connection details from Test Connection above are already filled in below — double-check them before importing.</p>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/import')) ?>?ajax=progress" data-lp-update-progress-target="lp-import-progress">
                 <?= Csrf::field('start_wordpress_import') ?>
