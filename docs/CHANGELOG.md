@@ -32,8 +32,8 @@ All notable changes to Lumora Press are documented in this file.
   the source site's own `wp-config.php` — read as plain text only,
   never executed. Every field stays fully editable either way; manual
   entry still works exactly as before.
-- WordPress Importer: attachments organized with the "Folders" plugin
-  (LPP-004) now import into matching Media Manager folders, preserving
+- WordPress Importer: attachments organized with the "Media Library
+  Folders" plugin (LPP-004) now import into matching Media Manager folders, preserving
   the source site's own nesting, instead of every attachment landing
   with no folder at all. A Simple Download Monitor download's
   description now also falls back to its post body when the plugin's

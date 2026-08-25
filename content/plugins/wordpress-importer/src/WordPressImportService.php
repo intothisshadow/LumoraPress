@@ -1781,7 +1781,7 @@ final class WordPressImportService
     }
 
     /**
-     * The "Folders" plugin (`folders/folders.php`) organizes the regular
+     * The "Media Library Folders" plugin (`folders/folders.php`) organizes the regular
      * Media Library into a real, standard WordPress taxonomy —
      * `media_folder`, term_relationships-based exactly like `category` —
      * confirmed against a real production database (not guessed, per

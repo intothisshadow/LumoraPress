@@ -30,8 +30,8 @@ a local copy of the source site's `wp-content/uploads` folder.
   a Simple Download Monitor download's count is its `sdm_count_offset`
   postmeta alone, since the per-visit download log itself is never
   exported. Users, categories/tags (including custom taxonomies like
-  Simple Download Monitor's `sdm_categories` or the Folders plugin's
-  `media_folder`), media, pages, posts, comments, and menus all import
+  Simple Download Monitor's `sdm_categories` or the Media Library
+  Folders plugin's `media_folder`), media, pages, posts, comments, and menus all import
   from a WXR file exactly as fully as from a database connection.
 - **Auto-detect from wp-config.php**: only relevant for a database
   connection — point the "Path to wp-config.php"

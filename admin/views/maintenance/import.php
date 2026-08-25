@@ -537,10 +537,10 @@ if ($wordPressImporterActive) {
                 manual page editing needed.
             </li>
             <li>
-                <strong>Folders</strong> — its Media Library folder
-                organization imports into matching Media Manager Folders,
-                preserving the source site's own nesting, instead of every
-                attachment landing with no folder at all.
+                <strong>Media Library Folders</strong> — its Media Library
+                folder organization imports into matching Media Manager
+                Folders, preserving the source site's own nesting, instead
+                of every attachment landing with no folder at all.
             </li>
         </ul>
 
