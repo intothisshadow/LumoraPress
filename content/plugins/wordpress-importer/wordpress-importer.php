@@ -18,7 +18,7 @@ declare(strict_types=1);
 /*
  * Plugin Name: WordPress Importer
  * Plugin URI: https://lumorapress.org/plugins/wordpress-importer
- * Description: Imports an existing WordPress site's users, categories, tags, media, pages, posts, and comments via a direct database connection and a local copy of its uploads folder.
+ * Description: Imports an existing WordPress site's users, categories, tags, media, pages, posts, and comments via a direct database connection or a WXR export file, plus a local copy of its uploads folder.
  * Version: 0.1.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
@@ -31,7 +31,9 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\WordPressImporter;
 
+require_once __DIR__ . '/src/WordPressSourceInterface.php';
 require_once __DIR__ . '/src/WordPressSource.php';
+require_once __DIR__ . '/src/WordPressXmlSource.php';
 require_once __DIR__ . '/src/WordPressConfigParser.php';
 require_once __DIR__ . '/src/ContentImageRewriter.php';
 require_once __DIR__ . '/src/InternalLinkRewriter.php';

@@ -23,6 +23,8 @@ use LumoraPress\Plugins\WordPressImporter\ImportProgress;
 use LumoraPress\Plugins\WordPressImporter\WordPressConfigParser;
 use LumoraPress\Plugins\WordPressImporter\WordPressImportService;
 use LumoraPress\Plugins\WordPressImporter\WordPressSource;
+use LumoraPress\Plugins\WordPressImporter\WordPressSourceInterface;
+use LumoraPress\Plugins\WordPressImporter\WordPressXmlSource;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -68,12 +70,17 @@ $warnings = [];
  * this plugin's implementation plan calls for.
  */
 $formValues = [
+    // 'database' (a live/local-copy MySQL connection) or 'wxr' (a local
+    // WordPress WXR .xml export file) — see $buildSource below for the
+    // dispatch this drives.
+    'source_type' => ($_POST['source_type'] ?? null) === 'wxr' ? 'wxr' : 'database',
     'db_host' => is_string($_POST['db_host'] ?? null) ? $_POST['db_host'] : 'localhost',
     'db_port' => is_string($_POST['db_port'] ?? null) ? $_POST['db_port'] : '3306',
     'db_name' => is_string($_POST['db_name'] ?? null) ? $_POST['db_name'] : '',
     'db_user' => is_string($_POST['db_user'] ?? null) ? $_POST['db_user'] : '',
     'db_password' => is_string($_POST['db_password'] ?? null) ? $_POST['db_password'] : '',
     'db_prefix' => is_string($_POST['db_prefix'] ?? null) ? $_POST['db_prefix'] : 'wp_',
+    'wxr_path' => is_string($_POST['wxr_path'] ?? null) ? $_POST['wxr_path'] : '',
     'uploads_path' => is_string($_POST['uploads_path'] ?? null) ? $_POST['uploads_path'] : '',
     'wp_config_path' => is_string($_POST['wp_config_path'] ?? null) ? $_POST['wp_config_path'] : '',
 ];
@@ -98,8 +105,23 @@ if ($wordPressImporterActive) {
         $kernel->folders,
     ) : null;
 
-    $buildImportService = static function () use ($kernel, $formValues, $downloadsService): WordPressImportService {
-        $source = WordPressSource::connect(
+    /*
+     * Dispatches on the "Source type" radio (see the shared field
+     * markup below) to build whichever WordPressSourceInterface
+     * implementation the admin picked — WordPressImportService itself
+     * never has to know or care which one it's driving (see that
+     * class's own constructor docblock). Throws the same way either
+     * branch's own constructor already does (WordPressSource::connect()
+     * on an unreachable database, WordPressXmlSource on a missing/
+     * malformed file) — every caller below already wraps this in its
+     * own try/catch.
+     */
+    $buildSource = static function () use ($formValues): WordPressSourceInterface {
+        if ($formValues['source_type'] === 'wxr') {
+            return new WordPressXmlSource($formValues['wxr_path']);
+        }
+
+        return WordPressSource::connect(
             host: $formValues['db_host'],
             database: $formValues['db_name'],
             username: $formValues['db_user'],
@@ -107,6 +129,10 @@ if ($wordPressImporterActive) {
             tablePrefix: $formValues['db_prefix'],
             port: (int) $formValues['db_port'] > 0 ? (int) $formValues['db_port'] : 3306,
         );
+    };
+
+    $buildImportService = static function () use ($kernel, $formValues, $downloadsService, $buildSource): WordPressImportService {
+        $source = $buildSource();
 
         return new WordPressImportService(
             source: $source,
@@ -223,25 +249,24 @@ if ($wordPressImporterActive) {
 
     if ($form === 'test_wordpress_connection' && Csrf::verify('test_wordpress_connection', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         try {
-            $source = WordPressSource::connect(
-                host: $formValues['db_host'],
-                database: $formValues['db_name'],
-                username: $formValues['db_user'],
-                password: $formValues['db_password'],
-                tablePrefix: $formValues['db_prefix'],
-                port: (int) $formValues['db_port'] > 0 ? (int) $formValues['db_port'] : 3306,
-            );
+            $source = $buildSource();
 
             if (!$source->testConnection()) {
+                // Only WordPressSource::testConnection() can actually
+                // return false — WordPressXmlSource's constructor
+                // already throws (caught below) rather than returning a
+                // half-built instance, so this branch is unreachable for
+                // a WXR source, but the message stays DB-specific since
+                // it's the only source type that reaches it in practice.
                 $testResult = ['ok' => false, 'message' => "Connected, but no `{$formValues['db_prefix']}posts` table was found. Check the table prefix."];
             } elseif (!is_dir($formValues['uploads_path'])) {
-                $testResult = ['ok' => false, 'message' => 'Connected to the database, but the uploads folder path does not exist or is not readable by the web server.'];
+                $testResult = ['ok' => false, 'message' => 'The uploads folder path does not exist or is not readable by the web server.'];
             } else {
                 $wpOptions = $source->siteOptions();
                 $siteName = $wpOptions['blogname'] ?? null;
                 $testResult = [
                     'ok' => true,
-                    'message' => 'Connected successfully, and the uploads folder is readable.'
+                    'message' => ($formValues['source_type'] === 'wxr' ? 'The WXR file is valid, and' : 'Connected successfully, and') . ' the uploads folder is readable.'
                         . ($siteName !== null && $siteName !== '' ? " Source site: \"{$siteName}\"." : ''),
                 ];
 
@@ -270,7 +295,7 @@ if ($wordPressImporterActive) {
                 ];
             }
         } catch (\Throwable $exception) {
-            $testResult = ['ok' => false, 'message' => 'Could not connect: ' . $exception->getMessage()];
+            $testResult = ['ok' => false, 'message' => ($formValues['source_type'] === 'wxr' ? 'Could not read the WXR file: ' : 'Could not connect: ') . $exception->getMessage()];
         }
     }
 
@@ -477,25 +502,98 @@ if ($wordPressImporterActive) {
 
         <p class="lp-field__hint">
             Imports users, categories, tags, media, pages, posts, comments,
-            menus, and classic widgets from an existing WordPress site via
-            a direct database connection plus a local copy of its
-            <code>wp-content/uploads</code> folder. The database can be the WordPress site's own live
+            menus, and classic widgets from an existing WordPress site — via
+            a direct database connection, or a WordPress WXR (<code>.xml</code>)
+            export file — plus a local copy of its <code>wp-content/uploads</code>
+            folder. The database can be the WordPress site's own live
             server (point the host field at it directly) or a local copy
-            you've restored from a backup — either way, the uploads folder
-            must already be readable on this server's local filesystem; it
-            is never fetched remotely. If the source site has Simple
+            you've restored from a backup; either way, and whichever source
+            type is used, the uploads folder must already be readable on
+            this server's local filesystem — it is never fetched remotely.
+            A WXR export carries only content (posts, pages, media,
+            comments, users, terms) — it has no representation of site
+            settings, widgets, or a plugin's own custom tables, so those
+            are only ever imported from a direct database connection; a
+            WXR-sourced user also always imports as Subscriber, since WXR
+            carries no role data at all. If the source site has Simple
             Download Monitor installed, its downloads (including their
-            real download counts) are imported too — organized into
-            matching Media Manager Folders when the file is hosted
-            locally, or as a Redirect (with a working, seeded hit
-            counter) when it only links to an external URL. Any page
-            still using <code>[sdm_show_dl_from_category]</code>
-            automatically renders a real list of those downloads after
-            import — no manual page editing needed. Site title, tagline,
-            timezone, date/time format, and permalink structure can
-            optionally be imported too (off by default — see "Site
+            real download counts, from a database connection — a WXR
+            export's own <code>sdm_count_offset</code> value is used
+            alone, since the per-visit download log itself is never
+            exported) are imported too — organized into matching Media
+            Manager Folders when the file is hosted locally, or as a
+            Redirect (with a working, seeded hit counter) when it only
+            links to an external URL. Any page still using
+            <code>[sdm_show_dl_from_category]</code> automatically renders
+            a real list of those downloads after import — no manual page
+            editing needed. Site title, tagline, timezone, date/time
+            format, and permalink structure can optionally be imported too
+            from a database connection (off by default — see "Site
             settings" below).
         </p>
+
+        <?php
+        /*
+         * The "Source type" radio pair plus whichever field set it
+         * selects (database connection fields, or a WXR file path) —
+         * shared by the Resume form, Test Connection form, and the main
+         * Import form below, each of which still POSTs independently
+         * with its own CSRF token and its own copy of every field (see
+         * this section's own comment further below on why), this just
+         * avoids maintaining three physically separate copies of this
+         * particular markup. Both field sets render unconditionally
+         * (no JS-driven show/hide) — the radio alone decides which one
+         * the server actually reads from on submit, so neither needs a
+         * `required` attribute that could block submission of the
+         * other's fields.
+         */
+        $renderConnectionFields = static function (string $idPrefix) use ($formValues): void {
+            ?>
+            <p class="lp-field lp-field--radio">
+                <label>
+                    <input type="radio" name="source_type" value="database" <?= $formValues['source_type'] === 'database' ? 'checked' : '' ?>>
+                    Direct database connection
+                </label>
+                <label>
+                    <input type="radio" name="source_type" value="wxr" <?= $formValues['source_type'] === 'wxr' ? 'checked' : '' ?>>
+                    WordPress WXR (.xml) export file
+                </label>
+            </p>
+
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-host">Database host</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-db-host" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
+            </p>
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-port">Database port</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-db-port" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
+            </p>
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-name">Database name</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-db-name" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>">
+            </p>
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-user">Database username</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-db-user" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>">
+            </p>
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-password">Database password</label>
+                <input type="password" id="<?= esc_attr($idPrefix) ?>-db-password" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
+            </p>
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-db-prefix">Table prefix</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-db-prefix" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>">
+                <span class="lp-field__hint">Only used with "Direct database connection" above.</span>
+            </p>
+
+            <p class="lp-field">
+                <label for="<?= esc_attr($idPrefix) ?>-wxr-path">Path to WXR (.xml) export file</label>
+                <input type="text" id="<?= esc_attr($idPrefix) ?>-wxr-path" name="wxr_path" value="<?= esc_attr($formValues['wxr_path']) ?>" placeholder="/path/to/export.xml">
+                <span class="lp-field__hint">Only used with "WordPress WXR (.xml) export file" above — an absolute path this server's PHP process can read.</span>
+            </p>
+            <?php
+        };
+        ?>
 
         <?php if ($summary !== null): ?>
             <?php
@@ -543,30 +641,7 @@ if ($wordPressImporterActive) {
                 <?= Csrf::field('start_wordpress_import') ?>
                 <input type="hidden" name="form" value="start_wordpress_import">
 
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-host">Database host</label>
-                    <input type="text" id="wp-import-resume-db-host" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-port">Database port</label>
-                    <input type="text" id="wp-import-resume-db-port" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-name">Database name</label>
-                    <input type="text" id="wp-import-resume-db-name" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-user">Database username</label>
-                    <input type="text" id="wp-import-resume-db-user" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-password">Database password</label>
-                    <input type="password" id="wp-import-resume-db-password" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-resume-db-prefix">Table prefix</label>
-                    <input type="text" id="wp-import-resume-db-prefix" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>" required>
-                </p>
+                <?php $renderConnectionFields('wp-import-resume'); ?>
                 <p class="lp-field">
                     <label for="wp-import-resume-uploads-path">Uploads folder path (server filesystem)</label>
                     <input type="text" id="wp-import-resume-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
@@ -595,12 +670,14 @@ if ($wordPressImporterActive) {
             <h3>Auto-detect from wp-config.php</h3>
 
             <p class="lp-field__hint">
-                If the source site's <code>wp-config.php</code> is readable on this server's local
-                filesystem (the same requirement as the uploads folder path below), point this at it to
-                pre-fill the database connection and uploads folder fields below. Nothing is read from
-                <code>wp-config.php</code> beyond its <code>DB_*</code>/<code>$table_prefix</code>/
-                <code>WP_CONTENT_DIR</code>/<code>UPLOADS</code> values — it is never executed. Every
-                pre-filled field below stays fully editable; use this as a shortcut, not a requirement.
+                Only relevant for a direct database connection below — a WXR export needs no
+                <code>wp-config.php</code> at all. If the source site's <code>wp-config.php</code> is
+                readable on this server's local filesystem (the same requirement as the uploads folder
+                path below), point this at it to pre-fill the database connection and uploads folder
+                fields below. Nothing is read from <code>wp-config.php</code> beyond its
+                <code>DB_*</code>/<code>$table_prefix</code>/<code>WP_CONTENT_DIR</code>/<code>UPLOADS</code>
+                values — it is never executed. Every pre-filled field below stays fully editable; use
+                this as a shortcut, not a requirement.
             </p>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-detect-form">
@@ -615,36 +692,13 @@ if ($wordPressImporterActive) {
                 <button type="submit" class="lp-button lp-button--secondary">Detect from wp-config.php</button>
             </form>
 
-            <h3>Source database</h3>
+            <h3>Source</h3>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-test-form">
                 <?= Csrf::field('test_wordpress_connection') ?>
                 <input type="hidden" name="form" value="test_wordpress_connection">
 
-                <p class="lp-field">
-                    <label for="wp-import-db-host">Database host</label>
-                    <input type="text" id="wp-import-db-host" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-db-port">Database port</label>
-                    <input type="text" id="wp-import-db-port" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-db-name">Database name</label>
-                    <input type="text" id="wp-import-db-name" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-db-user">Database username</label>
-                    <input type="text" id="wp-import-db-user" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-db-password">Database password</label>
-                    <input type="password" id="wp-import-db-password" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="wp-import-db-prefix">Table prefix</label>
-                    <input type="text" id="wp-import-db-prefix" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>" required>
-                </p>
+                <?php $renderConnectionFields('wp-import'); ?>
 
                 <h3>Source files</h3>
 
@@ -672,32 +726,9 @@ if ($wordPressImporterActive) {
              * (which needs its own smaller field set, not this one) and
              * this shared block don't duplicate id-prefixing logic.
              */
-            $renderSharedImportFields = static function (string $idPrefix) use ($formValues): void {
+            $renderSharedImportFields = static function (string $idPrefix) use ($formValues, $renderConnectionFields): void {
+                $renderConnectionFields($idPrefix);
                 ?>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-host">Database host</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-db-host" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-port">Database port</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-db-port" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-name">Database name</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-db-name" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-user">Database username</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-db-user" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>" required>
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-password">Database password</label>
-                    <input type="password" id="<?= esc_attr($idPrefix) ?>-db-password" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-db-prefix">Table prefix</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-db-prefix" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>" required>
-                </p>
                 <p class="lp-field">
                     <label for="<?= esc_attr($idPrefix) ?>-uploads-path">Uploads folder path (server filesystem)</label>
                     <input type="text" id="<?= esc_attr($idPrefix) ?>-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
@@ -718,7 +749,9 @@ if ($wordPressImporterActive) {
                         below rather than applied. The Homepage and Privacy Policy Page settings each name a
                         WordPress page — only applied once the "Pages" content type below has actually
                         imported that page; a page that wasn't imported is skipped and noted in the warnings
-                        instead of pointing at content that doesn't exist here.
+                        instead of pointing at content that doesn't exist here. Only ever available from a
+                        direct database connection — a WXR export has no representation of site options at
+                        all, so this checkbox has nothing to import from a WXR-sourced import.
                     </span>
                 </p>
 
@@ -759,7 +792,7 @@ if ($wordPressImporterActive) {
                     </label>
                     <label class="lp-field--checkbox">
                         <input type="checkbox" name="include_widgets" value="1" checked>
-                        Widgets (only types with a Lumora Press equivalent; the rest are skipped and listed in the warnings below)
+                        Widgets (only types with a Lumora Press equivalent; the rest are skipped and listed in the warnings below — none at all from a WXR-sourced import, which never carries widget configuration)
                     </label>
                 </p>
 

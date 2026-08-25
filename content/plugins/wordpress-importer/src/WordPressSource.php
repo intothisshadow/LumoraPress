@@ -37,7 +37,7 @@ use Throwable;
  *
  * No writes happen here at all — this class only ever reads.
  */
-final class WordPressSource
+final class WordPressSource implements WordPressSourceInterface
 {
     /**
      * WordPress HTML-entity-encodes plain-text fields (term names, post/

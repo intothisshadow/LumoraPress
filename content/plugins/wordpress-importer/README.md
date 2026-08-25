@@ -2,20 +2,39 @@
 
 Migrates an existing WordPress site into Lumora Press: users, categories,
 tags, media, pages, posts, comments, menus, and classic widgets — via a
-direct database connection plus a local copy of the source site's
-`wp-content/uploads` folder.
+direct database connection or a WordPress WXR (`.xml`) export file, plus
+a local copy of the source site's `wp-content/uploads` folder.
 
 ## What this plugin does (first-pass scope)
 
-- **Maintenance → Import**: enter the source database's host/port/
-  database name/username/password/table prefix and a local filesystem
-  path to its `wp-content/uploads` folder, Test Connection, then Start
-  Import. The database can be the WordPress site's own live server
-  (point the host field at it directly) or a locally restored backup —
-  either way works the same; the uploads folder must always be readable
-  on this server's local filesystem, since nothing here fetches files
-  remotely.
-- **Auto-detect from wp-config.php**: point the "Path to wp-config.php"
+- **Maintenance → Import**: pick a "Source type" — a direct database
+  connection (enter the source database's host/port/database name/
+  username/password/table prefix) or a WordPress WXR (`.xml`) export
+  file (enter a local filesystem path to it) — plus either way, a local
+  filesystem path to the source site's `wp-content/uploads` folder,
+  Test Connection, then Import. For a database connection, the database
+  can be the WordPress site's own live server (point the host field at
+  it directly) or a locally restored backup; either way, and for a WXR
+  file too, the uploads folder must always be readable on this server's
+  local filesystem, since nothing here fetches files remotely — a WXR
+  export's own `<wp:attachment_url>` only records where a file used to
+  live, not the file itself.
+- **WXR export limitations**: WordPress's WXR format is a *content*
+  export — it structurally cannot carry site options, widget
+  configuration, or a plugin's own custom database tables. From a
+  WXR-sourced import: Site Settings and Widgets both have nothing to
+  import (cleanly — the same "nothing found" outcome a widget-free or
+  plugin-free real site already produces from a database connection,
+  not an error); every imported user lands as Subscriber, since WXR
+  carries no role data at all (reassign roles manually afterward); and
+  a Simple Download Monitor download's count is its `sdm_count_offset`
+  postmeta alone, since the per-visit download log itself is never
+  exported. Users, categories/tags (including custom taxonomies like
+  Simple Download Monitor's `sdm_categories` or the Folders plugin's
+  `media_folder`), media, pages, posts, comments, and menus all import
+  from a WXR file exactly as fully as from a database connection.
+- **Auto-detect from wp-config.php**: only relevant for a database
+  connection — point the "Path to wp-config.php"
   field at a locally readable copy of the source install's own
   `wp-config.php` and click Detect to pre-fill the database host/port/
   name/username/password/table prefix fields, plus the uploads folder
@@ -145,8 +164,7 @@ direct database connection plus a local copy of the source site's
 
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-004 for the full checklist)
 
-The WXR `.xml` export upload path is a separate, not-yet-built import
-source. Of the WordPress site settings shown as a preview during Test
+Of the WordPress site settings shown as a preview during Test
 Connection, only title/tagline/timezone/date & time format/permalink
 structure can be applied (opt-in, see above) — Homepage, Reading,
 Discussion, Media, and Privacy settings have no Lumora Press config

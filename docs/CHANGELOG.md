@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: a WordPress WXR (`.xml`) export file can now be
+  used as an import source, alongside the existing direct database
+  connection (LPP-004) — a new "Source type" choice on Maintenance ›
+  Import. Users, categories/tags (including custom taxonomies),
+  media, pages, posts, comments, and menus all import from a WXR file
+  exactly as fully as from a database connection; Site Settings and
+  Widgets have nothing to import from a WXR file (that format
+  structurally carries neither), and a WXR-sourced user always imports
+  as Subscriber, since WXR carries no role data at all.
 - Categories: the admin Categories list now shows an "All (N)" total
   count alongside "Trash (N)" (LP-010), matching Posts'/Pages' own
   status-tab convention.

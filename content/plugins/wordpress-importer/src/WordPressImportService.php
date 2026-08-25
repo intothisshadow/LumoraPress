@@ -142,12 +142,20 @@ final class WordPressImportService
     /**
      * $source is nullable specifically so removeAll()/lastImportSummary()
      * — pure ContentImportRegistry lookups that never touch the source
-     * WordPress database at all — can be used without opening a real
-     * database connection first (WordPressSource::connect() connects
-     * eagerly). Only run() actually requires it.
+     * WordPress site at all — can be used without opening a real
+     * database connection or parsing a WXR file first
+     * (WordPressSource::connect() connects eagerly). Only run() actually
+     * requires it.
+     *
+     * Typed against WordPressSourceInterface, not the concrete
+     * WordPressSource, specifically so a WXR export file
+     * (WordPressXmlSource) can be driven through the exact same stage
+     * pipeline below — every importXxx() method already only calls
+     * $this->source's interface methods, never anything
+     * WordPressSource-specific.
      */
     public function __construct(
-        private readonly ?WordPressSource $source,
+        private readonly ?WordPressSourceInterface $source,
         private readonly UserImporter $userImporter,
         private readonly PostImporter $postImporter,
         private readonly PageImporter $pageImporter,
