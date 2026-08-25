@@ -613,6 +613,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A download's Description with an aligned image (`alignleft`/
+  `alignright`/`aligncenter`, e.g. content migrated by the WordPress
+  Importer) had no float/clearfix styling on the `[lumora_downloads]`
+  shortcode's public listing — the default theme's existing "Downloads
+  List" CSS covered aligned images inside a post's own content
+  (`.lp-post__content img.alignleft`, etc.) but never the downloads
+  list's own description text, so a floated image could bleed into the
+  next list item instead of staying contained within its own. Added
+  the same alignment/clearfix rules scoped to
+  `.lp-downloads-list__description`, plus a `max-width: 100%` safeguard
+  for oversized images.
 - A download's Description imported via the WordPress Importer could
   render with raw, un-rendered HTML tags visible as literal text (e.g.
   `<p><img ...></p>` shown as plain text instead of an image) on the
