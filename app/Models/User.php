@@ -56,6 +56,16 @@ final class User
          * defer to via null.
          */
         public readonly ThemePreference $themePreference = ThemePreference::Auto,
+        /**
+         * LP-097/LP-098: raw JSON-encoded Grid/List view-mode choice per
+         * admin list screen ('media', 'plugins', ...), the same
+         * one-JSON-blob-column-keyed-by-screen-type shape
+         * editorLayoutPreferences uses above. Kept as an undecoded string
+         * here — UserService::getListViewMode() decodes and slices it per
+         * screen, since only the caller knows which screen it's asking
+         * about.
+         */
+        public readonly ?string $listViewPreferences = null,
     ) {
     }
 

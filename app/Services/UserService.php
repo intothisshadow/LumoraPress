@@ -328,6 +328,47 @@ final class UserService
         unset($this->findByIdCache[$id]);
     }
 
+    /**
+     * LP-097/LP-098: this user's saved Grid/List view-mode choice for the
+     * given admin list screen ('media', 'plugins', ...), defaulting to
+     * 'grid' — every such screen only ever had a grid/card layout before
+     * these tickets, so an admin who's never touched the toggle keeps
+     * seeing exactly what they always saw.
+     */
+    public function getListViewMode(int $id, string $screenType): string
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->listViewPreferences ?? '{}', true);
+        $forScreen = is_array($decoded) ? ($decoded[$screenType] ?? null) : null;
+
+        return $forScreen === 'list' ? 'list' : 'grid';
+    }
+
+    /**
+     * Persists $mode for one screen type without disturbing another
+     * screen's saved choice — mirrors updateEditorLayoutPreferences()'s
+     * identical one-JSON-blob-column read-modify-write shape.
+     */
+    public function setListViewMode(int $id, string $screenType, string $mode): void
+    {
+        $mode = $mode === 'list' ? 'list' : 'grid';
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->listViewPreferences ?? '{}', true);
+
+        if (!is_array($decoded)) {
+            $decoded = [];
+        }
+
+        $decoded[$screenType] = $mode;
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET list_view_preferences = :list_view_preferences WHERE id = :id',
+            ['list_view_preferences' => json_encode($decoded), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+    }
+
     public function delete(int $id): bool
     {
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -569,6 +610,7 @@ final class UserService
             themePreference: isset($row['theme_preference'])
                 ? (ThemePreference::tryFrom((string) $row['theme_preference']) ?? ThemePreference::Auto)
                 : ThemePreference::Auto,
+            listViewPreferences: isset($row['list_view_preferences']) ? (string) $row['list_view_preferences'] : null,
         );
     }
 

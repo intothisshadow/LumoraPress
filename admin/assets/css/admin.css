@@ -1064,6 +1064,25 @@ body.lp-admin-login {
     min-width: 180px;
 }
 
+/*
+ * LP-098: the Plugins table and card grid are both always rendered —
+ * [data-lp-plugin-view-wrapper]'s own data-view attribute (toggled
+ * instantly by plugin-browser.js, no reload) picks which one is
+ * actually visible via these two rules, rather than the server
+ * re-rendering only one of them per request.
+ */
+[data-lp-plugin-view-wrapper][data-view="grid"] .lp-plugin-table {
+    display: none;
+}
+
+[data-lp-plugin-view-wrapper][data-view="list"] .lp-plugin-grid {
+    display: none;
+}
+
+.lp-plugin-table {
+    margin: 1rem 0 1.5rem;
+}
+
 .lp-plugin-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -1935,6 +1954,56 @@ body.lp-admin-login {
 .lp-media-grid__item:hover .lp-media-grid__name {
     color: var(--lp-admin-accent);
     text-decoration: underline;
+}
+
+/* LP-097: the uploaded date shown under each Thumbnails item's filename. */
+.lp-media-grid__date {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+/* LP-097/LP-098: the Thumbnails/List (Grid/List) view-mode toggle —
+   shared between the Media Manager and Plugins screens. */
+.lp-media-manager__view-toggle,
+.lp-plugin-view-toggle {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+/* LP-097: List view's filename cell — thumbnail + name inline, matching
+   the Thumbnails view's own image treatment at a much smaller size. */
+.lp-media-list__file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: var(--lp-admin-text);
+}
+
+.lp-media-list__file:hover {
+    color: var(--lp-admin-accent);
+    text-decoration: underline;
+}
+
+.lp-media-list__thumb {
+    display: block;
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: calc(var(--lp-admin-radius) - 2px);
+    background: var(--lp-admin-sidebar-bg);
+    flex-shrink: 0;
+}
+
+.lp-media-list__thumb--file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.6rem;
+    font-weight: 700;
 }
 
 .lp-media-manager__bulk-bar {

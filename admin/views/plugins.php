@@ -23,6 +23,34 @@ if (!isset($kernel)) {
 }
 
 /*
+ * LP-098: the Grid/List view-mode toggle persists via a fire-and-forget
+ * JSON sub-action (the toggle itself switches instantly client-side —
+ * see plugin-browser.js — this just remembers the choice for next time,
+ * the same way admin/views/posts/new.php's editor_upload is a JSON
+ * sub-action rather than its own admin page/route). Handled before the
+ * CSRF-gated form dispatch below since it's not a real page submission.
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'set_list_view') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    $requestedMode = ($_POST['mode'] ?? '') === 'list' ? 'list' : 'grid';
+
+    if (!Csrf::verify('set_list_view', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
+        exit;
+    }
+
+    $kernel->users->setListViewMode($currentUser->id, 'plugins', $requestedMode);
+    echo json_encode(['csrfToken' => Csrf::token('set_list_view')]);
+    exit;
+}
+
+/*
  * LP-045: Plugin Browser. Mirrors admin/views/appearance/themes.php's Theme
  * Management section — same "form" + CSRF-action-per-operation dispatch
  * pattern — extended with a two-step install flow (stage → confirm/
@@ -165,6 +193,7 @@ if ($pendingToken !== null) {
 }
 
 $pluginList = $kernel->pluginRegistry->discover();
+$listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
 ?>
 <h1 class="lp-admin__title">Plugins</h1>
 
@@ -251,11 +280,88 @@ $pluginList = $kernel->pluginRegistry->discover();
                 </select>
             </p>
         </div>
+
+        <p class="lp-plugin-view-toggle" role="group" aria-label="View" data-lp-plugin-view-toggle data-csrf="<?= esc_attr(Csrf::token('set_list_view')) ?>">
+            <button
+                type="button"
+                class="lp-button<?= $listView === 'grid' ? ' lp-button--primary' : ' lp-button--secondary' ?>"
+                data-lp-plugin-view-button="grid"
+                aria-pressed="<?= $listView === 'grid' ? 'true' : 'false' ?>"
+            >Grid</button>
+            <button
+                type="button"
+                class="lp-button<?= $listView === 'list' ? ' lp-button--primary' : ' lp-button--secondary' ?>"
+                data-lp-plugin-view-button="list"
+                aria-pressed="<?= $listView === 'list' ? 'true' : 'false' ?>"
+            >List</button>
+        </p>
     <?php endif; ?>
 
     <?php if ($pluginList === []): ?>
         <p class="lp-admin__widget-placeholder">No plugins are installed yet. Upload one below to get started.</p>
     <?php else: ?>
+        <div class="lp-plugin-view-wrapper" data-lp-plugin-view-wrapper data-view="<?= esc_attr($listView) ?>">
+        <table class="lp-table lp-plugin-table" data-lp-plugin-table>
+            <thead>
+                <tr>
+                    <th scope="col">Plugin</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Version</th>
+                    <th scope="col">Author</th>
+                    <th scope="col">Description</th>
+                    <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($pluginList as $info): ?>
+                    <?php
+                    $rowSearchHaystack = strtolower($info->name . ' ' . $info->author . ' ' . implode(' ', $info->tags));
+                    $rowStatusValue = $info->isActive ? 'active' : 'inactive';
+                    $rowTemplateId = 'lp-plugin-details-' . $info->slug;
+                    ?>
+                    <tr
+                        data-lp-plugin-row
+                        data-plugin-search="<?= esc_attr($rowSearchHaystack) ?>"
+                        data-plugin-status="<?= esc_attr($rowStatusValue) ?>"
+                    >
+                        <td><?= esc_html($info->name) ?></td>
+                        <td>
+                            <?php if ($info->isActive): ?>
+                                <span class="lp-plugin-card__badge lp-plugin-card__badge--active">Active</span>
+                            <?php elseif ($info->isDisabled): ?>
+                                <span class="lp-plugin-card__badge lp-plugin-card__badge--disabled">Disabled</span>
+                            <?php else: ?>
+                                <span class="lp-plugin-card__badge lp-plugin-card__badge--inactive">Inactive</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= esc_html($info->version) ?></td>
+                        <td><?= esc_html($info->author) ?></td>
+                        <td><?= esc_html($info->description) ?></td>
+                        <td class="lp-admin__row-actions">
+                            <button type="button" class="lp-button--link" data-lp-plugin-details-trigger data-plugin-template="<?= esc_attr($rowTemplateId) ?>">Details</button>
+                            <?php if ($info->isActive): ?>
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('deactivate_plugin_row_' . $info->slug) ?>
+                                    <input type="hidden" name="form" value="deactivate_plugin">
+                                    <input type="hidden" name="origin" value="row">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button--link">Deactivate</button>
+                                </form>
+                            <?php elseif (!$info->isDisabled): ?>
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('activate_plugin_row_' . $info->slug) ?>
+                                    <input type="hidden" name="form" value="activate_plugin">
+                                    <input type="hidden" name="origin" value="row">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button--link">Activate</button>
+                                </form>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
         <div class="lp-plugin-grid" data-lp-plugin-grid>
             <?php foreach ($pluginList as $info): ?>
                 <?php
@@ -419,6 +525,7 @@ $pluginList = $kernel->pluginRegistry->discover();
                     </div>
                 </template>
             <?php endforeach; ?>
+        </div>
         </div>
         <p class="lp-plugin-grid__empty" data-lp-plugin-empty hidden>No plugins match your search.</p>
 

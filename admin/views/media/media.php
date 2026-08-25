@@ -311,6 +311,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $action = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
 $allFolders = $folderService->listAll();
+
+/*
+ * LP-097: Thumbnails/List view-mode toggle, persisted per-user (not
+ * just per-session) via UserService::setListViewMode() — the same
+ * one-JSON-blob-column pattern editorLayoutPreferences already uses.
+ * A "layout" query param on any Search & Filter/pagination link would
+ * otherwise be dropped, so the choice is saved as soon as an admin
+ * clicks the toggle (a plain GET link, matching this screen's existing
+ * fully-reload-based filtering — no AJAX needed) and every other link
+ * on this screen keeps working unchanged without needing to know about it.
+ */
+$requestedListView = is_string($_GET['layout'] ?? null) ? $_GET['layout'] : null;
+
+if ($requestedListView === 'grid' || $requestedListView === 'list') {
+    $kernel->users->setListViewMode($currentUser->id, 'media', $requestedListView);
+    $listView = $requestedListView;
+} else {
+    $listView = $kernel->users->getListViewMode($currentUser->id, 'media');
+}
 ?>
 <h1 class="lp-admin__title">Media Manager</h1>
 
@@ -363,6 +382,7 @@ $allFolders = $folderService->listAll();
             <?php if ($editingMedia['width'] !== null): ?>
                 , <?= (int) $editingMedia['width'] ?>&times;<?= (int) $editingMedia['height'] ?>
             <?php endif; ?>
+            &mdash; Uploaded <?= esc_html((new DateTimeImmutable((string) $editingMedia['uploaded_at']))->format('M j, Y')) ?>
         </p>
 
         <?php if (str_starts_with((string) $editingMedia['mime_type'], 'image/')): ?>
@@ -850,6 +870,27 @@ $allFolders = $folderService->listAll();
         </aside>
 
         <div class="lp-media-manager__main">
+            <?php
+            // Every other link on this screen (folder/view/pagination/
+            // Search & Filter) must keep working unchanged regardless of
+            // which layout is active — swapping just the "layout" param
+            // preserves the rest of the current query string rather than
+            // resetting it back to "All Files"/no filter.
+            $layoutLinkQuery = static fn (string $mode): string => http_build_query(array_merge($_GET, ['layout' => $mode]));
+            ?>
+            <p class="lp-media-manager__view-toggle" role="group" aria-label="View">
+                <a
+                    class="lp-button<?= $listView === 'grid' ? ' lp-button--primary' : ' lp-button--secondary' ?>"
+                    href="<?= esc_url(admin_url('media/media') . '?' . $layoutLinkQuery('grid')) ?>"
+                    aria-pressed="<?= $listView === 'grid' ? 'true' : 'false' ?>"
+                >Thumbnails</a>
+                <a
+                    class="lp-button<?= $listView === 'list' ? ' lp-button--primary' : ' lp-button--secondary' ?>"
+                    href="<?= esc_url(admin_url('media/media') . '?' . $layoutLinkQuery('list')) ?>"
+                    aria-pressed="<?= $listView === 'list' ? 'true' : 'false' ?>"
+                >List</a>
+            </p>
+
             <section class="lp-admin__panel">
                 <details class="lp-admin__collapsible">
                     <summary>Search &amp; Filter</summary>
@@ -917,26 +958,69 @@ $allFolders = $folderService->listAll();
                             </label>
                         </div>
 
-                        <div class="lp-media-grid">
-                            <?php foreach ($items as $item): ?>
-                                <div class="lp-media-grid__item">
-                                    <label class="lp-media-grid__select">
-                                        <input type="checkbox" name="ids[]" value="<?= (int) $item['id'] ?>">
-                                    </label>
-                                    <a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
-                                        <?php if (str_starts_with((string) $item['mime_type'], 'image/')): ?>
-                                            <img class="lp-media-grid__thumb" src="<?= esc_url((string) ($thumbnailService->url($item, 'small') ?? $mediaService->url($item))) ?>" alt="<?= esc_attr((string) ($item['alt_text'] ?? '')) ?>">
-                                        <?php else: ?>
-                                            <span class="lp-media-grid__thumb lp-media-grid__thumb--file" aria-hidden="true"><?= esc_html(strtoupper($mediaService->typeCategory((string) $item['mime_type']))) ?></span>
-                                        <?php endif; ?>
-                                        <span class="lp-media-grid__name"><?= esc_html((string) $item['file_name']) ?></span>
-                                        <?php if (array_key_exists('downloads', $item)): ?>
-                                            <span class="lp-status-badge"><?= (int) $item['downloads'] ?> download<?= (int) $item['downloads'] === 1 ? '' : 's' ?></span>
-                                        <?php endif; ?>
-                                    </a>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                        <?php if ($listView === 'list'): ?>
+                            <table class="lp-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col"><span class="lp-visually-hidden">Select</span></th>
+                                        <th scope="col">File</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Size</th>
+                                        <th scope="col">Dimensions</th>
+                                        <th scope="col">Uploaded</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($items as $item): ?>
+                                        <tr>
+                                            <td>
+                                                <label class="lp-visually-hidden" for="media-select-<?= (int) $item['id'] ?>">Select "<?= esc_html((string) $item['file_name']) ?>"</label>
+                                                <input type="checkbox" id="media-select-<?= (int) $item['id'] ?>" name="ids[]" value="<?= (int) $item['id'] ?>">
+                                            </td>
+                                            <td>
+                                                <a class="lp-media-list__file" href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
+                                                    <?php if (str_starts_with((string) $item['mime_type'], 'image/')): ?>
+                                                        <img class="lp-media-list__thumb" src="<?= esc_url((string) ($thumbnailService->url($item, 'small') ?? $mediaService->url($item))) ?>" alt="">
+                                                    <?php else: ?>
+                                                        <span class="lp-media-list__thumb lp-media-list__thumb--file" aria-hidden="true"><?= esc_html(strtoupper($mediaService->typeCategory((string) $item['mime_type']))) ?></span>
+                                                    <?php endif; ?>
+                                                    <?= esc_html((string) $item['file_name']) ?>
+                                                </a>
+                                                <?php if (array_key_exists('downloads', $item)): ?>
+                                                    <span class="lp-status-badge"><?= (int) $item['downloads'] ?> download<?= (int) $item['downloads'] === 1 ? '' : 's' ?></span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= esc_html($mediaService->typeCategory((string) $item['mime_type'])) ?></td>
+                                            <td><?= esc_html(number_format(((int) $item['file_size']) / 1024, 1)) ?> KB</td>
+                                            <td><?= $item['width'] !== null ? (int) $item['width'] . '&times;' . (int) $item['height'] : '&mdash;' ?></td>
+                                            <td><?= esc_html((new DateTimeImmutable((string) $item['uploaded_at']))->format('M j, Y')) ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php else: ?>
+                            <div class="lp-media-grid">
+                                <?php foreach ($items as $item): ?>
+                                    <div class="lp-media-grid__item">
+                                        <label class="lp-media-grid__select">
+                                            <input type="checkbox" name="ids[]" value="<?= (int) $item['id'] ?>">
+                                        </label>
+                                        <a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
+                                            <?php if (str_starts_with((string) $item['mime_type'], 'image/')): ?>
+                                                <img class="lp-media-grid__thumb" src="<?= esc_url((string) ($thumbnailService->url($item, 'small') ?? $mediaService->url($item))) ?>" alt="<?= esc_attr((string) ($item['alt_text'] ?? '')) ?>">
+                                            <?php else: ?>
+                                                <span class="lp-media-grid__thumb lp-media-grid__thumb--file" aria-hidden="true"><?= esc_html(strtoupper($mediaService->typeCategory((string) $item['mime_type']))) ?></span>
+                                            <?php endif; ?>
+                                            <span class="lp-media-grid__name"><?= esc_html((string) $item['file_name']) ?></span>
+                                            <span class="lp-media-grid__date"><?= esc_html((new DateTimeImmutable((string) $item['uploaded_at']))->format('M j, Y')) ?></span>
+                                            <?php if (array_key_exists('downloads', $item)): ?>
+                                                <span class="lp-status-badge"><?= (int) $item['downloads'] ?> download<?= (int) $item['downloads'] === 1 ? '' : 's' ?></span>
+                                            <?php endif; ?>
+                                        </a>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
 
                         <div class="lp-media-manager__bulk-bar">
                             <select name="bulk_action_type">

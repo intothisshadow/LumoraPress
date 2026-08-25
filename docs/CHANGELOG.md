@@ -6,6 +6,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Media Manager: a Thumbnails/List view-mode toggle (LP-097) — List is a
+  dense filename/type/size/dimensions/uploaded-date table, and the
+  uploaded date now also shows under each Thumbnails item and in the
+  file-info panel. The chosen view is remembered per admin account, not
+  just for the current session.
+- Plugins: a Grid/List view-mode toggle (LP-098) — List is a dense
+  name/status/version/author/description table with the same
+  Details/Activate/Deactivate actions the card grid already had.
+  Search and the status filter narrow whichever view is showing. The
+  chosen view is remembered per admin account, matching the Media
+  Manager's identical toggle above.
 - Post/Page editors: the "Insert Image" media picker now has a search
   box and a Folder filter, both narrowing the same grid together
   (LP-115). Images load a page at a time (40 per page, "Load More" to
