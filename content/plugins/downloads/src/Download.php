@@ -46,6 +46,14 @@ final class Download
         public readonly ?int $folderId,
         public readonly DownloadType $type,
         public readonly ?int $mediaId,
+        // A separate representative image, distinct from $mediaId's own
+        // file — the same concept Simple Download Monitor's post-
+        // thumbnail metabox represents on a source `sdm_downloads` post
+        // (a WordPress import, LPP-004, is currently the only writer of
+        // this field). Meaningful for either $type: a File download's
+        // own file may not be an image at all (a .zip has nothing to
+        // preview), and a Url download has no local file whatsoever.
+        public readonly ?int $thumbnailMediaId,
         public readonly ?int $redirectId,
         public readonly string $url,
         public readonly ?int $fileSizeBytes,

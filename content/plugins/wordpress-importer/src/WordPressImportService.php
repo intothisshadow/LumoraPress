@@ -564,7 +564,7 @@ final class WordPressImportService
                 [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? []);
                 break;
             case 'downloads':
-                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? []);
+                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? []);
                 break;
             case 'pages':
                 $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? []);
@@ -1648,15 +1648,29 @@ final class WordPressImportService
      * time) so it appears on the Downloads admin screen, not just Media
      * Manager/Settings > Redirects.
      *
+     * A download's own `_thumbnail_id` postmeta (Simple Download
+     * Monitor supports setting a featured image on an `sdm_downloads`
+     * post the same way a Post/Page does) is resolved via
+     * $wpAttachmentIdToLocalMediaId the same way importPosts()/
+     * importPages() already resolve theirs — only ever set when the
+     * referenced attachment was itself imported (media selected, and
+     * that particular attachment imported without error); left null
+     * otherwise, same "skip rather than point at nothing" behavior as
+     * every other featured-image resolution in this file.
+     *
      * @param array<int, int> $wpUserIdToLocalId
+     * @param array<int, int> $wpAttachmentIdToLocalMediaId
      */
-    private function importDownloads(string $batchId, array $wpUserIdToLocalId): void
+    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId): void
     {
         $wpFolderIdByWpTermId = $this->importFolders($batchId);
 
         foreach ($this->source->posts(['sdm_downloads'], ['publish']) as $download) {
             $meta = $this->source->postMeta($download['ID']);
             $uploadUrl = $meta['sdm_upload'] ?? null;
+            $thumbnailMediaId = isset($meta['_thumbnail_id'])
+                ? ($wpAttachmentIdToLocalMediaId[(int) $meta['_thumbnail_id']] ?? null)
+                : null;
 
             if ($uploadUrl === null || $uploadUrl === '') {
                 $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): no file/URL recorded, skipped.";
@@ -1702,7 +1716,7 @@ final class WordPressImportService
                     $this->mediaStats->seed((int) $media['id'], $stats['count'], $stats['lastDownloadedAt']);
 
                     if ($this->downloads !== null) {
-                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::File, (int) $media['id'], null, ContentFormat::Html);
+                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::File, (int) $media['id'], null, ContentFormat::Html, $thumbnailMediaId);
                         $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                     }
                 } catch (Throwable $exception) {
@@ -1720,7 +1734,7 @@ final class WordPressImportService
                 $this->registry->record($batchId, self::SOURCE, 'redirect', (int) $redirect['id'], (string) $download['ID']);
 
                 if ($this->downloads !== null) {
-                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::Url, null, (int) $redirect['id'], ContentFormat::Html);
+                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::Url, null, (int) $redirect['id'], ContentFormat::Html, $thumbnailMediaId);
                     $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                 }
             } catch (Throwable $exception) {

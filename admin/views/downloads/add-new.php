@@ -307,21 +307,28 @@ $editorFolderTree = array_map(
 );
 
 /*
- * File-typed download preview image (LPP-010) — reuses whatever
- * MediaService/ThumbnailService already resolve for the underlying
- * Media row rather than any new image-processing code, the same way
- * the Media Manager's own list/grid views already show a thumbnail
- * (or, for a non-image file, the same typeCategory() text badge those
- * views fall back to — see admin/views/media/media.php's identical
- * lp-media-list__thumb--file/lp-media-grid__thumb--file convention).
- * Null for a Url-typed download, or a File-typed one whose Media row
- * has since been deleted out from under it.
+ * Preview image (LPP-010, extended for thumbnailMediaId per LPP-004's
+ * WordPress import of a download's own featured image) — reuses
+ * whatever MediaService/ThumbnailService already resolve for the
+ * underlying Media row rather than any new image-processing code, the
+ * same way the Media Manager's own list/grid views already show a
+ * thumbnail (or, for a non-image file, the same typeCategory() text
+ * badge those views fall back to — see admin/views/media/media.php's
+ * identical lp-media-list__thumb--file/lp-media-grid__thumb--file
+ * convention). thumbnailMediaId — an explicitly chosen representative
+ * image, distinct from the download's own file — wins when set, since
+ * it's meaningful for either download type (a Url-typed download has
+ * no local file to preview from at all, and a File-typed download's
+ * own file may not be an image, e.g. a .zip). Falls back to a
+ * File-typed download's own file when no thumbnail was set. Null when
+ * neither applies, or the referenced Media row has since been deleted
+ * out from under it.
  *
  * @var array<string, mixed>|null $previewMedia
  */
-$previewMedia = $editingDownload !== null && $editingDownload->type === DownloadType::File && $editingDownload->mediaId !== null
-    ? $kernel->media->find($editingDownload->mediaId)
-    : null;
+$previewMediaId = $editingDownload?->thumbnailMediaId
+    ?? ($editingDownload !== null && $editingDownload->type === DownloadType::File ? $editingDownload->mediaId : null);
+$previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId) : null;
 ?>
 <h1 class="lp-admin__title"><?= $editingDownload !== null ? 'Edit Download' : 'Add New Download' ?></h1>
 
@@ -345,15 +352,15 @@ $previewMedia = $editingDownload !== null && $editingDownload->type === Download
                 <input type="text" id="download-title" name="title" value="<?= esc_attr($editingDownload->title) ?>" required>
             </p>
 
-            <?php if ($editingDownload->type === DownloadType::File): ?>
+            <?php if ($previewMedia !== null): ?>
                 <div class="lp-field lp-download-preview">
-                    <?php if ($previewMedia !== null && str_starts_with((string) $previewMedia['mime_type'], 'image/')): ?>
+                    <?php if (str_starts_with((string) $previewMedia['mime_type'], 'image/')): ?>
                         <img
                             class="lp-download-preview__image"
                             src="<?= esc_url((string) ($kernel->thumbnails->url($previewMedia, 'medium') ?? $kernel->media->url($previewMedia))) ?>"
                             alt="<?= esc_attr((string) ($previewMedia['alt_text'] ?? '')) ?>"
                         >
-                    <?php elseif ($previewMedia !== null): ?>
+                    <?php else: ?>
                         <span class="lp-download-preview__file" aria-hidden="true"><?= esc_html(strtoupper($kernel->media->typeCategory((string) $previewMedia['mime_type']))) ?></span>
                         <span class="lp-visually-hidden"><?= esc_html($kernel->media->typeCategory((string) $previewMedia['mime_type'])) ?> file</span>
                     <?php endif; ?>

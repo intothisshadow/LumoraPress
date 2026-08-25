@@ -17,9 +17,17 @@ Press's own content model.
   Posts and Pages use, with the same format-switching UI. A category
   can also be created inline from the same screen. The same screen
   doubles as the editor for an existing download (via `?id=`), where a
-  File-typed download also shows a preview of the uploaded file — an
-  image thumbnail, or a file-type badge for non-image files — visible
-  immediately after a successful upload on Add too.
+  download shows a preview image — an image thumbnail, or a file-type
+  badge for non-image files — visible immediately after a successful
+  upload on Add too. A separate, explicitly-set thumbnail (currently
+  only ever set by the WordPress Importer plugin, from a Simple
+  Download Monitor download's own featured image) takes priority when
+  present, since it's meaningful for either download type — a
+  File-typed download's own file may not be an image at all, and a
+  Url-typed download has no local file to preview from in the first
+  place. Falls back to a File-typed download's own uploaded file
+  otherwise. There's currently no way to set or change this thumbnail
+  from this screen directly.
 - **Downloads → Shortcodes**: reference docs for `[lumora_downloads]`,
   with real examples built from the site's own categories.
 - **Trash**: moving a download to Trash hides it from the public

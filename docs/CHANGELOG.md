@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer: a Simple Download Monitor download's own featured
+  image is now imported as that download's thumbnail (LPP-004), shown
+  on the Downloads plugin's Add/Edit screen as a representative preview
+  image separate from the download's own file — meaningful for a
+  Url-typed download (no local file to preview from) as well as a
+  File-typed one whose own file isn't an image.
 - WordPress Importer: a new "Auto-detect from wp-config.php" option on
   Maintenance › Import (LPP-004) pre-fills the database connection
   fields and the uploads folder path from a locally readable copy of

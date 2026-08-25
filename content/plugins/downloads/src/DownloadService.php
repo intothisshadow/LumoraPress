@@ -111,14 +111,14 @@ final class DownloadService
      * there would upload the file or create the redirect a second
      * time).
      */
-    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain): Download
+    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null): Download
     {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, description, description_format, folder_id, type, media_id, redirect_id, created_at, updated_at)
-             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :redirect_id, :created_at, :updated_at)',
+                (title, description, description_format, folder_id, type, media_id, thumbnail_media_id, redirect_id, created_at, updated_at)
+             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :thumbnail_media_id, :redirect_id, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'description' => $description,
@@ -126,6 +126,7 @@ final class DownloadService
                 'folder_id' => $folderId,
                 'type' => $type->value,
                 'media_id' => $mediaId,
+                'thumbnail_media_id' => $thumbnailMediaId,
                 'redirect_id' => $redirectId,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -270,6 +271,7 @@ final class DownloadService
             $original->mediaId,
             $original->redirectId,
             $original->descriptionFormat,
+            $original->thumbnailMediaId,
         );
     }
 
@@ -479,6 +481,7 @@ final class DownloadService
             folderId: $row['folder_id'] !== null ? (int) $row['folder_id'] : null,
             type: $type,
             mediaId: $mediaId,
+            thumbnailMediaId: $row['thumbnail_media_id'] !== null ? (int) $row['thumbnail_media_id'] : null,
             redirectId: $redirectId,
             url: $url,
             fileSizeBytes: $fileSizeBytes,

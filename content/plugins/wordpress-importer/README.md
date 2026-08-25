@@ -73,6 +73,13 @@ direct database connection plus a local copy of the source site's
   widgets bucket — lands in Lumora Press's existing Inactive Widgets
   list instead of being dropped, so nothing imported is ever silently
   lost.
+- A Simple Download Monitor download's own featured image (set the same
+  way a Post/Page's featured image is, via `_thumbnail_id`) is imported
+  as that download's thumbnail — shown on the Downloads plugin's Add/
+  Edit screen (when active) as a representative preview image, separate
+  from the download's own file. Only resolved when the featured image's
+  own attachment was itself imported (Media selected, and that
+  particular attachment imported without error).
 - **Site settings** (title, tagline, timezone, date/time format,
   permalink structure) can optionally be imported too — its own
   checkbox on the Start Import form, unchecked by default since it's
