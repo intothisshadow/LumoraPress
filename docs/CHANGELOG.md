@@ -25,6 +25,11 @@ All notable changes to Lumora Press are documented in this file.
   narrow mobile widths — the per-level indentation and avatar size now
   shrink below 480px so the deepest allowed reply still has a readable
   content column (LP-119).
+- Gravatar avatars (comment avatars and admin user pictures) were
+  silently blocked by the site's Content-Security-Policy whenever CSP
+  is enabled (the default) — `img-src` only ever allowed same-origin
+  images, with nothing widening it for `www.gravatar.com`. The policy
+  now explicitly allows that host.
 
 ## [0.7.0] — 2026-08-26
 

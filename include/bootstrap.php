@@ -231,7 +231,11 @@ ActiveContentRenderer::set($content);
  * style-src for the stylesheet fetch, font-src for the @font-face files
  * it references — added unconditionally, the same "always allow, don't
  * bother checking whether this page actually uses it" approach the
- * jsDelivr additions above already take.
+ * jsDelivr additions above already take. img-src needs
+ * www.gravatar.com the same unconditional way: UserService::gravatarUrl()/
+ * comment_avatar_url() (LP-047) always point there for both admin user
+ * pictures and public comment avatars, and this same filter runs for
+ * both admin and public responses (see its one call site below).
  */
 $cspNonce = bin2hex(random_bytes(16));
 CspNonce::set($cspNonce);
@@ -240,6 +244,7 @@ add_filter('csp_directives', static function (array $directives) use ($cspNonce)
     $directives['script-src'] .= ' https://cdn.jsdelivr.net';
     $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
     $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
+    $directives['img-src'] .= ' https://www.gravatar.com';
 
     return $directives;
 });
