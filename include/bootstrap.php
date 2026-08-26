@@ -76,6 +76,7 @@ use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
+use LumoraPress\Services\DownloadCategoryMigrationService;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\EntityDecodeRepairService;
@@ -395,6 +396,7 @@ $menuImporter = new MenuImporter($menus, $contentImportRegistry);
 $widgetImporter = new WidgetImporter($widgets, $contentImportRegistry);
 
 $entityDecodeRepair = new EntityDecodeRepairService($database, $tablePrefix);
+$downloadCategoryMigration = new DownloadCategoryMigrationService($database, $tablePrefix);
 
 $redirects = new RedirectService($database, $tablePrefix);
 $permalinks = new PermalinkService($config, $categories, $users);
@@ -819,6 +821,7 @@ $kernel = new Kernel(
     menuImporter: $menuImporter,
     widgetImporter: $widgetImporter,
     entityDecodeRepair: $entityDecodeRepair,
+    downloadCategoryMigration: $downloadCategoryMigration,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);

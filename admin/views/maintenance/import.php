@@ -18,6 +18,7 @@
 /** @var bool $downloadsActive */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\WordPressImporter\ImportProgress;
 use LumoraPress\Plugins\WordPressImporter\WordPressConfigParser;
@@ -105,12 +106,18 @@ if ($wordPressImporterActive) {
      * own default (every download still imports as a plain Media item/
      * Redirect, just without a `downloads` table row on top).
      */
+    $downloadCategoriesService = $downloadsActive ? new DownloadCategoryService(
+        $kernel->database,
+        (string) $kernel->config->get('table_prefix', 'lp_'),
+    ) : null;
     $downloadsService = $downloadsActive ? new DownloadService(
         $kernel->database,
         (string) $kernel->config->get('table_prefix', 'lp_'),
         $kernel->media,
         $kernel->redirects,
-        $kernel->folders,
+        $downloadCategoriesService,
+        $kernel->thumbnails,
+        $kernel->mediaStats,
     ) : null;
 
     /*
@@ -139,7 +146,7 @@ if ($wordPressImporterActive) {
         );
     };
 
-    $buildImportService = static function () use ($kernel, $formValues, $downloadsService, $buildSource): WordPressImportService {
+    $buildImportService = static function () use ($kernel, $formValues, $downloadsService, $downloadCategoriesService, $buildSource): WordPressImportService {
         $source = $buildSource();
 
         return new WordPressImportService(
@@ -168,6 +175,7 @@ if ($wordPressImporterActive) {
             registry: $kernel->contentImportRegistry,
             sourceUploadsPath: rtrim($formValues['uploads_path'], '/'),
             downloads: $downloadsService,
+            downloadCategories: $downloadCategoriesService,
             sourceGalleryPath: $formValues['gallery_path'] !== '' ? rtrim($formValues['gallery_path'], '/') : null,
         );
     };
@@ -206,6 +214,7 @@ if ($wordPressImporterActive) {
         registry: $kernel->contentImportRegistry,
         sourceUploadsPath: '',
         downloads: $downloadsService,
+        downloadCategories: $downloadCategoriesService,
     );
 
     /**

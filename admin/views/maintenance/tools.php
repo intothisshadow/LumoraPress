@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 /** @var bool $dummyContentActive */
+/** @var bool $downloadsActive */
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\DummyContent\DummyContentGenerator;
@@ -120,6 +121,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         $entityDecodeResults = $kernel->entityDecodeRepair->repair();
     }
 }
+
+/*
+ * LPP-011: backfills downloads.category_id for every Download still
+ * categorized the old way (via folder_id, pointing at a Media Manager
+ * Folder) from before Downloads gained its own dedicated category
+ * taxonomy — see DownloadCategoryMigrationService's own class docblock.
+ * Only shown while the Downloads plugin is active, matching every other
+ * plugin-specific section on this screen — the underlying tables are
+ * core migrations either way, but there is nothing meaningful to
+ * migrate *into* without that plugin's own admin screens to manage the
+ * result.
+ */
+$downloadCategoryMigrationResults = null;
+$downloadCategoryMigrationError = null;
+
+if ($downloadsActive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'migrate_download_categories') {
+    if (!Csrf::verify('migrate_download_categories', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $downloadCategoryMigrationError = 'Your session expired. Reload the page and try again.';
+    } else {
+        $downloadCategoryMigrationResults = $kernel->downloadCategoryMigration->migrate();
+    }
+}
 ?>
 <h1 class="lp-admin__title">Tools</h1>
 
@@ -163,6 +186,44 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         <button type="submit" class="lp-button lp-button--primary">Scan &amp; Fix</button>
     </form>
 </section>
+
+<?php if ($downloadsActive): ?>
+    <?php if ($downloadCategoryMigrationError !== null): ?>
+        <div class="lp-alert lp-alert--error"><?= esc_html($downloadCategoryMigrationError) ?></div>
+    <?php endif; ?>
+
+    <?php if ($downloadCategoryMigrationResults !== null): ?>
+        <div class="lp-alert lp-alert--success">
+            <?php if ($downloadCategoryMigrationResults['categoriesCreated'] === 0 && $downloadCategoryMigrationResults['downloadsBackfilled'] === 0): ?>
+                No downloads needed migrating — everything is already using the new category taxonomy.
+            <?php else: ?>
+                Created <?= (int) $downloadCategoryMigrationResults['categoriesCreated'] ?> categor<?= $downloadCategoryMigrationResults['categoriesCreated'] === 1 ? 'y' : 'ies' ?>
+                and backfilled <?= (int) $downloadCategoryMigrationResults['downloadsBackfilled'] ?> download<?= $downloadCategoryMigrationResults['downloadsBackfilled'] === 1 ? '' : 's' ?>.
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <section class="lp-admin__panel">
+        <h2>Migrate Download Categories</h2>
+
+        <p class="lp-field__hint">
+            Downloads used to be categorized via the shared Media Manager
+            Folder tree. Downloads now has its own dedicated category
+            taxonomy (see <a href="<?= esc_url(admin_url('downloads/categories')) ?>">Downloads &rsaquo; Categories</a>) —
+            this turns every Folder a Download is still categorized by
+            into a matching download category (preserving its name and
+            parent hierarchy) and moves the download over to it. Safe to
+            run more than once; does nothing once every download has
+            already been migrated.
+        </p>
+
+        <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>">
+            <?= Csrf::field('migrate_download_categories') ?>
+            <input type="hidden" name="form" value="migrate_download_categories">
+            <button type="submit" class="lp-button lp-button--primary">Migrate</button>
+        </form>
+    </section>
+<?php endif; ?>
 
 <?php if ($dummyContentActive): ?>
     <?php if ($dummyContentGenerated): ?>

@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadType;
 
@@ -32,13 +33,15 @@ if (!isset($kernel)) {
  * only ever reachable while the plugin is active — see admin/index.php's
  * $downloadsActive-gated 'downloads' $menu entry).
  */
+$downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
 $downloads = new DownloadService(
     $kernel->database,
     (string) $kernel->config->get('table_prefix', 'lp_'),
     $kernel->media,
     $kernel->redirects,
-    $kernel->folders,
+    $downloadCategories,
     $kernel->thumbnails,
+    $kernel->mediaStats,
 );
 
 /*
@@ -283,13 +286,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'create_folder' && Csrf::verify('create_folder', $token)) {
+    if ($form === 'create_download_category' && Csrf::verify('create_download_category', $token)) {
         $name = trim((string) ($_POST['name'] ?? ''));
 
         if ($name === '') {
             $error = 'A category name is required.';
         } else {
-            $kernel->folders->create($name);
+            $downloadCategories->create($name);
             $redirectTarget = admin_url('downloads/add-new') . ($editingDownload !== null ? '?id=' . $editingDownload->id : '');
             header('Location: ' . $redirectTarget);
             exit;
@@ -298,7 +301,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $title = trim((string) ($_POST['title'] ?? ''));
         $description = (string) ($_POST['description'] ?? '');
         $descriptionFormat = ContentFormat::tryFrom((string) ($_POST['description_format'] ?? '')) ?? get_active_editor($currentUser->id);
-        $folderId = (int) ($_POST['folder_id'] ?? 0);
+        $categoryId = (int) ($_POST['category_id'] ?? 0);
         // LPP-012: a third "existing" choice alongside file/url — an
         // already-uploaded Media item, picked via downloads-picker.js
         // rather than uploaded again.
@@ -321,19 +324,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     ? $downloads->createFromExistingMedia(
                         title: $title,
                         description: $description,
-                        folderId: $folderId > 0 ? $folderId : null,
+                        folderId: null,
                         mediaId: $existingMediaId,
                         descriptionFormat: $descriptionFormat,
+                        categoryId: $categoryId > 0 ? $categoryId : null,
                     )
                     : $downloads->create(
                         title: $title,
                         description: $description,
-                        folderId: $folderId > 0 ? $folderId : null,
+                        folderId: null,
                         type: $type,
                         file: $type === DownloadType::File ? $_FILES['file'] : null,
                         externalUrl: $type === DownloadType::Url ? $externalUrl : null,
                         uploadedByUserId: $currentUser->id,
                         descriptionFormat: $descriptionFormat,
+                        categoryId: $categoryId > 0 ? $categoryId : null,
                     );
 
                 // LPP-010: lands back on this same screen's Edit view
@@ -356,7 +361,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $title = trim((string) ($_POST['title'] ?? ''));
             $description = (string) ($_POST['description'] ?? '');
             $descriptionFormat = ContentFormat::tryFrom((string) ($_POST['description_format'] ?? '')) ?? get_active_editor($currentUser->id);
-            $folderId = (int) ($_POST['folder_id'] ?? 0);
+            $categoryId = (int) ($_POST['category_id'] ?? 0);
             $externalUrl = trim((string) ($_POST['external_url'] ?? ''));
 
             if ($title === '') {
@@ -385,7 +390,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $newMediaOwned = true;
 
                 if (isset($_FILES['replace_file']) && $_FILES['replace_file']['error'] === UPLOAD_ERR_OK) {
-                    $uploadedReplacement = $kernel->media->upload($_FILES['replace_file'], $currentUser->id, $folderId > 0 ? $folderId : null);
+                    $uploadedReplacement = $kernel->media->upload($_FILES['replace_file'], $currentUser->id, null);
                     $kernel->thumbnails->generate($uploadedReplacement);
                     $newMediaId = (int) $uploadedReplacement['id'];
                     // Freshly uploaded specifically for this download —
@@ -418,7 +423,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $downloads->convertToUrl($id, $externalUrl);
                 }
 
-                $downloads->update($id, $title, $description, $folderId > 0 ? $folderId : null, $externalUrl !== '' ? $externalUrl : null, $descriptionFormat);
+                // folder_id (LPP-011) is no longer editable from this form
+                // — it only ever governs a File-typed download's Media
+                // Library placement, decoupled from categorization now —
+                // so this update preserves whatever value the download
+                // already had rather than clearing it.
+                $downloads->update($id, $title, $description, $editingDownload?->folderId, $externalUrl !== '' ? $externalUrl : null, $descriptionFormat, $categoryId > 0 ? $categoryId : null);
 
                 header('Location: ' . admin_url('downloads/all-downloads') . '?saved=1');
                 exit;
@@ -426,6 +436,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 }
+
+// The download's own Category taxonomy (LPP-011) — distinct from
+// $allFolders below, which is the unrelated Media Library Folder tree the
+// "Insert Image" picker's own filter uses.
+$allDownloadCategories = $downloadCategories->listAll();
 
 $allFolders = $kernel->folders->listAll();
 // The "Insert Image" media picker's own Folder filter <select> (LP-115)
@@ -539,11 +554,11 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
             </div>
 
             <p class="lp-field">
-                <label for="download-folder">Category</label>
-                <select id="download-folder" name="folder_id">
+                <label for="download-category">Category</label>
+                <select id="download-category" name="category_id">
                     <option value="0">(Uncategorized)</option>
-                    <?php foreach ($allFolders as $folder): ?>
-                        <option value="<?= (int) $folder->id ?>" <?= $editingDownload->folderId === $folder->id ? 'selected' : '' ?>><?= esc_html($folder->name) ?></option>
+                    <?php foreach ($allDownloadCategories as $downloadCategory): ?>
+                        <option value="<?= (int) $downloadCategory->id ?>" <?= $editingDownload->categoryId === $downloadCategory->id ? 'selected' : '' ?>><?= esc_html($downloadCategory->name) ?></option>
                     <?php endforeach; ?>
                 </select>
             </p>
@@ -638,11 +653,11 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
             </div>
 
             <p class="lp-field">
-                <label for="download-folder">Category</label>
-                <select id="download-folder" name="folder_id">
+                <label for="download-category">Category</label>
+                <select id="download-category" name="category_id">
                     <option value="0">(Uncategorized)</option>
-                    <?php foreach ($allFolders as $folder): ?>
-                        <option value="<?= (int) $folder->id ?>"><?= esc_html($folder->name) ?></option>
+                    <?php foreach ($allDownloadCategories as $downloadCategory): ?>
+                        <option value="<?= (int) $downloadCategory->id ?>"><?= esc_html($downloadCategory->name) ?></option>
                     <?php endforeach; ?>
                 </select>
             </p>
@@ -695,11 +710,11 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
 <details class="lp-admin__panel">
     <summary>New Category</summary>
     <form method="post" action="<?= esc_url(admin_url('downloads/add-new')) ?><?= $editingDownload !== null ? '?id=' . (int) $editingDownload->id : '' ?>">
-        <?= Csrf::field('create_folder') ?>
-        <input type="hidden" name="form" value="create_folder">
+        <?= Csrf::field('create_download_category') ?>
+        <input type="hidden" name="form" value="create_download_category">
         <p class="lp-field">
-            <label for="new-download-folder-name">Name</label>
-            <input type="text" id="new-download-folder-name" name="name" required>
+            <label for="new-download-category-name">Name</label>
+            <input type="text" id="new-download-category-name" name="name" required>
         </p>
         <button type="submit" class="lp-button lp-button--primary">Create</button>
     </form>

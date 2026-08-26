@@ -21,9 +21,8 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Models\ContentFormat;
-use LumoraPress\Models\Folder;
-use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\ThumbnailService;
 use RuntimeException;
@@ -47,7 +46,10 @@ use RuntimeException;
  * `[sdm_show_dl_from_category]` shortcode (DownloadsShortcode, in the
  * wordpress-importer plugin) with no changes needed to that plugin at
  * all, since it queries Media/Redirects by folder_id directly and has
- * no idea this table exists.
+ * no idea this table exists. $categoryId (LPP-011) is this download's
+ * real categorization instead — fully decoupled from $folderId, which
+ * now only governs where a File-typed download's underlying Media item
+ * physically sits in the Media Library.
  */
 final class DownloadService
 {
@@ -56,8 +58,13 @@ final class DownloadService
         private readonly string $tablePrefix,
         private readonly MediaService $media,
         private readonly RedirectService $redirects,
-        private readonly FolderService $folders,
+        private readonly DownloadCategoryService $categories,
         private readonly ?ThumbnailService $thumbnails = null,
+        // Optional (LPP-011) so this class stays constructible without
+        // MediaStatsService (LP-006) wherever a caller has no need for
+        // downloadCount()'s File-type branch — mirrors $thumbnails'
+        // existing optional-dependency convention.
+        private readonly ?MediaStatsService $mediaStats = null,
     ) {
     }
 
@@ -73,6 +80,7 @@ final class DownloadService
         ?string $externalUrl,
         int $uploadedByUserId,
         ContentFormat $descriptionFormat = ContentFormat::Plain,
+        ?int $categoryId = null,
     ): Download {
         if ($type === DownloadType::File) {
             if ($file === null) {
@@ -96,7 +104,7 @@ final class DownloadService
             $mediaId = null;
         }
 
-        return $this->recordExisting($title, $description, $folderId, $type, $mediaId, $redirectId, $descriptionFormat);
+        return $this->recordExisting($title, $description, $folderId, $type, $mediaId, $redirectId, $descriptionFormat, categoryId: $categoryId);
     }
 
     /**
@@ -111,19 +119,20 @@ final class DownloadService
      * there would upload the file or create the redirect a second
      * time).
      */
-    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null, bool $mediaOwned = true): Download
+    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null, bool $mediaOwned = true, ?int $categoryId = null): Download
     {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, description, description_format, folder_id, type, media_id, media_owned, thumbnail_media_id, redirect_id, created_at, updated_at)
-             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :media_owned, :thumbnail_media_id, :redirect_id, :created_at, :updated_at)',
+                (title, description, description_format, folder_id, category_id, type, media_id, media_owned, thumbnail_media_id, redirect_id, created_at, updated_at)
+             VALUES (:title, :description, :description_format, :folder_id, :category_id, :type, :media_id, :media_owned, :thumbnail_media_id, :redirect_id, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'description' => $description,
                 'description_format' => $descriptionFormat->value,
                 'folder_id' => $folderId,
+                'category_id' => $categoryId,
                 'type' => $type->value,
                 'media_id' => $mediaId,
                 'media_owned' => $mediaOwned ? 1 : 0,
@@ -155,7 +164,7 @@ final class DownloadService
      * "null means unchanged" convention for its own $contentFormat
      * parameter).
      */
-    public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl, ?ContentFormat $descriptionFormat = null): bool
+    public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl, ?ContentFormat $descriptionFormat = null, ?int $categoryId = null): bool
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
 
@@ -179,13 +188,14 @@ final class DownloadService
 
         return $this->database->execute(
             'UPDATE ' . $this->table() . '
-                SET title = :title, description = :description, description_format = :description_format, folder_id = :folder_id, updated_at = :updated_at
+                SET title = :title, description = :description, description_format = :description_format, folder_id = :folder_id, category_id = :category_id, updated_at = :updated_at
               WHERE id = :id',
             [
                 'title' => $title,
                 'description' => $description,
                 'description_format' => $resolvedDescriptionFormat->value,
                 'folder_id' => $folderId,
+                'category_id' => $categoryId,
                 'updated_at' => date('Y-m-d H:i:s'),
                 'id' => $id,
             ],
@@ -199,7 +209,7 @@ final class DownloadService
      * branch ends at, just skipping the upload itself since the file
      * already exists in the Media Library.
      */
-    public function createFromExistingMedia(string $title, string $description, ?int $folderId, int $mediaId, ContentFormat $descriptionFormat = ContentFormat::Plain): Download
+    public function createFromExistingMedia(string $title, string $description, ?int $folderId, int $mediaId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $categoryId = null): Download
     {
         if ($this->media->find($mediaId) === null) {
             throw new InvalidArgumentException('The selected file could not be found.');
@@ -209,7 +219,7 @@ final class DownloadService
         // independently of this download (see Download::$mediaOwned's
         // own docblock), so delete()/replaceFile() must never delete it
         // on this download's account.
-        return $this->recordExisting($title, $description, $folderId, DownloadType::File, $mediaId, null, $descriptionFormat, mediaOwned: false);
+        return $this->recordExisting($title, $description, $folderId, DownloadType::File, $mediaId, null, $descriptionFormat, mediaOwned: false, categoryId: $categoryId);
     }
 
     /**
@@ -419,8 +429,8 @@ final class DownloadService
     }
 
     /**
-     * Soft-deletes a download — hidden from listAllGroupedByFolder()/
-     * listByFolder() (so the [lumora_downloads] shortcode and the public
+     * Soft-deletes a download — hidden from listAllGroupedByCategory()/
+     * listByCategory() (so the [lumora_downloads] shortcode and the public
      * site stop showing it) but its underlying Media/Redirect row is left
      * untouched; only delete() (permanent) ever removes those.
      */
@@ -479,18 +489,19 @@ final class DownloadService
             // whichever of the two is deleted last is the one that
             // decides whether the shared file gets cleaned up.
             $original->mediaOwned,
+            $original->categoryId,
         );
     }
 
     /**
      * Flat, paginated, sortable admin-list method (LPP-009) — distinct
-     * from listAllGroupedByFolder(), which stays as the public-facing
+     * from listAllGroupedByCategory(), which stays as the public-facing
      * grouped-by-category data source. Mirrors PageService::paginateForAdmin()'s
      * shape, but genuinely supports column sorting (via $orderBy/$orderDir)
      * since, unlike Posts/Pages, a download list has no natural
      * published-date ordering to fall back on.
      *
-     * @param array{term?: string, folderId?: int} $filters
+     * @param array{term?: string, folderId?: int, categoryId?: int} $filters
      * @return array{downloads: array<int, Download>, total: int, page: int, perPage: int, totalPages: int}
      */
     public function paginateForAdmin(
@@ -515,6 +526,11 @@ final class DownloadService
         if (($filters['folderId'] ?? 0) > 0) {
             $conditions[] = 'folder_id = :folder_id';
             $params['folder_id'] = (int) $filters['folderId'];
+        }
+
+        if (($filters['categoryId'] ?? 0) > 0) {
+            $conditions[] = 'category_id = :category_id';
+            $params['category_id'] = (int) $filters['categoryId'];
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
@@ -567,66 +583,119 @@ final class DownloadService
      * One query, grouped in PHP (small, evergreen dataset — the same
      * trade-off PageService::listAllForTree()'s own docblock makes for
      * pages, "not the tens-of-thousands-of-rows table Posts can be").
-     * Folders are ordered alphabetically by name; downloads with no
-     * folder are grouped last under a null key.
+     * Categories are ordered alphabetically by name; downloads with no
+     * category are grouped last under a null key.
      *
-     * @return array<int, array{folder: ?Folder, downloads: array<int, Download>}>
+     * @return array<int, array{category: ?DownloadCategory, downloads: array<int, Download>}>
      */
-    public function listAllGroupedByFolder(): array
+    public function listAllGroupedByCategory(): array
     {
         $rows = $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY title ASC');
-        $foldersById = [];
+        $categoriesById = [];
 
-        foreach ($this->folders->listAll() as $folder) {
-            $foldersById[$folder->id] = $folder;
+        foreach ($this->categories->listAll() as $category) {
+            $categoriesById[$category->id] = $category;
         }
 
         $groups = [];
 
         foreach ($rows as $row) {
-            $folderId = $row['folder_id'] !== null ? (int) $row['folder_id'] : null;
-            $groupKey = $folderId ?? 0;
+            $categoryId = $row['category_id'] !== null ? (int) $row['category_id'] : null;
+            $groupKey = $categoryId ?? 0;
 
             if (!isset($groups[$groupKey])) {
-                $groups[$groupKey] = ['folder' => $folderId !== null ? ($foldersById[$folderId] ?? null) : null, 'downloads' => []];
+                $groups[$groupKey] = ['category' => $categoryId !== null ? ($categoriesById[$categoryId] ?? null) : null, 'downloads' => []];
             }
 
             $groups[$groupKey]['downloads'][] = $this->hydrate($row);
         }
 
         uasort($groups, static function (array $a, array $b): int {
-            if ($a['folder'] === null) {
+            if ($a['category'] === null) {
                 return 1;
             }
 
-            if ($b['folder'] === null) {
+            if ($b['category'] === null) {
                 return -1;
             }
 
-            return strcasecmp($a['folder']->name, $b['folder']->name);
+            return strcasecmp($a['category']->name, $b['category']->name);
         });
 
         return array_values($groups);
     }
 
     /**
-     * One folder's downloads, alphabetical by title — the new Lumora
-     * Downloads shortcode's own data source, mirroring
-     * RedirectService::listByFolder()'s identical shape. $folderId null
+     * One category's downloads, alphabetical by title — the
+     * [lumora_downloads] shortcode's default "list everything in a
+     * category" data source (LPP-011), mirroring
+     * RedirectService::listByFolder()'s identical shape. $categoryId null
      * means the uncategorized bucket, same convention
-     * listAllGroupedByFolder() already uses.
+     * listAllGroupedByCategory() already uses.
      *
      * @return array<int, Download>
      */
-    public function listByFolder(?int $folderId): array
+    public function listByCategory(?int $categoryId): array
     {
-        $sql = $folderId !== null
-            ? 'SELECT * FROM ' . $this->table() . ' WHERE folder_id = :folder_id AND trashed_at IS NULL ORDER BY title ASC'
-            : 'SELECT * FROM ' . $this->table() . ' WHERE folder_id IS NULL AND trashed_at IS NULL ORDER BY title ASC';
+        $sql = $categoryId !== null
+            ? 'SELECT * FROM ' . $this->table() . ' WHERE category_id = :category_id AND trashed_at IS NULL ORDER BY title ASC'
+            : 'SELECT * FROM ' . $this->table() . ' WHERE category_id IS NULL AND trashed_at IS NULL ORDER BY title ASC';
 
-        $rows = $this->database->fetchAll($sql, $folderId !== null ? ['folder_id' => $folderId] : []);
+        $rows = $this->database->fetchAll($sql, $categoryId !== null ? ['category_id' => $categoryId] : []);
 
         return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
+     * The newest $limit live downloads, optionally filtered to one
+     * category — backs [lumora_downloads]'s "newest"/"newest N" variants
+     * (LPP-011): $categoryId null means "across all downloads".
+     *
+     * @return array<int, Download>
+     */
+    public function listNewest(?int $categoryId, int $limit): array
+    {
+        $limit = max(1, $limit);
+
+        $sql = 'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL';
+        $params = [];
+
+        if ($categoryId !== null) {
+            $sql .= ' AND category_id = :category_id';
+            $params['category_id'] = $categoryId;
+        }
+
+        // id DESC as a tiebreaker — two downloads created within the same
+        // second (a real possibility for a bulk import, or several rapid
+        // successive creates) would otherwise sort in an undefined order.
+        $sql .= " ORDER BY created_at DESC, id DESC LIMIT {$limit}";
+
+        return array_map($this->hydrate(...), $this->database->fetchAll($sql, $params));
+    }
+
+    /**
+     * A download's click count (LPP-011) — read from whichever of the two
+     * existing, unrelated counters actually applies to this download's
+     * type, not stored on this table itself. A File-typed download's
+     * count is MediaStatsService's (LP-006), keyed by media_id and
+     * incremented at /media/{id}/download; a Url-typed download's count
+     * is its Redirect's own hit_count, incremented whenever a request
+     * falls through to it. Returns 0 when neither applies (no mediaId/
+     * redirectId, or MediaStatsService wasn't injected).
+     */
+    public function downloadCount(Download $download): int
+    {
+        if ($download->mediaId !== null && $this->mediaStats !== null) {
+            return $this->mediaStats->get($download->mediaId)['downloads'];
+        }
+
+        if ($download->redirectId !== null) {
+            $redirect = $this->redirects->find($download->redirectId);
+
+            return $redirect !== null ? (int) $redirect['hit_count'] : 0;
+        }
+
+        return 0;
     }
 
     private function generateUniqueSourcePath(string $source): string
@@ -686,6 +755,7 @@ final class DownloadService
             description: (string) ($row['description'] ?? ''),
             descriptionFormat: ContentFormat::tryFrom((string) ($row['description_format'] ?? '')) ?? ContentFormat::Plain,
             folderId: $row['folder_id'] !== null ? (int) $row['folder_id'] : null,
+            categoryId: $row['category_id'] !== null ? (int) $row['category_id'] : null,
             type: $type,
             mediaId: $mediaId,
             mediaOwned: (int) ($row['media_owned'] ?? 1) === 1,

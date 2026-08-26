@@ -403,6 +403,7 @@ $menu = [
             'children' => [
                 'all-downloads' => ['label' => 'All Downloads', 'icon' => '📋', 'capability' => 'upload_files'],
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
+                'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
                 'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
             ],
         ],

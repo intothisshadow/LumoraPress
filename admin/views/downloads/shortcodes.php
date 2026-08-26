@@ -15,6 +15,8 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Plugins\Downloads\DownloadCategoryService;
+
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
@@ -23,35 +25,48 @@ if (!isset($kernel)) {
 // Only reachable while the Downloads plugin is active (see
 // admin/index.php's $downloadsActive-gated menu entry), so listing
 // real category names here is safe without re-checking the plugin.
-$allFolders = $kernel->folders->listAll();
-$exampleFolder = $allFolders[0] ?? null;
+$downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+$allDownloadCategories = $downloadCategories->listAll();
+$exampleCategory = $allDownloadCategories[0] ?? null;
 ?>
 <h1 class="lp-admin__title">Downloads &mdash; Shortcodes</h1>
 
 <section class="lp-admin__panel">
     <h2><code>[lumora_downloads]</code></h2>
     <p class="lp-field__hint">
-        Shows a category's downloads anywhere in post or page content — a
+        Shows one or more downloads anywhere in post or page content — a
         title, a link, and (optionally) a file size and description.
-        Renders nothing if the category can't be resolved or has no
-        downloads in it.
+        Renders nothing if nothing can be resolved. See
+        <a href="<?= esc_url(admin_url('downloads/categories')) ?>">Downloads &rsaquo; Categories</a>
+        for a ready-to-copy shortcode per category.
     </p>
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list">
-        <li><span><code>category</code></span><span>A category (folder) name, matched case-insensitively.</span></li>
+        <li><span><code>category</code></span><span>A category name, matched case-insensitively.</span></li>
         <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
+        <li><span><code>download_id</code></span><span>Show a single download by its exact numeric ID. Wins over every other attribute.</span></li>
+        <li><span><code>count</code></span><span>Show the newest <em>N</em> live downloads, sorted most-recent-first, instead of every download in a category. Combine with <code>category</code>/<code>category_id</code> to limit to one category; omit them for the newest across every category. <code>count="1"</code> is "the single newest download".</span></li>
         <li><span><code>show_size</code></span><span>Set to <code>"1"</code> to show each file download's size next to its link. Ignored for URL-type downloads, which have no file size.</span></li>
     </ul>
 
     <h3>Examples</h3>
-    <p class="lp-field__hint">By category name:</p>
-    <pre><code>[lumora_downloads category="<?= esc_html($exampleFolder->name ?? 'Patches') ?>"]</code></pre>
+    <p class="lp-field__hint">Everything in a category, by name:</p>
+    <pre><code>[lumora_downloads category="<?= esc_html($exampleCategory->name ?? 'Patches') ?>"]</code></pre>
 
-    <p class="lp-field__hint">By category ID, with file sizes shown:</p>
-    <pre><code>[lumora_downloads category_id="<?= (int) ($exampleFolder->id ?? 1) ?>" show_size="1"]</code></pre>
+    <p class="lp-field__hint">Everything in a category, by ID, with file sizes shown:</p>
+    <pre><code>[lumora_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" show_size="1"]</code></pre>
 
-    <?php if ($allFolders !== []): ?>
+    <p class="lp-field__hint">A single download by ID:</p>
+    <pre><code>[lumora_downloads download_id="1"]</code></pre>
+
+    <p class="lp-field__hint">The newest download in a category:</p>
+    <pre><code>[lumora_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" count="1"]</code></pre>
+
+    <p class="lp-field__hint">The newest 5 downloads, across every category:</p>
+    <pre><code>[lumora_downloads count="5"]</code></pre>
+
+    <?php if ($allDownloadCategories !== []): ?>
         <h3>Your categories</h3>
         <p class="lp-field__hint">Use either the name or the ID below in a shortcode.</p>
         <table class="lp-table">
@@ -62,10 +77,10 @@ $exampleFolder = $allFolders[0] ?? null;
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($allFolders as $folder): ?>
+                <?php foreach ($allDownloadCategories as $downloadCategory): ?>
                     <tr>
-                        <td><?= (int) $folder->id ?></td>
-                        <td><?= esc_html($folder->name) ?></td>
+                        <td><?= (int) $downloadCategory->id ?></td>
+                        <td><?= esc_html($downloadCategory->name) ?></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

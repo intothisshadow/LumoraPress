@@ -22,9 +22,7 @@ use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\BasePath;
-use LumoraPress\Models\Folder;
 use LumoraPress\Services\ContentRenderer;
-use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\RedirectService;
 
@@ -52,7 +50,7 @@ final class DownloadsShortcode
     private const PATTERN = '/\[lumora_downloads([^\]]*)\]/i';
 
     /**
-     * $injectedDownloads/$injectedFolders are optional and given
+     * $injectedDownloads/$injectedCategories are optional and given
      * together, or none — tests construct this with real
      * (SQLite-fixture-backed) service instances so renderShortcodes()
      * never needs a real database connection; the plugin's own
@@ -65,7 +63,7 @@ final class DownloadsShortcode
      */
     public function __construct(
         private readonly ?DownloadService $injectedDownloads = null,
-        private readonly ?FolderService $injectedFolders = null,
+        private readonly ?DownloadCategoryService $injectedCategories = null,
         private readonly ?ContentRenderer $injectedContent = null,
     ) {
     }
@@ -86,18 +84,58 @@ final class DownloadsShortcode
     }
 
     /**
+     * Three variants (LPP-011), checked in order:
+     *
+     * 1. `download_id` — a single download by id.
+     * 2. `count` — the newest N live downloads, sorted by date, optionally
+     *    filtered to a category (`category`/`category_id`) if also given;
+     *    with no category this is "newest N across all downloads",
+     *    `count="1"` is "newest download"/"newest in category". Distinct
+     *    ordering (newest-first) from variant 3 below, deliberately — a
+     *    "newest" list is meant to read most-recent-first, not
+     *    alphabetically.
+     * 3. Neither given — the original "list everything in a category"
+     *    form, unchanged: `category`/`category_id` required, alphabetical
+     *    by title.
+     *
      * @param array<string, string> $attributes
      */
     private function renderOne(array $attributes): string
     {
-        [$downloads, $folders] = $this->services();
-        $folder = $this->resolveFolder($folders, $attributes);
+        [$downloads, $categories] = $this->services();
 
-        if ($folder === null) {
+        if (($attributes['download_id'] ?? '') !== '') {
+            $download = $downloads->findById((int) $attributes['download_id']);
+
+            if ($download === null || $download->trashedAt !== null) {
+                return '';
+            }
+
+            $showSize = ($attributes['show_size'] ?? '0') === '1';
+
+            return $this->renderList(null, [$download], $showSize);
+        }
+
+        if (($attributes['count'] ?? '') !== '') {
+            $category = $this->resolveCategory($categories, $attributes);
+            $items = $downloads->listNewest($category?->id, (int) $attributes['count']);
+
+            if ($items === []) {
+                return '';
+            }
+
+            $showSize = ($attributes['show_size'] ?? '0') === '1';
+
+            return $this->renderList($category, $items, $showSize);
+        }
+
+        $category = $this->resolveCategory($categories, $attributes);
+
+        if ($category === null) {
             return '';
         }
 
-        $items = $downloads->listByFolder($folder->id);
+        $items = $downloads->listByCategory($category->id);
 
         if ($items === []) {
             return '';
@@ -105,7 +143,7 @@ final class DownloadsShortcode
 
         $showSize = ($attributes['show_size'] ?? '0') === '1';
 
-        return $this->renderList($folder, $items, $showSize);
+        return $this->renderList($category, $items, $showSize);
     }
 
     /**
@@ -128,22 +166,21 @@ final class DownloadsShortcode
     }
 
     /**
-     * `category_id` (an exact Folder id) wins if given; otherwise
-     * `category` is matched case-insensitively against the Folder's own
-     * name — Folders have no slug column, the same constraint the
-     * WordPress Importer's own shortcode already works around (there,
-     * by slugifying the name and matching against `category_slug`).
-     * Neither attribute given, or no matching Folder, both render
-     * nothing.
+     * `category_id` (an exact DownloadCategory id) wins if given;
+     * otherwise `category` is matched case-insensitively against the
+     * category's own name — DownloadCategory has no slug column, the
+     * same constraint Folder had before it (and the WordPress Importer's
+     * own shortcode still works around, by slugifying the name). Neither
+     * attribute given, or no matching category, both resolve to null.
      *
      * @param array<string, string> $attributes
      */
-    private function resolveFolder(FolderService $folders, array $attributes): ?Folder
+    private function resolveCategory(DownloadCategoryService $categories, array $attributes): ?DownloadCategory
     {
         $categoryId = (int) ($attributes['category_id'] ?? 0);
 
         if ($categoryId > 0) {
-            return $folders->findById($categoryId);
+            return $categories->findById($categoryId);
         }
 
         $categoryName = trim($attributes['category'] ?? '');
@@ -152,9 +189,9 @@ final class DownloadsShortcode
             return null;
         }
 
-        foreach ($folders->listAll() as $folder) {
-            if (strcasecmp($folder->name, $categoryName) === 0) {
-                return $folder;
+        foreach ($categories->listAll() as $category) {
+            if (strcasecmp($category->name, $categoryName) === 0) {
+                return $category;
             }
         }
 
@@ -162,14 +199,22 @@ final class DownloadsShortcode
     }
 
     /**
+     * $category is null for the `download_id` single-item variant and the
+     * category-less "newest across all downloads" variant — the heading
+     * is only rendered when a category was actually resolved.
+     *
      * @param array<int, Download> $items
      */
-    private function renderList(Folder $folder, array $items, bool $showSize): string
+    private function renderList(?DownloadCategory $category, array $items, bool $showSize): string
     {
         $content = $this->content();
 
         $html = '<div class="lp-downloads-list">';
-        $html .= '<h3 class="lp-downloads-list__title">' . esc_html($folder->name) . '</h3>';
+
+        if ($category !== null) {
+            $html .= '<h3 class="lp-downloads-list__title">' . esc_html($category->name) . '</h3>';
+        }
+
         $html .= '<ul class="lp-downloads-list__items">';
 
         foreach ($items as $item) {
@@ -227,12 +272,12 @@ final class DownloadsShortcode
     }
 
     /**
-     * @return array{0: DownloadService, 1: FolderService}
+     * @return array{0: DownloadService, 1: DownloadCategoryService}
      */
     private function services(): array
     {
-        if ($this->injectedDownloads !== null && $this->injectedFolders !== null) {
-            return [$this->injectedDownloads, $this->injectedFolders];
+        if ($this->injectedDownloads !== null && $this->injectedCategories !== null) {
+            return [$this->injectedDownloads, $this->injectedCategories];
         }
 
         $config = require LUMORA_ROOT . '/config/config.php';
@@ -244,11 +289,11 @@ final class DownloadsShortcode
             port: (int) ($config['db_port'] ?? 3306),
         );
         $tablePrefix = (string) $config['table_prefix'];
-        $folders = new FolderService($database, $tablePrefix);
+        $categories = new DownloadCategoryService($database, $tablePrefix);
         $media = new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', BasePath::get() . '/content/uploads');
         $redirects = new RedirectService($database, $tablePrefix);
-        $downloads = new DownloadService($database, $tablePrefix, $media, $redirects, $folders);
+        $downloads = new DownloadService($database, $tablePrefix, $media, $redirects, $categories);
 
-        return [$downloads, $folders];
+        return [$downloads, $categories];
     }
 }

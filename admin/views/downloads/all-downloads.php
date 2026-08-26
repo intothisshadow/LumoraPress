@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadStatus;
 use LumoraPress\Plugins\Downloads\DownloadType;
@@ -28,13 +29,15 @@ if (!isset($kernel)) {
 // See add-new.php's identical comment: this view is only ever reachable
 // while the Downloads plugin is active, so DownloadService's class is
 // guaranteed to already be loaded.
+$downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
 $downloads = new DownloadService(
     $kernel->database,
     (string) $kernel->config->get('table_prefix', 'lp_'),
     $kernel->media,
     $kernel->redirects,
-    $kernel->folders,
+    $downloadCategories,
     $kernel->thumbnails,
+    $kernel->mediaStats,
 );
 
 $error = null;
@@ -118,12 +121,12 @@ $page = max(1, (int) ($_GET['paged'] ?? 1));
 $statusFilter = ((string) ($_GET['status'] ?? '')) === 'trashed' ? DownloadStatus::Trashed : null;
 $isTrashView = $statusFilter === DownloadStatus::Trashed;
 
-$folderFilter = (int) ($_GET['folder_id'] ?? 0);
+$categoryFilter = (int) ($_GET['category_id'] ?? 0);
 $termFilter = trim((string) ($_GET['q'] ?? ''));
 $orderBy = (string) ($_GET['orderby'] ?? 'title');
 $orderDir = (string) ($_GET['order'] ?? 'asc');
 
-$listFilters = ['term' => $termFilter, 'folderId' => $folderFilter];
+$listFilters = ['term' => $termFilter, 'categoryId' => $categoryFilter];
 $pagination = $downloads->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
 
 $statusCounts = [
@@ -135,14 +138,14 @@ $statusLinks = [
     'trashed' => 'Trash (' . $statusCounts[DownloadStatus::Trashed->value] . ')',
 ];
 
-$allFolders = $kernel->folders->listAll();
-$foldersById = [];
+$allCategories = $downloadCategories->listAll();
+$categoriesById = [];
 
-foreach ($allFolders as $folder) {
-    $foldersById[$folder->id] = $folder;
+foreach ($allCategories as $category) {
+    $categoriesById[$category->id] = $category;
 }
 
-$sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFilter, $folderFilter): string {
+$sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFilter, $categoryFilter): string {
     $nextDir = $orderBy === $column && $orderDir === 'asc' ? 'desc' : 'asc';
     $query = ['orderby' => $column, 'order' => $nextDir];
 
@@ -150,8 +153,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         $query['status'] = $statusFilter->value;
     }
 
-    if ($folderFilter > 0) {
-        $query['folder_id'] = $folderFilter;
+    if ($categoryFilter > 0) {
+        $query['category_id'] = $categoryFilter;
     }
 
     return admin_url('downloads/all-downloads') . '?' . http_build_query($query);
@@ -173,11 +176,11 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
             <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
         <?php endif; ?>
         <p class="lp-field">
-            <label for="downloads-folder-filter">Category</label>
-            <select id="downloads-folder-filter" name="folder_id">
+            <label for="downloads-category-filter">Category</label>
+            <select id="downloads-category-filter" name="category_id">
                 <option value="0">All categories</option>
-                <?php foreach ($allFolders as $filterFolder): ?>
-                    <option value="<?= (int) $filterFolder->id ?>" <?= $folderFilter === $filterFolder->id ? 'selected' : '' ?>><?= esc_html($filterFolder->name) ?></option>
+                <?php foreach ($allCategories as $filterCategory): ?>
+                    <option value="<?= (int) $filterCategory->id ?>" <?= $categoryFilter === $filterCategory->id ? 'selected' : '' ?>><?= esc_html($filterCategory->name) ?></option>
                 <?php endforeach; ?>
             </select>
         </p>
@@ -226,6 +229,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                         <th scope="col">Category</th>
                         <th scope="col">Type</th>
                         <th scope="col">Status</th>
+                        <th scope="col">Downloads</th>
                         <th scope="col"><a href="<?= esc_url($sortLink('date')) ?>">Date</a></th>
                         <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                     </tr>
@@ -245,13 +249,14 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                     <?= esc_html($listedDownload->title) ?>
                                 <?php endif; ?>
                             </td>
-                            <td><?= esc_html($listedDownload->folderId !== null ? ($foldersById[$listedDownload->folderId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>
+                            <td><?= esc_html($listedDownload->categoryId !== null ? ($categoriesById[$listedDownload->categoryId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>
                             <td><?= $listedDownload->type === DownloadType::File ? 'File' : 'URL' ?></td>
                             <td>
                                 <span class="lp-status-badge lp-status-badge--<?= esc_attr($listedDownload->status()->value) ?>">
                                     <?= esc_html($listedDownload->status() === DownloadStatus::Live ? 'Live' : 'Trashed') ?>
                                 </span>
                             </td>
+                            <td><?= (int) $downloads->downloadCount($listedDownload) ?></td>
                             <td><?= esc_html($listedDownload->createdAt->format('M j, Y')) ?></td>
                             <td class="lp-admin__row-actions">
                                 <?php if ($isTrashView): ?>

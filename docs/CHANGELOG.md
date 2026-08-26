@@ -28,6 +28,21 @@ All notable changes to Lumora Press are documented in this file.
   external URL entirely, and a Url-typed download can likewise be
   switched to a hosted file, instead of requiring delete-and-re-add to
   change either.
+- Downloads (LPP-011): four follow-ups after real use. All Downloads now
+  shows each download's click count. A new Downloads &rsaquo; Categories
+  admin screen manages Downloads' own dedicated category taxonomy —
+  search & sort, status tabs, bulk Trash/Restore/Delete Permanently/
+  Merge into&hellip;, an Empty Trash action for the Trash tab, and a
+  ready-to-copy `[lumora_downloads]` shortcode per category — decoupled
+  from the shared Media Manager Folder tree a download used to be
+  categorized through. `[lumora_downloads]` gained `download_id` (a
+  single download by id) and `count` (the newest N downloads, optionally
+  scoped to one category) attributes. Existing installs: run
+  Maintenance &rsaquo; Tools' new "Migrate Download Categories" action
+  once to move already-categorized downloads over to the new taxonomy.
+- Empty Trash (LP-126): a new bulk action, currently on the Downloads
+  &rsaquo; Categories Trash tab, permanently deletes every trashed row
+  in one click instead of select-all-then-Delete-Permanently.
 
 ### Fixed
 

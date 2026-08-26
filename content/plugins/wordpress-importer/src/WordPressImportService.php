@@ -29,6 +29,7 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
 use LumoraPress\Models\PostStatus;
 use LumoraPress\Models\PostVisibility;
+use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadType;
 use LumoraPress\Services\CategoryService;
@@ -219,6 +220,12 @@ final class WordPressImportService
          * docblock.
          */
         private readonly ?DownloadService $downloads = null,
+        /**
+         * Null under the exact same condition as $downloads above (LPP-011)
+         * — Downloads' own category taxonomy only exists while that
+         * plugin is active. See importDownloadCategories()'s own docblock.
+         */
+        private readonly ?DownloadCategoryService $downloadCategories = null,
         /**
          * A local filesystem copy of the source site's
          * `wp-content/gallery` folder — NextGEN Gallery's own image
@@ -1119,6 +1126,7 @@ final class WordPressImportService
             'comment' => fn (int $id): bool => $this->comments->findById($id) !== null,
             'redirect' => fn (int $id): bool => $this->redirects->find($id) !== null,
             'download' => fn (int $id): bool => $this->downloads === null || $this->downloads->findById($id) !== null,
+            'download_category' => fn (int $id): bool => $this->downloadCategories === null || $this->downloadCategories->findById($id) !== null,
         ];
 
         foreach ($lookups as $contentType => $exists) {
@@ -1322,7 +1330,7 @@ final class WordPressImportService
                 $this->config->setOption('widgets_config', $widgetsSnapshot);
             }
 
-            foreach (['comment', 'post', 'page', 'download', 'media', 'redirect', 'folder', 'category', 'tag', 'user'] as $contentType) {
+            foreach (['comment', 'post', 'page', 'download', 'download_category', 'media', 'redirect', 'folder', 'category', 'tag', 'user'] as $contentType) {
                 $ids = array_map(
                     static fn (array $entry): int => $entry['contentId'],
                     $this->registry->idsForBatch($batchId, $contentType),
@@ -1406,6 +1414,9 @@ final class WordPressImportService
             // there's no way to delete it correctly without that
             // plugin's own class loaded.
             'download' => $this->downloads?->delete($id),
+            // Null under the same condition as 'download' above — see
+            // that case's own comment.
+            'download_category' => $this->downloadCategories?->delete($id),
             'media' => $this->media->delete($id),
             'redirect' => $this->redirects->delete($id),
             // 'folder' is never reached here — removeAll() special-cases
@@ -1982,29 +1993,44 @@ final class WordPressImportService
      *
      * @return array<int, int> wpTermId => local folder id
      */
-    private function importFolders(string $batchId, ?ExistingContentMode $existingContentMode = null): array
+    /**
+     * Simple Download Monitor's `sdm_categories` taxonomy imports into
+     * Downloads' own dedicated `download_categories` table (LPP-011), not
+     * the shared Media Manager `folders` table a pre-LPP-011 import used
+     * to reuse — confirmed against a real production database that a
+     * download's own file (`sdm_upload` postmeta) is a bare URL/path
+     * string with no Media Library attachment relationship in SDM's own
+     * model at all, so there is no real "Folder" here to begin with, only
+     * a category tag on the `sdm_downloads` post itself. A top-level
+     * `sdm_categories` term therefore becomes a top-level
+     * `download_categories` row directly (`parent_id = null`) — no
+     * synthetic wrapper category needed, unlike the old Folder-based
+     * import's "Downloads" wrapper folder, since Download Categories
+     * don't share a namespace with anything else that would need
+     * disambiguating from.
+     *
+     * Returns an empty map, with nothing imported, when the Downloads
+     * plugin isn't active ($this->downloadCategories === null) — the
+     * same degradation $this->downloads itself already has; the
+     * underlying files/redirects this feeds into importDownloads() still
+     * import as plain Media items/Redirects either way, just
+     * uncategorized.
+     *
+     * @return array<int, int> wpTermId => local download category id
+     */
+    private function importDownloadCategories(string $batchId, ?ExistingContentMode $existingContentMode = null): array
     {
-        $remaining = $this->source->terms('sdm_categories');
         $localIdByWpTermId = [];
+
+        if ($this->downloadCategories === null) {
+            return $localIdByWpTermId;
+        }
+
+        $remaining = $this->source->terms('sdm_categories');
 
         if ($remaining === []) {
             return $localIdByWpTermId;
         }
-
-        // Every sdm_categories term nests under one top-level "Downloads"
-        // folder rather than landing at the Media Library's own root — a
-        // migrated site's downloads are Simple Download Monitor's own
-        // category tree, not part of the site's regular media
-        // organization, so keeping them under a single parent avoids
-        // mixing the two. Only created when there's at least one category
-        // to nest under it, so a source site using Simple Download
-        // Monitor without categories doesn't get an empty "Downloads"
-        // folder for nothing. Has no WordPress term of its own to key
-        // off, unlike every other folder here — given a fixed synthetic
-        // external id instead, so a Skip/Overwrite re-import finds the
-        // same wrapper folder instead of creating a duplicate "Downloads"
-        // tree.
-        $downloadsFolderId = $this->createOrUpdateFolder($batchId, 'Downloads', null, 'sdm-downloads-root', $existingContentMode);
 
         while ($remaining !== []) {
             $stillRemaining = [];
@@ -2012,7 +2038,7 @@ final class WordPressImportService
 
             foreach ($remaining as $term) {
                 if ($term['parent'] === 0) {
-                    $parentId = $downloadsFolderId;
+                    $parentId = null;
                 } elseif (isset($localIdByWpTermId[$term['parent']])) {
                     $parentId = $localIdByWpTermId[$term['parent']];
                 } else {
@@ -2020,13 +2046,19 @@ final class WordPressImportService
                     continue;
                 }
 
-                $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], $parentId, (string) $term['term_id'], $existingContentMode);
+                $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateDownloadCategory($batchId, $term['name'], $parentId, (string) $term['term_id'], $existingContentMode);
                 $progressed = true;
             }
 
             if (!$progressed) {
+                // A term whose parent never resolved (e.g. the parent
+                // term itself wasn't tagged on any download and so never
+                // appears as its own row) lands top-level rather than
+                // looping forever — mirrors the old Folder-based import's
+                // identical fallback, just against a real top-level
+                // category instead of the synthetic wrapper.
                 foreach ($stillRemaining as $term) {
-                    $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateFolder($batchId, $term['name'], $downloadsFolderId, (string) $term['term_id'], $existingContentMode);
+                    $localIdByWpTermId[$term['term_id']] = $this->createOrUpdateDownloadCategory($batchId, $term['name'], null, (string) $term['term_id'], $existingContentMode);
                 }
 
                 $stillRemaining = [];
@@ -2039,7 +2071,31 @@ final class WordPressImportService
     }
 
     /**
-     * Shared by importFolders()/importMediaFolders()/
+     * DownloadCategoryService's own three-call (create/update/registry
+     * record) analog of createOrUpdateFolder() below.
+     */
+    private function createOrUpdateDownloadCategory(string $batchId, string $name, ?int $parentId, string $externalId, ?ExistingContentMode $existingContentMode): int
+    {
+        $existingId = $existingContentMode !== null
+            ? $this->registry->existingLocalId(self::SOURCE, 'download_category', $externalId)
+            : null;
+
+        if ($existingId !== null) {
+            if ($existingContentMode === ExistingContentMode::Overwrite) {
+                $this->downloadCategories->update($existingId, $name, $parentId);
+            }
+
+            return $existingId;
+        }
+
+        $category = $this->downloadCategories->create($name, $parentId);
+        $this->registry->record($batchId, self::SOURCE, 'download_category', $category->id, $externalId);
+
+        return $category->id;
+    }
+
+    /**
+     * Shared by importMediaFolders()/
      * importNextGenGalleries() — all three hand a Media Manager Folder
      * the same three FolderService calls (create/update/registry
      * record), differing only in what external id identifies "this
@@ -2109,7 +2165,7 @@ final class WordPressImportService
      */
     private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl, ?ExistingContentMode $existingContentMode = null): void
     {
-        $wpFolderIdByWpTermId = $this->importFolders($batchId, $existingContentMode);
+        $wpCategoryIdByWpTermId = $this->importDownloadCategories($batchId, $existingContentMode);
         $imageRewriter = new ContentImageRewriter();
 
         foreach ($this->source->posts(['sdm_downloads'], ['publish']) as $download) {
@@ -2124,7 +2180,7 @@ final class WordPressImportService
                 continue;
             }
 
-            $folderId = $this->resolveDownloadFolder($download['ID'], $wpFolderIdByWpTermId);
+            $categoryId = $this->resolveDownloadCategory($download['ID'], $wpCategoryIdByWpTermId);
 
             // DownloadService::update() already updates everything an
             // Overwrite needs in one call — a File-typed download's
@@ -2153,7 +2209,7 @@ final class WordPressImportService
                         $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): {$warning}";
                     }
 
-                    $this->downloads->update($existingDownloadId, $download['post_title'], $description, $folderId, $uploadUrl, ContentFormat::Html);
+                    $this->downloads->update($existingDownloadId, $download['post_title'], $description, null, $uploadUrl, ContentFormat::Html, $categoryId);
                 }
 
                 continue;
@@ -2197,7 +2253,13 @@ final class WordPressImportService
                     uploadedByUserId: $authorId,
                     fileName: basename($relativePath),
                     description: $description !== '' ? $description : null,
-                    folderId: $folderId,
+                    // null (LPP-011): SDM's own `sdm_upload` postmeta was
+                    // never a Media Library attachment in its own model —
+                    // confirmed against real production data — so there is
+                    // no Folder this file "belongs" in; categorization now
+                    // lives entirely on $categoryId below, not on where
+                    // this Media item sits in the Library.
+                    folderId: null,
                     externalId: (string) $download['ID'],
                     uploadedAt: $this->parseWpDate($download['post_date']),
                     relativeDirectory: dirname($relativePath),
@@ -2208,7 +2270,7 @@ final class WordPressImportService
                     $this->mediaStats->seed((int) $media['id'], $stats['count'], $stats['lastDownloadedAt']);
 
                     if ($this->downloads !== null) {
-                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::File, (int) $media['id'], null, ContentFormat::Html, $thumbnailMediaId);
+                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, null, DownloadType::File, (int) $media['id'], null, ContentFormat::Html, $thumbnailMediaId, categoryId: $categoryId);
                         $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                     }
                 } catch (Throwable $exception) {
@@ -2221,12 +2283,23 @@ final class WordPressImportService
             $slug = $download['post_name'] !== '' ? $download['post_name'] : ('download-' . $download['ID']);
 
             try {
-                $redirect = $this->redirects->create('/downloads/' . $slug, $uploadUrl, folderId: $folderId);
+                // folderId: null (LPP-011) — see the File-type branch's
+                // identical comment above. This does mean a re-import of
+                // content still containing the older
+                // `[sdm_show_dl_from_category]` shortcode (this plugin's
+                // own, kept working for content already migrated before
+                // this ticket — see DownloadsShortcode's own docblock) can
+                // no longer resolve for a *freshly* (re-)imported
+                // download, since that shortcode's rendering depends on a
+                // real Folder/folder_id; already-migrated rows keep
+                // whatever folder_id they were given by an earlier import
+                // and are unaffected.
+                $redirect = $this->redirects->create('/downloads/' . $slug, $uploadUrl, folderId: null);
                 $this->redirects->setHitCount((int) $redirect['id'], $stats['count']);
                 $this->registry->record($batchId, self::SOURCE, 'redirect', (int) $redirect['id'], (string) $download['ID']);
 
                 if ($this->downloads !== null) {
-                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, $folderId, DownloadType::Url, null, (int) $redirect['id'], ContentFormat::Html, $thumbnailMediaId);
+                    $newDownload = $this->downloads->recordExisting($download['post_title'], $description, null, DownloadType::Url, null, (int) $redirect['id'], ContentFormat::Html, $thumbnailMediaId, categoryId: $categoryId);
                     $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
                 }
             } catch (Throwable $exception) {
@@ -2239,16 +2312,16 @@ final class WordPressImportService
      * Prefers a child/leaf sdm_categories term over a parent one when a
      * download carries both (SDM's own categories are often tagged this
      * way — e.g. a download under "Game Of Thrones" is also tagged with
-     * its parent "FocusWriter Themes") — Media items support only one
-     * folder, so the more specific category is the more useful choice.
+     * its parent "FocusWriter Themes") — a Download supports only one
+     * category, so the more specific one is the more useful choice.
      *
-     * @param array<int, int> $wpFolderIdByWpTermId
+     * @param array<int, int> $wpCategoryIdByWpTermId
      */
-    private function resolveDownloadFolder(int $wpPostId, array $wpFolderIdByWpTermId): ?int
+    private function resolveDownloadCategory(int $wpPostId, array $wpCategoryIdByWpTermId): ?int
     {
         $candidateTermIds = array_values(array_intersect(
             $this->source->termIdsForPost($wpPostId, 'sdm_categories'),
-            array_keys($wpFolderIdByWpTermId),
+            array_keys($wpCategoryIdByWpTermId),
         ));
 
         if ($candidateTermIds === []) {
@@ -2257,11 +2330,11 @@ final class WordPressImportService
 
         foreach ($this->source->terms('sdm_categories') as $term) {
             if (in_array($term['term_id'], $candidateTermIds, true) && $term['parent'] !== 0) {
-                return $wpFolderIdByWpTermId[$term['term_id']];
+                return $wpCategoryIdByWpTermId[$term['term_id']];
             }
         }
 
-        return $wpFolderIdByWpTermId[$candidateTermIds[0]];
+        return $wpCategoryIdByWpTermId[$candidateTermIds[0]];
     }
 
     /**
@@ -2275,14 +2348,15 @@ final class WordPressImportService
      * `uploads/YYYY/MM` directory layout rather than anything an admin
      * ever organized by hand. Needs no new hierarchy-resolution code at
      * all — the same multi-pass parent walk importCategories() already
-     * does over `terms()`'s own `parent` column — but, unlike
-     * importFolders()'s Downloads-only synthetic "Downloads" wrapper,
-     * lands a top-level folder at the Media Manager's real root, since
-     * this *is* the site's own regular Media Library organization rather
-     * than a foreign taxonomy being given a home. Returns an empty map,
-     * with no folder created at all, when the source never ran that
-     * plugin (no `media_folder` terms exist) — mirrors importFolders()'s
-     * own early return.
+     * does over `terms()`'s own `parent` column — lands a top-level
+     * folder at the Media Manager's real root, since this *is* the
+     * site's own regular Media Library organization rather than a
+     * foreign taxonomy being given a home (unlike Simple Download
+     * Monitor's own `sdm_categories`, imported by
+     * importDownloadCategories() into Downloads' own dedicated
+     * `download_categories` taxonomy instead, LPP-011). Returns an empty
+     * map, with no folder created at all, when the source never ran that
+     * plugin (no `media_folder` terms exist).
      *
      * @return array<int, int> wpTermId => local folder id
      */
@@ -2332,7 +2406,7 @@ final class WordPressImportService
     }
 
     /**
-     * Mirrors resolveDownloadFolder()'s own "prefer a child term over its
+     * Mirrors resolveDownloadCategory()'s own "prefer a child term over its
      * parent" logic for an attachment tagged with more than one
      * `media_folder` term at once — Media items support only one folder,
      * so the more specific one is the more useful choice.
@@ -2451,7 +2525,7 @@ final class WordPressImportService
      * Download Monitor categories and the "Media Library Folders"
      * plugin are already handled above. Unlike either of those, a
      * gallery is a flat list with no hierarchy of its own, so this needs
-     * none of resolveDownloadFolder()/resolveMediaFolder()'s multi-term
+     * none of resolveDownloadCategory()/resolveMediaFolder()'s multi-term
      * "prefer the more specific parent" logic — one gallery, one folder,
      * always at the Media Manager's real root.
      *
@@ -2470,7 +2544,7 @@ final class WordPressImportService
      *
      * NextGEN's own `ngg_album` grouping is imported too: each album
      * becomes a real parent Media Manager Folder (mirroring
-     * importFolders()/importMediaFolders()'s own nesting), and each of
+     * importMediaFolders()'s own nesting), and each of
      * its member galleries' folder is created underneath it instead of
      * at root — see buildGalleryIdToAlbumId()'s own docblock for how a
      * gallery belonging to more than one album is resolved. A gallery
@@ -2548,7 +2622,7 @@ final class WordPressImportService
      * album (by ascending `id`, i.e. iteration order of $albums, which
      * nextGenAlbums() already returns `ORDER BY id ASC`) wins, the same
      * "first match wins" tiebreak importMediaFolders()'s sibling
-     * resolveMediaFolder()/resolveDownloadFolder() already use for an
+     * resolveMediaFolder()/resolveDownloadCategory() already use for an
      * analogous multi-parent ambiguity.
      *
      * @param array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}> $albums

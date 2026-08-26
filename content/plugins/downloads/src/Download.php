@@ -44,6 +44,11 @@ final class Download
         // is edited with the exact same shared editor component.
         public readonly ContentFormat $descriptionFormat,
         public readonly ?int $folderId,
+        // The download's real, dedicated taxonomy (LPP-011) —
+        // decoupled from $folderId, which now only ever governs where a
+        // File-typed download's underlying Media item physically sits in
+        // the Media Library, not how the download is categorized.
+        public readonly ?int $categoryId,
         public readonly DownloadType $type,
         public readonly ?int $mediaId,
         // LPP-012: whether $mediaId's Media row was created *for* this

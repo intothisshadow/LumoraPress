@@ -43,6 +43,7 @@ use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
+use LumoraPress\Services\DownloadCategoryMigrationService;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
 use LumoraPress\Services\EntityDecodeRepairService;
@@ -142,6 +143,7 @@ final class Kernel
         public readonly MenuImporter $menuImporter,
         public readonly WidgetImporter $widgetImporter,
         public readonly EntityDecodeRepairService $entityDecodeRepair,
+        public readonly DownloadCategoryMigrationService $downloadCategoryMigration,
     ) {
     }
 }

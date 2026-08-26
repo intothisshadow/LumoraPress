@@ -34,6 +34,8 @@ namespace LumoraPress\Plugins\Downloads;
 require_once __DIR__ . '/src/DownloadType.php';
 require_once __DIR__ . '/src/DownloadStatus.php';
 require_once __DIR__ . '/src/Download.php';
+require_once __DIR__ . '/src/DownloadCategory.php';
+require_once __DIR__ . '/src/DownloadCategoryService.php';
 require_once __DIR__ . '/src/DownloadService.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 
