@@ -18,6 +18,12 @@ All notable changes to Lumora Press are documented in this file.
 - Default theme: a logged-in author/editor with permission to edit a
   post now sees a quiet "Edit this post" link at the end of the single
   post view, linking straight to that post's admin editor (LP-118).
+- Downloads: the Add Download screen now offers a third source option,
+  "Use an existing file from the Media Library," alongside Upload and
+  External URL, via a new file picker (LPP-012). The Edit Download
+  screen gained a matching "Replace file" panel for File-typed
+  downloads — upload a new file, or pick one already in the Media
+  Library — instead of requiring delete-and-re-add to change one.
 
 ### Fixed
 

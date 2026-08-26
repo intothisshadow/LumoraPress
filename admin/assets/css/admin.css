@@ -1636,6 +1636,140 @@ body.lp-admin-login {
     }
 }
 
+/*
+ * LPP-012 — downloads-picker.js's "Choose from Server" dialog. A much
+ * lighter sibling of .lp-editor-media-dialog above (same overall shell/
+ * grid/pagination shape, reused rule-for-rule with a different class
+ * prefix rather than sharing selectors, since it needs no Attachment
+ * Display Settings step and its grid items carry a filename label the
+ * image-only picker's items don't): clicking a grid item selects it
+ * immediately.
+ */
+.lp-download-picker-dialog {
+    width: min(900px, 95vw);
+    height: 85vh;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+}
+
+.lp-download-picker-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-download-picker-dialog__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+.lp-download-picker-dialog__search {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.lp-download-picker-dialog__folder-select {
+    flex: 0 1 220px;
+    min-width: 0;
+}
+
+.lp-download-picker-dialog__status {
+    flex-shrink: 0;
+    margin: 0 0 0.75rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-download-picker-dialog__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.5rem;
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
+    margin-bottom: 1rem;
+}
+
+.lp-download-picker-dialog__item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    cursor: pointer;
+    background: none;
+    text-align: left;
+}
+
+.lp-download-picker-dialog__item:hover,
+.lp-download-picker-dialog__item:focus-visible {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-download-picker-dialog__item-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: calc(var(--lp-admin-radius) - 1px);
+    background: var(--lp-admin-sidebar-bg);
+}
+
+.lp-download-picker-dialog__item-thumb--file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.lp-download-picker-dialog__item-name {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--lp-admin-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lp-download-picker-dialog__load-more {
+    align-self: center;
+    flex-shrink: 0;
+    margin-bottom: 1rem;
+}
+
+.lp-download-picker-dialog__close {
+    align-self: flex-start;
+    flex-shrink: 0;
+}
+
+@media (max-width: 782px) {
+    .lp-download-picker-dialog {
+        height: 90vh;
+        max-height: 90vh;
+    }
+
+    .lp-download-picker-dialog__header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lp-download-picker-dialog__search,
+    .lp-download-picker-dialog__folder-select {
+        flex-basis: auto;
+    }
+}
+
 /* Font color swatch picker (Markdown editor's toolbar button) — same fixed palette TinyMCE's lumoraFontColor menu offers. */
 .lp-editor-color-dialog {
     width: min(260px, 92vw);
@@ -2039,6 +2173,21 @@ body.lp-admin-login {
     font-size: 0.8rem;
     font-weight: 700;
     letter-spacing: 0.05em;
+}
+
+/* LPP-012 — the "Choose from Server…" trigger + chosen-filename label,
+   used both by the Add Download form's "existing file" source choice
+   and the Edit screen's "Replace file" panel (downloads-picker.js). */
+.lp-download-file-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.lp-download-file-picker__chosen {
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.85rem;
 }
 
 .lp-media-manager__bulk-bar {

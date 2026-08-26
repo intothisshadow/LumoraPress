@@ -46,6 +46,17 @@ final class Download
         public readonly ?int $folderId,
         public readonly DownloadType $type,
         public readonly ?int $mediaId,
+        // LPP-012: whether $mediaId's Media row was created *for* this
+        // download (a normal upload — create()'s own File branch, or a
+        // WordPress import) versus attached from one that already
+        // existed independently in the Media Library
+        // (createFromExistingMedia()/replaceFile() with a picked file).
+        // Only an owned Media row is ever considered for cleanup when
+        // this download is deleted or its file replaced — see
+        // delete()'s/replaceFile()'s own docblocks. Meaningless (left
+        // true, the harmless default) for a Url-typed download, which
+        // has no $mediaId at all.
+        public readonly bool $mediaOwned,
         // A separate representative image, distinct from $mediaId's own
         // file — the same concept Simple Download Monitor's post-
         // thumbnail metabox represents on a source `sdm_downloads` post

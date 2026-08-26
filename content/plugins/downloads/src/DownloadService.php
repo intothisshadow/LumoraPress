@@ -111,14 +111,14 @@ final class DownloadService
      * there would upload the file or create the redirect a second
      * time).
      */
-    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null): Download
+    public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null, bool $mediaOwned = true): Download
     {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, description, description_format, folder_id, type, media_id, thumbnail_media_id, redirect_id, created_at, updated_at)
-             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :thumbnail_media_id, :redirect_id, :created_at, :updated_at)',
+                (title, description, description_format, folder_id, type, media_id, media_owned, thumbnail_media_id, redirect_id, created_at, updated_at)
+             VALUES (:title, :description, :description_format, :folder_id, :type, :media_id, :media_owned, :thumbnail_media_id, :redirect_id, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'description' => $description,
@@ -126,6 +126,7 @@ final class DownloadService
                 'folder_id' => $folderId,
                 'type' => $type->value,
                 'media_id' => $mediaId,
+                'media_owned' => $mediaOwned ? 1 : 0,
                 'thumbnail_media_id' => $thumbnailMediaId,
                 'redirect_id' => $redirectId,
                 'created_at' => $now,
@@ -189,14 +190,97 @@ final class DownloadService
     }
 
     /**
+     * "Add from server" (LPP-012): attaches an already-uploaded Media
+     * item as a File-typed download's file, instead of uploading a new
+     * one — the same shared recordExisting() tail create()'s own upload
+     * branch ends at, just skipping the upload itself since the file
+     * already exists in the Media Library.
+     */
+    public function createFromExistingMedia(string $title, string $description, ?int $folderId, int $mediaId, ContentFormat $descriptionFormat = ContentFormat::Plain): Download
+    {
+        if ($this->media->find($mediaId) === null) {
+            throw new InvalidArgumentException('The selected file could not be found.');
+        }
+
+        // mediaOwned: false — this Media row predates and exists
+        // independently of this download (see Download::$mediaOwned's
+        // own docblock), so delete()/replaceFile() must never delete it
+        // on this download's account.
+        return $this->recordExisting($title, $description, $folderId, DownloadType::File, $mediaId, null, $descriptionFormat, mediaOwned: false);
+    }
+
+    /**
+     * LPP-012: repoints a File-typed download at a different, already-
+     * existing Media item — $newMediaId was either just uploaded (a
+     * fresh Media row created moments earlier, $newMediaOwned true — the
+     * default, matching the common "upload a replacement" case) or
+     * picked from the server the same way createFromExistingMedia()
+     * attaches one ($newMediaOwned false); this method never creates a
+     * Media row itself. False (no-op) for a Url-typed download or an
+     * unknown $id/$newMediaId — replacing a Url download's target is
+     * update()'s $externalUrl parameter's job, not this method's.
+     *
+     * The old Media row is deleted only when it was owned (this
+     * download's own file, not one attached from the library — see
+     * Download::$mediaOwned's own docblock) *and* no other download
+     * still references it — the exact same referencedByAnotherDownload()
+     * guard delete() uses for the same reason (duplicate(), LPP-009,
+     * deliberately shares a Media/Redirect row rather than copying it,
+     * so a replace on one shared download must not orphan or break the
+     * other). An unowned old Media row is never deleted here, full
+     * stop — it existed independently of this download before being
+     * attached, so this download replacing its file is never grounds to
+     * delete it; that would be a real, permanent, on-disk file deletion
+     * of what may be a Media Library item the admin still wants,
+     * regardless of any other download referencing it. $thumbnailMediaId
+     * is left untouched — it's a separately chosen representative image
+     * (see Download's own docblock), not necessarily invalidated by
+     * swapping the underlying file.
+     */
+    public function replaceFile(int $id, int $newMediaId, bool $newMediaOwned = true): bool
+    {
+        $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
+
+        if ($row === null || $row['type'] !== DownloadType::File->value) {
+            return false;
+        }
+
+        if ($this->media->find($newMediaId) === null) {
+            return false;
+        }
+
+        $oldMediaId = $row['media_id'] !== null ? (int) $row['media_id'] : null;
+        $oldMediaOwned = (int) ($row['media_owned'] ?? 1) === 1;
+
+        $updated = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET media_id = :media_id, media_owned = :media_owned, updated_at = :updated_at WHERE id = :id',
+            ['media_id' => $newMediaId, 'media_owned' => $newMediaOwned ? 1 : 0, 'updated_at' => date('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
+
+        if ($updated && $oldMediaOwned && $oldMediaId !== null && $oldMediaId !== $newMediaId && !$this->referencedByAnotherDownload('media_id', $oldMediaId, $id)) {
+            $this->media->delete($oldMediaId);
+        }
+
+        return $updated;
+    }
+
+    /**
      * Deletes the linked Media or Redirect row first — a Download's whole
      * reason to exist is to be the public download, so no orphaned Media
-     * item or Redirect should survive it. Only cascades that deletion
-     * when no *other* download row still references the same media_id/
-     * redirect_id — duplicate() (LPP-009) deliberately shares the
-     * original's Media/Redirect rather than copying them, so permanently
-     * deleting one duplicate must not break the link the other still
-     * relies on.
+     * item or Redirect should survive it. Only cascades that Media
+     * deletion when the row is owned (LPP-012: this download's own
+     * file, not one attached from the Media Library via
+     * createFromExistingMedia() — see Download::$mediaOwned's own
+     * docblock; an unowned Media row is never touched, since it existed
+     * independently before this download attached it and may still be
+     * wanted regardless of this download's fate) *and* no *other*
+     * download row still references the same media_id/redirect_id —
+     * duplicate() (LPP-009) deliberately shares the original's Media/
+     * Redirect rather than copying them, so permanently deleting one
+     * duplicate must not break the link the other still relies on. A
+     * Redirect is always considered owned — LPP-012 only ever attaches
+     * an *existing Media item*, never an existing Redirect, to a
+     * download, so that ambiguity doesn't apply there.
      */
     public function delete(int $id): bool
     {
@@ -206,7 +290,9 @@ final class DownloadService
             return false;
         }
 
-        if ($row['media_id'] !== null && !$this->referencedByAnotherDownload('media_id', (int) $row['media_id'], $id)) {
+        $mediaOwned = (int) ($row['media_owned'] ?? 1) === 1;
+
+        if ($mediaOwned && $row['media_id'] !== null && !$this->referencedByAnotherDownload('media_id', (int) $row['media_id'], $id)) {
             $this->media->delete((int) $row['media_id']);
         }
 
@@ -272,6 +358,12 @@ final class DownloadService
             $original->redirectId,
             $original->descriptionFormat,
             $original->thumbnailMediaId,
+            // Mirrors the original's own ownership flag — both rows now
+            // share the same media_id (this method deliberately shares
+            // rather than copies, see this method's own docblock), so
+            // whichever of the two is deleted last is the one that
+            // decides whether the shared file gets cleaned up.
+            $original->mediaOwned,
         );
     }
 
@@ -481,6 +573,7 @@ final class DownloadService
             folderId: $row['folder_id'] !== null ? (int) $row['folder_id'] : null,
             type: $type,
             mediaId: $mediaId,
+            mediaOwned: (int) ($row['media_owned'] ?? 1) === 1,
             thumbnailMediaId: $row['thumbnail_media_id'] !== null ? (int) $row['thumbnail_media_id'] : null,
             redirectId: $redirectId,
             url: $url,

@@ -38,6 +38,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/theme-browser.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/plugin-browser.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/content-editor.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/downloads-picker.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/widget-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/theme-file-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/folder-drag-drop.js')) ?>" defer></script>
