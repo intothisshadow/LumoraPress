@@ -33,6 +33,13 @@
     --lp-admin-chip-border: rgba(34, 113, 177, 0.3);
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
+    /* Pastel purple for the "View" row-action chip specifically —
+       distinguishes it from the neutral-accent chips (Duplicate,
+       Restore, etc.) it used to be visually identical to. */
+    --lp-admin-chip-view-color: #7e57c2;
+    --lp-admin-chip-view-bg: rgba(126, 87, 194, 0.08);
+    --lp-admin-chip-view-border: rgba(126, 87, 194, 0.3);
+    --lp-admin-chip-view-hover-bg: #6a3fb0;
     /* LP-088/LP-090: form fields and neutral buttons previously reused
        --lp-admin-panel-bg (identical to the card they sit inside), so
        there was no visual signal that they were interactive surfaces
@@ -83,6 +90,10 @@
         --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
         --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
         --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+        --lp-admin-chip-view-color: #b39ddb;
+        --lp-admin-chip-view-bg: rgba(179, 157, 219, 0.12);
+        --lp-admin-chip-view-border: rgba(179, 157, 219, 0.4);
+        --lp-admin-chip-view-hover-bg: #7e57c2;
         --lp-admin-field-bg: #24282c;
         --lp-admin-button-bg: #26292d;
     }
@@ -117,6 +128,10 @@
     --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+    --lp-admin-chip-view-color: #b39ddb;
+    --lp-admin-chip-view-bg: rgba(179, 157, 219, 0.12);
+    --lp-admin-chip-view-border: rgba(179, 157, 219, 0.4);
+    --lp-admin-chip-view-hover-bg: #7e57c2;
     --lp-admin-field-bg: #24282c;
     --lp-admin-button-bg: #26292d;
 }
@@ -3032,11 +3047,35 @@ select:focus {
 
 .lp-table th {
     font-weight: 600;
-    color: var(--lp-admin-sidebar-fg-muted);
+    /* --lp-admin-sidebar-fg-muted is tuned for the dark sidebar
+       background, not this table header's light --lp-admin-bg — that
+       mismatch left every non-link column header (any column with no
+       sort link, e.g. Category/Type/Status on Downloads' All Downloads
+       screen) washed out and barely readable. color-mix() (already used
+       elsewhere in this file for the same "muted, but still legible on
+       this panel" need) rather than `opacity`, so a sort-link <a> inside
+       a <th> can still render at full strength via its own rule below
+       instead of inheriting a dimmed, semi-transparent stacking context. */
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
     text-transform: uppercase;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     background: var(--lp-admin-bg);
+}
+
+/* Sortable column headers (ID/Title/Date, etc.) render as a plain <a>
+   with no color rule of their own, same gap LP-063 already fixed for
+   .lp-table td a — falling back to the browser's default link blue
+   instead of this admin theme's own accent color. */
+.lp-table th a,
+.lp-table th a:visited {
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+}
+
+.lp-table th a:hover,
+.lp-table th a:focus-visible {
+    text-decoration: underline;
 }
 
 .lp-table tbody tr:last-child td {
@@ -3475,6 +3514,38 @@ select:focus {
     color: #fff;
 }
 
+/*
+ * "View" (All Posts/All Pages row actions) gets its own pastel purple,
+ * distinct from the other neutral-accent chips — and its own hover
+ * background, rather than inheriting .lp-button--link:hover's
+ * --lp-admin-accent (in dark mode that accent is light enough that the
+ * hover state's white text became low-contrast/unreadable against it).
+ * --lp-admin-chip-view-hover-bg is chosen dark enough in both themes to
+ * keep white hover text readable.
+ */
+/*
+ * Chained a.lp-button--link.lp-button--link--view (rather than the bare
+ * class alone) so this reliably out-specifies ".lp-table td a"/
+ * ".lp-table td a:hover" (lines ~3061-3070) in every context it's used
+ * (both All Pages' table view, inside a .lp-table cell, and its tree
+ * view, which isn't) — View is the only row-action chip implemented as
+ * an <a> rather than a <button>, so it alone is also caught by those
+ * plain-link-in-a-table-cell color/underline rules, which otherwise win
+ * the cascade over a same-specificity single-class selector here.
+ */
+a.lp-button--link.lp-button--link--view {
+    background: var(--lp-admin-chip-view-bg);
+    border-color: var(--lp-admin-chip-view-border);
+    color: var(--lp-admin-chip-view-color);
+}
+
+a.lp-button--link.lp-button--link--view:hover {
+    background: var(--lp-admin-chip-view-hover-bg);
+    border-color: var(--lp-admin-chip-view-hover-bg);
+    color: #fff;
+    text-decoration: none;
+}
+
 .lp-visually-hidden {
     position: absolute;
     width: 1px;
@@ -3900,6 +3971,21 @@ select:focus {
 
 .lp-pages-tree__title {
     flex: 1 1 auto;
+}
+
+/* The tree view isn't a .lp-table, so its title links never matched
+   .lp-table td a's color rule — they fell back to the browser's default
+   link color instead of the admin accent, unlike every other title link
+   (All Posts, and All Pages' own flat/filtered table view). */
+.lp-pages-tree__title a,
+.lp-pages-tree__title a:visited {
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+}
+
+.lp-pages-tree__title a:hover,
+.lp-pages-tree__title a:focus-visible {
+    text-decoration: underline;
 }
 
 .lp-pages-tree__date {

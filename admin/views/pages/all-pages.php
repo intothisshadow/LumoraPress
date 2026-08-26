@@ -529,7 +529,7 @@ if ($isTreeView) {
                                             <?php endif; ?>
                                         <?php else: ?>
                                             <?php if ($listedPage->status === PageStatus::Published): ?>
-                                                <a class="lp-button--link" href="<?= esc_url(page_permalink($listedPage)) ?>" target="_blank" rel="noopener">View</a>
+                                                <a class="lp-button lp-button--link lp-button--link--view" href="<?= esc_url(page_permalink($listedPage)) ?>" target="_blank" rel="noopener">View</a>
                                             <?php endif; ?>
                                             <button type="button" class="lp-button lp-button--link" data-lp-quick-edit-trigger data-lp-quick-edit-show="page-quick-edit-<?= (int) $listedPage->id ?>" data-lp-quick-edit-hide="page-row-<?= (int) $listedPage->id ?>">Quick Edit</button>
                                             <?php $duplicateFormId = 'page-duplicate-form-' . $listedPage->id; ?>
@@ -631,7 +631,7 @@ if ($isTreeView) {
                         <span class="lp-pages-tree__date"><?= esc_html(($listedPage->publishedAt ?? $listedPage->updatedAt)->format('M j, Y')) ?></span>
                         <?php if ($canEditPage($listedPage)): ?>
                             <?php if ($listedPage->status === PageStatus::Published): ?>
-                                <a class="lp-button--link" href="<?= esc_url(page_permalink($listedPage)) ?>" target="_blank" rel="noopener">View</a>
+                                <a class="lp-button lp-button--link lp-button--link--view" href="<?= esc_url(page_permalink($listedPage)) ?>" target="_blank" rel="noopener">View</a>
                             <?php endif; ?>
                             <?php $treeDuplicateFormId = 'page-duplicate-form-' . $listedPage->id; ?>
                             <span class="lp-admin__inline-form">

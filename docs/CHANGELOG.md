@@ -46,6 +46,25 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Admin: the "View" row action on All Posts/All Pages shared its color
+  with every other row-action chip (Duplicate, Restore, etc.), and its
+  hover state — inherited from a lower-specificity rule than intended —
+  could render low-contrast (white-on-light-blue) text in dark mode.
+  "View" now gets its own pastel purple, distinct from the other chips,
+  with a hover background dark enough to keep white hover text readable
+  in both themes.
+- Admin: All Pages' tree view (the default "All" tab) never colored its
+  page-title links at all — unlike the flat/filtered table view, the
+  tree view isn't a `<table>`, so it never matched the rule the table
+  view's title links rely on, and fell back to the browser's plain
+  default link color instead of the admin accent.
+- Admin: every list table's column headers (Posts, Pages, Downloads,
+  Comments, Categories, Tags, and more) used a text color meant for the
+  dark sidebar, not the header's own light background — washed out and
+  barely readable, most noticeably on screens with several non-sortable
+  columns (e.g. Downloads' Category/Type/Status). Sortable column
+  headers (ID/Title/Date, etc.) also rendered as unstyled plain links,
+  the same gap already fixed for table-cell links elsewhere.
 - Default theme: a deeply-nested comment reply thread was cramped on
   narrow mobile widths — the per-level indentation and avatar size now
   shrink below 480px so the deepest allowed reply still has a readable

@@ -302,7 +302,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                                         <?php endif; ?>
                                     <?php else: ?>
                                         <?php if ($listedPost->status === PostStatus::Published): ?>
-                                            <a class="lp-button--link" href="<?= esc_url(post_permalink($listedPost)) ?>" target="_blank" rel="noopener">View</a>
+                                            <a class="lp-button lp-button--link lp-button--link--view" href="<?= esc_url(post_permalink($listedPost)) ?>" target="_blank" rel="noopener">View</a>
                                         <?php endif; ?>
                                         <?php $duplicateFormId = 'post-duplicate-form-' . $listedPost->id; ?>
                                         <span class="lp-admin__inline-form">
