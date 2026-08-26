@@ -21,9 +21,13 @@ All notable changes to Lumora Press are documented in this file.
 - Downloads: the Add Download screen now offers a third source option,
   "Use an existing file from the Media Library," alongside Upload and
   External URL, via a new file picker (LPP-012). The Edit Download
-  screen gained a matching "Replace file" panel for File-typed
-  downloads — upload a new file, or pick one already in the Media
-  Library — instead of requiring delete-and-re-add to change one.
+  screen gained matching "Replace with a file"/"Replace with a URL"
+  panels, shown for every download regardless of its current type —
+  a File-typed download's file can be swapped for a different one (a
+  new upload or one picked from the Library) or replaced by an
+  external URL entirely, and a Url-typed download can likewise be
+  switched to a hosted file, instead of requiring delete-and-re-add to
+  change either.
 
 ### Fixed
 

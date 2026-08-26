@@ -144,13 +144,16 @@ final class DownloadService
     }
 
     /**
-     * Changing the underlying *file* of a File-typed download is out of
-     * scope — Media Manager's own edit panel doesn't support replacing a
-     * file either; delete and re-add covers that case. $externalUrl is
-     * ignored for a File-typed download. $descriptionFormat left null
-     * keeps the download's existing stored format (mirrors
-     * PageService::update()'s identical "null means unchanged"
-     * convention for its own $contentFormat parameter).
+     * $externalUrl only ever applies here to a download that's *already*
+     * Url-typed (editing its existing target) — swapping a File-typed
+     * download's file, or converting between File and Url entirely, is
+     * replaceFile()'s/convertToFile()'s/convertToUrl()'s job (LPP-012),
+     * called separately before this method by the same admin view save
+     * handler; this method only ever touches title/description/folder/
+     * (same-type) URL. $descriptionFormat left null keeps the download's
+     * existing stored format (mirrors PageService::update()'s identical
+     * "null means unchanged" convention for its own $contentFormat
+     * parameter).
      */
     public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl, ?ContentFormat $descriptionFormat = null): bool
     {
@@ -258,6 +261,118 @@ final class DownloadService
         ) > 0;
 
         if ($updated && $oldMediaOwned && $oldMediaId !== null && $oldMediaId !== $newMediaId && !$this->referencedByAnotherDownload('media_id', $oldMediaId, $id)) {
+            $this->media->delete($oldMediaId);
+        }
+
+        return $updated;
+    }
+
+    /**
+     * LPP-012: converts a Url-typed download into a File-typed one — a
+     * download's type isn't fixed at creation after all; a URL that
+     * turns out to need to become a real hosted file (or vice versa,
+     * see convertToUrl() below) is a real, expected need. $newMediaId/
+     * $newMediaOwned work exactly like replaceFile()'s own — a fresh
+     * upload (owned) or a Media Library pick (not owned).
+     *
+     * The old Redirect is deleted when no other download still
+     * references it — the same referencedByAnotherDownload() guard
+     * delete()/replaceFile() already use for Media. No ownership check
+     * is needed for the Redirect the way replaceFile() needs one for
+     * Media: unlike createFromExistingMedia(), nothing ever attaches a
+     * *pre-existing, independently-created* Redirect to a download —
+     * every Redirect a download ever has was created by create()/
+     * convertToUrl() specifically for that download, so it's always
+     * safe to clean up once nothing references it any more.
+     *
+     * False (no-op) for a download that's already File-typed —
+     * replaceFile() is that method's job — or an unknown $id/$newMediaId.
+     */
+    public function convertToFile(int $id, int $newMediaId, bool $newMediaOwned = true): bool
+    {
+        $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
+
+        if ($row === null || $row['type'] !== DownloadType::Url->value) {
+            return false;
+        }
+
+        if ($this->media->find($newMediaId) === null) {
+            return false;
+        }
+
+        $oldRedirectId = $row['redirect_id'] !== null ? (int) $row['redirect_id'] : null;
+
+        $updated = $this->database->execute(
+            'UPDATE ' . $this->table() . '
+                SET type = :type, media_id = :media_id, media_owned = :media_owned, redirect_id = NULL, updated_at = :updated_at
+              WHERE id = :id',
+            [
+                'type' => DownloadType::File->value,
+                'media_id' => $newMediaId,
+                'media_owned' => $newMediaOwned ? 1 : 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ],
+        ) > 0;
+
+        if ($updated && $oldRedirectId !== null && !$this->referencedByAnotherDownload('redirect_id', $oldRedirectId, $id)) {
+            $this->redirects->delete($oldRedirectId);
+        }
+
+        return $updated;
+    }
+
+    /**
+     * LPP-012: converts a File-typed download into a Url-typed one —
+     * convertToFile()'s mirror. Creates a fresh Redirect the same way
+     * create()'s own Url branch does (a unique `downloads/{slug}`
+     * source path via generateUniqueSourcePath(), against the
+     * download's *current* title — a simultaneous title change in the
+     * same save is applied afterward by update(), same as it always
+     * was; this never renames an existing Redirect's source path either).
+     *
+     * The old Media row is deleted only when it was owned (see
+     * Download::$mediaOwned's own docblock — an attached-from-the-
+     * library file must never be deleted just because this download
+     * stops using it) and no other download still references it — the
+     * same guard replaceFile() uses for the same reason.
+     *
+     * False (no-op) for a download that's already Url-typed, an unknown
+     * $id, or a blank $externalUrl.
+     */
+    public function convertToUrl(int $id, string $externalUrl): bool
+    {
+        $externalUrl = trim($externalUrl);
+
+        if ($externalUrl === '') {
+            return false;
+        }
+
+        $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
+
+        if ($row === null || $row['type'] !== DownloadType::File->value) {
+            return false;
+        }
+
+        $oldMediaId = $row['media_id'] !== null ? (int) $row['media_id'] : null;
+        $oldMediaOwned = (int) ($row['media_owned'] ?? 1) === 1;
+        $folderId = $row['folder_id'] !== null ? (int) $row['folder_id'] : null;
+
+        $redirect = $this->redirects->create($this->generateUniqueSourcePath((string) $row['title']), $externalUrl, 301, $folderId);
+
+        $updated = $this->database->execute(
+            'UPDATE ' . $this->table() . '
+                SET type = :type, media_id = NULL, media_owned = 1, redirect_id = :redirect_id, updated_at = :updated_at
+              WHERE id = :id',
+            [
+                'type' => DownloadType::Url->value,
+                'redirect_id' => (int) $redirect['id'],
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ],
+        ) > 0;
+
+        if ($updated && $oldMediaOwned && $oldMediaId !== null && !$this->referencedByAnotherDownload('media_id', $oldMediaId, $id)) {
             $this->media->delete($oldMediaId);
         }
 

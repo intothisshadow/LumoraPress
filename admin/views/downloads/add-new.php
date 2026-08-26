@@ -363,35 +363,59 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $error = 'Please enter a title.';
             } else {
                 /*
-                 * LPP-012: replacing a File-typed download's file — either
-                 * a brand-new upload (a fresh Media row, created here the
+                 * LPP-012: attaching/replacing a file — either a
+                 * brand-new upload (a fresh Media row, created here the
                  * same way create()'s own File branch does) or an
                  * already-uploaded one picked via downloads-picker.js.
-                 * An actual uploaded $_FILES entry always wins over a
-                 * picked existing_media_id if a form somehow submitted
-                 * both (shouldn't happen — the view only ever shows one
-                 * at a time being filled in — but this is the more
-                 * conservative "the file the admin most recently
-                 * interacted with" choice).
+                 * Shown (and handled) regardless of the download's
+                 * *current* type — a Url-typed download can be turned
+                 * into a File-typed one this way, not just an existing
+                 * File-typed one replaced. An actual uploaded $_FILES
+                 * entry always wins over a picked existing_media_id if a
+                 * form somehow submitted both (shouldn't happen — the
+                 * view only ever shows one at a time being filled in —
+                 * but this is the more conservative "the file the admin
+                 * most recently interacted with" choice); either one
+                 * also wins over a same-request URL field edit below —
+                 * an explicit file action reads as more deliberate than
+                 * a text field that might just be showing untouched
+                 * pre-filled/autofilled content.
                  */
-                if ($editingDownload !== null && $editingDownload->type === DownloadType::File) {
-                    if (isset($_FILES['replace_file']) && $_FILES['replace_file']['error'] === UPLOAD_ERR_OK) {
-                        $uploadedReplacement = $kernel->media->upload($_FILES['replace_file'], $currentUser->id, $folderId > 0 ? $folderId : null);
-                        $kernel->thumbnails->generate($uploadedReplacement);
-                        // Freshly uploaded specifically for this download
-                        // — owned (the default), so a later replace/delete
-                        // is free to clean it up.
-                        $downloads->replaceFile($id, (int) $uploadedReplacement['id']);
-                    } else {
-                        $replaceMediaId = (int) ($_POST['replace_media_id'] ?? 0);
+                $newMediaId = null;
+                $newMediaOwned = true;
 
-                        if ($replaceMediaId > 0) {
-                            // Picked from the Media Library — not owned,
-                            // see replaceFile()'s own docblock for why
-                            // that matters.
-                            $downloads->replaceFile($id, $replaceMediaId, newMediaOwned: false);
-                        }
+                if (isset($_FILES['replace_file']) && $_FILES['replace_file']['error'] === UPLOAD_ERR_OK) {
+                    $uploadedReplacement = $kernel->media->upload($_FILES['replace_file'], $currentUser->id, $folderId > 0 ? $folderId : null);
+                    $kernel->thumbnails->generate($uploadedReplacement);
+                    $newMediaId = (int) $uploadedReplacement['id'];
+                    // Freshly uploaded specifically for this download —
+                    // owned (the default), so a later replace/delete is
+                    // free to clean it up.
+                } else {
+                    $replaceMediaId = (int) ($_POST['replace_media_id'] ?? 0);
+
+                    if ($replaceMediaId > 0) {
+                        $newMediaId = $replaceMediaId;
+                        // Picked from the Media Library — not owned, see
+                        // replaceFile()'s/convertToFile()'s own docblocks
+                        // for why that matters.
+                        $newMediaOwned = false;
                     }
+                }
+
+                if ($newMediaId !== null && $editingDownload !== null) {
+                    if ($editingDownload->type === DownloadType::File) {
+                        $downloads->replaceFile($id, $newMediaId, newMediaOwned: $newMediaOwned);
+                    } else {
+                        $downloads->convertToFile($id, $newMediaId, newMediaOwned: $newMediaOwned);
+                    }
+                } elseif ($editingDownload !== null && $editingDownload->type === DownloadType::File && $externalUrl !== '') {
+                    // LPP-012: the mirror direction — a File-typed
+                    // download whose URL field was filled in converts to
+                    // Url-typed. update() below still applies $externalUrl
+                    // too, but only to an *already*-Url-typed download —
+                    // harmless no-op there since this already just set it.
+                    $downloads->convertToUrl($id, $externalUrl);
                 }
 
                 $downloads->update($id, $title, $description, $folderId > 0 ? $folderId : null, $externalUrl !== '' ? $externalUrl : null, $descriptionFormat);
@@ -524,46 +548,54 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 </select>
             </p>
 
-            <?php /* Changing a download's type (File <-> URL) isn't supported — see DownloadService::update()'s docblock; delete and re-add covers that case. A File download's underlying file itself is replaceable below (LPP-012). */ ?>
+            <?php /* LPP-012: a download's type isn't fixed after creation — either option below can also switch it (Url -> File via the Replace-with-a-file panel, File -> Url via the URL field), not just edit the existing source in place. See DownloadService::convertToFile()/convertToUrl()'s own docblocks. */ ?>
             <p class="lp-field">
-                <strong>Download source:</strong>
+                <strong>Current source:</strong>
                 <span class="lp-field__hint">
                     <?php if ($editingDownload->type === DownloadType::File): ?>
                         Uploaded file<?= $currentFileMedia !== null ? ' — ' . esc_html((string) $currentFileMedia['file_name']) : '' ?>
                     <?php else: ?>
-                        External URL
+                        External URL — <?= esc_html((string) ($editingDownload->targetUrl ?? '')) ?>
                     <?php endif; ?>
                 </span>
             </p>
 
-            <?php if ($editingDownload->type === DownloadType::Url): ?>
+            <fieldset class="lp-field">
+                <legend>Replace with a file</legend>
+                <p class="lp-field__hint">
+                    <?= $editingDownload->type === DownloadType::File
+                        ? 'Upload a new file, or choose one already in the Media Library, to replace this download\'s current file. Leave both blank to keep the current file.'
+                        : 'Upload a file, or choose one already in the Media Library, to switch this download from an external URL to a hosted file.' ?>
+                </p>
+                <p class="lp-field">
+                    <label for="download-replace-file">Upload new file</label>
+                    <input type="file" id="download-replace-file" name="replace_file">
+                </p>
+                <div
+                    class="lp-download-file-picker"
+                    data-lp-download-picker
+                    data-picker-url="<?= esc_url(admin_url('downloads/add-new')) ?>"
+                    data-picker-csrf="<?= esc_attr(Csrf::token('download_file_picker_query')) ?>"
+                    data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                >
+                    <input type="hidden" name="replace_media_id" data-picker-value>
+                    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Server&hellip;</button>
+                    <span class="lp-download-file-picker__chosen" data-picker-chosen><?= $currentFileMedia !== null ? 'Current: ' . esc_html((string) $currentFileMedia['file_name']) : '' ?></span>
+                </div>
+            </fieldset>
+
+            <fieldset class="lp-field">
+                <legend>Replace with a URL</legend>
+                <p class="lp-field__hint">
+                    <?= $editingDownload->type === DownloadType::Url
+                        ? 'Editing this updates the existing external link.'
+                        : 'Filling this in switches this download from a hosted file to an external URL.' ?>
+                </p>
                 <p class="lp-field">
                     <label for="download-external-url">URL</label>
-                    <input type="text" id="download-external-url" name="external_url" value="<?= esc_attr($editingDownload->targetUrl ?? '') ?>">
+                    <input type="text" id="download-external-url" name="external_url" value="<?= $editingDownload->type === DownloadType::Url ? esc_attr($editingDownload->targetUrl ?? '') : '' ?>" placeholder="https://example.com/file.zip">
                 </p>
-            <?php endif; ?>
-
-            <?php if ($editingDownload->type === DownloadType::File): ?>
-                <fieldset class="lp-field">
-                    <legend>Replace file</legend>
-                    <p class="lp-field__hint">Upload a new file, or choose one already in the Media Library, to replace this download's current file. Leave both blank to keep the current file.</p>
-                    <p class="lp-field">
-                        <label for="download-replace-file">Upload new file</label>
-                        <input type="file" id="download-replace-file" name="replace_file">
-                    </p>
-                    <div
-                        class="lp-download-file-picker"
-                        data-lp-download-picker
-                        data-picker-url="<?= esc_url(admin_url('downloads/add-new')) ?>"
-                        data-picker-csrf="<?= esc_attr(Csrf::token('download_file_picker_query')) ?>"
-                        data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
-                    >
-                        <input type="hidden" name="replace_media_id" data-picker-value>
-                        <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Server&hellip;</button>
-                        <span class="lp-download-file-picker__chosen" data-picker-chosen><?= $currentFileMedia !== null ? 'Current: ' . esc_html((string) $currentFileMedia['file_name']) : '' ?></span>
-                    </div>
-                </fieldset>
-            <?php endif; ?>
+            </fieldset>
 
             <button type="submit" class="lp-button lp-button--primary">Save Changes</button>
         </form>
