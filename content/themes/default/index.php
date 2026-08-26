@@ -59,6 +59,9 @@ get_header();
                             <p class="lp-post-list__meta">
                                 <?php the_author_link($post); ?>
                                 <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
+                                <?php if (post_categories($post) !== []): ?>
+                                    <span class="lp-post-list__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
+                                <?php endif; ?>
                             </p>
                             <?php $moreTagContent = get_the_content_up_to_more_tag($post); ?>
                             <?php if ($moreTagContent !== null): ?>

@@ -365,5 +365,12 @@ them via FTP/SFTP or your hosting file manager).
   &rsaquo; General), with a per-user override on each user's own "My
   Profile" page (or set for them by an administrator) and an optional
   toggle to lock everyone to the site default.
+- **Public light/dark mode toggle** — a header button lets a visitor
+  explicitly pick Light or Dark, persisted in their browser and applied
+  before the page paints; falls back to the OS's preference when no
+  explicit choice has been made.
+- **Post categories & edit link** — single posts and post listings show
+  each post's assigned categories, and a signed-in author/editor with
+  permission sees a quick "Edit this post" link on the single post view.
 
 See `TODO.md` for planned work and known gaps.

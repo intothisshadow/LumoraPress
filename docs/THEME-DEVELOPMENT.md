@@ -374,10 +374,12 @@ reasoning (this bit Lumora Press's own `content_width` field once — see
 
 ## Dark mode
 
-There's no PHP-level dark-mode API — no helper function, no body class.
-The entire convention lives in `style.css`: define your theme's colors as
-CSS custom properties on `:root`, then override them inside a
-`@media (prefers-color-scheme: dark)` block with the same variable names:
+The base convention still lives entirely in `style.css`: define your
+theme's colors as CSS custom properties on `:root`, then override them
+inside a `@media (prefers-color-scheme: dark)` block with the same
+variable names. As of LP-117, a visitor can also override that OS
+preference explicitly via a header toggle — supporting that needs one
+extra CSS guard plus one `<script>` tag, both shown below.
 
 ```css
 :root {
@@ -385,16 +387,59 @@ CSS custom properties on `:root`, then override them inside a
     --my-text: #1a1a1a;
 }
 
+/* :not([data-theme="light"]) stops an explicit Light choice (below)
+   from being overridden back to dark by a dark OS preference. */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --my-bg: #1a1a1a;
         --my-text: #f0f0f0;
     }
 }
+
+/* An explicit Dark choice, regardless of OS preference. Keep this
+   block's values identical to the media-query block above. */
+:root[data-theme="dark"] {
+    --my-bg: #1a1a1a;
+    --my-text: #f0f0f0;
+}
 ```
 
-No JavaScript toggle, no server round-trip — pure OS-preference media
-query. See the default theme's `style.css` for a complete real example.
+Add a toggle button anywhere in your markup — `data-lp-theme-toggle` is
+the only contract theme-toggle.js looks for:
+
+```php
+<button type="button" class="lp-theme-toggle" data-lp-theme-toggle aria-label="Toggle dark mode">
+    <span class="lp-theme-toggle__icon lp-theme-toggle__icon--dark" aria-hidden="true">🌙</span>
+    <span class="lp-theme-toggle__icon lp-theme-toggle__icon--light" aria-hidden="true">☀️</span>
+</button>
+```
+
+Which icon is visible is driven purely by CSS (the same `data-theme`/
+`prefers-color-scheme` guard as the color tokens above), not JS — see
+the default theme's `style.css` for the `.lp-theme-toggle__icon--*`
+rules to copy.
+
+Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`)
+`<script src>` in `<head>`, **before** your theme's stylesheet `<link>`:
+
+```php
+<script src="<?= esc_url(core_asset_url('js/theme-toggle.js')) ?>"></script>
+```
+
+This ordering matters: the script runs synchronously and sets
+`data-theme` on `<html>` from `localStorage` (key `lp-theme`) before the
+stylesheet is even requested, so there's no flash of the wrong theme on
+reload. It must be an external file, not an inline `<script>` — this
+project's Content-Security-Policy `script-src` has no
+`'unsafe-inline'`/nonce allowance (only `style-src` does, via
+`csp_style_nonce()`), so an inline script here would be silently
+blocked by every browser. A click on any `[data-lp-theme-toggle]`
+button only ever switches between an explicit Light and Dark — never
+back to "follow the system" — mirroring the admin sidebar's own quick
+theme toggle. See the default theme's `header.php`/`style.css` for a
+complete real example, and `xena-theme`'s/`duskline`'s for how the same
+three pieces (CSS guard, script tag, toggle button) adapt to a theme
+with its own token names and header layout.
 
 If you also expose one of these tokens as a Theme Options `cssVariable`
 field, give it `allowEmpty: true` (see above) so an admin leaving the

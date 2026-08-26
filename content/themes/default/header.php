@@ -48,6 +48,17 @@ $meta_description = $seo_description ?? meta_description();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?php
+    /*
+     * LP-117: a plain (non-deferred, non-module) <script src> runs
+     * synchronously here, before anything else in <head> — including
+     * style.css below — so it can set data-theme from localStorage
+     * before the page paints. It has to be an external file, not an
+     * inline <script>: script-src has no CSP nonce/unsafe-inline
+     * allowance (see theme-toggle.js's own docblock).
+     */
+    ?>
+    <script src="<?= esc_url(core_asset_url('js/theme-toggle.js')) ?>"></script>
     <title><?= $seo_title !== null && $seo_title !== '' ? esc_html($seo_title) . ' ‹ ' : '' ?><?= esc_html(site_name()) ?></title>
     <?php if ($meta_description !== ''): ?>
         <meta name="description" content="<?= esc_attr($meta_description) ?>">
@@ -169,6 +180,10 @@ $meta_description = $seo_description ?? meta_description();
             <input class="lp-search-form__input" type="search" id="lp-search-q" name="q" value="<?= esc_attr((string) ($_GET['q'] ?? '')) ?>" placeholder="Search&hellip;">
             <button class="lp-search-form__button" type="submit">Search</button>
         </form>
+        <button type="button" class="lp-theme-toggle" data-lp-theme-toggle aria-label="Toggle dark mode">
+            <span class="lp-theme-toggle__icon lp-theme-toggle__icon--dark" aria-hidden="true">🌙</span>
+            <span class="lp-theme-toggle__icon lp-theme-toggle__icon--light" aria-hidden="true">☀️</span>
+        </button>
     </div>
 </header>
 <div class="lp-site-body">

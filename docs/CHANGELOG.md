@@ -4,6 +4,21 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Visitor-facing light/dark mode toggle for the default theme (LP-117): a
+  header button that switches between an explicit Light and Dark choice,
+  persisted in the browser (`localStorage`) so it survives navigation and
+  repeat visits, and falling back to the OS's `prefers-color-scheme` when
+  no explicit choice has been made yet. Applied before the page paints
+  (a small external script loads before the theme's stylesheet), so
+  there's no flash of the wrong theme on reload.
+- Default theme: single posts and post listings/archives now show each
+  post's assigned categories, linked to their category archive (LP-118).
+- Default theme: a logged-in author/editor with permission to edit a
+  post now sees a quiet "Edit this post" link at the end of the single
+  post view, linking straight to that post's admin editor (LP-118).
+
 ## [0.7.0] — 2026-08-26
 
 ### Added

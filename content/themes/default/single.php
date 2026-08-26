@@ -25,6 +25,9 @@ get_header(['post' => $post]);
             <p class="lp-post__meta">
                 <?php the_author_link($post); ?>
                 <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
+                <?php if (post_categories($post) !== []): ?>
+                    <span class="lp-post__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
+                <?php endif; ?>
             </p>
             <?php if (has_post_thumbnail($post)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
@@ -32,6 +35,10 @@ get_header(['post' => $post]);
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
+            <?php $postEditUrl = edit_post_link($post); ?>
+            <?php if ($postEditUrl !== null): ?>
+                <p class="lp-post__edit-link"><a href="<?= esc_url($postEditUrl) ?>">Edit this post</a></p>
+            <?php endif; ?>
         </article>
         <?php comments_template($comment_data); ?>
     </main>
