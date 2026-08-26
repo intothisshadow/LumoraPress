@@ -436,6 +436,18 @@ $editorFolderTree = array_map(
 $previewMediaId = $editingDownload?->thumbnailMediaId
     ?? ($editingDownload !== null && $editingDownload->type === DownloadType::File ? $editingDownload->mediaId : null);
 $previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId) : null;
+
+/*
+ * LPP-012: the current file's own filename, for the "Replace file"
+ * panel and the "Download source" hint above it — deliberately looked
+ * up separately from $previewMedia above, which prefers thumbnailMediaId
+ * (a distinct, explicitly-chosen representative image) over the
+ * download's own file when both are set, so it isn't reliably "what
+ * file this download actually serves."
+ */
+$currentFileMedia = $editingDownload !== null && $editingDownload->type === DownloadType::File && $editingDownload->mediaId !== null
+    ? $kernel->media->find($editingDownload->mediaId)
+    : null;
 ?>
 <h1 class="lp-admin__title"><?= $editingDownload !== null ? 'Edit Download' : 'Add New Download' ?></h1>
 
@@ -515,7 +527,13 @@ $previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId)
             <?php /* Changing a download's type (File <-> URL) isn't supported — see DownloadService::update()'s docblock; delete and re-add covers that case. A File download's underlying file itself is replaceable below (LPP-012). */ ?>
             <p class="lp-field">
                 <strong>Download source:</strong>
-                <span class="lp-field__hint"><?= $editingDownload->type === DownloadType::File ? 'Uploaded file' : 'External URL' ?></span>
+                <span class="lp-field__hint">
+                    <?php if ($editingDownload->type === DownloadType::File): ?>
+                        Uploaded file<?= $currentFileMedia !== null ? ' — ' . esc_html((string) $currentFileMedia['file_name']) : '' ?>
+                    <?php else: ?>
+                        External URL
+                    <?php endif; ?>
+                </span>
             </p>
 
             <?php if ($editingDownload->type === DownloadType::Url): ?>
@@ -542,7 +560,7 @@ $previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId)
                     >
                         <input type="hidden" name="replace_media_id" data-picker-value>
                         <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Server&hellip;</button>
-                        <span class="lp-download-file-picker__chosen" data-picker-chosen></span>
+                        <span class="lp-download-file-picker__chosen" data-picker-chosen><?= $currentFileMedia !== null ? 'Current: ' . esc_html((string) $currentFileMedia['file_name']) : '' ?></span>
                     </div>
                 </fieldset>
             <?php endif; ?>
