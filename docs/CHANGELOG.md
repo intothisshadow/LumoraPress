@@ -19,6 +19,13 @@ All notable changes to Lumora Press are documented in this file.
   post now sees a quiet "Edit this post" link at the end of the single
   post view, linking straight to that post's admin editor (LP-118).
 
+### Fixed
+
+- Default theme: a deeply-nested comment reply thread was cramped on
+  narrow mobile widths — the per-level indentation and avatar size now
+  shrink below 480px so the deepest allowed reply still has a readable
+  content column (LP-119).
+
 ## [0.7.0] — 2026-08-26
 
 ### Added

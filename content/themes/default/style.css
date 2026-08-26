@@ -1410,6 +1410,23 @@ img {
     left: -9999px;
 }
 
+/* LP-119 — the reply chain's own margin/padding/avatar size compound at
+   each nesting level (comment_list()'s own $maxDepth cap still applies
+   here — 5 levels by default); on a narrow phone that eats most of the
+   content column by the deepest allowed level, so both shrink here. */
+@media (max-width: 480px) {
+    .lp-comment-list--replies {
+        margin-left: 0.75rem;
+        padding-left: 0.5rem;
+    }
+
+    .lp-comment__avatar {
+        width: 32px;
+        height: 32px;
+        margin: 0 0.5rem 0.35rem 0;
+    }
+}
+
 .lp-comments__pagination {
     display: flex;
     align-items: center;
