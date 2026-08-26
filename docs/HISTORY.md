@@ -6739,3 +6739,358 @@ time, not runtime enumeration defenses.
   beyond the small fixed Administrator blocklist above — flagged as a
   possible future enhancement, not built here
 
+---
+
+### LP-026. Manual Updates (ZIP Upload)
+
+**Implemented (2026-08-10).** The six items deferred on 2026-08-06 (see
+DECISIONS.md) are now all built and covered by the PHP Test Suite:
+- **Maintenance mode during update** — `UpdateService::install()` now
+  auto-enables the existing `maintenance_mode_enabled` option (via
+  `MaintenanceGate`) for the duration of the update, in a try/finally that
+  restores whatever value it held beforehand — an administrator who had
+  already turned maintenance mode on deliberately still finds it on
+  afterward, not toggled off. `/admin/*` stays exempt throughout (see
+  `MaintenanceGate`'s own docblock), so the admin area itself is never
+  locked out by its own update.
+- **Warn about active users** — a new `last_active_at` column on
+  `{prefix}users` (migration 0031) is stamped once per authenticated admin
+  page load (`admin/index.php`, right after `$currentUser` resolves) via
+  `UserService::touchLastActive()`. `UpdateService::checkUpload()` surfaces
+  a non-blocking warning (`activeUserProblems()`) when another user (never
+  the administrator running the check) was active within the last 5
+  minutes.
+- **Detect modified core files** — a new `UpdateChecksumManifest` service
+  records a SHA-256 checksum for every file under `corePaths` immediately
+  after each successful `install()` (`storage/updates/checksums.json`,
+  same on-disk-JSON convention as `UpdateManifest`). The *next*
+  `checkUpload()` compares the live filesystem against that baseline
+  (`modifiedCoreFileProblems()`) and warns — non-blocking, since
+  overwriting a hand-edited file during an update is often exactly what's
+  wanted — when a core file was edited or removed since the last install.
+  An explicit backup restore (`restoreBackup()`, which can jump to an
+  arbitrary older backup) clears the checksum baseline rather than
+  recomputing it, since the restored files aren't necessarily "pristine."
+- **Backup verification** — `UpdateBackupService::backupFiles()` reopens
+  the just-written ZIP with `ZipArchive::CHECKCONS` (validates central
+  directory/local header consistency without re-reading every byte, to
+  avoid doubling I/O cost on large sites); `backupDatabase()` confirms a
+  non-empty dump ends with the same statement marker every completed
+  `fwrite()` appends, catching a dump truncated by a crash or a full disk.
+  Both throw before `install()` ever proceeds past taking that backup.
+- **Test interrupted updates** — two new `UpdateServiceIntegrationTest`
+  cases exercise distinct interruption points beyond the existing
+  migration-failure test: a post-overlay integrity-check failure (`version.php`
+  deliberately excluded from `corePaths` so the installed-version check
+  fails after overlay/migrate complete), confirming automatic rollback
+  still restores every backed-up file and the database cleanly.
+- **PHP 8.2 / PHP 8.3 compatibility** — verified via a full
+  `./run-tests-all-php.sh` Docker matrix run (MariaDB 11 + php82/php83/
+  php84): every LP-026-related test (new and existing) passed on all three
+  versions; see `PHP Test Suite/TEST_LOG.md`'s 2026-08-10 entry.
+
+**Implemented (2026-07-21).** Manually verified end-to-end on a live install:
+the Dashboard's leftover-`install/`-directory alert (LP-030), a real ZIP
+upload + install, and the automatic file/database backup all confirmed
+working.
+
+**Fixed (2026-07-21):** live testing showed a successful update left
+`install/` behind on disk — it's one of the overlaid core paths, so a
+package that ships it resurrects the directory even after the
+administrator had deleted it post-install. `UpdateService::install()` now
+removes `install/` (best-effort, via `InstallerCleanup`) right after a
+successful update; see `docs/CHANGELOG.md`'s "Fixed" entry.
+
+**Added (2026-08-01):** `UpdateManifest` (`app/Services/UpdateManifest.php`)
+tracks which top-level `corePaths` entries were in effect as of the last
+successful install/restore, in a small JSON file
+(`storage/updates/core-manifest.json`, same on-disk-JSON convention as
+`CacheManager`'s purge log). `UpdateService::install()` now removes any
+top-level corePath entry that was tracked previously but is no longer
+part of the current `corePaths` configuration (the only way a corePath
+can actually go stale — `overlayPath()` already deletes-then-replaces
+each corePath wholesale, so nothing can go stale *inside* one). Scoped
+so it can never touch anything an administrator added — comparison is
+against the codebase's own fixed `corePaths` list, never against the
+contents of an uploaded release ZIP. First run after this shipped is
+always a safe no-op (no prior manifest to compare against).
+`UpdateBackupService::restoreFiles()` rewrites the same manifest after a
+successful restore (automatic rollback or an admin-initiated Restore),
+since restore itself never deletes anything — this can only ever cause
+under-removal of a stale leftover later, never removal of something it
+shouldn't.
+
+**Ten items implemented (2026-08-06):**
+- **Warn about development builds** — `UpdatePackageValidator` adds a
+  (non-blocking) warning when the package's version string carries a
+  SemVer-style `-dev`/`-alpha`/`-beta`/`-rc` suffix.
+- **Database version** — `UpdateService::databaseVersionProblems()`
+  queries the connected server's own `SELECT VERSION()` against README.md's
+  stated minimums (MySQL 5.6.4+ / MariaDB 10.0.5+), correctly distinguishing
+  the two families. Not to be confused with `migrationStatus()`'s "how many
+  of this app's own migrations have run" — being behind on migrations
+  before an update is expected/normal (that's what `install()` itself then
+  runs), not a pre-update blocker.
+- **Configuration compatibility** — `UpdateService::configCompatibilityProblems()`
+  confirms `config/config.php` exists, returns an array, and has every
+  required key (`db_host`/`db_name`/`db_user`/`db_password`/`db_charset`/
+  `table_prefix`/`secret_key`) with `secret_key`/`table_prefix` non-empty.
+- **Verify backup location** — `UpdateService::backupLocationProblems()`
+  checks the backup destination (or its nearest existing ancestor, since
+  it's created lazily on first backup) is writable with a sane minimum of
+  free space, before an update ever gets as far as actually writing one.
+- **Rebuild caches if necessary** — a new `lumora_press_after_update` hook
+  listener in `include/bootstrap.php` purges the external reverse-proxy/
+  edge cache (LiteSpeed, via the existing Cache API) on a successful
+  update, alongside `install()`'s own `storage/cache/` folder clear.
+- **Manual restore point** — this was already fully built
+  (`UpdateService::createBackupNow()` + the "Back up now" button in the
+  Backups panel) but the checkbox had never been ticked; corrected here,
+  not new work.
+- **Drag-and-drop upload** / **Display upload progress** / **Progress
+  indicator** / **Add progress UI** — one feature covering four checklist
+  lines (the same feature was listed separately under Update Package, User
+  Interface, and Admin Interface). `admin/assets/js/update-upload.js`
+  turns the Manual Update box into an HTML5 drop zone and intercepts the
+  form's submit to upload via `XMLHttpRequest` with a real progress bar
+  (`upload.onprogress`), replacing the document with the server's response
+  on completion — the same full-page result a normal synchronous submit
+  would have produced, just with visible progress for what's often a
+  tens-of-MB archive.
+
+`Detect modified core files`, `Warn about active users`, `Backup
+verification`, `Test interrupted updates`, and `PHP 8.2`/`PHP 8.3
+compatibility` remain open — explicitly deferred, not declined; see the
+2026-08-06 DECISIONS.md entry. `Display backup management` was flagged
+mid-session as likely already satisfied and confirmed by the user
+afterward — see that same entry.
+
+### Goal
+
+Implement a safe, user-friendly manual update system that allows administrators to upload a release ZIP through the Lumora Press admin panel to update the installation without requiring FTP or SSH access.
+
+The update process should be reliable, preserve user data, create automatic backups, and recover gracefully from failures.
+
+---
+
+### Features
+
+#### Update Package
+
+- [x] Upload ZIP package
+- [x] Drag-and-drop upload
+- [x] Browse for ZIP file
+- [x] Display upload progress
+- [x] Validate uploaded archive
+- [x] Reject unsupported file types
+
+#### Package Validation
+
+- [x] Verify ZIP integrity
+- [x] Verify Lumora package structure
+- [x] Verify version information
+- [x] Prevent downgrades (optional)
+- [x] Warn about development builds
+- [x] Validate required files
+
+#### Compatibility Checks
+
+- [x] PHP version
+- [x] Required extensions
+- [x] File permissions
+- [x] Disk space
+- [x] Database version
+- [x] Configuration compatibility
+
+#### Pre-Update Checks
+
+- [x] Maintenance mode
+- [x] Warn about active users
+- [x] Verify writable directories
+- [x] Verify backup location
+- [x] Detect modified core files
+- [x] Display update summary
+
+#### Automatic Backup
+
+- [x] Backup application files
+- [x] Backup database
+- [x] Timestamp backups
+- [x] Automatic cleanup of old backups
+- [x] Manual restore point
+- [x] Backup verification
+
+#### Update Process
+
+- [x] Extract archive safely
+- [x] Preserve configuration files
+- [x] Preserve uploads
+- [x] Preserve themes
+- [x] Preserve plugins (future)
+- [x] Replace core files
+- [x] Remove obsolete files — `UpdateManifest` + `UpdateService::removeObsoleteCorePaths()`, 2026-08-01; see the ticket-level note above
+- [x] Run database migrations
+- [x] Clear caches
+- [x] Rebuild caches if necessary
+
+#### Rollback
+
+- [x] Detect failed update
+- [x] Restore files
+- [x] Restore database
+- [x] Display recovery report
+- [x] Preserve error logs
+
+#### User Interface
+
+- [x] Upload page
+- [x] Progress indicator
+- [x] Step-by-step status
+- [x] Success screen
+- [x] Error reporting
+- [x] View update history
+
+#### Logging
+
+- [x] Record update attempts
+- [x] Record installed version
+- [x] Record failures
+- [x] Record rollback events
+- [x] Record administrator
+
+---
+
+### Task List
+
+#### Backend
+
+- [x] Create ZIP upload handler
+- [x] Implement archive validator
+- [x] Implement compatibility checker
+- [x] Implement backup service
+- [x] Implement extraction service
+- [x] Implement updater service
+- [x] Implement rollback service
+- [x] Implement logging
+
+#### Admin Interface
+
+- [x] Create Update page
+- [x] Build upload form
+- [x] Add progress UI
+- [x] Display update logs
+- [x] Display backup management — already fully built (the Backups panel
+      on Maintenance > Updates lists every backup with Restore/Delete,
+      backed by `UpdateService::listBackups()`/`restoreBackup()`/
+      `deleteBackup()`); checkbox corrected 2026-08-06, not new work
+
+#### Testing
+
+- [x] Test valid updates
+- [x] Test corrupted ZIPs
+- [x] Test interrupted updates
+- [x] Test rollback
+- [x] Test backup restoration
+- [x] PHP 8.2 compatibility
+- [x] PHP 8.3 compatibility
+- [x] PHP 8.4 compatibility
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Document update process
+- [x] Document recovery procedures
+
+#### Success Criteria
+
+- [x] Administrators can safely update Lumora Press by uploading a ZIP file.
+- [x] Failed updates recover automatically whenever possible.
+- [x] User content and configuration are never lost.
+
+
+---
+
+### LP-112. Text Widget: WYSIWYG Editing & HTML Rendering (Text/HTML Widget)
+
+### Goal
+
+The built-in Text widget rendered its Content field as escaped plain text
+with `nl2br()` line breaks — no way to bold a word, add a link, or
+structure a list without falling back to the separate Custom HTML widget
+(raw, unsanitized markup, trusted only at the manage_themes level). Turn
+it into a proper Text/HTML widget: a lightweight WYSIWYG editor in the
+Content field, and real sanitized HTML rendering on the front end.
+
+### Checklist
+
+- [x] Add a lightweight WYSIWYG editor (`admin/assets/js/widget-editor.js`,
+      a small standalone TinyMCE instance — no image upload/Media Manager,
+      unlike the full post/page editor) to the Text widget's Content field
+      on Appearance &rsaquo; Widgets, deferred to a widget's `<details>`
+      panel actually being opened
+- [x] Change `CoreWidgets`' `text` widget type's render callback to run
+      its stored content through `ContentRenderer::render()` (the same
+      `ContentFormat::Html` sanitize/lightbox/hook pipeline a post/page's
+      HTML-format content already uses) instead of `nl2br(esc_html())`
+- [x] Relabel the widget "Text/HTML" in the Add Widget picker
+- [x] Add `.lp-widget__content` rich-text typography (headings, paragraphs,
+      links, lists, blockquote, hr, text-alignment classes) to the default
+      theme's stylesheet, so both this widget and the existing Custom HTML
+      widget render legibly instead of relying on unstyled browser
+      defaults
+- [x] Propagate the same `.lp-widget__content` typography addition to
+      `custom themes/duskline` and `custom themes/xena-theme`
+- [x] Verify end-to-end in a real browser: add a Text/HTML widget, format
+      some content with the WYSIWYG toolbar, save, and confirm it renders
+      correctly (and safely — no raw `<script>` survives) on the public
+      site
+
+---
+
+### LP-113. Bug: Double-Encoded HTML Entities In Imported Text (e.g. "TV &amp;amp; Movies")
+
+### Goal
+
+A category imported from WordPress rendered on the public site as the
+literal text "TV &amp;amp; Movies" instead of "TV &amp; Movies". Root
+cause: WordPress HTML-entity-encodes plain-text fields before storing
+them (typing "TV & Movies" in wp-admin saves `TV &amp; Movies` in the
+database) — the WordPress Importer read that value verbatim, and
+esc_html()/esc_attr() then re-encoded the already-encoded value a second
+time at render, producing `&amp;amp;` in the page source. Same bug class
+could affect tag names, post/page titles and excerpts, comment author
+names/content, user display names, and media alt text/captions —
+anything sourced from the same importer and rendered via esc_html()/
+esc_attr().
+
+### Checklist
+
+- [x] Decode every plain-text field `WordPressSource` reads
+      (`content/plugins/wordpress-importer/src/WordPressSource.php`):
+      term `name` (`terms()`/`termNamesForPost()`), `display_name`
+      (`users()`), `post_title`/`post_excerpt` (`posts()` —
+      `post_content` deliberately left alone, since it's rendered as
+      real HTML and already handles entities correctly), and
+      `comment_author`/`comment_content` (`comments()`) — via a single
+      `decodeEntities()` helper, mirroring the existing
+      `html_entity_decode()` `WordPressImportService` already applied to
+      `blogname`/`blogdescription`
+- [x] Decode `_wp_attachment_image_alt` at its one consumption site in
+      `WordPressImportService::importMedia()`
+- [x] Add `EntityDecodeRepairService` (`app/Services/`): a one-time
+      repair for content already imported (or otherwise saved) with a
+      double-encoded value before the fix above landed — scans
+      categories/tags (name, description), posts/pages (title, excerpt),
+      comments (guest_name, content), users (display_name), and media
+      (alt_text, caption, description), decoding only rows where doing
+      so actually changes the value; safe to run repeatedly
+- [x] Wire `EntityDecodeRepairService` into `Kernel`/`bootstrap.php` and
+      add a "Fix Double-Encoded Text" panel to Maintenance &rsaquo; Tools
+      (always shown, not gated behind a plugin) with a Scan & Fix button
+- [x] Unit tests: `WordPressSourceEntityDecodeTest` (import-time decode)
+      and `EntityDecodeRepairServiceTest` (existing-data repair,
+      including "leaves already-correct text untouched" and "safe to run
+      twice")
+- [x] Verify end-to-end against the real dev install: run the repair
+      against the actual "TV &amp;amp; Movies" category and confirm it
+      renders as "TV & Movies" on the public site afterward
