@@ -7094,3 +7094,1642 @@ esc_attr().
 - [x] Verify end-to-end against the real dev install: run the repair
       against the actual "TV &amp;amp; Movies" category and confirm it
       renders as "TV & Movies" on the public site afterward
+
+### LPP-004. WordPress Importer
+
+**Note (2026-08-13):** `LP-020` ("XML Import", core) was found to
+duplicate this ticket and was merged into it — see `DECISIONS.md`'s
+"LP-020 merged into LPP-004" entry. A shared Core import layer was then
+built for this ticket and `LPP-005` (Dummy Content) together:
+`app/Services/ContentImportRegistry.php` (provenance tracking — which
+batch created which rows, so they can be found/removed later) and
+`app/Services/Import/{Post,Page,User,Media,Comment}Importer.php` (thin
+wrappers over `PostService`/`PageService`/`UserService`/`MediaService`/
+`CommentService`, taking `Imported{Post,Page,User,Media,Comment}` DTOs).
+`LPP-005` is fully built on this layer and already exercises it in
+production-shaped code — see its own entry.
+
+**Implemented (2026-08-21), first pass — the direct database + local
+files path, not the WXR `.xml` path.** A new bundled plugin
+(`content/plugins/wordpress-importer/`) migrates an existing WordPress
+site via a PDO connection to its database (host/port/database/username/
+password/table prefix — the site's own live server, or a locally
+restored backup copy, either way works identically) plus a local
+filesystem copy of its `wp-content/uploads` folder — no remote file
+fetch. `WordPressSource` (a read-only, column-scoped query layer,
+never a bare `SELECT *`, since a real WordPress database typically has
+dozens of unrelated plugin tables and a `wp_options` table that can run
+into the millions of rows) reads users, categories/tags, attachments,
+pages, posts, and comments; `WordPressImportService` (the orchestrator,
+mirroring `DummyContentGenerator`'s own shape) maps each into the
+existing `Imported*` DTOs and drives them through the same Importer
+layer LPP-005 uses, in dependency order (Users → Categories/Tags →
+Media → Pages → Posts → Comments). Slugs and publish dates are
+preserved; three service methods (`UserService::create()`,
+`CommentService::create()`, `MediaService::registerExistingFile()`)
+gained a small additive optional parameter so a user's registration
+date, a comment's date, and a media item's upload date are preserved
+too, instead of always stamping "now" (every other existing caller is
+unaffected — the new parameter defaults to null/"now"). A best-effort
+pass rewrites imported attachments' own URLs inside post/page content
+to the new local media URL — full-size images only; WordPress inline
+`<img>` tags commonly reference a resized variant filename this import
+never generates, a known limitation. Comments only import onto Posts,
+not Pages — the existing `ImportedComment` DTO has no page-comment
+concept. Runs as one long synchronous admin request (Maintenance ›
+Import, once activated from Plugins), the same "no background-job
+infrastructure exists yet" precedent LPP-005 established; a "Test
+Connection" check (and a small site-name preview) runs before the real
+import, and a "Remove All Imported Content" action rolls back exactly
+what one import created via the same provenance-tracked
+`ContentImportRegistry` pattern. Covered by a new
+`WordPressImportServiceTest.php` (Unit, SQLite-fixture-backed — a new
+`SqliteDatabaseFactory::withWordPressSourceFixtures()` mirrors the
+standard WordPress core schema for this) and the full
+PHP 8.2/8.3/8.4 Docker matrix.
+
+Deferred to a later pass: the WXR `.xml` upload/parse path entirely (a
+second, separate import source); dry-run preview, resuming an
+interrupted import, and skip-vs-overwrite-existing-content semantics
+(idempotency is a hard "one import at a time, remove before re-running"
+guard instead, matching LPP-005); a redirect-mapping report and general
+internal-link rewriting beyond the media-URL rewrite described above;
+reporting on unsupported plugins/custom post types beyond silently
+skipping unknown `post_type` values; and regenerating thumbnail size
+variants. (Stage 8 Menus/Widgets shipped 2026-08-22, and Stage 1 Site
+Settings write-back shipped 2026-08-24 — see their own notes below;
+this paragraph is left as the original first-pass deferral list with
+those two items removed rather than rewritten, since everything else
+in it is still accurate.)
+
+**Follow-up (2026-08-21), same session:** every attachment initially
+landed in today's year/month folder regardless of its original
+location — found immediately after the first real import (3153 files
+dumped into one `2026/08/` folder). Fixed: `ImportedMedia` gained an
+optional `relativeDirectory` field, threaded through
+`MediaImporter::importFromLocalFile()` (falling back to today's date
+only when none is given, e.g. for `LPP-005`'s dummy content) and
+sanitized per path segment before use — a source path's `..` segment is
+dropped outright, never resolved, so an untrusted source database can
+never write outside the uploads root. `WordPressImportService` now
+passes `_wp_attached_file`'s own directory portion through
+(`dirname($relativePath)`), preserving the source's actual folder
+structure — "2020/03", "DigitalPaper/0002-Anat", etc. — instead of
+flattening every attachment into one folder.
+
+**Follow-up (2026-08-21), same session:** the source site also runs the
+Simple Download Monitor plugin (its own `sdm_downloads` post type,
+grouped by an `sdm_categories` taxonomy, displayed via a
+`[sdm_show_dl_from_category]` shortcode) — not part of this ticket's
+original scope, but real content that needed a home. Added
+`WordPressImportService::importDownloads()`: a download whose file
+already lives on the source site imports as a real Media Manager item,
+filed into a Folder matching its `sdm_categories` term (parent/child
+hierarchy preserved the same multi-pass way categories are; a download
+tagged with both a parent and child category prefers the child); a
+download that only links to an external URL (no local file to import —
+confirmed with Ariane this is often deliberate, since some hosts block
+`.zip` uploads, and Simple Download Monitor's own value there was
+counting downloads even for externally-hosted files) becomes a
+Redirect instead (`source_path` = `/downloads/{slug}`, `target_url` =
+the external URL) — `RedirectService`'s existing `hit_count`, already
+wired up in `SiteController`, replicates that download-counting
+behavior for free. Every page/post still containing
+`[sdm_show_dl_from_category]` is flagged in the import warnings (10
+found in the real source site). A real shortcode processor for it was
+then built the same session — see `LPP-007`, now complete.
+
+**Follow-up (2026-08-21), same session:** `importDownloads()` now also
+preserves each download's real historical count from Simple Download
+Monitor, instead of every migrated download restarting at 0. Confirmed
+directly against the real source database rather than guessing at
+SDM's schema: each `sdm_downloads` post carries an `sdm_count_offset`
+postmeta value (an admin-settable "starting count"), and SDM logs one
+row per actual download event in its own `{prefix}sdm_downloads`
+table — SDM's own displayed total is `offset + COUNT(*)` from that log
+(verified: a real download with offset 275 and 920 logged rows matched
+its real displayed total of 1195 exactly). New
+`WordPressSource::sdmDownloadStats()` reads both and adds them, falling
+back to just the offset if the log table doesn't exist at all (most
+source sites won't have Simple Download Monitor installed). Only the
+aggregate count is imported, never the per-visitor log rows themselves
+(IP address, country, user agent, referrer) — an unasked-for privacy
+footprint this importer has no reason to bring in. A file-type
+download's count is seeded onto its Media item via new
+`MediaStatsService::seed()`; a url-type download's count is seeded onto
+its Redirect's `hit_count` via new `RedirectService::setHitCount()` —
+both are explicit "set" operations, distinct from the real-click
+increment paths (`recordDownload()`/`recordHit()`) those two services
+already had.
+
+**Implemented (2026-08-22), Stage 8 — Menus & Classic Widgets.** A
+WordPress `nav_menu` taxonomy term becomes a named, reusable Lumora
+Press menu (custom links, plus links to already-imported pages/posts/
+categories/tags resolved to their real permalink, preserving
+parent/child nesting via the same multi-pass resolution categories/
+folders already use). A menu item pointing at content that wasn't
+imported is skipped with a warning rather than creating a broken link.
+**Menus are deliberately never auto-assigned to a theme location** —
+WordPress never stores a location's human-readable label in the
+database, only an opaque per-theme slug (e.g. `menu-1`), so there's no
+reliable way to guess which Lumora Press location it meant; the admin
+finishes that one manual step via the already-built Appearance > Menus
+> Manage Locations screen. Classic widgets import too, but only types
+with a direct Lumora Press equivalent (confirmed against real source
+data: a real multi-plugin WordPress site can register 70+ distinct
+widget option names, the overwhelming majority third-party plugin
+widgets with no Lumora Press equivalent at all) — everything else is
+skipped, aggregated into one warning per type. A widget's sidebar is
+matched to a Lumora Press widget area by a small id-based heuristic;
+anything that doesn't confidently match (including WordPress's own
+inactive-widgets bucket) lands in Lumora Press's existing Inactive
+Widgets list instead of being dropped.
+
+Both are new territory for the shared import layer: `MenuManager`/
+`WidgetManager` have no database table at all — they persist as JSON
+blobs in the `options` table — so `ContentImportRegistry` gained an
+optional `snapshot_value` column (migration `0044`) and a
+`snapshotForBatch()` reader. Rather than per-id delete (impossible —
+there's no real row to delete), **Remove All Imported Content**
+restores the exact pre-import `nav_menus`/`widgets_config` option
+values it snapshotted before the import touched them, correct even if
+the site already had its own menus/widgets beforehand. New
+`app/Services/Import/{Menu,Widget}Importer.php` + `Imported{Menu,
+MenuItem,WidgetInstance}.php` DTOs, following the same wrapper-around-
+a-manager pattern as every other `*Importer`. Covered by 6 new tests in
+`WordPressImportServiceTest.php` and the full PHP 8.2/8.3/8.4 Docker
+matrix.
+
+**Implemented (2026-08-24), Stage 1 — Site Settings write-back.**
+`WordPressSource::siteOptions()` already read the source site's
+`blogname`/`blogdescription`/`timezone_string`/`gmt_offset`/
+`permalink_structure`/`date_format`/`time_format` options (used only
+for the Test Connection preview's site-name line up to now); a new
+`WordPressImportService::importSiteSettings()` maps them onto the
+subset Lumora Press actually has a config key for —
+`site_name`/`site_tagline`/`timezone`/`date_format`/`time_format`/
+`permalink_structure`, the same keys `admin/views/settings/general.php`
+and `admin/views/settings/permalinks.php` read and write — and applies
+them via `PressConfig::setOption()`. A numeric `gmt_offset` (an admin
+who picked "UTC+2" from WordPress's dropdown instead of a named city)
+is translated to the nearest whole-hour `Etc/GMT` identifier, since
+Lumora Press's own `timezone` setting only accepts a real IANA
+identifier; a fractional offset (e.g. UTC+5:30) has no `Etc/GMT`
+equivalent and is left unresolved rather than rounded to the wrong
+zone. A source permalink structure is only applied if it contains
+`%postname%` and every `%tag%` in it is one
+`PermalinkService::buildPostUrl()` actually replaces (`%postname%`,
+`%year%`, `%monthnum%`, `%day%`, `%category%`, `%author%`) — a
+structure using an unsupported WordPress-core tag like `%post_id%` is
+left untouched and flagged in the import warnings instead of silently
+leaving that literal text in every generated URL.
+
+This step is **opt-in only** (its own "Site settings" checkbox on the
+Start Import form, unchecked by default) — unlike every other content
+type, it overwrites the *target* site's own existing configuration
+rather than adding new content alongside it. Test Connection now also
+shows a read-only preview of the source's site settings so the admin
+can see what would be applied before opting in. Follows the same
+snapshot-and-restore pattern Stage 8's `importMenus()`/
+`importWidgets()` already established for non-per-row content:
+`ContentImportRegistry` records the pre-import values of every key
+this step touches as one JSON blob (content type
+`'site_settings_snap'`), and **Remove All Imported Content** restores
+them verbatim via `PressConfig::setOption()`.
+
+Homepage, Reading, Discussion, Media, and Privacy settings — the other
+five items on this stage's own checklist — were deliberately not
+imported in this first pass: none of them had a Lumora Press config key
+at all yet (no static front page, no comment-moderation-threshold
+setting, no media-size settings, no privacy-policy-page setting existed
+in this codebase), so there was nothing to write an imported value
+into. **Superseded 2026-08-24, later the same day — see the note
+further below**: that premise turned out to be stale for four of the
+five groups, which already had a real config key and admin screen from
+earlier sessions (LP-046/LP-047/LP-042) that simply predated this
+ticket's own audit of what existed.
+
+**Implemented (2026-08-24), Stage 1 — Homepage/Reading/Discussion/Media/
+Privacy settings.** Re-auditing the codebase (rather than trusting the
+note directly above) found that `admin/views/settings/reading.php`,
+`discussion.php`, and `media.php` already existed with real,
+already-wired config keys: `homepage_display`/`homepage_page_id`/
+`homepage_posts_page_id` (Homepage), `posts_per_page`/
+`discourage_search_engines`/`feed_item_limit`/`feed_full_content`
+(Reading — the last two already live on Settings > General's own Feeds
+section), every `comment_*`/`avatar_*` key (Discussion), and
+`thumbnail_size_{small,medium,large}_{width,height}` (Media, via
+Settings > Media's Thumbnails sub-page) — so most of this stage turned
+out to be mapping WordPress's `wp_options` onto keys a real admin
+screen already reads and writes, not inventing new infrastructure.
+`WordPressSource::SITE_OPTION_KEYS` grew roughly 30 entries; the actual
+value translation lives in `WordPressImportService::importSiteSettings()`
+(same method as the original Stage 1 note above, extended in place) —
+mostly direct 0/1 or enum passthroughs, with a few real WordPress-to-
+Lumora-Press semantic translations: `blog_public` (0 = public, inverted
+from Lumora's own `discourage_search_engines`), `rss_use_excerpt`
+(inverted from `feed_full_content`), `close_comments_for_old_posts` +
+`close_comments_days_old` combining into Lumora's single "0 disables"
+`comment_close_after_days`, `require_name_email` fanning out to both
+`comment_author_name_required` and `comment_author_email_required`
+(WordPress combines these into one setting), and `avatar_default`'s
+WordPress-only generator names (`mystery`/`mm`, `gravatar_default`)
+translated via a small `resolveAvatarDefault()` lookup (an unrecognized
+value like `gravatar_default`, which has no Lumora Press equivalent,
+leaves the existing setting untouched rather than storing a value
+`discussion.php` doesn't know how to render). WordPress 5.5's
+`blacklist_keys` → `disallowed_keys` option rename is handled by
+reading both, preferring the current name.
+
+Homepage (`page_on_front`/`page_for_posts`) and Privacy Policy Page
+(`wp_page_for_privacy_policy`) are each a WordPress *page ID*, which
+can't resolve to a local page ID until the 'pages' stage has actually
+imported that page and assigned it one — `importSiteSettings()` itself
+runs as the early 'site_settings' stage, before 'pages', in this
+plugin's fixed stage order. A new `applyPageDependentSiteSettings()`
+handles just those three keys, called from `executeStage()`'s 'pages'
+case (after `wpPageIdToLocalId` is built) rather than from the
+'site_settings' stage itself. Every key either method writes is still
+snapshotted up front inside `importSiteSettings()`, since nothing else
+touches them in between — **Remove All Imported Content** continues to
+restore the exact pre-import values via the same `site_settings_snap`
+blob, now covering roughly 35 keys instead of 6. A source page that
+wasn't imported (excluded by the selected statuses, or the "Pages"
+content type wasn't selected at all) is skipped with a warning — "Your
+latest posts" stays in effect, and no privacy policy page is set,
+rather than writing a local page ID that doesn't exist.
+
+Privacy Policy Page needed one genuinely new Lumora Press feature,
+unlike the other four groups: a `privacy_policy_page_id` config key (no
+prior equivalent existed), a new Settings > Privacy admin screen
+(`admin/views/settings/privacy.php`, mirroring Reading's own homepage
+page-selector — point at an existing Page rather than invent a second
+content type), and a `privacy_policy_url()` template tag
+(`include/permalink-functions.php`) backed by a new `ActivePages`
+static bridge (`app/Core/Theme/ActivePages.php`, same shape as
+`Authors`/`Permalinks`, since resolving a configured page id to a URL
+is a live per-render lookup, not a value `SiteBranding` can snapshot
+once at bootstrap). Whether/where a theme links to it is left entirely
+to the theme's own markup — nothing is auto-inserted into any theme's
+footer or comment form, matching `page_permalink()`'s "themes own their
+own markup" precedent and this project's Custom Theme Rules (never
+silently add markup to an existing theme).
+
+Covered by 5 new tests in `WordPressImportServiceTest.php` (one
+representative value per Reading/Discussion/Media group, since the
+mapping logic is uniform within a group; homepage + privacy policy page
+both resolving to the same imported local page id; a source homepage
+pointed at a page that wasn't imported leaving "Your latest posts" in
+effect with a warning; the existing rollback test continuing to pass
+now that the snapshot covers ~35 keys) and the full PHP 8.2/8.3/8.4
+Docker matrix — see `PHP Test Suite/TEST_LOG.md`'s 2026-08-24 entry.
+
+**Implemented (2026-08-24), URL & Link Migration — image references.**
+The original `rewriteContentUrls()` (2026-08-21 note above) was a plain
+`str_replace()` over each attachment's exact full-size guid URL only —
+real content almost always embeds a WordPress-generated *derivative*
+filename instead (`cover-300x200.jpg`), which never matched, leaving
+the overwhelming majority of inline images still pointing at the old
+site. Replaced with a dedicated `ContentImageRewriter`
+(`content/plugins/wordpress-importer/src/ContentImageRewriter.php`,
+stateless, no service dependencies) that parses each post/page's
+content with `DOMDocument` (`LIBXML_HTML_NOIMPLIED`/`_NODEFDTD` so a
+bare content fragment round-trips without an implied `<html><body>`
+wrapper leaking into the saved output) rather than treating it as
+plain text:
+
+- Every `<img src>` and `<a href>` is resolved against the *relative
+  upload path* (`WordPressImportService::importMedia()` now builds
+  `_wp_attached_file`-path → new-URL instead of guid → new-URL) with a
+  fallback that strips a trailing `-{width}x{height}` size suffix
+  before matching — so both the full-size original and any derivative
+  reference resolve to the same imported attachment.
+- `srcset`/`sizes` are stripped outright (this import never generates
+  the derivative sizes they'd otherwise need to keep pointing at,
+  including on the old site).
+- `wp-image-{id}`/`size-{slug}` classes are stripped as meaningless
+  WordPress-only metadata; `alignleft`/`alignright`/`aligncenter`/
+  `alignnone` are kept as-is rather than remapped, since the default
+  theme's own WYSIWYG editor already outputs and styles those exact
+  class names (`style.css`'s "LP-016's image alignment" rule).
+- `width`/`height`/`title`/`alt` are left completely untouched — a
+  stale `width`/`height` from a derivative size just means the
+  full-size image now displays at its old thumbnail's dimensions,
+  which is a legitimate display size, not a broken one.
+- `<figure>`/`<figcaption>` wrappers, and an `<img>` wrapped in
+  `<a href="...">` (WordPress's "link to media file"/"link to
+  attachment page" options), are preserved correctly and the link
+  target rewritten the same way the image `src` is, since the DOM
+  parse operates on the real tree rather than string-matching.
+- A WordPress `[gallery]` shortcode or `wp-block-gallery` block — the
+  one case with no single `<img src>` to resolve — is left untouched
+  and flagged as an import warning per affected post/page rather than
+  silently left broken with no signal.
+
+An image with no matching imported attachment at all (a hotlinked
+external image, or the Media content-type toggle was off) is left
+completely unchanged, same as before. Covered by two new tests in
+`WordPressImportServiceTest.php` (the full real-world shape at once —
+derivative filename, wrapping link, srcset/sizes, mixed WordPress-only
+and kept classes, a leftover gallery shortcode — plus the untouched
+case) and the full PHP 8.2/8.3/8.4 Docker matrix.
+
+Still open on this ticket's own checklist: a **redirect mapping report**
+(a downloadable/visible old-URL → new-URL table for setting up
+server-level redirects, distinct from the in-content rewriting done
+here and by "Update internal links" below).
+
+**Bug found and fixed (2026-08-26): Downloads' own `description` field
+was never run through `ContentImageRewriter` at all.** `importPosts()`/
+`importPages()` both rewrite embedded `<img>`/`<a href>` references via
+`ContentImageRewriter` as described above, but `importDownloads()`
+(Simple Download Monitor migration, see the Downloads plugin section
+further down) built its `description` straight from
+`sdm_description`/`post_content` and passed it unmodified into both
+`DownloadService::recordExisting()` call sites — a real-world
+description commonly embeds its own preview-thumbnail `<img>` (e.g.
+"300DPI / 3000&times;3000" beneath a scaled preview), and that image
+was left pointing at the original WordPress host forever, unresolvable
+after import. Root cause was a call-site omission, not a design gap:
+`executeStage()`'s `'downloads'` case never threaded the
+`oldRelativePathToNewUrl` map (already built by the `'media'` stage
+that always runs first) into `importDownloads()` the way `'pages'`/
+`'posts'` already receive it. Fixed by adding that parameter and
+constructing/calling a `ContentImageRewriter` inside `importDownloads()`
+exactly like `importPages()`/`importPosts()` do, before the description
+is used for either the imported Media item or the `downloads` table
+row. Covered by a new
+`testRunRewritesImageReferencesInDownloadDescription()` in
+`WordPressImportServiceTest.php`, modeled directly on the existing
+`testRunRewritesImageAndLinkReferencesInPostContent()`.
+
+**Implemented (2026-08-24), Import Options — dry run, resume, progress,
+stage delay.** `WordPressImportService::run()` no longer executes every
+content type inline in one pass; it's now a thin loop over two new
+public primitives — `startOrResume()` and `runNextStage()` — that both
+the convenience `run()` and the admin view itself can drive directly.
+Each stage's cross-stage id maps (`wpUserIdToLocalId` and friends,
+previously local variables threaded through one `run()` call) and its
+completed-stage list are persisted to the database after *every single
+stage*, not just at the end, via a new `ContentImportRegistry::
+upsertSnapshot()` (updates an existing snapshot row in place, unlike
+`record()`, which always inserts a new one — needed here since this
+state is rewritten repeatedly within one batch rather than written
+once up front the way `nav_menus_snap`/`widgets_snap`/
+`site_settings_snap` are).
+
+This is what makes **resume** real rather than cosmetic: if the PHP
+process running an import dies mid-way (a host's own execution time
+limit despite `set_time_limit(0)`, a lost connection), whatever
+completed survives in the database. `WordPressImportService::
+inProgressBatch()` finds an incomplete batch on revisiting Maintenance
+&rsaquo; Import, and the admin view swaps in a stripped-down "Resume"
+form (connection fields only — no content-type checkboxes, since
+`startOrResume()` always continues with the *original* run's own
+options, never a freshly-submitted selection) alongside a "Discard This
+Import" fallback. A batch from a version of this plugin before this
+change (real content rows but no `progress_snap` state at all) is
+correctly treated as already-complete rather than resumable, matching
+that version's own always-fully-synchronous behavior — confirmed
+against the real 732-post import already sitting in the dev install
+from an earlier session.
+
+**Progress indicator**: reuses LP-086's own `UpdateProgress`/
+`update-progress.js` polling pattern from Maintenance &rsaquo; Updates
+outright rather than building parallel infrastructure — a new
+`ImportProgress` class (a near-identical copy, not a shared dependency;
+see its own docblock on why a second small class was simpler than
+adding a constructor parameter to a core service for one plugin's use)
+writes a JSON stage checklist the same `?ajax=progress` GET pattern
+polls, and the Start/Resume Import forms carry the exact same
+`data-lp-update-progress-form` attributes the Updates page's own forms
+use — zero new JS or CSS needed. It's a per-*stage* checklist ("Importing
+posts…", done/active/pending), not a numeric within-stage item counter
+("340/1200") — the ticket's own original phrasing named that as an
+example, but building true intra-stage progress would mean threading a
+live counter through every single `Post/Page/User/Media/Comment
+Importer::import()` call, a much larger change for one further
+increment of granularity; the per-stage view already answers the
+question a progress indicator exists to answer ("is this still moving,
+and roughly how far along is it").
+
+**Dry run**: `dryRunCounts()` reads the exact same source queries a
+real import would, without ever calling into the Importer layer at
+all, and reports approximate upper-bound counts per content type — it
+can't replicate every real-import skip condition (a missing uploads
+file, a malformed row, an unsupported widget type) without actually
+attempting each one, so a real import can land lower than the preview
+showed; the admin view's own preview panel says so explicitly. A new
+"Preview (Dry Run)" form sits alongside "Start Import", sharing the
+same Site Settings/Content to Import/Import Options fields (rendered
+once via a shared closure in the view, not duplicated markup) so a
+preview always reflects exactly what a real run with that same
+selection would do.
+
+**Stage delay**: a plain `stage_delay_ms` option, respected by
+`runNextStage()` via `usleep()` between stages (never before the very
+first one) — opt-in, defaults to 0, meant only for a live production
+source per its own admin-facing hint.
+
+Deliberately still out of scope: skip-vs-overwrite-existing-content
+semantics remain the hard "one import at a time, remove or resume
+before starting another" guard — real skip/overwrite would need
+matching each row by external id across every importer type, a
+genuinely different and larger change than what resume required.
+
+**Implemented (2026-08-24), Post-Import.** Two new finalization stages
+(`thumbnails`, `verify`) always run last, appended unconditionally by
+`plannedStages()` regardless of which content types were selected —
+neither has its own toggle, and both degrade to a real no-op (an empty
+`ContentImportRegistry::idsForBatch()` loop) when there's nothing to
+do.
+
+- **Regenerate thumbnails**: `MediaImporter::importFromLocalFile()` (the
+  path both `importMedia()` and `importDownloads()` use) only ever
+  inserts a media row's own metadata via `MediaService::
+  registerExistingFile()` — unlike a normal admin upload, nothing along
+  that path calls `ThumbnailService` at all, so an imported image would
+  otherwise carry no thumbnail rows until something else happened to
+  regenerate them. `regenerateThumbnails()` calls
+  `ThumbnailService::regenerate()` (a new constructor dependency, the
+  same `$kernel->thumbnails` instance every other admin screen already
+  uses) once per imported media id — safe unconditionally, since
+  `regenerate()` already no-ops for a non-image file, a missing source,
+  or a corrupt/unsupported image rather than throwing.
+- **Verify imported content**: `verifyImport()` is a defensive
+  integrity check, not a repeat of validation `run()` already does
+  inline — every id this batch's own `ContentImportRegistry` rows point
+  at should still resolve to a real row, and a post/page's own
+  `featured_image_id` should still resolve to a real Media row.
+  Findings land in the same combined `warnings()` list every other
+  stage's own problems already do, rather than a separate report.
+
+Of the checklist's other three items, none has an underlying data
+structure in this codebase to act on, confirmed by reading every
+relevant migration and service:
+
+- **Rebuild search index** — `SearchService` queries `posts`/`pages`
+  directly via native MySQL/MariaDB FULLTEXT indexes at request time
+  (`install/migrations/0011_add_fulltext_index_to_posts_and_pages.sql`).
+  FULLTEXT indexes are maintained automatically on every `INSERT` by
+  the database engine itself — there is no separate index to rebuild.
+- **Recalculate comment counts** — no `comment_count` (or similar)
+  column exists on `posts`/`pages`
+  (`install/migrations/0004_create_posts_table.sql`,
+  `0009_create_comments_table.sql`). `CommentService::countForPost()`/
+  `countForPage()` always compute the live count with a real `COUNT()`
+  query — nothing to recalculate.
+- **Rebuild category and tag counts** — same pattern:
+  `install/migrations/0007_create_categories_tables.sql`/
+  `0008_create_tags_tables.sql` have no cached post-count column;
+  `CategoryService::postCount()`/`TagService::postCount()` always
+  `COUNT()` the join tables live.
+
+**Implemented (2026-08-24), URL & Link Migration — "Update internal
+links".** Unlike a WordPress menu item — which stores structured
+metadata naming exactly which post/page/term it points at (see
+`resolveMenuItemTarget()`) — a plain in-content `<a href="...">` is only
+ever a URL string, with no structured reference to resolve, and content
+can't be assumed to still use the source site's *current* permalink
+structure (a link written years before a structure change keeps
+whatever it was written with). Rather than reconstructing the source's
+permalink structure and pattern-matching against it, the new
+`InternalLinkRewriter` (`content/plugins/wordpress-importer/src/
+InternalLinkRewriter.php`) tries three independent, structure-agnostic
+ways to identify what a link was really pointing at, in order of
+confidence: a `?p=123`/`?page_id=123` query parameter (unambiguous —
+WordPress's own "Plain" permalink style and shortlink format both use
+this regardless of the site's configured structure); an exact match
+against the post/page's own `guid` column (set once at creation, never
+updated on a later structure change, so it reflects an older URL form
+but is still a real identifier a link could have been copied from); and
+the link's own last path segment matched against a post/page slug (the
+common pretty-permalink case). Every match is scoped to the source
+site's own domain (`WordPressSource::siteOptions()` now also reads
+`home`/`siteurl`) so an external link sharing a slug or query param
+name is never touched. Category/tag/author archive links are a
+deliberate scope boundary for this first pass — left untouched, same as
+any other link this class doesn't recognize.
+
+Runs as a new always-on `internal_links` stage, positioned after both
+'pages' and 'posts' (it rewrites cross-references between the two, so
+every local id must already be assigned) and before 'thumbnails'/
+'verify'. Because a link's target post/page might not exist yet at the
+point its own content was first imported, this re-saves each changed
+post/page's content a second time via `PostService::update()`/
+`PageService::update()` — unlike `ContentImageRewriter`'s image pass,
+which resolves entirely inline during `importPages()`/`importPosts()`
+since attachment URLs are already known by then. `update()` requires
+every field, not just content, so each post/page's own current values
+are re-passed unchanged rather than risking a default silently
+clobbering something (`PageService::update()`'s own `$commentsOpen`,
+for instance, has no "keep existing" fallback if omitted). Covered by 2
+new tests in `WordPressImportServiceTest.php` (post-to-post via slug
+match, post-to-post via `?p=` query match, post-to-page via slug match,
+and an unrelated external-domain link left untouched, all in one
+fixture) and the full PHP 8.2/8.3/8.4 Docker matrix.
+
+**Follow-up (2026-08-25), same session:** `importFolders()`'s migrated
+`sdm_categories` Folders now all nest under one top-level "Downloads"
+Folder instead of landing at the Media Library's own root — a
+migrated site's downloads are Simple Download Monitor's own category
+tree, not part of the site's regular media organization, so mixing the
+two at the top level made the folder list harder to scan. Only created
+when there's at least one `sdm_categories` term to import in the first
+place, so a source site running Simple Download Monitor without any
+categories at all doesn't get an empty "Downloads" folder for nothing.
+`WordPressImportServiceTest.php`'s existing coverage updated to assert
+the new parent chain (folder count 2 → 3, plus new assertions that the
+migrated category folder's parent is "Downloads" and "Downloads"
+itself has no parent); full `Unit/` suite (1527 tests) still green.
+
+### Goal
+
+Import existing WordPress sites into Lumora Press, making migration as seamless as possible.
+
+
+
+### Import Sources
+
+- [x] WordPress WXR (`.xml`) export files — new `WordPressSourceInterface`
+      (`content/plugins/wordpress-importer/src/WordPressSourceInterface.php`)
+      extracted from `WordPressSource`'s own implicit contract, so
+      `WordPressImportService` (typed against the interface, not the
+      concrete class) drives either source identically. New
+      `WordPressXmlSource` implements it by parsing a local WXR file
+      (via `DOMDocument`/`DOMXPath`, the whole document once, into flat
+      in-memory arrays — not a streaming parser; see its own docblock
+      for why) — schema (author blocks; category/tag/generic-`<wp:term>`
+      blocks, each with a *slug*-referenced parent, not an id;
+      per-item `<category domain="...">` for taxonomy assignment
+      including custom taxonomies like `sdm_categories`/`media_folder`;
+      postmeta/comment children) confirmed against the real
+      `References/soobsessed.WordPress.*.xml` fixture (~18.7MB,
+      6,281 items — see `MEMORY.md`), not guessed from documentation
+      alone; a full `dryRunCounts()` pass against that real file
+      matched its real category/tag counts exactly. Maintenance ›
+      Import gained a "Source type" radio (Direct database connection /
+      WXR export file) — both field sets always render, no JS-driven
+      show/hide, the radio alone decides which the server reads on
+      submit. A WXR export structurally cannot carry site options,
+      widget configuration, or a plugin's own custom database tables —
+      `option()`/`optionsLike()` always return nothing (Site
+      Settings/Widgets import cleanly as "nothing found," the same
+      gracefully-degrading path a widget-free/plugin-free real site
+      already exercises) and `userRole()` always returns Subscriber
+      (WXR carries no role data at all — every WXR-sourced user needs
+      manual role reassignment after import). Simple Download Monitor's
+      per-visit download log isn't exported either, so a WXR-sourced
+      download's count is its `sdm_count_offset` postmeta alone.
+      Covered by a new `WordPressXmlSourceTest.php` (17 tests against a
+      small hand-built WXR fixture covering every interface method,
+      entity decoding, slug-referenced parent resolution, comment-type
+      filtering, and malformed/non-WXR input) plus a new
+      `testRunImportsEveryContentTypeFromAWxrFile()` in
+      `WordPressImportServiceTest.php` proving a full `run()` succeeds
+      end-to-end through the same pipeline the database-sourced test
+      already covers. Full PHP 8.3 Docker matrix run confirmed passing
+      (8.2/8.4 blocked by this dev machine's own local MySQL already
+      holding port 3306 — the same known, pre-existing environment
+      conflict noted elsewhere in this ticket, not a code issue).
+- [x] Full WordPress installation (database + uploads)
+- [x] Existing media library — the local `wp-content/uploads` folder
+      copy, same source the "Full WordPress installation" item above
+      already reads from; not a separate capability
+- [x] Optional direct import from another server
+- [x] Auto-detect database connection details from a `wp-config.php`
+      file — new `WordPressConfigParser`
+      (`content/plugins/wordpress-importer/src/WordPressConfigParser.php`),
+      a text-only regex parser (`define('DB_...', '...')`/
+      `$table_prefix = '...'`, `host:port` split out of `DB_HOST`),
+      never executes the file. A new "Auto-detect from wp-config.php"
+      form on Maintenance › Import (`detect_wp_config`) pre-fills the
+      connection form's `$formValues` from whatever it finds; manual
+      entry of every field remains fully available either way.
+- [x] Auto-detect the local `wp-content/uploads` file path alongside the
+      `wp-config.php` detection above —
+      `WordPressConfigParser::resolveUploadsPath()` probes
+      `<wp-config.php's directory>/wp-content/uploads`, honoring a
+      `WP_CONTENT_DIR`/`UPLOADS` override when present (including the
+      common `dirname(__FILE__) . '/...'`/`__DIR__ . '/...'`
+      concatenation form, recognized by pattern only, never evaluated),
+      and only pre-fills `uploads_path` when the resolved directory
+      actually exists. Same rule as the database fields: pre-fills the
+      existing editable path field, never locks it.
+- [x] Make the entered database connection fields (host, port, name,
+      user, password, table prefix) and path fields (source path,
+      uploads path) persist across a "Test Connection" submission
+      instead of the form resetting to blank (2026-08-25): the Detect/
+      Test Connection/Import/Resume forms on
+      `admin/views/maintenance/import.php` are separate `<form>`
+      elements that already shared one `$formValues` array built from
+      `$_POST` on every request, but each form only ever POSTed the
+      subset of fields it itself displays — so submitting Test
+      Connection (which has no Gallery folder path or wp-config.php
+      path fields) silently blanked those two out on that render, and
+      submitting Detect (which has only the wp-config.php path field)
+      blanked out every connection/path field. Fixed by adding hidden
+      inputs to each form for whichever fields it doesn't itself
+      collect, so every field an admin has entered carries forward
+      through any of the three forms. Also gave the Resume form a real,
+      visible Gallery folder path field it was missing entirely — not
+      just a persistence gap, since a resumed batch that still has a
+      NextGEN Gallery stage left needs that path to actually import it.
+
+### Import Stages
+
+Allow users to import a site in multiple stages instead of requiring a single all-or-nothing import.
+
+#### Stage 1 – Site Settings
+
+- [x] Site title
+- [x] Tagline
+- [x] Timezone
+- [x] Date & time format
+- [x] Permalink structure
+- [x] Homepage settings
+- [x] Reading settings
+- [x] Discussion settings
+- [x] Media settings
+- [x] Privacy settings
+
+#### Stage 2 – Taxonomy
+
+- [x] Categories
+- [x] Tags
+
+#### Stage 3 – Users
+
+- [x] Authors
+- [x] User accounts (optional)
+- [x] User role mapping
+
+#### Stage 4 – Media Library
+
+- [x] Images
+- [x] Documents
+- [x] Audio
+- [x] Video
+- [x] Attachment metadata
+- [x] Captions
+- [x] Alt text
+- [x] Upload dates
+- [x] Preserve folder structure
+
+#### Stage 5 – Pages
+
+- [x] Pages
+- [x] Parent/child hierarchy
+- [x] Featured images
+
+#### Stage 6 – Posts
+
+- [x] Posts
+- [x] Drafts
+- [x] Scheduled posts
+- [x] Featured images
+- [x] Excerpts
+- [x] Slugs
+
+#### Stage 7 – Comments (posts only — see note above; not pages)
+
+- [x] Comments
+- [x] Comment authors
+- [x] Comment status
+- [x] Comment threading
+
+#### Stage 8 – Site Structure
+
+- [x] Menus
+- [x] Classic widgets
+- [x] Widget assignments
+
+#### Stage 9 – Finalization
+
+- [x] Rebuild search index — not applicable to this app's architecture
+      (MySQL's native `FULLTEXT` index updates automatically on every
+      insert, no rebuild step exists); see the "Post-Import" section
+      below for the same note
+- [x] Regenerate thumbnails — `WordPressImportService::regenerateThumbnails()`,
+      the always-on `thumbnails` stage (see "Post-Import" below)
+- [x] Recalculate comment counts — not applicable; no cached
+      comment-count column exists to go stale, see "Post-Import" below
+- [x] Rebuild category and tag counts — not applicable; same reason,
+      see "Post-Import" below
+- [x] Verify imported content — `WordPressImportService::verifyImport()`,
+      the always-on final `verify` stage (see "Post-Import" below)
+- [x] Generate import report
+
+### Import Content
+
+#### Site Settings
+
+- [x] Site title
+- [x] Tagline
+- [x] Timezone
+- [x] Date & time format
+- [x] Permalink structure
+- [x] Homepage settings
+- [x] Reading settings
+- [x] Discussion settings
+- [x] Media settings
+- [x] Privacy settings (where applicable)
+
+#### Content
+
+- [x] Posts
+- [x] Pages
+- [x] Drafts
+- [x] Scheduled posts
+- [x] Categories
+- [x] Tags
+- [x] Authors
+- [x] Comments (posts only, not pages — see note above)
+- [x] Featured images
+- [x] Post excerpts
+- [x] Post slugs
+- [x] Custom menus
+- [x] Widgets (classic widgets where possible)
+
+#### Media
+
+- [x] Images
+- [x] Documents
+- [x] Audio
+- [x] Video
+- [x] Attachment metadata
+- [x] Image captions
+- [x] Alt text
+- [x] Preserve upload dates and folder structure
+- [x] Preserve Simple Download Monitor download counts (offset + logged
+      event count, seeded onto the migrated Media item or Redirect —
+      see the follow-up note above)
+- [x] Import a download's thumbnail/preview image (2026-08-25): a new
+      nullable `downloads.thumbnail_media_id` column
+      (`install/migrations/0047_add_thumbnail_media_id_to_downloads_table.sql`)
+      gives the migrated Download a place to live, separate from
+      `media_id` (the download's own file) — `Download`/
+      `DownloadService::recordExisting()`/`hydrate()`/`duplicate()` all
+      thread it through (`create()`/`update()` don't — there's
+      currently no way to set or change it from the admin UI directly,
+      only via import). `importDownloads()` now resolves the source
+      post's own `_thumbnail_id` postmeta via
+      `$wpAttachmentIdToLocalMediaId`, the same map
+      `importPosts()`/`importPages()` already resolve theirs from —
+      threaded into `executeStage()`'s `'downloads'` case, which
+      previously never received it. `admin/views/downloads/add-new.php`'s
+      preview image (LPP-010) now prefers `thumbnailMediaId` over a
+      File-typed download's own file when set, and renders for a
+      Url-typed download too (previously that type never showed a
+      preview at all, having no local file of its own). Covered by 2
+      new tests in `DownloadServiceTest.php` and 1 extended assertion
+      set in `WordPressImportServiceTest.php`; full PHP 8.3 Docker
+      matrix run confirmed passing (8.2/8.4 blocked by this dev
+      machine's own local MySQL already holding port 3306 — a known,
+      pre-existing environment conflict, not a code issue; see
+      MEMORY.md's port-conflict note).
+- [x] Import a download's full description text regardless of where it
+      lives (2026-08-25): `importDownloads()`'s description now falls
+      back to `post_content` when `sdm_description` is empty, instead of
+      silently dropping a description typed directly into the
+      download's own post body.
+- [x] Import regular Media Library folder structure from a "Media
+      Library Folders"-type plugin (2026-08-25, corrected same day —
+      see below). Confirmed against the real source database, per this
+      ticket's own established practice, that So Obsessed's source site
+      uses the "Media Library Folders" plugin (`folders/folders.php`) via a real,
+      standard WordPress taxonomy — `media_folder`, term_relationships-
+      based exactly like `category` — matching the folder names actually
+      visible in wp-admin (AO3, Edits, Fansites, Headers, etc.) byte for
+      byte. (An earlier same-day pass had targeted a *different*,
+      inactive-looking plugin's own `mgmlp_media_folder`/`mgmlp_folders`
+      tables instead, whose folder names turned out to just mirror the
+      physical `uploads/YYYY/MM` directory layout rather than anything
+      an admin ever organized by hand — caught from a real screenshot of
+      the imported result showing numeric "06"/"07"/"2020" folders
+      instead of the real named ones, and corrected before this line was
+      finalized.) New `WordPressImportService::importMediaFolders()`
+      needs no new hierarchy-resolution code at all — the same
+      multi-pass parent walk `importCategories()` already does over
+      `terms()`'s own `parent` column — plus `resolveMediaFolder()`,
+      mirroring `resolveDownloadFolder()`'s "prefer the more specific
+      term" behavior for an attachment tagged with more than one folder.
+      Unlike `importFolders()`'s synthetic "Downloads" wrapper, a Media
+      Library folder's own top-level folder lands at the Media
+      Manager's real root, since this *is* the site's own regular
+      organization rather than a foreign taxonomy being given a home.
+      Covered by 1 new test in `WordPressImportServiceTest.php` and the
+      full PHP 8.2/8.3/8.4 Docker matrix.
+- [x] Import NextGEN Gallery galleries and their media (2026-08-25).
+      Schema confirmed against a real production database first (this
+      ticket's own established practice): `{prefix}ngg_gallery`/
+      `{prefix}ngg_pictures`, standard table-prefix respecting — the
+      "newer naming" hedge in this item's original wording turned out
+      not to apply to the real source site. A gallery's own `path`
+      column (its actual on-disk folder under `wp-content/gallery/`)
+      can differ from its `slug`, confirmed against real data, so
+      `importNextGenGalleries()` resolves a picture's file from `path`,
+      never `slug`. New `WordPressSource::nextGenGalleries()`/
+      `nextGenPictures()` (missing-table try/catch, same as
+      `sdmDownloadStats()`, since the plugin may not be installed) and
+      matching `WordPressXmlSource` empty-array stubs (a WXR export
+      carries no plugin-specific tables). A new `nextgen_galleries`
+      stage (between Media and Downloads) and constructor param
+      `sourceGalleryPath` — a *separate* local filesystem copy of
+      `wp-content/gallery`, since NextGEN stores images there, not
+      under `wp-content/uploads`. Each gallery becomes a flat Media
+      Manager Folder (no synthetic wrapper — same root-level placement
+      as the Media Library Folders plugin's own folders, since a
+      gallery has no hierarchy of its own); each non-excluded picture
+      becomes a Media item filed into it, with alt text/description/
+      original image date preserved. A page/post still containing a
+      `[ngg_...]` shortcode is flagged via the existing
+      `flagUnsupportedShortcodes()`, same as
+      `[sdm_show_dl_from_category]` — rendering the shortcode itself
+      stays out of scope, as originally planned. NextGEN's separate
+      album grouping (`ngg_album`) is not imported — this item only
+      ever asked for galleries and their media. Wired into `admin/
+      views/maintenance/import.php` (new "Gallery folder path" field,
+      "NextGEN Gallery galleries" checkbox, dry-run/summary labels).
+      Covered by 1 new test, `testRunImportsNextGenGalleryGalleriesAndTheirMedia`,
+      and the full PHP 8.2/8.3/8.4 Docker matrix (8.3 ran clean
+      end-to-end; 8.2/8.4 blocked by this dev machine's own local MySQL
+      already holding port 3306 — a known, pre-existing environment
+      conflict, not a code issue — see `PHP-TEST-SUITE.md`'s TEST_LOG.md
+      entry). See `TEST_LOG.md` for full output.
+- [x] Import NextGEN Gallery's own album grouping (`ngg_album`) instead
+      of always placing every gallery as a flat folder at the Media
+      Manager's real root.
+
+      **Implemented (2026-08-26).** New `WordPressSource::nextGenAlbums()`
+      reads `{prefix}ngg_album` (missing-table try/catch, same as
+      `nextGenGalleries()`) — checked the real column names/shape against
+      a real production database first, per this ticket's own established
+      practice, since NextGEN's public schema docs turned out to be
+      wrong for this table: there is **no `gallery_ids` column at all**,
+      and member gallery ids aren't a PHP-serialized array either.
+      `sortorder` is base64-encoded JSON (e.g. `WyI5IiwiOCJd` decoding
+      to `["9","8"]`) — confirmed against real data (a "Lucy Lawless"
+      album grouping two "My Life Is Murder" galleries, an "Oded Fehr -
+      Star Trek DSC" album grouping seven Star Trek DSC episode
+      galleries — exactly the dev install's existing flat, unnested
+      folders from the prior NextGEN import). `importNextGenGalleries()`
+      now creates one parent Folder per album first, then resolves each
+      gallery's parent via a new `buildGalleryIdToAlbumId()` helper
+      (first-album-wins if a gallery somehow appears in more than one
+      album's `sortorder`, mirroring `resolveMediaFolder()`/
+      `resolveDownloadFolder()`'s identical multi-parent tiebreak) — a
+      gallery in no album keeps its existing flat root-level placement,
+      unchanged from before. Covered by a new
+      `testRunNestsNextGenGalleriesUnderTheirAlbumFolder`, using the
+      confirmed real base64-JSON `sortorder` shape as its fixture data;
+      full suite (1695 tests) and `composer stan` both run clean.
+      Deliberately not re-run against the dev install's own live import
+      (that source is the same real production database this schema was
+      confirmed against) — NextGEN galleries/pictures aren't yet covered
+      by Skip/Overwrite existing content, so a second run would create a
+      fully duplicate set of folders/media rather than just adding the
+      new album nesting on top of what's already there.
+
+### URL & Link Migration
+
+- [x] Preserve slugs where possible
+- [x] Update internal links — `InternalLinkRewriter`
+      (`content/plugins/wordpress-importer/src/InternalLinkRewriter.php`),
+      the always-on `internal_links` stage; see the 2026-08-24
+      implementation note further down for detail and its scope
+      boundaries (posts/pages only, not category/tag/author archives)
+- [x] Update image references — a dedicated `ContentImageRewriter`
+      (`content/plugins/wordpress-importer/src/ContentImageRewriter.php`)
+      replaced the original plain string-replace `rewriteContentUrls()`
+      described in this ticket's 2026-08-21 note above — see the
+      2026-08-24 implementation note further down for detail. That
+      stage:
+  - [x] Download the original/full-size image referenced by `src` and
+        import it into the Media Library (already happens via the
+        existing attachment-URL rewrite)
+  - [x] Replace the `src` URL with the new Lumora media URL — now
+        resolves both an attachment's exact full-size path *and* a
+        WordPress-generated derivative filename (`cover-300x200.jpg`)
+        back to the same imported attachment, not just an exact guid
+        match
+  - [x] Parse and rewrite (or strip) `srcset`/`sizes` rather than leaving
+        WordPress-hosted derivative-size URLs behind in the content —
+        both attributes are stripped outright (this import doesn't
+        generate the derivative sizes they'd otherwise need to point at)
+  - [x] Strip WordPress-specific classes (`wp-image-123`, `size-large`,
+        etc.) that have no Lumora attachment-ID or size equivalent —
+        `alignleft`/`alignright`/`aligncenter`/`alignnone` are
+        deliberately kept rather than stripped or remapped, since the
+        default theme's own WYSIWYG editor already outputs and styles
+        those exact class names
+  - [x] Preserve `alt`
+  - [x] Preserve `width`, `height`, and `title` attributes
+  - [x] Handle `<figure>`/`<figcaption>` wrappers correctly rather than
+        only rewriting the inner `<img>`
+  - [x] Handle an image wrapped in `<a href="...">` (WordPress's
+        link-to-media-file / link-to-attachment-page pattern) — the
+        `href` is rewritten the same way as the image `src` when it
+        resolves to an imported attachment; left as-is otherwise (no
+        worse than the pre-existing broken link)
+  - [x] Don't assume every image is a plain `<img>` — account for gallery
+        shortcodes/blocks and other WordPress media constructs that don't
+        use a single `<img src>` pattern — still not rewritten, only
+        detected and flagged as an import warning per affected post/page.
+
+        **Implemented (2026-08-26).** The classic `[gallery]` shortcode
+        and `wp-block-gallery` block were already detected (2026-08-24
+        note further down); added two more real WordPress/Jetpack
+        constructs to `ContentImageRewriter::
+        unsupportedMediaConstructWarnings()` (renamed from
+        `unsupportedGalleryWarning()`, now returning one message per
+        distinct construct type found rather than a single hardcoded
+        gallery message): Jetpack's Tiled Gallery block
+        (`tiled-gallery` wrapper class — its own shortcode form,
+        `[gallery type="rectangular"]`, was already caught by the
+        plain `[gallery` check, since it still starts with that same
+        literal text) and Jetpack's `[slideshow]` shortcode. **Real bug
+        found and fixed in the same pass:** `rewrite()`'s own early-
+        return guard (skip everything when the content has no
+        `/wp-content/uploads/` marker at all) was silently swallowing
+        *every* gallery/tiled-gallery/slideshow warning too whenever a
+        post's *only* image content was one of those constructs with no
+        other real `<img>`/`<a>` uploads reference anywhere else in the
+        same content — exactly the "nothing here for the DOM pass to
+        rewrite" case this checklist item is actually about. Fixed by
+        running `unsupportedMediaConstructWarnings()` unconditionally,
+        before that guard, rather than after it.
+        
+        Deliberately **not** added: a CSS `background-image: url(...)`
+        heuristic (e.g. a Cover block) — real Cover block output
+        commonly emits *both* a background-image style *and* a real
+        `<img>` fallback for the same image, so flagging every
+        background-image occurrence would warn on an image that was
+        often already correctly resolved via the existing `<img>` pass,
+        not genuinely left broken; see `ContentImageRewriter`'s own
+        docblock for the full reasoning. Unlike NextGEN's `ngg_album`
+        table above, none of these four constructs' exact markup shapes
+        needed real-production-database verification — shortcode/block
+        tag names are stable, public WordPress/Jetpack conventions, not
+        undocumented plugin database schema — and none were found in
+        the real production database this ticket's other work was
+        verified against regardless (confirmed via direct query before
+        implementing, the same "check before assuming" discipline).
+        Covered by a new
+        `testRunFlagsJetpackTiledGalleryAndSlideshowAsUnsupported`
+        (`WordPressImportServiceTest.php`); full suite (1697 tests) and
+        `composer stan` both run clean.
+- [x] Redirect mapping report (2026-08-25): `WordPressImportService::
+      redirectMappingReport(string $batchId)` — a pure `ContentImportRegistry`
+      + `RedirectService` read (needs no source connection, same as
+      `lastImportSummary()`/`removeAll()`), returning every redirect this
+      batch created (Simple Download Monitor's own external-URL
+      downloads, and the new `_wp_old_slug` entries below) as a plain
+      old-URL/new-URL table. Shown on `admin/views/maintenance/import.php`
+      as a collapsible table alongside the "Last imported" summary, plus
+      a "Download as CSV" link (a plain GET, same no-CSRF-needed
+      reasoning as the existing `?ajax=progress` progress-polling branch,
+      since it only ever reads).
+- [x] Detect missing media (logged as an import warning)
+
+### Import Options
+
+- [x] Dry run (preview without importing) — `WordPressImportService::dryRunCounts()`,
+      the admin's own "Preview (Dry Run)" form
+- [x] Selective import (choose content types)
+- [x] Skip existing content (2026-08-25) — see the shared "Skip existing
+      content"/"Overwrite existing content" implementation note below.
+- [x] Overwrite existing content (2026-08-25). A new `existing_content`
+      option (`'skip'`/`'overwrite'`, an admin-facing "When content
+      already exists" dropdown on the Import form, default unset —
+      "refuse to start") relaxes `startOrResume()`'s previous hard "one
+      import at a time, remove before re-running" guard specifically for
+      these two values, letting a *new* batch start against a source
+      already imported once before, right alongside the still-existing
+      one. A new `ContentImportRegistry::existingLocalId(string $source,
+      string $contentType, string $externalId): ?int` — unlike the
+      existing, batch-scoped `newIdForExternalId()` — resolves an
+      external id back to the local id it became under *any* previous
+      batch of that source. A new `LumoraPress\Services\Import\
+      ExistingContentMode` enum (`Skip`/`Overwrite`) threads through as
+      an optional trailing parameter on `PostImporter`/`PageImporter`/
+      `CommentImporter`/`MediaImporter::import()`/`importFromLocalFile()`
+      — null (every call site outside a deliberate re-import) always
+      creates fresh, exactly as before Skip/Overwrite existed. Skip
+      reuses the matched row completely unchanged; Overwrite updates it
+      in place via each service's own `update()` (Post/Page — full field
+      update, with categories/tags/meta unconditionally reassigned via
+      their own delete-then-reinsert methods so a source removal
+      actually clears the local side too, not just an addition) or the
+      narrower API each type actually has (`CommentService` has no
+      combined `update()`, only `updateContent()`/`updateStatus()` — a
+      comment's author/parent/date are never touched; Media never
+      replaces the underlying file at all — `MediaService` has no
+      "replace this file in place" primitive taking a local path rather
+      than an uploaded `$_FILES`-shaped array — only alt text/caption/
+      description/folder, with the row's own `notes` value read back and
+      re-passed through since `updateMetadata()` has no "keep existing"
+      fallback and `ImportedMedia` carries no notes field of its own).
+      Either mode is never re-recorded under the new batch (the same "a
+      reused/updated row wasn't *created* by this batch" invariant
+      `UserImporter::importOrReuse()` already established for Users), so
+      "Remove All Imported Content" on the new batch can never delete
+      content an earlier batch still owns. `WordPressImportService::
+      importMedia()`'s own pre-existing "file not found, skip" check is
+      bypassed when an existing match is found first, so a Skip/
+      Overwrite re-import never needs the source's uploads copy to still
+      contain a file it already imported once. Users are unaffected —
+      `UserImporter` already always reuses a matching account by
+      username/email, unconditionally, regardless of this setting.
+      **Scope boundary for this pass** (documented in the admin UI's own
+      field hint and this plugin's README): only Users (already always
+      covered), Posts, Pages, Comments, and Media's main attachment
+      stage participate — Categories/Tags (`importCategories()`/
+      `importTags()`'s own flat tree-walk still always calls
+      `CategoryService::create()`/`TagService::create()` unconditionally
+      on every run — a post's own per-post category/tag *assignment* is
+      unaffected, since that already goes through the pre-existing,
+      already-idempotent-by-name `findOrCreateByName()`), Folders
+      (`importFolders()`/`importMediaFolders()`), Downloads, and NextGEN
+      Gallery images are all still created/reapplied fresh on every
+      import regardless of this setting — real, currently-open follow-up
+      work, not silently broken but not yet covered either.
+- [x] Resume interrupted imports — `WordPressImportService::startOrResume()`/
+      `runNextStage()`; see this section's own implementation note below
+- [x] Detailed progress indicator: a progress bar plus the current stage's
+      title (e.g. "Importing posts… 340/1200"), since the import currently
+      runs as one long synchronous admin request with no feedback until it
+      finishes — reuses the same live-polling mechanism LP-086 built for
+      Maintenance &rsaquo; Updates (a per-stage checklist, not a numeric
+      item-level progress bar within a stage — see the note below for why)
+- [x] Optional brief sleep/delay between import stages (Users → Categories/
+      Tags → Media → Pages → Posts → Comments) when the source is a live
+      production server, not a local/staging copy — avoids hammering a
+      shared-hosting site's database and web server back-to-back for the
+      whole import's duration
+- [x] Import log with warnings and errors
+- [x] Collapse the separate "Preview (Dry Run)" and "Start Import" forms
+      into a single form — `admin/views/maintenance/import.php`'s
+      "Import" section now renders the Site Settings/Content to Import/
+      Import Options fields once and posts to one shared `form`/CSRF
+      action (`start_wordpress_import`), with a "Dry run (preview
+      only — makes no changes)" checkbox above the single Import
+      button. Server-side, the `start_wordpress_import` handler branches
+      on `isset($_POST['dry_run'])` *after* its one `Csrf::verify()`
+      call (not in a second condition — the token is one-time-use, so a
+      second `verify()` on the same submission would always fail) to
+      call `dryRunCounts()` or run the real `startOrResume()`/
+      `runNextStage()` loop. The Resume form (a separate, smaller field
+      set for an interrupted import) is unaffected — it never submits a
+      `dry_run` field, so it always takes the real-run path.
+
+### Compatibility
+
+- [x] Gracefully ignore unsupported data
+- [x] Report unsupported plugins and custom post types (2026-08-25). Two
+      new diagnostics, both run unconditionally as part of the always-on
+      `verify` stage (never their own toggle — they report on source
+      data this import never touches at all, rather than verifying
+      anything created): `reportUnsupportedPostTypes()` (a new
+      `WordPressSource::postTypeCounts()` — one aggregate `GROUP BY
+      post_type` query, never a row dump) flags every `post_type` this
+      importer has no explicit support for, aggregated one warning per
+      type with its total count rather than one per row, since a real
+      multi-plugin site can carry thousands of rows of a single
+      unsupported type; `reportUnsupportedPlugins()` reads the existing
+      `option('active_plugins')` and aggregates every plugin slug with
+      no Lumora Press equivalent into one warning. Both confirmed
+      against the same real production database used for the NextGEN
+      Gallery ticket item above — 27 real distinct post types and 28
+      real active plugins, most of the latter turning out to be admin/
+      security/editor-UI utilities with no content of their own to lose.
+      Neither is available from a WXR-sourced import — WXR carries no
+      `wp_options` table at all, so `reportUnsupportedPlugins()` degrades
+      to "nothing to report", the same graceful default every other
+      database-only diagnostic in this class already has.
+- [x] Import `_wp_old_slug` postmeta as redirect entries (2026-08-25). A
+      post/page's prior slug(s) on the source site, mapped to its new
+      permalink — folded into the existing "internal_links" stage
+      alongside `rewriteInternalLinks()`, per this item's own original
+      note. WordPress appends one `_wp_old_slug` row per rename over
+      time — confirmed against a real production database (two posts
+      with 2 and 3 recorded renames respectively) — so a new
+      `WordPressSource::oldSlugs(int $postId): array` returns *every*
+      value, not just the first the way `postMeta()`'s own single-value
+      convenience does. Only ever considered for a post_id actually
+      imported as a Post or Page this batch (an attachment or a
+      plugin-specific post type can carry the same meta key too, neither
+      of which has its own public single page here to redirect to). A
+      new `sourcePathFromUrl()` helper converts `post_permalink()`/
+      `page_permalink()`'s absolute URL into the base-path-stripped
+      relative path `RedirectService`/`BasePath::stripFrom()` actually
+      expect. Skipped, with a warning, when the computed path already
+      has a redirect, or matches the post/page's own *current* path (a
+      slug later changed back to a previous value).
+- [x] Extend Skip/Overwrite existing content (see Import Options above)
+      to Categories/Tags/Folders (Media Library Folders and Simple
+      Download Monitor's own category tree), Downloads, and NextGEN
+      Gallery images — all five still always create/reapply fresh on
+      every import regardless of the `existing_content` setting, unlike
+      Users/Posts/Pages/Comments/Media's main attachment stage.
+
+      **Implemented (2026-08-26).** Same pattern
+      `PostImporter::import()`/`MediaImporter::importFromLocalFile()`
+      already use: look up `ContentImportRegistry::existingLocalId()`
+      by external id only when `$existingContentMode !== null`, Skip
+      returns/reuses the existing row untouched, Overwrite calls the
+      service's own `update()`, no match falls through to today's
+      `create()` + `registry->record()` path — now also passing the
+      external id that path previously omitted for
+      Category/Tag/Folder. New shared `createOrUpdateCategory()`/
+      `createOrUpdateFolder()` private helpers (the latter reused by
+      `importFolders()`, `importMediaFolders()`, and
+      `importNextGenGalleries()`'s own album/gallery folders — all
+      three hand a Folder the identical three FolderService calls)
+      keep each hierarchy loop's per-node body a one-line call rather
+      than repeating the same eight-line branch five times.
+      
+      The synthetic top-level "Downloads" wrapper folder (no WordPress
+      term of its own to key off) gets a fixed synthetic external id,
+      `'sdm-downloads-root'`, so a re-import finds the same wrapper
+      instead of creating a duplicate "Downloads" tree.
+      
+      **Included NextGEN album/gallery folders even though not
+      explicitly named in this item's own parenthetical** — needed for
+      correctness, not just completeness: NextGEN picture *media
+      items* already had a stable external id and would have become
+      Skip/Overwrite-matchable on their own, but `MediaImporter`'s
+      Overwrite branch moves a matched picture into whatever folder id
+      it resolves this run — if the album/gallery *folders* kept being
+      created fresh every run, every already-imported picture would
+      get shuffled into a brand-new duplicate folder on every
+      re-import, actively worse than doing nothing.
+      
+      `DownloadService::update()` already did everything a Download
+      Overwrite needs in one call, for both download types — including
+      updating an *existing* Redirect's target URL in place for a
+      Url-typed download rather than creating a second one — which
+      resolved what looked like an open scope question (whether
+      Skip/Overwrite could even cover external-link downloads without
+      extending `RedirectService`, not mentioned in this item) before
+      it needed asking.
+      
+      Six new/updated tests in `WordPressImportServiceTest.php`
+      (Categories/Tags together, Folders/Downloads together — both
+      download types — and NextGEN galleries/images together, plus a
+      dedicated nesting test confirming a newly added child category
+      under an already-existing parent still resolves on a second run)
+      and the two pre-existing Skip/Overwrite tests for Posts had their
+      `'categories' => false` workaround removed (they now exercise the
+      real path end-to-end instead of routing around the gap). Full
+      suite (1701 tests) and `composer stan` both run clean. No
+      browser verification — re-running a real import against the dev
+      install's own already-imported production-data source would
+      duplicate/mutate that data outside of Skip/Overwrite's own
+      control, matching this session's other LPP-004 items' same
+      reasoning.
+- Import `_wp_page_template` postmeta: see `ideas for later.md`'s WordPress Importer (LPP-004) section.
+
+### Post-Import
+
+- [x] Verify imported content — `WordPressImportService::verifyImport()`,
+      the always-on final `verify` stage
+- [x] Rebuild search index — not applicable to this app's architecture;
+      see the implementation note below for why
+- [x] Regenerate thumbnails — `WordPressImportService::regenerateThumbnails()`,
+      the always-on `thumbnails` stage
+- [x] Recalculate comment counts — not applicable; no cached column exists
+      to go stale, see the note below
+- [x] Rebuild category and tag counts — not applicable; same reason
+- [x] Generate import summary (imported, skipped, failed)
+- [x] Consolidated post-import summary with an explicit "action needed"
+      section.
+
+      **Implemented (2026-08-26).** A new dedicated screen, shown once
+      immediately after a real import run completes, before the admin
+      is returned to the normal Maintenance &rsaquo; Import view — per
+      the 2026-08-26 decision below. Still the same
+      `admin/views/maintenance/import.php` file and URL
+      (`?imported=1`, the existing session-flash-warnings redirect
+      target) rather than a new route: when `$imported` is true, the
+      view now renders a self-contained "import complete" panel
+      (success message, imported counts, Action Needed, Redirect
+      Mapping, a collapsed "other items" list, and a Continue link back
+      to the plain URL) and `return`s before reaching any of the
+      normal Detect/Test Connection/Import form panels below — a
+      `return` mid-view is safe since `admin/index.php` still requires
+      `views/layout-footer.php` afterward regardless of where the view
+      file itself stops.
+      
+      The "action needed" split is `WordPressImportService::
+      isActionNeededWarning(string $warning): bool`, a new public
+      static classifier matching the exact wording
+      `reportUnsupportedPostTypes()`/`reportUnsupportedPlugins()`/
+      `flagUnsupportedShortcodes()`/`ContentImageRewriter::rewrite()`
+      already produce for their four "needs a human decision" warnings
+      — chosen over restructuring the many existing `$this->warnings[]
+      = "..."` call sites across the class into a structured
+      type/category, which would have touched dozens of unrelated
+      lines for one screen's benefit. Also filled a real gap this
+      ticket's own description assumed was already covered:
+      `flagUnsupportedShortcodes()` only ever checked `[sdm_show_dl`/
+      `[ngg` — WordPress core's own `[gallery]`/`wp-block-gallery` was
+      never itself flagged by that method (it turned out
+      `ContentImageRewriter::rewrite()` already flags it separately,
+      with its own wording, at the point content is actually rewritten
+      — the classifier now recognizes that wording too, rather than
+      adding a second, duplicate `[gallery]` check).
+      
+      Covered by two new tests in `WordPressImportServiceTest.php`:
+      the existing `testRunReportsUnsupportedPostTypesAndPlugins` now
+      also asserts the classifier recognizes every warning that real
+      run actually produced, plus a dedicated
+      `testIsActionNeededWarningRecognizesEachRealWarningShapeAndRejectsRoutineOnes`
+      covering all four action-needed shapes and two routine ones. Full
+      suite (1696 tests) and `composer stan` both run clean.
+      Browser-verified against the dev install: `?imported=1` renders
+      the new summary screen with no PHP error, and its Continue link
+      correctly returns to the plain, unaffected normal Import screen.
+
+**Decided (2026-08-26):** the consolidated summary above is its own
+dedicated screen/panel, shown once immediately after an import
+completes, before the admin is returned to the normal Maintenance
+&rsaquo; Import view — not folded inline into the existing Import
+screen.
+
+### Future Enhancements
+
+See `ideas for later.md`'s WordPress Importer (LPP-004) section: theme customization settings import, custom-post-type mapping, and a third-party importer plugin API.
+
+**Design goal:** Make migration from WordPress as close to a one-click experience as possible while preserving URLs, media, metadata, and site structure.
+
+### LPP-007. Downloads Listing Display
+
+**Implemented (2026-08-21), same session as LPP-004.** Rather than
+inventing a new template tag/shortcode an admin would need to hand-edit
+into every migrated page, `DownloadsShortcode`
+(`content/plugins/wordpress-importer/src/DownloadsShortcode.php`)
+renders the *exact* WordPress shortcode already sitting in migrated
+content — `[sdm_show_dl_from_category category_slug="..."
+show_size="1"]` — so nothing needs editing at all. Hooked on the
+`content_html` filter (the same hook Font Awesome's own `[icon]`
+shortcode uses, priority 20), gated behind a cheap `str_contains()`
+check so a page without the shortcode pays nothing. A category is
+matched by slugifying its Folder's name against `category_slug` (see
+the class's own docblock for the one edge case this doesn't cover — a
+hand-edited WordPress slug that no longer matches its category name).
+
+Verified end to end against the real source site's data: visiting an
+imported page (`/page/xena-warrior-princess`) rendered a real styled
+list with a working download link; clicking it followed the Redirect
+to the actual GitHub URL and incremented its `hit_count` from 0 to 1.
+
+### Checklist
+
+- [x] A template tag/shortcode-equivalent listing downloads in a Folder
+- [x] Mixes real Media items and external-link Redirects in one list
+- [x] Themeable markup/CSS (`.lp-downloads-list` and friends) in the
+      active theme's stylesheet, per the Public-Facing CSS Rule —
+      added to both the default theme and the `duskline` custom theme
+- [x] Migration path for existing imported pages: none needed — the
+      shortcode renders as-is, no hand-editing required
+
+Extended along the way: `Redirect`s gained an optional, nullable
+`folder_id` (migration `0041_add_folder_id_to_redirects.sql`,
+`RedirectService::create()`'s new optional param, a new
+`listByFolder()`), and `WordPressImportService::importDownloads()`
+(`LPP-004`) now passes it through — without this, an external-link
+download had no way to be grouped by category at all, and most of the
+real source site's FocusWriter Themes downloads are exactly that kind
+(GitHub-hosted, per that ticket's own note on why).
+
+### LPP-008. Downloads Admin Management Page
+
+### Goal
+
+Ariane's feedback after `LPP-007` shipped (2026-08-21): the current
+setup is confusing — "downloads" only exist as a side effect of
+importing from Simple Download Monitor (a Media item filed into a
+Folder, or a Redirect with a `folder_id`), with no dedicated admin UI.
+She wants a real admin management page: a place to see all downloads
+grouped by category, and — critically — **add new ones going forward**,
+the way Simple Download Monitor let her (upload a file OR give an
+external URL, pick/create a category, write a description), not just
+via the general-purpose Upload/Redirects screens which already
+technically work (per the answer given earlier this session — Media
+Manager Upload already has a folder picker, and `/media/{id}/download`
+already tracks a real count; Settings > Redirects already exists) but
+clearly aren't a good enough experience for this specific use case.
+
+### Approach taken
+
+Both open questions were confirmed directly with Ariane before
+implementation: **a new standalone plugin** (`content/plugins/downloads/`,
+not folded into `wordpress-importer` and not a core feature — CLAUDE.md's
+Plugin Philosophy already says non-essential features belong in a
+plugin, and Downloads is useful on a site that never imported anything),
+and **a real dedicated `downloads` table** (not more folder_id-keyed
+metadata bolted onto Media/Redirects), fixing the exact gap this ticket
+flagged (Redirects have no `description` column at all).
+
+The new plugin gets a real top-level admin menu entry (`admin/index.php`'s
+`$menu` array, gated by `$downloadsActive` — the same pattern Font
+Awesome's own submenu entry already uses, just at the top level instead
+of nested under Appearance).
+
+### Checklist
+
+- [x] A list view: every download grouped by category —
+      `DownloadService::listAllGroupedByFolder()`
+      (`admin/views/downloads/all-downloads.php`)
+- [x] An "Add Download" form: title, description, category
+      (existing Folder picker or create-new inline), and either a file
+      upload or an external URL
+      (`admin/views/downloads/add-new.php`)
+- [x] Edit/delete for an existing download of either kind
+      (`DownloadService::update()`/`delete()`, inline `<details>` edit
+      + delete on the All Downloads list, mirroring Menus/Widgets'
+      existing per-item edit pattern)
+- [x] Relation to `LPP-007`'s shortcode rendering: **decided to leave
+      `DownloadsShortcode` untouched.** `DownloadService::create()`
+      still sets `folder_id` on the Media/Redirect row it creates
+      underneath a Download — exactly what the old bolt-on flow already
+      did — so a download added through the new admin UI automatically
+      shows up in the existing `[sdm_show_dl_from_category]` shortcode
+      output too, with zero changes needed to the `wordpress-importer`
+      plugin. Verified live (see Notes below).
+- [x] Decided: `download` is now a real dedicated table
+      (`install/migrations/0042_create_downloads_table.sql`), but as a
+      thin identity/metadata layer over Media/Redirect rather than a
+      full reimplementation — see Notes below for why.
+
+### Notes
+
+`DownloadService` (`content/plugins/downloads/src/`) deliberately
+reuses `MediaService`/`RedirectService`/`ThumbnailService`/`FolderService`
+rather than reimplementing file storage, URL redirection, or thumbnail
+generation: a File-typed download's bytes are a normal Media row
+(`media_id`), a Url-typed download's link is a normal Redirect row
+(`redirect_id`, giving it real hit-counting via
+`RedirectService::recordHit()` for free), and the new `downloads` table
+only adds what neither had on its own — a title/description regardless
+of type, and one place to list/edit everything grouped by category. A
+File download's description is also copied onto its Media row
+(`MediaService::updateMetadata()`) so `DownloadsShortcode` — which
+reads `$item['description']` straight off the media row — shows it too,
+with no changes to that plugin needed.
+
+`DownloadService::delete()` removes the linked Media/Redirect row along
+with the Download row itself — a Download's whole reason to exist is to
+*be* the public download, so no orphan should survive deleting it.
+Changing the underlying *file* of a File-typed download is out of scope
+for v1 (Media Manager's own edit panel doesn't support replacing a file
+either — delete-and-re-add covers that case).
+
+No changes were made to `wordpress-importer`'s
+`WordPressImportService::importDownloads()` or `DownloadsShortcode` —
+both already shipped, are tested, and were verified end-to-end against
+Ariane's real site (see `SESSION.md`'s handoff note); this plugin is
+purely additive on top of them, with the two plugins never needing to
+know about each other.
+
+Verified live against the dev install
+(`lumorapress-preview`): added a file-type download and a url-type
+download, confirmed both listed correctly grouped by category on All
+Downloads, edited one, deleted one (confirmed its underlying Media/
+Redirect row was also gone), and confirmed a download added through the
+new UI immediately appeared in `[sdm_show_dl_from_category]` output on
+an existing migrated page with a matching category — the "zero extra
+wiring" integration claim above, actually proven rather than assumed.
+Full unit suite green (1433 tests) plus the PHP 8.2/8.3/8.4 Docker
+matrix (`./run-tests-all-php.sh`) — see `PHP Test Suite/TEST_LOG.md`.
+
+**Follow-up (2026-08-21), same session:** Ariane asked for the two
+gaps this ticket's own "no changes made" decision left open to actually
+be closed.
+
+- [x] `WordPressImportService::importDownloads()` (wordpress-importer)
+      now also creates a `downloads` table row for each migrated
+      download, so it appears on the Downloads admin screen too, not
+      just Media Manager/Settings > Redirects. Uses a new
+      `DownloadService::recordExisting()` — the `create()` tail
+      factored out into its own method — rather than `create()` itself,
+      since the Media item/Redirect already exists by that point;
+      calling `create()` would upload the file or create the redirect a
+      second time. New constructor param
+      `?DownloadService $downloads = null` (nullable — the Downloads
+      plugin may not be active), wired from
+      `admin/views/maintenance/import.php`'s existing `$downloadsActive`
+      flag. `removeAll()` gained a `'download'` deletion-order entry,
+      positioned before `'media'`/`'redirect'` so a rollback never
+      leaves an orphaned `downloads` row.
+- [x] A fresh `[lumora_downloads]` shortcode, owned by this plugin —
+      deliberately not reusing `[sdm_show_dl_from_category]`'s syntax
+      (confirmed with Ariane). `category_id="13"` (exact Folder id) or
+      `category="Folder Name"` (case-insensitive name match, since
+      Folders have no slug column — `category_id` wins if both given),
+      plus `show_size="1"`. New `DownloadsShortcode`
+      (`content/plugins/downloads/src/`), registered on `content_html`
+      the same way the WordPress Importer plugin's own (unrelated)
+      shortcode already is; reads via a new
+      `DownloadService::listByFolder()`. Renders into the existing
+      `.lp-downloads-list` classes (LPP-007) — same visual shape as the
+      other shortcode, no new CSS needed — but unlike that class's own
+      unescaped description output, this one's description is
+      `esc_html()`-escaped. `ThumbnailService` made optional on
+      `DownloadService` (only its file-upload path ever used it), so
+      this read-only shortcode class doesn't need to construct one.
+
+No shortcode-insert picker was built — none exists anywhere in Lumora
+Press's editors today (Font Awesome's `[icon]` has none either),
+confirmed with Ariane as out of scope here.
+
+Verified live against the dev install a second time: removed the
+existing WordPress Importer batch and re-imported fresh from Ariane's
+real so-obsessed.com backup (the first real end-to-end exercise of the
+new cross-plugin wiring — 41 downloads landed with real `downloads`
+rows, grouped correctly by category on the Downloads admin screen), and
+confirmed post #2174 (the same real download this session's earlier
+count-preservation work verified) still carries its correct seeded
+count of 1195 all the way through, now visible on its `downloads` row's
+underlying Redirect. Added `[lumora_downloads category_id="25"
+show_size="1"]` and `[lumora_downloads category="ao3 site skins"]`
+(case-insensitive) to a real page — both rendered the same 10-item
+list correctly; confirmed the pre-existing
+`[sdm_show_dl_from_category]` shortcode on a real migrated page still
+renders too, unaffected. Full unit suite (1536 tests) and the PHP
+8.2/8.3/8.4 Docker matrix both green — see
+`PHP Test Suite/TEST_LOG.md`.
+
+### LPP-009. Downloads: All Downloads List Redesign + Shortcode Docs Subpage
+
+### Goal
+
+Two follow-ups on top of LPP-008, requested after using the shipped
+Downloads plugin for real:
+
+1. **All Downloads should look and behave like All Posts**, not the
+   current grouped-by-category sections
+   (`DownloadService::listAllGroupedByFolder()`,
+   `admin/views/downloads/all-downloads.php`) — a real admin list table
+   with an ID column, a Category column, a Status column, a Date
+   column, and Duplicate + Trash row actions, matching the conventions
+   `admin/views/posts/all-posts.php`/`PostService` already establish
+   (status-count tabs, bulk actions, `PostService::duplicate()` as the
+   precedent for a new `DownloadService::duplicate()`).
+2. **Downloads &rsaquo; Shortcodes**: a new admin subpage documenting
+   `[lumora_downloads]`'s syntax/attributes/examples for site admins,
+   so they don't have to go find the plugin's own `README.md` on disk
+   to remember the attribute names.
+
+### Open design question — Status and Trash
+
+The `downloads` table (`install/migrations/0042_create_downloads_table.sql`)
+currently has no `status`/`trashed_at` column at all — `DownloadService::delete()`
+is a hard delete today (removing the row and its underlying Media item/
+Redirect immediately, no Trash tab, no undo). Unlike Posts/Pages,
+a Download has no meaningful Draft/Pending/Scheduled states — there's
+nothing to "publish" later, a download either exists and is live, or
+it doesn't. Decide before implementing:
+
+- (a) Add a `trashed_at` column only (mirroring Pages' own
+  `trash()`/`restore()`/permanent-`delete()` three-state pattern —
+  Draft/Published collapsed into a single "live" state, since neither
+  makes sense for a download), with a real Trash tab and status-count
+  tabs of just Live/Trash, or
+- (b) Keep hard delete as the only removal path and only add the
+  ID/Category/Date columns + row layout — "Trash" in the original
+  request might just mean "a Delete/Trash action label", not a real
+  soft-delete system with a recovery tab.
+
+Confirm which with Ariane before starting — (a) is a real schema change
+(new migration, `DownloadService::trash()`/`restore()`, updated
+`delete()` semantics, updated `listAllGroupedByFolder()`/new
+list-for-admin method to exclude/include trashed) while (b) is a much
+smaller, presentation-only change.
+
+### Checklist
+
+- [x] Resolve the Status/Trash design question above — Ariane confirmed
+      (a): a `trashed_at` column
+      (`install/migrations/0043_add_trashed_at_to_downloads_table.sql`),
+      mirroring Pages'/Posts' own pattern. A `DownloadStatus` enum
+      (Live/Trashed) represents this as a computed value
+      (`Download::status()`), not a stored column — a download has no
+      Draft/Published state to store.
+- [x] New admin-list method on `DownloadService` (flat, paginated,
+      sortable — not `listAllGroupedByFolder()`, which stays as the
+      shortcode's own data source) mirroring
+      `PostService::paginateForAdmin()`'s shape — `paginateForAdmin()`,
+      genuinely sortable (whitelisted `orderBy`/`orderDir`) unlike
+      Posts'/Pages' fixed ordering, since a download list has no
+      natural published-date ordering to fall back on.
+- [x] `admin/views/downloads/all-downloads.php` rewritten as a real
+      table: ID, Title, Category, Type (file/url), Status, Date columns
+      — plus a category filter and sortable column headers.
+- [x] `DownloadService::duplicate()` (mirrors `PostService::duplicate()`)
+      — decided to share the original's Media item/Redirect rather than
+      copy it (matches `PostService::duplicate()`'s own precedent of
+      sharing a post's featured image rather than duplicating it).
+      `delete()` gained a reference-counting guard so permanently
+      deleting one shared copy doesn't break the other's link.
+- [x] Trash/Delete row action per the resolved design question —
+      Duplicate + Trash on the Live tab, Restore + Delete Permanently
+      on the Trash tab, mirroring `all-posts.php`'s out-of-band-form
+      pattern for row actions inside a bulk-action `<form>`.
+- [x] New `admin/views/downloads/shortcodes.php` subpage (`admin/index.php`'s
+      `$menu` array gains a `shortcodes` child under the existing
+      `downloads` entry) documenting `[lumora_downloads]`'s
+      `category`/`category_id`/`show_size` attributes with real
+      examples, generated from — or at minimum kept in sync with —
+      `DownloadsShortcode`'s own docblock/README so the two don't drift
+- [x] Regression tests for `duplicate()` and any new admin-list method —
+      16 new tests added to `DownloadServiceTest.php` covering
+      trash/restore, both listing methods excluding trashed rows,
+      `countByStatus()`, `duplicate()` (including the shared-media-id
+      guard on permanent delete), and `paginateForAdmin()` (filters,
+      pagination math, sorting, and the `orderBy` whitelist).
+- [x] Verify end-to-end against the dev install with real imported data —
+      migration applied to `lumorapress-preview`'s live DB (41 real
+      imported downloads); Duplicate, Trash, Restore, Delete Permanently,
+      category filter, and column sorting all confirmed working against
+      real data, including the delete guard (permanently deleting a
+      duplicate left the shared Media row and the original download
+      intact). Caught and fixed a real bug in the process: `downloads.php`
+      never required the new `DownloadStatus.php`, so the plugin fataled
+      on load until fixed.
+
+### LPP-010. Downloads: Rich Description Editor + File Preview Image
+
+### Goal
+
+The Add/Edit Download forms (`admin/views/downloads/add-new.php`)
+still use a plain `<textarea>` for the Description field — the only
+content-entry field left in the admin that doesn't match the editing
+experience Posts and Pages already give an author. Bring it up to
+parity:
+
+- [x] Description field gets the same WYSIWYG/Markdown/HTML editor
+      Posts and Pages use (whichever shared editor component/asset
+      they're built on), including the same format-switching UI, not a
+      bespoke reimplementation for this plugin.
+- [x] For a File-typed download, show a preview image of the uploaded
+      file on the Edit screen (and after a successful upload on Add) —
+      at minimum for image file types; decide whether a generic-file
+      icon fallback is worth adding for non-image types (PDF, zip,
+      etc.) or out of scope for v1.
+
+### Notes
+
+`DownloadService::update()`'s description parameter and the
+`downloads.description` column already accept arbitrary text — this is
+purely an admin-UI change to the input control and its stored format,
+not a data-model change. Check whether `downloads` needs its own
+content-format column (mirroring `posts`/`pages`) or can reuse an
+existing convention before implementing.
+
+**2026-08-25 implementation note:** Went with a new
+`downloads.description_format` column (`install/migrations/
+0046_add_description_format_to_downloads_table.sql`), mirroring
+`posts`/`pages`' own `content_format` convention exactly rather than
+inventing a parallel one — `Download`/`DownloadService` gained a
+`descriptionFormat` (`ContentFormat`) property/parameter throughout
+`create()`/`recordExisting()`/`update()`/`duplicate()`/`hydrate()`,
+defaulting to `Plain` so already-existing rows and callers that never
+pass one (`WordPressImportService::importDownloads()`, an SDM
+description was always plain text) keep rendering exactly as before.
+
+`admin/views/downloads/add-new.php` now wires the Description field to
+the exact same `data-lp-content-editor`/`data-lp-content-format-select`
+markup contract and `editor_upload`/`media_picker_query`/
+`convert_content` JSON sub-actions Posts/Pages use — no changes needed
+to `admin/assets/js/content-editor.js` itself, since it's already a
+generic component keyed off that markup contract rather than anything
+post/page-specific. Gated on `upload_files` (the capability this
+plugin's whole admin area already requires) rather than the Posts-
+specific `edit_posts` split. `create_download`'s success redirect now
+targets this same screen's `?id=` Edit view (matching
+`PostsController::save()`'s own "redirect to the edit screen for the id
+just saved" convention) instead of the All Downloads list, so a
+File-typed download's file preview image is visible immediately after a
+successful Add upload — a scope decision Ariane should be aware of, in
+case the All Downloads redirect was relied on elsewhere; `update_download`
+still redirects to the list as before.
+
+File preview image reuses `ThumbnailService::url($media, 'medium')`
+(falling back to `MediaService::url()`) for an image file — no new
+image-processing code. Decided **to add** the non-image fallback
+(v1-in-scope, not deferred): reuses the exact `typeCategory()` text
+badge convention the Media Manager's own grid/list thumbnails already
+fall back to for a non-image file, rather than a new icon asset.
+
+`DownloadsShortcode::renderList()` (the public `[lumora_downloads]`
+output) also now renders a description through `ContentRenderer`
+instead of `esc_html()`, so a Markdown/HTML-format description
+actually renders publicly instead of showing as escaped literal text —
+not explicitly called for by this ticket's checklist, but a necessary
+consequence of storing a real format at all. Uses a private,
+database-free `ContentRenderer`/`HookManager` instance rather than the
+shared one, since `ContentRenderer::render()` ends by re-running the
+`content_html` filter this same class is itself registered on.
+
