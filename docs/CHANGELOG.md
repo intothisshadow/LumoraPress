@@ -30,6 +30,15 @@ All notable changes to Lumora Press are documented in this file.
   is enabled (the default) — `img-src` only ever allowed same-origin
   images, with nothing widening it for `www.gravatar.com`. The policy
   now explicitly allows that host.
+- WordPress Importer: Simple Download Monitor's single-download embed
+  (`[sdm_download id="..."]`) and "latest downloads" (`[sdm_latest_downloads
+  number="..." category_slug="..."]`) shortcodes were left as raw,
+  unrendered text on every migrated post/page that used them — only the
+  third SDM shortcode, `[sdm_show_dl_from_category]`, was ever actually
+  handled. Both now resolve against the same import data
+  `[sdm_show_dl_from_category]` already uses (the download's original
+  WordPress post id is matched back to the Media/Redirect row it became
+  via the import's own provenance records).
 
 ## [0.7.0] — 2026-08-26
 
