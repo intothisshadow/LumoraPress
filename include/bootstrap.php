@@ -29,6 +29,7 @@ use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Errors\ErrorHandler;
+use LumoraPress\Core\Errors\ErrorLogReader;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Hooks\Hooks;
 use LumoraPress\Core\Http\BasePath;
@@ -138,6 +139,7 @@ FormTiming::setSecretKey((string) $config->get('secret_key', ''));
 
 $errorHandler = new ErrorHandler(LUMORA_ROOT . '/storage/logs', (bool) $config->get('debug', false));
 $errorHandler->register();
+$errorLogReader = new ErrorLogReader(LUMORA_ROOT . '/storage/logs');
 
 $database = Database::connect(
     host: (string) $config->get('db_host', '127.0.0.1'),
@@ -765,6 +767,7 @@ $kernel = new Kernel(
     config: $config,
     database: $database,
     errors: $errorHandler,
+    errorLog: $errorLogReader,
     hooks: $hooks,
     plugins: $plugins,
     theme: $theme,

@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Maintenance &rsaquo; Logs (LP-114): a real admin screen behind the
+  previously-placeholder menu entry, showing the application error log
+  (`storage/logs/error.log`, newest first, with entry count/file size and
+  a "Clear Log" action) and recorded failed login attempts (IP, username,
+  and current lockout status per `LoginThrottle`'s existing thresholds).
 - Visitor-facing light/dark mode toggle for the default theme (LP-117): a
   header button that switches between an explicit Light and Dark choice,
   persisted in the browser (`localStorage`) so it survives navigation and

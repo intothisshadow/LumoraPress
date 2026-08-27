@@ -131,6 +131,31 @@ final class LoginThrottle
         }
     }
 
+    /**
+     * @return array<int, array{ip_address: string, username: ?string, attempted_at: string}>
+     *
+     * Fails open (returns an empty list) on a database error, mirroring
+     * secondsUntilUnlocked()'s own reasoning — a broken read here must
+     * never crash the Maintenance > Logs admin screen.
+     */
+    public function recentAttempts(int $limit = 50): array
+    {
+        $limit = max(1, $limit);
+
+        try {
+            return $this->database->fetchAll(
+                'SELECT ip_address, username, attempted_at
+                 FROM ' . $this->table() . "
+                 ORDER BY attempted_at DESC
+                 LIMIT {$limit}",
+            );
+        } catch (Throwable $exception) {
+            $this->logFailure($exception);
+
+            return [];
+        }
+    }
+
     private function logFailure(Throwable $exception): void
     {
         error_log('[LoginThrottle] ' . $exception::class . ': ' . $exception->getMessage());

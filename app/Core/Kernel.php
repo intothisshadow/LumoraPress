@@ -20,6 +20,7 @@ namespace LumoraPress\Core;
 use LumoraPress\Core\Cache\CacheManager;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Errors\ErrorHandler;
+use LumoraPress\Core\Errors\ErrorLogReader;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
@@ -87,6 +88,7 @@ final class Kernel
         public readonly PressConfig $config,
         public readonly Database $database,
         public readonly ErrorHandler $errors,
+        public readonly ErrorLogReader $errorLog,
         public readonly HookManager $hooks,
         public readonly PluginManager $plugins,
         public readonly ThemeRenderer $theme,
