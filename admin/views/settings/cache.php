@@ -99,7 +99,7 @@ $recentPurges = $cache->recentPurges();
         responses) on every cacheable public page, which browsers and any CDN in front of this site will
         still honor &mdash; there just isn't a LiteSpeed-specific purge integration active. Only LiteSpeed/
         OpenLiteSpeed is supported today; Cloudflare, Varnish, and other reverse proxies are planned for a
-        future release (see <code>TODO.md</code>'s LP-037 entry).
+        future release.
     </div>
 <?php endif; ?>
 

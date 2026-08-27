@@ -173,7 +173,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             </p>
 
             <p class="lp-field">
-                <label for="default-featured-image">Default featured image (LP-040)</label>
+                <label for="default-featured-image">Default featured image</label>
                 <select id="default-featured-image" name="default_featured_image_media_id">
                     <option value="0">(None)</option>
                     <?php foreach ($mediaService->query(['type' => 'image'], 500, 0)['items'] as $imageOption): ?>

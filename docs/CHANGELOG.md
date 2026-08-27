@@ -59,6 +59,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Admin: three internal `TODO.md` ticket IDs were leaking directly into
+  user-facing copy an admin actually reads (LP-101) — Media Manager
+  &rsaquo; Thumbnails' "Default featured image" field label, Settings
+  &rsaquo; Media's "Show filenames in the lightbox" hint, and Settings
+  &rsaquo; Cache's "no reverse-proxy detected" warning banner (which
+  literally said "see TODO.md's LP-037 entry"). Removed from all three;
+  a full-codebase audit found no further instances.
 - Admin: the "View" row action on All Posts/All Pages shared its color
   with every other row-action chip (Duplicate, Restore, etc.), and its
   hover state — inherited from a lower-specificity rule than intended —

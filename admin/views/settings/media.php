@@ -115,7 +115,7 @@ $currentLightboxSize = (string) $kernel->config->option('lightbox_large_size', '
             <input type="checkbox" name="lightbox_show_filenames" value="1" <?= $kernel->config->option('lightbox_show_filenames', '0') === '1' ? 'checked' : '' ?>>
             Show filenames in the lightbox
         </label>
-        <span class="lp-field__hint">Displays each image's filename alongside its dimensions at the bottom of the lightbox (LP-031). Off by default, since filenames are rarely meaningful to visitors.</span>
+        <span class="lp-field__hint">Displays each image's filename alongside its dimensions at the bottom of the lightbox. Off by default, since filenames are rarely meaningful to visitors.</span>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
