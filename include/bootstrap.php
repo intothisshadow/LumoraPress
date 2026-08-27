@@ -853,7 +853,13 @@ $router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($p
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));
-$router->get('/page/{slug}', fn (array $params) => $site->page($params));
+/*
+ * LP-084: "/page/{slug}" is now a legacy URL, permanently redirected to
+ * the page's real hierarchical URL — see the route table's closing block
+ * below, where "/{path*}" (the actual hierarchical Page route) is
+ * registered last, after every other route.
+ */
+$router->get('/page/{slug}', fn (array $params) => $site->legacyPageRedirect($params));
 $router->post('/page/{slug}/comment', fn (array $params) => $site->submitPageComment($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));
 $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
@@ -946,6 +952,17 @@ $router->patch('/api/v1/comments/{id}', fn (array $params) => $api->commentsUpda
 $router->delete('/api/v1/comments/{id}', fn (array $params) => $api->commentsDestroy($params));
 
 $router->get('/api/v1/search', fn (array $params) => $api->searchIndex($params));
+
+/*
+ * LP-084: hierarchical Page URLs — "/{path*}" greedily matches any
+ * remaining path ("about/team", "about", ...), so it must be the very
+ * last route registered, after every fixed-pattern route above
+ * (including /admin, /api/v1/*, and the legacy "/page/{slug}" redirect
+ * registered earlier in this file), or it would shadow all of them (see
+ * Router's own docblock).
+ */
+$router->get('/{path*}', fn (array $params) => $site->pageByPath($params));
+$router->post('/{path*}/comment', fn (array $params) => $site->submitPageComment($params));
 
 $router->setNotFoundHandler(static fn () => $site->notFound());
 

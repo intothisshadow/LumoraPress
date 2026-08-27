@@ -22,8 +22,8 @@ get_header();
     /*
      * LP-022: WebSite structured data — only on the genuine homepage
      * (this template is shared with LP-046's "Posts page" at its own
-     * /page/{slug} URL, which always passes a non-null $page_title, so
-     * that check is what distinguishes the two here).
+     * URL, which always passes a non-null $page_title, so that check is
+     * what distinguishes the two here).
      */
     $websiteJsonLd = [
         '@context' => 'https://schema.org',

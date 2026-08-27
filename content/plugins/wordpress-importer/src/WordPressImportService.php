@@ -1032,8 +1032,19 @@ final class WordPressImportService
 
             $currentUrl = page_permalink($page);
 
+            // LP-084: a page's URL is now its ancestor chain plus its own
+            // slug, not a flat 'page/{slug}' — a previous WordPress slug
+            // is swapped in for the page's own slug only, keeping the
+            // same (current) ancestor chain, since WP's own slug history
+            // has nothing to say about Lumora Press's parent/child URL
+            // structure.
+            $ancestorSegments = array_map(
+                static fn (\LumoraPress\Models\Page $ancestor): string => $ancestor->slug,
+                $this->pages->ancestors($page->id),
+            );
+
             foreach ($this->source->oldSlugs((int) $wpPageIdString) as $oldSlug) {
-                $oldUrl = site_url('page/' . $oldSlug);
+                $oldUrl = home_url(implode('/', [...$ancestorSegments, $oldSlug]));
                 $this->createOldSlugRedirect($batchId, (int) $wpPageIdString, $page->title, $oldUrl, $currentUrl);
             }
         }

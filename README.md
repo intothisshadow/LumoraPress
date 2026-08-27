@@ -131,7 +131,9 @@ Lumora Press follows a small service-oriented architecture rather than a full fr
   backed by `NativeMailer` (PHP's built-in `mail()`, no external mail
   library) — used today for password-reset emails.
 - **`LumoraPress\Core\Http\Router`** — a small, dependency-free router with
-  `{param}` placeholders; no third-party routing library.
+  `{param}` (single path segment) and `{param*}` (LP-084; matches
+  greedily across slashes, for a variable-depth path like a hierarchical
+  Page URL) placeholders; no third-party routing library.
 - **`LumoraPress\Core\Http\BasePath`** — holds the install's base path
   (empty for a domain-root install, e.g. `/blog` for a subdirectory
   install), captured once by the installer and persisted to
@@ -266,7 +268,8 @@ them via FTP/SFTP or your hosting file manager).
   actions (including change author/category/visibility), duplicate,
   custom fields, preview, author archives, categories and tags,
   revision history.
-- **Pages** — static pages with parent/child relationships, a
+- **Pages** — static pages with parent/child relationships, hierarchical
+  URLs matching that structure (e.g. `/about/team`), a
   drag-and-drop-reorderable tree view, drafts/scheduling/pending
   review, Private pages, comments, Trash & restore, bulk actions,
   duplicate, Quick Edit, search & filtering, preview, breadcrumbs, and

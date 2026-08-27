@@ -156,9 +156,8 @@ if (!function_exists('get_page_breadcrumbs')) {
      * already computed via PageService::ancestors() — SiteController::page()
      * passes it in as the 'page_ancestors' template var, since theme
      * templates only ever receive curated $vars, never a raw service
-     * (LP-009's Hierarchy UI). Links stay flat ('page/{slug}') regardless
-     * of nesting depth — hierarchical URLs are a separate, not-yet-built
-     * ticket.
+     * (LP-009's Hierarchy UI). Each link is that ancestor's own real
+     * hierarchical URL (LP-084's page_permalink()), not a flat one.
      *
      * @param array<int, Page> $ancestors
      * @return array<int, array{title: string, url: string}>

@@ -155,7 +155,7 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
             self::renderNestedList(
                 $list,
-                static fn (array $row): string => '<a href="' . esc_url(site_url('page/' . $row['page']->slug)) . '">' . esc_html($row['page']->title) . '</a>',
+                static fn (array $row): string => '<a href="' . esc_url(page_permalink($row['page'])) . '">' . esc_html($row['page']->title) . '</a>',
             );
             echo '</ul></section>';
         });

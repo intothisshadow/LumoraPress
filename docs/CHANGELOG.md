@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Hierarchical Page URLs (LP-084): a Page's public URL now reflects its
+  position in the parent/child hierarchy — e.g. `/about/team` for a
+  "Team" page under an "About" parent — instead of the old flat
+  `/page/{slug}`, regardless of nesting depth. This changes every
+  existing page's URL, including top-level pages (`/page/about` becomes
+  `/about`); the old flat URL keeps working via an automatic permanent
+  redirect to the new one, so existing bookmarks/external links and
+  search engine listings aren't broken.
 - Maintenance &rsaquo; Logs (LP-114): a real admin screen behind the
   previously-placeholder menu entry, showing the application error log
   (`storage/logs/error.log`, newest first, with entry count/file size and

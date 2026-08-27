@@ -500,6 +500,61 @@ final class PageService
     }
 
     /**
+     * A page by slug scoped to a specific parent (null for top-level) —
+     * the single-segment step behind findByPath()'s walk. Slugs are
+     * enforced globally unique (see generateUniqueSlug()'s own uniqueness
+     * scope, kept global rather than per-parent for LP-084 — simpler, and
+     * matches this table's existing UNIQUE KEY), so this exists to
+     * validate that a URL's claimed ancestor chain is the page's *real*
+     * one, not merely as a slug lookup — findBySlug() alone can't tell
+     * "/wrong-parent/team" apart from "/about/team".
+     */
+    public function findBySlugAndParent(string $slug, ?int $parentId): ?Page
+    {
+        $row = $parentId === null
+            ? $this->database->fetchOne(
+                'SELECT * FROM ' . $this->table() . ' WHERE slug = :slug AND parent_id IS NULL',
+                ['slug' => $slug],
+            )
+            : $this->database->fetchOne(
+                'SELECT * FROM ' . $this->table() . ' WHERE slug = :slug AND parent_id = :parent_id',
+                ['slug' => $slug, 'parent_id' => $parentId],
+            );
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    /**
+     * Resolves a hierarchical URL's root-first slug segments (e.g.
+     * ["about", "team"] for "/about/team") to the Page at the end of that
+     * chain, walking parent_id one segment at a time — the counterpart to
+     * ancestors(), which walks the same chain in reverse from an
+     * already-known page. Returns null as soon as any segment fails to
+     * match a child of the previous one (or the first segment fails to
+     * match a top-level page), so SiteController can 404 a path with a
+     * wrong or stale ancestor rather than guessing which page was meant.
+     *
+     * @param array<int, string> $segments
+     */
+    public function findByPath(array $segments): ?Page
+    {
+        $parentId = null;
+        $page = null;
+
+        foreach ($segments as $segment) {
+            $page = $this->findBySlugAndParent($segment, $parentId);
+
+            if ($page === null) {
+                return null;
+            }
+
+            $parentId = $page->id;
+        }
+
+        return $page;
+    }
+
+    /**
      * Titles of every page using $mediaId as its featured image — used by
      * MediaUsageChecker to warn before deleting a referenced file, mirrors
      * PostService::titlesByFeaturedImage().

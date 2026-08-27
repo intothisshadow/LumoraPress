@@ -168,14 +168,32 @@ final class PermalinkService
      * needed to support date/category/author segments. The default
      * structure compiles to exactly '/post/{slug}', the same pattern this
      * application registered before permalink structures existed.
+     *
+     * %year%/%monthnum%/%day% compile to a raw digit-only regex group
+     * (`(?P<year>\d\d\d\d)`, not the generic `{year}` -> `[^/]+` a bare
+     * placeholder would give) rather than Router's normal {name}
+     * placeholder syntax — deliberately bypassing it, since Router only
+     * ever transforms literal `{name}`/`{name*}` occurrences and leaves
+     * everything else in the pattern untouched, so this still compiles
+     * cleanly into the final regex with zero Router changes needed.
+     * This matters beyond precision: LP-084's hierarchical Page route
+     * ("/{path*}") shares the same root URL namespace, registered *after*
+     * this one so a real post always wins — but a date-based structure's
+     * fixed segment count (4, for the default '/%year%/%monthnum%/
+     * %day%/%postname%/') can coincidentally match a Page nested exactly
+     * that deep too. A bare {year} (matching any non-slash text, not
+     * just digits) would swallow that Page's first segment as a "year"
+     * and 404 trying to find a matching post, never falling through to
+     * the Page route at all — confirmed against a real multi-level page
+     * tree during LP-084's own verification, not a hypothetical.
      */
     public function postRoutePattern(): string
     {
         $pattern = strtr($this->structure(), [
             '%postname%' => '{slug}',
-            '%year%' => '{year}',
-            '%monthnum%' => '{monthnum}',
-            '%day%' => '{day}',
+            '%year%' => '(?P<year>\d\d\d\d)',
+            '%monthnum%' => '(?P<monthnum>\d\d?)',
+            '%day%' => '(?P<day>\d\d?)',
             '%category%' => '{category}',
             '%author%' => '{author}',
         ]);

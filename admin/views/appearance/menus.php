@@ -207,7 +207,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                 'add_pages' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
                     foreach ($kernel->pages->listAllForMenuSelect() as $page) {
                         if (in_array($page['id'], $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $page['title'], 'url' => site_url('page/' . $page['slug'])]);
+                            $pageForLink = $kernel->pages->findById((int) $page['id']);
+                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $page['title'], 'url' => $pageForLink !== null ? page_permalink($pageForLink) : site_url($page['slug'])]);
                         }
                     }
                 })(),

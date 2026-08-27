@@ -183,7 +183,7 @@ return.
 | Function | Purpose |
 |---|---|
 | `post_permalink(Post $post): string` | A post's public URL — the single choke point that honors the site's configured permalink structure (see Settings › Permalinks). Always use this, never hand-build `'post/' . $post->slug`. |
-| `page_permalink(Page $page): string` | A page's URL — always flat `page/{slug}`; pages have no configurable structure. |
+| `page_permalink(Page $page): string` | A page's URL, reflecting its position in the parent/child hierarchy (e.g. `/about/team`) — pages have no *configurable* structure (unlike posts), but their URL is never flat. Always use this, never hand-build `'page/' . $page->slug` — that old flat form still resolves (a permanent redirect to the real URL), but only for back-compat with pre-existing links. |
 | `category_permalink(Category $category): string` / `tag_permalink(Tag $tag): string` | Category/tag archive URLs, honoring the configured base prefix. |
 | `search_result_permalink(SearchResult $result): string` | Dispatches by the result's type to the right permalink builder above. |
 | `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it (footer, comment form notice, etc.) is entirely up to the theme — nothing links to it automatically. |

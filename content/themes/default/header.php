@@ -27,7 +27,7 @@
 $og_item = $post ?? $page ?? null;
 $og_url = $og_item instanceof \LumoraPress\Models\Post
     ? post_permalink($og_item)
-    : ($og_item instanceof \LumoraPress\Models\Page ? home_url('page/' . $og_item->slug) : null);
+    : ($og_item instanceof \LumoraPress\Models\Page ? page_permalink($og_item) : null);
 $og_description = $og_item !== null
     ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt(content_plain_text($og_item->content, $og_item->contentFormat)))
     : '';

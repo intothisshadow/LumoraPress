@@ -19,7 +19,13 @@ namespace LumoraPress\Core\Http;
 
 /**
  * Lightweight, dependency-free router. Patterns use {param} placeholders
- * matched against path segments, e.g. "/post/{slug}".
+ * matched against a single path segment, e.g. "/post/{slug}", or
+ * {param*} placeholders (LP-084) matched greedily across slashes for a
+ * variable-depth path, e.g. "/{path*}" capturing "about/team" whole. A
+ * greedy pattern is only ever safe to register *last*, after every
+ * fixed-segment route — dispatch() tries routes in registration order and
+ * returns on the first match, so a greedy pattern registered earlier
+ * would shadow every fixed route that follows it.
  */
 final class Router
 {
@@ -122,7 +128,11 @@ final class Router
      */
     private function match(string $pattern, string $path): ?array
     {
-        $regex = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)\}#', '(?P<$1>[^/]+)', $pattern);
+        $regex = preg_replace_callback(
+            '#\{([a-zA-Z_][a-zA-Z0-9_]*)(\*)?\}#',
+            static fn (array $m): string => '(?P<' . $m[1] . '>' . (($m[2] ?? '') === '*' ? '.+' : '[^/]+') . ')',
+            $pattern,
+        );
 
         if ($regex === null) {
             return null;

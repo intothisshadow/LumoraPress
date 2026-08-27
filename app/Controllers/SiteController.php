@@ -541,11 +541,21 @@ final class SiteController
      * own docblock for the exact "same action name, different form"
      * mistake this project has already been bitten by once).
      *
+     * Handles both the hierarchical "/{path*}/comment" route (LP-084;
+     * $params['path'] is everything before "/comment") and the legacy
+     * "/page/{slug}/comment" one ($params['slug']) — the actual page is
+     * always found by its own (globally unique) final slug either way,
+     * so no path-walk/validation is needed here the way pageByPath()
+     * needs one for GET: posting a comment through a URL with a
+     * stale/wrong ancestor segment still lands on the one real page that
+     * slug belongs to, it just wouldn't have been reachable by GET at
+     * that exact URL.
+     *
      * @param array<string, string> $params
      */
     public function submitPageComment(array $params): void
     {
-        $slug = $params['slug'] ?? '';
+        $slug = $params['slug'] ?? self::lastPathSegment((string) ($params['path'] ?? ''));
         $page = $slug !== '' ? $this->pages->findBySlug($slug) : null;
 
         if ($page === null || !$page->isPubliclyVisible()) {
@@ -732,6 +742,25 @@ final class SiteController
         $user = $this->auth->user();
 
         return $user !== null && ($user->can('edit_posts') || $user->id === $page->authorId);
+    }
+
+    /**
+     * The final segment of a "/{path*}/comment" route's matched path
+     * (e.g. "team" from "about/team") — submitPageComment()'s fallback
+     * for deriving the page's own slug when it wasn't reached through
+     * the legacy single-segment "/page/{slug}/comment" route instead.
+     */
+    private static function lastPathSegment(string $path): string
+    {
+        $path = trim($path, '/');
+
+        if ($path === '') {
+            return '';
+        }
+
+        $segments = explode('/', $path);
+
+        return (string) end($segments);
     }
 
     /**
@@ -947,12 +976,23 @@ final class SiteController
     }
 
     /**
+     * The hierarchical Page route (LP-084) — "/{path*}", registered last
+     * in bootstrap.php's route table, after every other route, since a
+     * greedy placeholder would otherwise shadow every fixed-pattern route
+     * that came after it (see Router's own docblock). $params['path'] is
+     * the whole matched path — "about/team" for a nested page, "about"
+     * for a top-level one — resolved segment by segment via
+     * PageService::findByPath(), so a URL whose claimed ancestor chain
+     * doesn't match the page's *real* one 404s instead of resolving by
+     * its final slug alone.
+     *
      * @param array<string, string> $params
      */
-    public function page(array $params): void
+    public function pageByPath(array $params): void
     {
-        $slug = $params['slug'] ?? '';
-        $page = $slug !== '' ? $this->pages->findBySlug($slug) : null;
+        $path = trim((string) ($params['path'] ?? ''), '/');
+        $segments = $path === '' ? [] : explode('/', $path);
+        $page = $segments !== [] ? $this->pages->findByPath($segments) : null;
 
         if ($page === null || !$page->isVisibleToViewer($this->canViewPrivatePage($page))) {
             $this->notFound();
@@ -985,6 +1025,32 @@ final class SiteController
             'page_ancestors' => $this->pages->ancestors($page->id),
             'comment_data' => $this->commentTemplateDataForPage($page, $this->auth->user()),
         ]);
+    }
+
+    /**
+     * The pre-LP-084 flat "/page/{slug}" URL — kept as a permanent
+     * redirect to the page's real hierarchical URL rather than left to
+     * 404, so an already-indexed or bookmarked link from before this
+     * change keeps working. A bare slug lookup is enough to find the
+     * right page regardless of how deeply nested it now is: slugs stay
+     * globally unique (see PageService::findBySlugAndParent()'s
+     * docblock for why LP-084 kept that scope rather than making it
+     * per-parent).
+     *
+     * @param array<string, string> $params
+     */
+    public function legacyPageRedirect(array $params): void
+    {
+        $slug = $params['slug'] ?? '';
+        $page = $slug !== '' ? $this->pages->findBySlug($slug) : null;
+
+        if ($page === null || !$page->isVisibleToViewer($this->canViewPrivatePage($page))) {
+            $this->notFound();
+
+            return;
+        }
+
+        header('Location: ' . page_permalink($page), true, 301);
     }
 
     /**
@@ -1317,7 +1383,7 @@ final class SiteController
         }
 
         foreach ($this->pages->paginatePublished(1, 50000)['pages'] as $sitemapPage) {
-            $urls[] = ['loc' => home_url('page/' . $sitemapPage->slug), 'lastmod' => $sitemapPage->updatedAt];
+            $urls[] = ['loc' => page_permalink($sitemapPage), 'lastmod' => $sitemapPage->updatedAt];
         }
 
         foreach ($this->categories->listAll() as $category) {

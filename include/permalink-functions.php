@@ -44,17 +44,37 @@ if (!function_exists('post_permalink')) {
 
 if (!function_exists('page_permalink')) {
     /**
-     * A Page's public URL — always flat ('page/{slug}'), regardless of
-     * nesting depth (LP-009's Hierarchy UI adds parent/child structure
-     * to the admin tree view, but hierarchical URLs are a separate,
-     * not-yet-built ticket — see DECISIONS.md/TODO.md). No
-     * PermalinkService involvement: unlike posts/categories/tags, pages
-     * have no configurable permalink structure to honor (see LP-078's
-     * "Explicitly Out of Scope" note in TODO.md).
+     * A Page's public URL, reflecting its position in the parent/child
+     * hierarchy (LP-084) — e.g. "/about/team" for a "Team" page under an
+     * "About" parent, "/about" for "About" itself. No PermalinkService
+     * involvement: unlike posts/categories/tags, pages have no
+     * configurable permalink structure to honor (see LP-078's "Explicitly
+     * Out of Scope" note in TODO.md) — the ancestor chain alone
+     * determines the URL. The single choke point every hand-built
+     * 'page/' . $page->slug call site was migrated away from, so a
+     * page's real URL is honored everywhere a link to it is built.
+     *
+     * Absolute (home_url()), not root-relative (site_url()) — mirrors
+     * post_permalink()/category_permalink()/tag_permalink(), all of
+     * which resolve through PermalinkService's home_url()-based methods.
+     * This matters beyond consistency: this function backs the sitemap
+     * (sitemaps.org requires absolute <loc> URLs), Open Graph/Twitter
+     * Card meta tags (og:url must be absolute per the spec), and emailed
+     * comment-notification links (there is no "current site" for a mail
+     * client to resolve a relative URL against) — a relative URL in any
+     * of those three would be a real, silent bug, not just a style
+     * mismatch. Callers that only ever need an href on the same page
+     * (most of them) work identically either way.
      */
     function page_permalink(Page $page): string
     {
-        return site_url('page/' . $page->slug);
+        $segments = array_map(
+            static fn (Page $ancestor): string => $ancestor->slug,
+            ActivePages::pages()->ancestors($page->id),
+        );
+        $segments[] = $page->slug;
+
+        return home_url(implode('/', $segments));
     }
 }
 
@@ -190,15 +210,25 @@ if (!function_exists('search_result_permalink')) {
      * category/author, so a 'post' result's %category%/%author% tokens
      * (if the configured structure uses them) fall back the same way
      * PermalinkService::postUrl() falls back for an uncategorized post —
-     * see PermalinkService::postUrlForSlugAndDate()'s docblock.
+     * see PermalinkService::postUrlForSlugAndDate()'s docblock. A 'page'
+     * result is handled before the match below rather than inside it
+     * (LP-084): building the real hierarchical URL needs the actual Page
+     * (for its ancestor chain via page_permalink()), not just its slug —
+     * falling back to a flat URL only in the unlikely case the page was
+     * deleted between being indexed and this search rendering.
      */
     function search_result_permalink(SearchResult $result): string
     {
+        if ($result->type === 'page') {
+            $page = ActivePages::pages()->findBySlug($result->slug);
+
+            return $page !== null ? page_permalink($page) : site_url($result->slug);
+        }
+
         $permalinks = Permalinks::service();
 
         return match ($result->type) {
             'post' => $permalinks->postUrlForSlugAndDate($result->slug, $result->publishedAt),
-            'page' => site_url('page/' . $result->slug),
             'category' => $permalinks->categoryUrlFromSlug($result->slug),
             'tag' => $permalinks->tagUrlFromSlug($result->slug),
             'author' => site_url('author/' . $result->slug),
