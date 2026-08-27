@@ -357,6 +357,12 @@ $wordPressImporterActive = in_array('wordpress-importer', $activePlugins, true);
  * gated section on an existing always-present screen.
  */
 $downloadsActive = in_array('downloads', $activePlugins, true);
+/*
+ * LPP-003: mirrors $downloadsActive's exact reasoning immediately above
+ * — Contact Forms' admin screens are its entire reason to exist, so it
+ * gets a real top-level menu entry, gated the same way.
+ */
+$contactFormsActive = in_array('contact-forms', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -405,6 +411,20 @@ $menu = [
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
                 'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
                 'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
+            ],
+        ],
+    ] : []),
+    ...($contactFormsActive ? [
+        'contact-forms' => [
+            'label' => 'Contact Forms',
+            'icon' => '✉️',
+            'capability' => 'manage_options',
+            'default_child' => 'all-forms',
+            'children' => [
+                'all-forms' => ['label' => 'All Forms', 'icon' => '📋', 'capability' => 'manage_options'],
+                'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'manage_options'],
+                'submissions' => ['label' => 'Submissions', 'icon' => '📬', 'capability' => 'manage_options'],
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),

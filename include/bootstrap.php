@@ -867,6 +867,30 @@ $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
 $router->get('/sitemap.xml', fn (array $params) => $site->sitemap($params));
 $router->get('/media/{id}/download', fn (array $params) => $site->mediaDownload($params));
 
+/*
+ * LPP-003: Contact Forms' own dedicated submission route, gated on that
+ * plugin being active — mirrors $downloadsActive's admin-menu precedent
+ * (admin/index.php) applied to a public route instead. This exists
+ * because classic PHP theme templates in this codebase echo directly
+ * rather than buffering the whole page, so ContactFormShortcode's own
+ * content_html filter callback (which only ever GET-renders the form)
+ * can't safely redirect() a POST from inside itself by the time it runs
+ * — the same reasoning that gives comment submission its own dedicated
+ * route above instead of handling it inline during template rendering.
+ * $kernel already exists at this point in this file, so the handler is
+ * constructed straight from its components, the same way every admin
+ * view already does.
+ */
+if (in_array('contact-forms', $activePlugins, true)) {
+    $router->post('/contact-form/{id}/submit', fn (array $params) => (new \LumoraPress\Plugins\ContactForms\ContactFormSubmissionHandler(
+        $kernel->database,
+        $tablePrefix,
+        $kernel->mailer,
+        $kernel->akismet,
+        $kernel->config,
+    ))->handle($params));
+}
+
 $adminHandler = static function (array $params) use ($kernel): void {
     if (isset($params['page'])) {
         $_GET['page'] = $params['page'];

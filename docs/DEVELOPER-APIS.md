@@ -150,6 +150,7 @@ the core equivalent.
 | Shortcode | Registered by | Syntax |
 |---|---|---|
 | `[lumora_folder_gallery]` | Core — [`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php), wired in `include/bootstrap.php` | `[lumora_folder_gallery folder_id="12" link="full"]` — renders every image in Media folder `folder_id` as a row of thumbnails. `link` is `none` (default) or `full` (wraps each thumbnail in a link to the full-size image, joining the post's PhotoSwipe lightbox gallery the same way an Insert Image "Link To: Media File" image does). A missing/deleted folder, or a folder with no images, renders nothing. Inserted via the content editor's "Insert Folder" toolbar button (`admin/assets/js/content-editor.js`), next to Insert Image. |
+| `[contact_form]` | Contact Forms plugin (LPP-003) — `ContactFormShortcode` (`content/plugins/contact-forms/src/`) | `[contact_form id="1"]` — renders the given form (see Contact Forms &rsaquo; All Forms for each form's id/shortcode). GET-time rendering only; the actual submission POSTs to a dedicated route (see "no hook to register a public route," above), not this shortcode. |
 
 ### Theme Options & settings
 
@@ -177,9 +178,34 @@ existing, always-present menu slot (Maintenance › Import —
 `admin/views/maintenance/import.php`), gated the identical way Dummy
 Content's section is (an `{slug}Active` boolean computed once in
 `admin/index.php` from the active-plugins option, shared into the view
-via normal PHP `require`-scope). If your plugin needs admin UI and no
-existing menu slot fits, follow Dummy Content's pattern (a gated section
-on an existing screen) rather than assuming a registration hook exists.
+via normal PHP `require`-scope). Downloads (LPP-008) and Contact Forms
+(LPP-003) instead get a real top-level menu entry of their own, since
+their admin screens are their entire reason to exist — the same
+`{slug}Active` gate, just wrapping a whole new `$menu` array entry
+(`admin/index.php`) instead of a section inside an existing one. If your
+plugin needs admin UI and no existing menu slot fits, pick whichever of
+these two shapes matches how central the admin UI is to the plugin's
+purpose, rather than assuming a registration hook exists.
+
+**There is likewise no hook or API for a plugin to register its own
+public-facing route.** Every route is hardcoded in `include/bootstrap.php`
+and dispatched before any plugin's own request-time code runs again.
+This matters specifically for a plugin whose shortcode needs to *process*
+a form submission (not just render one): a `content_html`-filter
+callback runs too late in the response to safely `header()` redirect
+from inside it — classic PHP theme templates in this codebase echo
+directly rather than buffering the whole page, so by the time a
+shortcode callback executes, earlier template output is often already
+flushed. Comment submission avoids this by getting its own dedicated
+core-registered route (`$postRoutePattern . '/comment'`); Contact Forms
+(LPP-003) follows the identical shape for a plugin, gated the same way
+its admin menu entry is: `include/bootstrap.php` registers
+`/contact-form/{id}/submit` only `if (in_array('contact-forms',
+$activePlugins, true))`, constructing `ContactFormSubmissionHandler`
+straight from `$kernel`'s own already-existing components (it exists by
+this point in the file). If your plugin needs to process a public POST
+with a redirect afterward, follow this pattern rather than assuming a
+route-registration hook exists.
 
 ### Editor
 
@@ -311,8 +337,9 @@ database. `DownloadsShortcode` (LPP-007, `wordpress-importer` plugin's
 gated behind a cheap `str_contains()` check first so the connection is
 only ever opened on the rare page that actually needs it. The Downloads
 plugin's own `[lumora_downloads]` shortcode (LPP-008, a distinct class
-of the same name in a different namespace) follows the identical
-pattern for its own `content_html` registration.
+of the same name in a different namespace) and Contact Forms'
+`ContactFormShortcode` (LPP-003) both follow the identical pattern for
+their own `content_html` registration.
 
 **There is no activation/deactivation hook.** Toggling a plugin active/
 inactive (Plugins admin screen) just adds or removes its slug from the

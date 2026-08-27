@@ -1749,6 +1749,53 @@ img.lp-folder-gallery__thumb {
     border-radius: var(--lp-radius);
 }
 
+/* =========================================================
+   Contact Forms (LPP-003)
+   ========================================================= */
+/*
+ * Rendered by the Contact Forms plugin's [contact_form] shortcode. Reuses
+ * the shared .lp-field/.lp-alert/.lp-button classes above wherever they
+ * already fit (field rows, success/error messages, the submit button) —
+ * only what's genuinely new here (the form wrapper, the honeypot's
+ * hiding technique, a checkbox-field layout, and the CAPTCHA widget's
+ * spacing) gets its own class.
+ */
+.lp-contact-form {
+    max-width: 60ch;
+    margin: 1.5em 0;
+}
+
+/* Mirrors .lp-comment-form__honeypot's identical off-screen technique —
+   a real visitor never sees or fills this field. */
+.lp-contact-form__honeypot {
+    position: absolute;
+    left: -9999px;
+}
+
+.lp-contact-form__required {
+    color: var(--lp-error-border);
+}
+
+.lp-contact-form__captcha {
+    margin: 1em 0;
+}
+
+/* A checkbox field's label wraps the input (rather than the shared
+   .lp-field label preceding it) so the checkbox and its text read as one
+   clickable target. */
+.lp-field--checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.95rem;
+    font-weight: normal;
+}
+
+.lp-field--checkbox input[type="checkbox"] {
+    width: auto;
+}
+
 @media (max-width: 720px) {
     img.lp-folder-gallery__thumb {
         width: 100px;

@@ -219,9 +219,11 @@ Every attempt (success, failure, or rollback) is recorded in the
 `{prefix}update_log` table, tagged with its source (`github` or `manual`),
 and listed on the Updates page. Only `app/`,
 `admin/`, `include/`, `install/`, `docs/`, the default theme, the bundled
-Font Awesome, Dummy Content, WordPress Importer, and Downloads plugins
+Font Awesome, Dummy Content, WordPress Importer, Downloads, and Contact
+Forms plugins
 (`content/plugins/font-awesome`, `content/plugins/dummy-content`,
-`content/plugins/wordpress-importer`, `content/plugins/downloads`), and
+`content/plugins/wordpress-importer`, `content/plugins/downloads`,
+`content/plugins/contact-forms`), and
 the root PHP files are ever replaced — `config/`, `content/uploads/`, any user-installed plugin, any
 theme other than the default, and `storage/` are never touched.
 `install/` is deleted again automatically once the update succeeds (the

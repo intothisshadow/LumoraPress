@@ -68,6 +68,14 @@ All notable changes to Lumora Press are documented in this file.
   expanded/collapsed, with the choice remembered per-user across page
   loads (LP-120). A quick delete button sits directly next to each
   folder's name, alongside the existing rename/delete "Manage" panel.
+- Contact Forms (LPP-003, new plugin, off by default): build simple
+  contact forms from a fixed field list (Name, Email, Subject, Message,
+  Text, Textarea, Checkbox, Select), embed them anywhere with
+  `[contact_form id="1"]`, and read submissions from a dedicated
+  Contact Forms &rsaquo; Submissions screen. Honeypot, submission-timing,
+  and per-IP rate-limit spam protection are always on; optional Google
+  reCAPTCHA, Cloudflare Turnstile, and Akismet integrations are off by
+  default (Contact Forms &rsaquo; Settings).
 
 ### Fixed
 

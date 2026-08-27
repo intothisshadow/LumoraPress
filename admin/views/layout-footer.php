@@ -32,6 +32,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/permalink-preview.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/date-time-format-preview.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/custom-fields.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/contact-form-fields.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/featured-image-crop.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/multi-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/thumbnail-bulk.js')) ?>" defer></script>

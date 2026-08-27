@@ -2737,6 +2737,29 @@ select:focus {
     flex-shrink: 0;
 }
 
+/* Contact Forms (LPP-003) field editor — same repeatable-row shape as
+   Custom Fields above, with more per-row controls (type/required
+   selects, an options input, Move Up/Down alongside Remove). */
+
+.lp-contact-form-fields__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-contact-form-fields__row input[type="text"] {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.lp-contact-form-fields__row select {
+    flex: 0 1 auto;
+}
+
 /* Tag input widget (progressive enhancement of a plain text field) */
 
 .lp-tag-input {
@@ -3181,6 +3204,16 @@ select:focus {
 
 .lp-table tbody tr:hover {
     background: var(--lp-admin-bg);
+}
+
+/*
+ * Unread row highlight (LPP-003's Contact Forms > Submissions), a subtle
+ * left accent bar rather than a background tint — the badge column
+ * already carries the actual "Unread"/"Spam"/"Read" status, so this is
+ * just a scan aid, not the only signal.
+ */
+.lp-table__row--unread {
+    box-shadow: inset 3px 0 0 var(--lp-admin-accent);
 }
 
 /*
