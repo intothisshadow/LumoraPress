@@ -68,7 +68,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $currentFolderParam = is_string($_POST['current_folder'] ?? null) ? $_POST['current_folder'] : '';
     $backToList = admin_url('media/media') . ($currentFolderParam !== '' ? '?folder=' . urlencode($currentFolderParam) : '');
 
-    if ($form === 'create_folder' && Csrf::verify('create_folder', $token)) {
+    if ($form === 'save_folder_tree_state' && Csrf::verify('save_folder_tree_state', $token)) {
+        // admin/index.php's ob_start() buffer already holds
+        // layout-header.php's HTML shell by the time this runs — discard
+        // it before sending a JSON response, matching the identical
+        // pattern in admin/views/media/upload.php's AJAX upload handler.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json');
+
+        $collapsedIds = array_map('intval', array_filter((array) ($_POST['collapsed'] ?? []), 'is_numeric'));
+        $kernel->users->setCollapsedMediaFolders($currentUser->id, $collapsedIds);
+
+        echo json_encode(['success' => true, 'csrfToken' => Csrf::token('save_folder_tree_state')]);
+        exit;
+    } elseif ($form === 'create_folder' && Csrf::verify('create_folder', $token)) {
         $name = trim((string) ($_POST['name'] ?? ''));
         $parentId = (int) ($_POST['parent_id'] ?? 0);
 
@@ -652,6 +668,27 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     $folderTreeFolders = $folderSearchTerm !== '' ? $folderService->search($folderSearchTerm) : $allFolders;
 
     /*
+     * LP-121: sidebar file-count badges. directCountsByFolderId() is one
+     * grouped query regardless of how many folders/files exist; the
+     * cumulative roll-up (a folder's badge includes its subfolders'
+     * items, matching how a file explorer reports folder size) then costs
+     * zero further queries since it's built from that same result plus
+     * the folder list already loaded above.
+     */
+    $mediaDirectCounts = $mediaService->directCountsByFolderId();
+    $mediaCumulativeCounts = $folderService->cumulativeCounts($mediaDirectCounts);
+    $mediaTotalCount = $mediaService->countAll();
+    $unassignedMediaCount = $mediaDirectCounts[0] ?? 0;
+
+    // LP-120: which folders this user has collapsed — everything else
+    // defaults to expanded (see UserService::getCollapsedMediaFolders()).
+    // Ancestors of the currently active folder are always forced open
+    // (without touching the saved state), so navigating into a folder
+    // never leaves it hidden inside a collapsed ancestor.
+    $collapsedFolderIds = $kernel->users->getCollapsedMediaFolders($currentUser->id);
+    $activeFolderAncestorIds = $currentFolderId !== null ? $folderService->ancestorIds($currentFolderId) : [];
+
+    /*
      * LP-006's built-in views (Unused / Most Downloaded / Recently
      * Downloaded / Never Downloaded) and LP-005's Smart Collections
      * (Recently Uploaded / Missing Alt Text / Large Files / ZIP Downloads /
@@ -758,7 +795,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     /**
      * @param array<int, Folder> $allFolders
      */
-    $renderFolderTree = function (array $allFolders, ?int $parentId = null) use (&$renderFolderTree, $currentFolderRaw): void {
+    $renderFolderTree = function (array $allFolders, ?int $parentId = null) use (&$renderFolderTree, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
         $children = array_values(array_filter($allFolders, static fn (Folder $f): bool => $f->parentId === $parentId));
 
         if ($children === []) {
@@ -769,8 +806,29 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
 
         foreach ($children as $folder) {
             $isActive = $currentFolderRaw === (string) $folder->id;
+            $folderCount = $mediaCumulativeCounts[$folder->id] ?? 0;
+            $hasChildren = array_filter($allFolders, static fn (Folder $f): bool => $f->parentId === $folder->id) !== [];
+            // Both the quick delete button (LP-120) and the Manage panel's
+            // own delete form submit the exact same delete_folder action,
+            // so they share one issued token rather than each calling
+            // Csrf::field() separately — a second token() call under the
+            // same action key would silently invalidate the first before
+            // either form could be submitted (see Csrf::token()'s
+            // single-token-per-action storage).
+            $deleteToken = Csrf::token('delete_folder_' . $folder->id);
+
             echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . '">';
+            echo '<span class="lp-folder-tree__row">';
             echo '<a href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" draggable="true" data-lp-folder-drag data-folder-id="' . (int) $folder->id . '">' . esc_html($folder->name) . '</a> ';
+            echo '<span class="lp-folder-tree__count">' . (int) $folderCount . '</span> ';
+
+            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" class="lp-folder-tree__delete-form" data-lp-confirm="Delete this folder? It must be empty.">';
+            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($deleteToken) . '">';
+            echo '<input type="hidden" name="form" value="delete_folder">';
+            echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
+            echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
+            echo '<button type="submit" class="lp-folder-tree__delete-button" aria-label="Delete folder &ldquo;' . esc_attr($folder->name) . '&rdquo;">&times;</button>';
+            echo '</form>';
 
             echo '<details class="lp-folder-tree__manage lp-folder-actions"><summary>Manage</summary>';
             echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-folder-move-form data-folder-id="' . (int) $folder->id . '">';
@@ -783,15 +841,24 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
             echo '<button type="submit" class="lp-button lp-button--primary">Rename</button>';
             echo '</form>';
             echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-confirm="Delete this folder? It must be empty.">';
-            echo Csrf::field('delete_folder_' . $folder->id);
+            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($deleteToken) . '">';
             echo '<input type="hidden" name="form" value="delete_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
             echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
             echo '<button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>';
             echo '</form>';
             echo '</details>';
+            echo '</span>';
 
-            $renderFolderTree($allFolders, $folder->id);
+            if ($hasChildren) {
+                $isCollapsed = in_array($folder->id, $collapsedFolderIds, true)
+                    && !in_array($folder->id, $activeFolderAncestorIds, true);
+                echo '<details class="lp-folder-tree__toggle" data-lp-folder-toggle data-folder-id="' . (int) $folder->id . '"' . ($isCollapsed ? '' : ' open') . '>';
+                echo '<summary class="lp-folder-tree__toggle-summary" aria-label="Expand or collapse subfolders of &ldquo;' . esc_attr($folder->name) . '&rdquo;"></summary>';
+                $renderFolderTree($allFolders, $folder->id);
+                echo '</details>';
+            }
+
             echo '</li>';
         }
 
@@ -821,7 +888,11 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                 <?php endforeach; ?>
             </ul>
 
-            <h2 data-lp-folder-root-drop>Folders</h2>
+            <h2
+                data-lp-folder-root-drop
+                data-lp-folder-tree-state-url="<?= esc_url(admin_url('media/media')) ?>"
+                data-lp-folder-tree-state-csrf="<?= esc_attr(Csrf::token('save_folder_tree_state')) ?>"
+            >Folders</h2>
             <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
                 <p class="lp-field">
                     <label for="folder-q">Search folders</label>
@@ -838,9 +909,11 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
             <ul class="lp-folder-tree">
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '' ? ' is-active' : '' ?>">
                     <a href="<?= esc_url(admin_url('media/media')) ?>">All Files</a>
+                    <span class="lp-folder-tree__count"><?= (int) $mediaTotalCount ?></span>
                 </li>
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '0' ? ' is-active' : '' ?>">
                     <a href="<?= esc_url(admin_url('media/media')) ?>?folder=0">General Uploads</a>
+                    <span class="lp-folder-tree__count"><?= (int) $unassignedMediaCount ?></span>
                 </li>
             </ul>
             <?php $renderFolderTree($folderTreeFolders); ?>

@@ -56,6 +56,18 @@ All notable changes to Lumora Press are documented in this file.
 - Empty Trash (LP-126): a new bulk action, currently on the Downloads
   &rsaquo; Categories Trash tab, permanently deletes every trashed row
   in one click instead of select-all-then-Delete-Permanently.
+- Media Manager search now matches multi-word terms regardless of word
+  order (LP-107) — searching `game wallpaper` finds
+  `wallpaper-game-final.jpg` just as well as `game-wallpaper-01.jpg`,
+  instead of requiring the exact typed phrase as one contiguous
+  substring.
+- Media Manager sidebar: "All Files," "General Uploads," and every
+  folder in the Folders tree now show a file-count badge (LP-121) — a
+  folder's count includes everything filed in its subfolders too.
+- Media Manager sidebar: folders with subfolders can now be
+  expanded/collapsed, with the choice remembered per-user across page
+  loads (LP-120). A quick delete button sits directly next to each
+  folder's name, alongside the existing rename/delete "Manage" panel.
 
 ### Fixed
 

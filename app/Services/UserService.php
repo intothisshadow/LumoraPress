@@ -404,6 +404,35 @@ final class UserService
         unset($this->findByIdCache[$id]);
     }
 
+    /**
+     * LP-120: the Media Manager folder ids this user currently has
+     * collapsed in the sidebar tree — everything else defaults to
+     * expanded, so a user who's never touched a toggle sees every folder
+     * open, matching the tree's pre-LP-120 always-expanded behavior.
+     *
+     * @return array<int, int>
+     */
+    public function getCollapsedMediaFolders(int $id): array
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->folderTreeState ?? '[]', true);
+
+        return is_array($decoded) ? array_values(array_map('intval', $decoded)) : [];
+    }
+
+    /**
+     * @param array<int, int> $collapsedFolderIds
+     */
+    public function setCollapsedMediaFolders(int $id, array $collapsedFolderIds): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET folder_tree_state = :folder_tree_state WHERE id = :id',
+            ['folder_tree_state' => json_encode(array_values(array_unique(array_map('intval', $collapsedFolderIds)))), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+    }
+
     public function delete(int $id): bool
     {
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -646,6 +675,7 @@ final class UserService
                 ? (ThemePreference::tryFrom((string) $row['theme_preference']) ?? ThemePreference::Auto)
                 : ThemePreference::Auto,
             listViewPreferences: isset($row['list_view_preferences']) ? (string) $row['list_view_preferences'] : null,
+            folderTreeState: isset($row['folder_tree_state']) ? (string) $row['folder_tree_state'] : null,
         );
     }
 

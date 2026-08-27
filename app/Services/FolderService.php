@@ -290,6 +290,83 @@ final class FolderService
     }
 
     /**
+     * Every ancestor of $id (parent, grandparent, ...), NOT including $id
+     * itself — LP-120's sidebar tree uses this to force a folder open
+     * regardless of its own saved collapsed state whenever it's on the
+     * path to the currently active folder, so navigating into a folder
+     * never leaves it hidden inside a collapsed ancestor. Built from one
+     * listAll() call, matching descendantIds()'s "single query regardless
+     * of tree depth" shape.
+     *
+     * @return array<int, int>
+     */
+    public function ancestorIds(int $id): array
+    {
+        $byId = [];
+
+        foreach ($this->listAll() as $folder) {
+            $byId[$folder->id] = $folder;
+        }
+
+        $ancestors = [];
+        $current = $byId[$id] ?? null;
+
+        while ($current !== null && $current->parentId !== null) {
+            $ancestors[] = $current->parentId;
+            $current = $byId[$current->parentId] ?? null;
+        }
+
+        return $ancestors;
+    }
+
+    /**
+     * Rolls per-folder direct item counts
+     * (MediaService::directCountsByFolderId()) up through the tree so each
+     * folder's badge (LP-121) reflects everything filed inside it, nested
+     * subfolders included — not just items directly assigned to that exact
+     * folder. Built from a single listAll() call rather than
+     * descendantIds() per folder, so this stays one query regardless of how
+     * many folders exist. Unassigned items (folder_id 0/null in
+     * $directCounts) are never rolled into any real folder's total, since
+     * they aren't part of the tree.
+     *
+     * @param array<int, int> $directCounts folder_id => direct item count
+     * @return array<int, int> folder_id => cumulative item count (own +
+     *     every descendant's)
+     */
+    public function cumulativeCounts(array $directCounts): array
+    {
+        $folders = $this->listAll();
+        $childrenByParent = [];
+
+        foreach ($folders as $folder) {
+            if ($folder->parentId !== null) {
+                $childrenByParent[$folder->parentId][] = $folder->id;
+            }
+        }
+
+        $cumulative = [];
+
+        $sumSubtree = function (int $id) use (&$sumSubtree, &$cumulative, $childrenByParent, $directCounts): int {
+            $total = $directCounts[$id] ?? 0;
+
+            foreach ($childrenByParent[$id] ?? [] as $childId) {
+                $total += $sumSubtree($childId);
+            }
+
+            return $cumulative[$id] = $total;
+        };
+
+        foreach ($folders as $folder) {
+            if (!isset($cumulative[$folder->id])) {
+                $sumSubtree($folder->id);
+            }
+        }
+
+        return $cumulative;
+    }
+
+    /**
      * @param array<string, mixed> $row
      */
     private function hydrate(array $row): Folder

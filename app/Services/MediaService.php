@@ -602,9 +602,16 @@ final class MediaService
             $where[] = 'folder_id IS NULL';
         }
 
-        if (($filters['term'] ?? '') !== '') {
-            $where[] = 'file_name LIKE :term';
-            $params['term'] = '%' . $filters['term'] . '%';
+        $termWords = preg_split('/\s+/', trim((string) ($filters['term'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+
+        // Every word must appear somewhere in file_name (AND across
+        // words), not the whole typed string as one contiguous substring —
+        // "game wallpaper" should match "wallpaper-game-final.jpg" just as
+        // well as "game-wallpaper-01.jpg".
+        foreach ($termWords as $i => $word) {
+            $key = "term_{$i}";
+            $where[] = "file_name LIKE :{$key}";
+            $params[$key] = '%' . $word . '%';
         }
 
         if (($filters['type'] ?? '') !== '' && isset(self::TYPE_CATEGORY_MIME_TYPES[$filters['type']])) {
@@ -669,6 +676,45 @@ final class MediaService
         );
 
         return ['items' => $items, 'total' => $total];
+    }
+
+    /**
+     * Total item count across every folder — the sidebar's "All Media"
+     * badge (LP-121). A plain COUNT(*), not a query()/largestFiles()-style
+     * full row fetch just to count.
+     */
+    public function countAll(): int
+    {
+        return (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table());
+    }
+
+    /**
+     * Item counts grouped by folder_id in a single query (LP-121) — the
+     * sidebar's per-folder badges need every folder's own directly-assigned
+     * count at once, not one COUNT(*) per folder rendered (an N+1 query
+     * per page load as the folder tree grows). A folder with zero items
+     * assigned directly is simply absent from the result rather than
+     * present with 0 — FolderService::directCountsByFolderId() is the one
+     * that fills in the zeroes and rolls counts up to ancestors, since only
+     * it knows the full folder tree shape.
+     *
+     * @return array<int, int> folder_id (or 0 for unassigned/"General
+     *     Uploads") => item count
+     */
+    public function directCountsByFolderId(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT folder_id, COUNT(*) AS item_count FROM ' . $this->table() . ' GROUP BY folder_id',
+        );
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $folderId = $row['folder_id'] !== null ? (int) $row['folder_id'] : 0;
+            $counts[$folderId] = (int) $row['item_count'];
+        }
+
+        return $counts;
     }
 
     /**

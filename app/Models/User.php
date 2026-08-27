@@ -66,6 +66,14 @@ final class User
          * about.
          */
         public readonly ?string $listViewPreferences = null,
+        /**
+         * LP-120: raw JSON-encoded array of Media Manager folder ids this
+         * user has collapsed in the sidebar folder tree — absent ids are
+         * expanded by default. Kept as an undecoded string here —
+         * UserService::getCollapsedMediaFolders() decodes it, since
+         * nothing else in this model needs to inspect it.
+         */
+        public readonly ?string $folderTreeState = null,
     ) {
     }
 
