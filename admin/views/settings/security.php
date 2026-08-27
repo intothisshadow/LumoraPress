@@ -83,7 +83,7 @@ $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) ===
 
 <section class="lp-admin__panel">
     <h2>Login Lockout</h2>
-    <p class="lp-field__hint">Brute-force protection, keyed by IP address (see <code>LoginThrottle</code>) — a failed login always shows a generic "Invalid username or password" message, never revealing whether the username exists.</p>
+    <p class="lp-field__hint">Brute-force protection, keyed by IP address — a failed login always shows a generic "Invalid username or password" message, never revealing whether the username exists.</p>
     <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
         <?= Csrf::field('security_settings') ?>
         <input type="hidden" name="form" value="security_settings">
@@ -144,7 +144,7 @@ $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) ===
         here:
     </p>
     <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
-        <li>No XML-RPC endpoint (see <code>MEMORY.md</code>).</li>
+        <li>No XML-RPC endpoint.</li>
         <li>The "Forgot password?" flow always shows the same "if that address is registered, we sent a link" response, whether or not the email exists, and is itself IP-rate-limited to blunt large-scale probing.</li>
         <li>No public author-archive route and no REST API endpoint that lists or exposes user accounts.</li>
         <li>The login form already gives a single generic error for both a wrong username and a wrong password.</li>
