@@ -106,6 +106,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('posts/categories') . '?status=trash&category_deleted=1');
         exit;
+    } elseif ($form === 'empty_trash' && Csrf::verify('categories_empty_trash', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        if ($canDeleteCategories) {
+            $categoryService->emptyTrash();
+        }
+
+        header('Location: ' . admin_url('posts/categories') . '?status=trash&trash_emptied=1');
+        exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('categories_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
         $ids = array_values(array_filter(array_map('intval', is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : [])));
@@ -170,6 +177,10 @@ if ($action === 'edit') {
 
 <?php if (isset($_GET['category_deleted'])): ?>
     <div class="lp-alert lp-alert--success">Category permanently deleted.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trash_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Trash emptied.</div>
 <?php endif; ?>
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
@@ -240,6 +251,14 @@ if ($action === 'edit') {
     </p>
 
     <section class="lp-admin__panel">
+        <?php if ($isTrashView && $rows !== []): ?>
+            <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" data-lp-confirm="Permanently delete every category in the Trash? This cannot be undone.">
+                <?= Csrf::field('categories_empty_trash') ?>
+                <input type="hidden" name="form" value="empty_trash">
+                <button type="submit" class="lp-button lp-button--danger">Empty Trash</button>
+            </form>
+        <?php endif; ?>
+
         <?php if ($rows === []): ?>
             <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No categories yet.' ?></p>
         <?php else: ?>

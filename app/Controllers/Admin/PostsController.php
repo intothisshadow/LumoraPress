@@ -173,6 +173,38 @@ final class PostsController
     }
 
     /**
+     * Permanently deletes every trashed post the current user is allowed
+     * to touch (see canEditPost()) — same per-post revision cleanup and
+     * ownership guard as deletePermanently()/bulkAction()'s
+     * delete_permanently case, just applied to the whole Trash tab at
+     * once instead of one id or a checked selection.
+     */
+    public function emptyTrash(int $currentUserId, bool $canDeletePosts, bool $canEditOthersPosts, ?string $csrfToken): AdminActionResult
+    {
+        if (!Csrf::verify('posts_empty_trash', $csrfToken)) {
+            return AdminActionResult::redirect(admin_url('posts/all-posts'));
+        }
+
+        if ($canDeletePosts) {
+            $trashedCount = $this->posts->countByStatus(PostStatus::Trashed);
+            $trashedPosts = $trashedCount > 0
+                ? $this->posts->paginateForAdmin(1, $trashedCount, PostStatus::Trashed)['posts']
+                : [];
+
+            foreach ($trashedPosts as $trashedPost) {
+                if (!$this->canEditPost($trashedPost, $currentUserId, $canEditOthersPosts)) {
+                    continue;
+                }
+
+                $this->revisions->deleteAllFor(RevisionableType::Post, $trashedPost->id);
+                $this->posts->delete($trashedPost->id);
+            }
+        }
+
+        return AdminActionResult::redirect(admin_url('posts/all-posts') . '?status=' . PostStatus::Trashed->value . '&trash_emptied=1');
+    }
+
+    /**
      * @param array<string, mixed> $post
      */
     public function duplicate(array $post, int $currentUserId, bool $canEditOthersPosts, ?string $csrfToken): AdminActionResult

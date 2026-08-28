@@ -174,6 +174,36 @@ final class CommentService
         return $row === null ? null : $this->hydrate($row);
     }
 
+    /**
+     * Permanently deletes every currently-Trash-status comment via
+     * delete(), so each one gets the same reply-orphaning cleanup a
+     * single per-comment delete would — not a bare bulk DELETE. Unlike
+     * Categories/Posts/Pages, Trash here is a status value rather than a
+     * trashed_at column (see this class's own docblock on Comment status).
+     *
+     * @return int how many comments were removed
+     */
+    public function emptyTrash(): int
+    {
+        $trashedIds = array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $this->database->fetchAll(
+                'SELECT id FROM ' . $this->table() . ' WHERE status = :status',
+                ['status' => CommentStatus::Trash->value],
+            ),
+        );
+
+        $removed = 0;
+
+        foreach ($trashedIds as $trashedId) {
+            if ($this->delete($trashedId)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
     public function countByStatus(CommentStatus $status): int
     {
         return (int) $this->database->fetchColumn(

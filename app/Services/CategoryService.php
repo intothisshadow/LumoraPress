@@ -381,6 +381,31 @@ final class CategoryService
     }
 
     /**
+     * Permanently deletes every currently-trashed category via delete(), so
+     * each one gets the same child-orphaning/post_categories cleanup a
+     * single Delete Permanently would — not a bare bulk DELETE.
+     *
+     * @return int how many categories were removed
+     */
+    public function emptyTrash(): int
+    {
+        $trashedIds = array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $this->database->fetchAll('SELECT id FROM ' . $this->table() . ' WHERE trashed_at IS NOT NULL'),
+        );
+
+        $removed = 0;
+
+        foreach ($trashedIds as $trashedId) {
+            if ($this->delete($trashedId)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
      * Non-trashed category count — the admin list's "All (N)" status
      * link, matching Posts'/Pages' own status-count tabs. A single
      * COUNT() rather than count(listAll()), since the admin view needs

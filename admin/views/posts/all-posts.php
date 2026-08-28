@@ -58,6 +58,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'trash' => $controller->trash($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
             'restore_post' => $controller->restorePost($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
             'delete_permanently' => $controller->deletePermanently($_POST, $currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
+            'empty_trash' => $controller->emptyTrash($currentUser->id, $canDeletePosts, $canEditOthersPosts, $csrfToken),
             'duplicate' => $controller->duplicate($_POST, $currentUser->id, $canEditOthersPosts, $csrfToken),
             'bulk_action' => $controller->bulkAction($_POST, $currentUser->id, $canPublish, $canDeletePosts, $canEditOthersPosts, $canEditPosts, $csrfToken),
             default => null,
@@ -89,6 +90,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 <?php if (isset($_GET['post_deleted'])): ?>
     <div class="lp-alert lp-alert--success">Post permanently deleted.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trash_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Trash emptied.</div>
 <?php endif; ?>
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
@@ -201,6 +206,14 @@ $allTagsForFilter = $kernel->tags->listAll();
 </section>
 
 <section class="lp-admin__panel">
+    <?php if ($isTrashView && $statusCounts[PostStatus::Trashed->value] > 0): ?>
+        <form method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>" data-lp-confirm="Permanently delete every post in the Trash? This cannot be undone.">
+            <?= Csrf::field('posts_empty_trash') ?>
+            <input type="hidden" name="form" value="empty_trash">
+            <button type="submit" class="lp-button lp-button--danger">Empty Trash</button>
+        </form>
+    <?php endif; ?>
+
     <?php if ($pagination['posts'] === []): ?>
         <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No posts yet.' ?></p>
     <?php else: ?>

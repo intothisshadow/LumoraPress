@@ -115,6 +115,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('comments'));
         exit;
+    } elseif ($form === 'empty_trash' && Csrf::verify('comments_empty_trash', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $commentService->emptyTrash();
+
+        header('Location: ' . admin_url('comments') . '?status=' . CommentStatus::Trash->value . '&trash_emptied=1');
+        exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('comments_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
         $ids = array_values(array_filter(array_map('intval', is_array($_POST['comment_ids'] ?? null) ? $_POST['comment_ids'] : [])));
@@ -179,6 +184,10 @@ if ($action === 'edit') {
     <div class="lp-alert lp-alert--error">That comment could not be found.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['trash_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Trash emptied.</div>
+<?php endif; ?>
+
 <?php if ($action === 'edit'): ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('comments')) ?>">
@@ -216,6 +225,7 @@ if ($action === 'edit') {
     <?php
     $page = max(1, (int) ($_GET['paged'] ?? 1));
     $statusFilter = CommentStatus::tryFrom((string) ($_GET['status'] ?? ''));
+    $isTrashView = $statusFilter === CommentStatus::Trash;
     $pagination = $commentService->paginateForAdmin($page, statusFilter: $statusFilter);
     $statusLinks = ['' => 'All', ...array_combine(
         array_map(static fn (CommentStatus $status): string => $status->value, CommentStatus::cases()),
@@ -233,8 +243,16 @@ if ($action === 'edit') {
     </p>
 
     <section class="lp-admin__panel">
+        <?php if ($isTrashView && $pagination['total'] > 0): ?>
+            <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-confirm="Permanently delete every comment in the Trash? This cannot be undone.">
+                <?= Csrf::field('comments_empty_trash') ?>
+                <input type="hidden" name="form" value="empty_trash">
+                <button type="submit" class="lp-button lp-button--danger">Empty Trash</button>
+            </form>
+        <?php endif; ?>
+
         <?php if ($pagination['comments'] === []): ?>
-            <p class="lp-admin__widget-placeholder">No comments yet.</p>
+            <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No comments yet.' ?></p>
         <?php else: ?>
             <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-bulk-form>
                 <?= Csrf::field('comments_bulk_action') ?>

@@ -20,6 +20,12 @@ All notable changes to Lumora Press are documented in this file.
   before this change carry over to whichever theme was active at
   upgrade time. "Reset Everything" moved off the Customize screen onto
   its own dedicated Appearance &rsaquo; Reset Theme Options page.
+- Empty Trash (LP-126): the Posts, Pages, Categories, and Comments admin
+  screens' Trash tabs each gain an "Empty Trash" button (confirmed before
+  acting) that permanently deletes every trashed row in one action, instead
+  of selecting rows individually or via a two-step "select all" + bulk
+  Delete Permanently. Matches the Downloads &rsaquo; Categories Trash tab's
+  existing Empty Trash action.
 - Anonymous Install Ping (LP-127): an opt-in, off-by-default setting
   (Settings &rsaquo; Privacy) that periodically sends a minimal, anonymous
   ping — a randomly generated install ID, the Lumora Press version, and
@@ -39,6 +45,9 @@ All notable changes to Lumora Press are documented in this file.
   instead of repaired. Rendered content is now checked and, if needed,
   restructured so a block-level element is never left nested inside a
   paragraph.
+- Maintenance &rsaquo; Logs's "Clear Log" action could leave the on-screen
+  file size showing the pre-clear value on PHP 8.2 (a stale internal file
+  stat not refreshed after truncating the log).
 
 ## [0.8.0] — 2026-08-28
 

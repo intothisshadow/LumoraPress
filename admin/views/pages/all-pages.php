@@ -172,6 +172,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('pages/all-pages') . '?status=' . PageStatus::Trashed->value . '&page_deleted=1');
         exit;
+    } elseif ($form === 'empty_trash' && Csrf::verify('pages_empty_trash', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        if ($canDeletePages) {
+            $trashedCount = $pageService->countByStatus(PageStatus::Trashed);
+            $trashedPages = $trashedCount > 0
+                ? $pageService->paginateForAdmin(1, $trashedCount, PageStatus::Trashed)['pages']
+                : [];
+
+            foreach ($trashedPages as $trashedPage) {
+                if (!$canEditPage($trashedPage)) {
+                    continue;
+                }
+
+                $kernel->revisions->deleteAllFor(RevisionableType::Page, $trashedPage->id);
+                $pageService->delete($trashedPage->id);
+            }
+        }
+
+        header('Location: ' . admin_url('pages/all-pages') . '?status=' . PageStatus::Trashed->value . '&trash_emptied=1');
+        exit;
     } elseif ($form === 'duplicate') {
         $id = (int) ($_POST['id'] ?? 0);
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -296,6 +315,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <div class="lp-alert lp-alert--success">Page permanently deleted.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['trash_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Trash emptied.</div>
+<?php endif; ?>
+
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
     <div class="lp-alert lp-alert--error">You do not have permission to edit that page.</div>
 <?php endif; ?>
@@ -414,6 +437,14 @@ if ($isTreeView) {
 </section>
 
 <section class="lp-admin__panel">
+    <?php if ($isTrashView && $statusCounts[PageStatus::Trashed->value] > 0): ?>
+        <form method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>" data-lp-confirm="Permanently delete every page in the Trash? This cannot be undone.">
+            <?= Csrf::field('pages_empty_trash') ?>
+            <input type="hidden" name="form" value="empty_trash">
+            <button type="submit" class="lp-button lp-button--danger">Empty Trash</button>
+        </form>
+    <?php endif; ?>
+
     <?php if ($listedPages === []): ?>
         <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No pages yet.' ?></p>
     <?php else: ?>
