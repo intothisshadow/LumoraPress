@@ -73,6 +73,7 @@ require __DIR__ . '/../partials/editor-layout-save.php';
 $postService = $kernel->posts;
 $canPublish = $currentUser->can('publish_posts');
 $canEditOthersPosts = $currentUser->can('edit_others_posts');
+$canDeletePosts = $currentUser->can('delete_posts');
 
 $error = null;
 
@@ -369,6 +370,15 @@ if ($savedLayout['order'] === []) {
                                         <?php endif; ?>
                                         <a class="lp-button" href="<?= esc_url(admin_url('posts/all-posts')) ?>">Cancel</a>
                                     </div>
+                                    <?php if ($post !== null && $canDeletePosts && $canEditPost($post)): ?>
+                                        <?php $trashFormId = 'post-trash-form-' . $post->id; ?>
+                                        <div class="lp-sidebar-box__actions lp-sidebar-box__actions--trash">
+                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('post_trash_' . $post->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
+                                            <input type="hidden" name="form" value="trash" form="<?= esc_attr($trashFormId) ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $post->id ?>" form="<?= esc_attr($trashFormId) ?>">
+                                            <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($trashFormId) ?>" data-lp-confirm="Move this post to the Trash?">Move to Trash</button>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php break;
 
                                 case 'featured_image': ?>
@@ -522,6 +532,10 @@ if ($savedLayout['order'] === []) {
         </div>
     </form>
 </section>
+
+<?php if ($post !== null && $canDeletePosts && $canEditPost($post)): ?>
+    <form id="post-trash-form-<?= (int) $post->id ?>" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>"></form>
+<?php endif; ?>
 
 <?php if ($post !== null): ?>
     <?php

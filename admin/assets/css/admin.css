@@ -3990,6 +3990,12 @@ a.lp-button--link.lp-button--link--view:hover {
     gap: 0.5rem;
 }
 
+.lp-sidebar-box__actions--trash {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--lp-admin-border);
+}
+
 .lp-widgets-list__instance-title {
     font-weight: 400;
     opacity: 0.75;

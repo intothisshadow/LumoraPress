@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Move to Trash from the Post/Page editor (LP-083): the New/Edit Post
+  and New/Edit Page screens' Publish box now includes a "Move to Trash"
+  link, matching the existing list-view row action — previously the
+  only way to trash a post or page was to return to its list view.
 - Appearance &rsaquo; Customize (LP-123): replaces the old flat Theme
   Options page with a tabbed screen — Header, Welcome Message, Body,
   Menu, Widgets, Footer. Header adds a site title display toggle and an

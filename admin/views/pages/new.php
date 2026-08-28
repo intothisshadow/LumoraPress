@@ -617,6 +617,15 @@ if ($savedLayout['order'] === []) {
                                         <?php endif; ?>
                                         <a class="lp-button" href="<?= esc_url(admin_url('pages/all-pages')) ?>">Cancel</a>
                                     </div>
+                                    <?php if ($page !== null && $canDeletePages && $canEditPage($page)): ?>
+                                        <?php $trashFormId = 'page-trash-form-' . $page->id; ?>
+                                        <div class="lp-sidebar-box__actions lp-sidebar-box__actions--trash">
+                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('page_trash_' . $page->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
+                                            <input type="hidden" name="form" value="trash" form="<?= esc_attr($trashFormId) ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $page->id ?>" form="<?= esc_attr($trashFormId) ?>">
+                                            <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($trashFormId) ?>" data-lp-confirm="Move this page to the Trash?">Move to Trash</button>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php break;
 
                                 case 'featured_image': ?>
@@ -718,6 +727,10 @@ if ($savedLayout['order'] === []) {
         </div>
     </form>
 </section>
+
+<?php if ($page !== null && $canDeletePages && $canEditPage($page)): ?>
+    <form id="page-trash-form-<?= (int) $page->id ?>" method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>"></form>
+<?php endif; ?>
 
 <?php if ($page !== null): ?>
     <?php
