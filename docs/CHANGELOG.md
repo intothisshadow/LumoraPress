@@ -13,7 +13,12 @@ All notable changes to Lumora Press are documented in this file.
   images by default, and a blocked image fails silently in the
   visitor's browser, invisible on the server side. Admins can now list
   trusted external origins, one per line, to allow images from them
-  through.
+  through. An Administrator or Editor saving a post or page never has to
+  do this by hand for their own content — any external image origin
+  their saved content actually uses (Markdown, HTML, or plain text) is
+  trusted automatically, the same list a manual Settings entry would
+  populate. An Author/Contributor's posts, and any other content, still
+  need the domain added manually.
 - WordPress Importer (LPP-004): a Simple Download Monitor item whose
   source file is missing on disk (e.g. a host that deletes zip uploads)
   is no longer dropped entirely — the Download itself is still created

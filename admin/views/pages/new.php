@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Content\TextDiff;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
@@ -364,6 +365,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, commentsOpen: $commentsOpen);
 
             $pageService->updateSeo($page->id, $metaTitle, $metaDescription);
+
+            // "Trusted staff shouldn't have to add a domain in Settings
+            // just to embed an image" — see the identical block in
+            // admin/views/posts/new.php for the full rationale, including
+            // why this scans the *rendered* HTML rather than the raw
+            // $content (a Markdown page stores `![alt](url)`, not a
+            // literal <img> tag).
+            if ($canEditOthersPages) {
+                $renderedForAutoTrust = $kernel->content->render($content, $contentFormat);
+                TrustedImageOrigins::autoTrustFromContent($kernel->config, $renderedForAutoTrust, site_origin());
+            }
 
             header('Location: ' . admin_url('pages/new') . '?id=' . $page->id . '&saved=1');
             exit;

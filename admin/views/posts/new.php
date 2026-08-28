@@ -18,6 +18,7 @@
 use LumoraPress\Controllers\Admin\PostsController;
 use LumoraPress\Core\Content\TextDiff;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
@@ -122,6 +123,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             : $controller->restoreRevision($_POST, $currentUser->id, $canEditOthersPosts, $csrfToken);
 
         if ($result->redirectUrl !== null) {
+            // "Trusted staff shouldn't have to add a domain in Settings
+            // just to embed an image" — an Administrator/Editor's own
+            // save already just worked, so any external <img> origins in
+            // it are trusted automatically. Gated on edit_others_posts,
+            // never on the plain "can save this post" check every author
+            // passes, and never runs for restore_revision (that content
+            // was already trusted the first time it was saved). Scans the
+            // *rendered* HTML, not the raw stored content — a Markdown
+            // post stores `![alt](url)`, not a literal <img> tag, so
+            // scanning the raw source would miss the (default-editor,
+            // most common) Markdown case entirely.
+            if ($form === 'save' && $canEditOthersPosts) {
+                $savedContentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
+                $renderedForAutoTrust = $kernel->content->render((string) ($_POST['content'] ?? ''), $savedContentFormat);
+                TrustedImageOrigins::autoTrustFromContent($kernel->config, $renderedForAutoTrust, site_origin());
+            }
+
             redirect($result->redirectUrl);
         }
 

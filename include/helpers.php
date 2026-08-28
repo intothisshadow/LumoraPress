@@ -683,6 +683,26 @@ if (!function_exists('home_url')) {
     }
 }
 
+if (!function_exists('site_origin')) {
+    /**
+     * This site's own origin (scheme://host[:port], no path) — the same
+     * "scheme://host[:port] only" shape TrustedImageOrigins::parse()
+     * expects, for recognizing when an embedded image is already
+     * same-origin and therefore already covered by the CSP's own 'self'
+     * (no need to add it to the trusted-origins list at all).
+     */
+    function site_origin(): string
+    {
+        $parts = parse_url(home_url());
+
+        if (!isset($parts['scheme'], $parts['host'])) {
+            return '';
+        }
+
+        return $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    }
+}
+
 if (!function_exists('canonical_url')) {
     /**
      * The current request's canonical URL (LP-022) — self-referencing,

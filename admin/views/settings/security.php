@@ -177,6 +177,13 @@ $trustedImageOrigins = (string) $kernel->config->option('trusted_image_origins',
         (<code>https://gallery.example.com</code>), to allow images from
         them through.
     </p>
+    <p class="lp-field__hint">
+        An Administrator or Editor saving a post or page never needs to
+        do this by hand for their own content — any external image
+        origin their saved content actually uses is added here
+        automatically. This list is where those origins land, and you
+        can remove one at any time.
+    </p>
     <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
         <?= Csrf::field('trusted_image_origins') ?>
         <input type="hidden" name="form" value="trusted_image_origins">
