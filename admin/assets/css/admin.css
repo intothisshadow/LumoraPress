@@ -1841,6 +1841,142 @@ body.lp-admin-login {
     }
 }
 
+/*
+ * featured-image-picker.js's "Choose from Media Manager" dialog — same
+ * shell/grid/pagination shape as .lp-editor-media-dialog and
+ * .lp-download-picker-dialog above, reused rule-for-rule with its own
+ * class prefix: image-only tiles with no filename label, and no
+ * Attachment Display Settings step, since selecting a tile here means
+ * only "this Media row's id".
+ */
+.lp-featured-image-picker-dialog {
+    width: min(900px, 95vw);
+    height: 85vh;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+}
+
+.lp-featured-image-picker-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-featured-image-picker-dialog__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+.lp-featured-image-picker-dialog__search {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.lp-featured-image-picker-dialog__folder-select {
+    flex: 0 1 220px;
+    min-width: 0;
+}
+
+.lp-featured-image-picker-dialog__status {
+    flex-shrink: 0;
+    margin: 0 0 0.75rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-featured-image-picker-dialog__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 0.5rem;
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
+    margin-bottom: 1rem;
+}
+
+.lp-featured-image-picker-dialog__item {
+    display: block;
+    padding: 0;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    cursor: pointer;
+    background: none;
+    overflow: hidden;
+}
+
+.lp-featured-image-picker-dialog__item:hover,
+.lp-featured-image-picker-dialog__item:focus-visible {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-featured-image-picker-dialog__item img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+}
+
+.lp-featured-image-picker-dialog__load-more {
+    align-self: center;
+    flex-shrink: 0;
+    margin-bottom: 1rem;
+}
+
+.lp-featured-image-picker-dialog__close {
+    align-self: flex-start;
+    flex-shrink: 0;
+}
+
+@media (max-width: 782px) {
+    .lp-featured-image-picker-dialog {
+        height: 90vh;
+        max-height: 90vh;
+    }
+
+    .lp-featured-image-picker-dialog__header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lp-featured-image-picker-dialog__search,
+    .lp-featured-image-picker-dialog__folder-select {
+        flex-basis: auto;
+    }
+}
+
+/* The picker widget itself (editor-featured-image.php / thumbnails.php), not the dialog it opens. */
+.lp-featured-image-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.lp-featured-image-picker__chosen {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--lp-admin-text);
+}
+
+.lp-featured-image-picker__chosen-thumb {
+    display: block;
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: calc(var(--lp-admin-radius) - 1px);
+    border: 1px solid var(--lp-admin-border);
+}
+
 /* Font color swatch picker (Markdown editor's toolbar button) — same fixed palette TinyMCE's lumoraFontColor menu offers. */
 .lp-editor-color-dialog {
     width: min(260px, 92vw);

@@ -18,8 +18,10 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\Post|\LumoraPress\Models\Page|null $record The post/page being edited, set by the including view. */
 /** @var string $idPrefix 'post' or 'page', matching this project's existing id="post-*"/id="page-*" field convention. */
-/** @var array{id: int, file_name: string} $currentFeaturedImage */
-/** @var array<int, array{id: int, file_name: string}> $imageOptions */
+/** @var array{id: int, file_name: string}|null $currentFeaturedImage */
+/** @var array<int, array{id: int, name: string, depth: int}> $editorFolderTree Set by posts/new.php and pages/new.php for the "Insert Image" picker's own Folder filter — reused here for the same filter in this box's picker. */
+
+use LumoraPress\Core\Security\Csrf;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -56,15 +58,22 @@ if (!isset($kernel)) {
     </div>
 <?php endif; ?>
 
-<label for="<?= esc_attr($idPrefix) ?>-featured-image-select">Choose from Media Manager</label>
-<select id="<?= esc_attr($idPrefix) ?>-featured-image-select" name="featured_image_id">
-    <option value="0">(None)</option>
-    <?php foreach ($imageOptions as $imageOption): ?>
-        <option value="<?= (int) $imageOption['id'] ?>" <?= ($record?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
-            <?= esc_html((string) $imageOption['file_name']) ?>
-        </option>
-    <?php endforeach; ?>
-</select>
+<div
+    class="lp-featured-image-picker"
+    data-lp-featured-image-picker
+    data-picker-url="<?= esc_url(admin_url($idPrefix . 's/new')) ?>"
+    data-picker-csrf="<?= esc_attr(Csrf::token('featured_image_picker_query')) ?>"
+    data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+>
+    <input type="hidden" name="featured_image_id" data-picker-value value="<?= (int) ($record?->featuredImageId ?? 0) ?>">
+    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Media Manager&hellip;</button>
+    <span class="lp-featured-image-picker__chosen" data-picker-chosen>
+        <?php if ($currentFeaturedImage !== null): ?>
+            <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
+            <?= esc_html((string) $currentFeaturedImage['file_name']) ?>
+        <?php endif; ?>
+    </span>
+</div>
 
 <label for="<?= esc_attr($idPrefix) ?>-featured-image-upload">Or upload a new image</label>
 <input type="file" id="<?= esc_attr($idPrefix) ?>-featured-image-upload" name="featured_image_upload" accept="image/*">

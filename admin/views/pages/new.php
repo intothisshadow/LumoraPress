@@ -175,6 +175,59 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+/*
+ * Featured Image sidebar box's own grid picker (featured-image-
+ * picker.js) — see PostsController::queryFeaturedImagePicker()'s
+ * identical docblock (posts/new.php delegates to that controller; this
+ * page has no controller of its own) for why this is a separate
+ * sub-action/CSRF action name from media_picker_query above rather than
+ * shared: both pickers can be open on the same editor page, and
+ * Csrf::token() overwrites the single stored token per action name.
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'featured_image_picker_query') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('edit_posts') || !Csrf::verify('featured_image_picker_query', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $term = trim((string) ($_POST['term'] ?? ''));
+    $folderId = (int) ($_POST['folder_id'] ?? 0);
+    $page = max(1, (int) ($_POST['page'] ?? 1));
+    $perPage = 40;
+
+    $filters = ['type' => 'image'];
+
+    if ($term !== '') {
+        $filters['term'] = $term;
+    }
+
+    if ($folderId > 0) {
+        $filters['folderIds'] = [$folderId];
+    }
+
+    $result = $kernel->media->query($filters, $perPage, ($page - 1) * $perPage);
+    $thumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(
+        array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
+    );
+
+    echo json_encode([
+        'items' => array_map(
+            static fn (array $item): array => $buildEditorPickerItem($item, $thumbnailsByMediaId[(int) $item['id']] ?? []),
+            $result['items'],
+        ),
+        'total' => $result['total'],
+        'csrfToken' => Csrf::token('featured_image_picker_query'),
+    ]);
+    exit;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
     // See the identical comment in admin/views/posts/new.php's matching
     // block for why the output buffer must be discarded here, and why
@@ -468,7 +521,6 @@ if ($editingId !== null) {
 $page = $editingPage;
 $statusOptions = [PageStatus::Draft, PageStatus::PendingReview, PageStatus::Published, PageStatus::Scheduled];
 $parentOptions = $pageService->listAllForParentPicker($page?->id);
-$imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
 $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
 /*
  * LP-115: the "Insert Image" picker's grid used to be preloaded here as

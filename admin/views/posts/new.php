@@ -46,7 +46,7 @@ $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->
  * echoes the JSON body directly rather than returning a value — see
  * uploadEditorImage()'s own docblock for why), and exits.
  */
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'font_awesome_icon_query'], true)) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'font_awesome_icon_query'], true)) {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs (views/{page}/{subpage}.php is
     // required after layout-header.php unconditionally) — discard it
@@ -83,6 +83,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
         'convert_content' => $controller->convertContent($_POST, $csrfToken),
         'add_category' => $controller->quickAddCategory($_POST, $currentUser->can('edit_posts'), $csrfToken),
         'media_picker_query' => $controller->queryMediaForPicker($_POST, $currentUser->can('edit_posts'), $csrfToken),
+        'featured_image_picker_query' => $controller->queryFeaturedImagePicker($_POST, $currentUser->can('edit_posts'), $csrfToken),
     };
 
     exit;
@@ -188,7 +189,6 @@ $allTagNames = array_map(static fn ($tag) => $tag->name, $kernel->tags->listAll(
 $assignedTagNames = $post !== null
     ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
     : [];
-$imageOptions = $kernel->media->query(['type' => 'image'], 500, 0)['items'];
 $currentFeaturedImage = $post?->featuredImageId !== null ? $kernel->media->find($post->featuredImageId) : null;
 /*
  * LP-115: the "Insert Image" picker's grid used to be preloaded here as

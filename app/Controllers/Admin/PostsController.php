@@ -641,7 +641,31 @@ final class PostsController
      */
     public function queryMediaForPicker(array $post, bool $canEditPosts, ?string $csrfToken): void
     {
-        if (!$canEditPosts || !Csrf::verify('media_picker_query', $csrfToken)) {
+        $this->queryImagesForPicker($post, $canEditPosts, $csrfToken, 'media_picker_query');
+    }
+
+    /**
+     * Same paginated image query as queryMediaForPicker() above, reused by
+     * the Featured Image sidebar box's grid picker (featured-image-
+     * picker.js) — a distinct CSRF action name rather than sharing
+     * 'media_picker_query' since both pickers can be open on the same
+     * editor page, and Csrf::token() overwrites the single stored token
+     * per action name; issuing both under one name would let opening
+     * either picker silently invalidate the other's already-embedded token.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function queryFeaturedImagePicker(array $post, bool $canEditPosts, ?string $csrfToken): void
+    {
+        $this->queryImagesForPicker($post, $canEditPosts, $csrfToken, 'featured_image_picker_query');
+    }
+
+    /**
+     * @param array<string, mixed> $post
+     */
+    private function queryImagesForPicker(array $post, bool $canEditPosts, ?string $csrfToken, string $csrfAction): void
+    {
+        if (!$canEditPosts || !Csrf::verify($csrfAction, $csrfToken)) {
             http_response_code(403);
             echo json_encode(['error' => 'Not permitted.']);
 
@@ -682,7 +706,7 @@ final class PostsController
             // "Load More" click) within one dialog session, so each
             // response must hand back a fresh token the same way
             // uploadEditorImage() already does for repeat uploads.
-            'csrfToken' => Csrf::token('media_picker_query'),
+            'csrfToken' => Csrf::token($csrfAction),
         ]);
     }
 

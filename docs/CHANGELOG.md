@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Featured image picker: every place a featured image can be chosen
+  (the Post/Page editor's Featured Image box, and Media Manager &rsaquo;
+  Thumbnails' "Default featured image" setting) now opens a WordPress-
+  style Media Library grid — searchable, folder-filterable thumbnails —
+  instead of a plain dropdown of filenames, so the right image can be
+  recognized visually rather than guessed from its filename.
 - Settings &rsaquo; Security &rsaquo; Trusted Image Sources: content
   embedding an `<img>` from an external host (a personal gallery/CDN,
   for example) previously failed to display with nothing to explain
