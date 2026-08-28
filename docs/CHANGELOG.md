@@ -24,6 +24,13 @@ All notable changes to Lumora Press are documented in this file.
     content) that push a comment toward Spam via the existing
     `comment_is_spam` extension point, the same one Akismet already
     uses.
+  - **Contact Form Protection** — the same content heuristics applied
+    to Contact Forms plugin submissions via a new
+    `contact_form_is_spam` filter on that plugin — closes the one gap
+    Contact Forms' own already-thorough CSRF/honeypot/timing/rate-limit/
+    CAPTCHA/Akismet stack didn't cover (link-count/length/uppercase-ratio
+    content checks). Only active while the Contact Forms plugin is
+    installed.
 - Font Awesome icon picker (LPP-002): the Post/Page/Downloads editor
   toolbar (both the Visual/HTML and Markdown editors) gains an "Insert
   Icon" button, searching a curated set of Font Awesome icon names by

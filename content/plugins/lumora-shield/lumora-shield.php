@@ -18,7 +18,7 @@ declare(strict_types=1);
 /*
  * Plugin Name: Lumora Shield
  * Plugin URI: https://lumorapress.org/plugins/lumora-shield
- * Description: Optional hardening and spam-prevention features beyond core's own basics — Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core), Monitoring (logs blocked enumeration attempts, with optional email alerts), and Comment Analysis (content/behavioral spam heuristics feeding the existing comment_is_spam filter).
+ * Description: Optional hardening and spam-prevention features beyond core's own basics — Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core), Monitoring (logs blocked enumeration attempts, with optional email alerts), Comment Analysis (content/behavioral spam heuristics feeding the existing comment_is_spam filter), and Contact Form Protection (the same content heuristics feeding the Contact Forms plugin's own contact_form_is_spam filter).
  * Version: 0.1.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
@@ -73,4 +73,19 @@ add_filter(
     'comment_is_spam',
     static fn (bool $default, string $guestName, string $guestEmail, ?string $guestUrl, string $content, string $ipAddress): bool
         => $lumoraShield->commentIsSpam($default, $guestName, $guestEmail, $guestUrl, $content, $ipAddress),
+);
+
+/*
+ * Contact Form Protection: the Contact Forms plugin's own
+ * 'contact_form_is_spam' filter (ContactFormSubmissionHandler::handle(),
+ * the one gap that plugin's own already-thorough CSRF/honeypot/
+ * FormTiming/rate-limit/CAPTCHA/Akismet stack didn't cover) — see
+ * LumoraShieldService::contactFormIsSpam()'s own docblock. Registering
+ * this listener is harmless even when Contact Forms itself is inactive,
+ * since apply_filters() is simply never called by anything in that case.
+ */
+add_filter(
+    'contact_form_is_spam',
+    static fn (bool $default, array $data, string $ipAddress): bool
+        => $lumoraShield->contactFormIsSpam($default, $data, $ipAddress),
 );

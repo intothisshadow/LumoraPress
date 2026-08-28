@@ -123,6 +123,14 @@ final class ContactFormSubmissionHandler
 
         $isSpam = $this->checkAkismet($form, $data, $ipAddress, $userAgent, $referer);
 
+        // Same additive, can-only-push-toward-Spam shape as Akismet above
+        // (and as core's own 'comment_is_spam' filter) — a no-op unless
+        // something listens. The Lumora Shield plugin's Contact Form
+        // Protection module uses this for content checks (link limits,
+        // excessive uppercase/punctuation, hidden Unicode characters)
+        // that this plugin has no built-in equivalent for on its own.
+        $isSpam = $isSpam || apply_filters('contact_form_is_spam', false, $data, $ipAddress);
+
         $submissions->create($id, $data, $ipAddress, $referer, $isSpam);
 
         if (!$isSpam) {

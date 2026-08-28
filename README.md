@@ -363,10 +363,13 @@ an older PHP version can be safely phased out.
   beyond core's own basics: an optional "hide author archives entirely"
   setting on top of core's own always-on author-archive username-
   enumeration protection; a log of blocked enumeration attempts with
-  configurable retention and optional email alerts; and Comment
-  Analysis, independent content/behavioral spam heuristics feeding the
-  same `comment_is_spam` extension point Akismet already uses (Lumora
-  Shield &rsaquo; Settings, all off/on-by-sensible-default).
+  configurable retention and optional email alerts; and content/
+  behavioral spam heuristics (excessive links, uppercase/punctuation,
+  hidden Unicode characters, repeated phrases, prior spam history,
+  posting frequency, duplicate content) feeding both core's
+  `comment_is_spam` extension point and, when the Contact Forms plugin
+  is active, its own `contact_form_is_spam` filter (Lumora Shield
+  &rsaquo; Settings, all off/on-by-sensible-default).
 - **Media Manager** — multi-file uploads with per-file progress, virtual
   folders, metadata, thumbnail generation, a lightbox viewer (covering
   both featured images and images embedded directly in post/page

@@ -63,7 +63,7 @@ final class LumoraShieldService
 
     private static ?self $instance = null;
 
-    /** @var array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool}|null */
+    /** @var array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool}|null */
     private ?array $settingsCache = null;
 
     /** @var array<string, int> in-request-only, so a burst of attempts from one IP within a single process never emails more than once regardless of NOTIFY_COOLDOWN_SECONDS — the real cross-request cooldown is enforced by countEnumerationAttemptsForIp()'s own window query. */
@@ -79,7 +79,7 @@ final class LumoraShieldService
     }
 
     /**
-     * @return array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool}
+     * @return array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool}
      */
     public function settings(): array
     {
@@ -101,6 +101,7 @@ final class LumoraShieldService
             'notify_on_repeated_attempts' => false,
             'notify_threshold' => 10,
             'enable_comment_analysis' => true,
+            'enable_contact_form_analysis' => true,
         ];
 
         $settings = array_merge($defaults, is_array($decoded) ? $decoded : []);
@@ -112,13 +113,14 @@ final class LumoraShieldService
             'notify_on_repeated_attempts' => (bool) $settings['notify_on_repeated_attempts'],
             'notify_threshold' => max(1, (int) $settings['notify_threshold']),
             'enable_comment_analysis' => (bool) $settings['enable_comment_analysis'],
+            'enable_contact_form_analysis' => (bool) $settings['enable_contact_form_analysis'],
         ];
 
         return $this->settingsCache;
     }
 
     /**
-     * @param array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool} $settings
+     * @param array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool} $settings
      */
     public function saveSettings(array $settings): void
     {
@@ -163,6 +165,33 @@ final class LumoraShieldService
         }
 
         return (new CommentAnalyzer())->analyze($content, null, $guestEmail !== '' ? $guestEmail : null, $ipAddress)['isSpam'];
+    }
+
+    /**
+     * The `contact_form_is_spam` filter listener (registered in
+     * lumora-shield.php) — Contact Forms' own submission handler already
+     * has CSRF/honeypot/FormTiming/per-IP rate limiting/CAPTCHA/Akismet
+     * (see that plugin's own docblock), but no link-count/length/
+     * uppercase-ratio content check of its own. Reuses
+     * `CommentAnalyzer::contentReasons()` — the same pure, database-free
+     * content checks Comment Analysis already applies to comments —
+     * against every submitted field value joined together, since a
+     * contact form's field set is arbitrary (Name/Email/Subject/Message/
+     * Text/Textarea/Checkbox/Select), not a single fixed "content"
+     * column. Deliberately content-only, not behavioral: Contact Forms
+     * already rate-limits by IP on its own, and there's no equivalent
+     * "prior spam history"/"duplicate elsewhere" identity table for
+     * contact-form submitters the way comments have.
+     *
+     * @param array<string, string> $data
+     */
+    public function contactFormIsSpam(bool $default, array $data, string $ipAddress): bool
+    {
+        if ($default || !$this->settings()['enable_contact_form_analysis']) {
+            return $default;
+        }
+
+        return (new CommentAnalyzer())->contentReasons(implode("\n", $data)) !== [];
     }
 
     /**

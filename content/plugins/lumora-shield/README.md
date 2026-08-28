@@ -72,6 +72,24 @@ own contract — never un-spams a comment another check (or Akismet)
 already flagged. Toggled independently via **Enable Comment Analysis**
 at **Lumora Shield &rsaquo; Settings**.
 
+### Contact Form Protection
+
+A 2026-08-28 audit of the Contact Forms plugin found it had already
+independently built CSRF, a honeypot, `FormTiming`, per-IP rate
+limiting, and fully working reCAPTCHA v2/Cloudflare Turnstile/Akismet
+— the one gap was a content check. This module closes it via the
+Contact Forms plugin's own `contact_form_is_spam` filter (same
+can-only-push-toward-Spam contract as `comment_is_spam`), reusing
+`CommentAnalyzer::contentReasons()` — the exact same content checks
+Comment Analysis applies to comments — against every submitted field
+value joined together (a contact form's field set is arbitrary:
+Name/Email/Subject/Message/Text/Textarea/Checkbox/Select, not a single
+fixed "content" column). Toggled independently via **Enable Contact
+Form Protection** at **Lumora Shield &rsaquo; Settings**. Only takes
+effect while the Contact Forms plugin is active — registering the
+listener is harmless when it isn't, since nothing ever calls that
+filter in that case.
+
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-001 for the full checklist)
 
 Blacklist/whitelist management, a reputation-scoring engine, CAPTCHA

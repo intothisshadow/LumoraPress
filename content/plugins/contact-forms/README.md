@@ -48,6 +48,14 @@ into, so an unreachable verification service **rejects** the submission
 (fails closed); Akismet, reused from core rather than reconfigured here,
 can only flag a submission as spam for an admin to review, never block it
 outright (fails open), matching its existing comment-moderation behavior.
+Right before persisting, submissions also run through a
+`contact_form_is_spam` filter (`bool $isSpam, array<string, string> $data,
+string $ipAddress`) — a no-op unless something listens, the same
+can-only-push-toward-Spam shape core's own `comment_is_spam` filter
+already establishes for comments. The Lumora Shield plugin's Contact Form
+Protection module is its first real listener, covering the one gap this
+plugin's own stack above doesn't (link-count/length/uppercase-ratio
+content checks).
 
 Because classic PHP theme templates in this codebase echo directly rather
 than buffering the whole page, a shortcode can't safely `header()`

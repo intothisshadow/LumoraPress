@@ -42,6 +42,7 @@ if ($form === 'lumora_shield_settings' && Csrf::verify('lumora_shield_settings',
         'notify_on_repeated_attempts' => isset($_POST['notify_on_repeated_attempts']),
         'notify_threshold' => max(1, (int) ($_POST['notify_threshold'] ?? 10)),
         'enable_comment_analysis' => isset($_POST['enable_comment_analysis']),
+        'enable_contact_form_analysis' => isset($_POST['enable_contact_form_analysis']),
     ]);
 
     header('Location: ' . admin_url('lumora-shield/settings') . '?saved=1');
@@ -68,6 +69,12 @@ $settings = $service->settings();
     <form method="post" action="<?= esc_url(admin_url('lumora-shield/settings')) ?>">
         <?= Csrf::field('lumora_shield_settings') ?>
         <input type="hidden" name="form" value="lumora_shield_settings">
+        <input type="hidden" name="enable_logging" value="<?= $settings['enable_logging'] ? '1' : '' ?>">
+        <input type="hidden" name="log_retention_days" value="<?= (int) $settings['log_retention_days'] ?>">
+        <input type="hidden" name="notify_on_repeated_attempts" value="<?= $settings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+        <input type="hidden" name="notify_threshold" value="<?= (int) $settings['notify_threshold'] ?>">
+        <input type="hidden" name="enable_comment_analysis" value="<?= $settings['enable_comment_analysis'] ? '1' : '' ?>">
+        <input type="hidden" name="enable_contact_form_analysis" value="<?= $settings['enable_contact_form_analysis'] ? '1' : '' ?>">
 
         <p class="lp-field">
             <label class="lp-field--checkbox">
@@ -101,6 +108,7 @@ $settings = $service->settings();
         <input type="hidden" name="form" value="lumora_shield_settings">
         <input type="hidden" name="hide_author_archives" value="<?= $settings['hide_author_archives'] ? '1' : '' ?>">
         <input type="hidden" name="enable_comment_analysis" value="<?= $settings['enable_comment_analysis'] ? '1' : '' ?>">
+        <input type="hidden" name="enable_contact_form_analysis" value="<?= $settings['enable_contact_form_analysis'] ? '1' : '' ?>">
 
         <p class="lp-field">
             <label class="lp-field--checkbox">
@@ -158,11 +166,48 @@ $settings = $service->settings();
         <input type="hidden" name="log_retention_days" value="<?= (int) $settings['log_retention_days'] ?>">
         <input type="hidden" name="notify_on_repeated_attempts" value="<?= $settings['notify_on_repeated_attempts'] ? '1' : '' ?>">
         <input type="hidden" name="notify_threshold" value="<?= (int) $settings['notify_threshold'] ?>">
+        <input type="hidden" name="enable_contact_form_analysis" value="<?= $settings['enable_contact_form_analysis'] ? '1' : '' ?>">
 
         <p class="lp-field">
             <label class="lp-field--checkbox">
                 <input type="checkbox" name="enable_comment_analysis" value="1" <?= $settings['enable_comment_analysis'] ? 'checked' : '' ?>>
                 Enable Comment Analysis
+            </label>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Contact Form Protection</h2>
+    <p class="lp-field__hint">
+        The Contact Forms plugin already has its own CSRF, honeypot,
+        submission-timing, per-IP rate limiting, optional CAPTCHA
+        (reCAPTCHA/Turnstile), and optional Akismet checks — the one gap
+        left is a content check for excessive links, uppercase,
+        punctuation, hidden Unicode characters, or unusually short/long
+        submissions. This reuses the exact same content checks Comment
+        Analysis applies to comments, run instead against every
+        submitted field value joined together, via the Contact Forms
+        plugin's own <code>contact_form_is_spam</code> filter. Only
+        applies while the Contact Forms plugin is active.
+    </p>
+
+    <form method="post" action="<?= esc_url(admin_url('lumora-shield/settings')) ?>">
+        <?= Csrf::field('lumora_shield_settings') ?>
+        <input type="hidden" name="form" value="lumora_shield_settings">
+        <input type="hidden" name="hide_author_archives" value="<?= $settings['hide_author_archives'] ? '1' : '' ?>">
+        <input type="hidden" name="enable_logging" value="<?= $settings['enable_logging'] ? '1' : '' ?>">
+        <input type="hidden" name="log_retention_days" value="<?= (int) $settings['log_retention_days'] ?>">
+        <input type="hidden" name="notify_on_repeated_attempts" value="<?= $settings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+        <input type="hidden" name="notify_threshold" value="<?= (int) $settings['notify_threshold'] ?>">
+        <input type="hidden" name="enable_comment_analysis" value="<?= $settings['enable_comment_analysis'] ? '1' : '' ?>">
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="enable_contact_form_analysis" value="1" <?= $settings['enable_contact_form_analysis'] ? 'checked' : '' ?>>
+                Enable Contact Form Protection
             </label>
         </p>
 
