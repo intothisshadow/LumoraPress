@@ -173,7 +173,15 @@ final class ErrorLogReader
             return false;
         }
 
-        return file_put_contents($this->path(), '') !== false;
+        $result = file_put_contents($this->path(), '') !== false;
+
+        // PHP's stat cache isn't reliably invalidated for this path by
+        // file_put_contents() on every supported PHP version (observed
+        // stale filesize() results under PHP 8.2 specifically) — force a
+        // fresh stat so callers immediately see the truncated size.
+        clearstatcache(true, $this->path());
+
+        return $result;
     }
 
     private function path(): string
