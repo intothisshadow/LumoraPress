@@ -187,7 +187,24 @@ final class FontAwesomeService
 
         $contents = file_get_contents($path);
 
-        return $contents !== false && preg_match('/font[\s\-]?awesome/i', $contents) === 1;
+        return $contents !== false && preg_match('/font[\s\-]?awesome/i', $this->stripComments($contents)) === 1;
+    }
+
+    /**
+     * Strips /* ... *\/ block comments before scanning (LP-128): this
+     * codebase's own docblock convention cross-references other plugins
+     * by name (e.g. Downloads/Contact Forms/WordPress Importer's headers
+     * noting they share the 'content_html' hook pattern Font Awesome's
+     * [icon] shortcode uses), which otherwise flags as a false "duplicate
+     * loading" conflict even though no Font Awesome asset is ever loaded.
+     * Deliberately does not also strip `//` line comments — a genuine CDN
+     * URL (https://...) contains its own "//" and would be silently
+     * truncated by a naive line-comment stripper, turning a real conflict
+     * into a false negative.
+     */
+    private function stripComments(string $contents): string
+    {
+        return preg_replace('#/\*.*?\*/#s', '', $contents) ?? $contents;
     }
 
     /**

@@ -37,6 +37,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Font Awesome's duplicate-loading detector (LP-128) could flag another
+  active plugin as a conflict when its main file merely mentioned "Font
+  Awesome" in a comment (e.g. cross-referencing a shared hook pattern),
+  even though it never actually loaded a Font Awesome asset. Comment
+  text is now ignored when scanning for a genuine duplicate reference.
 - The Visual/HTML editor's Underline button didn't persist: TinyMCE's
   default underline formatting applies an inline `style` attribute,
   which HtmlSanitizer strips (it never allows inline styles), silently
