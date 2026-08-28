@@ -1614,6 +1614,50 @@ body.lp-admin-login {
     object-fit: cover;
 }
 
+/* Icon picker (LPP-002): reuses .lp-editor-media-dialog's overall <dialog>
+   chrome/status/load-more/close styling, but each grid item shows a
+   Font Awesome glyph + name label rather than an image thumbnail, so it
+   needs its own tile sizing instead of .lp-editor-media-dialog__item's
+   1:1 image aspect-ratio. */
+.lp-editor-icon-dialog__grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+}
+
+.lp-editor-icon-dialog__item {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    cursor: pointer;
+    background: none;
+    color: var(--lp-admin-text);
+    text-align: center;
+}
+
+.lp-editor-icon-dialog__item:hover,
+.lp-editor-icon-dialog__item:focus-visible {
+    border-color: var(--lp-admin-accent);
+    background: color-mix(in srgb, var(--lp-admin-accent) 10%, transparent);
+}
+
+.lp-editor-icon-dialog__item i {
+    font-size: 1.5rem;
+}
+
+.lp-editor-icon-dialog__item span {
+    font-size: 0.7rem;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
 .lp-editor-media-dialog__load-more {
     align-self: center;
     flex-shrink: 0;

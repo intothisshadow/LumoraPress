@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\FontAwesome;
 
 use LumoraPress\Core\ActiveConfig;
+use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\ActiveTheme;
 use RuntimeException;
 
@@ -37,6 +38,14 @@ final class FontAwesomeService
     public const DEFAULT_VERSION = '6.5.2';
 
     private const SHORTCODE_PATTERN = '/\[icon\s+([^\]]*)\]/i';
+
+    /** Bundled icon metadata (data/icons.php) the admin icon picker searches. */
+    private const ICON_DATA_PATH = __DIR__ . '/../data/icons.php';
+
+    /** Cached, request-independent copy of the same data, rebuilt whenever the source file changes (see loadIconIndex()). */
+    private const ICON_CACHE_PATH_SUFFIX = '/storage/cache/font-awesome-icons.json';
+
+    private const ICON_QUERY_PAGE_SIZE = 60;
 
     private const ALLOWED_SIZES = ['xs', 'sm', 'lg', '1x', '2x', '3x', '4x', '5x', '6x', '7x', '8x', '9x', '10x'];
 
@@ -205,6 +214,186 @@ final class FontAwesomeService
     private function stripComments(string $contents): string
     {
         return preg_replace('#/\*.*?\*/#s', '', $contents) ?? $contents;
+    }
+
+    /**
+     * Icon-picker search (LPP-002's "html/visual (TinyMCE) icon picker" /
+     * "Easy MDE icon picker" checklist items): filters the bundled/cached
+     * icon metadata by name/label/keyword, case-insensitively. Called
+     * directly by both the TinyMCE and Markdown editors' own picker
+     * AJAX sub-action (see queryIconsForPicker()) so there's exactly one
+     * search implementation for both.
+     *
+     * @return array{items: array<int, array{name: string, label: string, category: string, style: string}>, total: int}
+     */
+    public function searchIcons(string $term, int $limit = self::ICON_QUERY_PAGE_SIZE, int $offset = 0): array
+    {
+        $term = strtolower(trim($term));
+        $icons = $this->loadIconIndex();
+
+        if ($term !== '') {
+            $icons = array_values(array_filter($icons, static function (array $icon) use ($term): bool {
+                if (str_contains(strtolower($icon['name']), $term) || str_contains(strtolower($icon['label']), $term)) {
+                    return true;
+                }
+
+                foreach ($icon['keywords'] as $keyword) {
+                    if (str_contains(strtolower($keyword), $term)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }));
+        }
+
+        return [
+            'items' => array_slice($icons, max(0, $offset), max(0, $limit)),
+            'total' => count($icons),
+        ];
+    }
+
+    /**
+     * The icon picker's AJAX sub-action, dispatched identically from
+     * posts/new.php, pages/new.php, and downloads/add-new.php's own
+     * `$_POST['form']` matches (mirroring PostsController::
+     * queryMediaForPicker()'s contract exactly: echoes JSON directly,
+     * hands back a fresh single-use CSRF token every response since the
+     * picker re-fires this on every search keystroke/page change within
+     * one dialog session). No capability check beyond CSRF verification
+     * — a read-only icon-name lookup, the same low-risk-utility gating
+     * convertContent() already uses for its own no-side-effect sub-action.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function queryIconsForPicker(array $post, ?string $csrfToken): void
+    {
+        if (!Csrf::verify('font_awesome_icon_query', $csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Not permitted.']);
+
+            return;
+        }
+
+        $term = trim((string) ($post['term'] ?? ''));
+        $page = max(1, (int) ($post['page'] ?? 1));
+
+        $result = $this->searchIcons($term, self::ICON_QUERY_PAGE_SIZE, ($page - 1) * self::ICON_QUERY_PAGE_SIZE);
+
+        echo json_encode([
+            'items' => $result['items'],
+            'total' => $result['total'],
+            'csrfToken' => Csrf::token('font_awesome_icon_query'),
+        ]);
+    }
+
+    /**
+     * Loads the bundled icon metadata (LPP-002's "cache icon metadata for
+     * faster admin searches" checklist item), caching the parsed result
+     * to a JSON file under storage/cache/ so repeat searches within (and
+     * across) requests don't re-`require` and re-normalize data/icons.php
+     * every time — the same write-to-temp-then-rename pattern
+     * UpdateProgress uses, invalidated automatically by comparing the
+     * source file's own mtime rather than needing a manual "clear cache"
+     * step. Degrades to reading the bundled file directly, uncached, when
+     * $pluginsPath isn't configured (e.g. unit tests) rather than erroring.
+     *
+     * @return array<int, array{name: string, label: string, category: string, keywords: array<int, string>, style: string}>
+     */
+    private function loadIconIndex(): array
+    {
+        $sourceMTime = is_file(self::ICON_DATA_PATH) ? (int) @filemtime(self::ICON_DATA_PATH) : 0;
+        $cachePath = $this->iconCachePath();
+
+        if ($cachePath !== null) {
+            $cached = $this->readIconCache($cachePath);
+
+            if ($cached !== null && ($cached['sourceMTime'] ?? null) === $sourceMTime) {
+                return $cached['icons'];
+            }
+        }
+
+        $icons = $this->normalizeIcons(is_file(self::ICON_DATA_PATH) ? (require self::ICON_DATA_PATH) : []);
+
+        if ($cachePath !== null) {
+            $this->writeIconCache($cachePath, $sourceMTime, $icons);
+        }
+
+        return $icons;
+    }
+
+    /**
+     * @param array<int, array{name: string, label: string, category: string, keywords: array<int, string>, style?: string}> $rawIcons
+     * @return array<int, array{name: string, label: string, category: string, keywords: array<int, string>, style: string}>
+     */
+    private function normalizeIcons(array $rawIcons): array
+    {
+        return array_map(static fn (array $icon): array => [
+            'name' => (string) $icon['name'],
+            'label' => (string) $icon['label'],
+            'category' => (string) $icon['category'],
+            'keywords' => array_values(array_map('strval', $icon['keywords'])),
+            'style' => (string) ($icon['style'] ?? 'solid'),
+        ], $rawIcons);
+    }
+
+    private function iconCachePath(): ?string
+    {
+        if ($this->pluginsPath === null) {
+            return null;
+        }
+
+        // $this->pluginsPath is {installRoot}/content/plugins (see
+        // configurePluginsPath()'s own docblock) — two levels up recovers
+        // the install root storage/ lives under.
+        return dirname($this->pluginsPath, 2) . self::ICON_CACHE_PATH_SUFFIX;
+    }
+
+    /**
+     * @return array{sourceMTime: int, icons: array<int, array{name: string, label: string, category: string, keywords: array<int, string>, style: string}>}|null
+     */
+    private function readIconCache(string $path): ?array
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $contents = file_get_contents($path);
+        $decoded = $contents !== false ? json_decode($contents, true) : null;
+
+        if (!is_array($decoded) || !isset($decoded['sourceMTime'], $decoded['icons']) || !is_array($decoded['icons'])) {
+            return null;
+        }
+
+        return ['sourceMTime' => (int) $decoded['sourceMTime'], 'icons' => $decoded['icons']];
+    }
+
+    /**
+     * @param array<int, array{name: string, label: string, category: string, keywords: array<int, string>, style: string}> $icons
+     */
+    private function writeIconCache(string $path, int $sourceMTime, array $icons): void
+    {
+        $dir = dirname($path);
+
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+
+        $encoded = json_encode(['sourceMTime' => $sourceMTime, 'icons' => $icons]);
+
+        if ($encoded === false) {
+            return;
+        }
+
+        // Write-then-rename (rather than a direct file_put_contents()) so a
+        // concurrent reader never sees a half-written cache file — rename()
+        // is atomic on the same filesystem, the same reasoning
+        // UpdateProgress::write() documents in detail.
+        $tmpPath = $path . '.tmp-' . uniqid('', true);
+
+        if (@file_put_contents($tmpPath, $encoded) !== false) {
+            @rename($tmpPath, $path);
+        }
     }
 
     /**

@@ -9,7 +9,13 @@
  *        data-upload-csrf="..."
  *        data-convert-csrf="..."
  *        data-media-picker-csrf="..."
- *        data-media-folders='[{"id":1,"name":"...","depth":0}]'>
+ *        data-media-folders='[{"id":1,"name":"...","depth":0}]'
+ *        data-icon-picker-csrf="..."                    — omitted entirely
+ *        data-icon-picker-css='["https://...css"]'>        when the Font
+ *                                                          Awesome plugin
+ *                                                          (LPP-002) is
+ *                                                          disabled — see
+ *                                                          openIconPicker().
  *     <textarea>...</textarea>
  *   </div>
  *
@@ -582,6 +588,169 @@
     }
 
     // ------------------------------------------------------------------
+    // Icon picker (LPP-002) — shared by both editors, mirroring
+    // openMediaPicker()'s <dialog> + search + paginated-grid + Load More
+    // shape, queried against the Font Awesome plugin's own
+    // font_awesome_icon_query sub-action (same data-upload-url every
+    // other sub-action already posts to). Only wired up at all when
+    // data-icon-picker-csrf is present — the container-building views
+    // only render that attribute while the plugin is enabled (see
+    // lp_fontawesome_enabled() in posts/new.php / pages/new.php /
+    // downloads/add-new.php), so there's nothing to search when it's
+    // off. data-icon-picker-css (a JSON array of the plugin's own
+    // configured CDN/self-hosted URL(s) — see the lp_fontawesome_css_urls
+    // filter in font-awesome.php) is lazy-loaded here, on first open,
+    // rather than unconditionally on every editor page load, so real
+    // icon glyphs render in the grid without paying for Font Awesome's
+    // CSS on every post/page edit screen regardless of whether this
+    // picker is ever opened.
+    // ------------------------------------------------------------------
+
+    function openIconPicker(container, onInsert) {
+        var pickerUrl = container.dataset.uploadUrl;
+        var pickerCsrf = container.dataset.iconPickerCsrf;
+
+        JSON.parse(container.dataset.iconPickerCss || '[]').forEach(loadStyle);
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog lp-editor-icon-dialog';
+
+        var heading = document.createElement('h2');
+        heading.textContent = 'Insert Icon';
+        heading.className = 'lp-editor-media-dialog__heading';
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'lp-editor-media-dialog__search';
+        searchInput.placeholder = 'Search icons…';
+        searchInput.setAttribute('aria-label', 'Search icons');
+
+        var status = document.createElement('p');
+        status.className = 'lp-editor-media-dialog__status';
+        status.hidden = true;
+
+        var grid = document.createElement('div');
+        grid.className = 'lp-editor-media-dialog__grid lp-editor-icon-dialog__grid';
+
+        var loadMoreButton = document.createElement('button');
+        loadMoreButton.type = 'button';
+        loadMoreButton.className = 'lp-button lp-editor-media-dialog__load-more';
+        loadMoreButton.textContent = 'Load More';
+        loadMoreButton.hidden = true;
+
+        var state = { term: '', page: 1, loaded: 0, total: 0, requestId: 0 };
+
+        function renderItem(icon) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-icon-dialog__item';
+            button.title = icon.name;
+
+            var glyph = document.createElement('i');
+            glyph.className = 'fa-' + icon.style + ' fa-' + icon.name;
+            glyph.setAttribute('aria-hidden', 'true');
+
+            var label = document.createElement('span');
+            label.textContent = icon.label;
+
+            button.appendChild(glyph);
+            button.appendChild(label);
+            button.addEventListener('click', function () {
+                onInsert({ name: icon.name, style: icon.style });
+                dialog.close();
+            });
+
+            grid.appendChild(button);
+        }
+
+        function fetchPage(reset) {
+            var requestId = ++state.requestId;
+
+            if (reset) {
+                state.page = 1;
+                state.loaded = 0;
+                grid.innerHTML = '';
+            }
+
+            status.textContent = 'Loading…';
+            status.hidden = false;
+            loadMoreButton.hidden = true;
+
+            var formData = new FormData();
+            formData.append('form', 'font_awesome_icon_query');
+            formData.append('csrf_token', pickerCsrf);
+            formData.append('term', state.term);
+            formData.append('page', String(state.page));
+
+            fetch(pickerUrl, { method: 'POST', body: formData })
+                .then(function (response) { return response.json(); })
+                .then(function (json) {
+                    // Csrf::verify() is single-use — see openMediaPicker()'s
+                    // identical comment for why every response must hand
+                    // back a fresh token.
+                    if (json.csrfToken) {
+                        pickerCsrf = json.csrfToken;
+                        container.dataset.iconPickerCsrf = json.csrfToken;
+                    }
+
+                    if (requestId !== state.requestId) {
+                        return;
+                    }
+
+                    var items = json.items || [];
+                    items.forEach(renderItem);
+                    state.loaded += items.length;
+                    state.total = json.total || 0;
+
+                    if (state.loaded === 0) {
+                        status.textContent = state.term !== '' ? 'No icons match your search.' : 'No icons available.';
+                        status.hidden = false;
+                    } else {
+                        status.hidden = true;
+                    }
+
+                    loadMoreButton.hidden = state.loaded >= state.total;
+                })
+                .catch(function () {
+                    status.textContent = 'Could not load icons. Try again.';
+                    status.hidden = false;
+                });
+        }
+
+        var searchTimer = null;
+        searchInput.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(function () {
+                state.term = searchInput.value.trim();
+                fetchPage(true);
+            }, 300);
+        });
+
+        loadMoreButton.addEventListener('click', function () {
+            state.page += 1;
+            fetchPage(false);
+        });
+
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'lp-button lp-editor-media-dialog__close';
+        closeButton.textContent = 'Cancel';
+        closeButton.addEventListener('click', function () { dialog.close(); });
+
+        dialog.appendChild(heading);
+        dialog.appendChild(searchInput);
+        dialog.appendChild(status);
+        dialog.appendChild(grid);
+        dialog.appendChild(loadMoreButton);
+        dialog.appendChild(closeButton);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+
+        fetchPage(true);
+    }
+
+    // ------------------------------------------------------------------
     // Upload helper — shared by both editors.
     // ------------------------------------------------------------------
 
@@ -725,6 +894,136 @@
         return loadScript(EASYMDE_JS).then(function () {
             var EasyMDE = window.EasyMDE;
             var autosaveId = container.dataset.autosaveId || '';
+            var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
+
+            // Built as its own variable (rather than inline in the options
+            // object below) so the icon-picker button — only wired up when
+            // the Font Awesome plugin is enabled — can be conditionally
+            // pushed in, mirroring how the TinyMCE side's toolbar string
+            // conditionally includes lumoraIcon. Each closure below only
+            // reads editor.codemirror once actually clicked, by which
+            // point `editor` (declared next) already holds the constructed
+            // instance — the same deferred-reference pattern the existing
+            // media-library/folder-gallery entries already rely on.
+            var markdownToolbar = [
+                'bold', 'italic', 'strikethrough',
+                {
+                    name: 'underline',
+                    action: function () { wrapSelectionWithUnderline(editor.codemirror); },
+                    className: 'fa fa-underline',
+                    title: 'Underline',
+                },
+                {
+                    name: 'font-color',
+                    action: function () {
+                        openColorPicker(function (colorName) {
+                            wrapSelectionWithColor(editor.codemirror, colorName);
+                        });
+                    },
+                    className: 'fa fa-paint-brush',
+                    title: 'Font Color',
+                },
+                '|',
+                'heading-1', 'heading-2', 'heading-3', '|',
+                {
+                    name: 'align-left',
+                    action: function () { wrapSelectionWithAlignment(editor.codemirror, 'left'); },
+                    className: 'fa fa-align-left',
+                    title: 'Align Left',
+                },
+                {
+                    name: 'align-center',
+                    action: function () { wrapSelectionWithAlignment(editor.codemirror, 'center'); },
+                    className: 'fa fa-align-center',
+                    title: 'Align Center',
+                },
+                {
+                    name: 'align-right',
+                    action: function () { wrapSelectionWithAlignment(editor.codemirror, 'right'); },
+                    className: 'fa fa-align-right',
+                    title: 'Align Right',
+                },
+                {
+                    name: 'align-justify',
+                    action: function () { wrapSelectionWithAlignment(editor.codemirror, 'justify'); },
+                    className: 'fa fa-align-justify',
+                    title: 'Justify',
+                },
+                '|',
+                {
+                    name: 'more-tag',
+                    action: function () { insertMoreTag(editor.codemirror); },
+                    className: 'fa fa-scissors',
+                    title: 'Insert Read More Tag',
+                },
+                '|',
+                'code', 'quote', 'unordered-list', 'ordered-list', '|',
+                'link',
+                {
+                    name: 'media-library',
+                    action: function () {
+                        openMediaPicker(container, function (payload) {
+                            var cm = editor.codemirror;
+                            // Markdown has no attribute syntax, so the
+                            // chosen size is expressed purely by which
+                            // file's URL gets inserted (LP-075) — no
+                            // width/height survives into the rendered
+                            // <img> for Markdown-authored content, a
+                            // hard limitation of the format. Alignment
+                            // (LP-016) is the one exception: a trailing
+                            // {.alignleft/aligncenter/alignright} marker
+                            // (MarkdownParser::parseImages()) does
+                            // survive, the same minimal convention
+                            // wrapSelectionWithAlignment() uses for
+                            // heading/paragraph alignment above.
+                            //
+                            // LP-080: "Link To: None" means no link at
+                            // all, not just "no link to something
+                            // different than what's displayed" — a
+                            // {.no-lightbox} marker opts the image out
+                            // of ContentRenderer::addLightboxAttributes()'s
+                            // automatic self-link, which would otherwise
+                            // still wrap even an unlinked image in an
+                            // <a> so PhotoSwipe can open it.
+                            var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
+                            var noLightboxMarker = payload.linkUrl ? '' : '{.no-lightbox}';
+                            var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker + noLightboxMarker;
+                            cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
+                        });
+                    },
+                    className: 'fa fa-photo',
+                    title: 'Insert Image',
+                },
+                {
+                    name: 'folder-gallery',
+                    action: function () {
+                        openFolderGalleryPicker(container, function (payload) {
+                            var cm = editor.codemirror;
+                            var link = payload.link === 'file' ? 'full' : 'none';
+                            cm.replaceSelection('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
+                        });
+                    },
+                    className: 'fa fa-th',
+                    title: 'Insert Folder',
+                },
+            ];
+
+            if (iconPickerEnabled) {
+                markdownToolbar.push({
+                    name: 'icon-picker',
+                    action: function () {
+                        openIconPicker(container, function (payload) {
+                            var cm = editor.codemirror;
+                            var styleAttr = payload.style !== 'solid' ? ' style="' + payload.style + '"' : '';
+                            cm.replaceSelection('[icon name="' + payload.name + '"' + styleAttr + ']');
+                        });
+                    },
+                    className: 'fa fa-flag',
+                    title: 'Insert Icon',
+                });
+            }
+
+            markdownToolbar.push('table', 'horizontal-rule', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide');
 
             var editor = new EasyMDE({
                 element: textarea,
@@ -759,111 +1058,7 @@
                     uniqueId: 'lp-autosave-' + autosaveId,
                     delay: 15000,
                 } : { enabled: false },
-                toolbar: [
-                    'bold', 'italic', 'strikethrough',
-                    {
-                        name: 'underline',
-                        action: function () { wrapSelectionWithUnderline(editor.codemirror); },
-                        className: 'fa fa-underline',
-                        title: 'Underline',
-                    },
-                    {
-                        name: 'font-color',
-                        action: function () {
-                            openColorPicker(function (colorName) {
-                                wrapSelectionWithColor(editor.codemirror, colorName);
-                            });
-                        },
-                        className: 'fa fa-paint-brush',
-                        title: 'Font Color',
-                    },
-                    '|',
-                    'heading-1', 'heading-2', 'heading-3', '|',
-                    {
-                        name: 'align-left',
-                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'left'); },
-                        className: 'fa fa-align-left',
-                        title: 'Align Left',
-                    },
-                    {
-                        name: 'align-center',
-                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'center'); },
-                        className: 'fa fa-align-center',
-                        title: 'Align Center',
-                    },
-                    {
-                        name: 'align-right',
-                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'right'); },
-                        className: 'fa fa-align-right',
-                        title: 'Align Right',
-                    },
-                    {
-                        name: 'align-justify',
-                        action: function () { wrapSelectionWithAlignment(editor.codemirror, 'justify'); },
-                        className: 'fa fa-align-justify',
-                        title: 'Justify',
-                    },
-                    '|',
-                    {
-                        name: 'more-tag',
-                        action: function () { insertMoreTag(editor.codemirror); },
-                        className: 'fa fa-scissors',
-                        title: 'Insert Read More Tag',
-                    },
-                    '|',
-                    'code', 'quote', 'unordered-list', 'ordered-list', '|',
-                    'link',
-                    {
-                        name: 'media-library',
-                        action: function () {
-                            openMediaPicker(container, function (payload) {
-                                var cm = editor.codemirror;
-                                // Markdown has no attribute syntax, so the
-                                // chosen size is expressed purely by which
-                                // file's URL gets inserted (LP-075) — no
-                                // width/height survives into the rendered
-                                // <img> for Markdown-authored content, a
-                                // hard limitation of the format. Alignment
-                                // (LP-016) is the one exception: a trailing
-                                // {.alignleft/aligncenter/alignright} marker
-                                // (MarkdownParser::parseImages()) does
-                                // survive, the same minimal convention
-                                // wrapSelectionWithAlignment() uses for
-                                // heading/paragraph alignment above.
-                                //
-                                // LP-080: "Link To: None" means no link at
-                                // all, not just "no link to something
-                                // different than what's displayed" — a
-                                // {.no-lightbox} marker opts the image out
-                                // of ContentRenderer::addLightboxAttributes()'s
-                                // automatic self-link, which would otherwise
-                                // still wrap even an unlinked image in an
-                                // <a> so PhotoSwipe can open it.
-                                var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
-                                var noLightboxMarker = payload.linkUrl ? '' : '{.no-lightbox}';
-                                var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker + noLightboxMarker;
-                                cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
-                            });
-                        },
-                        className: 'fa fa-photo',
-                        title: 'Insert Image',
-                    },
-                    {
-                        name: 'folder-gallery',
-                        action: function () {
-                            openFolderGalleryPicker(container, function (payload) {
-                                var cm = editor.codemirror;
-                                var link = payload.link === 'file' ? 'full' : 'none';
-                                cm.replaceSelection('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
-                            });
-                        },
-                        className: 'fa fa-th',
-                        title: 'Insert Folder',
-                    },
-                    'table', 'horizontal-rule', '|',
-                    'preview', 'side-by-side', 'fullscreen', '|',
-                    'guide',
-                ],
+                toolbar: markdownToolbar,
             });
 
             // EasyMDE hides the original <textarea> behind its CodeMirror
@@ -894,6 +1089,7 @@
         return loadScript(TINYMCE_JS).then(function () {
             var tinymce = window.tinymce;
             var autosaveId = container.dataset.autosaveId || '';
+            var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
             // LP-115: the native 'image' plugin/toolbar button is
             // deliberately not loaded — lumoraMedia (the Media Manager
             // picker) is this editor's single "Insert Image" entry
@@ -926,7 +1122,8 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraFolderGallery lumoraMoreTag table codesample | '
+                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraFolderGallery '
+                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + 'lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
@@ -1078,6 +1275,19 @@
                                 });
                             },
                         });
+
+                        if (iconPickerEnabled) {
+                            editor.ui.registry.addButton('lumoraIcon', {
+                                icon: 'insert-character',
+                                tooltip: 'Insert Icon',
+                                onAction: function () {
+                                    openIconPicker(container, function (payload) {
+                                        var styleAttr = payload.style !== 'solid' ? ' style="' + escapeHtmlAttr(payload.style) + '"' : '';
+                                        editor.insertContent('[icon name="' + escapeHtmlAttr(payload.name) + '"' + styleAttr + ']');
+                                    });
+                                },
+                            });
+                        }
 
                         // LP-079 — inserts a whole paragraph containing
                         // only the More tag marker, mirroring

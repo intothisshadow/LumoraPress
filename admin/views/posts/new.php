@@ -23,6 +23,7 @@ use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
 use LumoraPress\Models\PostVisibility;
 use LumoraPress\Models\RevisionableType;
+use LumoraPress\Plugins\FontAwesome\FontAwesomeService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -44,7 +45,7 @@ $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->
  * echoes the JSON body directly rather than returning a value — see
  * uploadEditorImage()'s own docblock for why), and exits.
  */
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query'], true)) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'font_awesome_icon_query'], true)) {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs (views/{page}/{subpage}.php is
     // required after layout-header.php unconditionally) — discard it
@@ -57,6 +58,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
     header('Content-Type: application/json');
 
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+    // font_awesome_icon_query is handled separately from the match()
+    // below since it belongs to an optional plugin — FontAwesomeService
+    // is only ever require_once'd (see font-awesome.php) when that
+    // plugin is active, so this view (reachable regardless of which
+    // plugins are active) must guard the class reference rather than
+    // assume it's loaded, unlike appearance/font-awesome.php's own
+    // settings screen, which is only ever reachable while active.
+    if ($_POST['form'] === 'font_awesome_icon_query') {
+        if (class_exists(FontAwesomeService::class, false)) {
+            FontAwesomeService::instance()->queryIconsForPicker($_POST, $csrfToken);
+        } else {
+            http_response_code(404);
+            echo json_encode(['error' => 'Font Awesome is not active.']);
+        }
+
+        exit;
+    }
 
     match ($_POST['form']) {
         'editor_upload' => $controller->uploadEditorImage($_FILES, $currentUser->id, $currentUser->can('upload_files'), $csrfToken),
@@ -262,6 +281,10 @@ if ($savedLayout['order'] === []) {
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                     data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                    <?php if (lp_fontawesome_enabled()): ?>
+                        data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
+                        data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                    <?php endif; ?>
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
                 >

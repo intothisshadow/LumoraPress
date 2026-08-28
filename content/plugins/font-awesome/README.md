@@ -28,13 +28,19 @@ so no theme or plugin has to bundle its own copy.
   Font Awesome reference hardcoded into the active theme or another active
   plugin (a likely duplicate-loading conflict) — detection only; removing
   the conflicting reference is a manual step once flagged.
+- An icon picker in the Post/Page/Downloads editor toolbar (both the
+  Visual/HTML editor and the Markdown editor), searching a curated,
+  bundled set of common Font Awesome icon names by name/label/keyword and
+  inserting the matching `[icon ...]` shortcode on selection. Only shown
+  once the plugin is enabled — the icon metadata is served from a small
+  JSON cache under `storage/cache/`, rebuilt automatically whenever the
+  bundled dataset (`data/icons.php`) changes.
 
 ## Deferred (see TODO-PLUGINS.md's LPP-002 for the full checklist)
 
-Font Awesome Pro / Kit support, SVG rendering mode, the icon picker
-(TinyMCE toolbar button, EasyMDE button, menus/widgets/theme options
-integration), automatically preventing a detected duplicate-loading
-conflict, and icon metadata caching/search are not built yet.
+Font Awesome Pro / Kit support, SVG rendering mode, and icon-picker
+integration for menus/widgets/Theme Options (rejected — see TODO-PLUGINS.md)
+are not built.
 
 ## Notes
 

@@ -357,7 +357,8 @@ an older PHP version can be safely phased out.
 - **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
   developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
-  Font Awesome, off by default).
+  Font Awesome, off by default), plus a searchable icon picker in the
+  post/page/downloads editor toolbar once enabled.
 - **Media Manager** — multi-file uploads with per-file progress, virtual
   folders, metadata, thumbnail generation, a lightbox viewer (covering
   both featured images and images embedded directly in post/page

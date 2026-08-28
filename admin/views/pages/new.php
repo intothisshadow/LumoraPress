@@ -22,6 +22,7 @@ use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
 use LumoraPress\Models\PageVisibility;
 use LumoraPress\Models\RevisionableType;
+use LumoraPress\Plugins\FontAwesome\FontAwesomeService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -170,6 +171,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         // does for repeat uploads.
         'csrfToken' => Csrf::token('media_picker_query'),
     ]);
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
+    // See the identical comment in admin/views/posts/new.php's matching
+    // block for why the output buffer must be discarded here, and why
+    // FontAwesomeService's class must be guarded rather than assumed
+    // loaded (this page is reachable regardless of which plugins are
+    // active, unlike appearance/font-awesome.php's own settings screen).
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+    if (class_exists(FontAwesomeService::class, false)) {
+        FontAwesomeService::instance()->queryIconsForPicker($_POST, $csrfToken);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Font Awesome is not active.']);
+    }
+
     exit;
 }
 
@@ -530,6 +555,10 @@ if ($savedLayout['order'] === []) {
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                     data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                    <?php if (lp_fontawesome_enabled()): ?>
+                        data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
+                        data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                    <?php endif; ?>
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
                 >

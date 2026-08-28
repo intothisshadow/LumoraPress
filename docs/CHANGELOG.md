@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Font Awesome icon picker (LPP-002): the Post/Page/Downloads editor
+  toolbar (both the Visual/HTML and Markdown editors) gains an "Insert
+  Icon" button, searching a curated set of Font Awesome icon names by
+  name/label/keyword and inserting the matching `[icon]` shortcode on
+  selection. Only shown once the Font Awesome plugin is enabled.
 - Move to Trash from the Post/Page editor (LP-083): the New/Edit Post
   and New/Edit Page screens' Publish box now includes a "Move to Trash"
   link, matching the existing list-view row action — previously the

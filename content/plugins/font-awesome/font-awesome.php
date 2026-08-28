@@ -38,6 +38,14 @@ $fontAwesome->configurePluginsPath(dirname(__DIR__));
 
 add_filter('lp_fontawesome_enabled', static fn (bool $enabled): bool => $fontAwesome->isEnabled());
 
+// Lets the admin icon picker (posts/new.php, pages/new.php,
+// downloads/add-new.php) lazy-load real icon glyphs matching whatever
+// delivery/version/self-hosted URL is actually configured, without those
+// views needing a direct FontAwesomeService reference — same decoupling
+// reason lp_fontawesome_enabled() exists as a filter instead of a class
+// check.
+add_filter('lp_fontawesome_css_urls', static fn (array $urls): array => $fontAwesome->cssUrls());
+
 add_action('lp_fontawesome_enqueue', static function () use ($fontAwesome): void {
     $fontAwesome->markUsed();
 });

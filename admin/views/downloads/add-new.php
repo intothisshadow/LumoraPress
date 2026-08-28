@@ -20,6 +20,7 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadType;
+use LumoraPress\Plugins\FontAwesome\FontAwesomeService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -186,6 +187,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         'total' => $result['total'],
         'csrfToken' => Csrf::token('media_picker_query'),
     ]);
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
+    // See the identical comment in admin/views/posts/new.php's matching
+    // block for why FontAwesomeService's class must be guarded rather
+    // than assumed loaded.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+    if (class_exists(FontAwesomeService::class, false)) {
+        FontAwesomeService::instance()->queryIconsForPicker($_POST, $csrfToken);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Font Awesome is not active.']);
+    }
+
     exit;
 }
 
@@ -546,6 +569,10 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                 data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
                 data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                <?php if (lp_fontawesome_enabled()): ?>
+                    data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
+                    data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                <?php endif; ?>
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                 data-autosave-id="<?= esc_attr('download-' . $editingDownload->id) ?>"
             >
@@ -645,6 +672,10 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                 data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
                 data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                <?php if (lp_fontawesome_enabled()): ?>
+                    data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
+                    data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                <?php endif; ?>
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                 data-autosave-id=""
             >
