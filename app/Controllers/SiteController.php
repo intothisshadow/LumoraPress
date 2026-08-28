@@ -829,6 +829,15 @@ final class SiteController
      * computed from the user's username (UserService::findByAuthorSlug()),
      * not a stored column; see that method's docblock.
      *
+     * LPP-001: this route is a plain username-existence oracle on its own
+     * — any real username resolves (200, possibly an empty archive) while
+     * a made-up one 404s. The `lumora_shield_author_archive_visible`
+     * filter (a no-op returning $visible unchanged unless the Lumora
+     * Shield plugin is active) lets that plugin's Stop User Enumeration
+     * module close the gap by 404ing a real user with zero published
+     * posts exactly like a nonexistent one, or hide every author archive
+     * outright if the administrator opts into that instead.
+     *
      * @param array<string, string> $params
      */
     public function author(array $params): void
@@ -844,6 +853,12 @@ final class SiteController
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $pagination = $this->posts->paginateByAuthor($author->id, $page, $this->postsPerPage());
+
+        if (!apply_filters('lumora_shield_author_archive_visible', true, $author, $pagination['total'])) {
+            $this->notFound();
+
+            return;
+        }
 
         $this->markCacheableForGuests(['posts', 'author_' . $author->id]);
         $this->theme->render('archive.php', [

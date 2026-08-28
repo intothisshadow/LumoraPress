@@ -134,6 +134,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `feed_category_channel` | filter | `array{title, description} $channel, Category $category` | `FeedService::categoryChannel()` — per-category feed variant. |
 | `feed_item` | filter | `array{post, authorName, description, content, thumbnailUrl, thumbnailType, thumbnailLength} $item, Post $post` | `FeedService::buildItem()` — applied to every feed `<item>`, both site-wide and per-category. |
 | `feed_generated` | action | `string $format` (`'rss'`/`'atom'`) | `SiteController::feed()`, fired **after** the feed body has already been echoed — output/headers are already sent, so a listener can observe/log but not modify the response. |
+| `lumora_shield_author_archive_visible` | filter | `bool $visible, User $author, int $publishedPostCount` | `SiteController::author()` — decides whether a resolved `/author/{slug}` request actually renders (default `true`, a no-op unless something listens). The Lumora Shield plugin's Stop User Enumeration module uses this to 404 a real user with zero published posts exactly like a nonexistent one (closing a username-existence oracle), or hide every author archive outright. |
 | `gettext` | filter | `string $text, string $domain` | Inside `__()` ([`include/helpers.php`](../include/helpers.php)) — there's no built-in translation loader, this filter is the extension point for one. `_e()` calls `__()` internally, so it's covered too. |
 
 ### Shortcodes

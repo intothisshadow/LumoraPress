@@ -359,6 +359,11 @@ an older PHP version can be safely phased out.
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
   Font Awesome, off by default), plus a searchable icon picker in the
   post/page/downloads editor toolbar once enabled.
+- **Lumora Shield plugin** (bundled) — optional hardening features
+  beyond core's own basics, starting with Stop User Enumeration: closes
+  a username-existence oracle in the public author archive, with an
+  optional "hide author archives entirely" setting (Lumora Shield
+  &rsaquo; Settings, off by default).
 - **Media Manager** — multi-file uploads with per-file progress, virtual
   folders, metadata, thumbnail generation, a lightbox viewer (covering
   both featured images and images embedded directly in post/page

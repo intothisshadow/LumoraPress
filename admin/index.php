@@ -377,6 +377,13 @@ $downloadsActive = in_array('downloads', $activePlugins, true);
  * gets a real top-level menu entry, gated the same way.
  */
 $contactFormsActive = in_array('contact-forms', $activePlugins, true);
+/*
+ * LPP-001: mirrors $downloadsActive/$contactFormsActive's exact
+ * reasoning immediately above — Lumora Shield's admin screens are its
+ * entire reason to exist, so it gets a real top-level menu entry, gated
+ * the same way.
+ */
+$lumoraShieldActive = in_array('lumora-shield', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -438,6 +445,17 @@ $menu = [
                 'all-forms' => ['label' => 'All Forms', 'icon' => '📋', 'capability' => 'manage_options'],
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'manage_options'],
                 'submissions' => ['label' => 'Submissions', 'icon' => '📬', 'capability' => 'manage_options'],
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+            ],
+        ],
+    ] : []),
+    ...($lumoraShieldActive ? [
+        'lumora-shield' => [
+            'label' => 'Lumora Shield',
+            'icon' => '🛡️',
+            'capability' => 'manage_options',
+            'default_child' => 'settings',
+            'children' => [
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
             ],
         ],
