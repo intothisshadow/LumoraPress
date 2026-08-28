@@ -381,50 +381,11 @@ if ($savedLayout['order'] === []) {
                                     <?php endif; ?>
                                     <?php break;
 
-                                case 'featured_image': ?>
-                                    <?php if ($currentFeaturedImage !== null): ?>
-                                        <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="">
-                                        <label class="lp-field--checkbox">
-                                            <input type="checkbox" name="remove_featured_image" value="1"> Remove current featured image
-                                        </label>
-
-                                        <div class="lp-featured-crop" data-lp-featured-crop>
-                                            <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>
-                                                <?= ($post->featuredImageCrop ?? null) !== null ? 'Edit Crop' : 'Add Crop' ?>
-                                            </button>
-
-                                            <div class="lp-featured-crop__editor" data-lp-featured-crop-editor hidden>
-                                                <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
-                                                    <img src="<?= esc_url($kernel->media->url($currentFeaturedImage)) ?>" alt="" data-lp-featured-crop-image>
-                                                    <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
-                                                        <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
-                                                    </div>
-                                                </div>
-                                                <p class="lp-field__hint">Drag to select the area to use as the featured image. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
-                                                <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear Crop</button>
-                                            </div>
-
-                                            <input type="hidden" name="featured_image_crop_for_id" value="<?= (int) $currentFeaturedImage['id'] ?>">
-                                            <input type="hidden" name="featured_image_crop_x" data-lp-featured-crop-x value="<?= esc_attr((string) ($post->featuredImageCrop['x'] ?? '')) ?>">
-                                            <input type="hidden" name="featured_image_crop_y" data-lp-featured-crop-y value="<?= esc_attr((string) ($post->featuredImageCrop['y'] ?? '')) ?>">
-                                            <input type="hidden" name="featured_image_crop_width" data-lp-featured-crop-width value="<?= esc_attr((string) ($post->featuredImageCrop['width'] ?? '')) ?>">
-                                            <input type="hidden" name="featured_image_crop_height" data-lp-featured-crop-height value="<?= esc_attr((string) ($post->featuredImageCrop['height'] ?? '')) ?>">
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <label for="post-featured-image-select">Choose from Media Manager</label>
-                                    <select id="post-featured-image-select" name="featured_image_id">
-                                        <option value="0">(None)</option>
-                                        <?php foreach ($imageOptions as $imageOption): ?>
-                                            <option value="<?= (int) $imageOption['id'] ?>" <?= ($post?->featuredImageId ?? 0) === (int) $imageOption['id'] ? 'selected' : '' ?>>
-                                                <?= esc_html((string) $imageOption['file_name']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-
-                                    <label for="post-featured-image-upload">Or upload a new image</label>
-                                    <input type="file" id="post-featured-image-upload" name="featured_image_upload" accept="image/*">
-                                    <?php break;
+                                case 'featured_image':
+                                    $record = $post;
+                                    $idPrefix = 'post';
+                                    require __DIR__ . '/../partials/editor-featured-image.php';
+                                    break;
 
                                 case 'categories': ?>
                                     <div class="lp-field lp-field--checklist" data-lp-category-field>
@@ -486,15 +447,11 @@ if ($savedLayout['order'] === []) {
                                     </label>
                                     <?php break;
 
-                                case 'seo': ?>
-                                    <label for="post-meta-title">SEO title</label>
-                                    <input type="text" id="post-meta-title" name="meta_title" value="<?= esc_attr($post->metaTitle ?? '') ?>" placeholder="Defaults to the title above">
-                                    <span class="lp-field__hint">Overrides the browser tab title and search-result headline only — the title above is unchanged everywhere else on the site.</span>
-
-                                    <label for="post-meta-description">Meta description</label>
-                                    <textarea id="post-meta-description" name="meta_description" rows="2" placeholder="Defaults to the excerpt above"><?= esc_html($post->metaDescription ?? '') ?></textarea>
-                                    <span class="lp-field__hint">Shown in search results and social share previews. Leave blank to use the excerpt.</span>
-                                    <?php break;
+                                case 'seo':
+                                    $record = $post;
+                                    $idPrefix = 'post';
+                                    require __DIR__ . '/../partials/editor-seo.php';
+                                    break;
 
                                 case 'custom_fields': ?>
                                     <div data-lp-custom-fields>
