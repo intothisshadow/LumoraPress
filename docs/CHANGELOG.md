@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-28
+
 ### Added
 
 - Hierarchical Page URLs (LP-084): a Page's public URL now reflects its

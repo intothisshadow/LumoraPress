@@ -8733,3 +8733,993 @@ database-free `ContentRenderer`/`HookManager` instance rather than the
 shared one, since `ContentRenderer::render()` ends by re-running the
 `content_html` filter this same class is itself registered on.
 
+
+---
+
+## 0.8.0 (2026-08-28)
+
+### LP-084. Hierarchical Page URLs
+
+**Implemented (2026-08-27).** See `DECISIONS.md`'s 2026-08-27 entry for
+the three explicit decisions this ticket's own checklist left open
+(Router mechanism, slug-uniqueness scope, back-compat redirect), plus a
+fourth, unplanned fix that live verification surfaced: this dev
+install's own real permalink structure
+(`/%year%/%monthnum%/%day%/%postname%/`) was silently swallowing a page
+nested exactly as deep as that pattern, since `{year}`/`{monthnum}`/
+`{day}` matched any text, not just digits — `PermalinkService::
+postRoutePattern()` now compiles those three tokens to raw digit-only
+regex groups instead. `Router::match()` gained a `{name*}` greedy
+placeholder; `/{path*}` is the very last route registered in
+`include/bootstrap.php`. `PageService` gained `findBySlugAndParent()`
+and `findByPath()` (validates a URL's full ancestor chain, not just its
+final slug). `page_permalink()` (`include/permalink-functions.php`) is
+now the real single choke point — absolute (`home_url()`-based, matching
+post_permalink()'s own contract, not the root-relative `site_url()` it
+used before; this also fixes previously-broken email/OG/sitemap links
+that needed an absolute URL and silently didn't have one) — and every
+hand-built `'page/' . $slug` call site was migrated to it:
+`search_result_permalink()`, `CoreWidgets.php`'s pages widget,
+`SiteController::sitemap()`, the default/duskline/xena-theme `header.php`
+Open Graph tag, `admin/views/appearance/menus.php`'s "Add to Menu", and
+`wordpress-importer`'s old-slug-redirect URL builder. `SiteController::page()`
+was replaced by `pageByPath()` (hierarchical) and `legacyPageRedirect()`
+(the old flat URL, 301-redirected to the real one).
+`get_page_breadcrumbs()` needed no code change (already called
+`page_permalink()`), just a docblock update. Verified end-to-end against
+`lumorapress-preview`'s real 180-page So Obsessed import: a 4-level-deep
+page resolves and renders correctly with accurate breadcrumb links at
+every level, the sitemap emits correct absolute nested `<loc>` URLs, the
+comment form posts to and correctly resolves the right page via the new
+`/{path*}/comment` route, the legacy `/page/{slug}` URL 301-redirects to
+the real one, and a page added to a nav menu picks up its real
+hierarchical URL. New/updated tests: `RouterTest` (greedy placeholder
+matching and registration-order precedence), `PageServiceTest`
+(`findBySlugAndParent()`/`findByPath()`), `PermalinkServiceTest` (the
+digit-only date-segment fix, including an actual `Router::match()`
+round-trip, not just the pattern string), plus two `WordPressImportServiceTest`
+assertions updated for the new URL shape.
+
+### Goal
+
+Serve Pages at a URL that reflects their position in the parent/child
+hierarchy (e.g. `/about/team` for a "Team" page under an "About" parent)
+instead of today's flat `/page/{slug}`, regardless of nesting depth.
+Split out of LP-009's Hierarchy UI work (2026-08-11) once investigation
+found this needs a real `Router` capability, not just a route-string
+change — see `DECISIONS.md`'s LP-009 entry from that date for the full
+reasoning.
+
+### Why This Isn't a Quick Add
+
+`Router::match()` (`app/Core/Http/Router.php`) turns every `{param}`
+route placeholder into the regex group `(?P<param>[^/]+)` — each
+placeholder can only ever match a single path segment (no slashes). A
+multi-segment path like `/about/team` cannot match today's
+`/page/{slug}` route pattern at all; `{slug}` stops at the first `/`.
+
+Fixing this needs one of:
+- A new placeholder syntax Router understands as "match greedily across
+  slashes" (e.g. `{path}` distinct from `{param}`), with the Page route
+  updated to use it and `SiteController::page()` splitting the matched
+  path on `/` to walk parent→child by slug.
+- Registering the Page route as a catch-all fallback (`/{path}`)
+  registered *last*, after every other fixed-pattern route
+  (`/archive`, `/search`, `/feed`, `/author/{slug}`, category/tag routes,
+  etc.) so it never shadows them — order-of-registration becomes a real
+  correctness concern in `include/bootstrap.php`'s route table, not just
+  a convenience.
+
+Either approach changes `Router` behavior for the whole application, not
+just Pages — this is genuinely more than a Pages-scoped change, hence
+its own ticket rather than a LP-009 checklist item.
+
+### Checklist
+
+- [x] Decide the Router mechanism (new placeholder type vs. ordered
+      catch-all) and record the decision in `DECISIONS.md` before
+      building either.
+- [x] Implement the chosen `Router::match()` capability, with unit
+      coverage confirming every existing fixed-pattern route still wins
+      over the new catch-all/greedy Page route where it should (no
+      regressions to `/archive`, `/search`, `/feed`, `/author/{slug}`,
+      category/tag routes, etc.).
+- [x] Update `SiteController::page()` to resolve a multi-segment path to
+      the correct nested Page (walking parent_id by slug, segment by
+      segment), 404ing if any segment doesn't match a child of the
+      previous one.
+- [x] Update every place a Page URL is hand-built (`page_permalink()` in
+      `include/permalink-functions.php`, `search_result_permalink()`'s
+      `'page'` case, `CoreWidgets.php`'s page-list widget, the sitemap)
+      to build the full ancestor-path URL instead of the flat
+      `page/{slug}` — `page_permalink()` becomes the single choke point
+      every other call site should already be routing through.
+- [x] Decide and implement a slug-uniqueness scope change: today
+      `PageService::generateUniqueSlug()` enforces uniqueness across the
+      *entire* table; with hierarchical URLs, two pages with the same
+      slug under different parents (e.g. two separate "Team" pages under
+      different sections) become a legitimate, non-colliding case classic
+      WordPress supports — decide whether to keep global uniqueness (
+      simpler, matches today's behavior, slightly more restrictive) or
+      scope it per-parent (matches WordPress, needs migration + slug
+      lookup changes).
+- [x] Update the breadcrumb links LP-009 added
+      (`get_page_breadcrumbs()`/`the_page_breadcrumbs()`) to use the new
+      nested URLs once available — they intentionally still point at
+      flat `page/{slug}` URLs today.
+- [x] Redirect/back-compat consideration: decide whether an existing
+      site's already-indexed flat `/page/{slug}` URLs should keep
+      resolving (redirect to the new nested URL) after this ships, or
+      simply 404 — a real site with existing external links/bookmarks
+      would be broken by the latter.
+
+
+### LP-101. Bug: Internal Ticket IDs Leaking Into User-Facing Labels
+
+**Implemented (2026-08-28).** Beyond the confirmed instance, a full-codebase
+audit (every `.php`/`.js`/`.css` file, admin views, both bundled themes'
+templates, both `custom themes/` themes, all four bundled plugins, the
+installer, JS files, email/notification code) for `LP-\d+`/`LPP-\d+`
+sitting outside a `//`/`/* */`/`*`-prefixed comment line turned up two
+more real leaks, both in rendered `<span class="lp-field__hint">`/
+`<div class="lp-alert">` text an admin actually reads: Settings &rsaquo;
+Media's "Show filenames in the lightbox" hint (`(LP-031)`) and Settings
+&rsaquo; Cache's "no reverse-proxy detected" warning, which literally
+read "...planned for a future release (see `TODO.md`'s LP-037 entry)."
+— an internal doc reference exposed directly in a live warning banner.
+JS files, email/notification templates (`Mailer`, `CommentNotificationService`,
+`PasswordResetService`), the installer, and both custom themes were all
+audited and found clean. HTML comments (`<!-- LP-031 ... -->`) and CSS
+comments were left as-is — not visible to a user reading the page, the
+same category as a stripped PHP comment, not the "label a user sees"
+this ticket is about.
+
+**Follow-up same day, caught by Ariane, not this audit:** Settings
+&rsaquo; Security had two more leaks of the *same underlying mistake*
+that the audit above missed entirely, because it only ever searched for
+the literal `LP-\d+`/`LPP-\d+` ticket-ID pattern — "Brute-force
+protection, keyed by IP address (see `LoginThrottle`)" (an internal
+class name) and "No XML-RPC endpoint (see `MEMORY.md`)" (an internal
+dev-doc reference). Neither matches a ticket ID, so the original regex
+never had a chance to find them; this is a real gap in that audit's
+scope, not a missed hit within it. Fixed both, then re-ran the audit
+scoped to `MEMORY.md`/`DECISIONS.md`/`SESSION.md`/`HISTORY.md`/
+`CLAUDE.md`/`TODO.md`/`TODO-PLUGINS.md`/`PHP-TEST-SUITE.md` references
+outside comments (clean elsewhere) and to `<code>PascalCaseWord</code>`-
+style class-name mentions in rendered text (also clean elsewhere,
+confirmed by checking every match in context rather than trusting the
+pattern alone — most `Service`/`Manager`/`Controller`-suffixed hits
+were `use` statements or `Class::CONST` references in PHP code, not
+rendered strings).
+
+### Checklist
+
+- [x] Fix the confirmed instance: `admin/views/media/thumbnails.php`
+      label `Default featured image (LP-040)` → `Default featured image`
+- [x] Audit the full codebase (admin views/templates, frontend theme
+      templates under `content/themes/` and `custom themes/`, JS-rendered
+      strings, email/notification templates, error/flash messages) for
+      any other `LP-\d+` reference sitting inside user-visible text
+      rather than a code comment or doc file
+- [x] Fix every additional instance found
+
+
+### LP-099. Set as Default Featured Image from the Media File Details Page
+
+### Goal
+
+The site-wide default featured image (LP-040 — the image used as the
+featured image, and Open Graph/Twitter Card image, for any post/page
+that doesn't have its own) can currently only be set from one place:
+a `<select>` dropdown of every image, by filename, on Media Manager →
+Thumbnails (`admin/views/media/thumbnails.php`). There's no way to set
+it from the image itself — an admin has to know that setting exists
+and go find the right filename in a long dropdown. Add a direct
+"Set as Default Featured Image" action on an image's own file
+details/edit panel (`admin/views/media/media.php`, the same panel that
+already has "Create Cropped Featured Image").
+
+### Checklist
+
+- [x] A "Set as Default Featured Image" button on the image details
+      panel (images only, matching the existing Create Cropped
+      Featured Image section's own `str_starts_with($mime_type, 'image/')`
+      gate), writing the same `default_featured_image_media_id` option
+      LP-040's Thumbnails-page dropdown already uses
+- [x] The details panel indicates when the image currently showing
+      *is* the site's default featured image (and offers a way to
+      unset it — "Remove as Default", equivalent to picking "(None)"
+      on the Thumbnails page)
+- [x] The Thumbnails page's existing dropdown keeps working unchanged
+      as an alternate way to set/change it
+
+### Notes
+
+Implemented 2026-08-28: a new "Default Featured Image" section sits
+right below "Create Cropped Featured Image" on an image's own edit
+panel (`admin/views/media/media.php`), gated on `manage_options` —
+matching the identical capability restriction Media Manager >
+Thumbnails' own dropdown already applies to this same option, even
+though this page itself only requires `upload_files` (see that file's
+LP-061 note). Two new form actions (`set_default_featured_image`/
+`unset_default_featured_image`) write the exact same
+`default_featured_image_media_id` option the Thumbnails dropdown reads/
+writes, so either screen stays in sync with the other automatically —
+verified live: setting from the image panel updates the Thumbnails
+dropdown's selection, and vice versa.
+
+
+### LP-107. Media Manager Search: Match Multiple Words Regardless of Order
+
+### Goal
+
+The admin Media Library's search box (`MediaService::query()`'s `term`
+filter) does a single literal `file_name LIKE '%term%'` — the whole
+typed string must appear as one contiguous substring in the filename.
+Searching `game wallpaper` only matches a filename that literally
+contains that exact phrase in that exact order (e.g.
+`game-wallpaper-01.jpg`), not a filename like
+`wallpaper-game-final.jpg` or `game_01_wallpaper.jpg` that plainly
+contains both words, just not adjacent/in that order. Ariane wants
+multi-word terms to match every word present in the filename (AND
+across words), regardless of order or adjacency.
+
+### Checklist
+
+- [x] `MediaService::query()`: split the `term` filter on whitespace and
+      build one `file_name LIKE '%word%'` condition per word, ANDed
+      together, instead of a single LIKE against the whole raw string —
+      a single-word search keeps behaving exactly as it does today.
+- [x] Decide/confirm on empty-after-split edge cases (e.g. a term that's
+      only whitespace) — should behave the same as today's "no term"
+      case (no filter applied).
+- [x] Regression tests covering: single-word search (unchanged
+      behavior), multi-word search matching regardless of order,
+      multi-word search where only one word is present (should not
+      match).
+- [x] Verify end-to-end against the dev install with real filenames.
+
+### Notes
+
+Implemented 2026-08-28: `MediaService::query()` now splits the `term`
+filter on whitespace (`preg_split('/\s+/', ..., PREG_SPLIT_NO_EMPTY)`)
+and ANDs one `file_name LIKE '%word%'` condition per word, so
+`game wallpaper` matches `wallpaper-game-final.jpg` just as well as
+`game-wallpaper-01.jpg`. A whitespace-only term produces zero words and
+so applies no filter, matching the pre-existing "no term" behavior.
+Verified live against the dev install: searching `game wallpaper` on the
+real media library correctly surfaced files like
+`extant_Wallpapers_0364_GameOfThrones_Sansa.jpg`.
+
+
+### LP-114. Maintenance &rsaquo; Logs: Application Error Log & Login Attempts Viewer
+
+**Implemented (2026-08-27).** `ErrorLogReader` (`app/Core/Errors/ErrorLogReader.php`,
+wired onto `Kernel::$errorLog`) reads `storage/logs/error.log` from the end
+in fixed-size chunks — never loading the whole file into memory — parsing
+each `[timestamp] Class: message in file:line\ntrace` entry back into a
+structured row, newest first, and tolerating an incomplete trailing entry
+(a write interrupted mid-request) without losing the complete entries
+around it. `totalEntries()` counts `"\n\n"` delimiters via the same
+bounded-memory chunked reads rather than parsing every entry just to
+count them. `clear()` truncates the file (CSRF-protected, confirm-dialog-
+gated at the call site) with no rotation/archival, matching this
+project's lightweight philosophy. `LoginThrottle::recentAttempts()`
+mirrors `UpdateService::recentLog()`'s existing shape/precedent and fails
+open (returns `[]`) on a database error, consistent with the rest of the
+class. The new `admin/views/maintenance/logs.php` view (behind the
+already-registered `manage_options`-gated menu entry, replacing its
+placeholder fallback) renders both sources as two `<table class="lp-table">`
+sections with simple "Show 25 more" pagination rather than numbered
+pages, and a per-row lockout badge computed via the existing
+`secondsUntilUnlocked()`, cached per unique IP so a repeated IP across
+many rows doesn't re-query. `admin/index.php`'s `logs` menu entry never
+referenced the placeholder fallback in its own comment, so nothing there
+needed updating. `recentAttempts()`'s shape wasn't added to
+`docs/DEVELOPER-APIS.md` — that doc documents the service layer generically
+via a README pointer rather than enumerating individual service methods,
+and no other Core Security service (`LoginThrottle` included) was already
+listed there, so this stays consistent with that existing convention
+rather than being a new precedent. Verified end-to-end against the real
+dev install: real historical error-log entries render newest-first with
+correct count/size and expandable stack traces; a genuine failed login
+(via a separate, out-of-band request so the verifying admin session's own
+successful login didn't immediately clear the row via `LoginThrottle::clear()`)
+renders with a "Not locked" status, and five attempts from the same IP
+correctly show a "Locked (15 min)" badge; the Clear Log button's
+`data-lp-confirm` dialog blocked an unconfirmed submit, leaving the log
+untouched.
+
+### Goal
+
+Maintenance &rsaquo; Logs already exists as a registered admin menu entry
+(`admin/index.php`) but has no view behind it — `admin/views/maintenance/logs.php`
+doesn't exist, so it silently falls back to `admin/views/placeholder.php`'s
+generic "will be built out in a future phase" message. Meanwhile two real
+log sources already exist in the app with zero admin visibility:
+
+- The PHP error log `ErrorHandler` (`app/Core/Errors/ErrorHandler.php`)
+  already writes to `storage/logs/error.log` on every uncaught
+  exception/error — there is currently no way to see it without SSH/FTP
+  access to the server.
+- Failed login attempts are already recorded in `{prefix}login_attempts`
+  by `LoginThrottle` (`app/Core/Security/LoginThrottle.php`) and used
+  internally for lockout decisions, but never surfaced anywhere — an
+  administrator investigating a suspected brute-force attempt has no way
+  to see who's been trying, from where, or how often.
+
+Scope check (2026-08-24, confirmed with Ariane): this ticket covers
+exactly these two sources. It deliberately does **not** cover a general
+admin activity/audit trail (logging every post/page edit, settings
+change, plugin/theme activation, etc.) — that would be a much larger,
+separate feature if ever wanted. Update history (`{prefix}update_log`)
+is also out of scope here: it's already shown on Maintenance &rsaquo;
+Updates' own "Update History" table (`admin/views/maintenance/updates.php`,
+`UpdateService::recentLog()`) and needs no duplicate view.
+
+### Checklist
+
+#### Application Error Log
+
+- [x] Add a small reader (e.g. `ErrorLogReader` or a method on
+      `ErrorHandler` itself) that parses `storage/logs/error.log`'s
+      existing entry format (`[timestamp] ExceptionClass: message in
+      file:line\ntrace\n\n`, see `ErrorHandler::log()`) into structured
+      rows — timestamp, exception class, message, file/line, trace —
+      newest first
+- [x] Read from the end of the file rather than loading it entirely into
+      memory, since an unrotated log can grow large over time (see
+      `storage/sessions/`'s own unbounded-growth precedent in this
+      project's housekeeping notes) — paginate or cap to a reasonable
+      "most recent N entries" default with a way to see more
+- [x] Show file size and total entry count so an administrator can judge
+      whether the log needs clearing
+- [x] "Clear Log" action (CSRF-protected, `manage_options`, confirm
+      dialog) that truncates `error.log` — no rotation/archival, matching
+      this project's "lightweight" philosophy; a site that wants log
+      retention can configure that at the server level
+- [x] Handle the file not existing yet (no errors logged so far) and not
+      being readable/writable gracefully — an empty-state message, not a
+      PHP error
+
+#### Login Attempts
+
+- [x] Add `LoginThrottle::recentAttempts(int $limit = 50): array` (IP
+      address, username, attempted_at) — mirrors `UpdateService::recentLog()`'s
+      existing shape/precedent
+- [x] Show each row's current lockout status via the already-existing
+      `LoginThrottle::isLocked()`/`secondsUntilUnlocked()`, so an admin
+      can see at a glance which IPs are presently locked out
+- [x] Render as a `<table class="lp-table">`, matching Maintenance &rsaquo;
+      Updates' "Update History" table's existing markup/column-header
+      pattern
+
+#### Admin Screen
+
+- [x] Create `admin/views/maintenance/logs.php` (standard file header,
+      `manage_options` capability already enforced at the menu level) with
+      two sections: "Application Errors" and "Login Attempts"
+- [x] Update `admin/index.php`'s `logs` menu entry's docblock/comment if
+      it references the placeholder fallback
+
+#### Testing & Docs
+
+- [x] Unit tests for the error-log reader (a temp file with known
+      entries, including a truncated/partial trailing entry) and for
+      `LoginThrottle::recentAttempts()`
+- [x] `docs/DEVELOPER-APIS.md` update if `recentAttempts()`'s shape is
+      something a plugin author would plausibly want to call
+- [x] `README.md`/`CHANGELOG.md` updates once implemented, per this
+      project's standard "After Every Code Change" rule
+
+
+### LP-117. Themes: Public Light/Dark Mode Toggle (Default + Xena)
+
+**Implemented (2026-08-26).** A shared core asset,
+`assets/js/theme-toggle.js`, applies a stored `lp-theme` `localStorage`
+choice to `data-theme` on `<html>` (top-level code, runs the moment the
+script executes) and wires any `[data-lp-theme-toggle]` button's click to
+flip between `light`/`dark` (never back to "no preference", mirroring
+LP-087's admin quick-toggle semantics) and persist the new choice. It's
+loaded as a plain (non-deferred, non-`module`) `<script src>` placed in
+`<head>` *before* the theme's stylesheet `<link>` in every affected
+theme's `header.php`, so it runs and sets the attribute before the page
+paints — no flash of the wrong theme. It has to be an external file, not
+an inline `<script>`: this project's CSP `script-src` has no
+`'unsafe-inline'`/nonce allowance (only `style-src` does).
+`style.css` in each theme gets the same LP-087 pattern already used in
+`admin.css`: the existing `@media (prefers-color-scheme: dark) { :root
+{...} }` block gains a `:not([data-theme="light"])` guard, and an
+identical `:root[data-theme="dark"] {...}` block is added alongside it.
+Which of the toggle button's two icon spans (🌙/☀️) is visible is driven
+purely by that same CSS guard, not JS. Duskline turned out to already
+have dark-mode tokens (the first checklist item's condition), so — per
+CLAUDE.md's Custom Theme Rule ("propagate... dark mode enhancement...
+to every theme under `custom themes/`") — it got the identical toggle
+alongside `default`/`xena-theme` rather than being skipped. `xena-theme`'s
+header bar centers its nav with no other sibling, so its toggle is
+positioned absolutely in the corner instead of flowing as a normal flex
+item, unlike `default`/`duskline`. Verified end-to-end against the real
+dev install (`lumorapress-preview`, via each theme's `?lp_preview_theme=`
+preview link) for all three themes: click toggles instantly and persists
+across reload, computed background/token colors match each theme's own
+dark palette exactly, no console errors, and `theme-toggle.js` loads
+`200 OK` with no CSP violation.
+
+### Goal
+
+The public-facing site's dark mode currently follows
+`prefers-color-scheme: dark` only — there is no manual toggle for a
+visitor to switch light/dark independent of their OS setting (this is
+distinct from `LP-087`, which is an admin-panel-only per-user toggle
+and doesn't touch the public site). Add a visitor-facing light/dark
+toggle to the `default` theme and the `xena-theme` custom theme, with
+the choice persisted (e.g. `localStorage`) so it survives navigation
+and repeat visits, and falling back to `prefers-color-scheme` when the
+visitor hasn't chosen explicitly.
+
+### Checklist
+
+- [x] check if duskline has dark mode; if not, ignore and apply to default and xena-theme
+      (it does — see the implementation note above; the toggle was added
+      to duskline too, not skipped)
+- [x] Design the toggle control (header icon/button) for the `default`
+      theme, styled per this project's Public-Facing CSS Rule (styling
+      lives in `style.css`, not inline/PHP-embedded)
+- [x] Wire the toggle to flip a `data-theme` attribute (or equivalent)
+      and persist the choice client-side
+- [x] Respect the stored choice on page load before first paint to
+      avoid a flash of the wrong theme
+- [x] Fall back to `prefers-color-scheme` when no explicit choice is
+      stored
+- [x] Propagate the same toggle to `custom themes/xena-theme` per
+      CLAUDE.md's Custom Theme Rules (additive only; confirm with
+      Ariane before touching anything already present in that theme)
+- [x] Verify end-to-end in a real browser: toggle switches theme
+      instantly, choice persists across reload/navigation, and an
+      unvisited browser still respects OS `prefers-color-scheme`
+
+
+### LP-118. Default Theme: Edit Post Link & Categories On Posts List/Single Post
+
+**Implemented (2026-08-26).** `post_categories()`/`the_post_categories()`
+and `edit_post_link()` (`include/permalink-functions.php`) already
+existed, fully built and documented in `docs/THEME-DEVELOPMENT.md`, but
+were called from no theme file anywhere in the codebase — this ticket
+turned out to be wiring up already-built functions, not writing new
+permission/query logic. `xena-theme`'s `single.php` had also already
+independently grown its own categories/edit-link markup (`.lp-post__categories`/
+`.lp-post__edit-link`) in an earlier session, just never applied to
+`default` or to any listing view — that exact markup/wording ("Filed
+under&nbsp;&hellip;", "Edit this post") was used as the template so all
+three themes render identically. Categories render on `single.php` and
+in the post-card partial duplicated across `index.php`/`archive.php`
+(no shared partial file exists — see the ticket's own file list); the
+edit link only ever renders on `single.php`, per the checklist (never
+implemented on listing cards — out of scope, not deferred). Per
+CLAUDE.md's Custom Theme Rule, both pieces were propagated to
+`duskline` (new to it) and the categories-on-listings half was
+propagated to `xena-theme` (its `single.php` already had categories/the
+edit link; only its `index.php`/`archive.php` were missing them).
+Verified end-to-end against the real dev install for all three themes:
+categories link to the correct category archive and render with 0/1/
+multiple categories correctly on both listing and single views; the
+"Edit this post" link appears (as the logged-in Ariane) with the
+correct `admin/posts/new?id=...` URL.
+
+### Goal
+
+The `default` theme's Posts listing and single-post view don't currently
+surface two pieces of information a logged-in author/editor and a
+reader would both expect: a quick "Edit Post" link for users with
+permission to edit the post, and the post's assigned categories.
+
+- **Edit post link:** on the single post view (and optionally the Posts
+  listing), show an "Edit Post" link pointing at the admin editor for
+  that post, visible only to a user with permission to edit it (mirror
+  the capability check `PostService`/`UserService` already use
+  elsewhere for edit-permission gating).
+- **Show categories:** display the post's assigned categories (as
+  linked terms, matching how tags are already surfaced if the theme
+  does that) on both the Posts listing (archive/index cards) and the
+  single post view.
+
+### Checklist
+
+- [x] Add a template-tag function (`include/*-functions.php` or
+      existing post-meta helper) that returns the edit-post URL for the
+      current post when the viewing user has permission, `null`
+      otherwise — no permission logic embedded directly in the theme
+      template per CLAUDE.md's "Never define core logic inside a theme
+      file" rule (already existed — `edit_post_link()`, unused until now)
+- [x] `custom themes/default` (or the canonical default theme location):
+      render the "Edit Post" link in `single.php` when the helper
+      returns a URL
+- [x] Render assigned categories (linked to their category archive) in
+      `single.php` and in the post-card partial used by the Posts
+      listing/index/archive views
+- [x] Style both additions in the theme's `style.css` per the
+      Public-Facing CSS Rule (dedicated classes, dark mode variants if
+      applicable) — no inline styles
+- [x] Verify end-to-end in a real browser: edit link appears only for a
+      user with edit permission and links to the correct editor URL;
+      categories display correctly on both the listing and single post
+      views, including posts with zero or multiple categories
+
+
+### LP-119. Default Theme: Nest Comments
+
+**Found already substantially implemented (2026-08-26).** This ticket's
+core ask — parent-tracked, recursively-nested comment rendering with a
+depth cap — turned out to already exist end-to-end, shipped under
+`LP-012` (0.5.0): `content/themes/default/comments.php` calls
+`comment_list()` (`include/comment-functions.php`), which recurses over
+`$comment_tree`, wraps each nesting level's replies in
+`.lp-comment-list--replies`, and caps *visual* indentation at a
+configurable `$maxDepth` (default 5) — replies past that render as
+siblings at the deepest allowed level rather than nesting further,
+matching classic WordPress, and no comment-moderation/anti-spam logic
+lives in the theme file. `style.css` already styled it (indent +
+connecting left border). Confirmed live against a real 5-level-deep
+reply chain in the dev install. `xena-theme`/`duskline` already had
+their own equivalent `.lp-comment-list--replies` styling too — this was
+never `default`-only in practice.
+
+The one real gap against this ticket's own checklist: at max nesting
+depth on a ~375px mobile viewport, the content column shrank to ~161px
+with a 48px floated avatar still squeezed into it — nothing broke or
+overflowed, but it was cramped. Added a `@media (max-width: 480px)`
+rule to all three themes' `style.css` (per CLAUDE.md's Custom Theme
+Rule — a responsive-rule addition) shrinking the per-level indent and
+avatar size at that breakpoint; re-verified the same 5-level chain
+afterward — content column grew to ~231-241px with no horizontal
+overflow, on `default`, `xena-theme`, and `duskline`.
+
+### Goal
+
+The `default` theme currently renders comments as a flat list;
+threaded/nested replies (comment → reply → reply-to-reply) aren't
+visually nested. Add nested comment rendering to the `default` theme's
+comments template, consistent with how `CommentService` already stores
+parent/child relationships (if threading support doesn't yet exist at
+the service/schema level, that support is a prerequisite for this
+ticket).
+
+### Checklist
+
+- [x] Confirm `CommentService`/the comments schema already tracks
+      parent comment ID; if not, that's a separate prerequisite ticket,
+      not part of this one (it already does — `Comment::$parentId`,
+      already exercised by `comment_list()`/`comment_form()`)
+- [x] Update the comments template partial (`comments.php` or
+      equivalent) to render replies nested under their parent comment,
+      recursively, without embedding any comment-moderation or
+      anti-spam logic directly in the theme file (already done — see
+      the note above)
+- [x] Cap visual nesting depth reasonably (matching classic WordPress
+      convention, e.g. a max indent level) to avoid runaway indentation
+      on deeply-threaded discussions (already done — `$maxDepth`, default 5)
+- [x] Style nested comments in `style.css` per the Public-Facing CSS
+      Rule (indentation, connecting lines/borders if desired, dark mode
+      variant) — mobile-width tightening added this session (see note)
+- [x] Verify end-to-end in a real browser: a multi-level reply thread
+      renders with correct visual nesting and remains readable/usable
+      on mobile widths
+
+
+### LP-120. Media Manager: Folder Tree Expand/Collapse and Delete
+
+### Goal
+
+The Media Manager's folder sidebar (`.lp-folder-tree`,
+`admin/views/media/media.php`) always renders every nested folder's
+full `<ul class="lp-folder-tree__children">` subtree inline — there's
+no way to collapse a parent folder's children out of view, so a deeply
+nested folder structure makes the sidebar long and hard to scan.
+Deleting a folder already works (a `delete_folder` form inside each
+folder's `<details class="lp-folder-tree__manage">` "Manage" panel),
+but it's buried behind that same disclosure alongside rename — add a
+more direct affordance for it while adding expand/collapse.
+
+### Checklist
+
+- [x] Add a per-folder expand/collapse toggle for any folder that has
+      children — collapsed by default beyond some reasonable depth (or
+      remembering last state), consistent with the `<details>`/
+      `<summary>` pattern already used elsewhere in the admin (Widgets,
+      Menu items, Search & Filter panels) rather than new JS
+- [x] Persist expand/collapse state across page loads if practical
+      (e.g. per-user, mirroring how other collapsible admin panels
+      behave), degrading gracefully to "always expanded" if not
+- [x] Keep the existing rename/delete "Manage" disclosure, but make
+      delete reachable without first opening "Manage" for the common
+      case — e.g. its own icon/button next to the folder name — while
+      keeping the same `delete_folder` CSRF-protected POST handler and
+      confirmation behavior
+- [x] Style the expand/collapse toggle and any new delete affordance in
+      `style.css`/`admin.css` per the Public-Facing CSS Rule (stable
+      classes, dark mode variant, no inline styles)
+- [x] Verify end-to-end in a real browser: a folder with children can
+      be collapsed/expanded, the active folder's ancestors stay
+      expanded so the current location is never hidden, and deleting a
+      folder still requires confirmation and correctly reparents/moves
+      its contents per `FolderService`'s existing delete behavior
+
+### Notes
+
+Implemented 2026-08-28: each folder with children is now wrapped in a
+`<details data-lp-folder-toggle>`/`<summary>` twisty around its
+`<ul class="lp-folder-tree__children">`, native to the browser and
+needing no new JS for the expand/collapse interaction itself.
+`admin/assets/js/folder-tree-toggle.js` (new) persists the collapsed set
+per-user via a `save_folder_tree_state` AJAX POST handled inline in
+`admin/views/media/media.php`, mirroring `sortable.js`'s existing
+AJAX-mode editor-sidebar persistence pattern exactly (single-use CSRF
+token refreshed from the JSON response). State is stored as a JSON array
+of folder ids in a new `users.folder_tree_state` column
+(migration 0051) via `UserService::getCollapsedMediaFolders()`/
+`setCollapsedMediaFolders()`. `FolderService::ancestorIds()` (new) is
+used to force every ancestor of the currently active folder open
+regardless of its saved collapsed state, without touching what's
+actually persisted, so navigating into a folder never hides it inside a
+collapsed parent. A quick delete button (&times;) sits directly in each
+folder's row, sharing the exact same `delete_folder` CSRF token as the
+Manage panel's own delete form (both forms carry the same
+single-issued token, generated once per folder render) rather than
+duplicating the endpoint. Verified end-to-end against the dev install:
+collapsing a folder and reloading kept it collapsed; navigating to a
+child folder under a collapsed ancestor kept that ancestor visibly
+expanded.
+
+
+### LP-121. Media Manager: File Counts on "All Media" and Each Folder
+
+### Goal
+
+The Media Manager sidebar (`admin/views/media/media.php`) lists "All
+Media" and each real folder with no indication of how many files each
+one contains. Add a file count badge/number next to "All Media" and
+next to each folder in the `.lp-folder-tree`, so an admin can see at a
+glance how large a folder is before opening it.
+
+### Checklist
+
+- [x] Add a total media item count next to "All Media" —
+      `MediaService::query()`/an existing or new count method, not a
+      full unfiltered fetch just to count rows
+- [x] Add a per-folder file count next to each folder in
+      `.lp-folder-tree`, including nested folders — decide whether a
+      parent folder's count includes its descendants' files or only its
+      own directly-assigned items, and apply that consistently across
+      the tree
+- [x] Avoid an N+1 query per folder — compute all folder counts in one
+      grouped query (`FolderService`/`MediaService`) rather than one
+      `COUNT(*)` per folder rendered
+- [x] Style the count badge in `style.css`/`admin.css` per the
+      Public-Facing CSS Rule (stable class, dark mode variant)
+- [x] Verify end-to-end in a real browser: counts match the actual
+      number of items shown when a folder/"All Media" is opened, and
+      update after uploading, deleting, or moving a file between
+      folders
+
+### Notes
+
+Implemented 2026-08-28: `MediaService::countAll()` (plain `COUNT(*)`) and
+`MediaService::directCountsByFolderId()` (one `GROUP BY folder_id` query)
+back the badges; `FolderService::cumulativeCounts()` (new) rolls each
+folder's direct count up through its descendants from that same single
+query result — zero additional queries regardless of tree depth — so a
+parent folder's badge reflects everything filed inside it, nested
+subfolders included, matching how a file explorer reports folder size.
+Verified live against the dev install's real ~3,168-item library: "All
+Files" showed 3168, "General Uploads" showed its unassigned-only count,
+and nested folder badges (e.g. "Downloads" showing the sum of its
+"Ao3 Site Skins"/"Digital Paper"/etc. subfolders) matched expectations.
+
+
+### LPP-011. Downloads: Download Counts, Dedicated Categories Admin Page, More Shortcodes
+
+### Goal
+
+Four follow-ups on the Downloads plugin, requested after using it for
+real:
+
+1. **Show each download's download count on All Downloads** —
+   `admin/views/downloads/all-downloads.php`'s list table has no
+   visible count column today (the count itself already exists —
+   `DownloadService`/`Download` tracks it per LPP-004's
+   `sdmDownloadStats()` migration and this plugin's own increment path
+   — it's just not surfaced on this screen).
+2. **A proper Downloads Categories admin list page** — not just a
+   small reference table, a real screen with the same/similar features
+   All Posts/All Pages already have (search & filter, sortable
+   columns, pagination), plus the bulk-action/Trash shape the existing
+   Categories screen (`admin/views/posts/categories.php`) already
+   established for this exact kind of taxonomy list (status tabs
+   `All (N)`/`Trash (N)`, checkbox column, bulk Trash/Restore/Delete
+   Permanently/Merge into…). Each row shows the category's **id**
+   (visible nowhere today, on Categories' own screen either — an admin
+   currently has no way to see a category's id at all) and a
+   ready-to-copy default `[lumora_downloads]` shortcode for "everything
+   in this category," so an admin doesn't have to look it up before
+   writing a shortcode by hand. A natural fit as its own screen under
+   the Downloads menu (matching how Posts/Pages each get their own
+   "Categories"-equivalent entry) rather than a subsection of the
+   Downloads &rsaquo; Shortcodes docs page from LPP-009 — that page can
+   still link to it. Once item 4 below gives Downloads its own category
+   taxonomy, this page manages *that* taxonomy — see item 4's own notes
+   for why a category is no longer the same thing as a Media Manager
+   Folder.
+3. **More `[lumora_downloads]` shortcode variants**, alongside the
+   existing "list everything in a category" form:
+   - Show a single download by id (`download_id="..."`)
+   - Newest download in a category
+   - Newest download across all downloads (no category filter)
+   - Newest *N* downloads across all downloads (a count attribute,
+     e.g. `count="5"`)
+   - Newest *N* downloads in a category (count + category combined)
+4. **Give Downloads its own category taxonomy, separate from Media
+   Manager Folders** — requested after real use turned up "extra
+   imported ones or empty ones" cluttering the *shared* Folder list
+   (duplicate/leftover Folders from a WordPress Importer run mixed in
+   with regular Media Library folders that have nothing to do with
+   downloads), with no way to clean them up from within Downloads at
+   all. Confirmed against the real production database this ticket's
+   other work was already verified against (`wpiq_` prefix): this
+   isn't just a UI convenience, it's the actual Simple Download Monitor
+   data model Lumora's own WordPress Importer flattened away —
+   `sdm_categories` term relationships **only ever tag the
+   `sdm_downloads` post itself** (119 confirmed, 0 against any
+   `attachment` post), and a download's own file (`sdm_upload`
+   postmeta) is a bare URL/path string with **no Media Library
+   attachment relationship at all** in SDM's own model. Only the
+   thumbnail/featured image (`_thumbnail_id`) is a real WordPress
+   attachment, entirely independent of `sdm_categories`. So the correct
+   shape is: a Download's **category** is its own dedicated taxonomy: a
+   Download's **thumbnail** stays exactly as it is today, a normal
+   Media Library item (`thumbnail_media_id`, unaffected); a Download's
+   own underlying **file** no longer needs to live in a particular
+   Folder for categorization purposes at all — the category lives on
+   the `downloads` row itself.
+
+### Notes
+
+Decide whether these become new attribute combinations on the existing
+`[lumora_downloads]` shortcode (e.g. `id`, `newest`, `count` attributes
+layered onto `resolveFolder()`'s existing `category`/`category_id`
+handling) or a small family of related shortcodes — prefer extending
+the one existing shortcode with attributes over introducing several new
+tag names, consistent with how `category`/`category_id`/`show_size`
+already compose. `DownloadService::listAllGroupedByFolder()`/
+`paginateForAdmin()` (LPP-009) are the likely query surfaces for
+"newest N" — check whether a dedicated sortable-by-date method already
+covers it or whether a new one is needed.
+
+**Item 4 is a real architecture change, larger than items 1-3** — it
+touches two already-shipped, released tickets (LPP-004 WordPress
+Importer, LPP-008 Downloads Admin), not just new surface area:
+
+- New `download_categories` table (migration under
+  `install/migrations/`, mirroring `folders`' own shape: `id`, `name`,
+  `parent_id` — SDM categories nest, confirmed via real data, e.g. a
+  download tagged with both parent "Digital Paper" and child "Game Of
+  Thrones Papers" — plus `trashed_at`, `created_at`/`updated_at`, since
+  item 2 below needs the same Trash-based lifecycle
+  `CategoryService`/`PostService`/`PageService` already share). A small
+  `DownloadCategoryService` (or a set of methods on `DownloadService`
+  if a whole new class is overkill for this table's size) mirroring
+  `CategoryService`'s own shape closely enough that the new Downloads
+  Categories page (item 2) can reuse the identical pattern already
+  established there.
+- `downloads` table gains `category_id` (references
+  `download_categories`, not `folders`) — decide whether to add this
+  alongside the existing `folder_id` column (keep `folder_id` only for
+  resolving where the underlying File-typed download's Media item
+  physically sits in the Media Library, now decoupled from
+  categorization) or drop `folder_id` from `downloads` entirely once
+  categorization no longer depends on it.
+- **Data migration for existing installs**: any Download currently
+  categorized via `folder_id` (every one imported before this ticket)
+  needs its matching Folder turned into a real `download_categories`
+  row (preserving name/hierarchy) and `category_id` backfilled — a
+  migration script, not just a schema change, or existing sites lose
+  their download categorization on upgrade.
+- `WordPressImportService::importFolders()`/`importDownloads()`
+  (LPP-004, already shipped) need reworking to import `sdm_categories`
+  into the new `download_categories` table instead of the shared
+  `folders` table — the synthetic top-level "Downloads" wrapper folder
+  this currently creates (`WordPressImportService.php`, `'Downloads'`,
+  external id `'sdm-downloads-root'`) becomes unnecessary once
+  Downloads categories aren't nested under a Media Library folder at
+  all.
+- Admin UI: the Add/Edit Download form's category `<select>` and All
+  Downloads' category filter dropdown (`all-downloads.php:138`,
+  currently `$kernel->folders->listAll()`) both need to source from
+  `download_categories` instead of `folders`. The new Downloads
+  Categories page (item 2) manages `download_categories` rows directly
+  — Trash/Restore/Delete Permanently/Merge/Rename actions reuse the
+  new service's own methods, following `CategoryService`'s existing
+  Trash-then-permanent-delete pattern (`admin/views/posts/categories.php`),
+  not `FolderService::delete()`'s hard "refuse if non-empty" rule —
+  matching what item 2 itself now asks for (the same feature set
+  Categories/Posts/Pages already have).
+- `[lumora_downloads]`'s `category`/`category_id` attributes
+  (`DownloadsShortcode::resolveFolder()`) need to resolve against
+  `download_categories` instead of `folders` — a rename to
+  `resolveCategory()` and a switch to the new service, not new
+  resolution logic (name-match / id-match already works the same way).
+
+### Checklist
+
+- [x] Add a download-count column to `all-downloads.php`'s list table —
+      reads `DownloadService::downloadCount()`, which resolves a
+      File-typed download's count from the already-existing
+      `MediaStatsService` (LP-006, keyed by `media_id`, incremented at
+      `/media/{id}/download`) and a Url-typed download's from its
+      Redirect's own `hit_count` — no new column/migration needed after
+      all, this data already existed, just wasn't surfaced
+- [x] New `download_categories` table (migration `0049`), a small
+      service (`DownloadCategoryService`) providing `create()`/
+      `update()`/`trash()`/`restore()`/`delete()`/`emptyTrash()`/
+      `merge()`/`findById()`/`listAll()`/`listAllWithDownloadCounts()`/
+      `listTrashedWithDownloadCounts()`/`listAllForParentSelect()`/
+      `listAllForParentPicker()`/`listAllForTree()`/`downloadCount()` —
+      nesting via `parent_id` like `FolderService`, but
+      Trash-then-permanent-delete like `CategoryService` — and
+      `downloads.category_id` added (migration `0050`) alongside the
+      existing `folder_id`, which now only governs a File-typed
+      download's Media Library placement, fully decoupled from
+      categorization
+- [x] Data migration for existing installs:
+      `DownloadCategoryMigrationService` (core, `Maintenance ›
+      Tools`), idempotent, turns every Folder still referenced by a
+      Download's `folder_id` into a real `download_categories` row
+      (preserving name/hierarchy) and backfills `category_id`
+- [x] Reworked `WordPressImportService::importFolders()` →
+      `importDownloadCategories()`/`importDownloads()` (LPP-004) to
+      import `sdm_categories` into `download_categories` instead of the
+      shared `folders` table, removing the now-unnecessary synthetic
+      "Downloads" wrapper folder (a top-level `sdm_categories` term is
+      now a top-level `download_categories` row directly). Note: this
+      does mean a *future* re-import can no longer feed the older
+      `[sdm_show_dl_from_category]` shortcode (wordpress-importer
+      plugin's own, kept working for content already migrated before
+      this ticket) via `folder_id`, since there's no longer a Folder to
+      point it at — already-migrated rows are unaffected, this only
+      changes what a fresh (re-)import produces
+- [x] `DownloadsShortcode::resolveFolder()` → `resolveCategory()`,
+      resolving `category`/`category_id` against
+      `DownloadCategoryService` instead of `FolderService`;
+      `listByFolder()`/`listAllGroupedByFolder()` similarly renamed to
+      `listByCategory()`/`listAllGroupedByCategory()`
+- [x] New "Downloads &rsaquo; Categories" admin list page
+      (`admin/views/downloads/categories.php`), its own menu entry: id
+      column, name, a copy-pasteable default `[lumora_downloads]`
+      shortcode column, parent (nesting), and a download count per
+      category; status tabs and bulk Trash/Restore/Delete
+      Permanently/Merge into… matching the existing Categories screen's
+      own established shape. No inline Rename — confirmed
+      `admin/views/posts/categories.php` doesn't have one either (Name
+      links to the edit form instead), so this page follows the same
+      convention rather than introducing a new one. Also gained an
+      **Empty Trash** action on its Trash tab (an ad hoc addition this
+      session, not in the original ticket text) — tracked more broadly
+      as its own follow-up ticket, `TODO.md`'s LP-126, to retrofit the
+      same action to every other admin Trash tab
+- [x] Add/Edit Download form's category `<select>` and All Downloads'
+      category filter dropdown both source from `DownloadCategoryService`
+      instead of `$kernel->folders->listAll()`
+- [x] `[lumora_downloads]` support for `download_id` (render a single
+      download)
+- [x] `[lumora_downloads]` support for "newest in category" (`category`/
+      `category_id` + `count="1"`)
+- [x] `[lumora_downloads]` support for "newest across all downloads"
+      (`count="1"`, no category filter)
+- [x] `[lumora_downloads]` support for "newest N across all downloads"
+      (`count="N"`)
+- [x] `[lumora_downloads]` support for "newest N in a category" (`count`
+      + `category`/`category_id` combined)
+- [x] Updated the Downloads &rsaquo; Shortcodes docs subpage (LPP-009)
+      with examples of every new attribute/variant
+- [x] Regression tests: `DownloadCategoryServiceTest`/
+      `DownloadCategoryServiceIntegrationTest` (nesting,
+      Trash/Restore/Delete Permanently/`emptyTrash()`, Merge, against
+      both SQLite and real MySQL), the WordPress Importer rework
+      (`WordPressImportServiceTest`'s SDM download/Skip-Overwrite tests,
+      updated), `DownloadCategoryMigrationServiceTest` (hierarchy
+      preservation, idempotency), every new shortcode variant
+      (`DownloadsShortcodeTest`), and `downloadCount()`/`listNewest()`/
+      the new admin-list `categoryId` filter (`DownloadServiceTest`) —
+      full PHP 8.2/8.3/8.4 Docker matrix run clean, see
+      `PHP Test Suite/TEST_LOG.md`
+- [x] Verified end-to-end against the dev install (`lumorapress-preview`,
+      real imported data — 41 downloads): download counts on All
+      Downloads match real `media_stats`/`redirects.hit_count` data;
+      ran the Maintenance › Tools migration against the install's real
+      Folder-categorized downloads — created 11 categories (preserving
+      the "FocusWriter Themes" > "Game Of Thrones"/"House of the
+      Dragon" etc. hierarchy, including the old synthetic "Downloads"
+      wrapper folder becoming its own category) and backfilled all 41
+      downloads (idempotency itself verified by
+      `DownloadCategoryMigrationServiceTest`, not re-run live); Downloads ›
+      Categories' shortcode column and each of the three
+      `[lumora_downloads]` variants (`category_id`, `download_id`,
+      `count`) all rendered correctly when pasted into a real published
+      post
+
+
+### LPP-012. Downloads: Add From Server / Media Manager Picker + Replace File
+
+**Implemented (2026-08-26).** `openMediaPicker()` (content-editor.js)
+turned out not reusable as-is — it's hardcoded to images and has a
+whole Attachment Display Settings (size/link/alignment) step that
+makes no sense for picking a download's file. Built a separate,
+lighter picker instead: `admin/assets/js/downloads-picker.js`, backed
+by a new `download_file_picker_query` admin sub-action
+(`admin/views/downloads/add-new.php`) with no type filter (unlike
+`media_picker_query`'s hardcoded `type: image`) — a download's file can
+be a `.zip`, a `.pdf`, anything. Clicking a grid item selects it
+immediately, no second step.
+
+- [x] Add a "choose from server" / Media Manager picker option
+      alongside the existing Upload and External URL choices on the Add
+      Download form, so an admin can attach an already-uploaded Media
+      item as a download without re-uploading the same file. —
+      `DownloadService::createFromExistingMedia()`, a third "Use an
+      existing file from the Media Library" radio choice.
+- [x] Add the ability to replace/edit the file on an existing
+      File-typed download (via new upload or via the same
+      server/Media Manager picker) on the Edit Download screen, instead
+      of requiring delete-and-re-add. — `DownloadService::replaceFile()`,
+      a "Replace with a file" panel on the Edit screen.
+
+**Extended past the original ask, same session:** Ariane pointed out a
+Url-typed download may later need to become a File-typed one (and vice
+versa) — the Edit screen originally only showed the file-replace panel
+for File-typed downloads and the URL field for Url-typed ones, with no
+way to switch. Both panels (Replace with a file / Replace with a URL)
+are now shown for every download regardless of its current type,
+backed by two new methods: `DownloadService::convertToFile()` (deletes
+the old Redirect once unreferenced — every Redirect a download has was
+always created for it specifically, so no ownership ambiguity like
+Media has) and `convertToUrl()` (mirrors `replaceFile()`'s
+ownership-respecting Media cleanup). An explicit file action (upload or
+pick) always wins over a same-request URL field edit if a form somehow
+submits both.
+
+**A real data-safety bug was found and fixed while browser-verifying
+this ticket, not a hypothetical:** `replaceFile()`'s first version
+deleted the *old* media row whenever no other Download referenced it —
+copying `delete()`'s existing guard. That's safe when a File
+download's media was created *by* that download (every case before
+this ticket — a normal upload always creates a fresh, exclusively-owned
+Media row). It is not safe once "Add from server" lets a Download
+attach a Media item that already existed independently in the Library.
+Verifying the Replace panel with a server-picked file actually deleted
+a real, unrelated, pre-existing Media item from the dev preview — a
+permanent, on-disk file deletion, not a soft-delete.
+
+Fixed with a new `media_owned` column (migration `0048`, default `1`)
+on `downloads`: true when the Media row was created *for* this download
+(a fresh upload, or a WordPress import), false when attached from one
+that already existed (`createFromExistingMedia()`,
+`replaceFile($id, $mediaId, newMediaOwned: false)`). `delete()` and
+`replaceFile()` now both check ownership before ever deleting the
+underlying Media row — an unowned row is never touched, regardless of
+whether any other Download references it. `duplicate()` (LPP-009,
+which shares rather than copies the underlying Media/Redirect) mirrors
+the original's own ownership flag onto the copy, so whichever of the
+two is deleted last is the one that decides whether the shared file
+gets cleaned up. Covered by new `DownloadServiceTest` cases (owned vs.
+unowned across create/replace/delete/duplicate), and re-verified live
+against real dev-preview data after the fix — the previously-deleted
+item's sibling media survived an identical replace.
+
+### Notes
+
+`DownloadService`'s `media_id` re-pointing needed no new query shape —
+`recordExisting()` already accepted an arbitrary existing `$mediaId`
+(the WordPress Importer's own entry point), so `createFromExistingMedia()`
+and `replaceFile()` both build on it directly rather than introducing a
+new insert path.
+
