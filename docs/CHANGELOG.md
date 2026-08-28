@@ -4,6 +4,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Anonymous Install Ping (LP-127): an opt-in, off-by-default setting
+  (Settings &rsaquo; Privacy) that periodically sends a minimal, anonymous
+  ping — a randomly generated install ID, the Lumora Press version, and
+  the PHP version, nothing else — so the developer can see a rough count
+  of active installs and which PHP versions are still in use. Disabled by
+  default; a "Send a test ping now" button confirms it's working once
+  enabled. Uses a completely separate request from the GitHub update
+  checker, so enabling or disabling either one never affects the other.
+
 ### Fixed
 
 - Content rendering could produce invalid nested markup (LP-125): a

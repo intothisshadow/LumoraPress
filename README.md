@@ -258,6 +258,34 @@ the installation directory, and re-import the most recent
 human-readable formats — `storage/` is never web-accessible, so retrieve
 them via FTP/SFTP or your hosting file manager).
 
+## Privacy: Anonymous Install Ping
+
+Lumora Press includes an opt-in, off-by-default mechanism to anonymously
+count active installs. This provides the developer with a rough,
+privacy-respecting understanding of real-world adoption, including which
+PHP versions are still in active use — useful for deciding when support for
+an older PHP version can be safely phased out.
+
+- **Off by default.** Nothing is ever sent unless you explicitly enable
+  **Anonymous install ping** in Settings &rsaquo; Privacy.
+- **What is sent, and nothing else:**
+  - A randomly generated install ID, created the first time the feature is
+    enabled. It has no relationship to your domain, content, admin
+    account, or any other data — there is no way to trace it back to your
+    specific site from the ping alone.
+  - Your installed Lumora Press version.
+  - Your PHP version.
+- **What is never sent:** your domain or site title, admin email, post/
+  page/comment content, visitor data, or anything else.
+- **Cadence.** The ping fires once immediately when you enable the
+  feature, then at most roughly once a month afterward. It never fires on
+  every page load. A "Send a test ping now" button on the Settings &rsaquo;
+  Privacy screen lets you confirm it's working without waiting a month.
+- **Independence from the update checker.** This uses a completely
+  separate request from the GitHub release-check described above
+  (`GitHubReleaseProvider`) — enabling or disabling one never affects the
+  other.
+
 ## Current Status
 
 **Version 0.8.0**

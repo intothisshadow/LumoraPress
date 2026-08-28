@@ -304,6 +304,20 @@ if (
  */
 $kernel->users->touchLastActive($currentUser->id);
 
+/*
+ * Opportunistic, on every authenticated admin page load — cheap in the
+ * overwhelming majority of calls (InstallPingService::maybeSendPing()
+ * returns immediately unless the feature is enabled and the ~monthly
+ * interval has elapsed). Wrapped defensively even though the service
+ * already fails silently internally, so a future change there can never
+ * turn into a broken admin panel.
+ */
+try {
+    $kernel->installPing->maybeSendPing();
+} catch (\Throwable) {
+    // Never let this affect the admin page render.
+}
+
 $subpage = is_string($_GET['subpage'] ?? null) ? $_GET['subpage'] : null;
 
 /*

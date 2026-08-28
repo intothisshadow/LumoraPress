@@ -92,6 +92,7 @@ use LumoraPress\Services\Import\PageImporter;
 use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\Import\WidgetImporter;
+use LumoraPress\Services\InstallPingService;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -700,6 +701,15 @@ $updates = new UpdateService(
 $githubUpdates = new GitHubReleaseProvider($config);
 
 /*
+ * Deliberately independent of $githubUpdates above (see
+ * InstallPingService's class docblock) — its own endpoint, its own
+ * option keys, off by default until an administrator opts in on
+ * Settings > Privacy.
+ */
+$appVersion = require LUMORA_ROOT . '/version.php';
+$installPing = new InstallPingService($config, (string) $appVersion['version']);
+
+/*
  * LP-037: driver auto-detection, with a manual override option (Settings
  * > Cache) for a host where detection guesses wrong. LiteSpeedCacheDriver
  * is only actually used when it reports itself available; otherwise the
@@ -825,6 +835,7 @@ $kernel = new Kernel(
     widgetImporter: $widgetImporter,
     entityDecodeRepair: $entityDecodeRepair,
     downloadCategoryMigration: $downloadCategoryMigration,
+    installPing: $installPing,
 );
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);

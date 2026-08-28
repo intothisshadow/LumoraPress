@@ -22,6 +22,50 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
+$error = null;
+$form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+
+/*
+ * Anonymous Install Ping — off by default, opt-in. Deliberately a
+ * separate form/CSRF token from the privacy-policy-page selector below,
+ * since the two settings are unrelated and this one also needs its own
+ * post-save side effect (firing an immediate first ping the moment it's
+ * switched on). See InstallPingService's class docblock for what is and
+ * isn't sent.
+ */
+$installPingError = null;
+
+if ($form === 'install_ping_settings' && Csrf::verify('install_ping_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $pingWasEnabled = $kernel->installPing->isEnabled();
+    $kernel->config->setOption('install_ping_enabled', isset($_POST['install_ping_enabled']) ? '1' : '0');
+
+    if (!$pingWasEnabled && $kernel->installPing->isEnabled()) {
+        try {
+            $kernel->installPing->sendPing();
+        } catch (\Throwable) {
+            // Non-fatal — the periodic check on the next admin page load
+            // will retry. Doesn't affect the "Saved." confirmation below.
+        }
+    }
+
+    header('Location: ' . admin_url('settings/privacy') . '?saved=1');
+    exit;
+}
+
+if ($form === 'install_ping_test' && Csrf::verify('install_ping_test', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if ($kernel->installPing->isEnabled()) {
+        try {
+            $kernel->installPing->sendPing();
+            header('Location: ' . admin_url('settings/privacy') . '?ping_sent=1');
+            exit;
+        } catch (\Throwable $exception) {
+            $installPingError = 'Could not reach the install ping endpoint: ' . $exception->getMessage();
+        }
+    } else {
+        $installPingError = 'Enable the anonymous install ping first, then you can send a test ping.';
+    }
+}
+
 /*
  * New Settings > Privacy sub-page — names an existing Page as the site's
  * privacy policy, the same "point at an existing Page rather than invent
@@ -32,9 +76,6 @@ if (!isset($kernel)) {
  * matching LPP-004's WordPress Importer, which can now write this key
  * on import.
  */
-$error = null;
-$form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
-
 if ($form === 'privacy_policy_settings' && Csrf::verify('privacy_policy_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $privacyPolicyPageIdInput = (int) ($_POST['privacy_policy_page_id'] ?? 0);
     $kernel->config->setOption('privacy_policy_page_id', $privacyPolicyPageIdInput > 0 ? (string) $privacyPolicyPageIdInput : '');
@@ -45,6 +86,8 @@ if ($form === 'privacy_policy_settings' && Csrf::verify('privacy_policy_settings
 
 $privacyPolicyPageId = (int) $kernel->config->option('privacy_policy_page_id', '0');
 $pageOptions = $kernel->pages->listAllForParentSelect();
+$installPingEnabled = $kernel->installPing->isEnabled();
+$installUuid = $installPingEnabled ? $kernel->installPing->getOrCreateUuid() : (string) $kernel->config->option('install_uuid', '');
 ?>
 <h1 class="lp-admin__title">Privacy</h1>
 
@@ -52,8 +95,16 @@ $pageOptions = $kernel->pages->listAllForParentSelect();
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
 <?php endif; ?>
 
+<?php if ($installPingError !== null): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html($installPingError) ?></div>
+<?php endif; ?>
+
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['ping_sent'])): ?>
+    <div class="lp-alert lp-alert--success">Test ping sent.</div>
 <?php endif; ?>
 
 <section class="lp-admin__panel">
@@ -77,4 +128,43 @@ $pageOptions = $kernel->pages->listAllForParentSelect();
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Anonymous Install Statistics</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings/privacy')) ?>">
+        <?= Csrf::field('install_ping_settings') ?>
+        <input type="hidden" name="form" value="install_ping_settings">
+
+        <p class="lp-field">
+            <label>
+                <input type="checkbox" name="install_ping_enabled" value="1" <?= $installPingEnabled ? 'checked' : '' ?>>
+                Anonymous install ping
+            </label>
+            <span class="lp-field__hint">
+                Off by default. When enabled, Lumora Press periodically sends a tiny, anonymous
+                ping (roughly once a month, plus once immediately when you turn this on) to let
+                the developer see a rough count of active installs. The ping contains exactly
+                three values and nothing else: a randomly generated install ID (not tied to your
+                domain, content, or any personal data), your Lumora Press version, and your PHP
+                version. It uses a completely separate request from the update checker, so
+                enabling or disabling either one never affects the other. If the request fails
+                for any reason it fails silently — it never shows an error or blocks anything
+                you're doing.
+                <?php if ($installUuid !== ''): ?>
+                    Install ID: <code><?= esc_html($installUuid) ?></code>
+                <?php endif; ?>
+            </span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
+    </form>
+
+    <?php if ($installPingEnabled): ?>
+        <form method="post" action="<?= esc_url(admin_url('settings/privacy')) ?>">
+            <?= Csrf::field('install_ping_test') ?>
+            <input type="hidden" name="form" value="install_ping_test">
+            <button type="submit" class="lp-button">Send a test ping now</button>
+        </form>
+    <?php endif; ?>
 </section>

@@ -58,6 +58,7 @@ use LumoraPress\Services\Import\PageImporter;
 use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\Import\WidgetImporter;
+use LumoraPress\Services\InstallPingService;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -146,6 +147,7 @@ final class Kernel
         public readonly WidgetImporter $widgetImporter,
         public readonly EntityDecodeRepairService $entityDecodeRepair,
         public readonly DownloadCategoryMigrationService $downloadCategoryMigration,
+        public readonly InstallPingService $installPing,
     ) {
     }
 }
