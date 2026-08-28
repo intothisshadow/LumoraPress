@@ -2007,6 +2007,75 @@ body.lp-admin-login {
     cursor: pointer;
 }
 
+/*
+ * "Insert/Edit Link" dialog (LP-130, openLinkPicker() in
+ * content-editor.js) — an auto-height form dialog, not the fixed-height
+ * scrolling-grid shape .lp-editor-media-dialog uses above, since its
+ * content is a handful of fields plus a short results list rather than
+ * a paginated image grid.
+ */
+.lp-editor-link-dialog {
+    width: min(480px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.25rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    color: var(--lp-admin-text);
+}
+
+.lp-editor-link-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-editor-link-dialog__subheading {
+    margin: 1rem 0 0.5rem;
+    font-size: 0.95rem;
+}
+
+.lp-editor-link-dialog__results {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-editor-link-dialog__result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-bottom: 1px solid var(--lp-admin-border);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.lp-editor-link-dialog__results li:last-child .lp-editor-link-dialog__result {
+    border-bottom: none;
+}
+
+.lp-editor-link-dialog__result:hover,
+.lp-editor-link-dialog__result:focus-visible {
+    background: var(--lp-admin-bg);
+}
+
+.lp-editor-link-dialog__result-title {
+    color: var(--lp-admin-text);
+    font-size: 0.9rem;
+}
+
+.lp-editor-link-dialog__result-meta {
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.78rem;
+}
+
 .lp-api-token__value {
     display: block;
     padding: 0.5rem 0.75rem;

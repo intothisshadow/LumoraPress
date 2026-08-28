@@ -9,6 +9,7 @@
  *        data-upload-csrf="..."
  *        data-convert-csrf="..."
  *        data-media-picker-csrf="..."
+ *        data-link-picker-csrf="..."
  *        data-media-folders='[{"id":1,"name":"...","depth":0}]'
  *        data-icon-picker-csrf="..."                    — omitted entirely
  *        data-icon-picker-css='["https://...css"]'>        when the Font
@@ -588,6 +589,256 @@
     }
 
     // ------------------------------------------------------------------
+    // Link picker (LP-130) — the WYSIWYG editor's own "Insert/Edit Link"
+    // dialog, replacing TinyMCE's native link plugin dialog entirely (see
+    // basePlugins above) so a link can target an existing Post or Page
+    // from a live, searchable list instead of requiring its permalink to
+    // be copied in from another tab by hand. Queries its own
+    // link_picker_query sub-action (same data-upload-url every other
+    // sub-action already posts to), returning up to 20 recently
+    // published/modified Posts and Pages, newest first, title-filtered
+    // server-side as the admin types. No pagination/Load More — this is
+    // meant to surface a short, obvious shortlist, not browse the whole
+    // site; a specific, older item is still reachable by typing more of
+    // its title into Search.
+    // ------------------------------------------------------------------
+
+    function openLinkPicker(container, editor) {
+        var pickerUrl = container.dataset.uploadUrl;
+        var pickerCsrf = container.dataset.linkPickerCsrf;
+
+        // Editing an existing link puts the dialog in "Update" mode —
+        // its href/text/target seed the fields below, and Update/Remove
+        // Link act on this same <a> element in place rather than
+        // inserting a new one.
+        var existingAnchor = editor.dom.getParent(editor.selection.getNode(), 'A');
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-link-dialog';
+
+        var heading = document.createElement('h2');
+        heading.className = 'lp-editor-media-dialog__heading';
+        heading.textContent = existingAnchor ? 'Edit Link' : 'Insert Link';
+
+        var urlField = document.createElement('p');
+        urlField.className = 'lp-field';
+        var urlLabel = document.createElement('label');
+        urlLabel.textContent = 'URL';
+        var urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.value = existingAnchor ? (existingAnchor.getAttribute('href') || '') : '';
+        urlInput.placeholder = 'https://…';
+        urlField.appendChild(urlLabel);
+        urlField.appendChild(urlInput);
+
+        var textField = document.createElement('p');
+        textField.className = 'lp-field';
+        var textLabel = document.createElement('label');
+        textLabel.textContent = 'Link Text';
+        var textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.value = existingAnchor ? existingAnchor.textContent : editor.selection.getContent({ format: 'text' });
+        textField.appendChild(textLabel);
+        textField.appendChild(textInput);
+
+        var newTabLabel = document.createElement('label');
+        newTabLabel.className = 'lp-field--checkbox';
+        var newTabCheckbox = document.createElement('input');
+        newTabCheckbox.type = 'checkbox';
+        newTabCheckbox.checked = !!existingAnchor && existingAnchor.getAttribute('target') === '_blank';
+        newTabLabel.appendChild(newTabCheckbox);
+        newTabLabel.appendChild(document.createTextNode(' Open link in a new tab'));
+
+        var existingHeading = document.createElement('h3');
+        existingHeading.className = 'lp-editor-link-dialog__subheading';
+        existingHeading.textContent = 'Or link to existing content';
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'lp-editor-media-dialog__search';
+        searchInput.placeholder = 'Search posts and pages…';
+        searchInput.setAttribute('aria-label', 'Search posts and pages');
+
+        var status = document.createElement('p');
+        status.className = 'lp-editor-media-dialog__status';
+        status.hidden = true;
+
+        var results = document.createElement('ul');
+        results.className = 'lp-editor-link-dialog__results';
+
+        var state = { term: '', requestId: 0 };
+
+        function renderItem(item) {
+            var row = document.createElement('li');
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-link-dialog__result';
+
+            var titleEl = document.createElement('span');
+            titleEl.className = 'lp-editor-link-dialog__result-title';
+            titleEl.textContent = item.title;
+
+            var metaEl = document.createElement('span');
+            metaEl.className = 'lp-editor-link-dialog__result-meta';
+            metaEl.textContent = item.type + ' · ' + item.date;
+
+            button.appendChild(titleEl);
+            button.appendChild(metaEl);
+            button.addEventListener('click', function () {
+                urlInput.value = item.url;
+
+                // Matches manually pasting a permalink in — it only ever
+                // fills the visible label when the admin hasn't already
+                // typed one, never overwrites a Link Text they set.
+                if (textInput.value.trim() === '') {
+                    textInput.value = item.title;
+                }
+            });
+
+            row.appendChild(button);
+            results.appendChild(row);
+        }
+
+        function fetchResults() {
+            var requestId = ++state.requestId;
+
+            status.textContent = 'Loading…';
+            status.hidden = false;
+            results.innerHTML = '';
+
+            var formData = new FormData();
+            formData.append('form', 'link_picker_query');
+            formData.append('csrf_token', pickerCsrf);
+            formData.append('term', state.term);
+
+            fetch(pickerUrl, { method: 'POST', body: formData })
+                .then(function (response) { return response.json(); })
+                .then(function (json) {
+                    // Csrf::verify() is single-use — see openMediaPicker()'s
+                    // identical comment for why every response must hand
+                    // back a fresh token.
+                    if (json.csrfToken) {
+                        pickerCsrf = json.csrfToken;
+                        container.dataset.linkPickerCsrf = json.csrfToken;
+                    }
+
+                    if (requestId !== state.requestId) {
+                        return;
+                    }
+
+                    var items = json.items || [];
+                    items.forEach(renderItem);
+
+                    if (items.length === 0) {
+                        status.textContent = state.term !== '' ? 'No matching posts or pages.' : 'No posts or pages yet.';
+                        status.hidden = false;
+                    } else {
+                        status.hidden = true;
+                    }
+                })
+                .catch(function () {
+                    status.textContent = 'Could not load results. Try again.';
+                    status.hidden = false;
+                });
+        }
+
+        var searchTimer = null;
+        searchInput.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(function () {
+                state.term = searchInput.value.trim();
+                fetchResults();
+            }, 300);
+        });
+
+        var actions = document.createElement('div');
+        actions.className = 'lp-editor-media-dialog__settings-actions';
+
+        var applyButton = document.createElement('button');
+        applyButton.type = 'button';
+        applyButton.className = 'lp-button lp-button--primary';
+        applyButton.textContent = existingAnchor ? 'Update' : 'Add Link';
+        applyButton.addEventListener('click', function () {
+            var url = urlInput.value.trim();
+
+            if (url === '') {
+                urlInput.focus();
+
+                return;
+            }
+
+            var text = textInput.value.trim() || url;
+
+            // Direct DOM edits (the existingAnchor branch) bypass
+            // insertContent()'s own undo-level/change-event handling, so
+            // they're wrapped in a transaction — the same "change" event
+            // this fires is what editor.on('change keyup', ...) below
+            // listens for to keep the real <textarea> form field synced.
+            if (existingAnchor) {
+                editor.undoManager.transact(function () {
+                    existingAnchor.setAttribute('href', url);
+                    existingAnchor.textContent = text;
+
+                    if (newTabCheckbox.checked) {
+                        existingAnchor.setAttribute('target', '_blank');
+                    } else {
+                        existingAnchor.removeAttribute('target');
+                        existingAnchor.removeAttribute('rel');
+                    }
+                });
+                editor.selection.select(existingAnchor);
+            } else {
+                var targetAttr = newTabCheckbox.checked ? ' target="_blank"' : '';
+                editor.insertContent('<a href="' + escapeHtmlAttr(url) + '"' + targetAttr + '>' + escapeHtmlAttr(text) + '</a>');
+            }
+
+            dialog.close();
+        });
+
+        var actionButtons = [applyButton];
+
+        if (existingAnchor) {
+            var removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'lp-button lp-button--link lp-button--link--danger';
+            removeButton.textContent = 'Remove Link';
+            removeButton.addEventListener('click', function () {
+                editor.undoManager.transact(function () {
+                    // true = unwrap, keeping the anchor's own text/inline
+                    // markup in place rather than deleting it outright.
+                    editor.dom.remove(existingAnchor, true);
+                });
+                dialog.close();
+            });
+            actionButtons.push(removeButton);
+        }
+
+        var cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'lp-button';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.addEventListener('click', function () { dialog.close(); });
+        actionButtons.push(cancelButton);
+
+        actionButtons.forEach(function (button) { actions.appendChild(button); });
+
+        dialog.appendChild(heading);
+        dialog.appendChild(urlField);
+        dialog.appendChild(textField);
+        dialog.appendChild(newTabLabel);
+        dialog.appendChild(existingHeading);
+        dialog.appendChild(searchInput);
+        dialog.appendChild(status);
+        dialog.appendChild(results);
+        dialog.appendChild(actions);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+
+        fetchResults();
+    }
+
+    // ------------------------------------------------------------------
     // Icon picker (LPP-002) — shared by both editors, mirroring
     // openMediaPicker()'s <dialog> + search + paginated-grid + Load More
     // shape, queried against the Font Awesome plugin's own
@@ -1094,7 +1345,11 @@
             // deliberately not loaded — lumoraMedia (the Media Manager
             // picker) is this editor's single "Insert Image" entry
             // point, not a second, redundant bare URL/upload dialog.
-            var basePlugins = 'lists link table code codesample searchreplace fullscreen wordcount help';
+            // LP-130: the native 'link' plugin is left out for the same
+            // reason — lumoraLink (openLinkPicker() below) fully
+            // replaces its dialog with one that can also target an
+            // existing Post/Page from a live, searchable list.
+            var basePlugins = 'lists table code codesample searchreplace fullscreen wordcount help';
 
             // Same has-{color}-color class convention as the align
             // formats below — one custom format per fixed palette color,
@@ -1122,7 +1377,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | link lumoraMedia lumoraFolderGallery '
+                        + 'bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + 'lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
@@ -1220,6 +1475,21 @@
 
                                 callback(items);
                             },
+                        });
+
+                        editor.ui.registry.addButton('lumoraLink', {
+                            icon: 'link',
+                            tooltip: 'Insert/Edit Link',
+                            onAction: function () {
+                                openLinkPicker(container, editor);
+                            },
+                        });
+
+                        // Matches the keyboard shortcut the native link
+                        // plugin (no longer loaded — see basePlugins
+                        // above) would otherwise have registered.
+                        editor.addShortcut('meta+k', 'Insert/Edit Link', function () {
+                            openLinkPicker(container, editor);
                         });
 
                         editor.ui.registry.addButton('lumoraMedia', {

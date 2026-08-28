@@ -228,6 +228,65 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+/*
+ * "Insert/Edit Link" dialog's "Or link to existing content" search
+ * (LP-130, openLinkPicker() in content-editor.js) — see posts/new.php's
+ * identical block's own docblock for why this spans both PostService
+ * and PageService rather than living on a single content-type
+ * controller, and is duplicated here rather than shared.
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'link_picker_query') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('edit_posts') || !Csrf::verify('link_picker_query', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $term = trim((string) ($_POST['term'] ?? ''));
+    $linkPickerFilters = $term !== '' ? ['term' => $term] : [];
+
+    $linkPickerItems = [];
+
+    foreach ($kernel->posts->paginateForAdmin(1, 15, null, $linkPickerFilters)['posts'] as $resultPost) {
+        $linkPickerDate = $resultPost->publishedAt ?? $resultPost->updatedAt;
+        $linkPickerItems[] = [
+            'title' => $resultPost->title,
+            'url' => post_permalink($resultPost),
+            'type' => 'Post',
+            'date' => $linkPickerDate->format('Y/m/d'),
+            'sortKey' => $linkPickerDate->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    foreach ($kernel->pages->paginateForAdmin(1, 15, null, $linkPickerFilters)['pages'] as $resultPage) {
+        $linkPickerDate = $resultPage->publishedAt ?? $resultPage->updatedAt;
+        $linkPickerItems[] = [
+            'title' => $resultPage->title,
+            'url' => page_permalink($resultPage),
+            'type' => 'Page',
+            'date' => $linkPickerDate->format('Y/m/d'),
+            'sortKey' => $linkPickerDate->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    usort($linkPickerItems, static fn (array $a, array $b): int => $b['sortKey'] <=> $a['sortKey']);
+
+    echo json_encode([
+        'items' => array_map(
+            static fn (array $item): array => ['title' => $item['title'], 'url' => $item['url'], 'type' => $item['type'], 'date' => $item['date']],
+            array_slice($linkPickerItems, 0, 20),
+        ),
+        'csrfToken' => Csrf::token('link_picker_query'),
+    ]);
+    exit;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
     // See the identical comment in admin/views/posts/new.php's matching
     // block for why the output buffer must be discarded here, and why
@@ -618,6 +677,7 @@ if ($savedLayout['order'] === []) {
                     data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                     data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
+                    data-link-picker-csrf="<?= esc_attr(Csrf::token('link_picker_query')) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"

@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WYSIWYG editor "Insert/Edit Link" dialog: a new "Or link to existing
+  content" section lists recently published/modified Posts and Pages,
+  filterable by title as you type, so a link can target one of them
+  without leaving the editor to go copy its permalink. Also supports
+  editing or removing an existing link in place.
 - Featured image picker: every place a featured image can be chosen
   (the Post/Page editor's Featured Image box, and Media Manager &rsaquo;
   Thumbnails' "Default featured image" setting) now opens a WordPress-

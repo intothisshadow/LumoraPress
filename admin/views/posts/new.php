@@ -46,7 +46,7 @@ $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->
  * echoes the JSON body directly rather than returning a value — see
  * uploadEditorImage()'s own docblock for why), and exits.
  */
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'font_awesome_icon_query'], true)) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'font_awesome_icon_query'], true)) {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs (views/{page}/{subpage}.php is
     // required after layout-header.php unconditionally) — discard it
@@ -75,6 +75,61 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
             echo json_encode(['error' => 'Font Awesome is not active.']);
         }
 
+        exit;
+    }
+
+    // link_picker_query is handled separately from the match() below
+    // since it spans both Posts and Pages (a link picker opened from
+    // the Post editor must still be able to target an existing Page,
+    // and vice versa) — PostsController only holds a PostService, so
+    // this queries $kernel->posts/$kernel->pages directly rather than
+    // adding a PageService dependency to a controller named for the
+    // other content type. Duplicated verbatim in pages/new.php's own
+    // identical block, matching media_picker_query's existing
+    // per-view-duplication precedent there.
+    if ($_POST['form'] === 'link_picker_query') {
+        if (!$currentUser->can('edit_posts') || !Csrf::verify('link_picker_query', $csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Not permitted.']);
+            exit;
+        }
+
+        $term = trim((string) ($_POST['term'] ?? ''));
+        $linkPickerFilters = $term !== '' ? ['term' => $term] : [];
+
+        $linkPickerItems = [];
+
+        foreach ($kernel->posts->paginateForAdmin(1, 15, null, $linkPickerFilters)['posts'] as $resultPost) {
+            $linkPickerDate = $resultPost->publishedAt ?? $resultPost->updatedAt;
+            $linkPickerItems[] = [
+                'title' => $resultPost->title,
+                'url' => post_permalink($resultPost),
+                'type' => 'Post',
+                'date' => $linkPickerDate->format('Y/m/d'),
+                'sortKey' => $linkPickerDate->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        foreach ($kernel->pages->paginateForAdmin(1, 15, null, $linkPickerFilters)['pages'] as $resultPage) {
+            $linkPickerDate = $resultPage->publishedAt ?? $resultPage->updatedAt;
+            $linkPickerItems[] = [
+                'title' => $resultPage->title,
+                'url' => page_permalink($resultPage),
+                'type' => 'Page',
+                'date' => $linkPickerDate->format('Y/m/d'),
+                'sortKey' => $linkPickerDate->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        usort($linkPickerItems, static fn (array $a, array $b): int => $b['sortKey'] <=> $a['sortKey']);
+
+        echo json_encode([
+            'items' => array_map(
+                static fn (array $item): array => ['title' => $item['title'], 'url' => $item['url'], 'type' => $item['type'], 'date' => $item['date']],
+                array_slice($linkPickerItems, 0, 20),
+            ),
+            'csrfToken' => Csrf::token('link_picker_query'),
+        ]);
         exit;
     }
 
@@ -298,6 +353,7 @@ if ($savedLayout['order'] === []) {
                     data-upload-csrf="<?= esc_attr(Csrf::token('editor_upload')) ?>"
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                     data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
+                    data-link-picker-csrf="<?= esc_attr(Csrf::token('link_picker_query')) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
