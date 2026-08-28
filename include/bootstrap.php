@@ -54,6 +54,7 @@ use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Core\Theme\ActiveAuth;
 use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
@@ -250,6 +251,29 @@ add_filter('csp_directives', static function (array $directives) use ($cspNonce)
     $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
     $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
     $directives['img-src'] .= ' https://www.gravatar.com';
+
+    return $directives;
+});
+
+/*
+ * Content authored with an <img> pointing at an external host the admin
+ * explicitly trusts (e.g. a personal gallery/CDN they run themselves) —
+ * img-src 'self' otherwise blocks it outright, invisibly: the response
+ * is entirely valid, CSP enforcement happens client-side, so the image
+ * just silently never loads with nothing in any server log to explain
+ * why (the exact style-src nonce failure mode the note above already
+ * describes, just for img-src). Configurable at Settings > Security >
+ * Trusted Image Sources, one origin per line, rather than hardcoded to
+ * any one host — this stays a genuinely optional, site-owner-controlled
+ * allowance, never an assumed dependency on any other Lumora
+ * application (see CLAUDE.md's Independence section).
+ */
+add_filter('csp_directives', static function (array $directives) use ($config): array {
+    $validOrigins = TrustedImageOrigins::parse((string) $config->option('trusted_image_origins', ''));
+
+    if ($validOrigins !== []) {
+        $directives['img-src'] .= ' ' . implode(' ', $validOrigins);
+    }
 
     return $directives;
 });

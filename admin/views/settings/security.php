@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Plugins\LumoraShield\LumoraShieldService;
 
 if (!isset($kernel)) {
@@ -59,6 +60,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('settings/security') . '?akismet_verify=' . ($kernel->akismet->verifyKey() ? 'valid' : 'invalid'));
         exit;
     }
+
+    if ($form === 'trusted_image_origins' && Csrf::verify('trusted_image_origins', $token)) {
+        // Invalid lines are dropped here (TrustedImageOrigins::parse() —
+        // the same validation the csp_directives listener itself applies,
+        // include/bootstrap.php) rather than saved and then quietly
+        // ignored at header-build time, so what's shown back on this
+        // screen always matches what's actually allowed.
+        $validOrigins = TrustedImageOrigins::parse((string) ($_POST['trusted_image_origins'] ?? ''));
+
+        $kernel->config->setOption('trusted_image_origins', implode("\n", $validOrigins));
+
+        header('Location: ' . admin_url('settings/security') . '?trusted_image_origins_saved=1');
+        exit;
+    }
 }
 
 $maxAttempts = (int) $kernel->config->option('login_max_attempts', '5');
@@ -66,6 +81,7 @@ $windowMinutes = (int) round(((int) $kernel->config->option('login_window_second
 $lockoutMinutes = (int) round(((int) $kernel->config->option('login_lockout_seconds', '900')) / 60);
 $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) === '1';
 $akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key', '')) !== '';
+$trustedImageOrigins = (string) $kernel->config->option('trusted_image_origins', '');
 ?>
 <h1 class="lp-admin__title">Security</h1>
 
@@ -75,6 +91,10 @@ $akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key',
 
 <?php if (isset($_GET['akismet_saved'])): ?>
     <div class="lp-alert lp-alert--success">Spam protection settings saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trusted_image_origins_saved'])): ?>
+    <div class="lp-alert lp-alert--success">Trusted image sources saved.</div>
 <?php endif; ?>
 
 <?php if (($_GET['akismet_verify'] ?? null) === 'valid'): ?>
@@ -141,6 +161,33 @@ $akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key',
         <?= Csrf::field('akismet_verify') ?>
         <input type="hidden" name="form" value="akismet_verify">
         <button type="submit" class="lp-button">Verify Key</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Trusted Image Sources</h2>
+    <p class="lp-field__hint">
+        Optional. Content that embeds an <code>&lt;img&gt;</code> pointing
+        at an external host — a personal gallery or CDN you run yourself,
+        for example — won't display by default: the site's Content
+        Security Policy only allows images from this site's own domain,
+        and a blocked image fails silently in the visitor's browser with
+        nothing in any server log to explain why. List any external
+        origins you trust below, one per line
+        (<code>https://gallery.example.com</code>), to allow images from
+        them through.
+    </p>
+    <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+        <?= Csrf::field('trusted_image_origins') ?>
+        <input type="hidden" name="form" value="trusted_image_origins">
+
+        <p class="lp-field">
+            <label for="trusted-image-origins">Trusted origins</label>
+            <textarea id="trusted-image-origins" name="trusted_image_origins" rows="4" placeholder="https://gallery.example.com"><?= esc_html($trustedImageOrigins) ?></textarea>
+            <span class="lp-field__hint">One per line. Scheme and host only — no path (<code>https://gallery.example.com</code>, not <code>https://gallery.example.com/albums/</code>). A line that doesn't match this is dropped when saved.</span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
 

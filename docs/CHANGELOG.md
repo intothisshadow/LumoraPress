@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Settings &rsaquo; Security &rsaquo; Trusted Image Sources: content
+  embedding an `<img>` from an external host (a personal gallery/CDN,
+  for example) previously failed to display with nothing to explain
+  why — the site's Content Security Policy only allows same-origin
+  images by default, and a blocked image fails silently in the
+  visitor's browser, invisible on the server side. Admins can now list
+  trusted external origins, one per line, to allow images from them
+  through.
 - WordPress Importer (LPP-004): a Simple Download Monitor item whose
   source file is missing on disk (e.g. a host that deletes zip uploads)
   is no longer dropped entirely — the Download itself is still created
