@@ -428,6 +428,16 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         </table>
     </section>
 
+    <section class="lp-admin__panel">
+        <h2>Check for Updates</h2>
+        <p>Checks the configured release source for a new Lumora Press release. No site content, user data, or identifying information is ever transmitted — only a plain GET request is made to the release API.</p>
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
+            <?= Csrf::field('github_check') ?>
+            <input type="hidden" name="form" value="github_check">
+            <button type="submit" class="lp-button lp-button--primary">Check for Updates Now</button>
+        </form>
+    </section>
+
     <div class="lp-tabs">
         <div class="lp-tabs__list" role="tablist" aria-label="Update method">
             <button type="button" class="lp-tabs__tab" id="lp-tab-github" role="tab" aria-selected="<?= $activeTab === 'github' ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-github" tabindex="<?= $activeTab === 'github' ? '0' : '-1' ?>">GitHub</button>
@@ -476,16 +486,6 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
-
-            <section class="lp-admin__panel">
-                <h2>Check for Updates</h2>
-                <p>Checks the configured release source for a new Lumora Press release. No site content, user data, or identifying information is ever transmitted — only a plain GET request is made to the release API.</p>
-                <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>">
-                    <?= Csrf::field('github_check') ?>
-                    <input type="hidden" name="form" value="github_check">
-                    <button type="submit" class="lp-button lp-button--primary">Check for Updates Now</button>
-                </form>
-            </section>
         </div>
 
         <div class="lp-tabs__panel" id="lp-tabpanel-manual" role="tabpanel" aria-labelledby="lp-tab-manual"<?= $activeTab === 'manual' ? '' : ' hidden' ?>>
