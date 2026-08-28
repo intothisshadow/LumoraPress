@@ -199,6 +199,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 exit;
             }
         }
+    } elseif ($form === 'set_default_featured_image' && $currentUser->can('manage_options') && Csrf::verify('set_default_featured_image', $token)) {
+        // LP-099: the same site-wide default-featured-image option
+        // Media Manager > Thumbnails' own dropdown writes
+        // (admin/views/media/thumbnails.php) — kept behind the identical
+        // manage_options gate that page already applies to this same
+        // option, even though this page itself only requires
+        // upload_files (see that file's own LP-061 note for why).
+        $id = (int) ($_POST['id'] ?? 0);
+        $kernel->config->setOption('default_featured_image_media_id', (string) $id);
+        header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
+        exit;
+    } elseif ($form === 'unset_default_featured_image' && $currentUser->can('manage_options') && Csrf::verify('unset_default_featured_image', $token)) {
+        $id = (int) ($_POST['id'] ?? 0);
+        $kernel->config->setOption('default_featured_image_media_id', '0');
+        header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
+        exit;
     } elseif ($form === 'replace_file' && Csrf::verify('replace_file', $token)) {
         $id = (int) ($_POST['id'] ?? 0);
 
@@ -497,6 +513,46 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                     </form>
                 </div>
             </div>
+
+            <?php if ($currentUser->can('manage_options')): ?>
+                <?php
+                /*
+                 * LP-099: a direct way to set/unset the site-wide default
+                 * featured image (LP-040 — used as the featured image, and
+                 * Open Graph/Twitter Card image, for any post/page that
+                 * doesn't have its own) from the image itself, instead of
+                 * only via a long filename <select> on Media Manager >
+                 * Thumbnails. Both write the same
+                 * default_featured_image_media_id option that page's own
+                 * dropdown does, so either place keeps working
+                 * interchangeably.
+                 */
+                $isDefaultFeaturedImage = (int) $kernel->config->option('default_featured_image_media_id', '0') === (int) $editingMedia['id'];
+                ?>
+                <div class="lp-default-featured-image">
+                    <h3>Default Featured Image</h3>
+                    <?php if ($isDefaultFeaturedImage): ?>
+                        <p class="lp-field__hint">This image is the site's current default featured image.</p>
+                        <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
+                            <?= Csrf::field('unset_default_featured_image') ?>
+                            <input type="hidden" name="form" value="unset_default_featured_image">
+                            <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
+                            <button type="submit" class="lp-button lp-button--secondary">Remove as Default</button>
+                        </form>
+                    <?php else: ?>
+                        <p class="lp-field__hint">
+                            Used as the featured image, and Open Graph/Twitter Card image, for any post or page
+                            that doesn't have its own.
+                        </p>
+                        <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
+                            <?= Csrf::field('set_default_featured_image') ?>
+                            <input type="hidden" name="form" value="set_default_featured_image">
+                            <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
+                            <button type="submit" class="lp-button lp-button--secondary">Set as Default Featured Image</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         <?php elseif (str_starts_with((string) $editingMedia['mime_type'], 'video/')): ?>
             <?php
             $posterMedia = $editingMedia['poster_media_id'] !== null ? $mediaService->find((int) $editingMedia['poster_media_id']) : null;

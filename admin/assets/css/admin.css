@@ -2408,6 +2408,10 @@ body.lp-admin-login {
     margin-bottom: 1rem;
 }
 
+.lp-default-featured-image {
+    margin-bottom: 1rem;
+}
+
 .lp-thumbnails__list {
     display: flex;
     flex-wrap: wrap;

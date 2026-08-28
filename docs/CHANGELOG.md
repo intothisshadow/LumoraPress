@@ -76,6 +76,10 @@ All notable changes to Lumora Press are documented in this file.
   and per-IP rate-limit spam protection are always on; optional Google
   reCAPTCHA, Cloudflare Turnstile, and Akismet integrations are off by
   default (Contact Forms &rsaquo; Settings).
+- Media Manager: an image's own edit panel now has a "Set as Default
+  Featured Image"/"Remove as Default" action (LP-099), a direct
+  alternative to picking it from Media Manager &rsaquo; Thumbnails'
+  filename dropdown.
 
 ### Fixed
 
