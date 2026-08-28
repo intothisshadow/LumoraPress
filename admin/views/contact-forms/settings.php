@@ -63,7 +63,7 @@ $akismetConfigured = $kernel->akismet->isEnabled();
         <h2>Google reCAPTCHA</h2>
         <p class="lp-field__hint">Off by default. Requires a reCAPTCHA v2 ("I'm not a robot") site and secret key.</p>
         <p class="lp-field lp-field--checkbox">
-            <label>
+            <label class="lp-field--checkbox">
                 <input type="checkbox" name="contact_forms_recaptcha_enabled" value="1" <?= $recaptchaEnabled ? 'checked' : '' ?>>
                 Enable reCAPTCHA on every contact form
             </label>
@@ -80,7 +80,7 @@ $akismetConfigured = $kernel->akismet->isEnabled();
         <h2>Cloudflare Turnstile</h2>
         <p class="lp-field__hint">Off by default. Requires a Turnstile site and secret key.</p>
         <p class="lp-field lp-field--checkbox">
-            <label>
+            <label class="lp-field--checkbox">
                 <input type="checkbox" name="contact_forms_turnstile_enabled" value="1" <?= $turnstileEnabled ? 'checked' : '' ?>>
                 Enable Turnstile on every contact form
             </label>
@@ -96,7 +96,7 @@ $akismetConfigured = $kernel->akismet->isEnabled();
 
         <h2>Akismet</h2>
         <p class="lp-field lp-field--checkbox">
-            <label>
+            <label class="lp-field--checkbox">
                 <input type="checkbox" name="contact_forms_use_akismet" value="1" <?= $useAkismet ? 'checked' : '' ?> <?= $akismetConfigured ? '' : 'disabled' ?>>
                 Also check contact form submissions with Akismet
             </label>
