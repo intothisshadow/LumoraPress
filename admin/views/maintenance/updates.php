@@ -68,6 +68,41 @@ $backupCsrfAction = static function (string $action, ?string $filesFilename, ?st
     return $action . '_' . ($filesFilename ?? '') . '_' . ($databaseFilename ?? '');
 };
 
+/*
+ * "Live progress, no full-page reload per batch" — admin/assets/js/
+ * update-continue.js drives the backup_files/backup_database batch loop
+ * (continue_install/continue_backup_now below) via repeated fetch()
+ * calls instead of the plain redirect-per-batch a <form> submit would
+ * do, so the panel updates in place instead of visibly reloading once
+ * per batch (confusing on a large site needing dozens of batches — no
+ * way to tell "still working" from "stuck"). That script marks its
+ * request with this header; the two branches below respond with JSON
+ * instead of a redirect only when it's present, so a plain form submit
+ * (no JS, or update-continue.js failed to load) keeps working exactly
+ * as before — the redirect-based flow is the real fallback, not a
+ * legacy path being phased out.
+ */
+$isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+$updateStageLabels = [
+    'backup_files' => 'Backing up files…',
+    'backup_database' => 'Backing up database…',
+    'apply_files' => 'Applying update files…',
+    'migrate' => 'Running database migrations…',
+    'clear_cache' => 'Clearing caches…',
+    'cleanup' => 'Finishing up…',
+];
+
+$respondJson = static function (array $payload): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -195,14 +230,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'status' => $result['status']->value,
                     'message' => $result['message'],
                 ]);
-                header('Location: ' . admin_url('maintenance/updates') . '?' . $query);
+                $redirectUrl = admin_url('maintenance/updates') . '?' . $query;
+
+                if ($isAjaxContinueRequest) {
+                    $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+                }
+
+                header('Location: ' . $redirectUrl);
                 exit;
+            }
+
+            if ($isAjaxContinueRequest) {
+                $respondJson([
+                    'done' => false,
+                    'stage' => $result['stage'],
+                    'stage_label' => $updateStageLabels[$result['stage']] ?? $result['stage'],
+                    'database_progress' => $result['database_progress'] ?? null,
+                    // Csrf::verify() above already consumed this
+                    // request's token (single-use) — a fresh one for the
+                    // JS's next fetch() call, since a plain JSON response
+                    // carries no embedded <form> to read one back out of.
+                    'csrf_token' => Csrf::token('update_continue_install'),
+                ]);
             }
 
             header('Location: ' . admin_url('maintenance/updates') . '?update_token=' . urlencode($installToken));
             exit;
         } catch (\Throwable $exception) {
-            header('Location: ' . admin_url('maintenance/updates') . '?update_error=' . urlencode($exception->getMessage()));
+            $redirectUrl = admin_url('maintenance/updates') . '?update_error=' . urlencode($exception->getMessage());
+
+            if ($isAjaxContinueRequest) {
+                $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+            }
+
+            header('Location: ' . $redirectUrl);
             exit;
         }
     } elseif ($form === 'cancel' && Csrf::verify('update_cancel', $token)) {
@@ -320,22 +381,47 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = $exception->getMessage();
         }
     } elseif ($form === 'continue_backup_now' && Csrf::verify('backup_now_continue', $token)) {
-        // Same redirect-per-batch shape as 'continue_install' above, for
-        // the on-demand backup button.
+        // Same shape as 'continue_install' above, for the on-demand
+        // backup button — see the AJAX-vs-redirect note near the top of
+        // this file.
         $backupToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
 
         try {
             $result = $updates->continueBackupNow($backupToken);
 
             if ($result['done']) {
-                header('Location: ' . admin_url('maintenance/updates') . '?backed_up=1');
+                $redirectUrl = admin_url('maintenance/updates') . '?backed_up=1';
+
+                if ($isAjaxContinueRequest) {
+                    $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+                }
+
+                header('Location: ' . $redirectUrl);
                 exit;
+            }
+
+            if ($isAjaxContinueRequest) {
+                $respondJson([
+                    'done' => false,
+                    'stage' => $result['stage'],
+                    'stage_label' => $updateStageLabels[$result['stage']] ?? $result['stage'],
+                    'database_progress' => $result['database_progress'] ?? null,
+                    // See the identical note in the 'continue_install'
+                    // branch above — a fresh token for the next fetch().
+                    'csrf_token' => Csrf::token('backup_now_continue'),
+                ]);
             }
 
             header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($backupToken));
             exit;
         } catch (\Throwable $exception) {
-            header('Location: ' . admin_url('maintenance/updates') . '?backup_error=' . urlencode($exception->getMessage()));
+            $redirectUrl = admin_url('maintenance/updates') . '?backup_error=' . urlencode($exception->getMessage());
+
+            if ($isAjaxContinueRequest) {
+                $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+            }
+
+            header('Location: ' . $redirectUrl);
             exit;
         }
     }
@@ -362,15 +448,6 @@ if ($backupToken !== null) {
         $error = $exception->getMessage();
     }
 }
-
-$updateStageLabels = [
-    'backup_files' => 'Backing up files…',
-    'backup_database' => 'Backing up database…',
-    'apply_files' => 'Applying update files…',
-    'migrate' => 'Running database migrations…',
-    'clear_cache' => 'Clearing caches…',
-    'cleanup' => 'Finishing up…',
-];
 
 $installedVersion = $updates->installedVersion();
 $recentLog = $updates->recentLog(10);
@@ -471,8 +548,9 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
             Updating from <strong><?= esc_html($installProgress['from_version']) ?></strong>
             to <strong><?= esc_html($installProgress['to_version']) ?></strong>&hellip;
         </p>
-        <p class="lp-field__hint"><?= esc_html($updateStageLabels[$installProgress['stage']] ?? $installProgress['stage']) ?></p>
-        <p class="lp-field__hint">This page advances on its own — leave it open until it finishes.</p>
+        <p class="lp-field__hint" data-lp-update-stage><?= esc_html($updateStageLabels[$installProgress['stage']] ?? $installProgress['stage']) ?></p>
+        <p class="lp-field__hint" data-lp-update-detail hidden></p>
+        <p class="lp-field__hint">This page updates on its own — leave it open until it finishes.</p>
 
         <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-install-continue">
             <?= Csrf::field('update_continue_install') ?>
@@ -641,8 +719,9 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <p>A backup is a snapshot of the application's own code and configuration — not your uploaded media, which a backup or update never touches.</p>
 
         <?php if ($backupNowProgress !== null): ?>
-            <p class="lp-field__hint">Backing up — <?= esc_html($updateStageLabels[$backupNowProgress['stage']] ?? $backupNowProgress['stage']) ?></p>
-            <p class="lp-field__hint">This page advances on its own — leave it open until it finishes.</p>
+            <p class="lp-field__hint">Backing up — <span data-lp-update-stage><?= esc_html($updateStageLabels[$backupNowProgress['stage']] ?? $backupNowProgress['stage']) ?></span></p>
+            <p class="lp-field__hint" data-lp-update-detail hidden></p>
+            <p class="lp-field__hint">This page updates on its own — leave it open until it finishes.</p>
             <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-backup-continue" class="lp-admin__inline-form">
                 <?= Csrf::field('backup_now_continue') ?>
                 <input type="hidden" name="form" value="continue_backup_now">

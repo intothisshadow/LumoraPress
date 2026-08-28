@@ -419,7 +419,7 @@ if (!function_exists('powered_by_html')) {
      */
     function powered_by_html(): string
     {
-        return 'Powered by <a href="' . esc_url('https://coding.unloved-heart.net/scripts/lumorapress') . '" target="_blank" rel="noopener noreferrer">Lumora Press</a>.';
+        return 'Powered by <a href="' . esc_url('https://coding.unloved-heart.net/scripts/lumorapress') . '" target="_blank" rel="noopener noreferrer">Lumora Press</a>';
     }
 }
 

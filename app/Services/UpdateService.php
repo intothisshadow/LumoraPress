@@ -714,7 +714,13 @@ final class UpdateService
     }
 
     /**
-     * @return array{done: bool, stage?: string, files_path?: string, database_path?: string}
+     * @return array{
+     *     done: bool,
+     *     stage?: string,
+     *     files_path?: string,
+     *     database_path?: string,
+     *     database_progress?: array{table_index: int, row_offset: int},
+     * }
      */
     public function continueBackupNow(string $token): array
     {
@@ -756,7 +762,14 @@ final class UpdateService
 
         $this->writeBackupNowState($state);
 
-        return ['done' => false, 'stage' => $state['stage']];
+        return [
+            'done' => false,
+            'stage' => $state['stage'],
+            'database_progress' => [
+                'table_index' => $state['database_table_index'],
+                'row_offset' => $state['database_row_offset'],
+            ],
+        ];
     }
 
     /**

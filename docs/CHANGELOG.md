@@ -114,6 +114,13 @@ All notable changes to Lumora Press are documented in this file.
   admin-editable footer copyright text field). Every theme's footer now
   always shows a fixed "Powered by Lumora Press" line, linked to
   <https://coding.unloved-heart.net/scripts/lumorapress>, in its place.
+- Maintenance &rsaquo; Updates: the staged install/backup "Continue"
+  step now drives itself via background requests instead of reloading
+  the whole page once per batch — on a large site needing many batches,
+  the repeated full-page reloads gave no way to tell "still working"
+  from "stuck." The panel now updates in place and shows real progress
+  (e.g. "Table 3 — 42,150 rows read so far…") as each batch completes. A
+  plain page reload per batch remains the fallback with JavaScript off.
 
 ### Fixed
 
