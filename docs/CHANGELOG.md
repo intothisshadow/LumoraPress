@@ -108,6 +108,13 @@ All notable changes to Lumora Press are documented in this file.
   enabled. Uses a completely separate request from the GitHub update
   checker, so enabling or disabling either one never affects the other.
 
+### Changed
+
+- Removed the Settings &rsaquo; General &rsaquo; Footer section (the
+  admin-editable footer copyright text field). Every theme's footer now
+  always shows a fixed "Powered by Lumora Press" line, linked to
+  <https://coding.unloved-heart.net/scripts/lumorapress>, in its place.
+
 ### Fixed
 
 - Maintenance &rsaquo; Updates: with more than one backup listed in the

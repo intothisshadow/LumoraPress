@@ -35,8 +35,11 @@ if (!isset($kernel)) {
  * URL, Administration email, Tagline, Timezone (plus the bootstrap.php
  * fix that makes it actually apply — see that file's docblock), Date/Time
  * format (see LumoraPress\Core\Theme\SiteBranding::dateFormat()/
- * timeFormat() and the the_date()/the_time() theme helpers), Footer
- * copyright text, Meta description, and Default Open Graph image.
+ * timeFormat() and the the_date()/the_time() theme helpers), Meta
+ * description, and Default Open Graph image. (The Footer copyright text
+ * setting this originally also added was later removed in favor of a
+ * fixed "Powered by Lumora Press" attribution — see footer.php in each
+ * theme.)
  * Still deferred, each needing real infrastructure that doesn't exist yet
  * rather than just a settings field: user registration and its default
  * role (no public sign-up flow exists), default language (no i18n string
@@ -81,13 +84,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
     $kernel->config->setOption('time_format', $timeFormatInput !== '' ? $timeFormatInput : 'g:i a');
 
     do_action('general_settings_saved', 'date_time_settings');
-
-    header('Location: ' . admin_url('settings/general') . '?saved=1');
-    exit;
-} elseif ($form === 'footer_settings' && Csrf::verify('footer_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $kernel->config->setOption('footer_copyright_text', trim((string) ($_POST['footer_copyright_text'] ?? '')));
-
-    do_action('general_settings_saved', 'footer_settings');
 
     header('Location: ' . admin_url('settings/general') . '?saved=1');
     exit;
@@ -250,22 +246,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             </select>
             <input type="text" id="time-format-custom" name="time_format_custom" value="<?= esc_attr($currentTimeFormat) ?>" data-lp-format-custom-input <?= $isCustomTimeFormat ? '' : 'hidden' ?>>
             <span class="lp-field__hint">Currently: <?= esc_html(the_time($dateTimeSample)) ?></span>
-        </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
-
-<section class="lp-admin__panel">
-    <h2>Footer</h2>
-    <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>">
-        <?= Csrf::field('footer_settings') ?>
-        <input type="hidden" name="form" value="footer_settings">
-
-        <p class="lp-field">
-            <label for="footer-copyright-text">Footer copyright text</label>
-            <input type="text" id="footer-copyright-text" name="footer_copyright_text" value="<?= esc_attr((string) $kernel->config->option('footer_copyright_text', '')) ?>">
-            <span class="lp-field__hint">Leave blank to keep the theme's default "&copy; <?= esc_html((string) date('Y')) ?> <?= esc_html(site_name()) ?>." line.</span>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

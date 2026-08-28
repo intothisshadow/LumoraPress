@@ -247,7 +247,7 @@ reference.
 | `site_logo_url(): ?string` / `favicon_url(): ?string` | Configured logo/favicon URL, or `null`. |
 | `meta_description(): string` | Site-wide fallback meta description. |
 | `default_og_image_url(): ?string` | Site-wide fallback Open Graph/Twitter Card image. |
-| `footer_copyright_text(): string` | Admin-configured footer text; empty by default (keep your theme's own auto `© {year} {site}` fallback when this is empty). |
+| `powered_by_html(): string` | Fixed "Powered by Lumora Press" attribution HTML, linked to the project homepage — not site-configurable. Returns raw HTML, safe to echo directly. |
 | `search_engines_discouraged(): bool` | Whether Settings › Reading has asked search engines not to index the site — print `<meta name="robots" content="noindex,nofollow">` when true. |
 | `the_date(\DateTimeInterface $date): string` / `the_time(\DateTimeInterface $date): string` | Formats a date/time using the admin-configured format (Settings › General). Always use these instead of calling `->format()` directly, so admin-configured date/time formats are respected everywhere. |
 
@@ -405,7 +405,7 @@ has_welcome_message(): bool
 welcome_message_placement(): string     // 'header' or 'sidebar'
 welcome_message(): void                 // echoes rendered HTML, no-ops if empty
 
-// Footer section — distinct from the existing footer_copyright_text()
+// Footer section — distinct from the fixed powered_by_html() attribution
 has_footer_html(): bool
 footer_html(): void                     // echoes rendered HTML, no-ops if empty
 ```

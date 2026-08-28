@@ -392,7 +392,6 @@ SiteBranding::set(
     customCss: (string) $config->option('custom_css', ''),
     tagline: (string) $config->option('site_tagline', ''),
     metaDescription: (string) $config->option('meta_description', ''),
-    footerCopyrightText: (string) $config->option('footer_copyright_text', ''),
     defaultOgImageUrl: $resolveMediaUrl($config->option('default_og_image_media_id', '')),
     dateFormat: (string) $config->option('date_format', 'F j, Y'),
     timeFormat: (string) $config->option('time_format', 'g:i a'),

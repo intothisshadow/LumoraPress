@@ -342,11 +342,11 @@ final class ThemeOptions
             ],
         ));
 
-        // footer_html is deliberately separate from footer_copyright_text
-        // (a General Settings field, global not per-theme — see
-        // SiteBranding::footerCopyrightText()) — this is additional
-        // per-theme footer content, not a replacement for the copyright line.
-        $this->registerSection('footer', 'Footer', 'Additional footer content, shown alongside the copyright text set on the General Settings screen.');
+        // footer_html is deliberately separate from the fixed "Powered by
+        // Lumora Press" attribution every theme's footer.php prints (see
+        // powered_by_html()) — this is additional, per-theme footer
+        // content, not a replacement for it.
+        $this->registerSection('footer', 'Footer', 'Additional footer content, shown alongside the "Powered by Lumora Press" line.');
 
         $this->registerField(new ThemeOptionField(
             key: 'footer_html',

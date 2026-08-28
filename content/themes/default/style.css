@@ -1568,10 +1568,14 @@ img {
     flex: 1 1 220px;
 }
 
-.lp-site-footer__copyright {
+.lp-site-footer__powered-by {
     color: var(--lp-text-muted);
     font-size: 0.85rem;
     margin: 0;
+}
+
+.lp-site-footer__powered-by a {
+    color: inherit;
 }
 
 .lp-site-footer__feed-link {
@@ -1587,8 +1591,8 @@ img {
 }
 
 /* LP-123: additional per-theme footer content, distinct from the
-   copyright line above it (.lp-site-footer__copyright, a separate
-   General Settings field). */
+   fixed "Powered by Lumora Press" line above it
+   (.lp-site-footer__powered-by). */
 .lp-footer-html {
     width: 100%;
     margin-top: 0.75rem;

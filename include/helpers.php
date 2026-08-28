@@ -408,16 +408,18 @@ if (!function_exists('meta_description')) {
     }
 }
 
-if (!function_exists('footer_copyright_text')) {
+if (!function_exists('powered_by_html')) {
     /**
-     * Admin-configured footer copyright text (LP-042 General settings).
-     * Empty by default, in which case a theme's own footer keeps
-     * rendering its existing auto-generated "© {year} {site name}." line
-     * unchanged rather than showing nothing.
+     * Fixed "Powered by Lumora Press" attribution, linked to the project
+     * homepage — not a site-configurable option (the old admin-editable
+     * Footer copyright text setting was removed in favor of this), so
+     * every theme calls this instead of writing the link markup itself.
+     * Returns raw HTML, safe to echo directly (same "no further
+     * escaping" contract as footer_html()).
      */
-    function footer_copyright_text(): string
+    function powered_by_html(): string
     {
-        return SiteBranding::footerCopyrightText();
+        return 'Powered by <a href="' . esc_url('https://coding.unloved-heart.net/scripts/lumorapress') . '" target="_blank" rel="noopener noreferrer">Lumora Press</a>.';
     }
 }
 
@@ -633,11 +635,11 @@ if (!function_exists('has_footer_html')) {
 
 if (!function_exists('footer_html')) {
     /**
-     * LP-123 Footer section. Deliberately separate from and rendered
-     * apart from footer_copyright_text() (a General Settings field, not a
-     * Theme Option) — this is additional, per-theme footer content, not
-     * a replacement for the copyright line. See welcome_message()'s
-     * docblock for the render_content() pipeline this shares.
+     * LP-123 Footer section. A per-theme Theme Option, unrelated to the
+     * fixed "Powered by Lumora Press" attribution (powered_by_html()) —
+     * this is additional footer content an admin can add, not a
+     * replacement for it. See welcome_message()'s docblock for the
+     * render_content() pipeline this shares.
      */
     function footer_html(): void
     {

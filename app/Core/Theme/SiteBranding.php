@@ -19,12 +19,12 @@ namespace LumoraPress\Core\Theme;
 
 /**
  * Static bridge exposing site identity (name, tagline, logo, favicon,
- * custom CSS — LP-034; meta description, footer copyright text, default
- * Open Graph image, date/time display format — LP-042; search engine
- * visibility — LP-046) to the procedural site_name()/site_tagline()/
- * site_logo_url()/favicon_url()/custom_css()/meta_description()/
- * footer_copyright_text()/default_og_image_url()/the_date()/the_time()/
- * search_engines_discouraged() helpers used by themes. Mirrors SiteUrl/
+ * custom CSS — LP-034; meta description, default Open Graph image,
+ * date/time display format — LP-042; search engine visibility — LP-046)
+ * to the procedural site_name()/site_tagline()/site_logo_url()/
+ * favicon_url()/custom_css()/meta_description()/default_og_image_url()/
+ * the_date()/the_time()/search_engines_discouraged() helpers used by
+ * themes. Mirrors SiteUrl/
  * BasePath: themes have no other route to PressConfig/MediaService, and
  * these values are identical on every page, so threading them through
  * every SiteController render() call would mean touching every action
@@ -44,8 +44,6 @@ final class SiteBranding
 
     private static string $metaDescription = '';
 
-    private static string $footerCopyrightText = '';
-
     private static ?string $defaultOgImageUrl = null;
 
     private static string $dateFormat = 'F j, Y';
@@ -61,7 +59,6 @@ final class SiteBranding
         string $customCss,
         string $tagline = '',
         string $metaDescription = '',
-        string $footerCopyrightText = '',
         ?string $defaultOgImageUrl = null,
         string $dateFormat = 'F j, Y',
         string $timeFormat = 'g:i a',
@@ -73,7 +70,6 @@ final class SiteBranding
         self::$customCss = $customCss;
         self::$tagline = $tagline;
         self::$metaDescription = $metaDescription;
-        self::$footerCopyrightText = $footerCopyrightText;
         self::$defaultOgImageUrl = $defaultOgImageUrl;
         self::$dateFormat = $dateFormat !== '' ? $dateFormat : 'F j, Y';
         self::$timeFormat = $timeFormat !== '' ? $timeFormat : 'g:i a';
@@ -108,11 +104,6 @@ final class SiteBranding
     public static function metaDescription(): string
     {
         return self::$metaDescription;
-    }
-
-    public static function footerCopyrightText(): string
-    {
-        return self::$footerCopyrightText;
     }
 
     public static function defaultOgImageUrl(): ?string

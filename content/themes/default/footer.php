@@ -24,13 +24,7 @@
         <nav class="lp-site-footer__nav" aria-label="Footer">
             <?php nav_menu('footer'); ?>
         </nav>
-        <p class="lp-site-footer__copyright">
-            <?php if (footer_copyright_text() !== ''): ?>
-                <?= esc_html(footer_copyright_text()) ?>
-            <?php else: ?>
-                &copy; <?= esc_html(date('Y')) ?> <?= esc_html(site_name()) ?>.
-            <?php endif; ?>
-        </p>
+        <p class="lp-site-footer__powered-by"><?= powered_by_html() ?></p>
         <a class="lp-site-footer__feed-link" href="<?= esc_url(home_url('feed')) ?>">Subscribe via RSS</a>
         <?php if (has_footer_html()): ?>
             <?php footer_html(); ?>
