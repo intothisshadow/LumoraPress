@@ -7,10 +7,12 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - Lumora Shield plugin (LPP-001), first module — Stop User Enumeration:
-  a new optional plugin, off by default, whose Settings screen offers
-  "Stop user enumeration via author archives" (on by default once
-  enabled) and "Hide author archives entirely" (off by default). See
-  Fixed below for the vulnerability this closes.
+  a new optional plugin whose Settings screen offers "Hide author
+  archives entirely" (off by default) for site owners who want no
+  `/author/{slug}` exposure at all, even for authors who have actually
+  published something. See Fixed below for the underlying
+  vulnerability, which is closed in core regardless of whether this
+  plugin is installed.
 - Font Awesome icon picker (LPP-002): the Post/Page/Downloads editor
   toolbar (both the Visual/HTML and Markdown editors) gains an "Insert
   Icon" button, searching a curated set of Font Awesome icon names by
@@ -54,10 +56,12 @@ All notable changes to Lumora Press are documented in this file.
 - The public author archive (`/author/{slug}`) revealed whether a
   username existed: any real username returned a normal page (even an
   empty one, for an account that's never published anything) while a
-  made-up username 404'd. Closed via the optional Lumora Shield plugin's
-  Stop User Enumeration module (see Added above) — a real author who has
-  actually published something stays visible either way, since their
-  identity is already public via their own posts.
+  made-up username 404'd. Now 404s a zero-published-post author exactly
+  like a nonexistent one — unconditionally, regardless of whether the
+  Lumora Shield plugin (see Added above) is installed, since there's no
+  real feature/tradeoff being removed. A real author who has actually
+  published something stays visible, since their identity is already
+  public via their own posts.
 - Font Awesome's duplicate-loading detector (LP-128) could flag another
   active plugin as a conflict when its main file merely mentioned "Font
   Awesome" in a comment (e.g. cross-referencing a shared hook pattern),

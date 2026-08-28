@@ -36,8 +36,6 @@ $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
 if ($form === 'lumora_shield_settings' && Csrf::verify('lumora_shield_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $service->saveSettings([
-        'enabled' => isset($_POST['enabled']),
-        'protect_user_enumeration' => isset($_POST['protect_user_enumeration']),
         'hide_author_archives' => isset($_POST['hide_author_archives']),
     ]);
 
@@ -56,12 +54,10 @@ $settings = $service->settings();
 <section class="lp-admin__panel">
     <h2>Stop User Enumeration</h2>
     <p class="lp-field__hint">
-        Closes a username-existence oracle in the public author archive
-        (<code>/author/{slug}</code>): without this, requesting a real
-        username's archive page always returns a normal page (even if
-        that person has never published anything), while a made-up
-        username 404s — letting an attacker confirm which usernames
-        exist by trying a list of guesses.
+        The public author archive (<code>/author/{slug}</code>) already
+        404s an author with zero published posts exactly like a
+        nonexistent username — that fix has no downside, so it's always
+        on, no setting needed. The one real choice left is below.
     </p>
 
     <form method="post" action="<?= esc_url(admin_url('lumora-shield/settings')) ?>">
@@ -70,37 +66,16 @@ $settings = $service->settings();
 
         <p class="lp-field">
             <label class="lp-field--checkbox">
-                <input type="checkbox" name="enabled" value="1" <?= $settings['enabled'] ? 'checked' : '' ?>>
-                Enable Lumora Shield
-            </label>
-        </p>
-
-        <p class="lp-field">
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="protect_user_enumeration" value="1" <?= $settings['protect_user_enumeration'] ? 'checked' : '' ?>>
-                Stop user enumeration via author archives
-            </label>
-            <span class="lp-field__hint">
-                An author's archive page 404s exactly like a nonexistent
-                username whenever they have zero published posts.
-                A real author's page — anyone who has actually published
-                something — keeps working normally; their name is already
-                public on their own posts, so hiding it too would break a
-                legitimate feature without closing any real gap.
-            </span>
-        </p>
-
-        <p class="lp-field">
-            <label class="lp-field--checkbox">
                 <input type="checkbox" name="hide_author_archives" value="1" <?= $settings['hide_author_archives'] ? 'checked' : '' ?>>
                 Hide author archives entirely
             </label>
             <span class="lp-field__hint">
                 Every <code>/author/{slug}</code> URL 404s, regardless of
-                how many posts that person has published. Stronger than
-                the option above, but removes a public feature (visitors
-                can no longer browse "everything by this author") — most
-                sites only need the option above.
+                how many posts that person has published — including
+                real authors who have actually published something. This
+                removes a public feature (visitors can no longer browse
+                "everything by this author"), so it's off by default;
+                most sites don't need it.
             </span>
         </p>
 

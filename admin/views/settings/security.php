@@ -137,11 +137,7 @@ $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) ===
     </form>
 </section>
 
-<?php
-$lumoraShieldAuthorProtectionActive = class_exists(LumoraShieldService::class, false)
-    && LumoraShieldService::instance()->settings()['enabled']
-    && (LumoraShieldService::instance()->settings()['protect_user_enumeration'] || LumoraShieldService::instance()->settings()['hide_author_archives']);
-?>
+<?php $lumoraShieldActive = class_exists(LumoraShieldService::class, false); ?>
 <section class="lp-admin__panel">
     <h2>User Enumeration</h2>
     <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
@@ -149,21 +145,13 @@ $lumoraShieldAuthorProtectionActive = class_exists(LumoraShieldService::class, f
         <li>The "Forgot password?" flow always shows the same "if that address is registered, we sent a link" response, whether or not the email exists, and is itself IP-rate-limited to blunt large-scale probing.</li>
         <li>No REST API endpoint that lists or exposes user accounts.</li>
         <li>The login form already gives a single generic error for both a wrong username and a wrong password.</li>
+        <li>The public author archive (<code>/author/{slug}</code>) 404s an author with zero published posts exactly like a nonexistent username.</li>
     </ul>
-    <?php if ($lumoraShieldAuthorProtectionActive): ?>
+    <?php if ($lumoraShieldActive): ?>
         <p class="lp-field__hint">
-            The public author-archive route's own username-enumeration
-            gap is closed by the Lumora Shield plugin — see
-            <a href="<?= esc_url(admin_url('lumora-shield/settings')) ?>">Lumora Shield &rsaquo; Settings</a>.
+            The Lumora Shield plugin adds an optional stronger setting —
+            see <a href="<?= esc_url(admin_url('lumora-shield/settings')) ?>">Lumora Shield &rsaquo; Settings</a>.
         </p>
-    <?php else: ?>
-        <div class="lp-alert lp-alert--error">
-            The public author-archive route (<code>/author/{slug}</code>)
-            reveals whether a username exists — any real username
-            returns a normal page while a made-up one 404s. Activate the
-            <a href="<?= esc_url(admin_url('plugins')) ?>">Lumora Shield plugin</a>
-            to close this.
-        </div>
     <?php endif; ?>
 </section>
 

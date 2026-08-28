@@ -18,7 +18,7 @@ declare(strict_types=1);
 /*
  * Plugin Name: Lumora Shield
  * Plugin URI: https://lumorapress.org/plugins/lumora-shield
- * Description: Optional hardening and spam-prevention features beyond core's own basics — starting with Stop User Enumeration (an author-archive username-existence oracle closed, plus an optional full author-archive hide).
+ * Description: Optional hardening and spam-prevention features beyond core's own basics — starting with Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core).
  * Version: 0.1.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
@@ -37,9 +37,11 @@ $lumoraShield = LumoraShieldService::instance();
 
 /*
  * SiteController::author() calls this filter (default true, a no-op when
- * this plugin isn't active) after resolving the requested slug to a real
- * user but before deciding whether to render the archive — see that
- * method's own docblock for the enumeration oracle this closes.
+ * this plugin isn't active) after already 404ing a zero-published-post
+ * author unconditionally in core — this listener only ever has one more
+ * thing to decide: whether the administrator opted into hiding every
+ * author archive outright (see LumoraShieldService::authorArchiveVisible()'s
+ * own docblock).
  */
 add_filter(
     'lumora_shield_author_archive_visible',
