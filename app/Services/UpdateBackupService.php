@@ -39,6 +39,13 @@ final class UpdateBackupService
     private const ROW_BATCH_SIZE = 500;
 
     /**
+     * Rows written per backupDatabaseBatch() call — sized for one HTTP
+     * request rather than one query (see that method's docblock for why
+     * the database dump needs to span multiple requests at all).
+     */
+    private const BATCH_ROW_COUNT = 5000;
+
+    /**
      * @param array<int, string> $corePaths Paths (relative to $installRoot) that
      *     make up the core application and are safe to back up/restore.
      */
@@ -66,6 +73,16 @@ final class UpdateBackupService
 
     public function backupFiles(string $version): string
     {
+        // Not a hard cap on this host's own configuration — requests "no
+        // limit" the same way the GeoLite2 import and WordPress Importer
+        // scans already do for a comparably slow, one-time admin
+        // operation. corePaths covers only the application's own code
+        // (never content/uploads or other user data), so this is bounded
+        // by the size of the app itself rather than by site content —
+        // unlike backupDatabase(), it isn't expected to actually need
+        // this, but it costs nothing to have it.
+        set_time_limit(0);
+
         $this->ensureBackupsDirectory();
 
         $path = rtrim($this->backupsPath, '/') . '/files-' . $this->safeVersion($version) . '-' . date('Ymd-His') . '.zip';
@@ -288,41 +305,122 @@ final class UpdateBackupService
         $this->checksums?->clear();
     }
 
+    /**
+     * Dumps the whole database in one call — a thin wrapper looping
+     * backupDatabaseBatch() to completion, kept for every existing
+     * caller (createBackupNow()'s synchronous fallback callers, tests)
+     * that doesn't need the multi-request staging itself.
+     */
     public function backupDatabase(string $version): string
     {
-        $this->ensureBackupsDirectory();
+        $path = null;
+        $tableIndex = 0;
+        $rowOffset = 0;
 
-        $path = rtrim($this->backupsPath, '/') . '/db-' . $this->safeVersion($version) . '-' . date('Ymd-His') . '.sql';
+        do {
+            $result = $this->backupDatabaseBatch($version, $path, $tableIndex, $rowOffset);
+            $path = $result['path'];
+            $tableIndex = $result['tableIndex'];
+            $rowOffset = $result['rowOffset'];
+        } while (!$result['done']);
+
+        return $path;
+    }
+
+    /**
+     * Writes up to BATCH_ROW_COUNT rows of the database dump per call —
+     * sized for one HTTP request, since dumping the whole database in
+     * one synchronous call (the original shape of this method) can
+     * complete successfully server-side yet still have its HTTP response
+     * killed by the webserver/proxy layer on a large site, the same
+     * "PHP finishes, the response doesn't arrive" failure mode diagnosed
+     * for the Visitor Stats plugin's GeoLite2 import (LPP-014). Unlike
+     * that CSV-reading case, no fseek()/resume-by-byte-offset is needed
+     * here — writing the dump is inherently append-only across calls, so
+     * (tableIndex, rowOffset) alone is enough to resume.
+     *
+     * $path is null on the very first call (this method then picks the
+     * real destination filename and opens it fresh); every subsequent
+     * call must pass back the exact path this method returned before.
+     * $tableIndex/$rowOffset must likewise be threaded straight through
+     * from the previous call's return value — 0/0 to start.
+     *
+     * The table list is re-resolved (a cheap SHOW TABLES) on every call
+     * rather than trusted from prior state, the same "recompute, don't
+     * trust stale state" choice ViewStatsService::importGeoCsvBatch()
+     * makes for its Locations CSV.
+     *
+     * @return array{path: string, tableIndex: int, rowOffset: int, done: bool}
+     */
+    public function backupDatabaseBatch(
+        string $version,
+        ?string $path,
+        int $tableIndex,
+        int $rowOffset,
+        int $batchSize = self::BATCH_ROW_COUNT,
+    ): array {
+        // Each batch is capped specifically so it finishes well within a
+        // shared host's default execution-time limit; set_time_limit(0)
+        // here is a safety margin, not because a single batch is
+        // expected to run long.
+        set_time_limit(0);
+
+        $isFirstCall = $path === null;
+
+        if ($isFirstCall) {
+            $this->ensureBackupsDirectory();
+            $path = rtrim($this->backupsPath, '/') . '/db-' . $this->safeVersion($version) . '-' . date('Ymd-His') . '.sql';
+        }
 
         $tables = $this->prefixedTables();
-        $handle = fopen($path, 'wb');
+        $handle = fopen($path, $isFirstCall ? 'wb' : 'ab');
 
         if ($handle === false) {
             throw new RuntimeException('Unable to create the database backup file.');
         }
 
         try {
-            foreach ($tables as $table) {
-                $createRow = $this->database->fetchOne("SHOW CREATE TABLE `{$table}`");
-                $createSql = (string) ($createRow['Create Table'] ?? '');
+            $remaining = $batchSize;
 
-                if ($createSql === '') {
+            while ($remaining > 0 && $tableIndex < count($tables)) {
+                $table = $tables[$tableIndex];
+
+                if ($rowOffset === 0 && !$this->writeCreateStatements($handle, $table)) {
+                    // SHOW CREATE TABLE came back empty (the table
+                    // vanished mid-backup) — skip its data entirely,
+                    // mirroring the original single-shot method's own
+                    // "continue" for this same edge case.
+                    $tableIndex++;
+
                     continue;
                 }
 
-                fwrite($handle, "DROP TABLE IF EXISTS `{$table}`;" . self::STATEMENT_MARKER);
-                fwrite($handle, $createSql . self::STATEMENT_MARKER);
+                $result = $this->writeTableDataBatch($handle, $table, $rowOffset, $remaining);
+                $remaining -= $result['written'];
+                $rowOffset += $result['written'];
 
-                $this->writeTableData($handle, $table);
+                if ($result['exhausted']) {
+                    $tableIndex++;
+                    $rowOffset = 0;
+                }
             }
+
+            $done = $tableIndex >= count($tables);
         } finally {
             fclose($handle);
         }
 
-        $this->verifyDatabaseBackup($path);
-        $this->pruneOldBackups('db-*.sql');
+        if ($done) {
+            $this->verifyDatabaseBackup($path);
+            $this->pruneOldBackups('db-*.sql');
+        }
 
-        return $path;
+        return [
+            'path' => $path,
+            'tableIndex' => $tableIndex,
+            'rowOffset' => $rowOffset,
+            'done' => $done,
+        ];
     }
 
     public function restoreDatabase(string $backupSqlPath): void
@@ -381,42 +479,91 @@ final class UpdateBackupService
     }
 
     /**
+     * Writes a table's DROP/CREATE pair, or returns false (writing
+     * nothing) if the table no longer exists — the caller then skips its
+     * data entirely, the same behavior the original single-shot
+     * backupDatabase() had for this edge case.
+     *
      * @param resource $handle
      */
-    private function writeTableData($handle, string $table): void
+    private function writeCreateStatements($handle, string $table): bool
     {
-        $offset = 0;
+        $createRow = $this->database->fetchOne("SHOW CREATE TABLE `{$table}`");
+        $createSql = (string) ($createRow['Create Table'] ?? '');
 
-        while (true) {
-            $rows = $this->database->fetchAll("SELECT * FROM `{$table}` LIMIT " . self::ROW_BATCH_SIZE . " OFFSET {$offset}");
+        if ($createSql === '') {
+            return false;
+        }
+
+        fwrite($handle, "DROP TABLE IF EXISTS `{$table}`;" . self::STATEMENT_MARKER);
+        fwrite($handle, $createSql . self::STATEMENT_MARKER);
+
+        return true;
+    }
+
+    /**
+     * Writes up to $maxRows of $table's data, starting at $offset, in
+     * internal chunks of ROW_BATCH_SIZE (one query each, same as the
+     * original single-shot method) — bounded by $maxRows so a caller can
+     * cap how much work a single request does regardless of how large
+     * the table actually is.
+     *
+     * @param resource $handle
+     * @return array{written: int, exhausted: bool} exhausted is true once
+     *     the table's real end was reached (a query returned fewer rows
+     *     than asked for) — false means $maxRows was hit first and more
+     *     of this same table remains for a later call.
+     */
+    private function writeTableDataBatch($handle, string $table, int $offset, int $maxRows): array
+    {
+        $written = 0;
+        $exhausted = false;
+
+        while ($written < $maxRows) {
+            $limit = min(self::ROW_BATCH_SIZE, $maxRows - $written);
+            $rows = $this->database->fetchAll("SELECT * FROM `{$table}` LIMIT {$limit} OFFSET " . ($offset + $written));
 
             if ($rows === []) {
+                $exhausted = true;
+
                 break;
             }
 
-            $columns = array_keys($rows[0]);
-            $columnList = implode(', ', array_map(static fn (string $column): string => "`{$column}`", $columns));
+            $this->writeInsertStatement($handle, $table, $rows);
+            $written += count($rows);
 
-            $valueGroups = [];
+            if (count($rows) < $limit) {
+                $exhausted = true;
 
-            foreach ($rows as $row) {
-                $values = array_map(
-                    fn (mixed $value): string => $value === null ? 'NULL' : $this->database->pdo()->quote((string) $value),
-                    array_values($row),
-                );
-
-                $valueGroups[] = '(' . implode(', ', $values) . ')';
-            }
-
-            $insert = "INSERT INTO `{$table}` ({$columnList}) VALUES " . implode(', ', $valueGroups) . ';';
-            fwrite($handle, $insert . self::STATEMENT_MARKER);
-
-            $offset += self::ROW_BATCH_SIZE;
-
-            if (count($rows) < self::ROW_BATCH_SIZE) {
                 break;
             }
         }
+
+        return ['written' => $written, 'exhausted' => $exhausted];
+    }
+
+    /**
+     * @param resource $handle
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private function writeInsertStatement($handle, string $table, array $rows): void
+    {
+        $columns = array_keys($rows[0]);
+        $columnList = implode(', ', array_map(static fn (string $column): string => "`{$column}`", $columns));
+
+        $valueGroups = [];
+
+        foreach ($rows as $row) {
+            $values = array_map(
+                fn (mixed $value): string => $value === null ? 'NULL' : $this->database->pdo()->quote((string) $value),
+                array_values($row),
+            );
+
+            $valueGroups[] = '(' . implode(', ', $values) . ')';
+        }
+
+        $insert = "INSERT INTO `{$table}` ({$columnList}) VALUES " . implode(', ', $valueGroups) . ';';
+        fwrite($handle, $insert . self::STATEMENT_MARKER);
     }
 
     private function addDirectoryToZip(ZipArchive $zip, string $absolutePath, string $relativePath): void

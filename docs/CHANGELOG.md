@@ -105,6 +105,25 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Maintenance &rsaquo; Updates: with more than one backup listed in the
+  Backups panel, only the last row's Restore/Delete button actually
+  worked — every earlier row's button silently failed with an invalid
+  CSRF token, since every row's form shared the same CSRF action name
+  and each row's token overwrote the previous one's. Each row's forms
+  now use a distinct action name, matching the convention already used
+  for other per-row admin actions.
+- Maintenance &rsaquo; Updates: the automatic pre-update backup and the
+  on-demand "Back up now" button could time out on a site with enough
+  database rows — the backup completed successfully on the server, but
+  the webserver/proxy killed the response before it could be delivered.
+  Both now run in batches across several auto-advancing requests instead
+  of one long request, the same fix already applied to the Visitor Stats
+  plugin's GeoLite2 import. The Updates page shows live progress
+  ("Backing up database…") while this runs and needs no interaction —
+  it advances on its own. (The automatic rollback restore that follows a
+  failed update is unchanged and still runs as a single request; a very
+  large database could in principle hit the same limit there too, though
+  this hasn't been reported.)
 - The public author archive (`/author/{slug}`) revealed whether a
   username existed: any real username returned a normal page (even an
   empty one, for an account that's never published anything) while a

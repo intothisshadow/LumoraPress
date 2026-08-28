@@ -53,9 +53,26 @@ $updates = $kernel->updates;
 $error = null;
 $checkResult = null;
 
+/*
+ * Backups have no numeric id, and Csrf::token()/verify() key tokens by
+ * action name alone — with a bare 'restore_backup'/'delete_backup'
+ * action shared across every row, each row's Csrf::field() call
+ * overwrites the previous row's session token, so only the last-rendered
+ * row of each form type ever verifies. Suffixing the action with the
+ * row's own filenames (the same values restoreBackup()/deleteBackup()
+ * already key on) gives each row a distinct action name, matching the
+ * '..._' . $id convention used for other per-row forms elsewhere in the
+ * admin (e.g. media.php's 'delete_folder_' . $id).
+ */
+$backupCsrfAction = static function (string $action, ?string $filesFilename, ?string $databaseFilename): string {
+    return $action . '_' . ($filesFilename ?? '') . '_' . ($databaseFilename ?? '');
+};
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+    $backupFilesFilename = is_string($_POST['files_filename'] ?? null) && $_POST['files_filename'] !== '' ? $_POST['files_filename'] : null;
+    $backupDatabaseFilename = is_string($_POST['database_filename'] ?? null) && $_POST['database_filename'] !== '' ? $_POST['database_filename'] : null;
 
     if ($form === 'upload' && Csrf::verify('update_upload', $token)) {
         $parseIniBytes = static function (string $value): int {
@@ -135,18 +152,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ]);
 
         // See the 'upload' branch above for why this releases the
-        // session lock before a long-running operation — install() is
-        // the single longest step in the whole update pipeline.
+        // session lock before a long-running operation — beginInstall()
+        // itself is quick (it only sets up the pipeline state and takes
+        // the lock), but bundling this here matches every other
+        // long-running branch on this page.
         session_write_close();
 
         try {
-            $result = $updates->install($installToken, $currentUser->id);
-            $query = http_build_query([
-                'installed' => 1,
-                'status' => $result['status']->value,
-                'message' => $result['message'],
-            ]);
-            header('Location: ' . admin_url('maintenance/updates') . '?' . $query);
+            $begin = $updates->beginInstall($installToken, $currentUser->id);
+            header('Location: ' . admin_url('maintenance/updates') . '?update_token=' . urlencode($begin['token']));
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -157,6 +171,39 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // failure here, since success already exited via the
             // redirect above.
             session_start();
+        }
+    } elseif ($form === 'continue_install' && Csrf::verify('update_continue_install', $token)) {
+        /*
+         * Advances exactly one stage of the pipeline beginInstall() above
+         * started — the database backup stage in particular can take
+         * several of these calls on a large site (see
+         * UpdateBackupService::backupDatabaseBatch()'s docblock), each
+         * one its own short request rather than one long-lived one that
+         * risks a webserver/proxy timeout. Redirects back to the same
+         * ?update_token= GET either way, so a page reload never
+         * resubmits this POST — the GET render below then shows the
+         * next auto-advancing "Continue" form, or the finished result.
+         */
+        $installToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        try {
+            $result = $updates->continueInstall($installToken);
+
+            if ($result['done']) {
+                $query = http_build_query([
+                    'installed' => 1,
+                    'status' => $result['status']->value,
+                    'message' => $result['message'],
+                ]);
+                header('Location: ' . admin_url('maintenance/updates') . '?' . $query);
+                exit;
+            }
+
+            header('Location: ' . admin_url('maintenance/updates') . '?update_token=' . urlencode($installToken));
+            exit;
+        } catch (\Throwable $exception) {
+            header('Location: ' . admin_url('maintenance/updates') . '?update_error=' . urlencode($exception->getMessage()));
+            exit;
         }
     } elseif ($form === 'cancel' && Csrf::verify('update_cancel', $token)) {
         $cancelToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
@@ -244,27 +291,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('maintenance/updates') . '?settings_saved=1');
         exit;
-    } elseif ($form === 'restore_backup' && Csrf::verify('restore_backup', $token)) {
-        $filesFilename = is_string($_POST['files_filename'] ?? null) && $_POST['files_filename'] !== '' ? $_POST['files_filename'] : null;
-        $databaseFilename = is_string($_POST['database_filename'] ?? null) && $_POST['database_filename'] !== '' ? $_POST['database_filename'] : null;
-
-        if ($filesFilename === null) {
+    } elseif ($form === 'restore_backup' && Csrf::verify($backupCsrfAction('restore_backup', $backupFilesFilename, $backupDatabaseFilename), $token)) {
+        if ($backupFilesFilename === null) {
             $error = 'This backup has no files archive to restore.';
         } else {
             try {
-                $updates->restoreBackup($filesFilename, $databaseFilename);
+                $updates->restoreBackup($backupFilesFilename, $backupDatabaseFilename);
                 header('Location: ' . admin_url('maintenance/updates') . '?restored=1');
                 exit;
             } catch (\Throwable $exception) {
                 $error = $exception->getMessage();
             }
         }
-    } elseif ($form === 'delete_backup' && Csrf::verify('delete_backup', $token)) {
-        $filesFilename = is_string($_POST['files_filename'] ?? null) && $_POST['files_filename'] !== '' ? $_POST['files_filename'] : null;
-        $databaseFilename = is_string($_POST['database_filename'] ?? null) && $_POST['database_filename'] !== '' ? $_POST['database_filename'] : null;
-
+    } elseif ($form === 'delete_backup' && Csrf::verify($backupCsrfAction('delete_backup', $backupFilesFilename, $backupDatabaseFilename), $token)) {
         try {
-            $updates->deleteBackup($filesFilename, $databaseFilename);
+            $updates->deleteBackup($backupFilesFilename, $backupDatabaseFilename);
             header('Location: ' . admin_url('maintenance/updates') . '?deleted=1');
             exit;
         } catch (\Throwable $exception) {
@@ -272,14 +313,64 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     } elseif ($form === 'backup_now' && Csrf::verify('backup_now', $token)) {
         try {
-            $updates->createBackupNow();
-            header('Location: ' . admin_url('maintenance/updates') . '?backed_up=1');
+            $begin = $updates->beginBackupNow();
+            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($begin['token']));
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
         }
+    } elseif ($form === 'continue_backup_now' && Csrf::verify('backup_now_continue', $token)) {
+        // Same redirect-per-batch shape as 'continue_install' above, for
+        // the on-demand backup button.
+        $backupToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        try {
+            $result = $updates->continueBackupNow($backupToken);
+
+            if ($result['done']) {
+                header('Location: ' . admin_url('maintenance/updates') . '?backed_up=1');
+                exit;
+            }
+
+            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($backupToken));
+            exit;
+        } catch (\Throwable $exception) {
+            header('Location: ' . admin_url('maintenance/updates') . '?backup_error=' . urlencode($exception->getMessage()));
+            exit;
+        }
     }
 }
+
+$updateToken = is_string($_GET['update_token'] ?? null) ? $_GET['update_token'] : null;
+$installProgress = null;
+
+if ($updateToken !== null) {
+    try {
+        $installProgress = $updates->installProgress($updateToken);
+    } catch (\Throwable $exception) {
+        $error = $exception->getMessage();
+    }
+}
+
+$backupToken = is_string($_GET['backup_token'] ?? null) ? $_GET['backup_token'] : null;
+$backupNowProgress = null;
+
+if ($backupToken !== null) {
+    try {
+        $backupNowProgress = $updates->backupNowProgress($backupToken);
+    } catch (\Throwable $exception) {
+        $error = $exception->getMessage();
+    }
+}
+
+$updateStageLabels = [
+    'backup_files' => 'Backing up files…',
+    'backup_database' => 'Backing up database…',
+    'apply_files' => 'Applying update files…',
+    'migrate' => 'Running database migrations…',
+    'clear_cache' => 'Clearing caches…',
+    'cleanup' => 'Finishing up…',
+];
 
 $installedVersion = $updates->installedVersion();
 $recentLog = $updates->recentLog(10);
@@ -331,6 +422,14 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
     <div class="lp-alert lp-alert--success">Backup created.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['update_error'])): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html((string) $_GET['update_error']) ?></div>
+<?php endif; ?>
+
+<?php if (isset($_GET['backup_error'])): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html((string) $_GET['backup_error']) ?></div>
+<?php endif; ?>
+
 <section class="lp-admin__panel lp-update__status-bar">
     <div class="lp-update__status-group">
         <p class="lp-update__status-label">Installed Version</p>
@@ -365,7 +464,24 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
     </div>
 </section>
 
-<?php if ($checkResult !== null): ?>
+<?php if ($installProgress !== null): ?>
+    <section class="lp-admin__panel">
+        <h2>Installing Update</h2>
+        <p>
+            Updating from <strong><?= esc_html($installProgress['from_version']) ?></strong>
+            to <strong><?= esc_html($installProgress['to_version']) ?></strong>&hellip;
+        </p>
+        <p class="lp-field__hint"><?= esc_html($updateStageLabels[$installProgress['stage']] ?? $installProgress['stage']) ?></p>
+        <p class="lp-field__hint">This page advances on its own — leave it open until it finishes.</p>
+
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-install-continue">
+            <?= Csrf::field('update_continue_install') ?>
+            <input type="hidden" name="form" value="continue_install">
+            <input type="hidden" name="token" value="<?= esc_attr($updateToken) ?>">
+            <button type="submit" class="lp-button lp-button--primary">Continue</button>
+        </form>
+    </section>
+<?php elseif ($checkResult !== null): ?>
     <section class="lp-admin__panel">
         <h2>Update Summary</h2>
         <p>
@@ -523,11 +639,23 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
     <section class="lp-admin__panel">
         <h2>Backups</h2>
         <p>A backup is a snapshot of the application's own code and configuration — not your uploaded media, which a backup or update never touches.</p>
-        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
-            <?= Csrf::field('backup_now') ?>
-            <input type="hidden" name="form" value="backup_now">
-            <button type="submit" class="lp-button lp-button--primary">Back up now</button>
-        </form>
+
+        <?php if ($backupNowProgress !== null): ?>
+            <p class="lp-field__hint">Backing up — <?= esc_html($updateStageLabels[$backupNowProgress['stage']] ?? $backupNowProgress['stage']) ?></p>
+            <p class="lp-field__hint">This page advances on its own — leave it open until it finishes.</p>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-backup-continue" class="lp-admin__inline-form">
+                <?= Csrf::field('backup_now_continue') ?>
+                <input type="hidden" name="form" value="continue_backup_now">
+                <input type="hidden" name="token" value="<?= esc_attr($backupToken) ?>">
+                <button type="submit" class="lp-button lp-button--primary">Continue</button>
+            </form>
+        <?php else: ?>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form">
+                <?= Csrf::field('backup_now') ?>
+                <input type="hidden" name="form" value="backup_now">
+                <button type="submit" class="lp-button lp-button--primary">Back up now</button>
+            </form>
+        <?php endif; ?>
 
         <?php if ($backups === []): ?>
             <p class="lp-admin__widget-placeholder">No backups have been created yet — one is made automatically before every update.</p>
@@ -552,7 +680,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                             <td class="lp-admin__row-actions">
                                 <?php if ($backup['files_filename'] !== null): ?>
                                     <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-confirm="Restore Lumora Press to this backup? Everything since it was taken will be lost.">
-                                        <?= Csrf::field('restore_backup') ?>
+                                        <?= Csrf::field($backupCsrfAction('restore_backup', $backup['files_filename'], $backup['database_filename'])) ?>
                                         <input type="hidden" name="form" value="restore_backup">
                                         <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">
                                         <?php if ($backup['database_filename'] !== null): ?>
@@ -562,7 +690,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                                     </form>
                                 <?php endif; ?>
                                 <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this backup permanently?">
-                                    <?= Csrf::field('delete_backup') ?>
+                                    <?= Csrf::field($backupCsrfAction('delete_backup', $backup['files_filename'], $backup['database_filename'])) ?>
                                     <input type="hidden" name="form" value="delete_backup">
                                     <?php if ($backup['files_filename'] !== null): ?>
                                         <input type="hidden" name="files_filename" value="<?= esc_attr($backup['files_filename']) ?>">

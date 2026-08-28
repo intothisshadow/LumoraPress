@@ -202,7 +202,10 @@ overwritten.
    it was set to beforehand once finished — the admin area itself always
    stays reachable), runs any new database migrations, and verifies the
    new version took effect. If anything goes wrong after the backup, it
-   automatically restores the files and database from that backup.
+   automatically restores the files and database from that backup. On a
+   site with a large database, the backup step runs in batches across
+   several auto-advancing page loads rather than one long request — the
+   page keeps advancing on its own, no action needed.
 
 Every download, validation, and install step shows live, step-by-step
 progress on the Updates page while it runs (e.g. Backing up files &rarr;

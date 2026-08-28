@@ -448,48 +448,17 @@ final class UpdateService
             $databaseBackupPath = $this->backups->backupDatabase($fromVersion);
 
             $this->progress?->stage('apply_files');
-            $effectiveRoot = rtrim($stagingPath . '/' . $rootPrefix, '/');
-            $effectiveCorePaths = $this->resolveEffectiveCorePaths($effectiveRoot);
-
-            foreach ($effectiveCorePaths as $corePath) {
-                $this->overlayPath($effectiveRoot . '/' . $corePath, rtrim($this->installRoot, '/') . '/' . $corePath);
-            }
+            $effectiveCorePaths = $this->applyFilesStage($stagingPath, $rootPrefix);
 
             $this->progress?->stage('migrate');
-            (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->migrate();
+            $this->migrateStage();
 
             $this->progress?->stage('clear_cache');
-
-            if (function_exists('opcache_reset')) {
-                opcache_reset();
-            }
-
-            $this->clearCache();
-
-            $installedVersion = $this->installedVersion();
-
-            if ($installedVersion !== $toVersion) {
-                throw new RuntimeException('The installed version did not match the update package after applying it.');
-            }
+            $this->clearCacheAndVerifyStage($toVersion);
 
             $this->progress?->stage('cleanup');
+            $this->cleanupStage($effectiveCorePaths, $stagingPath);
 
-            /*
-             * install/ is one of $corePaths, so a release package that
-             * ships it just re-extracted it onto the installation above —
-             * resurrecting it even on a site where the administrator had
-             * already deleted it after their original install. Best-effort
-             * only, same as the installer's own cleanup: a locked-down host
-             * that won't let PHP delete its own files is an unremarkable
-             * outcome here too, and the Dashboard's leftover-install-
-             * directory alert (LP-030) still catches it either way.
-             */
-            (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
-
-            $this->removeObsoleteCorePaths($effectiveCorePaths);
-            $this->checksums?->write($this->checksums->computeForCorePaths($effectiveCorePaths));
-
-            $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, UpdateStatus::Success);
             $this->progress?->complete(true, "Successfully updated from {$fromVersion} to {$toVersion}.");
@@ -501,26 +470,7 @@ final class UpdateService
                 'to_version' => $toVersion,
             ];
         } catch (Throwable $exception) {
-            error_log('[updates] Update failed: ' . $exception->getMessage());
-
-            $status = UpdateStatus::Failed;
-            $message = 'The update failed and no changes were made.';
-
-            if ($filesBackupPath !== null) {
-                try {
-                    $this->backups->restoreFiles($filesBackupPath);
-
-                    if ($databaseBackupPath !== null) {
-                        $this->backups->restoreDatabase($databaseBackupPath);
-                    }
-
-                    $status = UpdateStatus::RolledBack;
-                    $message = 'The update failed and was automatically rolled back to the previous version.';
-                } catch (Throwable $restoreException) {
-                    error_log('[updates] Rollback failed: ' . $restoreException->getMessage());
-                    $message = 'The update failed and automatic rollback also failed. Restore manually from storage/backups/ immediately.';
-                }
-            }
+            ['status' => $status, 'message' => $message] = $this->rollbackAndFail($exception, $filesBackupPath, $databaseBackupPath);
 
             $this->removeDirectory($stagingPath);
             $this->logAttempt($fromVersion, $toVersion, $source, $status, $message, $filesBackupPath, $databaseBackupPath, $performedByUserId);
@@ -536,6 +486,502 @@ final class UpdateService
         } finally {
             $this->endMaintenanceMode($previousMaintenanceMode);
             $this->releaseLock();
+        }
+    }
+
+    /**
+     * "Visible Update Progress" spans multiple HTTP requests for the two
+     * backup stages (see UpdateBackupService::backupDatabaseBatch()'s
+     * docblock for why) — beginInstall() does the one-time setup
+     * (validate the token, acquire the lock, begin maintenance mode, fire
+     * the "before" hook) and persists a small JSON state file;
+     * continueInstall() is then called once per request until it reports
+     * done, advancing exactly one pipeline stage per call. The lock and
+     * maintenance mode are deliberately NOT released here — they persist
+     * (the lock via its file, maintenance mode via the `PressConfig`
+     * option, both naturally surviving across requests) until
+     * continueInstall() reaches a terminal state.
+     *
+     * install() above is unchanged and still available as a single
+     * synchronous call — every existing caller/test keeps working
+     * exactly as before; the admin Updates page is the only caller
+     * switched to this staged pair.
+     *
+     * @return array{token: string, stage: string, from_version: string, to_version: string}
+     */
+    public function beginInstall(string $token, ?int $performedByUserId): array
+    {
+        $this->validateToken($token);
+
+        $stagingPath = $this->stagingPathFor($token);
+        $pending = $this->readPending($stagingPath);
+
+        $this->acquireLock();
+
+        $previousMaintenanceMode = null;
+
+        try {
+            $previousMaintenanceMode = $this->beginMaintenanceMode();
+            $this->hooks->doAction('lumora_press_before_update', $pending['from_version'], $pending['to_version']);
+
+            $state = [
+                'token' => $token,
+                'from_version' => $pending['from_version'],
+                'to_version' => $pending['to_version'],
+                'root_prefix' => $pending['root_prefix'],
+                'source' => $pending['source'],
+                'performed_by_user_id' => $performedByUserId,
+                'previous_maintenance_mode' => $previousMaintenanceMode,
+                'stage' => 'backup_files',
+                'files_backup_path' => null,
+                'database_backup_path' => null,
+                'database_table_index' => 0,
+                'database_row_offset' => 0,
+                'effective_core_paths' => null,
+            ];
+
+            $this->writeInstallState($state);
+            $this->progress?->stage('backup_files');
+
+            return [
+                'token' => $token,
+                'stage' => 'backup_files',
+                'from_version' => $pending['from_version'],
+                'to_version' => $pending['to_version'],
+            ];
+        } catch (Throwable $exception) {
+            $this->endMaintenanceMode($previousMaintenanceMode);
+            $this->releaseLock();
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Advances one stage of an install() pipeline started by
+     * beginInstall() — see that method's docblock. Call repeatedly until
+     * the returned `done` is true.
+     *
+     * @return array{
+     *     done: bool,
+     *     stage?: string,
+     *     status?: UpdateStatus,
+     *     message?: string,
+     *     from_version: string,
+     *     to_version: string,
+     *     database_progress?: array{table_index: int, row_offset: int},
+     * }
+     */
+    public function continueInstall(string $token): array
+    {
+        $this->validateToken($token);
+        $state = $this->readInstallState($token);
+        $stagingPath = $this->stagingPathFor($token);
+
+        try {
+            switch ($state['stage']) {
+                case 'backup_files':
+                    $state['files_backup_path'] = $this->backups->backupFiles($state['from_version']);
+                    $state['stage'] = 'backup_database';
+                    $this->progress?->stage('backup_database');
+
+                    break;
+
+                case 'backup_database':
+                    $result = $this->backups->backupDatabaseBatch(
+                        $state['from_version'],
+                        $state['database_backup_path'],
+                        $state['database_table_index'],
+                        $state['database_row_offset'],
+                    );
+                    $state['database_backup_path'] = $result['path'];
+                    $state['database_table_index'] = $result['tableIndex'];
+                    $state['database_row_offset'] = $result['rowOffset'];
+
+                    if ($result['done']) {
+                        $state['stage'] = 'apply_files';
+                        $this->progress?->stage('apply_files');
+                    }
+
+                    break;
+
+                case 'apply_files':
+                    $state['effective_core_paths'] = $this->applyFilesStage($stagingPath, $state['root_prefix']);
+                    $state['stage'] = 'migrate';
+                    $this->progress?->stage('migrate');
+
+                    break;
+
+                case 'migrate':
+                    $this->migrateStage();
+                    $state['stage'] = 'clear_cache';
+                    $this->progress?->stage('clear_cache');
+
+                    break;
+
+                case 'clear_cache':
+                    $this->clearCacheAndVerifyStage($state['to_version']);
+                    $state['stage'] = 'cleanup';
+                    $this->progress?->stage('cleanup');
+
+                    break;
+
+                case 'cleanup':
+                    $this->cleanupStage($state['effective_core_paths'] ?? [], $stagingPath);
+
+                    $message = "Successfully updated from {$state['from_version']} to {$state['to_version']}.";
+                    $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], UpdateStatus::Success, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
+                    $this->hooks->doAction('lumora_press_after_update', $state['from_version'], $state['to_version'], UpdateStatus::Success);
+                    $this->progress?->complete(true, $message);
+                    $this->endMaintenanceMode($state['previous_maintenance_mode']);
+                    $this->releaseLock();
+                    $this->deleteInstallState($token);
+
+                    return [
+                        'done' => true,
+                        'status' => UpdateStatus::Success,
+                        'message' => $message,
+                        'from_version' => $state['from_version'],
+                        'to_version' => $state['to_version'],
+                    ];
+            }
+        } catch (Throwable $exception) {
+            ['status' => $status, 'message' => $message] = $this->rollbackAndFail($exception, $state['files_backup_path'], $state['database_backup_path']);
+
+            $this->removeDirectory($stagingPath);
+            $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], $status, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
+            $this->hooks->doAction('lumora_press_after_update', $state['from_version'], $state['to_version'], $status);
+            $this->progress?->complete(false, $message);
+            $this->endMaintenanceMode($state['previous_maintenance_mode']);
+            $this->releaseLock();
+            $this->deleteInstallState($token);
+
+            return [
+                'done' => true,
+                'status' => $status,
+                'message' => $message,
+                'from_version' => $state['from_version'],
+                'to_version' => $state['to_version'],
+            ];
+        }
+
+        $this->writeInstallState($state);
+
+        return [
+            'done' => false,
+            'stage' => $state['stage'],
+            'from_version' => $state['from_version'],
+            'to_version' => $state['to_version'],
+            'database_progress' => [
+                'table_index' => $state['database_table_index'],
+                'row_offset' => $state['database_row_offset'],
+            ],
+        ];
+    }
+
+    /**
+     * Same staged shape as beginInstall()/continueInstall(), for the
+     * on-demand "Backup Now" button — two stages instead of six
+     * (backup_files, backup_database), and no maintenance-mode change
+     * (createBackupNow(), the synchronous equivalent this replaces on the
+     * admin Updates page, never touched it either).
+     *
+     * @return array{token: string, stage: string}
+     */
+    public function beginBackupNow(): array
+    {
+        $this->acquireLock();
+
+        try {
+            $state = [
+                'token' => bin2hex(random_bytes(16)),
+                'version' => $this->installedVersion(),
+                'stage' => 'backup_files',
+                'files_backup_path' => null,
+                'database_backup_path' => null,
+                'database_table_index' => 0,
+                'database_row_offset' => 0,
+            ];
+
+            $this->writeBackupNowState($state);
+
+            return ['token' => $state['token'], 'stage' => $state['stage']];
+        } catch (Throwable $exception) {
+            $this->releaseLock();
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @return array{done: bool, stage?: string, files_path?: string, database_path?: string}
+     */
+    public function continueBackupNow(string $token): array
+    {
+        $this->validateToken($token);
+        $state = $this->readBackupNowState($token);
+
+        try {
+            if ($state['stage'] === 'backup_files') {
+                $state['files_backup_path'] = $this->backups->backupFiles($state['version']);
+                $state['stage'] = 'backup_database';
+            } else {
+                $result = $this->backups->backupDatabaseBatch(
+                    $state['version'],
+                    $state['database_backup_path'],
+                    $state['database_table_index'],
+                    $state['database_row_offset'],
+                );
+                $state['database_backup_path'] = $result['path'];
+                $state['database_table_index'] = $result['tableIndex'];
+                $state['database_row_offset'] = $result['rowOffset'];
+
+                if ($result['done']) {
+                    $this->releaseLock();
+                    $this->deleteBackupNowState($token);
+
+                    return [
+                        'done' => true,
+                        'files_path' => $state['files_backup_path'],
+                        'database_path' => $state['database_backup_path'],
+                    ];
+                }
+            }
+        } catch (Throwable $exception) {
+            $this->releaseLock();
+            $this->deleteBackupNowState($token);
+
+            throw $exception;
+        }
+
+        $this->writeBackupNowState($state);
+
+        return ['done' => false, 'stage' => $state['stage']];
+    }
+
+    /**
+     * Read-only peek at an in-progress beginInstall()/continueInstall()
+     * pipeline's current stage — for the admin view's GET render between
+     * continueInstall() calls. Never advances anything.
+     *
+     * @return array{stage: string, from_version: string, to_version: string}
+     */
+    public function installProgress(string $token): array
+    {
+        $this->validateToken($token);
+        $state = $this->readInstallState($token);
+
+        return [
+            'stage' => (string) $state['stage'],
+            'from_version' => (string) $state['from_version'],
+            'to_version' => (string) $state['to_version'],
+        ];
+    }
+
+    /**
+     * Same read-only peek as installProgress(), for an in-progress
+     * beginBackupNow()/continueBackupNow() run.
+     *
+     * @return array{stage: string}
+     */
+    public function backupNowProgress(string $token): array
+    {
+        $this->validateToken($token);
+        $state = $this->readBackupNowState($token);
+
+        return ['stage' => (string) $state['stage']];
+    }
+
+    /**
+     * Shared rollback logic for install()'s and continueInstall()'s
+     * catch blocks — restores whatever backups exist so far and reports
+     * the resulting status/message, but does not itself touch the lock,
+     * maintenance mode, staging directory, logging, or hooks, since the
+     * two callers close those out slightly differently (install() via
+     * its own `finally`, continueInstall() explicitly per terminal path).
+     *
+     * @return array{status: UpdateStatus, message: string}
+     */
+    private function rollbackAndFail(Throwable $exception, ?string $filesBackupPath, ?string $databaseBackupPath): array
+    {
+        error_log('[updates] Update failed: ' . $exception->getMessage());
+
+        $status = UpdateStatus::Failed;
+        $message = 'The update failed and no changes were made.';
+
+        if ($filesBackupPath !== null) {
+            try {
+                $this->backups->restoreFiles($filesBackupPath);
+
+                if ($databaseBackupPath !== null) {
+                    $this->backups->restoreDatabase($databaseBackupPath);
+                }
+
+                $status = UpdateStatus::RolledBack;
+                $message = 'The update failed and was automatically rolled back to the previous version.';
+            } catch (Throwable $restoreException) {
+                error_log('[updates] Rollback failed: ' . $restoreException->getMessage());
+                $message = 'The update failed and automatic rollback also failed. Restore manually from storage/backups/ immediately.';
+            }
+        }
+
+        return ['status' => $status, 'message' => $message];
+    }
+
+    /**
+     * @return array<int, string> the effective core paths just overlaid —
+     *     cleanupStage() needs the same set to know what's now obsolete.
+     */
+    private function applyFilesStage(string $stagingPath, string $rootPrefix): array
+    {
+        $effectiveRoot = rtrim($stagingPath . '/' . $rootPrefix, '/');
+        $effectiveCorePaths = $this->resolveEffectiveCorePaths($effectiveRoot);
+
+        foreach ($effectiveCorePaths as $corePath) {
+            $this->overlayPath($effectiveRoot . '/' . $corePath, rtrim($this->installRoot, '/') . '/' . $corePath);
+        }
+
+        return $effectiveCorePaths;
+    }
+
+    private function migrateStage(): void
+    {
+        (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->migrate();
+    }
+
+    private function clearCacheAndVerifyStage(string $toVersion): void
+    {
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+        }
+
+        $this->clearCache();
+
+        $installedVersion = $this->installedVersion();
+
+        if ($installedVersion !== $toVersion) {
+            throw new RuntimeException('The installed version did not match the update package after applying it.');
+        }
+    }
+
+    /**
+     * @param array<int, string> $effectiveCorePaths
+     */
+    private function cleanupStage(array $effectiveCorePaths, string $stagingPath): void
+    {
+        /*
+         * install/ is one of $corePaths, so a release package that ships
+         * it just re-extracted it onto the installation above —
+         * resurrecting it even on a site where the administrator had
+         * already deleted it after their original install. Best-effort
+         * only, same as the installer's own cleanup: a locked-down host
+         * that won't let PHP delete its own files is an unremarkable
+         * outcome here too, and the Dashboard's leftover-install-
+         * directory alert (LP-030) still catches it either way.
+         */
+        (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
+
+        $this->removeObsoleteCorePaths($effectiveCorePaths);
+        $this->checksums?->write($this->checksums->computeForCorePaths($effectiveCorePaths));
+
+        $this->removeDirectory($stagingPath);
+    }
+
+    private function installStatePath(string $token): string
+    {
+        return dirname($this->lockFilePath) . '/install-state-' . $token . '.json';
+    }
+
+    private function backupNowStatePath(string $token): string
+    {
+        return dirname($this->lockFilePath) . '/backup-now-state-' . $token . '.json';
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    private function writeInstallState(array $state): void
+    {
+        $this->writeStateFile($this->installStatePath((string) $state['token']), $state);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readInstallState(string $token): array
+    {
+        return $this->readStateFile($this->installStatePath($token), 'No in-progress update was found for this token. Please start the update again.');
+    }
+
+    private function deleteInstallState(string $token): void
+    {
+        $this->deleteStateFile($this->installStatePath($token));
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    private function writeBackupNowState(array $state): void
+    {
+        $this->writeStateFile($this->backupNowStatePath((string) $state['token']), $state);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readBackupNowState(string $token): array
+    {
+        return $this->readStateFile($this->backupNowStatePath($token), 'No in-progress backup was found for this token. Please start the backup again.');
+    }
+
+    private function deleteBackupNowState(string $token): void
+    {
+        $this->deleteStateFile($this->backupNowStatePath($token));
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    private function writeStateFile(string $path, array $state): void
+    {
+        $parent = dirname($path);
+
+        if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
+            throw new RuntimeException('Unable to prepare the update state directory.');
+        }
+
+        // Atomic write (tmp file + rename()), same as UpdateProgress's
+        // own persistence — a request that crashes mid-write must never
+        // leave a torn, half-written state file for the next request to
+        // resume from.
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        file_put_contents($tmp, json_encode($state, JSON_THROW_ON_ERROR));
+        rename($tmp, $path);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readStateFile(string $path, string $missingMessage): array
+    {
+        if (!is_file($path)) {
+            throw new RuntimeException($missingMessage);
+        }
+
+        $contents = file_get_contents($path);
+        $state = $contents !== false ? json_decode($contents, true) : null;
+
+        if (!is_array($state)) {
+            throw new RuntimeException('The saved progress record is corrupt. Please start again.');
+        }
+
+        return $state;
+    }
+
+    private function deleteStateFile(string $path): void
+    {
+        if (is_file($path)) {
+            unlink($path);
         }
     }
 
