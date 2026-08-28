@@ -19,6 +19,7 @@ namespace LumoraPress\Plugins\VisitorStats;
 
 use LumoraPress\Core\Database\Database;
 use RuntimeException;
+use ZipArchive;
 
 /**
  * Four site-wide daily-aggregate breakdown tables (never per-post — a
@@ -37,6 +38,15 @@ use RuntimeException;
  */
 final class ViewStatsService
 {
+    /**
+     * Rows processed per importGeoCsvBatch() call by default — small
+     * enough that even a slow shared host completes one batch well
+     * within a typical webserver/proxy request timeout, large enough
+     * that a real ~450k-row Blocks CSV finishes in a low double-digit
+     * number of "Continue" clicks, not hundreds.
+     */
+    private const DEFAULT_IMPORT_BATCH_SIZE = 20000;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -134,16 +144,141 @@ final class ViewStatsService
     }
 
     /**
+     * Pulls the two CSV files this plugin needs straight out of MaxMind's
+     * own GeoLite2-Country **CSV-format** ZIP download — the same file
+     * `maxmind.com`'s download page offers, no local unzip step needed
+     * first. MaxMind nests the CSVs inside a dated subfolder
+     * (`GeoLite2-Country-CSV_YYYYMMDD/...`) that varies release to
+     * release, so entries are matched by basename rather than a fixed
+     * path; each matching entry is stream-copied straight to
+     * $blocksDestination/$locationsDestination without ever writing the
+     * ZIP's own folder structure to disk. Requires the PHP `zip`
+     * extension (bundled with PHP by default, but not universally
+     * enabled on every host) — throws a clear message if it's missing
+     * rather than a bare fatal error.
+     */
+    public function extractGeoZip(string $zipPath, string $blocksDestination, string $locationsDestination): void
+    {
+        if (!class_exists(ZipArchive::class)) {
+            throw new RuntimeException("This server's PHP doesn't have the zip extension enabled — upload the two CSV files directly instead.");
+        }
+
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('Could not open that file as a ZIP archive.');
+        }
+
+        try {
+            $blocksEntry = $this->findZipEntryByBasename($zip, 'GeoLite2-Country-Blocks-IPv4.csv');
+            $locationsEntry = $this->findZipEntryByBasename($zip, 'GeoLite2-Country-Locations-en.csv');
+
+            if ($blocksEntry === null || $locationsEntry === null) {
+                throw new RuntimeException('That ZIP file doesn\'t contain both GeoLite2-Country-Blocks-IPv4.csv and GeoLite2-Country-Locations-en.csv — make sure you downloaded the CSV format, not the .mmdb format.');
+            }
+
+            $this->extractZipEntryTo($zip, $blocksEntry, $blocksDestination);
+            $this->extractZipEntryTo($zip, $locationsEntry, $locationsDestination);
+        } finally {
+            $zip->close();
+        }
+    }
+
+    private function findZipEntryByBasename(ZipArchive $zip, string $basename): ?string
+    {
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entryName = $zip->getNameIndex($i);
+
+            if ($entryName !== false && basename($entryName) === $basename) {
+                return $entryName;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractZipEntryTo(ZipArchive $zip, string $entryName, string $destination): void
+    {
+        $source = $zip->getStream($entryName);
+
+        if ($source === false) {
+            throw new RuntimeException("Could not read {$entryName} from the ZIP archive.");
+        }
+
+        $target = fopen($destination, 'wb');
+
+        if ($target === false) {
+            fclose($source);
+
+            throw new RuntimeException("Could not write to {$destination}.");
+        }
+
+        stream_copy_to_stream($source, $target);
+        fclose($source);
+        fclose($target);
+    }
+
+    /**
      * Parses MaxMind's own GeoLite2-Country CSV export (not the binary
-     * .mmdb format — see this plugin's README.md for why) and replaces
-     * the geoip_ranges table wholesale, so re-running the import with a
-     * newer download just works. Both files are streamed with
-     * fgetcsv(), never loaded whole into memory — GeoLite2-Country-
-     * Blocks-IPv4.csv alone is roughly 450k rows.
+     * .mmdb format — see this plugin's README.md for why) in one call,
+     * looping importGeoCsvBatch() to completion. Fine for a small file
+     * or a CLI/test context with no request-lifetime limit; a real
+     * ~450k-row Blocks CSV import triggered from the browser should use
+     * importGeoCsvBatch() directly instead, across repeated requests —
+     * see that method's own docblock for why a single synchronous
+     * request isn't reliable for this at real GeoLite2 scale.
      *
      * @return int Number of ranges imported.
      */
     public function importGeoCsv(string $blocksCsvPath, string $locationsCsvPath): int
+    {
+        $totalImported = 0;
+        $byteOffset = 0;
+        $isFirstBatch = true;
+
+        do {
+            $result = $this->importGeoCsvBatch($blocksCsvPath, $locationsCsvPath, $byteOffset, $isFirstBatch, self::DEFAULT_IMPORT_BATCH_SIZE);
+            $totalImported += $result['importedInBatch'];
+            $byteOffset = $result['nextByteOffset'];
+            $isFirstBatch = false;
+        } while (!$result['done']);
+
+        return $totalImported;
+    }
+
+    /**
+     * Processes one batch of rows from the Blocks CSV, starting at
+     * $byteOffset (an fseek() position — this method returns the exact
+     * position the *next* call should resume from, in `nextByteOffset`,
+     * the same "caller loops across requests, incrementing an offset
+     * each time" shape ThumbnailService::queueForBulkRegeneration()
+     * already uses). Exists because a real GeoLite2-Country-
+     * Blocks-IPv4.csv is routinely ~450k rows — importing all of it as
+     * one synchronous request/transaction can run past a shared host's
+     * own webserver/proxy timeout even with set_time_limit(0) lifting
+     * *PHP's* limit, found live (xenacentral.com: the import completed
+     * successfully server-side — confirmed by the resulting range
+     * count — but the response itself never made it back before the
+     * connection was cut).
+     *
+     * $isFirstBatch (not $byteOffset === 0, which is also where the
+     * very first *data* row after the header naturally starts) is the
+     * caller's explicit signal to truncate geoip_ranges once, up front
+     * — an entirely fresh call from a cold start, not "resume from the
+     * beginning of a file for some other reason."
+     *
+     * The country-name lookup (readLocationsCsv()) and the Blocks
+     * header/column-index resolution are both cheap and re-done on
+     * every batch rather than threaded through as extra state the
+     * caller would otherwise need to persist between requests
+     * (Locations is a small, fixed-size file — one row per country, not
+     * one per IP range) — only the byte offset itself needs to survive
+     * from one request to the next, kept in the admin view's own hidden
+     * form field, no server-side session/cache state required.
+     *
+     * @return array{importedInBatch: int, nextByteOffset: int, done: bool}
+     */
+    public function importGeoCsvBatch(string $blocksCsvPath, string $locationsCsvPath, int $byteOffset, bool $isFirstBatch, int $batchSize = self::DEFAULT_IMPORT_BATCH_SIZE): array
     {
         $countryByGeonameId = $this->readLocationsCsv($locationsCsvPath);
         $pdo = $this->database->pdo();
@@ -172,17 +307,36 @@ final class ViewStatsService
             throw new RuntimeException('The Blocks CSV file is missing expected columns.');
         }
 
+        if (fseek($blocksHandle, $isFirstBatch ? ftell($blocksHandle) : $byteOffset) !== 0) {
+            fclose($blocksHandle);
+
+            throw new RuntimeException('Could not seek to the requested position in the Blocks CSV file.');
+        }
+
         try {
-            $imported = $this->database->transaction(function () use ($pdo, $blocksHandle, $networkColumn, $geonameIdColumn, $registeredCountryColumn, $countryByGeonameId): int {
-                $pdo->exec('DELETE FROM ' . $this->geoipRangesTable());
+            $result = $this->database->transaction(function () use ($pdo, $blocksHandle, $networkColumn, $geonameIdColumn, $registeredCountryColumn, $countryByGeonameId, $batchSize, $isFirstBatch): array {
+                if ($isFirstBatch) {
+                    $pdo->exec('DELETE FROM ' . $this->geoipRangesTable());
+                }
 
                 $insert = $pdo->prepare(
                     'INSERT INTO ' . $this->geoipRangesTable() . ' (network_start, network_end, country_code) VALUES (:network_start, :network_end, :country_code)',
                 );
 
                 $imported = 0;
+                $rowsRead = 0;
+                $done = false;
 
-                while (($row = fgetcsv($blocksHandle, null, ",", "\"", "\\")) !== false) {
+                while ($rowsRead < $batchSize) {
+                    $row = fgetcsv($blocksHandle, null, ",", "\"", "\\");
+
+                    if ($row === false) {
+                        $done = true;
+
+                        break;
+                    }
+
+                    $rowsRead++;
                     $geonameId = trim((string) ($row[$geonameIdColumn] ?? ''));
                     $registeredGeonameId = trim((string) ($row[$registeredCountryColumn] ?? ''));
                     $countryCode = $countryByGeonameId[$geonameId] ?? $countryByGeonameId[$registeredGeonameId] ?? null;
@@ -206,13 +360,18 @@ final class ViewStatsService
                     $imported++;
                 }
 
-                return $imported;
+                return ['imported' => $imported, 'done' => $done];
             });
         } finally {
+            $nextByteOffset = ftell($blocksHandle);
             fclose($blocksHandle);
         }
 
-        return $imported;
+        return [
+            'importedInBatch' => $result['imported'],
+            'nextByteOffset' => $nextByteOffset === false ? $byteOffset : $nextByteOffset,
+            'done' => $result['done'],
+        ];
     }
 
     /**

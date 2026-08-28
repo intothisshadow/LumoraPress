@@ -31,8 +31,14 @@ All notable changes to Lumora Press are documented in this file.
   a "Site Visitors" Dashboard panel (today/week/month/all-time totals,
   Most Viewed) plus optional country/referrer/browser/device
   breakdowns. Country resolution is entirely local — an admin uploads
-  MaxMind's own free GeoLite2 Country CSV export at Visitor Stats
-  &rsaquo; Settings; if never configured, the country breakdown simply
+  MaxMind's own free GeoLite2 Country data at Visitor Stats &rsaquo;
+  Settings, either the `.zip` file straight from MaxMind's download page
+  or the two already-unzipped CSVs, and can instead import directly from
+  a server path (a `.zip` or a directory) after an FTP/SFTP upload for a
+  file too large or slow for a browser upload on that host. The actual
+  database import runs in batches across several auto-advancing requests
+  rather than one long request, avoiding a webserver timeout on the
+  larger Blocks CSV; if never configured, the country breakdown simply
   stays empty.
 - Lumora Shield plugin (LPP-001): a new optional plugin.
   - **Stop User Enumeration** — Settings screen offers "Hide author
