@@ -18,7 +18,11 @@ a local copy of the source site's `wp-content/uploads` folder.
   file too, the uploads folder must always be readable on this server's
   local filesystem, since nothing here fetches files remotely — a WXR
   export's own `<wp:attachment_url>` only records where a file used to
-  live, not the file itself.
+  live, not the file itself. If "Media (attachments)" is selected below,
+  Preview/Start/Resume Import all refuse to run with an uploads folder
+  path that isn't a real, readable directory — a blank or wrong path
+  here previously imported posts/pages with no featured image at all and
+  no clear explanation why (LP-129).
 - **WXR export limitations**: WordPress's WXR format is a *content*
   export — it structurally cannot carry site options, widget
   configuration, or a plugin's own custom database tables. From a
@@ -57,7 +61,12 @@ a local copy of the source site's `wp-content/uploads` folder.
   their categories/tags/featured image), and comments on posts (guest
   and registered authors, status, and threading preserved — not
   comments on pages, a current limitation of the shared import layer).
-  Slugs and publish dates are preserved throughout.
+  Slugs and publish dates are preserved throughout. If a post/page's own
+  featured image couldn't be imported (its attachment's file was missing
+  from the uploads folder, for example), the post/page still imports
+  fine with no featured image, called out by name in the "Action needed"
+  warnings below rather than only showing up as a routine
+  missing-attachment line.
 - Imported attachments' own URLs are rewritten inside post/page content
   to point at the new local copy — a real HTML parse (`ContentImageRewriter`),
   not a plain string replace, so it resolves both an attachment's

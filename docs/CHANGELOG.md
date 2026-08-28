@@ -124,6 +124,19 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- WordPress Importer (LP-129): an imported post/page whose original
+  featured image couldn't actually be brought in (most often an empty or
+  mistyped "Uploads folder path") silently ended up with no featured
+  image at all — shown as "None" in the editor, with no warning to
+  explain why, and easy to mistake for a mapping bug rather than a
+  missing-file one, especially since the post's own in-body images
+  (still pointing at the old site) could make the front end look fine at
+  a glance. The Import screen now refuses to start (or preview) an
+  import that includes Media with an uploads folder path that isn't a
+  real, readable directory, and any post/page whose featured image
+  couldn't be imported anyway is now called out by name in the
+  post-import "Action needed" warnings instead of blending into the
+  routine list of missing attachments.
 - Maintenance &rsaquo; Updates: with more than one backup listed in the
   Backups panel, only the last row's Restore/Delete button actually
   worked — every earlier row's button silently failed with an invalid

@@ -343,13 +343,22 @@ final class WordPressImportService
      * file the host had deleted, xenacentral.com), where the original
      * "skipped" wording's warning was present but easy to miss among
      * dozens of unrelated attachment misses.
+     *
+     * A post/page's own "its featured image (attachment #...) could not
+     * be imported" warning (importPosts()/importPages(), emitted when
+     * `_thumbnail_id` postmeta pointed at an attachment that importMedia()
+     * itself skipped — e.g. a missing/misconfigured uploads folder path)
+     * is singled out the same way: the post/page still imports, just
+     * silently without a featured image, which is otherwise invisible
+     * until an admin notices it missing on the front end (LP-129).
      */
     public static function isActionNeededWarning(string $warning): bool
     {
         return str_contains($warning, 'still contains a ')
             || str_contains($warning, 'were not imported — no Lumora Press equivalent exists for it.')
             || str_contains($warning, 'other active plugin(s) with no Lumora Press equivalent')
-            || (str_contains($warning, 'Download #') && str_contains($warning, 'file not found at'));
+            || (str_contains($warning, 'Download #') && str_contains($warning, 'file not found at'))
+            || str_contains($warning, 'its featured image (attachment #');
     }
 
     /**
@@ -2723,6 +2732,10 @@ final class WordPressImportService
                 ? ($wpAttachmentIdToLocalMediaId[(int) $meta['_thumbnail_id']] ?? null)
                 : null;
 
+            if (isset($meta['_thumbnail_id']) && $featuredImageId === null) {
+                $this->warnings[] = "Page #{$wpPage['ID']} (\"{$wpPage['post_title']}\"): its featured image (attachment #{$meta['_thumbnail_id']}) could not be imported, so no featured image is set.";
+            }
+
             $rewritten = $imageRewriter->rewrite($wpPage['post_content'], $oldRelativePathToNewUrl);
 
             foreach ($rewritten['warnings'] as $warning) {
@@ -2779,6 +2792,10 @@ final class WordPressImportService
             $featuredImageId = isset($meta['_thumbnail_id'])
                 ? ($wpAttachmentIdToLocalMediaId[(int) $meta['_thumbnail_id']] ?? null)
                 : null;
+
+            if (isset($meta['_thumbnail_id']) && $featuredImageId === null) {
+                $this->warnings[] = "Post #{$wpPost['ID']} (\"{$wpPost['post_title']}\"): its featured image (attachment #{$meta['_thumbnail_id']}) could not be imported, so no featured image is set.";
+            }
 
             $rewritten = $imageRewriter->rewrite($wpPost['post_content'], $oldRelativePathToNewUrl);
 

@@ -330,9 +330,25 @@ if ($wordPressImporterActive) {
         // submission would always fail. The Resume form never submits a
         // dry_run field at all, so an in-progress-batch resume always
         // takes the real-run branch below regardless.
-        if (isset($_POST['dry_run'])) {
+        // Test Connection already checks is_dir($formValues['uploads_path'])
+        // (above), but that's a separate, skippable form submission — an
+        // admin can reach this form having never clicked Test Connection,
+        // or having since changed the path. Media (and every post/page
+        // featured image, which resolves through the very same uploads
+        // folder — see WordPressImportService::importMedia()) would then
+        // silently import with nothing brought in rather than failing
+        // loudly (LP-129), so the same check is repeated here as a hard
+        // gate before either a dry run or a real import runs. Only
+        // enforced when Media is actually selected — an admin who
+        // deliberately unchecked it has nothing under this path to import,
+        // so an empty/invalid uploads_path is not a mistake in that case.
+        $importOptionsToRun = $optionsFromPost();
+
+        if (($importOptionsToRun['media'] ?? false) && !is_dir($formValues['uploads_path'])) {
+            $importError = 'The uploads folder path does not exist or is not readable by the web server. Fix it, or uncheck "Media (attachments)" under Content to import.';
+        } elseif (isset($_POST['dry_run'])) {
             try {
-                $dryRunCounts = $buildImportService()->dryRunCounts($optionsFromPost());
+                $dryRunCounts = $buildImportService()->dryRunCounts($importOptionsToRun);
             } catch (\Throwable $exception) {
                 $importError = 'Could not preview: ' . $exception->getMessage();
             }
@@ -363,7 +379,7 @@ if ($wordPressImporterActive) {
 
             try {
                 $service = $buildImportService();
-                $submittedOptions = $optionsFromPost();
+                $submittedOptions = $importOptionsToRun;
 
                 // A resumable batch always continues with its own original
                 // options (see startOrResume()'s own docblock) — reflected
