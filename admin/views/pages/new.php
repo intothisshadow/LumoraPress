@@ -678,6 +678,7 @@ if ($savedLayout['order'] === []) {
                     data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                     data-media-picker-csrf="<?= esc_attr(Csrf::token('media_picker_query')) ?>"
                     data-link-picker-csrf="<?= esc_attr(Csrf::token('link_picker_query')) ?>"
+                    data-shortcodes="<?= esc_attr((string) json_encode($kernel->shortcodes->toArray())) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"

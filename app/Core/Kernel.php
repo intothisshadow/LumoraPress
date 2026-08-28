@@ -34,6 +34,7 @@ use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
+use LumoraPress\Core\Shortcodes\ShortcodeManager;
 use LumoraPress\Core\Theme\ThemeOptions;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
@@ -148,6 +149,7 @@ final class Kernel
         public readonly EntityDecodeRepairService $entityDecodeRepair,
         public readonly DownloadCategoryMigrationService $downloadCategoryMigration,
         public readonly InstallPingService $installPing,
+        public readonly ShortcodeManager $shortcodes,
     ) {
     }
 }

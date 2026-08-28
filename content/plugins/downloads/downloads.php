@@ -31,6 +31,10 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\Downloads;
 
+use LumoraPress\Core\Kernel;
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
 require_once __DIR__ . '/src/DownloadType.php';
 require_once __DIR__ . '/src/DownloadStatus.php';
 require_once __DIR__ . '/src/Download.php';
@@ -62,3 +66,32 @@ require_once __DIR__ . '/src/DownloadsShortcode.php';
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
+
+/*
+ * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
+ * button — purely additive, doesn't change how [lumora_downloads ...]
+ * itself renders (still the content_html filter above). Needs a live
+ * list of this plugin's own Download categories (a wholly separate
+ * table/concept from Media Folders — see DownloadCategory's own
+ * docblock) to build category_id's choices, which requires
+ * $kernel->database and isn't available yet at this point in the file —
+ * see include/shortcodes.php's own docblock for why this hooks
+ * 'register_shortcodes' instead of calling register_shortcode()
+ * directly here. Covers only the "list every download in a category"
+ * form (DownloadsShortcode::renderOne()'s third variant) — download_id
+ * (embed one specific download) and count (a "newest N" list) are left
+ * typeable by hand, matching the ticket's own three-shortcode scope.
+ */
+add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
+    $categoryService = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+    $categoryChoices = [];
+
+    foreach ($categoryService->listAll() as $category) {
+        $categoryChoices[(string) $category->id] = $category->name;
+    }
+
+    register_shortcode('lumora_downloads', 'Downloads from Category', [
+        new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: $categoryChoices),
+        new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+    ]);
+});

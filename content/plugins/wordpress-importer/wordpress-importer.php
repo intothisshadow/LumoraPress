@@ -31,6 +31,10 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\WordPressImporter;
 
+use LumoraPress\Core\Kernel;
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
 require_once __DIR__ . '/src/WordPressSourceInterface.php';
 require_once __DIR__ . '/src/WordPressSource.php';
 require_once __DIR__ . '/src/WordPressXmlSource.php';
@@ -62,3 +66,30 @@ require_once __DIR__ . '/src/DownloadsShortcode.php';
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
+
+/*
+ * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
+ * button — purely additive, doesn't change how
+ * [sdm_show_dl_from_category ...] itself renders (still the
+ * content_html filter above). Needs $kernel->folders (a live list of
+ * Media Folders, to build category_slug's choices) to exist, which
+ * isn't true yet at this point in the file — see
+ * include/shortcodes.php's own docblock for why this hooks
+ * 'register_shortcodes' instead of calling register_shortcode()
+ * directly here. Only [sdm_show_dl_from_category] is covered — this
+ * file's other two shortcodes ([sdm_download], [sdm_latest_downloads])
+ * are left typeable by hand, matching the ticket's own three-shortcode
+ * scope.
+ */
+add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel) use ($downloadsShortcode): void {
+    $folderChoices = [];
+
+    foreach ($kernel->folders->listAll() as $folder) {
+        $folderChoices[$downloadsShortcode->slugify($folder->name)] = $folder->name;
+    }
+
+    register_shortcode('sdm_show_dl_from_category', 'Downloads from Category (Imported)', [
+        new ShortcodeField('category_slug', 'Category', ShortcodeFieldType::Select, required: true, choices: $folderChoices, help: 'A Media folder — matched by its slugified name, the same way the imported content itself does.'),
+        new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+    ]);
+});

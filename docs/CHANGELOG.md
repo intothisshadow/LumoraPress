@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Insert Shortcode toolbar button, in both the Markdown and WYSIWYG
+  editors: pick a registered shortcode and fill in its attributes via a
+  real form — a category picker, an icon browser, a checkbox — instead
+  of typing `[shortcode attr="value"]` syntax by hand. Covers Font
+  Awesome's `[icon]`, the WordPress Importer's
+  `[sdm_show_dl_from_category]`, and the Downloads plugin's
+  `[lumora_downloads]`. Hidden entirely when nothing is registered
+  (e.g. none of those plugins are active).
 - WYSIWYG editor "Insert/Edit Link" dialog: a new "Or link to existing
   content" section lists recently published/modified Posts and Pages,
   filterable by title as you type, so a link can target one of them

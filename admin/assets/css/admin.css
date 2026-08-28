@@ -2076,6 +2076,59 @@ body.lp-admin-login {
     font-size: 0.78rem;
 }
 
+/*
+ * "Insert Shortcode" dialog (LP-110, openShortcodePicker() in
+ * content-editor.js). Shares .lp-editor-media-dialog's shell/heading/
+ * settings-actions/close styling, but overrides its fixed 85vh height —
+ * a shortcode list or a field form is rarely tall enough to need it, and
+ * forcing it anyway would leave a mostly-empty box for the common case.
+ */
+.lp-editor-shortcode-dialog {
+    height: auto;
+    max-height: 85vh;
+}
+
+.lp-editor-shortcode-dialog__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+}
+
+/* See .lp-editor-media-dialog__header[hidden]'s identical comment — the
+   display: flex rule above would otherwise beat [hidden]'s own UA-
+   stylesheet display: none, leaving the shortcode list visibly laid out
+   underneath the field form after openShortcodePicker() hides it. */
+.lp-editor-shortcode-dialog__list[hidden] {
+    display: none;
+}
+
+.lp-editor-shortcode-dialog__item {
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: none;
+    text-align: left;
+    color: var(--lp-admin-text);
+    cursor: pointer;
+}
+
+.lp-editor-shortcode-dialog__item:hover,
+.lp-editor-shortcode-dialog__item:focus-visible {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-editor-shortcode-dialog__form-heading {
+    margin: 0 0 0.75rem;
+    color: var(--lp-admin-text);
+}
+
+.lp-editor-shortcode-dialog__icon-chosen {
+    margin-left: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
 .lp-api-token__value {
     display: block;
     padding: 0.5rem 0.75rem;

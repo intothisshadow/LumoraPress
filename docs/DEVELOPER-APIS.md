@@ -142,19 +142,54 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 ### Shortcodes
 
-There is no shortcode-registration API (see LP-110 in `TODO.md` — a
-generic registration system plus an editor-toolbar picker for *any*
-shortcode is a separate, not-yet-built ticket). A shortcode today is
-just a plugin or core class that hooks the `content_html` filter above
-and does its own `preg_replace_callback()` over a fixed pattern — see
+A shortcode's actual *rendering* is still just a plugin or core class
+that hooks the `content_html` filter above and does its own
+`preg_replace_callback()` over a fixed pattern — see
 `content/plugins/downloads/src/DownloadsShortcode.php` for the
 reference plugin implementation, or `FolderGalleryShortcode` below for
-the core equivalent.
+the core equivalent. Registering a shortcode with `register_shortcode()`
+(LP-110) is a separate, optional step on top of that: it adds the
+shortcode to the editor toolbar's "Insert Shortcode" picker
+(`admin/assets/js/content-editor.js`'s `openShortcodePicker()`), a real
+form built from the attribute fields you describe, instead of the admin
+typing `[shortcode attr="value"]` by hand. It changes nothing about how
+the shortcode itself renders.
+
+```php
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
+register_shortcode('my_shortcode', 'My Shortcode', [
+    new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: ['1' => 'Screenshots']),
+    new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+]);
+```
+
+`ShortcodeField`'s `$type` is one of `Text`, `Number`, `Checkbox`,
+`Select` (needs `$choices`, value => label), or `Icon` (opens Font
+Awesome's own icon-browser dialog instead of a plain control — see
+`font-awesome.php`'s own registration for the pattern, including how an
+Icon field auto-fills a sibling field literally named `style`). A field
+left at its `$default` value is omitted from the inserted shortcode
+entirely, the same minimal text typing it by hand would produce.
+
+A plugin whose fields need database-backed choices (a live list of
+Folders or Download categories, say) can't call `register_shortcode()`
+directly from its own top-level file — plugin main files load before
+Kernel exists (see "Discovery & loading" below). Hook the
+`register_shortcodes` action instead:
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `register_shortcodes` | action | `ShortcodeManager $registry, Kernel $kernel` | The end of `include/bootstrap.php`, right after `$kernel` is built. `wordpress-importer.php` and `downloads.php` both use this to build their own category choices from `$kernel`'s services; `font-awesome.php` uses it too, for consistency, even though its fields need no database access. |
 
 | Shortcode | Registered by | Syntax |
 |---|---|---|
-| `[lumora_folder_gallery]` | Core — [`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php), wired in `include/bootstrap.php` | `[lumora_folder_gallery folder_id="12" link="full"]` — renders every image in Media folder `folder_id` as a row of thumbnails. `link` is `none` (default) or `full` (wraps each thumbnail in a link to the full-size image, joining the post's PhotoSwipe lightbox gallery the same way an Insert Image "Link To: Media File" image does). A missing/deleted folder, or a folder with no images, renders nothing. Inserted via the content editor's "Insert Folder" toolbar button (`admin/assets/js/content-editor.js`), next to Insert Image. |
-| `[contact_form]` | Contact Forms plugin (LPP-003) — `ContactFormShortcode` (`content/plugins/contact-forms/src/`) | `[contact_form id="1"]` — renders the given form (see Contact Forms &rsaquo; All Forms for each form's id/shortcode). GET-time rendering only; the actual submission POSTs to a dedicated route (see "no hook to register a public route," above), not this shortcode. |
+| `[icon]` | Font Awesome plugin (LPP-002) — `FontAwesomeService`, wired in `font-awesome.php` | `[icon name="star" style="solid"]` — see `FontAwesomeService::icon()`'s own docblock for the full attribute list (`color`, `class`, `label`, `animation` too — only `name`/`style`/`label` are registered for the picker). |
+| `[lumora_folder_gallery]` | Core — [`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php), wired in `include/bootstrap.php` | `[lumora_folder_gallery folder_id="12" link="full"]` — renders every image in Media folder `folder_id` as a row of thumbnails. `link` is `none` (default) or `full` (wraps each thumbnail in a link to the full-size image, joining the post's PhotoSwipe lightbox gallery the same way an Insert Image "Link To: Media File" image does). A missing/deleted folder, or a folder with no images, renders nothing. Inserted via the content editor's own dedicated "Insert Folder" toolbar button, not the generic shortcode picker — not registered with `register_shortcode()`. |
+| `[sdm_show_dl_from_category]` | WordPress Importer plugin (LPP-004/LPP-007) — `DownloadsShortcode`, wired in `wordpress-importer.php` | `[sdm_show_dl_from_category category_slug="game-of-thrones" show_size="1"]` — every download filed under the Media folder whose slugified name matches `category_slug`. That file's own `[sdm_download]`/`[sdm_latest_downloads]` shortcodes are unregistered — still typeable by hand. |
+| `[lumora_downloads]` | Downloads plugin (LPP-008) — `DownloadsShortcode`, wired in `downloads.php` | `[lumora_downloads category_id="3" show_size="1"]` — every download in the given Download category (a wholly separate table/concept from Media Folders — see `DownloadCategory`'s own docblock). `download_id`/`count`, the single-download and "newest N" variants, are unregistered — still typeable by hand. |
+| `[contact_form]` | Contact Forms plugin (LPP-003) — `ContactFormShortcode` (`content/plugins/contact-forms/src/`) | `[contact_form id="1"]` — renders the given form (see Contact Forms &rsaquo; All Forms for each form's id/shortcode). GET-time rendering only; the actual submission POSTs to a dedicated route (see "no hook to register a public route," above), not this shortcode. Unregistered — no natural "choices" for a Form id field yet. |
 
 ### Theme Options & settings
 

@@ -55,6 +55,8 @@ use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Security\TrustedImageOrigins;
+use LumoraPress\Core\Shortcodes\ShortcodeManager;
+use LumoraPress\Core\Shortcodes\Shortcodes;
 use LumoraPress\Core\Theme\ActiveAuth;
 use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
@@ -277,6 +279,23 @@ add_filter('csp_directives', static function (array $directives) use ($config): 
 
     return $directives;
 });
+
+/*
+ * Set up before $plugins->loadActive() below (unlike WidgetManager/
+ * MenuManager, both constructed after — see CoreWidgets's own comment)
+ * so a plugin's top-level file can call register_shortcode() directly
+ * at load time, the same way it already calls add_filter('content_html',
+ * ...) there — a shortcode registration needs no Post/Page/Category
+ * services the way CoreWidgets's built-in widgets do, so there's no
+ * reason to defer it. A plugin whose shortcode fields DO need
+ * database-backed choices (e.g. a live list of Folders or Download
+ * categories) can't compute them yet at this point either, though —
+ * see the 'register_shortcodes' action fired near the end of this file,
+ * once Kernel exists, for that case.
+ */
+$shortcodes = new ShortcodeManager();
+Shortcodes::set($shortcodes);
+require LUMORA_ROOT . '/include/shortcodes.php';
 
 $tablePrefix = (string) $config->get('table_prefix', 'lp_');
 
@@ -865,6 +884,7 @@ $kernel = new Kernel(
     entityDecodeRepair: $entityDecodeRepair,
     downloadCategoryMigration: $downloadCategoryMigration,
     installPing: $installPing,
+    shortcodes: $shortcodes,
 );
 
 // See ActiveKernel's own docblock for why this exists — plugin code that
@@ -1046,6 +1066,18 @@ if ((bool) $config->get('csp_enabled', true)) {
     $cspDirectives = apply_filters('csp_directives', ContentSecurityPolicy::defaultDirectives());
     (new ContentSecurityPolicy($cspDirectives))->send();
 }
+
+/*
+ * LP-110: fired here, after $kernel is fully built, rather than
+ * alongside the direct register_shortcode() calls a plugin's own
+ * top-level file already makes for its content_html-filter registration
+ * — a shortcode field needing database-backed choices (e.g. a live list
+ * of Folders or Download categories) has no services to query until
+ * Kernel exists. A plugin whose fields need no such data can still just
+ * call register_shortcode() directly at load time instead of hooking
+ * this action — see include/shortcodes.php's own docblock.
+ */
+do_action('register_shortcodes', $shortcodes, $kernel);
 
 do_action('lumora_press_loaded');
 

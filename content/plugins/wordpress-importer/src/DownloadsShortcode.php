@@ -381,7 +381,14 @@ final class DownloadsShortcode
         return null;
     }
 
-    private function slugify(string $value): string
+    /**
+     * Public (rather than the private visibility every other helper here
+     * has) so wordpress-importer.php's own LP-110 shortcode-picker
+     * registration can compute the same category_slug choices this
+     * class matches against in findFolderBySlug() above, without
+     * duplicating the slugging rule in two places.
+     */
+    public function slugify(string $value): string
     {
         $slug = strtolower(trim($value));
         $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?? '';

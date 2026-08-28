@@ -31,6 +31,9 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\FontAwesome;
 
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
 require_once __DIR__ . '/src/FontAwesomeService.php';
 
 $fontAwesome = FontAwesomeService::instance();
@@ -60,6 +63,38 @@ add_action('lp_register_icon_pack', static function (string $key, array $config)
 // still be operating on unrendered markup — this plugin only cares about
 // the final sanitized HTML (see renderShortcodes()'s own docblock).
 add_filter('content_html', static fn (string $html): string => $fontAwesome->renderShortcodes($html), 20);
+
+/*
+ * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
+ * button — purely additive, doesn't change how [icon ...] itself
+ * renders (still the content_html filter above). Hooked on
+ * 'register_shortcodes' rather than called directly here for
+ * consistency with the other two shortcode-registering plugins (both of
+ * which genuinely need Kernel's services for their own choices lists),
+ * even though this one's fields need none.
+ *
+ * 'style'/'label' are left registered separately rather than embedded in
+ * the 'name' field's own Icon picker — a manual override still makes
+ * sense (the icon browser only pre-fills 'style' with whatever style the
+ * chosen icon actually has; some icons support more than one), and
+ * 'label' has no picker equivalent at all. 'color'/'class'/'animation'
+ * are left off the picker (still typeable by hand) to keep the form to
+ * the attributes actually worth a dedicated field.
+ */
+add_action('register_shortcodes', static function (): void {
+    register_shortcode('icon', 'Icon', [
+        new ShortcodeField('name', 'Icon', ShortcodeFieldType::Icon, required: true, help: 'Choose an icon from the library.'),
+        new ShortcodeField('style', 'Style', ShortcodeFieldType::Select, default: 'solid', choices: [
+            'solid' => 'Solid',
+            'regular' => 'Regular',
+            'brands' => 'Brands',
+            'light' => 'Light',
+            'thin' => 'Thin',
+            'duotone' => 'Duotone',
+        ]),
+        new ShortcodeField('label', 'Accessible Label', help: 'Optional — read aloud by screen readers. Leave blank for a purely decorative icon.'),
+    ]);
+});
 
 add_action('head_assets', static function () use ($fontAwesome): void {
     $fontAwesome->printHeadLinks();

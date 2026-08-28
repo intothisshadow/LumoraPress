@@ -12,13 +12,20 @@
  *        data-link-picker-csrf="..."
  *        data-media-folders='[{"id":1,"name":"...","depth":0}]'
  *        data-icon-picker-csrf="..."                    — omitted entirely
- *        data-icon-picker-css='["https://...css"]'>        when the Font
- *                                                          Awesome plugin
- *                                                          (LPP-002) is
+ *        data-icon-picker-css='["https://...css"]'         when the Font
+ *        data-shortcodes='{"icon":{"label":...,           Awesome plugin
+ *          "fields":[...]},...}'>                          (LPP-002) is
  *                                                          disabled — see
  *                                                          openIconPicker().
  *     <textarea>...</textarea>
  *   </div>
+ *
+ * data-shortcodes (LP-110) is ShortcodeManager::toArray() JSON-encoded —
+ * whichever shortcodes are actually registered this request (only
+ * active plugins register), read by openShortcodePicker() below. Empty
+ * ('{}', the default when the attribute is omitted) hides the "Insert
+ * Shortcode" toolbar button entirely rather than showing an always-empty
+ * picker.
  *
  * LP-115: the "Insert Image" picker (openMediaPicker() below) no longer
  * receives a preloaded library array — data-upload-url doubles as the
@@ -159,6 +166,19 @@
             .replace(/"/g, '&quot;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+    }
+
+    // For a `[shortcode attr="value"]` attribute value (openShortcodePicker()
+    // below) rather than a real HTML attribute — the bracket syntax's own
+    // parser (e.g. FontAwesomeService::parseShortcodeAttributes()) matches
+    // up to the next literal '"' with no escape mechanism of its own, so
+    // HTML-entity-escaping a value here (escapeHtmlAttr's job) would just
+    // store literal "&quot;" text instead of protecting anything. Simply
+    // dropping any '"' the value contains is what actually keeps it from
+    // breaking out of its own quotes, whether the shortcode ends up inside
+    // Markdown or TinyMCE-authored HTML.
+    function shortcodeAttrValue(value) {
+        return String(value).replace(/"/g, '');
     }
 
     // Prefers the smallest generated thumbnail for the grid tile — the
@@ -1002,6 +1022,229 @@
     }
 
     // ------------------------------------------------------------------
+    // Shortcode picker (LP-110) — shared by both editors. Reads the
+    // registered-shortcode metadata core built server-side
+    // (ShortcodeManager::toArray(), via register_shortcode() —
+    // font-awesome.php/wordpress-importer.php/downloads.php each
+    // register one) from data-shortcodes, no AJAX query of its own
+    // needed since that list is small and known up front. A two-step
+    // dialog: pick which shortcode, then fill in a form built from its
+    // own field list, mirroring openMediaPicker()'s grid-then-settings
+    // shape above.
+    // ------------------------------------------------------------------
+
+    function openShortcodePicker(container, onInsert) {
+        var shortcodes = JSON.parse(container.dataset.shortcodes || '{}');
+        var names = Object.keys(shortcodes);
+
+        if (names.length === 0) {
+            return;
+        }
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog lp-editor-shortcode-dialog';
+
+        var heading = document.createElement('h2');
+        heading.className = 'lp-editor-media-dialog__heading';
+        heading.textContent = 'Insert Shortcode';
+
+        var list = document.createElement('div');
+        list.className = 'lp-editor-shortcode-dialog__list';
+
+        var form = document.createElement('div');
+        form.hidden = true;
+
+        function showListStep() {
+            list.hidden = false;
+            form.hidden = true;
+            form.innerHTML = '';
+        }
+
+        function showFormStep(name) {
+            list.hidden = true;
+            form.hidden = false;
+            form.innerHTML = '';
+
+            var definition = shortcodes[name];
+
+            var formHeading = document.createElement('h3');
+            formHeading.className = 'lp-editor-shortcode-dialog__form-heading';
+            formHeading.textContent = definition.label;
+            form.appendChild(formHeading);
+
+            // {field, input} per rendered field — read back when Insert
+            // is clicked, and searched by name so an Icon field can
+            // auto-fill a sibling 'style' field (see the 'icon' branch
+            // below).
+            var fieldEntries = [];
+
+            definition.fields.forEach(function (field) {
+                var wrapper = document.createElement('p');
+                wrapper.className = 'lp-field';
+                var input;
+
+                if (field.type === 'checkbox') {
+                    var checkboxLabel = document.createElement('label');
+                    checkboxLabel.className = 'lp-field--checkbox';
+                    input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.checked = field.default === '1';
+                    checkboxLabel.appendChild(input);
+                    checkboxLabel.appendChild(document.createTextNode(' ' + field.label));
+                    wrapper.className = '';
+                    wrapper.appendChild(checkboxLabel);
+                } else {
+                    var fieldLabel = document.createElement('label');
+                    fieldLabel.textContent = field.label + (field.required ? ' *' : '');
+                    wrapper.appendChild(fieldLabel);
+
+                    if (field.type === 'select') {
+                        input = document.createElement('select');
+                        Object.keys(field.choices || {}).forEach(function (value) {
+                            var option = document.createElement('option');
+                            option.value = value;
+                            option.textContent = field.choices[value];
+                            option.selected = value === field.default;
+                            input.appendChild(option);
+                        });
+                        wrapper.appendChild(input);
+                    } else if (field.type === 'icon') {
+                        input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.value = field.default || '';
+
+                        var chosenLabel = document.createElement('span');
+                        chosenLabel.className = 'lp-editor-shortcode-dialog__icon-chosen';
+
+                        var chooseButton = document.createElement('button');
+                        chooseButton.type = 'button';
+                        chooseButton.className = 'lp-button lp-button--secondary';
+                        chooseButton.textContent = 'Choose Icon…';
+                        chooseButton.addEventListener('click', function () {
+                            openIconPicker(container, function (payload) {
+                                input.value = payload.name;
+                                chosenLabel.textContent = payload.name;
+
+                                // The icon browser already knows which
+                                // style the chosen icon actually has —
+                                // no reason to make the admin pick it
+                                // again separately if this shortcode also
+                                // registered a 'style' field.
+                                var styleEntry = fieldEntries.filter(function (entry) {
+                                    return entry.field.name === 'style';
+                                })[0];
+
+                                if (styleEntry) {
+                                    styleEntry.input.value = payload.style;
+                                }
+                            });
+                        });
+
+                        wrapper.appendChild(chooseButton);
+                        wrapper.appendChild(chosenLabel);
+                        wrapper.appendChild(input);
+                    } else {
+                        input = document.createElement('input');
+                        input.type = field.type === 'number' ? 'number' : 'text';
+                        input.value = field.default || '';
+                        wrapper.appendChild(input);
+                    }
+                }
+
+                if (field.help) {
+                    var hint = document.createElement('span');
+                    hint.className = 'lp-field__hint';
+                    hint.textContent = field.help;
+                    wrapper.appendChild(hint);
+                }
+
+                form.appendChild(wrapper);
+                fieldEntries.push({ field: field, input: input });
+            });
+
+            var actions = document.createElement('div');
+            actions.className = 'lp-editor-media-dialog__settings-actions';
+
+            var insertButton = document.createElement('button');
+            insertButton.type = 'button';
+            insertButton.className = 'lp-button lp-button--primary';
+            insertButton.textContent = 'Insert';
+            insertButton.addEventListener('click', function () {
+                for (var i = 0; i < fieldEntries.length; i++) {
+                    var entry = fieldEntries[i];
+
+                    if (entry.field.required && entry.field.type !== 'checkbox' && entry.input.value.trim() === '') {
+                        entry.input.focus();
+
+                        return;
+                    }
+                }
+
+                var attrs = '';
+
+                fieldEntries.forEach(function (entry) {
+                    var value = entry.field.type === 'checkbox'
+                        ? (entry.input.checked ? '1' : '0')
+                        : entry.input.value;
+
+                    // Omitted rather than spelled out at its default —
+                    // an admin who never touches a field gets the same
+                    // minimal shortcode text they'd have typed by hand.
+                    // A checkbox with no explicit default (an empty
+                    // string, same as every other field type) still
+                    // means "unchecked", not "always include" — a
+                    // registering plugin shouldn't have to know to pass
+                    // default: '0' just to get the same omission every
+                    // other field type gets for free.
+                    var defaultValue = entry.field.type === 'checkbox' ? (entry.field.default || '0') : (entry.field.default || '');
+
+                    if (value === '' || value === defaultValue) {
+                        return;
+                    }
+
+                    attrs += ' ' + entry.field.name + '="' + shortcodeAttrValue(value) + '"';
+                });
+
+                onInsert('[' + name + attrs + ']');
+                dialog.close();
+            });
+
+            var backButton = document.createElement('button');
+            backButton.type = 'button';
+            backButton.className = 'lp-button';
+            backButton.textContent = 'Back';
+            backButton.addEventListener('click', showListStep);
+
+            actions.appendChild(insertButton);
+            actions.appendChild(backButton);
+            form.appendChild(actions);
+        }
+
+        names.forEach(function (name) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-shortcode-dialog__item';
+            button.textContent = shortcodes[name].label;
+            button.addEventListener('click', function () { showFormStep(name); });
+            list.appendChild(button);
+        });
+
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'lp-button lp-editor-media-dialog__close';
+        closeButton.textContent = 'Cancel';
+        closeButton.addEventListener('click', function () { dialog.close(); });
+
+        dialog.appendChild(heading);
+        dialog.appendChild(list);
+        dialog.appendChild(form);
+        dialog.appendChild(closeButton);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
+    // ------------------------------------------------------------------
     // Upload helper — shared by both editors.
     // ------------------------------------------------------------------
 
@@ -1146,6 +1389,7 @@
             var EasyMDE = window.EasyMDE;
             var autosaveId = container.dataset.autosaveId || '';
             var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
+            var shortcodesEnabled = Object.keys(JSON.parse(container.dataset.shortcodes || '{}')).length > 0;
 
             // Built as its own variable (rather than inline in the options
             // object below) so the icon-picker button — only wired up when
@@ -1274,6 +1518,22 @@
                 });
             }
 
+            if (shortcodesEnabled) {
+                markdownToolbar.push({
+                    name: 'shortcode-picker',
+                    action: function () {
+                        openShortcodePicker(container, function (text) {
+                            editor.codemirror.replaceSelection(text);
+                        });
+                    },
+                    // Not fa-code — the built-in 'code' toolbar button
+                    // (inline code span) already uses that glyph;
+                    // fa-terminal keeps the two visually distinct.
+                    className: 'fa fa-terminal',
+                    title: 'Insert Shortcode',
+                });
+            }
+
             markdownToolbar.push('table', 'horizontal-rule', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide');
 
             var editor = new EasyMDE({
@@ -1341,6 +1601,7 @@
             var tinymce = window.tinymce;
             var autosaveId = container.dataset.autosaveId || '';
             var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
+            var shortcodesEnabled = Object.keys(JSON.parse(container.dataset.shortcodes || '{}')).length > 0;
             // LP-115: the native 'image' plugin/toolbar button is
             // deliberately not loaded — lumoraMedia (the Media Manager
             // picker) is this editor's single "Insert Image" entry
@@ -1378,7 +1639,7 @@
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
                         + 'bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
-                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + 'lumoraMoreTag table codesample | '
+                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
@@ -1554,6 +1815,18 @@
                                     openIconPicker(container, function (payload) {
                                         var styleAttr = payload.style !== 'solid' ? ' style="' + escapeHtmlAttr(payload.style) + '"' : '';
                                         editor.insertContent('[icon name="' + escapeHtmlAttr(payload.name) + '"' + styleAttr + ']');
+                                    });
+                                },
+                            });
+                        }
+
+                        if (shortcodesEnabled) {
+                            editor.ui.registry.addButton('lumoraShortcode', {
+                                icon: 'sourcecode',
+                                tooltip: 'Insert Shortcode',
+                                onAction: function () {
+                                    openShortcodePicker(container, function (text) {
+                                        editor.insertContent(text);
                                     });
                                 },
                             });
