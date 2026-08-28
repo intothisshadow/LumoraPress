@@ -4,6 +4,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Content rendering could produce invalid nested markup (LP-125): a
+  block-level shortcode (e.g. a Downloads listing) landing inside a
+  `<p>` Markdown/HTML had already wrapped around it, and HTML-format
+  content with a `<p>` opened before an earlier one closed (e.g. content
+  migrated from another site) rendering with that nesting preserved
+  instead of repaired. Rendered content is now checked and, if needed,
+  restructured so a block-level element is never left nested inside a
+  paragraph.
+
 ## [0.8.0] — 2026-08-28
 
 ### Added

@@ -88,6 +88,24 @@ final class HtmlSanitizer
     private const ALLOWED_URL_SCHEMES = ['http', 'https', 'mailto', 'tel'];
 
     /**
+     * Tags a real HTML5 parser never allows inside flow content that is
+     * itself inside a `<p>` — a browser implicitly closes the `<p>`
+     * instead. libxml2's HTML parser (what DOMDocument::loadHTML() uses)
+     * follows the older HTML4 table instead and simply nests them, so
+     * malformed nesting that a browser would silently repair survives
+     * unchanged through DOMDocument. repairNesting() below fixes it
+     * explicitly rather than relying on the browser to paper over it.
+     *
+     * @var array<int, string>
+     */
+    private const BLOCK_LEVEL_TAGS = [
+        'p', 'div', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+        'blockquote', 'pre', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'section', 'nav', 'figure', 'figcaption', 'header', 'footer', 'form',
+        'article', 'aside', 'details', 'summary', 'fieldset',
+    ];
+
+    /**
      * @param array<string, array<int, string>>|null $allowedTags override the default allowlist (tests only)
      */
     public function __construct(
@@ -127,6 +145,192 @@ final class HtmlSanitizer
         }
 
         return trim($output);
+    }
+
+    /**
+     * Fixes invalid block-inside-`<p>` nesting without touching tags or
+     * attributes — deliberately separate from clean()'s allowlist pass,
+     * because it also runs on content_html filter output (shortcode
+     * markup a plugin generated after clean() already ran, e.g. a
+     * Downloads listing's `<div>`), which must survive verbatim and
+     * cannot be re-run through an allowlist without risking stripping
+     * legitimate plugin markup.
+     *
+     * Handles two real cases: a block-level element (commonly a `<div>`
+     * a shortcode expanded into, still sitting where the shortcode's
+     * bracket text used to be) landing inside a `<p>` that Markdown/HTML
+     * parsing already wrapped around it; and a second `<p>` opened
+     * before an earlier one closes, which libxml2 nests as a literal
+     * child rather than auto-closing the way a browser would.
+     */
+    public function repairNesting(string $html): string
+    {
+        if (!str_contains($html, '<p')) {
+            return $html;
+        }
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        libxml_use_internal_errors(true);
+        $dom->loadHTML(
+            '<?xml encoding="utf-8"?><div id="lp-repair-root">' . $html . '</div>',
+            LIBXML_NOERROR | LIBXML_NOWARNING,
+        );
+        libxml_clear_errors();
+
+        $root = $dom->getElementById('lp-repair-root');
+
+        if ($root === null) {
+            return $html;
+        }
+
+        $this->unnestBlocksFromParagraphs($root);
+        $this->removeEmptyParagraphs($root);
+
+        $output = '';
+
+        foreach (iterator_to_array($root->childNodes) as $child) {
+            $output .= $dom->saveHTML($child);
+        }
+
+        return trim($output);
+    }
+
+    /**
+     * Repeatedly finds a `<p>` containing an illegal block-level
+     * descendant and hoists it out — one violation per pass, since
+     * hoisting mutates the tree (a `<p>` can end up split into two, each
+     * needing its own re-check for further violations).
+     */
+    private function unnestBlocksFromParagraphs(DOMElement $root): void
+    {
+        do {
+            $hoisted = false;
+
+            foreach (iterator_to_array($root->getElementsByTagName('p')) as $p) {
+                if (!$p instanceof DOMElement) {
+                    continue;
+                }
+
+                $block = $this->findBlockDescendant($p);
+
+                if ($block === null) {
+                    continue;
+                }
+
+                $this->hoistOutOfParagraph($p, $block);
+                $hoisted = true;
+
+                break;
+            }
+        } while ($hoisted);
+    }
+
+    /**
+     * A `<div>` (unlike a second `<p>`) *does* make libxml2's parser
+     * implicitly close an already-open `<p>` — but it leaves the now
+     *-empty `<p></p>` behind rather than dropping it the way a browser
+     * would when adopting the same content. unnestBlocksFromParagraphs()
+     * never even sees these (the div already isn't nested by the time
+     * DOMDocument hands back the tree), so they need their own cleanup.
+     */
+    private function removeEmptyParagraphs(DOMElement $root): void
+    {
+        foreach (iterator_to_array($root->getElementsByTagName('p')) as $p) {
+            if ($p instanceof DOMElement && !$p->hasChildNodes() && $p->parentNode !== null) {
+                $p->parentNode->removeChild($p);
+            }
+        }
+    }
+
+    private function findBlockDescendant(DOMElement $element): ?DOMElement
+    {
+        foreach (iterator_to_array($element->childNodes) as $child) {
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+
+            if (in_array(strtolower($child->tagName), self::BLOCK_LEVEL_TAGS, true)) {
+                return $child;
+            }
+
+            $nested = $this->findBlockDescendant($child);
+
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Splits $p (and, if $block is nested deeper than a direct child,
+     * every inline wrapper between them) around $block, so $block ends
+     * up a sibling of $p instead of its descendant — the same structural
+     * repair a browser's HTML5 parser performs implicitly.
+     */
+    private function hoistOutOfParagraph(DOMElement $p, DOMElement $block): void
+    {
+        while ($block->parentNode !== $p) {
+            $parent = $block->parentNode;
+
+            if (!$parent instanceof DOMElement) {
+                return;
+            }
+
+            $this->splitAroundChild($parent, $block);
+        }
+
+        $this->splitAroundChild($p, $block);
+    }
+
+    /**
+     * Splits $element into a "before" copy and an "after" copy around
+     * $child, then replaces $element (in its own parent) with whichever
+     * of [before, child, after] actually has content — an empty
+     * before/after (e.g. a block-level element that opened $element)
+     * is dropped rather than left behind as a stray empty tag.
+     */
+    private function splitAroundChild(DOMElement $element, DOMNode $child): void
+    {
+        $parent = $element->parentNode;
+        $dom = $element->ownerDocument;
+
+        if ($parent === null || $dom === null) {
+            return;
+        }
+
+        $before = $dom->createElement($element->tagName);
+        $after = $dom->createElement($element->tagName);
+
+        foreach (iterator_to_array($element->attributes ?? []) as $attribute) {
+            $before->setAttribute($attribute->nodeName, $attribute->nodeValue ?? '');
+            $after->setAttribute($attribute->nodeName, $attribute->nodeValue ?? '');
+        }
+
+        $sawChild = false;
+
+        foreach (iterator_to_array($element->childNodes) as $node) {
+            if ($node === $child) {
+                $sawChild = true;
+
+                continue;
+            }
+
+            ($sawChild ? $after : $before)->appendChild($node);
+        }
+
+        if ($before->hasChildNodes()) {
+            $parent->insertBefore($before, $element);
+        }
+
+        $parent->insertBefore($child, $element);
+
+        if ($after->hasChildNodes()) {
+            $parent->insertBefore($after, $element);
+        }
+
+        $parent->removeChild($element);
     }
 
     private function cleanNode(DOMNode $node, DOMDocument $dom): void

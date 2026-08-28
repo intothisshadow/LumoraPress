@@ -106,8 +106,16 @@ final class ContentRenderer
         };
 
         $html = $this->addLightboxAttributes($html);
+        $html = $this->hooks->applyFilters('content_html', $html, $content, $format);
 
-        return $this->hooks->applyFilters('content_html', $html, $content, $format);
+        // Runs last, after every content_html shortcode has expanded —
+        // a block-level shortcode (Downloads, folder galleries) commonly
+        // expands in place of bracket text Markdown/HTML already wrapped
+        // in a <p>, and HTML-format content can arrive with pre-existing
+        // malformed <p> nesting (e.g. imported from another site). Kept
+        // separate from HtmlSanitizer::clean()'s allowlist pass since
+        // shortcode-generated markup must survive this step verbatim.
+        return $this->sanitizer->repairNesting($html);
     }
 
     /**
