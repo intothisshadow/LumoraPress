@@ -6,6 +6,20 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Appearance &rsaquo; Customize (LP-123): replaces the old flat Theme
+  Options page with a tabbed screen — Header, Welcome Message, Body,
+  Menu, Widgets, Footer. Header adds a site title display toggle and an
+  optional header image (with a configurable height); Welcome Message
+  adds an optional message (Markdown/HTML/Plain, the same editor as
+  post/page content) shown below the header or in the sidebar; Footer
+  adds optional additional footer content, separate from the existing
+  copyright text. Menu and Widgets link to the existing Menus/Widgets
+  screens rather than duplicating them. Theme Option values are now
+  scoped per active theme — each theme keeps its own independent
+  settings instead of sharing one global set; existing values from
+  before this change carry over to whichever theme was active at
+  upgrade time. "Reset Everything" moved off the Customize screen onto
+  its own dedicated Appearance &rsaquo; Reset Theme Options page.
 - Anonymous Install Ping (LP-127): an opt-in, off-by-default setting
   (Settings &rsaquo; Privacy) that periodically sends a minimal, anonymous
   ping — a randomly generated install ID, the Lumora Press version, and

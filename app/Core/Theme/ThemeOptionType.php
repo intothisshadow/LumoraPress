@@ -35,4 +35,15 @@ enum ThemeOptionType: string
     case Select = 'select';
     case Color = 'color';
     case Url = 'url';
+
+    /**
+     * Rich Markdown/HTML/Plain content (LP-123) — reuses the same
+     * content-editor.js WYSIWYG/Markdown/HTML toggle post/page content
+     * already uses. Stored raw and unsanitized (see
+     * ThemeOptions::sanitize()), sanitized only at render time via
+     * render_content(), same posture as post/page content and
+     * custom_css(). Always paired with a companion Select field carrying
+     * the ContentFormat choice (e.g. welcome_message + welcome_message_format).
+     */
+    case Html = 'html';
 }

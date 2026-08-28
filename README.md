@@ -99,18 +99,21 @@ Lumora Press follows a small service-oriented architecture rather than a full fr
   PHP theme templates (`header.php`, `single.php`, etc.), with `get_header()`
   / `get_footer()` / `get_sidebar()` helpers available inside templates.
 - **`LumoraPress\Core\Theme\ThemeOptions`** — the Theme Options system
-  (Appearance &rsaquo; Theme Options): themes and plugins register sections and
+  (Appearance &rsaquo; Customize): themes and plugins register sections and
   fields (`ThemeOptionField`, one of `ThemeOptionType::{Text,Textarea,Number,
-  Checkbox,Select,Color,Url}`) via `add_action('register_theme_options', function
+  Checkbox,Select,Color,Url,Html}`) via `add_action('register_theme_options', function
   (ThemeOptions $options) { ... })`, and the admin page + validation +
   storage are generated automatically. A field with a `cssVariable` is
   exposed to every public page as a CSS custom property via the
   `theme_options_css()` template helper (or read directly with
-  `theme_option($key)`); core ships eleven built-in options — Colors (Accent,
+  `theme_option($key)`); core ships sixteen built-in options — Colors (Accent,
   Text, Muted Text, Background, Alt Background, Border), Typography (Body
   font, Base font size, Line height, Google Fonts URL + font family — the
-  URL field is restricted to `fonts.googleapis.com`), and Layout (Content
-  width).
+  URL field is restricted to `fonts.googleapis.com`), Layout (Content
+  width), Header (site title toggle, header image height), Welcome
+  Message (Markdown/HTML/Plain content + placement), and Footer (Markdown/
+  HTML/Plain content). Values are scoped per active theme — each theme
+  keeps its own independent set.
 - **`LumoraPress\Core\Widgets\WidgetManager`** and
   **`LumoraPress\Core\Menus\MenuManager`** — sidebar/widget and nav-menu
   registration and rendering, exposed procedurally for theme authors.
@@ -345,9 +348,11 @@ an older PHP version can be safely phased out.
   automatic backup and rollback either way.
 - **Maintenance mode** — take the public site offline for visitors while
   admins keep working.
-- **Appearance** — theme browser, branding, custom CSS, Theme Options
-  (colors/typography/layout/post display, no CSS editing required),
-  widgets, navigation menus, and a built-in theme file editor.
+- **Appearance** — theme browser, branding, custom CSS, a tabbed
+  Customize screen (Header, Welcome Message, Body — colors/typography/
+  layout/post display, Menu, Widgets, Footer; values are scoped per
+  active theme, no CSS editing required), widgets, navigation menus, and
+  a built-in theme file editor.
 - **Plugin browser** — install and manage plugins from the admin panel.
 - **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
   developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
@@ -372,8 +377,8 @@ an older PHP version can be safely phased out.
   (with an optional separate posts page), set how many posts each
   listing page shows, and discourage search engines from indexing the
   site (a virtual `robots.txt` plus a `noindex` meta tag).
-- **Front page & archive post display** — Theme Options &rsaquo; Post
-  Display controls whether the front page and archives show each post's
+- **Front page & archive post display** — Appearance &rsaquo; Customize
+  &rsaquo; Body &rsaquo; Post Display controls whether the front page and archives show each post's
   full content or an excerpt (with a configurable Read More link and
   automatic excerpt length), and whether the featured image appears in
   listings. A Read More tag, insertable from the content editor toolbar,

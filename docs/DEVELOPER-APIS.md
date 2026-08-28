@@ -156,7 +156,7 @@ the core equivalent.
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
-| `register_theme_options` | action | `ThemeOptions $themeOptions` | Fired once at bootstrap, after the active theme's `functions.php` has loaded and after core's own eleven built-in fields are registered. See [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md)'s Theme Options section for the registration pattern. |
+| `register_theme_options` | action | `ThemeOptions $themeOptions` | Fired once at bootstrap, after the active theme's `functions.php` has loaded and after core's own sixteen built-in fields are registered. Values are scoped per active theme (LP-123) — see [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md)'s Theme Options section for the registration pattern and the Appearance &rsaquo; Customize screen's template tags. |
 | `option_changed` | action | `string $key, string\|null $serialized` | [`PressConfig`](../app/Core/PressConfig.php)`::setOption()` — fires on **every** option write anywhere in the app, including in-memory-only config with no database bound. The single most universal "something in settings changed" hook. |
 | `general_settings_saved` | action | `string $section` (`'site_settings'` \| `'date_time_settings'` \| `'footer_settings'` \| `'seo_settings'`) | `admin/views/settings/general.php`, once per successfully-saved sub-form. **Not fired** by that same screen's Feed, Search, Revision, REST API, or Editor sub-forms — those save silently. Don't treat this as a complete "any setting changed" event; use `option_changed` for that instead. |
 | `maintenance_mode_toggled` | action | `bool $enabled` | `admin/views/settings/maintenance-mode.php` — both the full settings form and the quick Dashboard toggle fire this. |

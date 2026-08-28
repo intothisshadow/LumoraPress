@@ -159,19 +159,26 @@ $meta_description = $seo_description ?? meta_description();
 <body class="lp-site">
 <a class="lp-skip-link" href="#lp-content">Skip to content</a>
 <header class="lp-site-header">
+    <?php if (has_header_image()): ?>
+        <div class="lp-site-header__image-wrap">
+            <img class="lp-site-header__image" src="<?= esc_url((string) header_image_url()) ?>" alt="">
+        </div>
+    <?php endif; ?>
     <div class="lp-site-header__inner">
-        <p class="lp-site-header__brand">
-            <a href="<?= esc_url(site_url()) ?>">
-                <?php if (site_logo_url() !== null): ?>
-                    <img class="lp-site-header__logo" src="<?= esc_url(site_logo_url()) ?>" alt="<?= esc_attr(site_name()) ?>">
-                <?php else: ?>
-                    <?= esc_html(site_name()) ?>
+        <?php if (show_site_title()): ?>
+            <p class="lp-site-header__brand">
+                <a href="<?= esc_url(site_url()) ?>">
+                    <?php if (site_logo_url() !== null): ?>
+                        <img class="lp-site-header__logo" src="<?= esc_url(site_logo_url()) ?>" alt="<?= esc_attr(site_name()) ?>">
+                    <?php else: ?>
+                        <?= esc_html(site_name()) ?>
+                    <?php endif; ?>
+                </a>
+                <?php if (site_tagline() !== ''): ?>
+                    <span class="lp-site-header__tagline"><?= esc_html(site_tagline()) ?></span>
                 <?php endif; ?>
-            </a>
-            <?php if (site_tagline() !== ''): ?>
-                <span class="lp-site-header__tagline"><?= esc_html(site_tagline()) ?></span>
-            <?php endif; ?>
-        </p>
+            </p>
+        <?php endif; ?>
         <nav class="lp-site-header__nav" aria-label="Primary">
             <?php nav_menu('primary'); ?>
         </nav>
@@ -186,4 +193,7 @@ $meta_description = $seo_description ?? meta_description();
         </button>
     </div>
 </header>
+<?php if (has_welcome_message() && welcome_message_placement() === 'header'): ?>
+    <?php welcome_message(); ?>
+<?php endif; ?>
 <div class="lp-site-body">

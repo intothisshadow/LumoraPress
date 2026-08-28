@@ -292,7 +292,7 @@ $theme->loadFunctions();
  * fields of its own, the same ordering widgets/menus already rely on for
  * register_widget()/register_nav_menu() above.
  */
-$themeOptions = new ThemeOptions($config);
+$themeOptions = new ThemeOptions($config, $activeThemeSlug);
 $themeOptions->registerStandardOptions();
 do_action('register_theme_options', $themeOptions);
 ThemeOptionsBridge::set($themeOptions);
@@ -373,6 +373,11 @@ SiteBranding::set(
     timeFormat: (string) $config->option('time_format', 'g:i a'),
     discourageSearchEngines: ((string) $config->option('discourage_search_engines', '0')) === '1',
 );
+
+// LP-123: header_image_media_id lives inside ThemeOptions' own per-theme
+// values, not a plain PressConfig option, but still needs $resolveMediaUrl
+// above (MediaService, constructed after $themeOptions) to become a URL.
+ThemeOptionsBridge::setHeaderImageUrl($resolveMediaUrl($themeOptions->headerImageMediaId()));
 
 $posts = new PostService($database, $tablePrefix, $hooks);
 $pages = new PageService($database, $tablePrefix, $hooks);

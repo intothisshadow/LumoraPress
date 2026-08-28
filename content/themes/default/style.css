@@ -187,6 +187,20 @@ img {
     color: var(--lp-text-muted);
 }
 
+/* LP-123: optional header image, above the header bar. --lp-header-image-height
+   is the Header section's own configurable Theme Option (default 200px). */
+.lp-site-header__image-wrap {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+}
+
+.lp-site-header__image {
+    display: block;
+    width: 100%;
+    height: var(--lp-header-image-height, 200px);
+    object-fit: cover;
+}
+
 /* =========================================================
    Navigation menus
    ========================================================= */
@@ -1028,6 +1042,25 @@ img {
     color: var(--lp-text-muted);
 }
 
+/* LP-123: the optional Welcome Message, either below the header (a
+   full-width band) or inside .lp-sidebar (styled like a .lp-widget so it
+   reads as part of that same list rather than a mismatched extra box). */
+.lp-welcome-message {
+    max-width: var(--lp-max-width);
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem;
+    color: var(--lp-text);
+}
+
+.lp-sidebar .lp-welcome-message {
+    max-width: none;
+    margin: 0;
+    padding: 1.25rem;
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+}
+
 /*
  * Text/HTML widget WYSIWYG output (LP-112), plus the Custom HTML widget's
  * hand-authored markup — both render into this same .lp-widget__content
@@ -1497,6 +1530,18 @@ img {
 .lp-site-footer__feed-link:focus {
     color: var(--lp-accent-hover);
     text-decoration: underline;
+}
+
+/* LP-123: additional per-theme footer content, distinct from the
+   copyright line above it (.lp-site-footer__copyright, a separate
+   General Settings field). */
+.lp-footer-html {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--lp-border);
+    color: var(--lp-text-muted);
+    font-size: 0.85rem;
 }
 
 /* =========================================================

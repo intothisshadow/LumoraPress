@@ -319,8 +319,8 @@ is available if you need a conditional wrapper around surrounding markup
 A theme (or plugin) registers its own Theme Options fields by hooking
 `register_theme_options` from `functions.php` — this hook fires *after*
 your theme's `functions.php` has already loaded and *after* core's own
-eleven built-in fields (Colors, Typography, Layout, Post Display) are
-already registered:
+sixteen built-in fields (Colors, Typography, Layout, Post Display,
+Header, Welcome Message, Footer) are already registered:
 
 ```php
 add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOptions $options): void {
@@ -340,8 +340,17 @@ Read the value in a template with `theme_option('my_theme_hero_text')` —
 this always returns a string, falling back to the field's own `default`
 if unset, and never throws for an unknown key.
 
+Values are scoped per active theme (LP-123): each theme's saved values
+are independent — switching the active theme via Appearance > Themes
+switches which set of values is shown/editable and rendered on the front
+end. A custom section your theme registers (like `my_theme` above) only
+ever shows up on the admin's Appearance > Customize screen while your
+theme is active, since that screen only ever lists the current
+`ThemeOptions` instance's registered sections.
+
 `ThemeOptionType` cases: `Text`, `Textarea`, `Number`, `Checkbox`,
-`Select`, `Color`, `Url`.
+`Select`, `Color`, `Url`, `Html` (LP-123 — rich Markdown/HTML/Plain
+content, reusing the same editor as post/page content; see below).
 
 `ThemeOptionField` constructor parameters: `key`, `section`, `type`,
 `label`, `default = ''`, `cssVariable = null`, `help = ''`,
@@ -350,6 +359,69 @@ if unset, and never throws for an unknown key.
 (Select: stored value ⇒ actual CSS value), `allowEmpty = false`,
 `previewDefault = null` (Color: swatch shown when the value is empty),
 `allowedHosts = []` (Url: restrict the submitted URL's host).
+
+### The `Html` field type
+
+An `Html`-type field stores raw, unsanitized Markdown/HTML/Plain content
+(sanitized only at render time, the same posture as post/page `content`
+and `custom_css()` — never double-sanitized at storage time), rendered
+through `render_content()`. It's always paired with a companion
+`Select`-type field carrying the `\LumoraPress\Models\ContentFormat`
+choice (`'html'`/`'markdown'`/`'plain'`), by convention named
+`{key}_format` — see `welcome_message`/`welcome_message_format` and
+`footer_html`/`footer_html_format` in `ThemeOptions::registerStandardOptions()`
+for the exact pattern to follow for your own rich-content field.
+
+### Appearance > Customize screen sections
+
+The admin Appearance > Customize screen (LP-123, replacing the old flat
+Theme Options page) groups sections into six tabs: **Header**,
+**Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**. Menu
+and Widgets are link-outs to the existing Menus/Widgets screens, not
+option sections. **Body groups the pre-existing `colors`/`typography`/
+`layout`/`post_display` sections under one tab — it is not itself a
+registered `ThemeOptions` section** (`ThemeOptions::sections()` still
+returns those four section keys unchanged; the tab grouping is purely an
+admin-view concern). A custom section your theme/plugin registers (like
+`my_theme` above) is not one of the six built-in tabs and currently has
+no dedicated tab of its own on the Customize screen — see
+`admin/views/appearance/customize.php`'s `$tabSections` if you need to
+place a custom section somewhere specific.
+
+Core's `header`/`welcome_message`/`footer` sections come with matching
+template tags a theme calls directly — no hook required for the common
+case:
+
+```php
+// Header section
+show_site_title(): bool                 // whether to render your title/logo block
+has_header_image(): bool
+header_image_url(): ?string
+header_height(): string                 // bare value; also flows through
+                                         // theme_options_css() as --lp-header-image-height
+
+// Welcome Message section — call in exactly one of header.php/sidebar.php
+has_welcome_message(): bool
+welcome_message_placement(): string     // 'header' or 'sidebar'
+welcome_message(): void                 // echoes rendered HTML, no-ops if empty
+
+// Footer section — distinct from the existing footer_copyright_text()
+has_footer_html(): bool
+footer_html(): void                     // echoes rendered HTML, no-ops if empty
+```
+
+Every one of these self-guards (no-ops when unset), the same convention
+`nav_menu()`/`dynamic_sidebar()`/`custom_css()` already follow — a theme
+that never calls them loses nothing, and a theme that does call them
+gets an empty render rather than stray markup when nothing is
+configured. The default, duskline, and xena-theme themes all call these
+from their own `header.php`/`sidebar.php`/`footer.php` — read those for
+the exact integration points. **A theme is always free to ignore any of
+these** (see `content_width`'s own precedent) — xena-theme deliberately
+does not wire `has_header_image()`/`header_image_url()` into its header
+at all, since its bundled `xc-banner` image is its own permanent
+defining visual, not something a generic per-theme upload should
+replace.
 
 ### CSS-variable-injected fields
 

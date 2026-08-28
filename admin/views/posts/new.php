@@ -273,7 +273,7 @@ if ($savedLayout['order'] === []) {
                     <textarea id="post-excerpt" name="excerpt" rows="3"><?= esc_html($post->excerpt ?? '') ?></textarea>
                     <span class="lp-field__hint">
                         Shown as this post's preview on the front page and archives (Settings for this are on
-                        <a href="<?= esc_url(admin_url('appearance/theme-options')) ?>">Appearance &rsaquo; Theme Options &rsaquo; Post Display</a>).
+                        <a href="<?= esc_url(admin_url('appearance/customize')) ?>?tab=body">Appearance &rsaquo; Customize &rsaquo; Body</a>).
                         Leave blank to use the content up to a Read More tag in the editor above, or an automatically
                         generated excerpt if there's no Read More tag either.
                     </span>

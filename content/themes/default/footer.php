@@ -32,6 +32,9 @@
             <?php endif; ?>
         </p>
         <a class="lp-site-footer__feed-link" href="<?= esc_url(home_url('feed')) ?>">Subscribe via RSS</a>
+        <?php if (has_footer_html()): ?>
+            <?php footer_html(); ?>
+        <?php endif; ?>
     </div>
 </footer>
 <script src="<?= esc_url(core_asset_url('js/dynamic-style.js')) ?>"></script>

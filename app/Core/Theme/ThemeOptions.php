@@ -27,13 +27,19 @@ use LumoraPress\Core\PressConfig;
  * standard Colors/Typography/Layout options via registerStandardOptions()
  * (called from include/bootstrap.php), plus anything a theme or plugin
  * adds by hooking `add_action('register_theme_options', function
- * (ThemeOptions $options) { ... })` — and are never theme-specific
- * storage: all sites share one flat `theme_options` option (a JSON map of
- * key => string value, the same "structured value as JSON" convention
- * widgets_config/nav_menus already use), not scoped per active theme.
- * Switching themes does not reset or lose values; a future per-theme
- * scoping pass is tracked as deferred on TODO.md's LP-034 (Theme update
- * compatibility / child theme support).
+ * (ThemeOptions $options) { ... })`.
+ *
+ * Values are scoped per active theme (LP-123): each theme's values live
+ * under their own `theme_options_{slug}` option (a JSON map of key =>
+ * string value, the same "structured value as JSON" convention
+ * widgets_config/nav_menus already use), keyed by $activeThemeSlug at
+ * construction time. Switching the active theme genuinely switches which
+ * values are shown/editable — each theme keeps its own independent set,
+ * so e.g. an Accent Color chosen while duskline is active has no effect
+ * once xena-theme is activated. (Before LP-123, all sites shared one flat
+ * `theme_options` option regardless of active theme; migration
+ * 0054_migrate_theme_options_to_active_theme.sql carries any pre-existing
+ * global values over to whichever theme was active at upgrade time.)
  *
  * Values are always plain strings — Checkbox stores '1'/'0', Number
  * stores a numeric string, Color stores a '#rrggbb' hex string or '' for
@@ -43,8 +49,6 @@ use LumoraPress\Core\PressConfig;
  */
 final class ThemeOptions
 {
-    private const OPTION_KEY = 'theme_options';
-
     /** @var array<string, ThemeOptionSection> */
     private array $sections = [];
 
@@ -54,8 +58,15 @@ final class ThemeOptions
     /** @var array<string, string>|null */
     private ?array $values = null;
 
-    public function __construct(private readonly PressConfig $config)
+    public function __construct(
+        private readonly PressConfig $config,
+        private readonly string $activeThemeSlug = 'default',
+    ) {
+    }
+
+    private function optionKey(): string
     {
+        return 'theme_options_' . $this->activeThemeSlug;
     }
 
     public function registerSection(string $key, string $label, string $description = ''): void
@@ -71,11 +82,11 @@ final class ThemeOptions
     /**
      * Core's own built-in options — called once from bootstrap, before
      * the active theme's functions.php gets a chance (via the
-     * 'register_theme_options' action) to register more. Scoped to
-     * Colors, Typography, and Layout for this first pass; Homepage,
-     * Header, Footer, Blog, Images, and Custom Code (beyond the
-     * pre-existing Custom CSS field) remain deferred — see TODO.md's
-     * LP-034 for the exact remaining checklist.
+     * 'register_theme_options' action) to register more. Covers Colors,
+     * Typography, Layout, Post Display (LP-034/LP-079), and Header/
+     * Welcome Message/Footer (LP-123, for the Appearance > Customize
+     * screen's tabs of the same name); Homepage, Blog, and Images remain
+     * deferred — see TODO.md's LP-034 for the exact remaining checklist.
      */
     public function registerStandardOptions(): void
     {
@@ -269,6 +280,119 @@ final class ThemeOptions
             label: 'Read More text',
             default: 'Continue reading →',
         ));
+
+        // LP-123: Header/Welcome Message/Footer, registered for the new
+        // Appearance > Customize screen's tabs of the same name. header_image
+        // itself is deliberately NOT a ThemeOptionField — a file upload
+        // doesn't fit this class's string-in/string-out sanitize() contract
+        // — see headerImageMediaId()/setHeaderImageMediaId() below instead.
+        $this->registerSection('header', 'Header', 'Controls what appears in the site header above the navigation.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'show_site_title',
+            section: 'header',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show site title',
+            default: '1',
+            help: 'Show the site title/logo in the header. Turn off if your header image already includes the title.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'header_height',
+            section: 'header',
+            type: ThemeOptionType::Number,
+            label: 'Header image height (px)',
+            default: '200',
+            cssVariable: '--lp-header-image-height',
+            min: 50,
+            max: 800,
+            cssUnit: 'px',
+            help: 'Only applies when a header image is set below.',
+        ));
+
+        $this->registerSection('welcome_message', 'Welcome Message', 'An optional message shown near the top of your site.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'welcome_message',
+            section: 'welcome_message',
+            type: ThemeOptionType::Html,
+            label: 'Welcome message',
+            default: '',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'welcome_message_format',
+            section: 'welcome_message',
+            type: ThemeOptionType::Select,
+            label: 'Welcome message editor',
+            default: 'html',
+            choices: [
+                'html' => 'Visual/HTML',
+                'markdown' => 'Markdown',
+                'plain' => 'Plain text',
+            ],
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'welcome_message_placement',
+            section: 'welcome_message',
+            type: ThemeOptionType::Select,
+            label: 'Placement',
+            default: 'header',
+            choices: [
+                'header' => 'Below the header',
+                'sidebar' => 'In the sidebar',
+            ],
+        ));
+
+        // footer_html is deliberately separate from footer_copyright_text
+        // (a General Settings field, global not per-theme — see
+        // SiteBranding::footerCopyrightText()) — this is additional
+        // per-theme footer content, not a replacement for the copyright line.
+        $this->registerSection('footer', 'Footer', 'Additional footer content, shown alongside the copyright text set on the General Settings screen.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'footer_html',
+            section: 'footer',
+            type: ThemeOptionType::Html,
+            label: 'Footer content',
+            default: '',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'footer_html_format',
+            section: 'footer',
+            type: ThemeOptionType::Select,
+            label: 'Footer content editor',
+            default: 'html',
+            choices: [
+                'html' => 'Visual/HTML',
+                'markdown' => 'Markdown',
+                'plain' => 'Plain text',
+            ],
+        ));
+    }
+
+    /**
+     * Header image is stored as a reserved key inside the same per-theme
+     * values blob rather than as a ThemeOptionField (file uploads don't fit
+     * the field system's string-in/string-out sanitize() contract) — this
+     * also means Reset Section/Reset Everything on the 'header' section
+     * clears it for free, since it lives in the same persisted array.
+     */
+    public function headerImageMediaId(): int
+    {
+        return (int) ($this->loadValues()['header_image_media_id'] ?? 0);
+    }
+
+    public function setHeaderImageMediaId(int $mediaId): void
+    {
+        $values = $this->loadValues();
+        $values['header_image_media_id'] = (string) $mediaId;
+        $this->persist($values);
+    }
+
+    public function removeHeaderImage(): void
+    {
+        $values = $this->loadValues();
+        unset($values['header_image_media_id']);
+        $this->persist($values);
     }
 
     /**
@@ -356,6 +480,14 @@ final class ThemeOptions
             unset($values[$field->key]);
         }
 
+        // header_image_media_id has no ThemeOptionField of its own (see its
+        // docblock above), so fieldsForSection('header') never covers it —
+        // clear it explicitly here so resetting the Header section reaches
+        // the header image too, not just show_site_title/header_height.
+        if ($sectionKey === 'header') {
+            unset($values['header_image_media_id']);
+        }
+
         $this->persist($values);
     }
 
@@ -434,6 +566,11 @@ final class ThemeOptions
             ThemeOptionType::Color => $this->sanitizeColor($field, $rawValue),
             ThemeOptionType::Number => $this->sanitizeNumber($field, $rawValue),
             ThemeOptionType::Url => $this->sanitizeUrl($field, $rawValue),
+            // Stored raw, unsanitized — same posture as custom_css() and
+            // post/page content: this is admin-authored markup trusted at
+            // this level (manage_themes only), sanitized once at render
+            // time by render_content(), not double-sanitized at storage.
+            ThemeOptionType::Html => $rawValue,
         };
     }
 
@@ -507,7 +644,7 @@ final class ThemeOptions
             return $this->values;
         }
 
-        $decoded = json_decode((string) $this->config->option(self::OPTION_KEY, '{}'), true);
+        $decoded = json_decode((string) $this->config->option($this->optionKey(), '{}'), true);
         $this->values = is_array($decoded) ? array_map(strval(...), $decoded) : [];
 
         return $this->values;
@@ -519,6 +656,6 @@ final class ThemeOptions
     private function persist(array $values): void
     {
         $this->values = $values;
-        $this->config->setOption(self::OPTION_KEY, json_encode($values, JSON_THROW_ON_ERROR));
+        $this->config->setOption($this->optionKey(), json_encode($values, JSON_THROW_ON_ERROR));
     }
 }

@@ -450,10 +450,11 @@ $menu = [
         'default_child' => 'themes',
         'children' => [
             'themes' => ['label' => 'Themes', 'icon' => '🖌️', 'capability' => 'manage_themes'],
-            'theme-options' => ['label' => 'Theme Options', 'icon' => '🎛️', 'capability' => 'manage_themes'],
+            'customize' => ['label' => 'Customize', 'icon' => '🎛️', 'capability' => 'manage_themes'],
             'widgets' => ['label' => 'Widgets', 'icon' => '🧩', 'capability' => 'manage_themes'],
             'menus' => ['label' => 'Menus', 'icon' => '🧭', 'capability' => 'manage_themes'],
             'custom-css' => ['label' => 'Custom CSS', 'icon' => '🎨', 'capability' => 'manage_themes'],
+            'reset' => ['label' => 'Reset Theme Options', 'icon' => '♻️', 'capability' => 'manage_themes'],
             'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes'],
             ...($fontAwesomeActive ? ['font-awesome' => ['label' => 'Font Awesome', 'icon' => '🅰️', 'capability' => 'manage_themes']] : []),
         ],

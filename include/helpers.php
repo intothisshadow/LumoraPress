@@ -518,6 +518,141 @@ if (!function_exists('theme_options_css')) {
     }
 }
 
+if (!function_exists('show_site_title')) {
+    /**
+     * LP-123 Header section. Whether a theme's header should render its
+     * site-title/logo block. Not every theme has one to guard in the
+     * first place — xena-theme's header bar carries no title/logo markup
+     * at all by design (its bundled banner image replaces it), so that
+     * theme's header.php simply never calls this.
+     */
+    function show_site_title(): bool
+    {
+        return theme_option('show_site_title') === '1';
+    }
+}
+
+if (!function_exists('has_header_image')) {
+    /**
+     * LP-123 Header section. Whether an administrator has uploaded a
+     * header image for the active theme — resolved once at bootstrap
+     * (see ThemeOptionsBridge::setHeaderImageUrl()'s docblock for why),
+     * so this just checks the already-resolved URL rather than the raw
+     * media ID.
+     */
+    function has_header_image(): bool
+    {
+        return ThemeOptionsBridge::headerImageUrl() !== null;
+    }
+}
+
+if (!function_exists('header_image_url')) {
+    /**
+     * LP-123 Header section — mirrors site_logo_url()'s pattern above.
+     */
+    function header_image_url(): ?string
+    {
+        return ThemeOptionsBridge::headerImageUrl();
+    }
+}
+
+if (!function_exists('header_height')) {
+    /**
+     * LP-123 Header section. Only meaningful alongside header_image_url()
+     * — flows through the header_height field's own $cssVariable
+     * (--lp-header-image-height) via theme_options_css() for the actual
+     * CSS rule, this helper exists only for a theme that needs the bare
+     * value directly (e.g. an inline width/height attribute).
+     */
+    function header_height(): string
+    {
+        return theme_option('header_height');
+    }
+}
+
+if (!function_exists('has_welcome_message')) {
+    /**
+     * LP-123 Welcome Message section. Self-guarding, no-op-when-empty
+     * check — same convention as is_active_sidebar()/nav_menu() — so a
+     * theme can gate its own markup around welcome_message() without
+     * that call ever rendering empty wrapper markup.
+     */
+    function has_welcome_message(): bool
+    {
+        return theme_option('welcome_message') !== '';
+    }
+}
+
+if (!function_exists('welcome_message_placement')) {
+    /**
+     * LP-123 Welcome Message section — 'header' or 'sidebar'. A theme's
+     * header.php/sidebar.php each check this before calling
+     * welcome_message(), so the message renders in exactly one place.
+     */
+    function welcome_message_placement(): string
+    {
+        return theme_option('welcome_message_placement');
+    }
+}
+
+if (!function_exists('welcome_message')) {
+    /**
+     * LP-123 Welcome Message section. Renders the admin-authored welcome
+     * message through the same render_content() pipeline post/page
+     * content already uses (Markdown/HTML/Plain, per its companion
+     * welcome_message_format field) — no-ops when empty, same convention
+     * as custom_css()/nav_menu(). Callers should still guard with
+     * has_welcome_message() && welcome_message_placement() === '...'
+     * before calling, so the message isn't rendered in both possible
+     * placements.
+     */
+    function welcome_message(): void
+    {
+        $content = theme_option('welcome_message');
+
+        if ($content === '') {
+            return;
+        }
+
+        $format = ContentFormat::tryFrom(theme_option('welcome_message_format')) ?? ContentFormat::Html;
+
+        echo '<div class="lp-welcome-message">' . render_content($content, $format) . '</div>';
+    }
+}
+
+if (!function_exists('has_footer_html')) {
+    /**
+     * LP-123 Footer section. See has_welcome_message()'s docblock for the
+     * same no-op-when-empty rationale.
+     */
+    function has_footer_html(): bool
+    {
+        return theme_option('footer_html') !== '';
+    }
+}
+
+if (!function_exists('footer_html')) {
+    /**
+     * LP-123 Footer section. Deliberately separate from and rendered
+     * apart from footer_copyright_text() (a General Settings field, not a
+     * Theme Option) — this is additional, per-theme footer content, not
+     * a replacement for the copyright line. See welcome_message()'s
+     * docblock for the render_content() pipeline this shares.
+     */
+    function footer_html(): void
+    {
+        $content = theme_option('footer_html');
+
+        if ($content === '') {
+            return;
+        }
+
+        $format = ContentFormat::tryFrom(theme_option('footer_html_format')) ?? ContentFormat::Html;
+
+        echo '<div class="lp-footer-html">' . render_content($content, $format) . '</div>';
+    }
+}
+
 if (!function_exists('csp_style_nonce')) {
     /**
      * This request's Content-Security-Policy nonce — every inline
