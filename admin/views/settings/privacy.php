@@ -137,7 +137,7 @@ $installUuid = $installPingEnabled ? $kernel->installPing->getOrCreateUuid() : (
         <input type="hidden" name="form" value="install_ping_settings">
 
         <p class="lp-field">
-            <label>
+            <label class="lp-field--checkbox">
                 <input type="checkbox" name="install_ping_enabled" value="1" <?= $installPingEnabled ? 'checked' : '' ?>>
                 Anonymous install ping
             </label>

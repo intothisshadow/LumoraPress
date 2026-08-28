@@ -3474,6 +3474,19 @@ select:focus {
     background: var(--lp-admin-accent-hover);
 }
 
+/*
+ * LP-123: the generic .lp-admin__content > .lp-admin__panel spacing rule
+ * above only matches panels one level deep — a tab panel stacking more
+ * than one .lp-admin__panel (e.g. Customize's Body tab, which groups
+ * Colors/Typography/Layout/Post Display) nests them one level deeper and
+ * so never matched it, leaving those panels flush against each other
+ * with no gap. Updates.php's own tabs never hit this because each of its
+ * tab panels only ever holds a single .lp-admin__panel.
+ */
+.lp-tabs__panel > .lp-admin__panel {
+    margin-bottom: 1.5rem;
+}
+
 .lp-tabs__panel > *:last-child {
     margin-bottom: 0;
 }
