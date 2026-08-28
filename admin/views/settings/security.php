@@ -65,6 +65,7 @@ $maxAttempts = (int) $kernel->config->option('login_max_attempts', '5');
 $windowMinutes = (int) round(((int) $kernel->config->option('login_window_seconds', '900')) / 60);
 $lockoutMinutes = (int) round(((int) $kernel->config->option('login_lockout_seconds', '900')) / 60);
 $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) === '1';
+$akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key', '')) !== '';
 ?>
 <h1 class="lp-admin__title">Security</h1>
 
@@ -125,7 +126,13 @@ $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) ===
         <p class="lp-field">
             <label for="akismet-api-key">API key</label>
             <input type="password" id="akismet-api-key" name="akismet_api_key" placeholder="Not set" autocomplete="off">
-            <span class="lp-field__hint">Leave blank to keep the current key unchanged.</span>
+            <span class="lp-field__hint">
+                <?php if ($akismetKeyConfigured): ?>
+                    A key is currently configured — this field always shows blank for security, not because the key is missing. Leave it blank to keep that key unchanged, or type a new one to replace it.
+                <?php else: ?>
+                    No key is currently configured. Leave blank to save without one, or type your Akismet API key.
+                <?php endif; ?>
+            </span>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

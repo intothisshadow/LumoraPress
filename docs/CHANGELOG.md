@@ -147,6 +147,11 @@ All notable changes to Lumora Press are documented in this file.
   a Simple Download Monitor item whose own source file is missing now
   surfaces its warning in the summary's "needs your attention" section
   rather than blending into routine per-attachment notices.
+- Settings &rsaquo; Security's Akismet API key field always showed blank
+  (a deliberate, unchanged security choice — the real key is never
+  echoed back into the field), which was indistinguishable from "no key
+  saved," even right after a successful save. The field's hint text now
+  says outright whether a key is currently configured.
 
 ## [0.8.0] — 2026-08-28
 
