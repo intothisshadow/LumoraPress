@@ -953,6 +953,13 @@
                         aligncenter: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-center' },
                         alignright: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-right' },
                         alignjustify: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-justify' },
+                        // TinyMCE's default underline format applies
+                        // <span style="text-decoration: underline">, the
+                        // same style-attribute problem as alignment above
+                        // — HtmlSanitizer strips it, silently discarding
+                        // the underline. Force the plain <u> tag it
+                        // already allows instead.
+                        underline: { inline: 'u', exact: true },
                     }, fontColorFormats),
                     branding: false,
                     promotion: false,

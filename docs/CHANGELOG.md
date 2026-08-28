@@ -37,6 +37,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The Visual/HTML editor's Underline button didn't persist: TinyMCE's
+  default underline formatting applies an inline `style` attribute,
+  which HtmlSanitizer strips (it never allows inline styles), silently
+  discarding the underline on save. The toolbar now applies a plain
+  `<u>` tag instead, which HtmlSanitizer already allows through.
 - Content rendering could produce invalid nested markup (LP-125): a
   block-level shortcode (e.g. a Downloads listing) landing inside a
   `<p>` Markdown/HTML had already wrapped around it, and HTML-format
