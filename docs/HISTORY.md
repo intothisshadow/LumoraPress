@@ -8363,6 +8363,122 @@ See `ideas for later.md`'s WordPress Importer (LPP-004) section: theme customiza
 
 **Design goal:** Make migration from WordPress as close to a one-click experience as possible while preserving URLs, media, metadata, and site structure.
 
+**Fixed (2026-08-28):** the first real live-production import
+(xenacentral.com, via `References/xena_wp386_1787915021.sql.gz`)
+surfaced three content-fidelity gaps neither prior testing nor the
+so-obsessed.com import happened to exercise:
+
+- `flagUnsupportedShortcodes()` only checked for `[sdm_show_dl`/`[ngg`
+  — TablePress's `[table id=... /]` shortcode passed through as literal
+  bracket text on two published pages (Wallpapers, Icons) with **no
+  warning at all**, so the admin had no way to know anything needed
+  fixing. Now flagged the same way, pointing the admin at replacing it
+  by hand with a real HTML table. TablePress genuinely has no Lumora
+  Press equivalent (same reasoning as `[sdm_show_dl`/`[ngg`), so this
+  stays a flag-and-fix-by-hand case, not a conversion.
+- WordPress core's own `[caption id="..." align="..." width="..."]
+  <img .../> Caption text[/caption]` shortcode (the classic editor's
+  output for any image with a caption) had **no handling at all** —
+  not converted, not even flagged — so it rendered as broken bracket
+  text surrounding (and after) the image on every affected post. Unlike
+  TablePress, this *does* have a real Lumora Press equivalent, so
+  `ContentImageRewriter::convertCaptionShortcodes()` (new) converts it
+  to `<figure class="lp-caption {align}"><img ...><figcaption>...
+  </figcaption></figure>` before the existing DOM-based `<img>`
+  rewrite pass runs (so the image inside still gets its `src` correctly
+  repointed at the migrated media). New `figure.lp-caption` rules added
+  to `content/themes/default/style.css`, mirroring the existing plain
+  `img.align*` rules — propagated additively to both custom themes
+  (`duskline`, `xena-theme`) the same session per this project's
+  standing rule. Regression tests for both gaps added to
+  `WordPressImportServiceTest.php`.
+- The widest-reaching gap: classic WordPress never stores real `<p>`
+  tags in `post_content` at all — `wpautop()` (WordPress core) applies
+  that formatting as a *display*-time filter, not before saving, so
+  the raw content this importer reads is just paragraphs separated by
+  a blank line and single line breaks meant as `<br>`. Lumora Press's
+  own `ContentRenderer` has no equivalent step for HTML-format content
+  (its own WYSIWYG editor always saves real `<p>` tags to begin with),
+  so every such paragraph/line break was silently lost, collapsing an
+  affected post/page into one run-on block — likely true of a large
+  share of both sites' already-imported content, not just the one page
+  that surfaced it. Fixed with a new `ContentImageRewriter::
+  autoParagraph()`, run as the final step of the same content pipeline
+  — a deliberately simplified port of `wpautop()`'s behavior (correct
+  for real migrated content, not a byte-for-byte reimplementation of
+  WordPress's own considerably more involved version), applied
+  uniformly to post/page content and Download descriptions alike since
+  they all already flow through `ContentImageRewriter`. Content that's
+  already real block-level HTML (found in the same production data —
+  so-obsessed.com's own "Site" page, a hand-authored `<ul><li>` menu)
+  passes through completely untouched. Fixing this broke 4 pre-existing
+  tests that had (correctly, at the time) asserted the old un-paragraphed
+  output; those were updated to expect the new, correct behavior, not
+  reverted. Two new regression tests added, one for the fix and one
+  confirming already-correct HTML stays untouched.
+
+Retroactively applying these three fixes to content already imported on
+so-obsessed.com and xenacentral.com wasn't done as part of this fix —
+`ExistingContentMode::Overwrite` lets a re-import against the same
+source update already-migrated rows in place without duplicating them,
+but running that against live sites is Ariane's call to make and
+trigger, not something to do unprompted.
+
+**Fixed (2026-08-28), follow-up:** a fourth issue from the same
+xenacentral.com import investigation — a Simple Download Monitor entry
+(post 707, "Xena FocusWriter Theme") wasn't importing, with apparently
+no warning shown. Traced end-to-end (live database access, both
+WordPress- and Lumora Press-side, plus a faithful local reproduction of
+the real code path against the actual source data): **not a bug in
+`importDownloads()` itself** — the download's source `.zip` genuinely
+no longer exists on the server (the host deletes zip uploads, a known,
+already-being-worked-around issue per Ariane's own site notes/GitHub
+migration in progress), so the code's existing "file not found... 
+skipped" warning is the *correct* behavior, not a defect.
+
+Two real things did come out of it:
+- That warning was easy to miss, buried among many unrelated ordinary
+  attachment-file misses — a missing Download's own source file is more
+  consequential (the whole item silently doesn't exist) than one missing
+  inline image, so `isActionNeededWarning()` now also flags a Download's
+  own `file not found` warning specifically (`Download #...` + `file not
+  found at`), surfacing it in the summary screen's "needs your
+  attention" section instead of the routine list.
+- A real, separate bug in the summary screen itself:
+  `admin/views/maintenance/import.php` stashed the just-completed
+  import's warnings in `$_SESSION` as a one-time flash message and
+  unset them immediately after the first read — a second view of the
+  same summary screen (a refresh, browser back/forward, anything before
+  actually reading them) would show a clean "no warnings" screen despite
+  real warnings having been generated. No longer unset — the session
+  value simply persists until a genuinely new import overwrites it.
+
+Once the affected file finishes moving to GitHub, updating the SDM
+entry's upload field to that URL and re-importing with "Overwrite
+existing content" will create the Download via the already-tested
+external-URL/Redirect path (its category already exists from the
+earlier attempt).
+
+**Added (2026-08-28), same investigation:** Ariane's own follow-up
+question — with a host that deletes zip uploads, "particularly if there
+are dozens missing," recreating each affected download from scratch by
+hand once files are ready is real, avoidable busywork. `importDownloads()`
+no longer drops a local-file download whose source is missing: the
+Download row is still created (title/description/category/thumbnail
+intact) with `media_id` left `null` — a state `DownloadService::
+hydrate()`/`replaceFile()`/`convertToUrl()` already handled correctly
+without any change (a File-typed download with no media was already a
+normal, supported intermediate state, just never deliberately created
+by anything before). `DownloadsShortcode::renderList()` (the
+`[lumora_downloads]` shortcode) now filters out any item whose
+`Download::$url` resolves empty, so a fileless download never shows a
+dead link to a visitor — invisible on the public site, but still fully
+visible and editable in the admin Downloads list (a new "No file
+attached" badge, plus a matching alert on its Edit screen) so it's easy
+to find among many. Attaching the real file/URL once ready is then just
+the existing "Replace with a file"/"Replace with a URL" action on that
+Edit screen — no re-import, no manual recreation.
+
 ### LPP-007. Downloads Listing Display
 
 **Implemented (2026-08-21), same session as LPP-004.** Rather than

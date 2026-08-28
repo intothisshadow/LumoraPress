@@ -248,6 +248,10 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <?php else: ?>
                                     <?= esc_html($listedDownload->title) ?>
                                 <?php endif; ?>
+                                <?php if ($listedDownload->url === ''): ?>
+                                    <br>
+                                    <span class="lp-status-badge lp-status-badge--warning" title="Imported without a file/URL — attach one from the Edit Download screen. Hidden from the public site until then.">No file attached</span>
+                                <?php endif; ?>
                             </td>
                             <td><?= esc_html($listedDownload->categoryId !== null ? ($categoriesById[$listedDownload->categoryId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>
                             <td><?= $listedDownload->type === DownloadType::File ? 'File' : 'URL' ?></td>

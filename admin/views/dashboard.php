@@ -176,4 +176,14 @@ if ($currentUser->can('manage_options')) {
         <?php endif; ?>
         <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates')) ?>">Manage Updates</a></p>
     </section>
+
+    <?php
+    /*
+     * Lets a plugin (e.g. Visitor & Post View Statistics) add its own
+     * panel without a core code change. No-op unless something listens.
+     * A listener echoes one complete <section class="lp-admin__widget">
+     * block, matching every panel above's self-contained shape.
+     */
+    do_action('dashboard_widgets', $currentUser);
+    ?>
 </div>

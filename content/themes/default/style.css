@@ -595,6 +595,47 @@ img {
     margin-right: auto;
 }
 
+/*
+ * WordPress Importer's [caption] shortcode conversion (LPP-004) wraps a
+ * migrated image and its caption text in <figure class="lp-caption
+ * {align}"><img ...><figcaption>...</figcaption></figure> — the align.*
+ * rules here mirror the plain img.align* rules above so a captioned
+ * image floats/centers exactly like an unwrapped one would.
+ */
+.lp-post__content figure.lp-caption {
+    max-width: 100%;
+    margin: 0 0 1em;
+}
+
+.lp-post__content figure.lp-caption img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0;
+}
+
+.lp-post__content figure.lp-caption.alignleft {
+    float: left;
+    margin: 0.25em 1.5em 1em 0;
+}
+
+.lp-post__content figure.lp-caption.alignright {
+    float: right;
+    margin: 0.25em 0 1em 1.5em;
+}
+
+.lp-post__content figure.lp-caption.aligncenter {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.lp-post__content figure.lp-caption figcaption {
+    margin-top: 0.35em;
+    font-size: 0.85em;
+    text-align: center;
+    color: var(--lp-text-muted);
+}
+
 .lp-post__content code {
     padding: 0.15em 0.4em;
     border-radius: var(--lp-radius);

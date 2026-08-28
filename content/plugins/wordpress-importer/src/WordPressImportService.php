@@ -320,7 +320,7 @@ final class WordPressImportService
      * flagUnsupportedShortcodes()/ContentImageRewriter::
      * unsupportedMediaConstructWarnings() already produce, rather than
      * a structured warning type threaded through every one of this
-     * class's many warning call sites — those four are the only "needs
+     * class's many warning call sites — those five are the only "needs
      * a human decision" warnings this importer currently produces;
      * everything else just documents what was skipped and why, with
      * nothing further for the admin to act on. `'still contains a '`
@@ -328,12 +328,28 @@ final class WordPressImportService
      * flagUnsupportedShortcodes()/unsupportedMediaConstructWarnings()
      * produce (sdm_show_dl/ngg/gallery/tiled-gallery/slideshow) without
      * needing to list each one by name here too.
+     *
+     * A Download's own missing-file warning (`importDownloads()`'s
+     * "Download #... file not found at ... — created without a file;
+     * attach one from its Edit Download screen once available." —
+     * distinct from an ordinary in-content `Attachment #...` miss) is
+     * deliberately singled out here rather than left to blend into the
+     * routine, often long, list of missing inline-image attachments: the
+     * Download item itself still gets created (title/description/
+     * category/thumbnail intact, just no file yet — see importDownloads()
+     * for why), but stays invisible on the public site until an admin
+     * attaches a real file/URL, so it's worth surfacing prominently
+     * rather than silently sitting there. Found live (an SDM entry whose
+     * file the host had deleted, xenacentral.com), where the original
+     * "skipped" wording's warning was present but easy to miss among
+     * dozens of unrelated attachment misses.
      */
     public static function isActionNeededWarning(string $warning): bool
     {
         return str_contains($warning, 'still contains a ')
             || str_contains($warning, 'were not imported — no Lumora Press equivalent exists for it.')
-            || str_contains($warning, 'other active plugin(s) with no Lumora Press equivalent');
+            || str_contains($warning, 'other active plugin(s) with no Lumora Press equivalent')
+            || (str_contains($warning, 'Download #') && str_contains($warning, 'file not found at'));
     }
 
     /**
@@ -2255,7 +2271,33 @@ final class WordPressImportService
                     : null;
 
                 if ($existingMediaId === null && !is_file($absolutePath)) {
-                    $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): file not found at {$absolutePath}, skipped.";
+                    // Still creates the Download itself, just with no
+                    // file attached (Download::$mediaId stays null,
+                    // which DownloadService::hydrate()/recordExisting()
+                    // both already handle — a File-typed download with
+                    // no media is a normal, supported state, not a
+                    // half-built one) — every other real detail (title,
+                    // description, category, thumbnail) is still worth
+                    // having on the site rather than discarding the
+                    // whole item over one missing file, especially with
+                    // many affected downloads at once (a host that
+                    // deletes zip uploads, found live on xenacentral.com,
+                    // is exactly this case). DownloadsShortcode::
+                    // renderList() never shows a download with no real
+                    // URL on the public site; it stays fully visible and
+                    // editable in the admin Downloads list, where
+                    // DownloadService::replaceFile()/convertToUrl() (both
+                    // already work with a null $mediaId) are the normal
+                    // way to attach the real file/URL once it's ready —
+                    // far less work than recreating dozens of these from
+                    // scratch by hand.
+                    $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): file not found at {$absolutePath} — created without a file; attach one from its Edit Download screen once available.";
+
+                    if ($this->downloads !== null) {
+                        $newDownload = $this->downloads->recordExisting($download['post_title'], $description, null, DownloadType::File, null, null, ContentFormat::Html, $thumbnailMediaId, categoryId: $categoryId);
+                        $this->registry->record($batchId, self::SOURCE, 'download', $newDownload->id, (string) $download['ID']);
+                    }
+
                     continue;
                 }
 
@@ -3152,6 +3194,10 @@ final class WordPressImportService
 
         if (str_contains($content, '[ngg')) {
             $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [ngg...] shortcode — NextGEN Gallery's own gallery display has no Lumora Press equivalent yet, so it will show as plain text. The gallery's images were still imported into Media Manager.";
+        }
+
+        if (str_contains($content, '[table ')) {
+            $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [table id=...] shortcode — TablePress has no Lumora Press equivalent yet, so it will show as plain text. Replace it by hand with a real HTML table (Content editor's HTML mode, or the WYSIWYG table tool) using the source site's TablePress data.";
         }
 
         // WordPress core's own built-in [gallery]/wp-block-gallery

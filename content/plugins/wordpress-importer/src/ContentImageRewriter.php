@@ -1,7 +1,7 @@
 <?php
 
 /**
- * HTML-aware rewriting of imported WordPress content's own <img>/<a> references to point at the newly-imported local media (LPP-004).
+ * HTML-aware rewriting of imported WordPress content's own <img>/<a> references to point at the newly-imported local media, and conversion of the [caption] shortcode to a real <figure>/<figcaption> (LPP-004).
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -75,8 +75,17 @@ final class ContentImageRewriter
         // nothing here for the DOM pass below to actually rewrite.
         $warnings = $this->unsupportedMediaConstructWarnings($content);
 
+        // Unlike the gallery/slideshow constructs above, WordPress core's
+        // own [caption] shortcode has a real Lumora Press equivalent (a
+        // <figure>/<figcaption>), so it's converted here rather than just
+        // flagged — before the UPLOADS_MARKER short-circuit below, since a
+        // caption with no real upload-path image inside it (rare, but
+        // possible for an externally hosted image) would otherwise skip
+        // conversion entirely.
+        $content = $this->convertCaptionShortcodes($content);
+
         if ($oldRelativePathToNewUrl === [] || !str_contains($content, self::UPLOADS_MARKER)) {
-            return ['content' => $content, 'warnings' => $warnings];
+            return ['content' => $this->autoParagraph($content), 'warnings' => $warnings];
         }
 
         $dom = new DOMDocument();
@@ -115,7 +124,7 @@ final class ContentImageRewriter
         }
 
         return [
-            'content' => $dom->saveHTML(),
+            'content' => $this->autoParagraph($dom->saveHTML()),
             'warnings' => $warnings,
         ];
     }
@@ -214,6 +223,142 @@ final class ContentImageRewriter
         }
 
         return null;
+    }
+
+    /**
+     * WordPress's own `[caption id="attachment_108" align="alignnone"
+     * width="350"]<img .../> Caption text[/caption]` shortcode (the
+     * classic editor's output whenever an inserted image has a caption)
+     * has no analog in Lumora Press's own content model, so left
+     * unconverted it shows as literal bracket text around (and after) the
+     * image — found on a real production import (xenacentral.com).
+     * Converted here into `<figure class="lp-caption {align}"><img
+     * .../><figcaption>Caption text</figcaption></figure>` — `align`
+     * (`alignleft`/`alignright`/`aligncenter`/`alignnone`) carries over
+     * as a real class the same way ContentImageRewriter already keeps it
+     * on a plain `<img>` (see stripWordPressOnlyClasses()'s own
+     * docblock); `content/themes/default/style.css` has the matching
+     * `figure.lp-caption.align*` rules. The `id`/`width` attributes are
+     * dropped — `id="attachment_108"` is a WordPress-internal reference
+     * meaningless once the attachment becomes a different Lumora Press
+     * media id (same reasoning `ATTACHMENT_ID_CLASS_PATTERN` already
+     * applies to the `wp-image-123` class), and `width` describes the
+     * old site's generated derivative size, not this image's real one.
+     *
+     * Runs as a plain string transform *before* the DOM pass in
+     * rewrite() — DOMDocument would otherwise just see `[caption ...]`/
+     * `[/caption]` as ordinary text nodes either side of a real `<img>`
+     * element and pass them through untouched, so this has to happen
+     * first, on the raw string, for the DOM pass to ever see a real
+     * `<figure>` wrapper to work with.
+     */
+    /**
+     * A block-level HTML tag `autoParagraph()` never wraps in a `<p>` —
+     * it's either already its own real block (a list, table, heading,
+     * etc.) or, for `<figure>`/`<pre>`/`<script>`/`<style>`, content
+     * where inserting `<br />` line breaks or nesting a `<p>` around it
+     * would actually break it. `<p>` itself is included so re-running
+     * this against content some *other* pass already paragraphed
+     * (e.g. a page that mixes real `<p>` blocks with loose plain-text
+     * ones) never double-wraps the parts that already have it.
+     */
+    private const BLOCK_LEVEL_TAG_PATTERN = '/^<(?:p|div|blockquote|ul|ol|li|table|thead|tbody|tfoot|tr|td|th|form|fieldset|h[1-6]|pre|script|style|select|address|hr|aside|article|section|header|footer|nav|figure|figcaption|video|audio|iframe)\b/i';
+
+    /**
+     * Classic WordPress never stores a real `<p>`-wrapped post_content —
+     * `wpautop()` (WordPress core, `wp-includes/formatting.php`) applies
+     * that formatting as a *display*-time filter on `the_content`, not
+     * before saving, so the raw content this importer reads is exactly
+     * what the author typed: paragraphs separated by a blank line, a
+     * single line break meant as a soft `<br>`, with no block markup
+     * around any of it. Lumora Press's own `ContentRenderer` applies no
+     * equivalent filter for HTML-format content (its own WYSIWYG editor
+     * always saves real `<p>` tags to begin with, so there was never a
+     * need for one) — left alone, every such paragraph/line break is
+     * silently lost, collapsing the whole post into one run-on block.
+     * Found on a real production import (xenacentral.com), affecting any
+     * post/page authored without explicit HTML paragraph tags — likely
+     * a large share of both WordPress-sourced sites already imported
+     * this same session, not just the one page that surfaced it.
+     *
+     * A deliberately simplified port, not a byte-for-byte reimplementation
+     * of `wpautop()`'s own considerably more involved regex (shortcode
+     * un-autop rules, `<pre>` protection during the split itself, etc.)
+     * — this only needs to be "correct for real migrated content," a
+     * one-time import step, not a hardened rendering filter run on every
+     * page load the way WordPress's own version is.
+     */
+    private function autoParagraph(string $content): string
+    {
+        $normalized = trim(str_replace(["\r\n", "\r"], "\n", $content));
+
+        if ($normalized === '') {
+            return $content;
+        }
+
+        $blocks = preg_split('/\n[ \t]*\n/', $normalized) ?: [$normalized];
+        $paragraphs = [];
+
+        foreach ($blocks as $block) {
+            $block = trim($block);
+
+            if ($block === '') {
+                continue;
+            }
+
+            if (preg_match(self::BLOCK_LEVEL_TAG_PATTERN, $block) === 1) {
+                // Already real block markup (or a shortcode-produced
+                // <figure> from convertCaptionShortcodes(), which runs
+                // before this) — left exactly as-is, no <br> conversion,
+                // since a single newline *inside* e.g. a <ul> is just
+                // insignificant whitespace between <li> elements, not a
+                // meaningful line break the way it is in loose text.
+                $paragraphs[] = $block;
+
+                continue;
+            }
+
+            $paragraphs[] = '<p>' . (preg_replace('/\n/', "<br />\n", $block) ?? $block) . '</p>';
+        }
+
+        return implode("\n\n", $paragraphs);
+    }
+
+    private function convertCaptionShortcodes(string $content): string
+    {
+        return preg_replace_callback(
+            '/\[caption\b([^\]]*)\](.*?)\[\/caption\]/s',
+            static function (array $matches): string {
+                $align = 'alignnone';
+
+                if (preg_match('/\balign="([a-z]+)"/', $matches[1], $alignMatch) === 1) {
+                    $align = $alignMatch[1];
+                }
+
+                $inner = trim($matches[2]);
+
+                // The shortcode's inner content is always the <img> tag
+                // itself, optionally followed by plain caption text (which
+                // may itself contain simple inline HTML, e.g. a link) —
+                // never the other way around, per WordPress's own
+                // img_caption_shortcode() implementation.
+                if (preg_match('/^(<img\b[^>]*>)\s*(.*)$/s', $inner, $partsMatch) === 1) {
+                    $imageTag = $partsMatch[1];
+                    $captionText = trim($partsMatch[2]);
+                } else {
+                    // No <img> found (e.g. a caption wrapping something
+                    // other than an image) — pass the inner content
+                    // through unchanged rather than guessing at a split.
+                    $imageTag = $inner;
+                    $captionText = '';
+                }
+
+                $figcaption = $captionText !== '' ? '<figcaption>' . $captionText . '</figcaption>' : '';
+
+                return '<figure class="lp-caption ' . $align . '">' . $imageTag . $figcaption . '</figure>';
+            },
+            $content,
+        ) ?? $content;
     }
 
     /**

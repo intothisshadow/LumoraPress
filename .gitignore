@@ -13,6 +13,11 @@
 /storage/cache/*
 !/storage/cache/.gitkeep
 
+# Admin-uploaded GeoLite2 CSV files (Visitor & Post View Statistics
+# plugin, LPP-014) — the admin's own MaxMind download, never bundled.
+/storage/geoip/*
+!/storage/geoip/.gitkeep
+
 # Plugin ZIP uploads staged between "review before installing" and
 # "confirm" (LP-045) — created on demand by PluginInstaller::stage(),
 # never meant to persist.

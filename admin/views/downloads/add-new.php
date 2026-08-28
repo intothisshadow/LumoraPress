@@ -521,6 +521,12 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
     <div class="lp-alert lp-alert--success">Download saved.</div>
 <?php endif; ?>
 
+<?php if ($editingDownload !== null && $editingDownload->url === ''): ?>
+    <div class="lp-alert lp-alert--warning">
+        This download has no file or URL attached yet — it's hidden from the public site until you add one below, using "Replace with a file" or "Replace with a URL".
+    </div>
+<?php endif; ?>
+
 <section class="lp-admin__panel">
     <?php if ($editingDownload !== null): ?>
         <form method="post" action="<?= esc_url(admin_url('downloads/add-new')) ?>?id=<?= (int) $editingDownload->id ?>" enctype="multipart/form-data">

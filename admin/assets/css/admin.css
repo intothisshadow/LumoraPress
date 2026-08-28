@@ -757,6 +757,18 @@ body.lp-admin-login {
     font-style: italic;
 }
 
+/* A second section heading within one widget — e.g. Visitor & Post View
+   Statistics' "Most Viewed"/"Top Countries" breakdowns stacked inside a
+   single Dashboard panel (LPP-014) — smaller than the widget's own <h2>
+   and with breathing room from the list above it. */
+.lp-admin__widget-subheading {
+    margin: 1rem 0 0.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
 .lp-admin__meta-list {
     list-style: none;
     margin: 0;

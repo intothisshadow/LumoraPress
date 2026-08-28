@@ -48,6 +48,7 @@ return [
     'content/plugins/downloads',
     'content/plugins/contact-forms',
     'content/plugins/lumora-shield',
+    'content/plugins/visitor-stats',
     'index.php',
     'version.php',
     '.htaccess',

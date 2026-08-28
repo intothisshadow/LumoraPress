@@ -384,6 +384,13 @@ $contactFormsActive = in_array('contact-forms', $activePlugins, true);
  * the same way.
  */
 $lumoraShieldActive = in_array('lumora-shield', $activePlugins, true);
+/*
+ * LPP-014: mirrors $lumoraShieldActive's exact reasoning immediately
+ * above — Visitor & Post View Statistics' admin screens are its entire
+ * reason to exist, so it gets a real top-level menu entry, gated the
+ * same way.
+ */
+$visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -458,6 +465,17 @@ $menu = [
             'children' => [
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
                 'logs' => ['label' => 'Logs', 'icon' => '📋', 'capability' => 'manage_options'],
+            ],
+        ],
+    ] : []),
+    ...($visitorStatsActive ? [
+        'visitor-stats' => [
+            'label' => 'Visitor Stats',
+            'icon' => '📈',
+            'capability' => 'manage_options',
+            'default_child' => 'settings',
+            'children' => [
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),

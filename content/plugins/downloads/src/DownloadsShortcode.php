@@ -207,6 +207,20 @@ final class DownloadsShortcode
      */
     private function renderList(?DownloadCategory $category, array $items, bool $showSize): string
     {
+        // A Download imported with no file/URL attached yet (LPP-004's
+        // WordPress Importer: the source file was missing on disk, so
+        // the item was created for its metadata rather than dropped
+        // entirely — see importDownloads()'s own docblock) resolves to
+        // an empty Download::$url. Never shown publicly — a dead link
+        // helps no visitor — until an admin attaches a real file/URL
+        // from the Edit Download screen; it stays fully visible and
+        // editable in the admin Downloads list in the meantime.
+        $items = array_values(array_filter($items, static fn (Download $item): bool => $item->url !== ''));
+
+        if ($items === []) {
+            return '';
+        }
+
         $content = $this->content();
 
         $html = '<div class="lp-downloads-list">';

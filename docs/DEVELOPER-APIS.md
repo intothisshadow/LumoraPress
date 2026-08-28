@@ -68,6 +68,7 @@ than trusting this table blindly if something seems off.
 |---|---|---|---|
 | `post_saved` | action | `Post $post` | [`PostService`](../app/Services/PostService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). Fires on every save path, not just full create/update. |
 | `post_deleted` | action | `int $id` | `PostService::trash()` (soft-delete) **and** `delete()` (permanent). Both fire the same event name — a listener can't tell "moved to Trash" from "permanently removed" from the hook alone. `restore()` fires nothing at all. |
+| `single_post_viewed` | action | `Post $post, bool $isGuest` | `SiteController::singlePost()`, once per request, after the post is resolved and visibility-checked, before rendering. A no-op unless something listens — core carries no view-tracking logic of its own. `$isGuest` is `!$this->auth->check()`, the same idiom `markCacheableForGuests()` uses. The Visitor & Post View Statistics plugin (LPP-014) is this hook's first listener. |
 
 ### Page lifecycle
 
@@ -171,9 +172,11 @@ the core equivalent.
 |---|---|---|---|
 | `lp_plugin_details_panel` | action | `PluginInfo $info` | `admin/views/plugins.php`, inside a plugin's expanded details panel — render extra UI about a plugin here. |
 | `lp_theme_details_panel` | action | `ThemeInfo $info` | `admin/views/appearance/themes.php`, same pattern on the Themes screen. |
+| `dashboard_widgets` | action | `User $currentUser` | `admin/views/dashboard.php`, right before the Dashboard's widget grid closes — a listener `echo`s one complete `<section class="lp-admin__widget">...</section>` block, matching every built-in panel's shape. Added for the Visitor & Post View Statistics plugin (LPP-014), but generic — a no-op unless something listens, and any plugin can use it to add a Dashboard panel without a core code change. Unlike `lp_plugin_details_panel`/`lp_theme_details_panel` above, this is the *only* Dashboard extension point — there is no equivalent hook for any other admin screen (see the menu/page note below). |
 
 **There is no hook or API for a plugin to add its own admin menu item or
-page.** The shipped plugins work around this differently: Font Awesome
+page** (the `dashboard_widgets` hook above only lets a plugin add content
+*inside* the existing Dashboard screen, not register a new one). The shipped plugins work around this differently: Font Awesome
 adds no admin UI at all; Dummy Content's admin section is wired directly
 into an existing core view (Maintenance › Tools), not registered
 dynamically; WordPress Importer (LPP-004) does the same into a different

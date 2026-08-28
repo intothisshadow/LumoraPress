@@ -6,6 +6,26 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer (LPP-004): a Simple Download Monitor item whose
+  source file is missing on disk (e.g. a host that deletes zip uploads)
+  is no longer dropped entirely — the Download itself is still created
+  (title, description, category, thumbnail intact, just no file yet),
+  clearly marked "No file attached" in the admin Downloads list and on
+  its Edit screen, and hidden from the public site until a real file or
+  URL is attached (the normal "Replace with a file"/"Replace with a
+  URL" actions, unchanged). Far less work than recreating dozens of
+  these by hand once the files are ready.
+- Visitor & Post View Statistics plugin (LPP-014): a new optional
+  plugin — a local, privacy-respecting page-view counter for the
+  Dashboard, off by default. No third-party analytics service, no
+  cookies/sessions, and no raw IP address, User-Agent string, or full
+  referrer URL is ever persisted, only aggregate day-level counts. Adds
+  a "Site Visitors" Dashboard panel (today/week/month/all-time totals,
+  Most Viewed) plus optional country/referrer/browser/device
+  breakdowns. Country resolution is entirely local — an admin uploads
+  MaxMind's own free GeoLite2 Country CSV export at Visitor Stats
+  &rsaquo; Settings; if never configured, the country breakdown simply
+  stays empty.
 - Lumora Shield plugin (LPP-001): a new optional plugin.
   - **Stop User Enumeration** — Settings screen offers "Hide author
     archives entirely" (off by default) for site owners who want no
@@ -101,6 +121,32 @@ All notable changes to Lumora Press are documented in this file.
 - Maintenance &rsaquo; Logs's "Clear Log" action could leave the on-screen
   file size showing the pre-clear value on PHP 8.2 (a stale internal file
   stat not refreshed after truncating the log).
+- WordPress Importer (LPP-004): three content-fidelity gaps found
+  during a real live-production import. TablePress's `[table id=... /]`
+  shortcode produced no warning at all (only `[sdm_show_dl`/`[ngg` were
+  checked) — now flagged the same way, since TablePress has no Lumora
+  Press equivalent. WordPress core's own `[caption]` shortcode (any
+  image inserted with a caption in the classic editor) wasn't handled
+  at all, rendering as broken bracket text — now converted to a real
+  `<figure>`/`<figcaption>`, with matching styling added to the default
+  theme (and both custom themes). Most significantly: classic
+  WordPress never stores real `<p>` tags in a post's content at all (it
+  applies that formatting only when displaying the page, not before
+  saving), and nothing on the Lumora Press side was replicating that —
+  every paragraph and line break in a post/page authored without
+  explicit HTML tags was silently lost, collapsing it into one run-on
+  block of text. Now paragraphed the same way WordPress itself would
+  have rendered it; content that already has real HTML block markup is
+  left untouched.
+- Maintenance &rsaquo; Import's post-import summary could show a
+  misleading "no warnings" result: warnings were stashed as a one-time
+  session flash message and erased the moment the summary screen was
+  first viewed, so a second view (a refresh, browser back/forward)
+  before actually reading them showed nothing, even though real
+  warnings existed. Now persists until a new import overwrites it. Also,
+  a Simple Download Monitor item whose own source file is missing now
+  surfaces its warning in the summary's "needs your attention" section
+  rather than blending into routine per-attachment notices.
 
 ## [0.8.0] — 2026-08-28
 

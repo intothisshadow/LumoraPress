@@ -178,6 +178,10 @@ final class SiteController
             return;
         }
 
+        // No-op unless a plugin listens (e.g. Visitor & Post View
+        // Statistics) — core carries no view-tracking logic of its own.
+        do_action('single_post_viewed', $post, !$this->auth->check());
+
         $this->theme->render('single.php', [
             'page_title' => $post->title,
             'post' => $post,

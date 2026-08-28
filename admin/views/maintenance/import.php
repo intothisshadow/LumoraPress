@@ -443,9 +443,20 @@ if ($wordPressImporterActive) {
     $imported = isset($_GET['imported']);
     $removed = isset($_GET['removed']);
 
+    // Deliberately *not* unset after this one read — a real live import
+    // found this exact spot losing genuine warnings (a "file not found"
+    // for a Download whose source file the host had deleted) the moment
+    // this screen was viewed a second time (a refresh, browser back/
+    // forward, anything) before the admin had actually read them,
+    // leaving a clean-looking "no warnings" summary despite the import
+    // having produced one. Left in session, it now simply keeps showing
+    // the most recent import's warnings on every view of this screen
+    // until a *new* import overwrites it — the 'start_wordpress_import'
+    // branch above always sets a fresh value before its own redirect, so
+    // nothing stale from an unrelated earlier import can survive past
+    // the next real import.
     if ($imported && isset($_SESSION['lp_wordpress_import_warnings'])) {
         $warnings = $_SESSION['lp_wordpress_import_warnings'];
-        unset($_SESSION['lp_wordpress_import_warnings']);
     }
 
     // Separates a genuine follow-up action (an unsupported plugin/post
