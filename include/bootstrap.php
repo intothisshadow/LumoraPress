@@ -18,6 +18,7 @@ declare(strict_types=1);
 use LumoraPress\Controllers\ApiController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\ActiveConfig;
+use LumoraPress\Core\ActiveKernel;
 use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Autoloader;
 use LumoraPress\Core\Cache\CacheDriverInterface;
@@ -842,6 +843,12 @@ $kernel = new Kernel(
     downloadCategoryMigration: $downloadCategoryMigration,
     installPing: $installPing,
 );
+
+// See ActiveKernel's own docblock for why this exists — plugin code that
+// needs more than one Kernel-wired service (Database, Mailer,
+// CommentService, ...) from inside a hook callback, which by definition
+// only ever runs once a real request is underway, well after this line.
+ActiveKernel::set($kernel);
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);
 

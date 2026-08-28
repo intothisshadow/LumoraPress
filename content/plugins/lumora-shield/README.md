@@ -6,7 +6,9 @@ see Settings &rsaquo; Security). This is the first module of a much
 larger, still-growing plugin — see `TODO-PLUGINS.md`'s LPP-001 for the
 full roadmap.
 
-## What this plugin does (first module: Stop User Enumeration)
+## What this plugin does
+
+### Stop User Enumeration
 
 A 2026-08-28 audit found the public author archive (`/author/{slug}`,
 LP-008) was a username-existence oracle on its own: requesting a real
@@ -34,8 +36,6 @@ here):
   genuine optional tradeoff: it removes the public "browse everything by
   this author" feature, so it's opt-in rather than secure-by-default.
 
-## How it's wired in
-
 `SiteController::author()` runs its own visibility decision through a
 `lumora_shield_author_archive_visible` filter (default `true`, a no-op
 when this plugin isn't active) — called only *after* the zero-post
@@ -43,9 +43,37 @@ check above has already run unconditionally. This plugin's only
 listener, `LumoraShieldService::authorArchiveVisible()`, has exactly one
 thing left to decide: whether "hide entirely" is on.
 
+### Monitoring
+
+Every blocked `/author/{slug}` request fires
+`lumora_shield_enumeration_blocked` (a no-op core hook, same shape as
+the filter above) — this plugin logs it to **Lumora Shield &rsaquo;
+Logs**: IP address, requested slug, reason, and timestamp. Configurable
+at **Lumora Shield &rsaquo; Settings**:
+
+- **Log blocked enumeration attempts** (on by default) and a
+  **retention period** in days — old rows are cleaned up automatically
+  (probabilistically, on write; no cron/scheduler exists anywhere in
+  this codebase).
+- **Email the site admin on repeated attempts** (off by default) —
+  fires at most once per hour per IP, once a configurable attempt
+  threshold is crossed.
+
+### Comment Analysis
+
+A `CommentAnalyzer` class runs independent content checks (excessive
+links, excessive uppercase/punctuation, hidden Unicode characters,
+repeated phrases, extremely short/long comments) and behavioral checks
+(posting frequency, prior spam history, duplicate content) — any one
+tripping pushes the comment toward Spam via the existing
+`comment_is_spam` filter, the same one every comment-creation call site
+already exposes. Can only push *toward* Spam, matching that filter's
+own contract — never un-spams a comment another check (or Akismet)
+already flagged. Toggled independently via **Enable Comment Analysis**
+at **Lumora Shield &rsaquo; Settings**.
+
 ## Deferred (see `TODO-PLUGINS.md`'s LPP-001 for the full checklist)
 
-Everything else in the ticket — blacklist/whitelist management,
-reputation scoring, CAPTCHA support, dashboards/reporting, third-party
-integrations beyond core's own Akismet, request logging, and the
-Developer API — is not built yet.
+Blacklist/whitelist management, a reputation-scoring engine, CAPTCHA
+support, dashboards/reporting, third-party spam-service integrations
+beyond core's own Akismet, and the Developer API are not built yet.

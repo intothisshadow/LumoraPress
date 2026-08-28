@@ -457,6 +457,7 @@ $menu = [
             'default_child' => 'settings',
             'children' => [
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+                'logs' => ['label' => 'Logs', 'icon' => '📋', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),

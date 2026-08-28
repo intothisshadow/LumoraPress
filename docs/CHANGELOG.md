@@ -6,13 +6,24 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
-- Lumora Shield plugin (LPP-001), first module — Stop User Enumeration:
-  a new optional plugin whose Settings screen offers "Hide author
-  archives entirely" (off by default) for site owners who want no
-  `/author/{slug}` exposure at all, even for authors who have actually
-  published something. See Fixed below for the underlying
-  vulnerability, which is closed in core regardless of whether this
-  plugin is installed.
+- Lumora Shield plugin (LPP-001): a new optional plugin.
+  - **Stop User Enumeration** — Settings screen offers "Hide author
+    archives entirely" (off by default) for site owners who want no
+    `/author/{slug}` exposure at all, even for authors who have
+    actually published something. See Fixed below for the underlying
+    vulnerability, which is closed in core regardless of whether this
+    plugin is installed.
+  - **Monitoring** — logs every blocked enumeration attempt (IP,
+    requested slug, reason, timestamp) at a new Lumora Shield &rsaquo;
+    Logs screen, with configurable retention and an optional email
+    alert to the site admin after repeated attempts from one IP.
+  - **Comment Analysis** — independent content heuristics (excessive
+    links, excessive uppercase/punctuation, hidden Unicode characters,
+    repeated phrases, extremely short/long comments) and behavioral
+    heuristics (posting frequency, prior spam history, duplicate
+    content) that push a comment toward Spam via the existing
+    `comment_is_spam` extension point, the same one Akismet already
+    uses.
 - Font Awesome icon picker (LPP-002): the Post/Page/Downloads editor
   toolbar (both the Visual/HTML and Markdown editors) gains an "Insert
   Icon" button, searching a curated set of Font Awesome icon names by

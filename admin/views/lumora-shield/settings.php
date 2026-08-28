@@ -37,6 +37,11 @@ $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 if ($form === 'lumora_shield_settings' && Csrf::verify('lumora_shield_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $service->saveSettings([
         'hide_author_archives' => isset($_POST['hide_author_archives']),
+        'enable_logging' => isset($_POST['enable_logging']),
+        'log_retention_days' => max(1, (int) ($_POST['log_retention_days'] ?? 30)),
+        'notify_on_repeated_attempts' => isset($_POST['notify_on_repeated_attempts']),
+        'notify_threshold' => max(1, (int) ($_POST['notify_threshold'] ?? 10)),
+        'enable_comment_analysis' => isset($_POST['enable_comment_analysis']),
     ]);
 
     header('Location: ' . admin_url('lumora-shield/settings') . '?saved=1');
@@ -77,6 +82,88 @@ $settings = $service->settings();
                 "everything by this author"), so it's off by default;
                 most sites don't need it.
             </span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Monitoring</h2>
+    <p class="lp-field__hint">
+        Records every blocked author-archive request (unknown username,
+        zero-post author, or hidden by the setting above) — see
+        <a href="<?= esc_url(admin_url('lumora-shield/logs')) ?>">Lumora Shield &rsaquo; Logs</a>.
+    </p>
+
+    <form method="post" action="<?= esc_url(admin_url('lumora-shield/settings')) ?>">
+        <?= Csrf::field('lumora_shield_settings') ?>
+        <input type="hidden" name="form" value="lumora_shield_settings">
+        <input type="hidden" name="hide_author_archives" value="<?= $settings['hide_author_archives'] ? '1' : '' ?>">
+        <input type="hidden" name="enable_comment_analysis" value="<?= $settings['enable_comment_analysis'] ? '1' : '' ?>">
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="enable_logging" value="1" <?= $settings['enable_logging'] ? 'checked' : '' ?>>
+                Log blocked enumeration attempts
+            </label>
+        </p>
+
+        <p class="lp-field">
+            <label for="log-retention-days">Log retention (days)</label>
+            <input type="number" id="log-retention-days" name="log_retention_days" min="1" value="<?= esc_attr((string) $settings['log_retention_days']) ?>">
+            <span class="lp-field__hint">Attempts older than this are removed automatically.</span>
+        </p>
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="notify_on_repeated_attempts" value="1" <?= $settings['notify_on_repeated_attempts'] ? 'checked' : '' ?>>
+                Email the site admin on repeated attempts from one IP
+            </label>
+            <span class="lp-field__hint">
+                Sent to the address in Settings &rsaquo; General, at most
+                once per hour per IP, once that IP crosses the attempt
+                threshold below.
+            </span>
+        </p>
+
+        <p class="lp-field">
+            <label for="notify-threshold">Attempt threshold</label>
+            <input type="number" id="notify-threshold" name="notify_threshold" min="1" value="<?= esc_attr((string) $settings['notify_threshold']) ?>">
+            <span class="lp-field__hint">Number of blocked attempts from one IP within an hour before the email above fires.</span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Comment Analysis</h2>
+    <p class="lp-field__hint">
+        Independent content and behavioral checks (excessive links,
+        excessive uppercase/punctuation, hidden Unicode characters,
+        repeated phrases, extremely short/long comments, prior spam
+        history, posting frequency, duplicate content) that push a
+        comment toward Spam via the same <code>comment_is_spam</code>
+        filter Akismet already uses. Any one check tripping is enough to
+        flag Spam — this can only push a comment <em>toward</em> Spam,
+        never un-spam one another check already flagged.
+    </p>
+
+    <form method="post" action="<?= esc_url(admin_url('lumora-shield/settings')) ?>">
+        <?= Csrf::field('lumora_shield_settings') ?>
+        <input type="hidden" name="form" value="lumora_shield_settings">
+        <input type="hidden" name="hide_author_archives" value="<?= $settings['hide_author_archives'] ? '1' : '' ?>">
+        <input type="hidden" name="enable_logging" value="<?= $settings['enable_logging'] ? '1' : '' ?>">
+        <input type="hidden" name="log_retention_days" value="<?= (int) $settings['log_retention_days'] ?>">
+        <input type="hidden" name="notify_on_repeated_attempts" value="<?= $settings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+        <input type="hidden" name="notify_threshold" value="<?= (int) $settings['notify_threshold'] ?>">
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="enable_comment_analysis" value="1" <?= $settings['enable_comment_analysis'] ? 'checked' : '' ?>>
+                Enable Comment Analysis
+            </label>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save Settings</button>

@@ -842,14 +842,22 @@ final class SiteController
      * choosing to hide every author archive outright, including real
      * ones with published posts.
      *
+     * Every 404 branch below fires 'lumora_shield_enumeration_blocked'
+     * ($slug, $reason, $ipAddress) — a no-op unless something listens
+     * (Lumora Shield's Monitoring sub-module logs it), so a plugin can
+     * observe/record enumeration probing without core owning a logging
+     * subsystem of its own.
+     *
      * @param array<string, string> $params
      */
     public function author(array $params): void
     {
         $slug = $params['slug'] ?? '';
+        $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
         $author = $slug !== '' ? $this->users->findByAuthorSlug($slug) : null;
 
         if ($author === null) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'unknown_user', $ipAddress);
             $this->notFound();
 
             return;
@@ -859,12 +867,14 @@ final class SiteController
         $pagination = $this->posts->paginateByAuthor($author->id, $page, $this->postsPerPage());
 
         if ($pagination['total'] === 0) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'zero_posts', $ipAddress);
             $this->notFound();
 
             return;
         }
 
         if (!apply_filters('lumora_shield_author_archive_visible', true, $author, $pagination['total'])) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'hidden_by_setting', $ipAddress);
             $this->notFound();
 
             return;

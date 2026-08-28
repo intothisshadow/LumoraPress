@@ -18,7 +18,7 @@ declare(strict_types=1);
 /*
  * Plugin Name: Lumora Shield
  * Plugin URI: https://lumorapress.org/plugins/lumora-shield
- * Description: Optional hardening and spam-prevention features beyond core's own basics — starting with Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core).
+ * Description: Optional hardening and spam-prevention features beyond core's own basics — Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core), Monitoring (logs blocked enumeration attempts, with optional email alerts), and Comment Analysis (content/behavioral spam heuristics feeding the existing comment_is_spam filter).
  * Version: 0.1.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
@@ -32,6 +32,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\LumoraShield;
 
 require_once __DIR__ . '/src/LumoraShieldService.php';
+require_once __DIR__ . '/src/CommentAnalyzer.php';
 
 $lumoraShield = LumoraShieldService::instance();
 
@@ -47,4 +48,29 @@ add_filter(
     'lumora_shield_author_archive_visible',
     static fn (bool $visible, \LumoraPress\Models\User $author, int $publishedPostCount): bool
         => $lumoraShield->authorArchiveVisible($visible, $publishedPostCount),
+);
+
+/*
+ * Monitoring: SiteController::author() fires this on every blocked
+ * request (a no-op unless something listens) — recorded here so an
+ * administrator can see who's probing for valid usernames, subject to
+ * this plugin's own logging/retention settings.
+ */
+add_action(
+    'lumora_shield_enumeration_blocked',
+    static function (string $slug, string $reason, string $ipAddress) use ($lumoraShield): void {
+        $lumoraShield->recordEnumerationAttempt($slug, $reason, $ipAddress);
+    },
+);
+
+/*
+ * Comment Analysis: the same 'comment_is_spam' filter Akismet already
+ * uses (SiteController::submitComment()/::submitPageComment(),
+ * ApiController's comment-creation handler) — see
+ * LumoraShieldService::commentIsSpam()'s own docblock.
+ */
+add_filter(
+    'comment_is_spam',
+    static fn (bool $default, string $guestName, string $guestEmail, ?string $guestUrl, string $content, string $ipAddress): bool
+        => $lumoraShield->commentIsSpam($default, $guestName, $guestEmail, $guestUrl, $content, $ipAddress),
 );

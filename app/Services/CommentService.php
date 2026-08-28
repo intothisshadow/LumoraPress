@@ -478,6 +478,64 @@ final class CommentService
     }
 
     /**
+     * Same window as recentCommentFromIpExists(), but a count rather than
+     * a single-window existence check — for a graduated posting-frequency
+     * signal (LPP-001's Comment Analysis module) rather than a flat yes/no.
+     */
+    public function countRecentFromIp(string $ipAddress, int $windowSeconds): int
+    {
+        $windowStart = date('Y-m-d H:i:s', time() - $windowSeconds);
+
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE ip_address = :ip_address AND created_at >= :window_start',
+            ['ip_address' => $ipAddress, 'window_start' => $windowStart],
+        );
+    }
+
+    /**
+     * Mirrors hasPreviouslyApprovedComment()'s exact user_id/guest_email
+     * preference and case-insensitive email match, checking Spam status
+     * instead of Approved — a prior-spam trust signal for anti-spam
+     * plugins (LPP-001's Comment Analysis module).
+     */
+    public function hasPreviousSpamHistory(?int $userId, ?string $guestEmail): bool
+    {
+        if ($userId !== null) {
+            return $this->database->fetchOne(
+                'SELECT id FROM ' . $this->table() . ' WHERE user_id = :user_id AND status = :status',
+                ['user_id' => $userId, 'status' => CommentStatus::Spam->value],
+            ) !== null;
+        }
+
+        if ($guestEmail === null || $guestEmail === '') {
+            return false;
+        }
+
+        return $this->database->fetchOne(
+            'SELECT id FROM ' . $this->table() . ' WHERE LOWER(guest_email) = LOWER(:guest_email) AND status = :status',
+            ['guest_email' => $guestEmail, 'status' => CommentStatus::Spam->value],
+        ) !== null;
+    }
+
+    /**
+     * Whether this exact content string already exists as some other
+     * comment (any status, any post/page) — classic copy-pasted-spam
+     * behavior. Not scoped to "a *different* post" specifically: the
+     * 'comment_is_spam' filter's signature (LP-047) carries no post/page
+     * ID at all, so a plugin calling this from that filter has no way to
+     * exclude "the post being commented on right now" in the first
+     * place — an exact byte-for-byte match already present anywhere is
+     * suspicious enough on its own for a brand-new submission.
+     */
+    public function identicalContentExists(string $content): bool
+    {
+        return $this->database->fetchOne(
+            'SELECT id FROM ' . $this->table() . ' WHERE content = :content',
+            ['content' => $content],
+        ) !== null;
+    }
+
+    /**
      * @param array<int, Comment> $comments
      * @return array<int, array{comment: Comment, children: array<mixed>}>
      */

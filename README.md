@@ -360,10 +360,13 @@ an older PHP version can be safely phased out.
   Font Awesome, off by default), plus a searchable icon picker in the
   post/page/downloads editor toolbar once enabled.
 - **Lumora Shield plugin** (bundled) — optional hardening features
-  beyond core's own basics; its first module adds an optional "hide
-  author archives entirely" setting (Lumora Shield &rsaquo; Settings,
-  off by default) on top of core's own always-on author-archive
-  username-enumeration protection.
+  beyond core's own basics: an optional "hide author archives entirely"
+  setting on top of core's own always-on author-archive username-
+  enumeration protection; a log of blocked enumeration attempts with
+  configurable retention and optional email alerts; and Comment
+  Analysis, independent content/behavioral spam heuristics feeding the
+  same `comment_is_spam` extension point Akismet already uses (Lumora
+  Shield &rsaquo; Settings, all off/on-by-sensible-default).
 - **Media Manager** — multi-file uploads with per-file progress, virtual
   folders, metadata, thumbnail generation, a lightbox viewer (covering
   both featured images and images embedded directly in post/page
