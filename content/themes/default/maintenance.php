@@ -17,8 +17,8 @@
 /** @var \DateTimeImmutable|null $return_at */
 get_header();
 ?>
-<div id="lp-content" class="lp-content lp-layout">
-    <main class="lp-main">
+<div id="lp-content" class="lp-content">
+    <div class="lp-maintenance">
         <h1 class="lp-page-title"><?= esc_html($page_title) ?></h1>
         <p class="lp-maintenance__message"><?= esc_html($message) ?></p>
 
@@ -27,6 +27,6 @@ get_header();
                 We expect to be back around <?= esc_html(the_date($return_at)) ?> at <?= esc_html(the_time($return_at)) ?>.
             </p>
         <?php endif; ?>
-    </main>
+    </div>
 </div>
 <?php get_footer(); ?>

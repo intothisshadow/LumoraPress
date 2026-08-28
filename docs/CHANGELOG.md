@@ -152,6 +152,11 @@ All notable changes to Lumora Press are documented in this file.
   echoed back into the field), which was indistinguishable from "no key
   saved," even right after a successful save. The field's hint text now
   says outright whether a key is currently configured.
+- The default theme's Maintenance Mode page shared the site's normal
+  two-column layout even though it renders no sidebar, leaving its
+  message pinned to the left edge with a large empty gap beside it
+  rather than reading as an intentional page. Now a centered,
+  standalone block.
 
 ## [0.8.0] — 2026-08-28
 

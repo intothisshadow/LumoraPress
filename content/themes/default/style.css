@@ -465,12 +465,25 @@ img {
    Maintenance mode
    ========================================================= */
 
+.lp-maintenance {
+    max-width: 60ch;
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
+    text-align: center;
+}
+
+.lp-maintenance .lp-page-title {
+    margin-bottom: 0.75rem;
+}
+
 .lp-maintenance__message {
     max-width: 60ch;
+    margin: 0 auto;
     font-size: 1.1rem;
 }
 
 .lp-maintenance__return-at {
+    margin-top: 0.75rem;
     color: var(--lp-text-muted);
 }
 
