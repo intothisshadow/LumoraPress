@@ -414,10 +414,10 @@ Every one of these self-guards (no-ops when unset), the same convention
 `nav_menu()`/`dynamic_sidebar()`/`custom_css()` already follow — a theme
 that never calls them loses nothing, and a theme that does call them
 gets an empty render rather than stray markup when nothing is
-configured. The default, duskline, and xena-theme themes all call these
+configured. The default, duskline, and xena-central themes all call these
 from their own `header.php`/`sidebar.php`/`footer.php` — read those for
 the exact integration points. **A theme is always free to ignore any of
-these** (see `content_width`'s own precedent) — xena-theme deliberately
+these** (see `content_width`'s own precedent) — xena-central deliberately
 does not wire `has_header_image()`/`header_image_url()` into its header
 at all, since its bundled `xc-banner` image is its own permanent
 defining visual, not something a generic per-theme upload should
@@ -509,7 +509,7 @@ blocked by every browser. A click on any `[data-lp-theme-toggle]`
 button only ever switches between an explicit Light and Dark — never
 back to "follow the system" — mirroring the admin sidebar's own quick
 theme toggle. See the default theme's `header.php`/`style.css` for a
-complete real example, and `xena-theme`'s/`duskline`'s for how the same
+complete real example, and `xena-central`'s/`duskline`'s for how the same
 three pieces (CSS guard, script tag, toggle button) adapt to a theme
 with its own token names and header layout.
 

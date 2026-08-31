@@ -524,7 +524,7 @@ if (!function_exists('show_site_title')) {
     /**
      * LP-123 Header section. Whether a theme's header should render its
      * site-title/logo block. Not every theme has one to guard in the
-     * first place — xena-theme's header bar carries no title/logo markup
+     * first place — xena-central's header bar carries no title/logo markup
      * at all by design (its bundled banner image replaces it), so that
      * theme's header.php simply never calls this.
      */

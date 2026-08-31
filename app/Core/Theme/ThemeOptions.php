@@ -36,7 +36,7 @@ use LumoraPress\Core\PressConfig;
  * construction time. Switching the active theme genuinely switches which
  * values are shown/editable — each theme keeps its own independent set,
  * so e.g. an Accent Color chosen while duskline is active has no effect
- * once xena-theme is activated. (Before LP-123, all sites shared one flat
+ * once xena-central is activated. (Before LP-123, all sites shared one flat
  * `theme_options` option regardless of active theme; migration
  * 0054_migrate_theme_options_to_active_theme.sql carries any pre-existing
  * global values over to whichever theme was active at upgrade time.)
