@@ -175,33 +175,44 @@ final class CommentService
     }
 
     /**
-     * Permanently deletes every currently-Trash-status comment via
+     * Permanently deletes every comment currently at the given status via
      * delete(), so each one gets the same reply-orphaning cleanup a
      * single per-comment delete would — not a bare bulk DELETE. Unlike
      * Categories/Posts/Pages, Trash here is a status value rather than a
      * trashed_at column (see this class's own docblock on Comment status).
+     * Backs both emptyTrash() (Trash) and LP-136's Empty Spam action
+     * (Spam) — there was never anything Trash-specific in the original
+     * implementation this generalizes.
      *
      * @return int how many comments were removed
      */
-    public function emptyTrash(): int
+    public function emptyByStatus(CommentStatus $status): int
     {
-        $trashedIds = array_map(
+        $matchingIds = array_map(
             static fn (array $row): int => (int) $row['id'],
             $this->database->fetchAll(
                 'SELECT id FROM ' . $this->table() . ' WHERE status = :status',
-                ['status' => CommentStatus::Trash->value],
+                ['status' => $status->value],
             ),
         );
 
         $removed = 0;
 
-        foreach ($trashedIds as $trashedId) {
-            if ($this->delete($trashedId)) {
+        foreach ($matchingIds as $matchingId) {
+            if ($this->delete($matchingId)) {
                 $removed++;
             }
         }
 
         return $removed;
+    }
+
+    /**
+     * @return int how many comments were removed
+     */
+    public function emptyTrash(): int
+    {
+        return $this->emptyByStatus(CommentStatus::Trash);
     }
 
     public function countByStatus(CommentStatus $status): int
@@ -243,7 +254,14 @@ final class CommentService
     public function paginateForAdmin(int $page = 1, int $perPage = 20, ?CommentStatus $statusFilter = null): array
     {
         $page = max(1, $page);
-        $where = $statusFilter !== null ? 'WHERE c.status = :status' : '';
+
+        // LP-135: matches PostService::paginateForAdmin()'s identical
+        // "All excludes Trash" convention — an unfiltered query used to
+        // return literally every comment, Trash included, which made the
+        // Comments screen's own "All" tab count impossible to state
+        // accurately (it would have had to sum all four statuses instead
+        // of the other three tabs' own status labels).
+        $where = $statusFilter !== null ? 'WHERE c.status = :status' : "WHERE c.status != 'trash'";
         $params = $statusFilter !== null ? ['status' => $statusFilter->value] : [];
 
         $total = (int) $this->database->fetchColumn(

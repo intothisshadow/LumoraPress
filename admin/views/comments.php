@@ -120,6 +120,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('comments') . '?status=' . CommentStatus::Trash->value . '&trash_emptied=1');
         exit;
+    } elseif ($form === 'empty_spam' && Csrf::verify('comments_empty_spam', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $commentService->emptyByStatus(CommentStatus::Spam);
+
+        header('Location: ' . admin_url('comments') . '?status=' . CommentStatus::Spam->value . '&spam_emptied=1');
+        exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('comments_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
         $ids = array_values(array_filter(array_map('intval', is_array($_POST['comment_ids'] ?? null) ? $_POST['comment_ids'] : [])));
@@ -188,6 +193,10 @@ if ($action === 'edit') {
     <div class="lp-alert lp-alert--success">Trash emptied.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['spam_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Spam emptied.</div>
+<?php endif; ?>
+
 <?php if ($action === 'edit'): ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('comments')) ?>">
@@ -226,10 +235,23 @@ if ($action === 'edit') {
     $page = max(1, (int) ($_GET['paged'] ?? 1));
     $statusFilter = CommentStatus::tryFrom((string) ($_GET['status'] ?? ''));
     $isTrashView = $statusFilter === CommentStatus::Trash;
+    $isSpamView = $statusFilter === CommentStatus::Spam;
     $pagination = $commentService->paginateForAdmin($page, statusFilter: $statusFilter);
-    $statusLinks = ['' => 'All', ...array_combine(
+
+    // LP-135: "All" excludes Trash (see paginateForAdmin()'s matching
+    // exclusion), so its own count is every other status summed rather
+    // than a simple total-row-count query.
+    $statusCounts = [];
+
+    foreach (CommentStatus::cases() as $statusCase) {
+        $statusCounts[$statusCase->value] = $commentService->countByStatus($statusCase);
+    }
+
+    $allCount = $statusCounts[CommentStatus::Pending->value] + $statusCounts[CommentStatus::Approved->value]
+        + $statusCounts[CommentStatus::Spam->value];
+    $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
         array_map(static fn (CommentStatus $status): string => $status->value, CommentStatus::cases()),
-        array_map(static fn (CommentStatus $status): string => $status->label(), CommentStatus::cases()),
+        array_map(static fn (CommentStatus $status): string => $status->label() . ' (' . $statusCounts[$status->value] . ')', CommentStatus::cases()),
     )];
     ?>
 
@@ -251,8 +273,20 @@ if ($action === 'edit') {
             </form>
         <?php endif; ?>
 
+        <?php if ($isSpamView && $pagination['total'] > 0): ?>
+            <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-confirm="Permanently delete every comment marked as Spam? This cannot be undone.">
+                <?= Csrf::field('comments_empty_spam') ?>
+                <input type="hidden" name="form" value="empty_spam">
+                <button type="submit" class="lp-button lp-button--danger">Empty Spam</button>
+            </form>
+        <?php endif; ?>
+
         <?php if ($pagination['comments'] === []): ?>
-            <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No comments yet.' ?></p>
+            <p class="lp-admin__widget-placeholder"><?= match (true) {
+                $isTrashView => 'Trash is empty.',
+                $isSpamView => 'No spam comments.',
+                default => 'No comments yet.',
+            } ?></p>
         <?php else: ?>
             <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-bulk-form>
                 <?= Csrf::field('comments_bulk_action') ?>

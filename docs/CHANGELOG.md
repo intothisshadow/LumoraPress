@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Comments (LP-135, LP-136): the status filter row (All / Pending /
+  Approved / Spam / Trash) now shows a count on every tab, matching
+  All Posts/Pages/Downloads' existing `Label (N)` convention. "All"
+  now excludes Trash, matching those same screens' own "All" behavior
+  — Trash is no longer counted (or listed) under "All", only under its
+  own tab. The Spam tab also gained an "Empty Spam" button, mirroring
+  the existing Trash tab's "Empty Trash" — previously the only way to
+  remove spam comments permanently was one at a time.
 - Dashboard (LP-134): every widget (Recent Posts, Recent Comments,
   Quick Draft, System Information, Popular Downloads, Update Status,
   and a plugin-provided panel like Visitor & Post View Statistics' own
