@@ -404,6 +404,14 @@ install may set its own — check its own documentation.
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
   Font Awesome, off by default), plus a searchable icon picker in the
   post/page/downloads editor toolbar once enabled.
+- **Emoji Picker plugin** (bundled, active by default) — a search-and-
+  browse-by-category emoji picker in the post/page/downloads editor
+  toolbar (Visual/HTML and Markdown), with a per-user Recently Used
+  category and a small developer API (an `lp_emoji_dataset` filter, an
+  `lp_emoji_inserted` action, `lp_emoji_picker_button()` for use outside
+  the default toolbars). Inserts a plain Unicode character — no images,
+  shortcodes, or third-party requests (Settings &rsaquo; Writing &rsaquo;
+  Emoji Picker).
 - **Lumora Shield plugin** (bundled) — optional hardening features
   beyond core's own basics: an optional "hide author archives entirely"
   setting on top of core's own always-on author-archive username-

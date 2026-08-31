@@ -74,6 +74,15 @@ final class User
          * nothing else in this model needs to inspect it.
          */
         public readonly ?string $folderTreeState = null,
+        /**
+         * LPP-006: raw JSON-encoded list of this user's most recently
+         * inserted emoji (newest first), for the Emoji Picker's "Recently
+         * used" category. Kept as an undecoded string here — the same
+         * "only the caller decodes it" reasoning folderTreeState/
+         * listViewPreferences above already use — since this model has no
+         * business logic of its own.
+         */
+        public readonly ?string $recentEmoji = null,
     ) {
     }
 

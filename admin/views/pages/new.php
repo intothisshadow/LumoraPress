@@ -311,6 +311,37 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'emoji_picker_record_recent') {
+    // See the identical comment in admin/views/posts/new.php's matching
+    // block for why this is core UserService work rather than delegated
+    // to the (optional) Emoji Picker plugin's own service.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!Csrf::verify('emoji_picker_record_recent', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $insertedEmoji = trim((string) ($_POST['emoji'] ?? ''));
+
+    if ($insertedEmoji === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing emoji.']);
+        exit;
+    }
+
+    $recent = $kernel->users->addRecentEmoji($currentUser->id, $insertedEmoji, lp_emoji_picker_data()['recentLimit']);
+    do_action('lp_emoji_inserted', $insertedEmoji, $currentUser->id);
+
+    echo json_encode(['recent' => $recent, 'csrfToken' => Csrf::token('emoji_picker_record_recent')]);
+    exit;
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'convert_content') {
     // See the identical comment in admin/views/posts/new.php's matching
     // block for why the output buffer must be discarded here.
@@ -683,6 +714,14 @@ if ($savedLayout['order'] === []) {
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
                         data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                    <?php endif; ?>
+                    <?php if (lp_emoji_picker_enabled()): ?>
+                        data-emoji-wysiwyg-enabled="<?= lp_emoji_picker_editor_enabled('wysiwyg') ? '1' : '0' ?>"
+                        data-emoji-markdown-enabled="<?= lp_emoji_picker_editor_enabled('markdown') ? '1' : '0' ?>"
+                        data-emoji-dataset="<?= esc_attr((string) json_encode(lp_emoji_picker_data()['dataset'])) ?>"
+                        data-emoji-default-category="<?= esc_attr(lp_emoji_picker_data()['defaultCategory']) ?>"
+                        data-emoji-recent="<?= esc_attr((string) json_encode($kernel->users->getRecentEmoji($currentUser->id))) ?>"
+                        data-emoji-record-csrf="<?= esc_attr(Csrf::token('emoji_picker_record_recent')) ?>"
                     <?php endif; ?>
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"

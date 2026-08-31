@@ -6,6 +6,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Emoji Picker plugin (LPP-006): a new bundled plugin adding a search-
+  and-browse emoji picker to the Post/Page/Downloads editor toolbar
+  (both the Visual/HTML and Markdown editors), with a per-user
+  Recently Used category, inserting a plain Unicode character with no
+  network requests beyond a same-origin "record recently used" call.
+  Settings &rsaquo; Writing &rsaquo; Emoji Picker controls which editors
+  show it, how many recently-used emoji to remember, and the default
+  category shown on open.
 - Portable Settings Export/Import (LP-140): Maintenance &rsaquo; Tools
   gained an Export Settings download and an Import Settings upload for
   copying Permalinks, Reading, Discussion, Media (including Thumbnails

@@ -214,22 +214,32 @@ Kernel exists (see "Discovery & loading" below). Hook the
 
 **There is no hook or API for a plugin to add its own admin menu item or
 page** (the `dashboard_widgets` hook above only lets a plugin add content
-*inside* the existing Dashboard screen, not register a new one). The shipped plugins work around this differently: Font Awesome
-adds no admin UI at all; Dummy Content's admin section is wired directly
-into an existing core view (Maintenance › Tools), not registered
-dynamically; WordPress Importer (LPP-004) does the same into a different
-existing, always-present menu slot (Maintenance › Import —
-`admin/views/maintenance/import.php`), gated the identical way Dummy
-Content's section is (an `{slug}Active` boolean computed once in
-`admin/index.php` from the active-plugins option, shared into the view
-via normal PHP `require`-scope). Downloads (LPP-008) and Contact Forms
-(LPP-003) instead get a real top-level menu entry of their own, since
-their admin screens are their entire reason to exist — the same
-`{slug}Active` gate, just wrapping a whole new `$menu` array entry
-(`admin/index.php`) instead of a section inside an existing one. If your
-plugin needs admin UI and no existing menu slot fits, pick whichever of
-these two shapes matches how central the admin UI is to the plugin's
-purpose, rather than assuming a registration hook exists.
+*inside* the existing Dashboard screen, not register a new one). The
+shipped plugins work around this three different ways, all variations on
+the same `{slug}Active` boolean computed once in `admin/index.php` from
+the active-plugins option and shared into the target view via normal PHP
+`require`-scope: Dummy Content's admin section is wired directly into an
+existing core view (Maintenance › Tools), not registered dynamically;
+WordPress Importer (LPP-004) does the same into a different existing,
+always-present menu slot (Maintenance › Import —
+`admin/views/maintenance/import.php`). Font Awesome (LPP-002) and Emoji
+Picker (LPP-006) instead each get a real settings screen of their own by
+hand-adding one nested child under an *existing* parent that already
+supports children (`Appearance`/`Settings` respectively) — a plain
+`...($xActive ? ['slug' => ['label' => ..., 'icon' => ..., 'capability'
+=> ...]] : [])` spread into that parent's `children` array in
+`admin/index.php`'s `$menu`, resolved to `admin/views/{parent}/{slug}.php`
+by the normal `views/{page}/{subpage}.php` routing — Emoji Picker's
+`Settings › Writing` entry didn't exist as a parent before this plugin
+added it (a single flat child is fine; only add nested grandchildren of
+your own once a second sibling actually needs one). Downloads (LPP-008)
+and Contact Forms (LPP-003) instead get a real *top-level* menu entry of
+their own, since their admin screens are their entire reason to exist —
+the same `{slug}Active` gate, just wrapping a whole new top-level `$menu`
+array entry instead of a nested child. If your plugin needs admin UI and
+no existing menu slot fits, pick whichever of these three shapes matches
+how central the admin UI is to the plugin's purpose, rather than assuming
+a registration hook exists.
 
 **There is likewise no hook or API for a plugin to register its own
 public-facing route.** Every route is hardcoded in `include/bootstrap.php`
@@ -256,6 +266,10 @@ route-registration hook exists.
 | Name | Type | Args | Fires in |
 |---|---|---|---|
 | `registered_editors` | filter | `array $builtIn` (`{value, label}[]`, one per `ContentFormat`) | [`EditorPreferenceService`](../app/Services/EditorPreferenceService.php)`::registeredEditors()` — advertise an additional authoring-UI choice. Content is still always *stored* as one of the three `ContentFormat` cases (Markdown/HTML/Plain); this only affects which editor UI is offered, not a new storage format. |
+| `lp_emoji_dataset` | filter | `array $dataset` (`{emoji, name, category, keywords}[]`) | Emoji Picker plugin (LPP-006) — `EmojiPickerService::dataset()`, applied to the bundled curated CLDR subset (`content/plugins/emoji-picker/data/emoji.php`) before it's embedded in the editor container's `data-emoji-dataset` attribute. Extend or replace it entirely — e.g. to load the full CLDR set, add another language's keywords, or add custom entries. |
+| `lp_emoji_picker_enabled` / `lp_emoji_picker_editor_enabled` / `lp_emoji_picker_data` | filter | `bool $enabled` / `bool $enabled, string $editor` (`'wysiwyg'`\|`'markdown'`) / `array $default` (`{dataset, defaultCategory, recentLimit}`) | Same plugin — decoupling facades the editor-hosting admin views (`posts/new.php`, `pages/new.php`, `downloads/add-new.php`) call through `lp_emoji_picker_enabled()`/`lp_emoji_picker_editor_enabled()`/`lp_emoji_picker_data()` ([`include/helpers.php`](../include/helpers.php)) instead of a direct `EmojiPickerService` reference, mirroring `lp_fontawesome_enabled`/`lp_fontawesome_css_urls`'s identical reasoning. |
+| `lp_emoji_picker_trigger_html` | filter | `string $html, array $args` (`label?`, `target?`) | Same plugin — backs the `lp_emoji_picker_button(array $args = [])` template tag, for rendering a self-contained trigger button outside the default editor toolbars (e.g. a theme's comment form). Returns `''` when the plugin is inactive/disabled, always safe to call unconditionally. |
+| `lp_emoji_inserted` | action | `string $emoji, int $userId` | Same plugin — fired from the `emoji_picker_record_recent` AJAX sub-action (core, in each editor-hosting admin view — not the plugin itself, since "recently used" persistence is `UserService::addRecentEmoji()`'s job) whenever an insert is recorded to that user's recently-used list. |
 
 ### Application lifecycle & updates
 

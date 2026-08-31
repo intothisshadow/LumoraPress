@@ -1776,6 +1776,63 @@ body.lp-admin-login {
     max-width: 100%;
 }
 
+/* Emoji picker (LPP-006): reuses .lp-editor-media-dialog's overall
+   <dialog> chrome/status/close styling, plus a row of category tabs
+   between the search field and the grid. Grid items show only the raw
+   glyph (no label, unlike the icon picker above) so tiles can be small
+   and dense — the accessible name comes from aria-label/title instead. */
+.lp-editor-emoji-dialog__categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+.lp-editor-emoji-dialog__category {
+    background: none;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+}
+
+.lp-editor-emoji-dialog__category:hover,
+.lp-editor-emoji-dialog__category:focus-visible {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-editor-emoji-dialog__category.is-active {
+    background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
+    color: #fff;
+}
+
+.lp-editor-emoji-dialog__grid {
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+}
+
+.lp-editor-emoji-dialog__item {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    cursor: pointer;
+    background: none;
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.lp-editor-emoji-dialog__item:hover,
+.lp-editor-emoji-dialog__item:focus-visible {
+    border-color: var(--lp-admin-accent);
+    background: color-mix(in srgb, var(--lp-admin-accent) 10%, transparent);
+}
+
 .lp-editor-media-dialog__load-more {
     align-self: center;
     flex-shrink: 0;

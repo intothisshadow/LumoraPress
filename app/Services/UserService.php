@@ -435,6 +435,50 @@ final class UserService
         unset($this->findByIdCache[$id]);
     }
 
+    /**
+     * LPP-006: this user's most recently inserted emoji, newest first —
+     * backs the Emoji Picker's "Recently used" category. Mirrors
+     * getCollapsedMediaFolders()'s identical flat-JSON-array-column
+     * shape (no per-screen-type keying needed, unlike
+     * getEditorLayoutPreferences()/getListViewMode() — there is only one
+     * "recently used emoji" list per user, not one per screen).
+     *
+     * @return array<int, string>
+     */
+    public function getRecentEmoji(int $id): array
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user?->recentEmoji ?? '[]', true);
+
+        return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+    }
+
+    /**
+     * Moves $emoji to the front of the recently-used list (adding it if
+     * new), trimmed to $limit entries. Returns the updated list so the
+     * caller (the AJAX sub-action dispatched from posts/new.php etc.)
+     * can hand it straight back to the picker without a second read.
+     *
+     * @return array<int, string>
+     */
+    public function addRecentEmoji(int $id, string $emoji, int $limit): array
+    {
+        $updated = array_slice(
+            array_values(array_unique(array_merge([$emoji], $this->getRecentEmoji($id)))),
+            0,
+            max(0, $limit),
+        );
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET recent_emoji = :recent_emoji WHERE id = :id',
+            ['recent_emoji' => json_encode($updated), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+
+        return $updated;
+    }
+
     public function delete(int $id): bool
     {
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -678,6 +722,7 @@ final class UserService
                 : ThemePreference::Auto,
             listViewPreferences: isset($row['list_view_preferences']) ? (string) $row['list_view_preferences'] : null,
             folderTreeState: isset($row['folder_tree_state']) ? (string) $row['folder_tree_state'] : null,
+            recentEmoji: isset($row['recent_emoji']) ? (string) $row['recent_emoji'] : null,
         );
     }
 

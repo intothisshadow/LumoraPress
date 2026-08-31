@@ -1022,6 +1022,286 @@
     }
 
     // ------------------------------------------------------------------
+    // Emoji picker (LPP-006) — shared by both editors, and by any
+    // standalone lp_emoji_picker_button() trigger a theme renders
+    // outside the default toolbars (see wireStandaloneEmojiTriggers()
+    // below). Unlike openIconPicker() above, the whole dataset is
+    // already embedded in data-emoji-dataset (small enough — see the
+    // plugin's own Performance notes — to search/browse entirely
+    // client-side, no per-keystroke round trip). The only request this
+    // ever makes is a fire-and-forget "record this in Recently Used"
+    // POST after an insert, which never blocks the insert itself.
+    // Deliberately does NOT close on insert (unlike every other picker
+    // in this file) — the ticket wants repeated inserts in one session;
+    // it closes only via Escape (native <dialog> behavior) or Cancel.
+    // ------------------------------------------------------------------
+
+    function openEmojiPicker(container, onInsert) {
+        var dataset = JSON.parse(container.dataset.emojiDataset || '[]');
+        var recent = JSON.parse(container.dataset.emojiRecent || '[]');
+        var recordUrl = container.dataset.uploadUrl || '';
+        var recordCsrf = container.dataset.emojiRecordCsrf || '';
+        var byEmoji = {};
+        dataset.forEach(function (item) { byEmoji[item.emoji] = item; });
+
+        var categories = [];
+        dataset.forEach(function (item) {
+            if (categories.indexOf(item.category) === -1) {
+                categories.push(item.category);
+            }
+        });
+
+        var RECENT_LABEL = 'Recently Used';
+        var state = {
+            term: '',
+            category: recent.length > 0 ? RECENT_LABEL : (container.dataset.emojiDefaultCategory || categories[0] || ''),
+        };
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog lp-editor-emoji-dialog';
+
+        var heading = document.createElement('h2');
+        heading.textContent = 'Insert Emoji';
+        heading.className = 'lp-editor-media-dialog__heading';
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'lp-editor-media-dialog__search';
+        searchInput.placeholder = 'Search emoji…';
+        searchInput.setAttribute('aria-label', 'Search emoji');
+
+        var categoryNav = document.createElement('div');
+        categoryNav.className = 'lp-editor-emoji-dialog__categories';
+        categoryNav.setAttribute('role', 'tablist');
+        categoryNav.setAttribute('aria-label', 'Emoji categories');
+
+        var status = document.createElement('p');
+        status.className = 'lp-editor-media-dialog__status';
+        status.hidden = true;
+
+        var grid = document.createElement('div');
+        grid.className = 'lp-editor-media-dialog__grid lp-editor-emoji-dialog__grid';
+        grid.setAttribute('role', 'group');
+        grid.setAttribute('aria-label', 'Emoji');
+
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'lp-button lp-editor-media-dialog__close';
+        closeButton.textContent = 'Cancel';
+        closeButton.addEventListener('click', function () { dialog.close(); });
+
+        var categoryList = recent.length > 0 ? [RECENT_LABEL].concat(categories) : categories;
+
+        function renderCategoryNav() {
+            categoryNav.innerHTML = '';
+            categoryList.forEach(function (category) {
+                var tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = 'lp-editor-emoji-dialog__category' + (state.category === category && state.term === '' ? ' is-active' : '');
+                tab.textContent = category;
+                tab.setAttribute('role', 'tab');
+                tab.setAttribute('aria-selected', state.category === category && state.term === '' ? 'true' : 'false');
+                tab.addEventListener('click', function () {
+                    state.term = '';
+                    searchInput.value = '';
+                    state.category = category;
+                    renderCategoryNav();
+                    renderGrid();
+                });
+                categoryNav.appendChild(tab);
+            });
+        }
+
+        function itemsForState() {
+            if (state.term !== '') {
+                var term = state.term.toLowerCase();
+
+                return dataset.filter(function (item) {
+                    if (item.name.toLowerCase().indexOf(term) !== -1) {
+                        return true;
+                    }
+
+                    return item.keywords.some(function (keyword) {
+                        return keyword.toLowerCase().indexOf(term) !== -1;
+                    });
+                });
+            }
+
+            if (state.category === RECENT_LABEL) {
+                return recent.map(function (emoji) { return byEmoji[emoji]; }).filter(Boolean);
+            }
+
+            return dataset.filter(function (item) { return item.category === state.category; });
+        }
+
+        function recordRecent(emoji) {
+            // Move-to-front locally so the Recently Used tab reflects the
+            // insert immediately, without waiting on the network — the
+            // AJAX response below is the source of truth for the actual
+            // server-enforced limit, and overwrites this once it arrives.
+            recent = [emoji].concat(recent.filter(function (existing) { return existing !== emoji; }));
+            container.dataset.emojiRecent = JSON.stringify(recent);
+
+            if (categoryList.indexOf(RECENT_LABEL) === -1) {
+                categoryList.unshift(RECENT_LABEL);
+                renderCategoryNav();
+            }
+
+            if (!recordUrl || !recordCsrf) {
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append('form', 'emoji_picker_record_recent');
+            formData.append('csrf_token', recordCsrf);
+            formData.append('emoji', emoji);
+
+            fetch(recordUrl, { method: 'POST', body: formData })
+                .then(function (response) { return response.json(); })
+                .then(function (json) {
+                    if (json.csrfToken) {
+                        recordCsrf = json.csrfToken;
+                        container.dataset.emojiRecordCsrf = json.csrfToken;
+                    }
+
+                    if (Array.isArray(json.recent)) {
+                        recent = json.recent;
+                        container.dataset.emojiRecent = JSON.stringify(recent);
+
+                        if (state.category === RECENT_LABEL) {
+                            renderGrid();
+                        }
+                    }
+                })
+                .catch(function () {
+                    // Best-effort — the emoji was already inserted regardless
+                    // of whether "recently used" persisted server-side.
+                });
+        }
+
+        function renderItem(item) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lp-editor-emoji-dialog__item';
+            button.textContent = item.emoji;
+            button.setAttribute('aria-label', item.name);
+            button.title = item.name;
+            button.addEventListener('click', function () {
+                onInsert(item.emoji);
+                recordRecent(item.emoji);
+            });
+            grid.appendChild(button);
+        }
+
+        function renderGrid() {
+            grid.innerHTML = '';
+            var items = itemsForState();
+
+            if (items.length === 0) {
+                status.textContent = state.term !== '' ? 'No emoji match your search.' : 'Nothing here yet.';
+                status.hidden = false;
+
+                return;
+            }
+
+            status.hidden = true;
+            items.forEach(renderItem);
+        }
+
+        // Roving arrow-key navigation across the grid — computed from the
+        // grid's own actual column count (grid-template-columns resolves
+        // to a fixed number of tracks at layout time even though the CSS
+        // itself uses auto-fill) rather than a hardcoded number, so this
+        // keeps working if the tile size/dialog width ever changes.
+        grid.addEventListener('keydown', function (event) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                return;
+            }
+
+            var items = Array.prototype.slice.call(grid.children);
+            var index = items.indexOf(document.activeElement);
+
+            if (index === -1) {
+                return;
+            }
+
+            var columns = window.getComputedStyle(grid).gridTemplateColumns.split(' ').length || 1;
+            var target = index;
+
+            if (event.key === 'ArrowLeft') {
+                target = index - 1;
+            } else if (event.key === 'ArrowRight') {
+                target = index + 1;
+            } else if (event.key === 'ArrowUp') {
+                target = index - columns;
+            } else if (event.key === 'ArrowDown') {
+                target = index + columns;
+            }
+
+            if (target >= 0 && target < items.length) {
+                event.preventDefault();
+                items[target].focus();
+            }
+        });
+
+        var searchTimer = null;
+        searchInput.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(function () {
+                state.term = searchInput.value.trim();
+                renderCategoryNav();
+                renderGrid();
+            }, 150);
+        });
+
+        dialog.appendChild(heading);
+        dialog.appendChild(searchInput);
+        dialog.appendChild(categoryNav);
+        dialog.appendChild(status);
+        dialog.appendChild(grid);
+        dialog.appendChild(closeButton);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+
+        renderCategoryNav();
+        renderGrid();
+        searchInput.focus();
+    }
+
+    // ------------------------------------------------------------------
+    // Standalone lp_emoji_picker_button() triggers (LPP-006) — a page
+    // can render one of these anywhere (e.g. a theme's comment form),
+    // outside the default Post/Page/Downloads editor toolbars this file
+    // otherwise assumes. Inserts into data-emoji-target (a CSS selector)
+    // if given, else the nearest <textarea> in the same <form>.
+    // ------------------------------------------------------------------
+
+    function wireStandaloneEmojiTriggers() {
+        document.querySelectorAll('[data-lp-emoji-picker-trigger]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var targetSelector = button.dataset.emojiTarget;
+                var target = targetSelector
+                    ? document.querySelector(targetSelector)
+                    : (button.closest('form') || document).querySelector('textarea');
+
+                if (!target) {
+                    return;
+                }
+
+                openEmojiPicker(button, function (emoji) {
+                    var start = target.selectionStart || target.value.length;
+                    var end = target.selectionEnd || target.value.length;
+                    target.value = target.value.slice(0, start) + emoji + target.value.slice(end);
+                    var caret = start + emoji.length;
+                    target.setSelectionRange(caret, caret);
+                    target.focus();
+                });
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Shortcode picker (LP-110) — shared by both editors. Reads the
     // registered-shortcode metadata core built server-side
     // (ShortcodeManager::toArray(), via register_shortcode() —
@@ -1389,6 +1669,7 @@
             var EasyMDE = window.EasyMDE;
             var autosaveId = container.dataset.autosaveId || '';
             var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
+            var emojiPickerEnabled = container.dataset.emojiMarkdownEnabled === '1';
             var shortcodesEnabled = Object.keys(JSON.parse(container.dataset.shortcodes || '{}')).length > 0;
 
             // Built as its own variable (rather than inline in the options
@@ -1534,6 +1815,19 @@
                 });
             }
 
+            if (emojiPickerEnabled) {
+                markdownToolbar.push({
+                    name: 'emoji-picker',
+                    action: function () {
+                        openEmojiPicker(container, function (emoji) {
+                            editor.codemirror.replaceSelection(emoji);
+                        });
+                    },
+                    className: 'fa fa-smile-o',
+                    title: 'Insert Emoji',
+                });
+            }
+
             markdownToolbar.push('table', 'horizontal-rule', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide');
 
             var editor = new EasyMDE({
@@ -1601,6 +1895,7 @@
             var tinymce = window.tinymce;
             var autosaveId = container.dataset.autosaveId || '';
             var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
+            var emojiPickerEnabled = container.dataset.emojiWysiwygEnabled === '1';
             var shortcodesEnabled = Object.keys(JSON.parse(container.dataset.shortcodes || '{}')).length > 0;
             // LP-115: the native 'image' plugin/toolbar button is
             // deliberately not loaded — lumoraMedia (the Media Manager
@@ -1639,7 +1934,7 @@
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
                         + 'bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
-                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag table codesample | '
+                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag table codesample | '
                         + 'searchreplace fullscreen code help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
@@ -1832,6 +2127,18 @@
                             });
                         }
 
+                        if (emojiPickerEnabled) {
+                            editor.ui.registry.addButton('lumoraEmoji', {
+                                icon: 'emoji',
+                                tooltip: 'Insert Emoji',
+                                onAction: function () {
+                                    openEmojiPicker(container, function (emoji) {
+                                        editor.insertContent(emoji);
+                                    });
+                                },
+                            });
+                        }
+
                         // LP-079 — inserts a whole paragraph containing
                         // only the More tag marker, mirroring
                         // insertMoreTag()'s Markdown-side blank-line-
@@ -1966,5 +2273,7 @@
                     });
             });
         });
+
+        wireStandaloneEmojiTriggers();
     });
 }());

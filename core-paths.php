@@ -29,7 +29,7 @@ declare(strict_types=1);
  * (content/plugins/font-awesome, content/plugins/dummy-content,
  * content/plugins/wordpress-importer, content/plugins/downloads,
  * content/plugins/contact-forms, content/plugins/lumora-shield,
- * content/plugins/lumora-gallery-shortcodes) get the
+ * content/plugins/lumora-gallery-shortcodes, content/plugins/emoji-picker) get the
  * same "bundled, not user-installed" treatment. docs/ (CHANGELOG.md/HISTORY.md/
  * TROUBLESHOOTING.md) ships with every release, unlike the user-data
  * paths above.
@@ -51,6 +51,7 @@ return [
     'content/plugins/lumora-shield',
     'content/plugins/visitor-stats',
     'content/plugins/lumora-gallery-shortcodes',
+    'content/plugins/emoji-picker',
     'index.php',
     'version.php',
     '.htaccess',

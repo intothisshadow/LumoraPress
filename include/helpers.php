@@ -802,6 +802,71 @@ if (!function_exists('lp_icon')) {
     }
 }
 
+/*
+ * LPP-006 (Emoji Picker) developer API — mirrors LPP-002's identical
+ * hook-based-facade reasoning immediately above.
+ */
+
+if (!function_exists('lp_emoji_picker_enabled')) {
+    function lp_emoji_picker_enabled(): bool
+    {
+        return (bool) apply_filters('lp_emoji_picker_enabled', false);
+    }
+}
+
+if (!function_exists('lp_emoji_picker_editor_enabled')) {
+    /**
+     * Whether the picker button should render for the given editor
+     * ('wysiwyg' or 'markdown') — see EmojiPickerService::editorEnabled().
+     */
+    function lp_emoji_picker_editor_enabled(string $editor): bool
+    {
+        return (bool) apply_filters('lp_emoji_picker_editor_enabled', false, $editor);
+    }
+}
+
+if (!function_exists('lp_emoji_picker_data')) {
+    /**
+     * The picker's own rendering data (dataset, default category, recent-
+     * list limit) — see the `lp_emoji_picker_data` filter registered in
+     * emoji-picker.php. Used by the editor-hosting admin views to build
+     * their own data-emoji-* container attributes without a direct
+     * EmojiPickerService reference, mirroring lp_fontawesome_css_urls'
+     * identical decoupling reasoning. Falls back to a small in-memory
+     * default (a 24-entry recent-emoji limit, no dataset) when nothing is
+     * listening, so a stale AJAX sub-action posted just after the plugin
+     * was deactivated still behaves sensibly rather than erroring.
+     *
+     * @return array{dataset: array<int, array{emoji: string, name: string, category: string, keywords: array<int, string>}>, defaultCategory: string, recentLimit: int}
+     */
+    function lp_emoji_picker_data(): array
+    {
+        /** @var array{dataset: array<int, array{emoji: string, name: string, category: string, keywords: array<int, string>}>, defaultCategory: string, recentLimit: int} */
+        return apply_filters('lp_emoji_picker_data', ['dataset' => [], 'defaultCategory' => '', 'recentLimit' => 24]);
+    }
+}
+
+if (!function_exists('lp_emoji_picker_button')) {
+    /**
+     * Renders a self-contained "Insert Emoji" trigger button + its own
+     * bundled dataset, for use outside the default Post/Page editor
+     * toolbars (e.g. a theme's comment form) — call this once, anywhere
+     * in the markup. Returns '' if the plugin isn't active/enabled,
+     * always safe to call unconditionally. content-editor.js wires up
+     * every `[data-lp-emoji-picker-trigger]` on the page the same way,
+     * inserting into the nearest `<textarea>` in the same `<form>`
+     * unless `$args['target']` names a different CSS selector.
+     *
+     * @param array<string, mixed> $args 'label' (button text, default
+     *     "Insert Emoji") and/or 'target' (a CSS selector for the
+     *     insertion target, default: the nearest textarea in the same form)
+     */
+    function lp_emoji_picker_button(array $args = []): string
+    {
+        return (string) apply_filters('lp_emoji_picker_trigger_html', '', $args);
+    }
+}
+
 if (!function_exists('lp_register_icon_pack')) {
     /**
      * Lets a theme/plugin register an additional icon pack (e.g. a custom

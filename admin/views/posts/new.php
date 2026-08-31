@@ -46,7 +46,7 @@ $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->
  * echoes the JSON body directly rather than returning a value — see
  * uploadEditorImage()'s own docblock for why), and exits.
  */
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'font_awesome_icon_query'], true)) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'font_awesome_icon_query', 'emoji_picker_record_recent'], true)) {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs (views/{page}/{subpage}.php is
     // required after layout-header.php unconditionally) — discard it
@@ -75,6 +75,39 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
             echo json_encode(['error' => 'Font Awesome is not active.']);
         }
 
+        exit;
+    }
+
+    /*
+     * LPP-006: unlike font_awesome_icon_query above, this sub-action is
+     * core UserService work, not delegated to the (optional) Emoji
+     * Picker plugin's own service — the plugin only ever supplies the
+     * dataset/settings (see EmojiPickerService's class docblock), so
+     * "recently used" persistence lives here regardless of whether the
+     * plugin happens to be active at the moment this fires (a stale
+     * client-side picker session posting after the plugin was just
+     * deactivated is harmless — it just records a value nothing reads
+     * back until the plugin is active again).
+     */
+    if ($_POST['form'] === 'emoji_picker_record_recent') {
+        if (!Csrf::verify('emoji_picker_record_recent', $csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Not permitted.']);
+            exit;
+        }
+
+        $insertedEmoji = trim((string) ($_POST['emoji'] ?? ''));
+
+        if ($insertedEmoji === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing emoji.']);
+            exit;
+        }
+
+        $recent = $kernel->users->addRecentEmoji($currentUser->id, $insertedEmoji, lp_emoji_picker_data()['recentLimit']);
+        do_action('lp_emoji_inserted', $insertedEmoji, $currentUser->id);
+
+        echo json_encode(['recent' => $recent, 'csrfToken' => Csrf::token('emoji_picker_record_recent')]);
         exit;
     }
 
@@ -359,6 +392,14 @@ if ($savedLayout['order'] === []) {
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
                         data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
+                    <?php endif; ?>
+                    <?php if (lp_emoji_picker_enabled()): ?>
+                        data-emoji-wysiwyg-enabled="<?= lp_emoji_picker_editor_enabled('wysiwyg') ? '1' : '0' ?>"
+                        data-emoji-markdown-enabled="<?= lp_emoji_picker_editor_enabled('markdown') ? '1' : '0' ?>"
+                        data-emoji-dataset="<?= esc_attr((string) json_encode(lp_emoji_picker_data()['dataset'])) ?>"
+                        data-emoji-default-category="<?= esc_attr(lp_emoji_picker_data()['defaultCategory']) ?>"
+                        data-emoji-recent="<?= esc_attr((string) json_encode($kernel->users->getRecentEmoji($currentUser->id))) ?>"
+                        data-emoji-record-csrf="<?= esc_attr(Csrf::token('emoji_picker_record_recent')) ?>"
                     <?php endif; ?>
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"

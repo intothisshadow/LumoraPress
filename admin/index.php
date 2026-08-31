@@ -398,6 +398,14 @@ $visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
  * gated the same way.
  */
 $galleryShortcodesActive = in_array('lumora-gallery-shortcodes', $activePlugins, true);
+/*
+ * LPP-006: mirrors $fontAwesomeActive's exact reasoning — Emoji Picker's
+ * settings screen only appears while the plugin is active, gated as a
+ * nested child (like Font Awesome under Appearance) rather than a
+ * top-level entry, since a single Settings screen is its entire admin
+ * footprint.
+ */
+$emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -527,6 +535,7 @@ $menu = [
             'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options'],
             'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options'],
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
+            ...($emojiPickerActive ? ['writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options']] : []),
             'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
             'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
