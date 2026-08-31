@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Lumora Gallery Shortcodes: the "View album" link `[lumora_gallery_album]` renders below its thumbnails pointed at `{base_url}/?album={id}` — the Gallery site's homepage with a query string it never reads, not a real album page. Gallery serves every public URL through dedicated front-controller files rather than a home-page router (`album.php?album={id}` for an album), so the link now points at `album.php` like it should.
+
 ## [0.9.0] — 2026-08-31
 
 ### Added

@@ -184,7 +184,7 @@ final class GalleryShortcode
         $html .= '</ul>';
 
         $viewUrl = $album !== null
-            ? $baseUrl . '/?album=' . $album['id']
+            ? $baseUrl . '/album.php?album=' . $album['id']
             : $baseUrl . '/';
 
         $viewLabel = $album !== null ? 'View album' : 'View gallery';
