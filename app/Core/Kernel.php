@@ -71,6 +71,7 @@ use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
+use LumoraPress\Services\SettingsPortabilityService;
 use LumoraPress\Services\TagService;
 use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
@@ -150,6 +151,7 @@ final class Kernel
         public readonly DownloadCategoryMigrationService $downloadCategoryMigration,
         public readonly InstallPingService $installPing,
         public readonly ShortcodeManager $shortcodes,
+        public readonly SettingsPortabilityService $settingsPortability,
     ) {
     }
 }

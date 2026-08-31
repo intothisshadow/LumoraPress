@@ -108,6 +108,7 @@ use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
+use LumoraPress\Services\SettingsPortabilityService;
 use LumoraPress\Services\TagService;
 use LumoraPress\Services\ThemeFileEditor;
 use LumoraPress\Services\ThemeInstaller;
@@ -757,6 +758,10 @@ $githubUpdates = new GitHubReleaseProvider($config);
 $appVersion = require LUMORA_ROOT . '/version.php';
 $installPing = new InstallPingService($config, (string) $appVersion['version']);
 
+// LP-140: staging directory mirrors PluginInstaller's own
+// storage/plugin-installs convention above.
+$settingsPortability = new SettingsPortabilityService($config, LUMORA_ROOT . '/storage/settings-imports', (string) $appVersion['version']);
+
 /*
  * LP-037: driver auto-detection, with a manual override option (Settings
  * > Cache) for a host where detection guesses wrong. LiteSpeedCacheDriver
@@ -885,6 +890,7 @@ $kernel = new Kernel(
     downloadCategoryMigration: $downloadCategoryMigration,
     installPing: $installPing,
     shortcodes: $shortcodes,
+    settingsPortability: $settingsPortability,
 );
 
 // See ActiveKernel's own docblock for why this exists — plugin code that

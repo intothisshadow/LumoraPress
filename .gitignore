@@ -23,6 +23,11 @@
 # never meant to persist.
 /storage/plugin-installs/*
 
+# Settings export files staged between "review before applying" and
+# "confirm" (LP-140) — created on demand by
+# SettingsPortabilityService::stage(), never meant to persist.
+/storage/settings-imports/*
+
 # User-uploaded media. .htaccess stays tracked.
 /content/uploads/*
 !/content/uploads/.htaccess

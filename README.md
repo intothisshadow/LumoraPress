@@ -378,6 +378,15 @@ install may set its own — check its own documentation.
   automatic backup and rollback either way.
 - **Maintenance mode** — take the public site offline for visitors while
   admins keep working.
+- **Portable Settings Export/Import** (Maintenance &rsaquo; Tools) —
+  download a file with one install's Permalinks, Reading, Discussion,
+  Media/Thumbnails, and General's non-identity settings, then import it
+  into a *different*, unrelated Lumora Press install to copy that
+  configuration across — with a before/after preview shown before
+  anything is applied. Site identity (URL, tagline, admin email) and
+  anything install-specific (Security, Privacy, Redirects, Cache,
+  Embeds, or a setting referencing a specific local media file or page)
+  is never included.
 - **Appearance** — theme browser (install, activate, preview — a
   previewed theme now persists across the whole site as you click
   through it, not just the page you started on — and delete inactive

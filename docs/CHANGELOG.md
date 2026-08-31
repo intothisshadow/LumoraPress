@@ -4,6 +4,19 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Portable Settings Export/Import (LP-140): Maintenance &rsaquo; Tools
+  gained an Export Settings download and an Import Settings upload for
+  copying Permalinks, Reading, Discussion, Media (including Thumbnails
+  and the Media Viewer/Lightbox), and the portable part of General
+  settings from one Lumora Press install to a completely unrelated
+  one — site identity (site URL, tagline, admin email) and anything
+  install-specific (Security, Privacy, Redirects, Cache, Embeds, or a
+  setting referencing a specific local media file or page) is never
+  included. Import shows a before/after diff of exactly what will
+  change before anything is applied.
+
 ### Fixed
 
 - Post/Page editor sidebar and Pages tree view (LP-139): neither screen

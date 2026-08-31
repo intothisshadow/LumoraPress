@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Maintenance > Tools screen — a home for small admin utilities: the double-encoded-text repair (LP-113) and, when active, the Dummy Content plugin's generator (LPP-005).
+ * The admin Maintenance > Tools screen — a home for small admin utilities: the double-encoded-text repair (LP-113), Export/Import Settings (LP-140), and, when active, the Dummy Content plugin's generator (LPP-005).
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -24,6 +24,96 @@ if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
 }
+
+/*
+ * LP-140: Export Settings is a plain GET with no state change, so it
+ * needs no CSRF check — but (mirroring admin/views/appearance/editor.php's
+ * own file-download handler) it does need to discard the admin chrome
+ * HTML admin/index.php has already queued into the output buffer
+ * (ob_start(), see its own docblock) before it can send a raw file body
+ * with its own headers.
+ */
+if (($_GET['export_settings'] ?? '') === '1') {
+    $exportJson = $kernel->settingsPortability->export();
+    $exportFilename = 'lumorapress-settings-' . date('Y-m-d') . '.json';
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    header('Content-Disposition: attachment; filename="' . $exportFilename . '"');
+    header('Content-Length: ' . (string) strlen($exportJson));
+    echo $exportJson;
+    exit;
+}
+
+/*
+ * LP-140: Import Settings mirrors admin/views/plugins.php's own
+ * stage → inspect → confirm/cancel upload flow exactly (see
+ * SettingsPortabilityService's class docblock) — stage_settings_import
+ * moves the upload aside and redirects with a token so the confirmation
+ * screen below doesn't need the file re-uploaded, confirm_settings_import
+ * applies it, cancel_settings_import discards it unapplied.
+ */
+$settingsImportError = null;
+$settingsImportApplied = null;
+
+/*
+ * $form is redefined identically inside the $dummyContentActive block
+ * below (LPP-005, predating this ticket) — reading the same POST value
+ * twice into the same-named variable is harmless since both reads see
+ * the same request.
+ */
+$form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+
+if ($form === 'stage_settings_import' && Csrf::verify('stage_settings_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if (!isset($_FILES['settings_file']) || $_FILES['settings_file']['error'] === UPLOAD_ERR_NO_FILE) {
+        $settingsImportError = 'Please choose an exported settings file to upload.';
+    } elseif ($_FILES['settings_file']['error'] !== UPLOAD_ERR_OK) {
+        $settingsImportError = 'The file upload failed. Please try again.';
+    } else {
+        try {
+            $token = $kernel->settingsPortability->stage($_FILES['settings_file']['tmp_name']);
+
+            header('Location: ' . admin_url('maintenance/tools') . '?settings_import_pending=' . urlencode($token));
+            exit;
+        } catch (\RuntimeException $exception) {
+            $settingsImportError = $exception->getMessage();
+        }
+    }
+} elseif ($form === 'confirm_settings_import' && Csrf::verify('confirm_settings_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $token = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+    try {
+        $settingsImportApplied = $kernel->settingsPortability->finalize($token);
+
+        header('Location: ' . admin_url('maintenance/tools') . '?settings_imported=' . $settingsImportApplied);
+        exit;
+    } catch (\RuntimeException $exception) {
+        $settingsImportError = $exception->getMessage();
+    }
+} elseif ($form === 'cancel_settings_import') {
+    $token = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+    $kernel->settingsPortability->discardStaged($token);
+
+    header('Location: ' . admin_url('maintenance/tools'));
+    exit;
+}
+
+$settingsImportPending = null;
+$pendingSettingsImportToken = is_string($_GET['settings_import_pending'] ?? null) ? $_GET['settings_import_pending'] : null;
+
+if ($pendingSettingsImportToken !== null) {
+    try {
+        $settingsImportPending = $kernel->settingsPortability->inspectStaged($pendingSettingsImportToken);
+        $settingsImportPending['token'] = $pendingSettingsImportToken;
+    } catch (\RuntimeException $exception) {
+        $settingsImportError = $exception->getMessage();
+    }
+}
+
+$settingsImportedCount = isset($_GET['settings_imported']) ? (int) $_GET['settings_imported'] : null;
 
 /*
  * Unlike the old dedicated "Dummy Content" menu entry, this page is
@@ -185,6 +275,132 @@ if ($downloadsActive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_P
         <input type="hidden" name="form" value="repair_double_encoded_text">
         <button type="submit" class="lp-button lp-button--primary">Scan &amp; Fix</button>
     </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Export Settings</h2>
+
+    <p class="lp-field__hint">
+        Downloads a file with this site's Permalinks, Reading, Discussion,
+        Media (including Thumbnails and the Media Viewer/Lightbox), and
+        the portable part of General settings — timezone, date/time
+        format, SEO/feed/search/revision/REST API/editor defaults. Site
+        identity (site URL, tagline, admin email) and anything
+        install-specific (Security, Privacy, Redirects, Maintenance Mode,
+        Cache, Embeds, and any setting that references a specific media
+        file or page on this site) are never included — this file is
+        meant to be imported into a <em>different</em> Lumora Press
+        install, to copy configuration across, not as a full-site backup.
+    </p>
+
+    <a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('maintenance/tools') . '?export_settings=1') ?>">Download Settings File</a>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Import Settings</h2>
+
+    <?php if ($settingsImportError !== null): ?>
+        <div class="lp-alert lp-alert--error"><?= esc_html($settingsImportError) ?></div>
+    <?php endif; ?>
+
+    <?php if ($settingsImportedCount !== null): ?>
+        <div class="lp-alert lp-alert--success">
+            <?php if ($settingsImportedCount === 0): ?>
+                Nothing to change — every portable setting in that file
+                already matched this site.
+            <?php else: ?>
+                Applied <?= (int) $settingsImportedCount ?> setting<?= $settingsImportedCount === 1 ? '' : 's' ?> from the imported file.
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($settingsImportPending !== null): ?>
+        <?php if ($settingsImportPending['changes'] === []): ?>
+            <p class="lp-field__hint">
+                Nothing to change — every portable setting in that file
+                already matches this site.
+                <?php if ($settingsImportPending['unknownKeys'] !== []): ?>
+                    (<?= count($settingsImportPending['unknownKeys']) ?> unrecognized
+                    setting<?= count($settingsImportPending['unknownKeys']) === 1 ? '' : 's' ?> in the file
+                    <?= count($settingsImportPending['unknownKeys']) === 1 ? 'was' : 'were' ?> ignored.)
+                <?php endif; ?>
+            </p>
+        <?php else: ?>
+            <p class="lp-field__hint">
+                This file was exported
+                <?php if ($settingsImportPending['exportedAt'] !== null): ?>
+                    on <?= esc_html($settingsImportPending['exportedAt']) ?>
+                <?php endif; ?>
+                <?php if ($settingsImportPending['exportedFromVersion'] !== null): ?>
+                    from Lumora Press <?= esc_html($settingsImportPending['exportedFromVersion']) ?>
+                <?php endif; ?>. Review the changes below before applying them —
+                this cannot be undone automatically (though every value here
+                can always be edited again on its own Settings screen
+                afterward).
+            </p>
+
+            <table class="lp-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Setting</th>
+                        <th scope="col">Current Value</th>
+                        <th scope="col">Imported Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($settingsImportPending['changes'] as $changedKey => $change): ?>
+                        <tr>
+                            <td><code><?= esc_html($changedKey) ?></code></td>
+                            <td><?= $change['from'] === null || $change['from'] === '' ? '<span class="lp-field__hint">(empty)</span>' : esc_html($change['from']) ?></td>
+                            <td><?= $change['to'] === '' ? '<span class="lp-field__hint">(empty)</span>' : esc_html($change['to']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <?php if ($settingsImportPending['unknownKeys'] !== []): ?>
+                <p class="lp-field__hint">
+                    <?= count($settingsImportPending['unknownKeys']) ?> unrecognized
+                    setting<?= count($settingsImportPending['unknownKeys']) === 1 ? '' : 's' ?> in the file
+                    <?= count($settingsImportPending['unknownKeys']) === 1 ? 'was' : 'were' ?> ignored
+                    (likely exported from a newer version) — nothing was
+                    changed for those.
+                </p>
+            <?php endif; ?>
+
+            <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>">
+                <?= Csrf::field('confirm_settings_import') ?>
+                <input type="hidden" name="form" value="confirm_settings_import">
+                <input type="hidden" name="token" value="<?= esc_attr($settingsImportPending['token']) ?>">
+                <button type="submit" class="lp-button lp-button--primary">Apply These Changes</button>
+            </form>
+        <?php endif; ?>
+
+        <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>">
+            <?= Csrf::field('cancel_settings_import') ?>
+            <input type="hidden" name="form" value="cancel_settings_import">
+            <input type="hidden" name="token" value="<?= esc_attr($settingsImportPending['token']) ?>">
+            <button type="submit" class="lp-button lp-button--secondary">Cancel</button>
+        </form>
+    <?php else: ?>
+        <p class="lp-field__hint">
+            Upload a settings file exported from another Lumora Press
+            install (see Export Settings above). You'll see exactly what
+            will change before anything is applied.
+        </p>
+
+        <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>" enctype="multipart/form-data">
+            <?= Csrf::field('stage_settings_import') ?>
+            <input type="hidden" name="form" value="stage_settings_import">
+
+            <p class="lp-field">
+                <label for="settings-import-file">Settings file</label>
+                <input type="file" id="settings-import-file" name="settings_file" accept=".json,application/json" required>
+            </p>
+
+            <button type="submit" class="lp-button lp-button--primary">Upload &amp; Review</button>
+        </form>
+    <?php endif; ?>
 </section>
 
 <?php if ($downloadsActive): ?>
