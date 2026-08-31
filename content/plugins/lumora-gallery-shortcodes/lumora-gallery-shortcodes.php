@@ -31,6 +31,9 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\LumoraGalleryShortcodes;
 
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
 require_once __DIR__ . '/src/GallerySettingsService.php';
 require_once __DIR__ . '/src/GalleryQueryService.php';
 require_once __DIR__ . '/src/GalleryShortcode.php';
@@ -44,6 +47,50 @@ require_once __DIR__ . '/src/GalleryShortcode.php';
  * reasoning DownloadsShortcode/NextGenGalleryShortcode's own bootstrap
  * already establishes.
  */
-$galleryShortcode = new GalleryShortcode(new GallerySettingsService());
+$gallerySettings = new GallerySettingsService();
+$galleryShortcode = new GalleryShortcode($gallerySettings);
 
 add_filter('content_html', static fn (string $html): string => $galleryShortcode->render($html));
+
+/*
+ * LPP-017: picker metadata for the editor toolbar's "Insert Shortcode"
+ * button (LP-110) — purely additive, doesn't change how
+ * [lumora_gallery_album ...]/[lumora_gallery_newest ...] themselves
+ * render (still the content_html filter above). `album_id`'s choices
+ * need a live query against the separately-configured Gallery database,
+ * which — like DownloadsShortcode's category list — has nothing to do
+ * with this site's own Kernel, so it's queried directly here rather
+ * than through $kernel; still hooked on 'register_shortcodes' (not
+ * called at plugin-load time) purely to match every other
+ * database-backed shortcode registration's own timing convention. An
+ * unconfigured or unreachable Gallery connection yields an empty
+ * choices list rather than an error — the picker still opens with
+ * `album_id` simply showing no options to pick from.
+ *
+ * Covers only `[lumora_gallery_album]`'s "whole album" variant
+ * (`album_id` alone) and `[lumora_gallery_newest]`'s `count` — the
+ * album shortcode's `count` (newest N within one album) and `image_id`
+ * (specific images) variants are left typeable by hand, matching
+ * LP-110's own established "list everything" scope for a multi-variant
+ * shortcode (see downloads.php's identical category_id-only choice).
+ */
+add_action('register_shortcodes', static function () use ($gallerySettings): void {
+    $albumChoices = [];
+    $database = $gallerySettings->connect();
+
+    if ($database !== null) {
+        $query = new GalleryQueryService($database, $gallerySettings->settings()['table_prefix']);
+
+        foreach ($query->listAlbums() as $album) {
+            $albumChoices[(string) $album['id']] = $album['title'] !== '' ? $album['title'] : $album['folder'];
+        }
+    }
+
+    register_shortcode('lumora_gallery_album', 'Gallery Album', [
+        new ShortcodeField('album_id', 'Album', ShortcodeFieldType::Select, required: true, choices: $albumChoices),
+    ]);
+
+    register_shortcode('lumora_gallery_newest', 'Gallery — Newest Images', [
+        new ShortcodeField('count', 'Number of images', ShortcodeFieldType::Number, default: '10'),
+    ]);
+});

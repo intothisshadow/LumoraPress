@@ -31,6 +31,10 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\ContactForms;
 
+use LumoraPress\Core\Kernel;
+use LumoraPress\Core\Shortcodes\ShortcodeField;
+use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
+
 require_once __DIR__ . '/src/ContactFieldType.php';
 require_once __DIR__ . '/src/ContactFormField.php';
 require_once __DIR__ . '/src/ContactForm.php';
@@ -76,3 +80,27 @@ require_once __DIR__ . '/src/ContactFormSubmissionHandler.php';
 $contactFormShortcode = new ContactFormShortcode();
 
 add_filter('content_html', static fn (string $html): string => $contactFormShortcode->renderShortcodes($html), 20);
+
+/*
+ * LPP-017: picker metadata for the editor toolbar's "Insert Shortcode"
+ * button (LP-110) — purely additive, doesn't change how
+ * [contact_form id="..."] itself renders (still the content_html filter
+ * above). Needs a live list of this site's own contact forms to build
+ * `id`'s choices, which requires $kernel->database and isn't available
+ * yet at this point in the file — see include/shortcodes.php's own
+ * docblock for why this hooks 'register_shortcodes' instead of calling
+ * register_shortcode() directly here, mirroring downloads.php's
+ * identical category_id-choices pattern.
+ */
+add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
+    $formsService = new ContactFormService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+    $formChoices = [];
+
+    foreach ($formsService->listAll() as $form) {
+        $formChoices[(string) $form->id] = $form->title;
+    }
+
+    register_shortcode('contact_form', 'Contact Form', [
+        new ShortcodeField('id', 'Form', ShortcodeFieldType::Select, required: true, choices: $formChoices),
+    ]);
+});

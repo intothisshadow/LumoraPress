@@ -80,6 +80,31 @@ final class GalleryQueryService
     }
 
     /**
+     * Every public album, title-sorted — backs the Insert Shortcode
+     * picker's `album_id` field (LPP-017) so an admin chooses a real
+     * album by name instead of typing its id by hand. Not used by
+     * `GalleryShortcode` itself, which only ever resolves one album at a
+     * time via `findAlbum()`.
+     *
+     * @return array<int, array{id: int, folder: string, title: string}>
+     */
+    public function listAlbums(): array
+    {
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT id, folder, title FROM ' . $this->albumsTable() . ' WHERE visibility = 0 ORDER BY title ASC',
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $row): array => ['id' => (int) $row['id'], 'folder' => (string) $row['folder'], 'title' => (string) $row['title']],
+            $rows,
+        );
+    }
+
+    /**
      * The public album a given image belongs to — used by
      * `GalleryShortcode` to resolve the "View album" link when
      * `image_id` was given with no explicit `album_id`/`folder` of its
