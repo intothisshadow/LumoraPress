@@ -1,13 +1,18 @@
 <?php
 
 /**
- * Shared AJAX sub-action: persists a signed-in user's Post/Page editor
- * sidebar box order and collapsed-box state (LP-083). Required from both
- * admin/views/posts/new.php and admin/views/pages.php rather than
- * duplicated inline, since (unlike the Featured Image/SEO fieldset
- * duplication already in those files) this is brand-new logic with no
- * existing byte-for-byte precedent to preserve — introducing a fresh
- * duplicate of it would just recreate the same problem on day one.
+ * Shared AJAX sub-action: persists a signed-in user's saved item order
+ * (and, where applicable, collapsed-item state) for a sortable.js AJAX-
+ * mode group. Originally the Post/Page editor sidebar's box order/
+ * collapse state only (LP-083); LP-134 widened it to also cover the
+ * Dashboard's widget order (no collapse concept there, so 'collapsed'
+ * is always empty for that screen type). Required from
+ * admin/views/posts/new.php, admin/views/pages.php, and
+ * admin/views/dashboard.php rather than duplicated inline, since
+ * (unlike the Featured Image/SEO fieldset duplication already in those
+ * files) this is brand-new logic with no existing byte-for-byte
+ * precedent to preserve — introducing a fresh duplicate of it would
+ * just recreate the same problem on day one.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -40,7 +45,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     $screenType = (string) ($_POST['screen_type'] ?? '');
 
-    if (!in_array($screenType, ['post', 'page'], true)
+    if (!in_array($screenType, ['post', 'page', 'dashboard'], true)
         || !Csrf::verify('editor_layout_' . $screenType, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)
     ) {
         http_response_code(403);

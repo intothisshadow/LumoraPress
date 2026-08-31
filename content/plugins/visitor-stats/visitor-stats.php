@@ -98,3 +98,20 @@ add_action('dashboard_widgets', static function (User $currentUser): void {
 
     require __DIR__ . '/views/dashboard-widget.php';
 });
+
+/*
+ * LP-134: declares this widget's own stable id so a signed-in admin can
+ * drag it into position among the built-in Dashboard widgets, not just
+ * always see it pinned last. Mirrors the action above's exact same
+ * gate — a widget that won't actually render this request shouldn't
+ * reserve a slot in the saved order either.
+ */
+add_filter('dashboard_widget_ids', static function (array $ids, User $currentUser): array {
+    if (!$currentUser->can('edit_posts') || ActiveConfig::instance()->option('track_post_views', '') !== '1') {
+        return $ids;
+    }
+
+    $ids[] = 'visitor_stats';
+
+    return $ids;
+});

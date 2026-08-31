@@ -314,11 +314,13 @@ final class UserService
     }
 
     /**
-     * LP-083: the saved sidebar box order/collapse state for the Post or
-     * Page editor, for the given screen type ('post'|'page'). An empty
-     * 'order' means "nothing saved yet" — the caller falls back to its own
-     * built-in default box list, since only the view knows which boxes
-     * exist for that screen.
+     * LP-083: the saved item order/collapse state for a sortable.js
+     * AJAX-mode group, for the given screen type ('post'|'page', the
+     * Post/Page editor sidebar; 'dashboard' since LP-134, the Dashboard's
+     * widget order — which has no collapse concept, so 'collapsed' is
+     * always empty there). An empty 'order' means "nothing saved yet" —
+     * the caller falls back to its own built-in default item list, since
+     * only the view knows which items exist for that screen.
      *
      * @return array{order: array<int, string>, collapsed: array<int, string>}
      */

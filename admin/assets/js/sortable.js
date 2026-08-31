@@ -65,6 +65,19 @@
  * job. Widgets lists and the editor sidebar omit data-lp-sortable-parent
  * entirely, so every item is a valid drop target for every other
  * (undefined matches undefined).
+ *
+ * Move Up/Move Down buttons (LP-134) are an optional, opt-in keyboard-
+ * accessible alternative to dragging — this script's native HTML5
+ * drag-and-drop has no keyboard equivalent at all, a pre-existing gap on
+ * every screen above. A page that wants them adds its own buttons inside
+ * each item:
+ *   <button type="button" data-lp-sortable-move="up">...</button>
+ *   <button type="button" data-lp-sortable-move="down">...</button>
+ * Clicking one swaps the item with its adjacent sibling *within the same
+ * group* (honoring data-lp-sortable-parent exactly like a drag would),
+ * then persists the result the same way a drop does — persistState() in
+ * AJAX mode, or the reposition form in form mode. Pages that don't render
+ * these buttons see no change at all.
  */
 (function () {
     'use strict';
@@ -253,6 +266,62 @@
                 button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 persistState(group);
             });
+        });
+
+        // LP-134: keyboard-operable equivalent of a drag — see this file's
+        // own docblock for the opt-in markup contract.
+        document.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-lp-sortable-move]');
+
+            if (!button) {
+                return;
+            }
+
+            var group = button.closest('[data-lp-sortable-group]');
+            var item = button.closest('[data-lp-sortable-item]');
+
+            if (!group || !item) {
+                return;
+            }
+
+            var siblings = Array.prototype.slice.call(group.querySelectorAll('[data-lp-sortable-item]')).filter(function (candidate) {
+                return sameGroup(item, candidate);
+            });
+            var index = siblings.indexOf(item);
+            var direction = button.getAttribute('data-lp-sortable-move');
+            var target = direction === 'up' ? siblings[index - 1] : siblings[index + 1];
+
+            if (!target) {
+                return;
+            }
+
+            var ajaxUrl = group.dataset.lpSortableAjaxUrl;
+
+            if (ajaxUrl) {
+                target.parentNode.insertBefore(item, direction === 'up' ? target : target.nextSibling);
+                persistState(group);
+                button.focus();
+                return;
+            }
+
+            var form = group.querySelector('[data-lp-sortable-reposition-form]');
+
+            if (!form) {
+                return;
+            }
+
+            var draggedField = form.querySelector('[data-lp-sortable-field="dragged_id"]');
+            var targetField = form.querySelector('[data-lp-sortable-field="target_id"]');
+            var positionField = form.querySelector('[data-lp-sortable-field="position"]');
+
+            if (!draggedField || !targetField || !positionField) {
+                return;
+            }
+
+            draggedField.value = item.dataset.lpSortableId;
+            targetField.value = target.dataset.lpSortableId;
+            positionField.value = direction === 'up' ? 'before' : 'after';
+            form.requestSubmit();
         });
     });
 }());

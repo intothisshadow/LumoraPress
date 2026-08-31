@@ -771,6 +771,48 @@ body.lp-admin-login {
     font-size: 1rem;
 }
 
+/*
+ * LP-134: reorderable Dashboard widgets. The drag handle and Move Up/
+ * Down buttons live inside each widget's own <h2> (not as a sibling
+ * before it) specifically so the heading stays that element's
+ * :first-child — .lp-admin__widget > h2:first-child above bleeds its
+ * background to the panel's edges, which only works while it really is
+ * the first child.
+ */
+.lp-admin__widget > h2:first-child {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.lp-admin__widget > h2 .lp-drag-handle {
+    margin-right: 0;
+}
+
+.lp-admin__widget-move {
+    display: inline-flex;
+    gap: 0.1rem;
+    margin-left: auto;
+}
+
+.lp-admin__widget-move button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+    opacity: 0.55;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.65rem;
+    line-height: 1;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-admin__widget-move button:hover,
+.lp-admin__widget-move button:focus-visible {
+    opacity: 1;
+    background: var(--lp-admin-panel-bg);
+}
+
 .lp-admin__widget-placeholder {
     color: var(--lp-admin-sidebar-fg-muted);
     font-style: italic;

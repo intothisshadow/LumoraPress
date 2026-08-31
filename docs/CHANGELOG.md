@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Dashboard (LP-134): every widget (Recent Posts, Recent Comments,
+  Quick Draft, System Information, Popular Downloads, Update Status,
+  and a plugin-provided panel like Visitor & Post View Statistics' own
+  "Site Visitors" widget) can now be dragged into a different order, or
+  reordered with keyboard-accessible Move Up/Move Down buttons. The
+  chosen order is saved per signed-in user, not site-wide.
 - Plugins page (LP-133): inactive plugins can now be deleted directly
   from the Installed Plugins list — a quick "Delete" action on each
   table row and grid card (previously only available inside the

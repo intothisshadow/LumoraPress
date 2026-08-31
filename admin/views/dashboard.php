@@ -22,6 +22,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
+require __DIR__ . '/partials/editor-layout-save.php';
+
 $version = require LUMORA_ROOT . '/version.php';
 $installDirectoryExists = is_dir(LUMORA_ROOT . '/install');
 $maintenanceActive = $kernel->maintenance->isActive();
@@ -34,6 +36,63 @@ if ($currentUser->can('manage_options')) {
     $kernel->githubUpdates->maybeCheckForUpdates();
     $updateStatus = $kernel->githubUpdates->cachedUpdateStatus((string) $version['version']);
 }
+
+/*
+ * LP-134: reorderable Dashboard widgets. Every id below is a stable
+ * identifier a signed-in user's saved widget order can reference —
+ * reuses the exact same per-user JSON blob LP-083's Post/Page editor
+ * sidebar order already established (UserService::
+ * getEditorLayoutPreferences()/updateEditorLayoutPreferences(), screen
+ * type 'dashboard' instead of 'post'/'page'; there's no per-widget
+ * collapse concept here, so 'collapsed' is always empty for this
+ * screen). The actual title/markup for each id still lives inline in
+ * the switch() below, same as the editor sidebar's own boxes.
+ */
+$widgetTitles = [
+    'recent_posts' => 'Recent Posts',
+    'recent_comments' => 'Recent Comments',
+    'quick_draft' => 'Quick Draft',
+    'system_information' => 'System Information',
+    'popular_downloads' => 'Popular Downloads',
+    'update_status' => 'Update Status',
+];
+$availableWidgetIds = ['recent_posts', 'recent_comments', 'quick_draft', 'system_information'];
+
+if ($currentUser->can('upload_files')) {
+    $availableWidgetIds[] = 'popular_downloads';
+}
+
+$availableWidgetIds[] = 'update_status';
+
+/*
+ * A plugin declares its own dashboard widget id(s) via this filter so
+ * its panel can be individually repositioned among the built-in
+ * widgets above — see docs/DEVELOPER-APIS.md. The actual widget markup
+ * still only ever comes from the existing do_action('dashboard_widgets')
+ * call below (unchanged since LP-045/LPP-014); if more than one plugin
+ * ever registers an id here at once, their combined output still
+ * renders as a single contiguous block, positioned wherever the
+ * earliest of their ids sorts in the saved order — independently
+ * reordering multiple plugins' widgets from each other would need a
+ * bigger change to how the 'dashboard_widgets' action itself works,
+ * not something this ticket's single real consumer (Visitor & Post
+ * View Statistics) needs.
+ */
+$pluginWidgetIds = array_values(array_filter((array) apply_filters('dashboard_widget_ids', [], $currentUser), 'is_string'));
+$availableWidgetIds = array_merge($availableWidgetIds, $pluginWidgetIds);
+
+$savedDashboardLayout = $kernel->users->getEditorLayoutPreferences($currentUser->id, 'dashboard');
+$savedWidgetOrder = array_values(array_intersect($savedDashboardLayout['order'], $availableWidgetIds));
+// Saved order first, then any widget not already in it appended at the
+// end — covers a first-ever visit and a widget id introduced after a
+// user's layout was last saved (mirrors posts/new.php's identical
+// $boxOrder merge for the editor sidebar).
+$widgetOrder = array_values(array_unique(array_merge($savedWidgetOrder, $availableWidgetIds)));
+
+ob_start();
+do_action('dashboard_widgets', $currentUser);
+$pluginWidgetsHtml = ob_get_clean();
+$pluginWidgetsRendered = false;
 ?>
 <h1 class="lp-admin__title">Dashboard</h1>
 
@@ -82,108 +141,145 @@ if ($currentUser->can('manage_options')) {
     <p>Sit down. Write. Publish. Here is an overview of your site.</p>
 </section>
 
-<div class="lp-admin__grid">
-    <section class="lp-admin__widget">
-        <h2>Recent Posts</h2>
-        <?php $recentPosts = $kernel->posts->paginateForAdmin(1, 5)['posts']; ?>
-        <?php if ($recentPosts === []): ?>
-            <p class="lp-admin__widget-placeholder">No posts yet.</p>
-        <?php else: ?>
-            <ul class="lp-admin__meta-list">
-                <?php foreach ($recentPosts as $recentPost): ?>
-                    <li>
-                        <span><a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $recentPost->id ?>"><?= esc_html($recentPost->title) ?></a></span>
-                        <span class="lp-status-badge lp-status-badge--<?= esc_attr($recentPost->status->value) ?>"><?= esc_html($recentPost->status->label()) ?></span>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
+<div
+    class="lp-admin__grid"
+    data-lp-sortable-group="dashboard"
+    data-lp-sortable-ajax-url="<?= esc_url(admin_url('dashboard')) ?>"
+    data-lp-sortable-ajax-csrf="<?= esc_attr(Csrf::token('editor_layout_dashboard')) ?>"
+    data-lp-editor-screen-type="dashboard"
+>
+    <?php foreach ($widgetOrder as $widgetId): ?>
+        <?php if (in_array($widgetId, $pluginWidgetIds, true)): ?>
+            <?php
+            /*
+             * Every currently-active plugin's widget markup arrived in
+             * one combined buffer (captured above via do_action()), so
+             * it's echoed once, at the position of whichever of its
+             * declared ids comes first in $widgetOrder — see the
+             * $pluginWidgetIds comment above for why a second/third
+             * plugin id can't be individually positioned yet. Each
+             * plugin's own view is responsible for its own
+             * data-lp-sortable-item/data-lp-sortable-id/drag-handle
+             * markup (see content/plugins/visitor-stats/views/
+             * dashboard-widget.php), not this loop.
+             */
+            if (!$pluginWidgetsRendered && $pluginWidgetsHtml !== '') {
+                echo $pluginWidgetsHtml;
+                $pluginWidgetsRendered = true;
+            }
+            continue;
+            ?>
         <?php endif; ?>
-    </section>
+        <section class="lp-admin__widget" data-lp-sortable-item data-lp-sortable-id="<?= esc_attr($widgetId) ?>">
+            <h2>
+                <span class="lp-drag-handle lp-admin__widget-drag" data-lp-drag-handle aria-hidden="true">&#10021;</span>
+                <?= esc_html($widgetTitles[$widgetId] ?? $widgetId) ?>
+                <span class="lp-admin__widget-move">
+                    <button type="button" data-lp-sortable-move="up" aria-label="Move &ldquo;<?= esc_attr($widgetTitles[$widgetId] ?? $widgetId) ?>&rdquo; widget up">&#9650;</button>
+                    <button type="button" data-lp-sortable-move="down" aria-label="Move &ldquo;<?= esc_attr($widgetTitles[$widgetId] ?? $widgetId) ?>&rdquo; widget down">&#9660;</button>
+                </span>
+            </h2>
+            <?php switch ($widgetId):
+                case 'recent_posts': ?>
+                    <?php $recentPosts = $kernel->posts->paginateForAdmin(1, 5)['posts']; ?>
+                    <?php if ($recentPosts === []): ?>
+                        <p class="lp-admin__widget-placeholder">No posts yet.</p>
+                    <?php else: ?>
+                        <ul class="lp-admin__meta-list">
+                            <?php foreach ($recentPosts as $recentPost): ?>
+                                <li>
+                                    <span><a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $recentPost->id ?>"><?= esc_html($recentPost->title) ?></a></span>
+                                    <span class="lp-status-badge lp-status-badge--<?= esc_attr($recentPost->status->value) ?>"><?= esc_html($recentPost->status->label()) ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php break;
 
-    <section class="lp-admin__widget">
-        <h2>Recent Comments</h2>
-        <?php $recentComments = $kernel->comments->recentForAdmin(5); ?>
-        <?php if ($recentComments === []): ?>
-            <p class="lp-admin__widget-placeholder">No comments yet.</p>
-        <?php else: ?>
-            <ul class="lp-admin__meta-list">
-                <?php foreach ($recentComments as $row): ?>
-                    <li>
-                        <span>
-                            <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $row['comment']->id ?>">
-                                <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['contentTitle']) ?>&rdquo;
-                            </a>
-                        </span>
-                        <span class="lp-status-badge lp-status-badge--<?= esc_attr($row['comment']->status->value) ?>"><?= esc_html($row['comment']->status->label()) ?></span>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        <?php endif; ?>
-    </section>
+                case 'recent_comments': ?>
+                    <?php $recentComments = $kernel->comments->recentForAdmin(5); ?>
+                    <?php if ($recentComments === []): ?>
+                        <p class="lp-admin__widget-placeholder">No comments yet.</p>
+                    <?php else: ?>
+                        <ul class="lp-admin__meta-list">
+                            <?php foreach ($recentComments as $row): ?>
+                                <li>
+                                    <span>
+                                        <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $row['comment']->id ?>">
+                                            <?= esc_html($row['comment']->guestName) ?> on &ldquo;<?= esc_html($row['contentTitle']) ?>&rdquo;
+                                        </a>
+                                    </span>
+                                    <span class="lp-status-badge lp-status-badge--<?= esc_attr($row['comment']->status->value) ?>"><?= esc_html($row['comment']->status->label()) ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php break;
 
-    <section class="lp-admin__widget">
-        <h2>Quick Draft</h2>
-        <form class="lp-admin__quick-draft" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>">
-            <?= Csrf::field('quick_draft') ?>
-            <input type="hidden" name="form" value="quick_draft">
-            <p class="lp-field">
-                <label for="quick-draft-title">Title</label>
-                <input type="text" id="quick-draft-title" name="title">
-            </p>
-            <p class="lp-field">
-                <label for="quick-draft-content">Content</label>
-                <textarea id="quick-draft-content" name="content" rows="4"></textarea>
-            </p>
-            <button type="submit" class="lp-button lp-button--primary">Save Draft</button>
-        </form>
-    </section>
+                case 'quick_draft': ?>
+                    <form class="lp-admin__quick-draft" method="post" action="<?= esc_url(admin_url('posts/all-posts')) ?>">
+                        <?= Csrf::field('quick_draft') ?>
+                        <input type="hidden" name="form" value="quick_draft">
+                        <p class="lp-field">
+                            <label for="quick-draft-title">Title</label>
+                            <input type="text" id="quick-draft-title" name="title">
+                        </p>
+                        <p class="lp-field">
+                            <label for="quick-draft-content">Content</label>
+                            <textarea id="quick-draft-content" name="content" rows="4"></textarea>
+                        </p>
+                        <button type="submit" class="lp-button lp-button--primary">Save Draft</button>
+                    </form>
+                <?php break;
 
-    <section class="lp-admin__widget">
-        <h2>System Information</h2>
-        <ul class="lp-admin__meta-list">
-            <li><span>PHP Version</span><span><?= esc_html(PHP_VERSION) ?></span></li>
-            <li><span>Lumora Press Version</span><span><?= esc_html((string) $version['version']) ?></span></li>
-            <li><span>Active Theme</span><span><?= esc_html($kernel->theme->activeTheme() ?? '—') ?></span></li>
-        </ul>
-    </section>
+                case 'system_information': ?>
+                    <ul class="lp-admin__meta-list">
+                        <li><span>PHP Version</span><span><?= esc_html(PHP_VERSION) ?></span></li>
+                        <li><span>Lumora Press Version</span><span><?= esc_html((string) $version['version']) ?></span></li>
+                        <li><span>Active Theme</span><span><?= esc_html($kernel->theme->activeTheme() ?? '—') ?></span></li>
+                    </ul>
+                <?php break;
 
-    <?php if ($currentUser->can('upload_files')): ?>
-        <?php $popularDownloads = $kernel->mediaStats->mostDownloaded(5); ?>
-        <section class="lp-admin__widget">
-            <h2>Popular Downloads</h2>
-            <?php if ($popularDownloads === []): ?>
-                <p class="lp-admin__widget-placeholder">No downloads recorded yet.</p>
-            <?php else: ?>
-                <ul class="lp-admin__meta-list">
-                    <?php foreach ($popularDownloads as $downloadItem): ?>
-                        <li>
-                            <span><a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $downloadItem['id'] ?>"><?= esc_html((string) $downloadItem['file_name']) ?></a></span>
-                            <span><?= (int) $downloadItem['downloads'] ?></span>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
+                case 'popular_downloads': ?>
+                    <?php $popularDownloads = $kernel->mediaStats->mostDownloaded(5); ?>
+                    <?php if ($popularDownloads === []): ?>
+                        <p class="lp-admin__widget-placeholder">No downloads recorded yet.</p>
+                    <?php else: ?>
+                        <ul class="lp-admin__meta-list">
+                            <?php foreach ($popularDownloads as $downloadItem): ?>
+                                <li>
+                                    <span><a href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $downloadItem['id'] ?>"><?= esc_html((string) $downloadItem['file_name']) ?></a></span>
+                                    <span><?= (int) $downloadItem['downloads'] ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                <?php break;
+
+                case 'update_status': ?>
+                    <p>Running Lumora Press <?= esc_html((string) $version['version']) ?>.</p>
+                    <?php if ($updateStatus['available']): ?>
+                        <p><span class="lp-status-badge lp-status-badge--warning">Update available: <?= esc_html((string) $updateStatus['latest_version']) ?></span></p>
+                    <?php elseif ($currentUser->can('manage_options')): ?>
+                        <p>You're up to date.</p>
+                    <?php endif; ?>
+                    <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates')) ?>">Manage Updates</a></p>
+                <?php break;
+            endswitch; ?>
         </section>
+    <?php endforeach; ?>
+
+    <?php if (!$pluginWidgetsRendered && $pluginWidgetsHtml !== ''): ?>
+        <?php
+        /*
+         * A plugin that echoes a dashboard widget without also
+         * registering its id via the dashboard_widget_ids filter (an
+         * older/third-party plugin written before LP-134) still gets
+         * its panel shown — just always last, since there's no
+         * declared id to place it by. See docs/DEVELOPER-APIS.md for
+         * the up-to-date contract a plugin should follow instead.
+         */
+        echo $pluginWidgetsHtml;
+        ?>
     <?php endif; ?>
-
-    <section class="lp-admin__widget">
-        <h2>Update Status</h2>
-        <p>Running Lumora Press <?= esc_html((string) $version['version']) ?>.</p>
-        <?php if ($updateStatus['available']): ?>
-            <p><span class="lp-status-badge lp-status-badge--warning">Update available: <?= esc_html((string) $updateStatus['latest_version']) ?></span></p>
-        <?php elseif ($currentUser->can('manage_options')): ?>
-            <p>You're up to date.</p>
-        <?php endif; ?>
-        <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates')) ?>">Manage Updates</a></p>
-    </section>
-
-    <?php
-    /*
-     * Lets a plugin (e.g. Visitor & Post View Statistics) add its own
-     * panel without a core code change. No-op unless something listens.
-     * A listener echoes one complete <section class="lp-admin__widget">
-     * block, matching every panel above's self-contained shape.
-     */
-    do_action('dashboard_widgets', $currentUser);
-    ?>
 </div>

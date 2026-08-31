@@ -26,8 +26,15 @@ $topReferrers = $viewStats->topReferrers(7, 5);
 $topBrowsers = $viewStats->topBrowsers(7, 5);
 $topDevices = $viewStats->topDevices(7, 5);
 ?>
-<section class="lp-admin__widget">
-    <h2>Site Visitors</h2>
+<section class="lp-admin__widget" data-lp-sortable-item data-lp-sortable-id="visitor_stats">
+    <h2>
+        <span class="lp-drag-handle lp-admin__widget-drag" data-lp-drag-handle aria-hidden="true">&#10021;</span>
+        Site Visitors
+        <span class="lp-admin__widget-move">
+            <button type="button" data-lp-sortable-move="up" aria-label="Move &ldquo;Site Visitors&rdquo; widget up">&#9650;</button>
+            <button type="button" data-lp-sortable-move="down" aria-label="Move &ldquo;Site Visitors&rdquo; widget down">&#9660;</button>
+        </span>
+    </h2>
     <ul class="lp-admin__meta-list">
         <li><span>Today</span><span><?= (int) $totals['today'] ?></span></li>
         <li><span>This Week</span><span><?= (int) $totals['this_week'] ?></span></li>
