@@ -190,6 +190,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Dashboard: a long, unbreakable filename in the Popular Downloads
+  widget (or a long title in any other widget's meta list) overflowed
+  past the widget's right edge instead of wrapping, since a flex row's
+  default minimum width is its content's natural width, not zero.
 - Downloads &rsaquo; Shortcodes and Lumora Gallery Shortcodes &rsaquo;
   Shortcodes: the `[shortcode ...]` example blocks ran off the right
   edge of the screen on narrow mobile viewports instead of wrapping,
