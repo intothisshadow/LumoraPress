@@ -932,6 +932,7 @@ $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
 $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
 $router->get('/sitemap.xml', fn (array $params) => $site->sitemap($params));
 $router->get('/media/{id}/download', fn (array $params) => $site->mediaDownload($params));
+$router->get('/media/{id}/view', fn (array $params) => $site->mediaView($params));
 
 /*
  * LPP-003: Contact Forms' own dedicated submission route, gated on that

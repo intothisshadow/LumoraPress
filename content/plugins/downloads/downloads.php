@@ -41,6 +41,7 @@ require_once __DIR__ . '/src/Download.php';
 require_once __DIR__ . '/src/DownloadCategory.php';
 require_once __DIR__ . '/src/DownloadCategoryService.php';
 require_once __DIR__ . '/src/DownloadService.php';
+require_once __DIR__ . '/src/DownloadMediaUrlMasker.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 
 /*

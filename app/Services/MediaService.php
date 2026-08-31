@@ -421,6 +421,26 @@ final class MediaService
         return $this->findCache[$id] = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
     }
 
+    /**
+     * Reverse lookup from a stored file's relative path back to its Media
+     * row (LPP-013) — used to mask an already-rendered `content/uploads/...`
+     * URL found in free-text HTML (a Download's Description field) back to
+     * a `/media/{id}/view` link, since that content was authored against
+     * the real URL directly (content-editor.js's Insert Image button has
+     * no notion of Downloads-specific masking) rather than a media id.
+     * $relativePath must already be stripped of the uploads URL prefix —
+     * see the Downloads plugin's DownloadMediaUrlMasker::relativePathFromUrl().
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findByFilePath(string $relativePath): ?array
+    {
+        return $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . ' WHERE file_path = :file_path',
+            ['file_path' => $relativePath],
+        );
+    }
+
     public function updateMetadata(int $id, ?string $altText, ?string $caption, ?string $description, ?string $notes): void
     {
         $this->database->execute(
@@ -837,6 +857,54 @@ final class MediaService
     public function absolutePath(array $media): string
     {
         return $this->storage->absolutePath((string) $media['file_path']);
+    }
+
+    /**
+     * Sends $media's actual bytes as the HTTP response (LPP-013) —
+     * SiteController::mediaDownload()/mediaView() no longer just
+     * redirect to the real static file URL, which left the real
+     * `content/uploads/...` path visible in the browser's address bar
+     * after a single click. Headers only; the caller is still
+     * responsible for ending the request afterward (`exit`), same as
+     * every other header()-then-exit response in SiteController.
+     *
+     * $inline chooses `Content-Disposition: inline` (embedded preview —
+     * a lightbox/description image) vs `attachment` (an explicit
+     * "Download" click) — the same file can legitimately be served
+     * either way depending on which route requested it.
+     *
+     * `X-Content-Type-Options: nosniff` matters here specifically
+     * because several allowed types (text/plain, text/xml,
+     * application/json) are served with their real, user-controlled
+     * filename and content — without it, some browsers will sniff and
+     * render such a response as HTML if the bytes look like markup,
+     * which is a real (if narrow) stored-XSS surface for a directly
+     * PHP-streamed response in a way a webserver's own static file
+     * handling isn't normally exposed to.
+     *
+     * Returns false (nothing sent) when the file no longer exists on
+     * disk — the caller answers with its own 404 in that case, rather
+     * than this method half-sending headers for a body it can't produce.
+     *
+     * @param array<string, mixed> $media
+     */
+    public function stream(array $media, bool $inline): bool
+    {
+        $path = $this->absolutePath($media);
+
+        if (!is_file($path)) {
+            return false;
+        }
+
+        header('Content-Type: ' . (string) $media['mime_type']);
+        header('Content-Length: ' . (string) $media['file_size']);
+        header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . addslashes((string) $media['file_name']) . '"');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: ' . ($inline ? 'public, max-age=31536000, immutable' : 'private, no-cache'));
+
+        readfile($path);
+
+        return true;
     }
 
     /**

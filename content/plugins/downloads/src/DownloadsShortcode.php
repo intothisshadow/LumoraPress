@@ -59,12 +59,16 @@ final class DownloadsShortcode
      * accepted independently of the pair above (a description's
      * Markdown/HTML rendering, LPP-010, needs no database access at
      * all) so a test can cover rendering without also standing up the
-     * SQLite fixtures the other two require.
+     * SQLite fixtures the other two require. $injectedMasker (LPP-013)
+     * is likewise independent — a test covering the URL-masking pass
+     * itself only needs a fixture MediaService, not the full downloads/
+     * categories fixture pair.
      */
     public function __construct(
         private readonly ?DownloadService $injectedDownloads = null,
         private readonly ?DownloadCategoryService $injectedCategories = null,
         private readonly ?ContentRenderer $injectedContent = null,
+        private readonly ?DownloadMediaUrlMasker $injectedMasker = null,
     ) {
     }
 
@@ -166,6 +170,37 @@ final class DownloadsShortcode
     }
 
     /**
+     * LPP-013 — see DownloadMediaUrlMasker's own docblock. Opens the same
+     * kind of standalone MediaService this class's services() method
+     * already builds for the database-backed variants, for the same
+     * reason (a plugin's shortcode-render path has no $kernel to reuse).
+     */
+    private function masker(): DownloadMediaUrlMasker
+    {
+        if ($this->injectedMasker !== null) {
+            return $this->injectedMasker;
+        }
+
+        $config = require LUMORA_ROOT . '/config/config.php';
+        $database = Database::connect(
+            host: (string) $config['db_host'],
+            database: (string) $config['db_name'],
+            username: (string) $config['db_user'],
+            password: (string) $config['db_password'],
+            port: (int) ($config['db_port'] ?? 3306),
+        );
+        $tablePrefix = (string) $config['table_prefix'];
+        $media = new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', BasePath::get() . '/content/uploads');
+
+        return new DownloadMediaUrlMasker($media, BasePath::get() . '/content/uploads');
+    }
+
+    private function uploadsUrlPrefix(): string
+    {
+        return rtrim(BasePath::get() . '/content/uploads', '/') . '/';
+    }
+
+    /**
      * `category_id` (an exact DownloadCategory id) wins if given;
      * otherwise `category` is matched case-insensitively against the
      * category's own name — DownloadCategory has no slug column, the
@@ -243,8 +278,25 @@ final class DownloadsShortcode
                 // Rendered per its own stored $descriptionFormat (LPP-010)
                 // — the same Markdown/HTML/Plain branching a post/page's
                 // content already gets, since the Description field now
-                // uses that same shared editor.
-                $html .= '<div class="lp-downloads-list__description">' . $content->render($item->description, $item->descriptionFormat) . '</div>';
+                // uses that same shared editor. masker()->mask() then
+                // rewrites any embedded image URL that still points at
+                // the real upload path (LPP-013) — see that class's
+                // docblock for why this is a second pass rather than
+                // something ContentRenderer itself does. Guarded by a
+                // cheap string check first, the same "only pay for a
+                // database connection when there's actually something to
+                // do" convention services()/registry() already establish
+                // (see the WordPress Importer plugin's own
+                // DownloadsShortcode::connection() docblock) — the
+                // overwhelming majority of descriptions carry no image at
+                // all.
+                $rendered = $content->render($item->description, $item->descriptionFormat);
+
+                if (str_contains($rendered, $this->uploadsUrlPrefix())) {
+                    $rendered = $this->masker()->mask($rendered);
+                }
+
+                $html .= '<div class="lp-downloads-list__description">' . $rendered . '</div>';
             }
 
             $html .= '</li>';

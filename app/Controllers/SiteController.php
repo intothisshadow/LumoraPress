@@ -1348,12 +1348,16 @@ final class SiteController
     /**
      * Explicit "download this file" link target (LP-006 Media Statistics)
      * — counts a download for document/archive/audio/video media, then
-     * redirects to the real static file URL. Images pass through
-     * uncounted: this ticket deliberately doesn't track image "views",
-     * since every `<img>` on every page would otherwise need to route
-     * through PHP to be countable (see MediaStatsService's docblock) —
-     * this route only exists at all because a distinct, explicit download
-     * click is a request PHP already gets to see.
+     * streams the file itself (LPP-013) rather than redirecting to the
+     * real static file URL: a redirect left the real `content/uploads/...`
+     * path visible in the browser's address bar after a single click,
+     * defeating the masking this route was meant to provide in the first
+     * place. Images pass through uncounted: this ticket deliberately
+     * doesn't track image "views", since every `<img>` on every page
+     * would otherwise need to route through PHP to be countable (see
+     * MediaStatsService's docblock) — this route only exists at all
+     * because a distinct, explicit download click is a request PHP
+     * already gets to see.
      *
      * @param array<string, string> $params
      */
@@ -1374,7 +1378,47 @@ final class SiteController
             $this->mediaStats->recordDownload($id);
         }
 
-        header('Location: ' . $this->media->url($item));
+        if (!$this->media->stream($item, inline: false)) {
+            $this->notFound();
+
+            return;
+        }
+
+        exit;
+    }
+
+    /**
+     * Masked inline-preview link target (LPP-013) — the counterpart to
+     * mediaDownload() above for content that must display in place
+     * rather than force a download: a Download's Description-field image
+     * (DownloadsShortcode's own DownloadMediaUrlMasker) and, via that same
+     * masker, the self-link ContentRenderer::addLightboxAttributes() wraps
+     * it in for the PhotoSwipe lightbox. Streams with
+     * `Content-Disposition: inline` instead of `attachment`. Images only —
+     * masking a non-image file's Description embed has no inline-preview
+     * use case, and streaming an arbitrary document/archive/video inline
+     * here would just be a second, redundant path to mediaDownload()'s
+     * own job.
+     *
+     * @param array<string, string> $params
+     */
+    public function mediaView(array $params): void
+    {
+        $id = (int) ($params['id'] ?? 0);
+        $item = $id > 0 ? $this->media->find($id) : null;
+
+        if ($item === null || !str_starts_with((string) $item['mime_type'], 'image/')) {
+            $this->notFound();
+
+            return;
+        }
+
+        if (!$this->media->stream($item, inline: true)) {
+            $this->notFound();
+
+            return;
+        }
+
         exit;
     }
 

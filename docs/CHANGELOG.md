@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Downloads (LPP-013): a Download's "Download" button masked its real server file path in the page's own HTML, but one click still revealed it — `/media/{id}/download` redirected straight to the real `content/uploads/...` URL. It now streams the file directly instead. A Description image (or its lightbox preview) is masked the same way, through a new `/media/{id}/view` inline endpoint.
 - Lumora Gallery Shortcodes: the "View album" link `[lumora_gallery_album]` renders below its thumbnails pointed at `{base_url}/?album={id}` — the Gallery site's homepage with a query string it never reads, not a real album page. Gallery serves every public URL through dedicated front-controller files rather than a home-page router (`album.php?album={id}` for an album), so the link now points at `album.php` like it should.
 
 ## [0.9.0] — 2026-08-31
