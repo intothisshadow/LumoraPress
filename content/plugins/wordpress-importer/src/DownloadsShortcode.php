@@ -359,7 +359,11 @@ final class DownloadsShortcode
             }
 
             if ($item['description'] !== '') {
-                $html .= '<div class="lp-downloads-list__description">' . $item['description'] . '</div>';
+                // Media descriptions are plain text (no Markdown/HTML format
+                // choice like the Downloads plugin's own field), and are
+                // editable by any Author-level user — escape rather than
+                // trust them as pre-sanitized HTML.
+                $html .= '<div class="lp-downloads-list__description">' . esc_html($item['description']) . '</div>';
             }
 
             $html .= '</li>';
