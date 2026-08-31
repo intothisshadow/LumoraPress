@@ -116,6 +116,12 @@ $csrfAction = $editingForm !== null ? 'contact_form_save_' . $editingForm->id : 
         </p>
 
         <h2>Fields</h2>
+        <?php if ($editingForm === null): ?>
+            <p>
+                <button type="button" class="lp-button lp-button--secondary" data-lp-contact-form-fields-template>Use Contact Form Template</button>
+                <span class="lp-field__hint">Replaces the fields below with a ready-made Subject, Name, Email, and Message form, all required.</span>
+            </p>
+        <?php endif; ?>
         <div data-lp-contact-form-fields>
             <div data-lp-contact-form-fields-rows>
                 <?php foreach ($fieldRows as $row): ?>

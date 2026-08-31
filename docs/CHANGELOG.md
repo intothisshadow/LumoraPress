@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Contact Forms plugin (LPP-003): a "Use Contact Form Template" button
+  on Contact Forms &rsaquo; Add New fills in a ready-made Subject,
+  Name, Email, and Message form, all required, instead of building a
+  form's fields one at a time.
 - Lumora Gallery Shortcodes plugin (LPP-015): new "Shortcodes" admin
   page documenting `[lumora_gallery_album]`/`[lumora_gallery_newest]`
   — attributes and copy-paste examples for every variant, same shape
