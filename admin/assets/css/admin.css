@@ -760,6 +760,14 @@ body.lp-admin-login {
     margin-left: 0;
 }
 
+/* A standalone action form (e.g. Maintenance > Updates' "Back up now")
+   directly followed by a list table — .lp-table has no margin-top of its
+   own (its border-collapse leaves no room for one to matter elsewhere),
+   so without this the button sits flush against the table's top border. */
+.lp-admin__inline-form + .lp-table {
+    margin-top: 1rem;
+}
+
 .lp-admin__grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

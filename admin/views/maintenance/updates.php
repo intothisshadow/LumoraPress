@@ -358,7 +358,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } else {
             try {
                 $updates->restoreBackup($backupFilesFilename, $backupDatabaseFilename);
-                header('Location: ' . admin_url('maintenance/updates') . '?restored=1');
+                header('Location: ' . admin_url('maintenance/updates') . '?restored=1#backups');
                 exit;
             } catch (\Throwable $exception) {
                 $error = $exception->getMessage();
@@ -367,7 +367,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($form === 'delete_backup' && Csrf::verify($backupCsrfAction('delete_backup', $backupFilesFilename, $backupDatabaseFilename), $token)) {
         try {
             $updates->deleteBackup($backupFilesFilename, $backupDatabaseFilename);
-            header('Location: ' . admin_url('maintenance/updates') . '?deleted=1');
+            header('Location: ' . admin_url('maintenance/updates') . '?deleted=1#backups');
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -375,7 +375,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($form === 'backup_now' && Csrf::verify('backup_now', $token)) {
         try {
             $begin = $updates->beginBackupNow();
-            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($begin['token']));
+            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($begin['token']) . '#backups');
             exit;
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
@@ -390,7 +390,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $result = $updates->continueBackupNow($backupToken);
 
             if ($result['done']) {
-                $redirectUrl = admin_url('maintenance/updates') . '?backed_up=1';
+                $redirectUrl = admin_url('maintenance/updates') . '?backed_up=1#backups';
 
                 if ($isAjaxContinueRequest) {
                     $respondJson(['done' => true, 'redirect' => $redirectUrl]);
@@ -412,10 +412,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ]);
             }
 
-            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($backupToken));
+            header('Location: ' . admin_url('maintenance/updates') . '?backup_token=' . urlencode($backupToken) . '#backups');
             exit;
         } catch (\Throwable $exception) {
-            $redirectUrl = admin_url('maintenance/updates') . '?backup_error=' . urlencode($exception->getMessage());
+            $redirectUrl = admin_url('maintenance/updates') . '?backup_error=' . urlencode($exception->getMessage()) . '#backups';
 
             if ($isAjaxContinueRequest) {
                 $respondJson(['done' => true, 'redirect' => $redirectUrl]);
@@ -714,7 +714,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         </div>
     </div>
 
-    <section class="lp-admin__panel">
+    <section class="lp-admin__panel" id="backups">
         <h2>Backups</h2>
         <p>A backup is a snapshot of the application's own code and configuration — not your uploaded media, which a backup or update never touches.</p>
 

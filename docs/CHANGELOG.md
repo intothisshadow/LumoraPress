@@ -28,6 +28,18 @@ All notable changes to Lumora Press are documented in this file.
   already introduced, reusing that same reorder mechanism.
 - Downloads (LPP-013): a Download's "Download" button masked its real server file path in the page's own HTML, but one click still revealed it — `/media/{id}/download` redirected straight to the real `content/uploads/...` URL. It now streams the file directly instead. A Description image (or its lightbox preview) is masked the same way, through a new `/media/{id}/view` inline endpoint.
 - Lumora Gallery Shortcodes: the "View album" link `[lumora_gallery_album]` renders below its thumbnails pointed at `{base_url}/?album={id}` — the Gallery site's homepage with a query string it never reads, not a real album page. Gallery serves every public URL through dedicated front-controller files rather than a home-page router (`album.php?album={id}` for an album), so the link now points at `album.php` like it should.
+- Maintenance &rsaquo; Updates: starting a manual backup, or restoring/
+  deleting one, redirected back to the top of the page instead of
+  staying on the Backups panel further down — jarring on a page long
+  enough that the panel isn't in view after the jump. Those redirects
+  now carry a `#backups` anchor.
+- Visitor Stats' GeoLite2 country data import (LPP-014): each import
+  batch auto-submitted via a full-page reload, visibly flashing and
+  resetting scroll position once per batch — the Blocks CSV alone can
+  need dozens of batches. It now advances in place via the same
+  fetch()-driven approach the Updates page's own staged install/backup
+  loop already used, only falling back to a real page reload if
+  JavaScript is unavailable.
 
 ## [0.9.0] — 2026-08-31
 

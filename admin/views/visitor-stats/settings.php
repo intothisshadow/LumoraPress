@@ -27,6 +27,31 @@ $viewStats = new ViewStatsService($kernel->database, (string) $kernel->config->g
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 
+/*
+ * "Live progress, no full-page reload per batch" — mirrors admin/assets/
+ * js/update-continue.js and the maintenance/updates.php GET ?ajax=progress
+ * branch it pairs with: admin/assets/js/geoip-import-continue.js drives
+ * the batch loop below via fetch() instead of the plain redirect-per-batch
+ * a <form> submit would do, so the panel updates in place instead of
+ * visibly reloading (and scrolling to the top of the page) once per batch
+ * — the Blocks CSV alone can need dozens of batches. That script marks
+ * its request with this header; the batch branch below responds with
+ * JSON instead of falling through to the full page render only when it's
+ * present, so a plain form submit (no JS, or the script failing to load)
+ * keeps working exactly as before.
+ */
+$isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+$respondJson = static function (array $payload): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
 if ($form === 'visitor_stats_settings' && Csrf::verify('visitor_stats_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('track_post_views', isset($_POST['track_post_views']) ? '1' : '0');
 
@@ -133,7 +158,13 @@ if ($form === 'visitor_stats_geoip_import_batch' && Csrf::verify('visitor_stats_
             $importedSoFar += $result['importedInBatch'];
 
             if ($result['done']) {
-                header('Location: ' . admin_url('visitor-stats/settings') . '?imported=1');
+                $redirectUrl = admin_url('visitor-stats/settings') . '?imported=1';
+
+                if ($isAjaxContinueRequest) {
+                    $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+                }
+
+                header('Location: ' . $redirectUrl);
                 exit;
             }
 
@@ -142,6 +173,19 @@ if ($form === 'visitor_stats_geoip_import_batch' && Csrf::verify('visitor_stats_
                 'is_first_batch' => false,
                 'imported_so_far' => $importedSoFar,
             ];
+
+            if ($isAjaxContinueRequest) {
+                $respondJson([
+                    'done' => false,
+                    'imported_so_far' => $importedSoFar,
+                    'byte_offset' => $result['nextByteOffset'],
+                    // Csrf::verify() above already consumed this request's
+                    // token (single-use) — a fresh one for the JS's next
+                    // fetch() call, since a plain JSON response carries no
+                    // embedded <form> to read one back out of.
+                    'csrf_token' => Csrf::token('visitor_stats_geoip_import_batch'),
+                ]);
+            }
         } catch (\Throwable $exception) {
             $error = 'Import failed: ' . $exception->getMessage();
         }
@@ -224,7 +268,7 @@ $geoipRangeCount = $viewStats->geoipRangeCount();
     <p class="lp-field__hint">
         <strong>Status:</strong>
         <?php if ($geoipBatchState !== null): ?>
-            Importing — <?= esc_html((string) $geoipBatchState['imported_so_far']) ?> ranges loaded so far…
+            <span data-lp-geoip-status>Importing — <span data-lp-geoip-imported-so-far><?= esc_html((string) $geoipBatchState['imported_so_far']) ?></span> ranges loaded so far…</span>
         <?php else: ?>
             <?= $geoipRangeCount > 0 ? esc_html((string) $geoipRangeCount) . ' ranges loaded' : 'Not installed' ?>
         <?php endif; ?>

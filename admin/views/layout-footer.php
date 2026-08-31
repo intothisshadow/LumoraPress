@@ -50,6 +50,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/update-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/update-progress.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/update-continue.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/geoip-import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/select-all.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/confirm-submit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/auto-submit.js')) ?>" defer></script>
