@@ -139,4 +139,51 @@ final class GallerySettingsService
             return false;
         }
     }
+
+    /**
+     * Best-effort auto-detection of Gallery's own `base_url` config
+     * value (Settings &rsaquo; Detect from config.php, alongside
+     * GalleryConfigParser's plain-text DB_* extraction) — unlike the
+     * DB_HOST/DB_NAME/DB_USER/DB_PASS/DB_PREFIX values, base_url isn't a
+     * config.php constant at all; Lumora Gallery stores it in its own
+     * `{prefix}config` database table (see that project's
+     * install/schema.sql), so detecting it needs an actual read-only
+     * query against the just-detected connection, not more text parsing.
+     *
+     * Takes $settings directly (the freshly-detected, not-yet-saved
+     * values from GalleryConfigParser) rather than reading
+     * self::settings(), since this runs before the admin has confirmed
+     * anything — connecting with already-saved settings here would
+     * silently ignore what config.php just reported. Fails silently
+     * (returns null) on any connection or query error, exactly like
+     * connect()/testConnection() above: an unreachable or misconfigured
+     * Gallery database during detection is not fatal to the Settings
+     * screen, it just means base_url has to be entered by hand.
+     *
+     * @param array{db_host: string, db_port: int, db_name: string, db_user: string, db_password: string, db_prefix: string} $settings
+     */
+    public function detectBaseUrl(array $settings): ?string
+    {
+        try {
+            $database = Database::connect(
+                host: $settings['db_host'],
+                database: $settings['db_name'],
+                username: $settings['db_user'],
+                password: $settings['db_password'],
+                port: $settings['db_port'],
+            );
+        } catch (DatabaseConnectionException) {
+            return null;
+        }
+
+        try {
+            $value = $database->fetchColumn(
+                'SELECT value FROM ' . $settings['db_prefix'] . "config WHERE name = 'base_url'",
+            );
+
+            return is_string($value) && $value !== '' ? rtrim($value, '/') : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
 }

@@ -35,6 +35,7 @@ use LumoraPress\Core\Shortcodes\ShortcodeField;
 use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
 
 require_once __DIR__ . '/src/GallerySettingsService.php';
+require_once __DIR__ . '/src/GalleryConfigParser.php';
 require_once __DIR__ . '/src/GalleryQueryService.php';
 require_once __DIR__ . '/src/GalleryShortcode.php';
 

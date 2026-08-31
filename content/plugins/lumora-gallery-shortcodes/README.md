@@ -54,6 +54,15 @@ Lumora Gallery Shortcodes &rsaquo; Settings needs:
   and thumbnail/full-image URLs, since this plugin has no access to the
   Gallery site's own PHP URL-building code.
 
+If the Gallery install's own `config.php` is readable on this server's
+local filesystem, "Auto-detect from config.php" pre-fills the database
+fields above straight from it (the same convenience the WordPress
+Importer plugin offers for a source site's `wp-config.php`) — and, once
+that connection actually works, the base URL too, read from the
+Gallery's own database (`config.php` doesn't store that value itself).
+Every pre-filled field stays fully editable; this is a shortcut, not a
+requirement.
+
 "Save &amp; Test Connection" confirms the credentials can open a
 connection and see the `albums`/`images` tables, without exposing raw
 connection errors on the settings screen.

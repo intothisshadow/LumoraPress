@@ -4,8 +4,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-31
+
 ### Added
 
+- Lumora Gallery Shortcodes plugin (LPP-018): its Settings screen can
+  now auto-detect the connection details for a separately-installed
+  Lumora Gallery site straight from that site's own `config.php` —
+  the same "Auto-detect from wp-config.php" convenience the WordPress
+  Importer plugin already offers, including reading the Gallery
+  site's own base URL from its database once the detected connection
+  actually works (`config.php` doesn't store that value itself).
 - Appearance &rsaquo; Themes (LP-137): inactive themes can now be
   deleted directly from the Themes grid — a quick "Delete" action on
   each card (previously only available inside the "Details" dialog),

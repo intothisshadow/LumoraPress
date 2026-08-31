@@ -319,7 +319,7 @@ install may set its own — check its own documentation.
 
 ## Current Status
 
-**Version 0.8.0**
+**Version 0.9.0**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme
@@ -351,7 +351,9 @@ install may set its own — check its own documentation.
   custom token-based pattern) and rename the Category/Tag archive URL
   prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`.
 - **Comments** — threaded discussion on both Posts and Pages, with
-  moderation (including bulk approve/spam/trash/delete), honeypot/CSRF/
+  moderation (including bulk approve/spam/trash/delete), a per-status
+  count on every filter tab (All/Pending/Approved/Spam/Trash), an
+  Empty Spam action alongside Empty Trash, honeypot/CSRF/
   submission-timing spam protection, and optional Akismet spam-checking
   (Settings &rsaquo; Security — off by default, never required).
 - **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
@@ -376,12 +378,18 @@ install may set its own — check its own documentation.
   automatic backup and rollback either way.
 - **Maintenance mode** — take the public site offline for visitors while
   admins keep working.
-- **Appearance** — theme browser, branding, custom CSS, a tabbed
+- **Appearance** — theme browser (install, activate, preview — a
+  previewed theme now persists across the whole site as you click
+  through it, not just the page you started on — and delete inactive
+  themes individually or in bulk), branding, custom CSS, a tabbed
   Customize screen (Header, Welcome Message, Body — colors/typography/
   layout/post display, Menu, Widgets, Footer; values are scoped per
-  active theme, no CSS editing required), widgets, navigation menus, and
-  a built-in theme file editor.
-- **Plugin browser** — install and manage plugins from the admin panel.
+  active theme, no CSS editing required), widgets (drag-to-reorder,
+  including the Dashboard's own widgets, per signed-in user), navigation
+  menus, and a built-in theme file editor.
+- **Plugin browser** — install, activate, and manage plugins from the
+  admin panel, including deleting inactive plugins individually or in
+  bulk.
 - **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
   developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
   with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;

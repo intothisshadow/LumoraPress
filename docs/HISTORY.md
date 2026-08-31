@@ -9839,3 +9839,1779 @@ item's sibling media survived an identical replace.
 and `replaceFile()` both build on it directly rather than introducing a
 new insert path.
 
+
+## 0.9.0 (2026-08-31)
+
+### LP-083. Post & Page Editor: Sidebar Layout (Publish/Meta Boxes)
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (10/10 checklist items complete)
+
+### Goal
+
+The New/Edit Post (`admin/views/posts/new.php`, the edit/new form at
+lines 474-747) and New/Edit Page (`admin/views/pages.php`, the edit/new
+form at lines 377-527) screens currently stack every field top-to-bottom
+in a single full-width column, with no visual grouping beyond each
+field's own `<p>`/`<fieldset>`. Restructure both into a classic
+WordPress-style two-column layout: Title, Slug (+ live URL preview on
+Posts), the content-format select, the content editor, and Excerpt stay
+in the main (left) column; everything else moves into a new right
+sidebar. This is pure markup/CSS reorganization plus the drag/collapse
+behavior below — not a block-editor/panel framework, which stays out of
+scope per this project's "no block editors/FSE" philosophy.
+
+Sidebar contents, top to bottom:
+
+1. **Publish box** (new grouping wrapper) — Status, Publish date,
+   Visibility, Sticky, Unpublish date (Posts) / Status + Publish date
+   (Pages), plus the Save/Preview/Cancel action buttons moved inside it
+   (matches classic WordPress UX rather than a separate full-width
+   button bar). Also needs a "Move to Trash" link inside the box
+   (classic WordPress places it bottom-left of the Publish box, opposite
+   the Save button) — currently the New/Edit Post and New/Edit Page
+   editor screens have no delete/trash action at all; the existing Trash
+   action only exists on the Posts/Pages list-view rows, not inside the
+   editor itself.
+2. Featured Image
+3. Categories (Posts only)
+4. Tags (Posts only)
+5. Allow Comments checkbox (Posts only)
+6. SEO (optional) fieldset — collapsible
+7. Parent Page select (Pages only)
+8. Custom Fields (Posts only) — collapsible
+9. Author reassignment (Posts only, editors+) — collapsible
+
+**Revision History** (currently its own panel below the whole form, a
+wide table + diff view) stays full-width, outside/below the two-column
+layout — it doesn't suit a narrow sidebar column.
+
+### Drag-reorder and collapsible sections
+
+Every sidebar section must be re-orderable by dragging; Custom Fields,
+SEO, and Author reassignment must be collapsible (the rest stay
+always-expanded).
+
+- **Drag mechanics**: reuse `admin/assets/js/sortable.js` (LP-048/
+  LP-049) as-is for the drag detection — it's already a generic,
+  data-attribute-driven reorder script (`data-lp-sortable-group`/
+  `-item`/`-id`, `data-lp-drag-handle`) used by Appearance > Widgets and
+  Appearance > Menus.
+- **Persistence must NOT reuse sortable.js's existing submit path**:
+  today it fills a hidden "reposition" form and calls `requestSubmit()`,
+  causing a full-page-reload POST — fine for Widgets/Menus, where that
+  form contains nothing else. Inside the post/page editor, the
+  surrounding form *is* the entire post/page being edited — a
+  full-page-reload submit on every drag risks discarding unsaved edits
+  or triggering an accidental save/status change mid-drag. Sidebar-order
+  and collapse-state persistence needs a small fire-and-forget AJAX call
+  instead (either an alternate "AJAX mode" added to `sortable.js`, or a
+  sibling script reusing its drag detection but posting via `fetch()` to
+  a new lightweight endpoint).
+- **Storage**: no generic per-user preferences/meta table exists yet —
+  `UserService`/the `users` table use one dedicated column per
+  preference today (e.g. `preferred_editor`, see
+  `EditorPreferenceService`). Follow the existing "one column, JSON
+  blob" precedent this codebase already uses for `PressConfig`'s options
+  and for `widgets_config` (LP-048/LP-049): a new
+  `users.editor_layout_preferences` (or similar) JSON column storing,
+  per screen type (`post` vs `page`, since their box sets differ), box
+  order and which of the three collapsible boxes are currently
+  collapsed. Needs a small migration (`install/migrations/000X_*.sql`)
+  and a `UserService` getter/setter, matching
+  `updateEditorPreference()`'s existing shape.
+- **Collapse UI**: classic postbox collapse/expand (toggle a
+  `.lp-sidebar-box--collapsed` class + arrow icon) — pure CSS/small JS,
+  no new library; works with JS off, just not collapsible then (same
+  progressive-enhancement spirit as `admin/assets/js/tag-input.js`).
+
+### Layout / CSS
+
+No `.lp-postbox`/`.lp-editor-sidebar`-style classes exist yet — build on
+the closest existing template rather than a layout system from scratch:
+`.lp-media-manager`'s grid pattern (`admin/assets/css/admin.css`,
+~line 1231) already does `grid-template-columns: 240px minmax(0, 1fr)`
+with a responsive collapse to `1fr` at `max-width: 782px`. New layout
+CSS belongs in `admin/assets/css/admin.css`, not inline `style=`
+attributes in the view files.
+
+### Known duplication (optional cleanup, not required scope)
+
+Featured Image and SEO fieldset markup is currently byte-for-byte
+duplicated between `new.php` and `pages.php` (cross-referenced only by
+code comments, no shared partial files exist under `admin/views/posts/`
+or `admin/views/`). Extracting these into shared partials is listed as
+an optional checklist item below, separate from the required work, so
+scope doesn't silently balloon without it being a deliberate choice.
+
+### Checklist
+
+- [x] Sidebar CSS grid (main column + right sidebar) with responsive
+      collapse to single-column, extending `.lp-media-manager`'s
+      existing grid pattern rather than inventing a new one.
+- [x] Move each named section into the sidebar on both the Post and
+      Page editors, with the Publish-box grouping (Status/dates/
+      Visibility/Sticky + Save/Preview/Cancel buttons) as designed above.
+- [x] Add a "Move to Trash" link/button inside the Publish box on both
+      the Post and Page editors — currently the only way to trash a
+      post/page is from the list-view row action; the editor screen
+      itself has no delete/trash action at all. Implemented by reusing
+      the existing list-view out-of-band-`<form>` pattern (a hidden
+      `csrf_token`/`form=trash`/`id` triple + a `<button form="...">`
+      referencing a separate `<form>` rendered outside the main editor
+      form, submitting to the same `posts/all-posts`/`pages/all-pages`
+      trash handlers the list-view row action already uses) rather than
+      teaching the editor's own save handler about trashing. Gated on
+      `$post !== null`/`$page !== null` (nothing to trash on an
+      unsaved draft) plus the same `delete_posts` capability +
+      ownership check (`$canEditPost`/`$canEditPage`) the list-view
+      action already enforces. Styled with the existing
+      `.lp-button--link--danger` class, separated from Save/Preview/
+      Cancel by a new `.lp-sidebar-box__actions--trash` top border.
+- [x] Confirm Revision History stays full-width, outside/below the new
+      two-column layout, unchanged.
+- [x] Drag-reorder every sidebar section, reusing `sortable.js`'s drag
+      mechanics with a new AJAX-based persistence path (not its existing
+      full-form-submit path).
+- [x] Collapsible Custom Fields / SEO / Author reassignment boxes, with
+      collapsed state persisted the same way as drag order.
+- [x] New `users.editor_layout_preferences` (or similar) JSON column +
+      migration, and a `UserService` getter/setter for it.
+- [x] Confirm no *existing* POST-handling logic changes — only markup/
+      CSS plus the one new small AJAX endpoint for order/collapse state.
+      Deliberately independent of LP-082's POST-handling-extraction work
+      happening in these same files.
+- [x] Manual browser check on both Post and Page editors: desktop width,
+      the ~782px collapse breakpoint, and confirming drag-reorder and
+      collapse state actually persist across a page reload.
+- [x] Optional: extract the duplicated Featured Image / SEO fieldset
+      markup between `new.php` and `pages.php` into shared partials.
+      Extracted to `admin/views/partials/editor-featured-image.php` and
+      `admin/views/partials/editor-seo.php`; each caller sets `$record`
+      (the Post|Page being edited) and `$idPrefix` ('post'/'page') before
+      `require`-ing the partial, since `$kernel`/`$currentFeaturedImage`/
+      `$imageOptions` were already named identically in both files. Full
+      1815-test suite passes; verified in-browser on both editors,
+      including the featured-image-crop branch on a real post that has
+      one set.
+
+------
+
+### LP-110. Shortcode Insert Picker (Editor Toolbar)
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (6/6 checklist items complete)
+
+### Goal
+
+Both editors' own tickets (LP-015 Markdown Editor, LP-016 WYSIWYG
+Editor) have carried an identical unstarted checklist line since they
+were written — "Insert Lumora shortcodes from the toolbar (no
+shortcode system exists in Lumora Press yet — needs its own ticket)".
+That reasoning is now out of date: a real shortcode system exists and
+has three real consumers — Font Awesome's `[icon]` (LPP-002),
+WordPress Importer's `[sdm_show_dl_from_category]` (LPP-007), and
+Downloads' own `[lumora_downloads]` (LPP-008) — all registered on the
+`content_html` filter. Every one of them is currently typed by hand;
+no picker exists anywhere in either editor today. This ticket
+consolidates both editors' identical request into one place, per this
+project's own "ticket item relocation" convention (see `MEMORY.md`).
+
+A toolbar button in both the Markdown editor (EasyMDE) and the WYSIWYG
+editor (TinyMCE) that opens a picker: choose a registered shortcode,
+fill in its attributes via a real form (a `<select>` for
+`[lumora_downloads]`'s `category_id`, an icon browser for `[icon]`,
+etc.) instead of typing raw `[shortcode attr="value"]` syntax by hand,
+and insert the result at the cursor. Corrected during implementation:
+`[lumora_downloads]`'s `category_id` is a Download plugin category (its
+own dedicated table), not a Media Folder — the two are unrelated id
+spaces, confirmed by reading `DownloadCategory`/`DownloadsShortcode`
+directly rather than assuming from the name alone.
+
+### Open design question
+
+There is currently no mechanism for a plugin to *register* a shortcode
+as "available to the picker" — `add_filter('content_html', ...)` only
+wires up *rendering*, it says nothing about what attributes a
+shortcode takes or how an admin should be prompted for them. This
+ticket needs a real registration API before the picker itself can be
+built (e.g. `register_shortcode('lumora_downloads', ['label' => ...,
+'fields' => [...]])`), which is a genuine new piece of the plugin
+hook system, not just editor-UI work — scope this properly before
+starting rather than hardcoding the three known shortcodes into the
+picker directly. Related to, but distinct from, both editors' own
+already-separate "Plugin API for adding custom toolbar buttons" line
+(a more general toolbar-button API; this ticket is specifically about
+one particular button — the shortcode picker — and the registration
+data it needs).
+
+**Resolved:** `ShortcodeManager`/`ShortcodeField`/`ShortcodeFieldType`
+(`app/Core/Shortcodes/`), procedural `register_shortcode()`
+(`include/shortcodes.php`) — mirrors `WidgetManager`'s own registry
+shape. A shortcode field needing database-backed choices (a live list
+of Folders or Download categories) can't be computed at plugin-load
+time (plugin main files load before Kernel exists — see
+`DEVELOPER-APIS.md`'s "Discovery & loading"), so a new
+`register_shortcodes` action fires once, near the end of
+`include/bootstrap.php`, after `$kernel` is fully built; all three
+plugins hook it (Font Awesome for consistency, even though its own
+fields need no database access).
+
+### Checklist
+
+- [x] Design a shortcode-registration API a plugin can call (name,
+      label, attribute fields with type/options/validation) — see
+      "Resolved" above
+- [x] Font Awesome, WordPress Importer, and Downloads each register
+      their existing shortcode against it (rendering behavior
+      unchanged — this only adds picker metadata). Each plugin's own
+      "list everything" variant only — `[sdm_download]`/
+      `[sdm_latest_downloads]` (WordPress Importer) and `download_id`/
+      `count` (Downloads' own "single download"/"newest N" variants)
+      are left typeable by hand, matching this ticket's own
+      three-shortcode scope
+- [x] Toolbar button + picker UI in the Markdown editor (EasyMDE) —
+      hidden entirely when no shortcode is registered this request
+      (e.g. every consuming plugin disabled)
+- [x] Toolbar button + picker UI in the WYSIWYG editor (TinyMCE) — same
+      hide-when-empty behavior
+- [x] Regression tests for the registration API itself —
+      `ShortcodeManagerTest` (registration/replacement/`toArray()`
+      JSON-encodability) plus a `DownloadsShortcodeTest` case pinning
+      `slugify()` (made public for the picker's `category_slug`
+      choices) against what `[sdm_show_dl_from_category]` actually
+      matches
+- [x] Browser-verified on the dev install: opened the picker in both
+      editors on the Post editor and the Downloads Description editor;
+      inserted `[icon]` via its icon-browser field (auto-filling
+      `style`, omitting it and the blank `label` since both stayed at
+      their defaults), `[lumora_downloads]` with a real category and
+      "Show file size" checked, and `[sdm_show_dl_from_category]` with
+      a real Folder — each produced exactly the minimal `[shortcode
+      ...]` text typing it by hand would have. Found and fixed one bug
+      along the way: an unregistered-default Checkbox field (empty
+      string, not `'0'`) was never omitted even when left unchecked,
+      spelling out `show_size="0"` where hand-typing it would just
+      omit the attribute — fixed in both the two real plugin
+      registrations (explicit `default: '0'`) and generically in
+      `openShortcodePicker()`'s own omission check, so a future
+      plugin's Checkbox field gets the same behavior for free. Full
+      PHP Test Suite (1938 tests) still passes.
+
+------
+
+### LP-123. Appearance &rsaquo; Customize: WordPress-Style Per-Theme Customizer
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (12/12 checklist items complete)
+
+### Goal
+
+WordPress's classic Appearance &rsaquo; Customize screen groups
+appearance settings into named panels (Site Identity, Header,
+Widgets, Menus, etc.) scoped to the active theme, rather than one
+long flat options page. LP-034's Appearance &rsaquo; Theme Options
+page is currently the latter — a single form-per-section page mixing
+Theme Management, Branding, Layout, Typography, Colors, and every
+other deferred category in one place. Restructure it into a
+Customize-style screen with the sections below, so administrators can
+find a setting by what it visually affects rather than by scrolling
+one long options page. This is primarily a reorganization of LP-034's
+existing and still-deferred fields (Header image, Colors, Typography,
+Layout, Navigation, Footer HTML — see LP-034's own checklists), not a
+new options system — the underlying `ThemeOptions`/`ThemeOptionField`
+API stays as-is; only the admin page's section grouping and layout
+change. Cross-reference LP-034 before implementing so no field gets
+built twice under two different section names.
+
+### Checklist
+
+- [x] **Header** section — site title display toggle (from LP-034's
+      Branding checklist), header image/banner upload and Header
+      image/Header height fields (from LP-034's deferred Header
+      checklist)
+- [x] **Welcome Message** section — a new text/HTML field (reusing the
+      existing WYSIWYG/Markdown/HTML editor modes already used for
+      post/page content, not a bare textarea) with a placement choice
+      of header or sidebar, rendered via a template tag/hook themes
+      call the same way widget areas already work
+- [x] **Body** section — Typography (from LP-034's Typography
+      checklist) and a basic Color Scheme (from LP-034's Colors
+      checklist), plus every other still-existing Theme Option field
+      not claimed by a more specific section below (Layout, Images &
+      Media, Homepage, Blog, etc.) — decide and document which
+      leftover fields land here vs. get their own section as this is
+      built out
+- [x] **Menu** section — surfaces the existing Appearance &rsaquo;
+      Menus functionality (or links to it) from within the Customize
+      screen, consistent with how WordPress's Customizer embeds Menus
+- [x] **Widgets** section — same, for the existing Appearance &rsaquo;
+      Widgets screen
+- [x] **Footer** section — a new text/HTML field for footer content
+      (from LP-034's deferred Footer layout item), same editor-mode
+      reuse as Welcome Message above
+- [x] Move "Reset Everything" (LP-034's page-level "Reset All" form)
+      out of the Customize screen entirely onto its own dedicated
+      Reset page/confirmation step, so a destructive whole-site reset
+      is no longer sitting alongside routine per-section editing
+- [x] Decide and document the navigation/layout pattern (WordPress
+      uses a live-preview sidebar; a simpler tabbed/accordion admin
+      page consistent with this project's existing admin UI is
+      acceptable and likely preferable — no live-preview iframe is
+      required)
+- [x] Per-theme scoping: since LP-034 already notes Theme Options
+      values are global rather than scoped per active theme, decide
+      whether this restructuring also finally scopes values per theme
+      (each theme keeps its own Header/Welcome Message/Body/Footer
+      settings) or keeps the existing global-options behavior
+- [x] Style any new admin UI per the existing admin CSS conventions;
+      any newly public-facing output (header image, Welcome Message,
+      footer HTML) follows the Public-Facing CSS Rule (styling lives
+      in the active theme's `style.css`, not inline/PHP-embedded)
+- [x] Update `docs/THEME-DEVELOPMENT.md` with the new section
+      structure and any new template tags/hooks a theme author needs
+      (Welcome Message placement, footer HTML render point)
+- [x] Regression/unit tests for any new fields, and an update to
+      `ThemeOptionsTest` covering the new section groupings
+- [x] Verify end-to-end in a real browser: each section saves and
+      renders correctly on the front end, Reset Everything still works
+      from its new page, and existing LP-034 field values migrate/
+      continue to work unchanged after the reorganization
+
+------
+
+### LP-125. Content Rendering Produces Invalid Nested `<p>`/`<div>` Markup
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items complete)
+
+### Goal
+
+Confirmed via a real page's source (2026-08-26, a `[sdm_show_dl_from_category
+category_slug="digital-paper" fancy="1" show_size="1" pagination="10"]`
+listing from the WordPress Importer plugin's own migrated data): the
+rendered output contains invalid HTML nesting in two distinct ways,
+both in core's own content rendering pipeline rather than anything
+plugin-specific — the Downloads shortcode is just where it happened to
+be spotted first:
+
+1. **Block-level shortcode output lands inside a `<p>`.** The page's
+   content is Markdown-format; `ContentRenderer::render()`
+   (`app/Services/ContentRenderer.php:100-111`) runs
+   `MarkdownParser::toHtml()` *before* the `content_html` filter that
+   expands a shortcode like `[sdm_show_dl_from_category]` into its real
+   `<div>` markup. Since the shortcode sits on its own line/paragraph in
+   the raw Markdown, `toHtml()` wraps it as `<p>[sdm_show_dl_from_category
+   ...]</p>` first — the shortcode expansion then happens *inside* that
+   already-created `<p>`, producing `<p><div class="lp-downloads-list">
+   ...</div></p>`, a `<div>` illegally nested inside a `<p>`. Not unique
+   to that one shortcode — any shortcode registered on `content_html`
+   (Font Awesome's `[icon]`, `[lumora_folder_gallery]`,
+   `[lumora_downloads]`) that expands to block-level HTML and appears on
+   its own line in Markdown content produces the same invalid nesting.
+2. **HTML-format content can render with a `<p>` opened before an
+   earlier one closes** — e.g.
+   `<p><img ...>300DPI&nbsp;/&nbsp;3000&times;3000<p>Click on the
+   thumbnail...</p></p>` (a Download's own Description, in the
+   confirmed repro). `HtmlSanitizer::clean()`
+   (`app/Core/Content/HtmlSanitizer.php`) is `DOMDocument`-based, not
+   regex-based, but libxml2's HTML parser does not auto-close a `<p>`
+   when it encounters a second `<p>` start tag the way a real browser's
+   HTML5 parser does — so invalid nesting already present in the stored
+   HTML (in the confirmed repro, content migrated verbatim by the
+   WordPress Importer from the original site's own malformed HTML) is
+   preserved rather than corrected, for any HTML-format content this
+   pipeline renders, not just Downloads descriptions.
+
+### Checklist
+
+- [x] For (1)/(2): rather than reordering filters (risked breaking
+      `DownloadsShortcode`'s own priority-20 assumption) or teaching
+      `MarkdownParser` about the shortcode registry (a layering
+      violation — it has no dependency on `HookManager` today), added
+      `HtmlSanitizer::repairNesting()`: a DOM walk, separate from
+      `clean()`'s tag/attribute allowlist, that hoists any block-level
+      element (`div`, `p`, `table`, `ul`, headings, etc. — see its
+      `BLOCK_LEVEL_TAGS`) out of an enclosing `<p>`, splitting the `<p>`
+      around it exactly the way a browser's HTML5 parser would. Runs
+      once, in `ContentRenderer::render()`, *after* the `content_html`
+      filter (so shortcode-expanded markup is covered) — deliberately
+      not folded into `clean()`'s own allowlist pass, since that would
+      re-run shortcode-generated HTML through the tag allowlist and risk
+      stripping legitimate plugin markup (`<select>`, `<form>`, etc.)
+      that was never meant to go through it twice. Also drops the
+      stray empty `<p></p>` libxml2's parser itself leaves behind when
+      it *does* auto-close a `<p>` for a nested block element (it does
+      this for `<div>`, just not for a second `<p>` — the two bugs
+      turned out to need one fix, not two).
+- [x] Regression tests added: `HtmlSanitizerTest` covers `repairNesting()`
+      directly (ordinary content untouched, a block element hoisted from
+      a `<p>`'s middle/end, a block nested inside an inline wrapper, a
+      second `<p>` opened before the first closes); `ContentRendererTest`
+      covers both real-world shapes end-to-end — a `content_html` filter
+      expanding `[fake_shortcode]` into a `<div>` inside Markdown-wrapped
+      paragraphs, and HTML-format content with pre-existing malformed
+      nested `<p>` tags. Full suite (1779 tests) passes.
+- [x] Verified end-to-end in a real browser against the actual confirmed
+      repro (post id 3712, previewed via `/preview/3712`): the real
+      `[lumora_downloads category="Ao3 Site Skins"]` shortcode now
+      renders `<p>By category name:</p><div class="lp-downloads-list">…`
+      — the `<div>` is a sibling of the paragraph, not nested inside it
+      (`hasNestedDiv: false` checked directly against the page's raw
+      HTML). The homepage's own Downloads listing (real migrated
+      descriptions with the exact `<p><img>...<p>Click...</p></p>`
+      malformed shape from the ticket's repro) now renders three
+      separate, non-nested `<p>` tags instead.
+
+### LP-126. Empty Trash Action on Every Admin Trash Tab
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items complete)
+
+### Goal
+
+LPP-011 (`TODO-PLUGINS.md`) adds an "Empty Trash" bulk action to the new
+Downloads &rsaquo; Categories admin page's Trash tab — permanently deleting
+every currently-trashed row in one action, confirmed via the existing
+`data-lp-confirm` dialog pattern. Retrofit the same action to Posts
+(`admin/views/posts/all-posts.php`), Pages (`admin/views/pages/all-pages.php`),
+Categories (`admin/views/posts/categories.php`), and Comments
+(`admin/views/comments.php`), using Downloads &rsaquo; Categories'
+implementation as the reference pattern.
+
+Tags and Media were originally listed as retrofit targets but turned out to
+have no trash/soft-delete concept at all (no `trashed_at` column, no Trash
+tab, deletes are immediate) — Empty Trash doesn't apply to them as-is. Adding
+trash/restore to Tags and Media first would be a much larger, separate
+feature; out of scope here (decided with Ariane 2026-08-28).
+
+### Checklist
+
+- [x] Confirm each target service already has (or add) a bulk/loop
+      permanent-delete entry point equivalent to
+      `DownloadCategoryService::emptyTrash()` — added
+      `CategoryService::emptyTrash()` and `CommentService::emptyTrash()`
+      (Comments' Trash is a `status` value, not `trashed_at`, so its query
+      shape differs). Posts/Pages route through `PostsController::emptyTrash()`
+      and an inline handler in `all-pages.php` instead of a bare service
+      method, since permanent delete for those two also has to clean up
+      revisions (`RevisionService::deleteAllFor()`) and enforce the
+      author/`edit_others_posts` ownership gate per row — logic that lives
+      outside `PostService`/`PageService` for every other permanent-delete
+      path already, so a same-service `emptyTrash()` would have silently
+      skipped both and orphaned revisions.
+- [x] Add an "Empty Trash" button to each screen's Trash tab, visible only
+      when trashed rows exist, with a confirm dialog
+- [x] Regression tests per service (empty trash deletes all trashed rows,
+      leaves non-trashed rows untouched, safe to call with zero trashed rows)
+      — `CategoryServiceTest`/`CommentServiceTest` at the service level;
+      `PostsControllerTest` at the controller level (also covering the
+      ownership gate and CSRF failure). Pages' equivalent logic lives inline
+      in `all-pages.php` rather than an extracted controller (Pages has no
+      `PagesController` yet, unlike Posts' LP-082 extraction) — no unit-test
+      seam exists for it today, matching that file's existing untested
+      `delete_permanently`/`bulk_action` handlers; covered by browser
+      verification only.
+- [x] Verify end-to-end in a real browser on each retrofitted screen —
+      trashed a real row and clicked Empty Trash on all four screens
+      against the dev install; each correctly removed only the trashed
+      rows, showed "Trash emptied.", and the button correctly disappears
+      once Trash is empty.
+
+### LP-127. Anonymous Install Ping
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items complete)
+
+### Goal
+
+Join the same opt-in, off-by-default install-tracking system Lumora
+Gallery, FanUpdate Redux, and Lumora Guestbook already use: a minimal,
+anonymous ping (install UUID, Lumora Press version, PHP version — nothing
+else) sent to a dedicated, Lumora Press-specific endpoint roughly once a
+month, so the developer can see a rough count of active installs and a
+PHP-version adoption breakdown, without collecting anything that
+identifies a specific site, admin, or visitor. Deliberately independent
+of `GitHubReleaseProvider`'s release-check request — enabling/disabling
+either one never affects the other.
+
+Server-side design lives outside this repository, in the sibling
+`install-tracking-server/` project-root directory (not committed by this
+repo — see `CLAUDE.md`'s note on what's outside `LumoraPress/.git`) —
+see its own `install-tracking-plan.md` for the full rationale, matching
+the plan documents the other three apps already have.
+
+### Checklist
+
+- [x] Client-side `InstallPingService` (`app/Services/InstallPingService.php`):
+      opt-in toggle, UUID generation/persistence, and the ~30-day-interval
+      network ping, all through `PressConfig` options
+      (`install_ping_enabled`, `install_uuid`, `install_ping_last_sent_at`)
+      — an injectable transport keeps the class fully unit-testable with
+      no real network I/O. Wired into `Kernel`/`bootstrap.php` and called
+      opportunistically from every authenticated admin page load
+      (`admin/index.php`, mirroring `UserService::touchLastActive()`'s
+      existing "cheap no-op unless due" pattern) — every failure mode is
+      swallowed there, never surfaced to the admin.
+- [x] Settings &rsaquo; Privacy screen gained an "Anonymous Install
+      Statistics" panel: the opt-in checkbox (off by default), full
+      disclosure of exactly what is/isn't sent, the install ID once one
+      exists, and a "Send a test ping now" button (shown only once
+      enabled) that surfaces a real error instead of failing silently,
+      unlike the opportunistic per-page-load path.
+- [x] Regression tests (`PHP Test Suite/Unit/Services/InstallPingServiceTest.php`,
+      12 tests): enabled/disabled defaults, UUID generation and reuse,
+      the ~30-day due/not-due scheduling boundary, a swallowed transport
+      failure via `maybeSendPing()` vs. a re-thrown one via `sendPing()`
+      (the "test ping" button's error path), and the last-sent timestamp
+      being recorded regardless of success/failure. Full suite (1791
+      tests) passes.
+- [x] Server-side deployment package built at the project root's sibling
+      `install-tracking-server/` directory (`public_html/ping.php`,
+      `install-stats.php`, `lib/Database.php`, `schema.sql`,
+      `config.sample.php`, `.htaccess` deny rules, `README.md`,
+      `install-tracking-plan.md`) — a `lumorapress_install_pings` table,
+      named to avoid a collision with the other three apps' own tables
+      when sharing one database, matching their exact established
+      pattern (accepts both JSON and form-POST, bcrypt/session login on
+      the stats page). Not yet deployed to the live server, the shared
+      database's real schema, or registered in `install-tracking-dashboard`'s
+      `config.php` `apps` array — those are Ariane's manual steps (real
+      credentials, a live upload, and a write against shared
+      infrastructure this session didn't perform unprompted).
+
+### LP-128. Bug - Font Awesome enabled, the following message:
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (3/3 checklist items complete)
+
+I enabled Font Awesome in its settings, the following appeared:
+
+```
+Possible duplicate Font Awesome loading detected — the  active theme or another active plugin appears to reference Font Awesome  on its own, independently of this plugin:
+
+- Plugin: dummy-content (dummy-content.php)
+- Plugin: wordpress-importer (wordpress-importer.php)
+- Plugin: downloads (downloads.php)
+- Plugin: contact-forms (contact-forms.php)
+
+Remove the theme's/plugin's own reference to avoid loading Font Awesome twice.
+
+
+```
+
+**Root cause:** `FontAwesomeService::detectConflicts()`
+(`content/plugins/font-awesome/src/FontAwesomeService.php`) flagged a
+plugin as a conflict whenever its main file's raw text matched
+`/font[\s\-]?awesome/i` anywhere at all — including inside a docblock
+comment. All four flagged plugins only mention "Font Awesome" in
+comment prose cross-referencing this project's own `content_html` hook
+pattern (e.g. "the same `content_html` filter Font Awesome's `[icon]`
+shortcode uses"); none of them actually load a Font Awesome asset.
+
+### Checklist
+
+- [x] Added `FontAwesomeService::stripComments()`, which strips
+      `/* ... */` block comments before running the existing regex —
+      deliberately does *not* also strip `//` line comments, since a
+      genuine CDN URL contains its own `https://` and a naive
+      line-comment stripper would truncate it, turning a real conflict
+      into a false negative.
+- [x] Regression tests added to `FontAwesomeServiceTest`: a
+      docblock-only mention no longer flags a conflict, and a genuine
+      `<link>`-tag CDN reference (including one containing `https://`)
+      still does. Existing `testDetectConflictsFlagsAnotherActivePlugin
+      ThatMentionsFontAwesome` updated to use real asset-loading code
+      instead of a `//` comment, since that scenario is now
+      intentionally no longer flagged. Full suite (1815 tests) passes.
+- [x] Verified end-to-end on the dev install: Appearance &rsaquo; Font
+      Awesome's Diagnostics section now reads "No other Font Awesome
+      references detected in the active theme or other active
+      plugins" with dummy-content, wordpress-importer, downloads, and
+      contact-forms all active — previously flagged all four.
+
+### LP-129. Imported Posts' Featured Images
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (3/3 checklist items complete)
+
+Not mapped to their posts in Lumora Press? 
+
+- Shows as None in editor
+- Does show featured image in frontend.
+- Selecting a default featured image replace all imported featured images on front end. Should apply to only the ones that do not have it set.
+
+**Root cause:** the featured-image plumbing itself (importer → DB
+column → model property → admin editor → frontend) was already wired
+correctly — no mapping bug. The real issue was upstream, in
+`WordPressImportService::importMedia()`
+(`content/plugins/wordpress-importer/src/WordPressImportService.php`):
+the "Uploads folder path" form field defaults to `''` if left blank,
+and every WXR attachment whose file doesn't resolve under that path is
+silently skipped — never becoming a local Media row, so `_thumbnail_id`
+never resolves to one either. `featured_image_id` ends up genuinely
+`NULL` for affected posts/pages, which is exactly what the admin
+editor and frontend both correctly show "None"/no thumbnail for. What
+looked like "shows a featured image on the frontend anyway" was the
+still-present in-body `<img>` from the original post content (hotlinked
+to the old site), not the featured-image system. And "selecting a
+default replaces all imported featured images" is `post_thumbnail_
+media()`'s existing, correct fallback (`include/media-functions.php`)
+applying uniformly once every affected post's `featured_image_id` is
+`NULL` — it was never actually overriding a real value.
+
+### Checklist
+
+- [x] `WordPressImportService::importPosts()`/`importPages()` now emit a
+      dedicated "Post/Page #… ("title"): its featured image (attachment
+      #…) could not be imported, so no featured image is set." warning
+      whenever `_thumbnail_id` postmeta existed but didn't resolve to a
+      local Media row — registered as an "Action needed" warning
+      (`isActionNeededWarning()`) so it surfaces on the post-import
+      summary screen instead of blending into the routine
+      missing-attachment list.
+- [x] Maintenance &rsaquo; Import's Preview/Start/Resume Import now
+      refuses to run (with a clear error) when "Media (attachments)" is
+      selected and the uploads folder path isn't a real, readable
+      directory — previously only Test Connection checked this, and
+      that check was easy to skip or invalidate by editing the field
+      afterward. Regression test added
+      (`WordPressImportServiceTest::testRunLeavesPostWithoutAFeaturedImage
+      AndWarnsWhenItsAttachmentFileIsMissing`) plus two new
+      `isActionNeededWarning()` cases; full suite (1932 tests) passes.
+- [x] Browser-verified on the dev install (Maintenance &rsaquo; Import,
+      which had real prior import data — 732 posts etc.): submitting
+      the Import form with Media checked and an invalid uploads path
+      correctly shows "The uploads folder path does not exist or is
+      not readable by the web server. Fix it, or uncheck 'Media
+      (attachments)' under Content to import." and refuses to start,
+      leaving the existing import data untouched.
+
+------
+
+### LP-130. WYSIWYG Editor Link Dialog: Existing-Content Picker
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items complete)
+
+### Goal
+
+Classic WordPress's "Insert/edit link" dialog has an "Or link to
+existing content" search box listing real recent posts/pages, filtered
+by title as the admin types, so a post or page can be linked without
+leaving the editor to go copy its permalink. This ticket was originally
+written assuming Lumora Press's own WYSIWYG (TinyMCE) editor already
+had this same dialog, just non-functional — that assumption was wrong.
+TinyMCE's native `link` plugin dialog (the one actually shown before
+this ticket) has no "existing content" section at all, just a bare
+URL/Text/target-checkbox form; the search-box-plus-recent-items screen
+described above only ever existed in real WordPress, not here.
+
+**Implementation note:** the native `link` plugin is no longer loaded
+(see `content-editor.js`'s `basePlugins`) — a new `lumoraLink` toolbar
+button (and its `Ctrl+K` shortcut) fully replaces it with a custom
+`openLinkPicker()` dialog: URL/Link Text/"Open in a new tab" fields
+plus the "Or link to existing content" search section, matching real
+WordPress's own layout. Opening the dialog with the cursor inside an
+existing `<a>` switches it to "Edit Link" mode (pre-filled fields, plus
+"Update"/"Remove Link" in place of "Add Link"). The existing-content
+query (`link_picker_query`, mirroring `media_picker_query`'s existing
+per-view-duplication precedent — implemented independently in
+`posts/new.php`, `pages/new.php`, and `downloads/add-new.php`'s
+Description field editor, since it spans both `PostService` and
+`PageService` rather than belonging to one content-type controller)
+returns up to 20 recently published/modified Posts and Pages, newest
+first, filtered server-side by title as the admin types — no
+pagination, since this is a shortlist, not a full browse.
+
+### Checklist
+
+- [x] Wire the dialog's "recent items" list to a real query (most
+      recently modified/published Posts and Pages, respecting the
+      current user's read permissions) — gated on the same `edit_posts`
+      (or, on the Downloads screen, `upload_files`) capability every
+      other editor picker sub-action already uses
+- [x] Wire the Search box to filter that list by title as the admin
+      types (debounced, no full page reload)
+- [x] Clicking a result fills in the URL (and Link Text, if empty)
+      the same way manually pasting a permalink would
+- [x] Browser-verified on the dev install: opened the picker on the
+      Post editor, Page editor, and Downloads' Description editor, each
+      listing real recent Posts/Pages with working live search;
+      selecting a result filled URL + Link Text with the item's real
+      permalink/title; Add Link inserted a correct `<a>`; reopening the
+      dialog on that link switched to Edit Link mode with working
+      Update and Remove Link. Full PHP Test Suite (1932 tests) still
+      passes.
+
+------
+
+### LP-131. Featured Image: WordPress-Style Media Library Grid Picker
+
+**Status:** Complete (5/5 checklist items done)
+
+### Goal
+
+Every place a featured image can be chosen currently uses a plain
+`<select>` dropdown of filenames, not a real picker — nothing like
+classic WordPress's "Set featured image" modal (a Media Library grid
+of thumbnails, filterable by type/date/search, with a details pane and
+a "Set featured image" confirm button). Filenames alone make it
+impossible to visually recognize the right image once a library has
+more than a handful of items.
+
+Known touchpoints (from a codebase search — reuse the existing
+in-content media picker component/modal used by the post/page content
+editor's "Add Media" button rather than building a second one):
+
+- `admin/views/partials/editor-featured-image.php` — the Post/Page
+  editor sidebar meta box's featured-image `<select>` +
+  `featured_image_upload` file input
+- `admin/views/media/thumbnails.php` — Media &rsaquo; Thumbnails
+  settings' "Default featured image" `<select>`
+- `admin/views/pages/all-pages.php` (and the equivalent for Posts) —
+  Quick Edit does not expose featured-image editing at all today;
+  decide whether to add it there too as part of this ticket or leave
+  it out of scope
+- Backend already accepts `featured_image_id` end-to-end
+  (`PostsController.php`, `pages/new.php`, `ApiController.php`) — this
+  is a front-end/JS change, not new persistence
+
+**Implementation note:** rather than generalizing content-editor.js's
+own `openMediaPicker()` (its two-step Attachment Display Settings flow
+has no meaning for a featured image, which is always just "this Media
+row's id"), a new `featured-image-picker.js` was added — the same
+"separate, much lighter sibling" precedent `downloads-picker.js`
+already established for an identical tension. It queries its own
+`featured_image_picker_query` sub-action (`PostsController::
+queryFeaturedImagePicker()`, plus inline copies in `pages/new.php` and
+`thumbnails.php`, mirroring how `media_picker_query` itself is
+duplicated per view) rather than sharing `media_picker_query`'s CSRF
+action name — both pickers can be open on the same editor page, and
+`Csrf::token()` overwrites the single stored token per action name, so
+sharing one would let opening either picker silently invalidate the
+other's already-embedded token.
+
+### Checklist
+
+- [x] Extract/generalize the existing content-editor media picker
+      modal so it can be reused in "select one image, return its ID"
+      mode (vs. "insert into content" mode) — see implementation note
+      above for why this became a new sibling component instead
+- [x] Replace the featured-image `<select>` in the Post/Page editor
+      sidebar meta box with the grid-picker modal (thumbnail preview
+      of the current selection, "Set featured image" / "Remove
+      featured image" actions) — the pre-existing "Remove current
+      featured image" checkbox (tied to the manual-crop feature, LP-040)
+      still handles removal here; the picker itself only replaces the
+      "choose a new image" dropdown
+- [x] Replace the "Default featured image" `<select>` in Media &rsaquo;
+      Thumbnails settings with the same picker (this context has no
+      separate remove mechanism, so its own picker instance includes a
+      "Remove" button the editor sidebar's doesn't need)
+- Quick Edit featured-image support — left out of scope; Quick Edit
+      exposes no featured-image editing at all today, and adding that
+      is a separate feature from replacing this ticket's existing
+      dropdowns *- rejected*
+- [x] Browser-verified on the dev install: opened the grid picker on
+      the Post editor, Page editor, and Media &rsaquo; Thumbnails, each
+      showing real thumbnails with working search/folder-filter/Load
+      More; selecting a tile correctly set the hidden
+      `featured_image_id`/`default_featured_image_media_id` field and
+      updated the chosen-image preview; the Thumbnails picker's
+      "Remove" button correctly cleared the selection. Full PHP Test
+      Suite (1932 tests) still passes.
+
+### LP-132. Surface the Privacy Policy Page Link + Document Cookies Used
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+Prompted by a "does this app have the legally-required cookie
+disclosure?" question. Checked what cookies each app actually sets
+before assuming a gap existed:
+
+- **Lumora Press**: session/login cookies (strictly necessary, exempt
+  from consent requirements under GDPR/ePrivacy) and the guest-commenter
+  "remember my name/email" cookies, which already go through a real
+  opt-in flow — LP-047's `comment_cookies_consent_enabled` site setting
+  plus a per-submission `comment_save_info` checkbox
+  (`SiteController.php:512-521`), off by default. No non-essential
+  cookie is ever set without the visitor's own explicit action.
+- **Lumora Gallery**: only a remember-me token cookie (already opt-in,
+  via its own login page's "remember me" checkbox) and the session
+  cookie — same "strictly necessary" exemption applies.
+
+So neither app actually needs a cookie-consent banner. What's real
+and missing: `privacy_policy_url()` (`include/permalink-functions.php`,
+Settings &rsaquo; Privacy's "Privacy Policy Page" picker) lets an admin
+designate a Page explaining the site's cookie/data usage, but **the
+default theme's `footer.php` never calls it** — the only way a visitor
+currently finds that page is if the admin manually adds it to the
+Footer menu or types a link into Theme Options' custom Footer HTML.
+Most site owners won't discover either workaround, so the page they
+configured in Settings often never actually reaches a visitor. Also:
+neither project's own `README.md` documents what cookies it sets at
+all — useful reference for a site owner writing their own privacy/
+cookie policy, the way WordPress core's own cookie documentation does.
+
+### Checklist
+
+- [x] Default theme `footer.php`: render a link to `privacy_policy_url()`
+      when a Privacy Policy Page is actually configured (mirrors
+      WordPress's own default themes since 4.9.6) — `<a
+      class="lp-site-footer__privacy-link" href="...">Privacy Policy</a>`
+      near the existing "Subscribe via RSS" link, hidden entirely when
+      `privacy_policy_url()` returns `null`
+- [x] Propagate the same addition to `custom themes/duskline` and
+      `custom themes/xena-theme` (additively — xena-theme already has
+      its own hand-typed external Privacy Policy link in its Footer
+      HTML; leave that as-is per the Custom Theme Rules rather than
+      replacing it with the new template tag)
+- [x] `LumoraPress/README.md`: new "Cookies" section listing every
+      cookie Lumora Press sets (session, remember-me, the three opt-in
+      `lp_commenter_*` cookies) and which are essential vs. opt-in
+- [x] Lumora Gallery's own `README.md`: same, for its session and
+      remember-me cookies
+- [x] Verify end-to-end on the dev install: with a Privacy Policy Page
+      configured in Settings &rsaquo; Privacy, the default theme's
+      public footer shows a working link to it; with none configured,
+      no broken/empty link appears
+
+**2026-08-31:** Implemented as designed above. `footer.php` (default
+theme + both custom themes, additive) now renders `.lp-site-footer__
+privacy-link` only when `privacy_policy_url()` returns non-`null`; new
+matching CSS in each theme's own `style.css`. `docs/THEME-DEVELOPMENT.md`
+updated to reflect that the default theme now actually uses this
+template tag. Both README.md files' new "Cookies" sections confirmed
+accurate against the real `setcookie()` call sites in each codebase.
+Full PHP Test Suite (1971 tests) still passes. Verified end-to-end on
+the dev install: temporarily pointing Settings &rsaquo; Privacy at an
+existing Page made the new footer link appear (alongside xena-theme's
+own separate, pre-existing hand-typed external Privacy Policy link —
+both coexist, confirming the addition is genuinely additive); clearing
+that setting made the new link disappear cleanly with nothing broken.
+Reverted the dev install's `privacy_policy_page_id` option back to
+unset afterward, matching its original state.
+
+### LP-133. Delete Inactive Plugins: Bulk and Single Row/Card Actions
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+Plugins &rsaquo; Installed Plugins already lets an admin delete one
+inactive plugin at a time, but only from inside the "Details" dialog
+(`admin/views/plugins.php`'s `delete_plugin` form) — there is no quick
+per-row/per-card Delete action, and no way to delete several unused
+plugins at once. Every other admin list screen with a delete action
+(Categories, Pages, Posts, Comments, Users, Downloads) already offers
+both a quick per-row action and a checkbox-driven "Bulk actions" bar
+(`.lp-admin__bulk-actions`); Plugins is the one list screen missing
+both.
+
+### Checklist
+
+- [ ] List (table) view: a "Select" checkbox column (header "select
+      all" + one per row) for every plugin that isn't currently active
+      — mirrors `admin/views/posts/categories.php`'s
+      `data-lp-select-all="plugin_slugs[]"` pattern exactly. Column
+      only rendered at all when at least one plugin is deletable.
+- [ ] A `.lp-admin__bulk-actions` bar above the table ("Bulk actions"
+      select with a single "Delete" option + Apply button), wired to a
+      new `bulk_delete_plugins` form handler: verifies each submitted
+      slug still exists and is inactive before deleting, skips (rather
+      than errors on) anything active or already gone, and reports a
+      "N deleted, M skipped" summary.
+- [ ] The table itself moves inside a `<form id="plugins-bulk-form">`
+      to carry the bulk submission; existing per-row Activate/
+      Deactivate forms convert to the out-of-band `form=""`-attribute
+      pattern categories.php already uses, since a `<form>` can't nest
+      inside another `<form>`.
+- [ ] Quick "Delete" action added directly to the table row and grid
+      card for any inactive/disabled plugin (next to Activate), not
+      just inside the Details dialog — same `data-lp-confirm`
+      permanent-delete warning the existing Details dialog Delete
+      button already uses.
+- [ ] `delete_plugin`'s CSRF action name gains the same `origin`
+      scoping (`row`/`card`/`details`) Activate/Deactivate already use,
+      since Delete now renders from three places per plugin instead of
+      one — see the file's own top-of-file comment on why an unscoped
+      action name breaks once a form renders more than once per slug.
+- [x] Verify end-to-end on the dev install: bulk-deleting a mix of
+      inactive plugins removes their directories and refreshes the
+      list; attempting to bulk-delete with an active plugin's checkbox
+      never possible in the first place (no checkbox rendered for
+      active plugins); single row/card/details Delete all still work
+      individually.
+
+**2026-08-31:** Implemented as designed above. `admin/views/plugins.php`
+gained a `bulk_delete_plugins` form handler (skips anything active or
+already gone rather than erroring, reports "N deleted, M skipped"),
+plus a `.lp-admin__bulk-actions` bar and per-row checkboxes in the List
+view — only rendered at all when at least one plugin is actually
+deletable. The table now sits inside its own `<form
+id="plugins-bulk-form">`; the existing per-row Activate/Deactivate
+forms (and the new per-row Delete form) converted to the same
+out-of-band `form=""`-attribute pattern
+`admin/views/posts/categories.php` already established, since a
+`<form>` can't nest inside another `<form>`. `delete_plugin`'s CSRF
+action name now carries the same `row`/`card`/`details` origin scoping
+Activate/Deactivate already used, since Delete now renders from three
+places per plugin (row, card, and the pre-existing Details dialog)
+instead of one. Verified end-to-end against the dev install with three
+disposable throwaway plugins: single row-Delete, single grid-card
+Delete, and a bulk "select all &rarr; Delete &rarr; Apply" all
+correctly removed the target plugin directories and left the real
+installed plugins untouched; the zero-deletable-plugins state (every
+real plugin on the dev install happened to be active) confirmed the
+checkbox column/bulk bar stay hidden entirely rather than rendering
+empty.
+
+### LP-134. Reorderable Dashboard Widgets
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+`admin/views/dashboard.php`'s widgets (Recent Posts, Recent Comments,
+Quick Draft, System Information, Popular Downloads, Update Status, plus
+whatever a plugin adds via the `dashboard_widgets` action) render in a
+fixed, hardcoded order inside `.lp-admin__grid` — there is no way for
+an admin to rearrange them to match their own workflow (e.g. Quick
+Draft first, System Information last), the way classic WordPress's
+Dashboard has always supported via drag-and-drop. Order should be
+per-user, not site-wide — different admins/editors care about
+different widgets first.
+
+`admin/assets/js/sortable.js`'s existing AJAX mode (LP-083, currently
+used by the Post/Page editor sidebar's drag-to-reorder meta boxes) is
+the right mechanism to reuse rather than building a new drag-and-drop
+implementation: it already POSTs a full order snapshot via `fetch()`
+with no page reload, and `UserService::updateEditorLayoutPreferences()`
+already establishes the exact "per-user JSON blob, read-modify-write"
+persistence shape this needs — see its sibling
+`getListViewMode()`/`setListViewMode()` pair for the simpler read/write
+half of that same convention.
+
+### Checklist
+
+- [x] Give every dashboard widget a stable id (`recent_posts`,
+      `recent_comments`, `quick_draft`, `system_information`,
+      `popular_downloads`, `update_status`) and wrap each
+      `<section class="lp-admin__widget">` with `data-lp-sortable-item
+      data-lp-sortable-id="..."` plus a drag handle, matching
+      `sortable.js`'s AJAX-mode markup contract exactly.
+- [x] A plugin-registered widget (`dashboard_widgets` action) needs a
+      stable id too — extend the action's contract (or add a
+      `dashboard_widget_ids` filter alongside it) so a plugin can
+      declare its own id rather than being permanently pinned to the
+      end of the list.
+- [x] `UserService`: reused `getEditorLayoutPreferences()`/
+      `updateEditorLayoutPreferences()` unchanged (already generic
+      over `$screenType`, confirmed via a new regression test rather
+      than assumed) instead of adding a parallel
+      `dashboardWidgetOrder()`/`updateDashboardWidgetOrder()` pair —
+      the "smaller diff" branch this checklist item itself offered as
+      an option.
+- [x] Reused the existing `save_editor_layout` AJAX sub-action
+      (`admin/views/partials/editor-layout-save.php`) with a new
+      `'dashboard'` screen type, instead of a separate
+      `save_dashboard_layout` action — same reasoning as the item
+      above; `dashboard.php` wires `data-lp-sortable-ajax-url`/
+      `data-lp-sortable-ajax-csrf` to it exactly like `posts/new.php`/
+      `pages.php` already do.
+- [x] `dashboard.php` renders widgets in the current user's saved
+      order (falling back to today's hardcoded order for anyone who's
+      never dragged anything, and placing any widget id from a
+      since-deactivated plugin nowhere rather than erroring); a
+      newly-added widget id not yet present in a saved order appears
+      appended at the end rather than disappearing.
+- [x] Keyboard-accessible reordering — `sortable.js` gained an opt-in
+      Move Up/Move Down button contract (`data-lp-sortable-move="up"/
+      "down"`), reusing the exact same `persistState()`/reposition-form
+      code a drag already calls. Only Dashboard renders these buttons
+      for now; the Widgets/Menus/editor-sidebar screens' own pre-
+      existing mouse-only gap is unchanged (flagged separately, not
+      folded into this ticket).
+- [x] `docs/DEVELOPER-APIS.md`: documented the new `dashboard_widget_ids`
+      filter and the `data-lp-sortable-item`/drag-handle markup a
+      plugin's own widget `<section>` needs to be individually
+      repositionable, plus the "multiple plugins' widgets cluster
+      together" limitation.
+- [x] Verify end-to-end on the dev install: dragging (via the Move
+      buttons; equivalent to a mouse drag since both call the same
+      `persistState()`) a widget to a new position persists across a
+      reload; the "Site Visitors" widget (Visitor & Post View
+      Statistics plugin) renders with its own working drag handle/Move
+      buttons at its correct declared position. Per-user scoping is
+      guaranteed by construction (keyed on `$currentUser->id`, the
+      same mechanism already covering the Post/Page editor's identical
+      per-user layout) and covered by a new regression test, rather
+      than separately verified with a second live admin account this
+      session.
+
+**2026-08-31:** Implemented by reusing LP-083's existing Post/Page
+editor-sidebar reorder machinery end-to-end rather than building a
+parallel system for Dashboard: `UserService::getEditorLayoutPreferences()`/
+`updateEditorLayoutPreferences()` are unchanged (already generic over
+`$screenType`), `editor-layout-save.php`'s screen-type allowlist grew
+one entry (`'dashboard'`), and `sortable.js`'s AJAX mode is unchanged
+except for one new addition: opt-in Move Up/Move Down buttons
+(`data-lp-sortable-move`), added specifically to give Dashboard a
+keyboard-accessible path without waiting on a wider drag-and-drop
+keyboard fix across the other screens that already use this script.
+Each core widget's `<h2>` now carries a drag handle + Move buttons
+(kept *inside* the `<h2>` rather than as a sibling, so the heading
+stays `:first-child` for the existing header-bleed CSS treatment);
+`content/plugins/visitor-stats/`'s Dashboard panel got the identical
+markup plus a new `dashboard_widget_ids` filter listener so it's
+individually repositionable, not just always rendered last —
+`docs/DEVELOPER-APIS.md` documents this as the contract any other
+plugin's Dashboard widget should follow going forward. Verified on the
+dev install: Move Up/Down persisted a reordered widget across a page
+reload (confirmed via the actual saved order, not just the in-page
+DOM), the Visitor Stats widget dragged and rendered correctly at its
+new position, no horizontal overflow at 375px width, and the `PHP Test
+Suite`'s `UserServiceTest` (47 tests, including one new regression test
+proving the reused storage methods work identically for `'dashboard'`
+as they already did for `'post'`/`'page'`) passes.
+
+### LP-135. Comment Status Counts on Comments &rsaquo; All Comments
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+`admin/views/comments.php`'s status filter row (All / Pending /
+Approved / Spam / Trash) currently shows plain text labels with no
+counts, unlike the equivalent filter row on All Posts/All Pages/All
+Downloads, which each show a count per tab (`All (25)`, `Draft (0)`,
+etc.) via `{Post,Page,Download}Service::countByStatus()`.
+`CommentService::countByStatus(CommentStatus $status): int` already
+exists (`app/Services/CommentService.php`), so this is UI wiring, not
+new counting logic — mirror `admin/views/posts/all-posts.php`'s exact
+`$statusCounts`/`$statusLinks` construction (lines ~129&ndash;140).
+
+One real discrepancy to resolve before just copying that pattern,
+though: `PostService::paginateForAdmin()` deliberately excludes Trash
+from an unfiltered ("All") query, so All Posts' `$allCount` is a sum
+of every *non-Trash* status and that's genuinely what the "All" tab's
+link shows. `CommentService::paginateForAdmin()` has no such exclusion
+— passing `statusFilter: null` returns literally every comment,
+Trash included. Decide (and confirm with Ariane if it's not obvious
+which is intended) whether Comments' "All" should:
+  - match Posts' convention (exclude Trash from both the "All" link's
+    query and its count), which would be a small behavior change to
+    `CommentService::paginateForAdmin()`/`admin/views/comments.php`
+    beyond just adding counts, or
+  - keep today's "All" = literally everything behavior, in which case
+    the "All" count must sum **all four** statuses (including Trash)
+    to stay accurate, not just Pending+Approved+Spam.
+    Whichever is chosen, the count shown must always match what clicking
+    that tab actually lists — that's the actual bug risk here, not the
+    choice itself.
+
+### Checklist
+
+- [x] Decide/confirm the "All" Trash-inclusion question above. Decided:
+      match Posts' convention — Trash excluded from "All", Spam stays
+      included (only Trash's exclusion is new; nothing about Spam's
+      visibility under "All" changed).
+- [x] `admin/views/comments.php`: compute `$statusCounts` via
+      `CommentService::countByStatus()` for each `CommentStatus` case,
+      append `' (' . $count . ')'` to each filter tab's label (and to
+      "All"), mirroring `all-posts.php`'s `$statusLinks` construction.
+- [x] `CommentService::paginateForAdmin()` gained the matching
+      `c.status != 'trash'` exclusion when `$statusFilter` is null,
+      covered by a new `Unit/Services/CommentServiceTest.php` test
+      (`testPaginateForAdminWithNoStatusFilterExcludesTrash`).
+- [x] Verify end-to-end on the dev install: each tab's count matches
+      the actual number of comments listed under it (confirmed against
+      real accumulated spam data: All (199) = Approved (97) + Spam
+      (102), Pending (0), Trash (0)) — counts come straight from
+      `countByStatus()` on every page load, so there's no caching to
+      go stale.
+
+### LP-136. Empty Spam Action on Comments
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+`admin/views/comments.php`'s Trash tab has an "Empty Trash" button
+(`CommentService::emptyTrash()`, permanently deletes every Trashed
+comment) but the Spam tab has no equivalent — a site accumulating spam
+comments has no bulk way to actually delete them, only mark them
+individually/in bulk as spam (which just changes their status, doesn't
+remove them). Mirror the existing Empty Trash feature exactly, scoped
+to Spam instead.
+
+`CommentService::emptyTrash()` is hardcoded to `CommentStatus::Trash`
+with no status parameter — generalize it (e.g. a
+`emptyByStatus(CommentStatus $status): int` method, with `emptyTrash()`
+becoming a one-line call to it with `CommentStatus::Trash`) rather than
+copy-pasting a near-identical `emptySpam()` method.
+
+Related but explicitly out of scope for this ticket: classic WordPress
+auto-deletes both Trashed and Spam comments after 30 days
+(`EMPTY_TRASH_DAYS`, via the `wp_scheduled_delete` cron job). Lumora
+Press has no real cron — any equivalent auto-expiry would need the
+"cron-free scheduled check on page load" pattern
+`GitHubReleaseProvider::maybeCheckForUpdates()` already established.
+Worth a future ticket if Ariane wants it; this ticket is the manual
+"Empty Spam" button only, not automatic expiry.
+
+### Checklist
+
+- [x] `CommentService`: generalize `emptyTrash()` into
+      `emptyByStatus(CommentStatus $status): int`
+      (`emptyTrash()` becomes a thin wrapper calling it with
+      `CommentStatus::Trash`, so nothing calling `emptyTrash()` today
+      needs to change). Covered by a new
+      `testEmptyByStatusDeletesOnlyThatStatus` test proving the Spam
+      case specifically (deletes only Spam-status comments, leaves a
+      Trash-status one untouched).
+- [x] `admin/views/comments.php`: an `empty_spam` form handler
+      (mirrors the existing `empty_trash` handler exactly — same CSRF
+      action-name pattern, same redirect-with-flash shape) and an
+      "Empty Spam" button shown only on the Spam tab (mirrors the
+      existing Trash-tab-only "Empty Trash" button, including its
+      `data-lp-confirm` permanent-delete warning and the `$pagination['total'] > 0`
+      guard so it doesn't show on an already-empty Spam tab).
+- [x] A distinct success flash message ("Spam emptied.") on redirect
+      back to the Spam tab, not reusing "Trash emptied."
+- [x] Verify end-to-end on the dev install — with a caveat: the dev
+      install has 102 real accumulated spam comments, not disposable
+      test data, so the button's actual click-through wasn't exercised
+      live (that would have permanently deleted them without Ariane's
+      go-ahead). Verified instead via the passing `emptyByStatus()`
+      unit test above (proves the Spam-only deletion logic) plus
+      confirming the button/form render correctly only on the Spam tab
+      with the right hidden fields, CSRF token, and confirm-dialog
+      text. A real click-through remains untested but is the same
+      code path Empty Trash already exercises successfully in
+      production.
+
+### LP-137. Delete Inactive Themes: Bulk and Single Card Actions
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+Appearance &rsaquo; Themes already lets an admin delete one inactive
+theme at a time (`ThemesController::deleteTheme()`), but only from
+inside the "Details" dialog — no quick per-card Delete action, and no
+way to delete several unused themes at once. Same shape as LP-133
+("Delete Inactive Plugins"), ported to Themes' own layout: unlike
+Plugins, Themes has no separate List/table view to add checkboxes to
+— just one card grid (`lp-theme-grid`) — so bulk selection lives
+directly on the cards via checkboxes associated with an out-of-band
+`<form>` through the HTML `form=""` attribute (same technique LP-133
+used, but here there's no need to even wrap the grid in a form at all,
+since the checkboxes never need to be DOM descendants of it).
+
+### Checklist
+
+- [x] A quick "Delete" action directly on each inactive theme's card
+      (next to Preview/Activate), not just inside the Details dialog —
+      same `data-lp-confirm` permanent-delete warning the existing
+      Details dialog Delete button already uses. Both forms reuse one
+      `$deleteCsrfField` (mirroring the file's own pre-existing
+      `$activateCsrfField` pattern), since Delete now renders twice
+      per theme instead of once.
+- [x] A checkbox on each inactive theme's card (overlaid on its
+      screenshot's top-left corner, since there's no list/table header
+      row to give it a column) plus a `.lp-admin__bulk-actions` bar
+      ("Bulk actions" select with a single "Delete" option + Apply
+      button + a "Select all" checkbox), only rendered at all when at
+      least one theme is deletable. Checkboxes reference the bulk form
+      via `form=""` rather than the grid being wrapped in one.
+- [x] `ThemesController::bulkDeleteThemes(array $post, ?string
+      $csrfToken): AdminActionResult` — verifies each submitted slug
+      still exists and isn't the active theme before deleting, skips
+      (rather than errors on) anything active or already gone, and
+      reports a "N deleted, M skipped" summary. Covered by four new
+      `Unit/Controllers/Admin/ThemesControllerTest.php` tests
+      (success, active-theme + unknown-slug skip, nothing-selected
+      error, CSRF failure).
+- [x] Verify end-to-end on the dev install using disposable throwaway
+      theme fixtures (never `default`/`duskline`/`xena-theme`, the
+      real installed themes): single card-Delete and bulk "select
+      just the throwaway slug &rarr; Delete &rarr; Apply" both removed
+      only the intended theme directories, confirmed against the
+      filesystem directly; all three real themes were untouched
+      throughout. (The bulk "Select all" checkbox itself was verified
+      to correctly select every inactive theme including real ones —
+      confirming the UI has no scoping bug — but the actual submit was
+      deliberately narrowed to just the throwaway slug before firing,
+      rather than letting a live click delete real installed themes;
+      the active-theme skip itself is covered by the controller's own
+      passing unit test instead of a second live click.)
+
+### LP-138. Theme Preview Persists Across Front-End Navigation
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+Appearance &rsaquo; Themes' "Preview" link opens `?lp_preview_theme={slug}`
+on the homepage (`index.php`'s gated, request-scoped
+`ThemePreview::activate()` — LP-044), but the preview only lasts for
+that single request: `ThemePreview` is a plain static, reset on every
+new PHP process, and nothing in `post_permalink()`/`page_permalink()`/
+`category_permalink()`/`tag_permalink()`/`author_url()`/nav menu links
+carries the query parameter forward. The instant a previewing admin
+clicks any link on the page, they're silently back on the real active
+theme with no indication anything changed. Lumora Gallery solved the
+identical problem in v1.12.0 (`TODO.md #9`, its own `?theme=` preview
+param) by threading the param through every internal link-building
+function via one small helper
+(`lumora_theme_preview_link()`) rather than a cookie/session — port
+that exact approach rather than inventing a different mechanism.
+
+Deliberately out of scope, matching Gallery's own actual shipped
+scope: GET form submissions (the search box would need a hidden input,
+not a link rewrite — forms replace their target's whole query string
+on submit), RSS/sitemap URLs, `canonical_url()`/Open Graph meta (these
+must keep reflecting the real public URL, not the previewer's session
+state), and admin/asset URLs. This ticket is link-based navigation
+only.
+
+### Checklist
+
+- [x] `ThemePreview::appendToLink(string $url): string` — appends
+      `lp_preview_theme={slug}` to `$url` (respecting whether it
+      already has a `?`) when a preview is active for this request,
+      otherwise returns `$url` unchanged. A plain `preview_theme_link()`
+      wrapper in `include/helpers.php` exposes it as a normal
+      template-tag-style function, matching every other public helper's
+      naming. Also refuses to touch a different-host URL (a nav menu's
+      custom link can point off-site), verified by dedicated tests —
+      not in the original plan, added once nav_menu() made it clear an
+      admin-only preview param has no business leaking onto a
+      third-party link.
+- [x] Wired into every internal link-building function a theme
+      template actually uses to navigate: `post_permalink()`,
+      `page_permalink()`, `category_permalink()`, `tag_permalink()`
+      (`include/permalink-functions.php`), `author_url()`
+      (`include/author-functions.php`), `search_result_permalink()`.
+      `get_page_breadcrumbs()`/pagination needed no separate change —
+      the former already routes through `page_permalink()`, and
+      `render_pagination()` already builds its links from the current
+      request's own query string, so it inherits the param
+      automatically once it's actually present on the page being
+      paginated (confirmed live, not just by inspection).
+- [x] `include/menus.php`'s `nav_menu()`: nav menu item URLs are
+      resolved and stored as plain strings at admin-save time (not
+      recomputed per-request), so they got their own explicit
+      `preview_theme_link()` call at render time, not just a patched
+      permalink function.
+- [x] Regression tests: `ThemePreviewTest::appendToLink()` (no-op when
+      inactive, root-relative append, existing-query-string `&`
+      separator, same-host vs. different-host absolute URLs),
+      `NavMenuFunctionsTest` (internal link gets the param, external
+      link never does), and a `PermalinkFunctionsTest` smoke test
+      proving `category_permalink()` is actually wired up correctly,
+      not just that `appendToLink()` itself works in isolation. Full
+      suite: 1989/1989 passing.
+- [x] Verified end-to-end on the dev install: previewed Duskline
+      (Default is the real active theme) from Appearance &rsaquo;
+      Themes, then followed a real post link, a category archive link,
+      and a nav menu link — the preview banner and Duskline's markup
+      stayed active across all three hops. RSS feed and `/admin` links
+      on the previewed page correctly never picked up the parameter.
+      Navigating to the same URL with the parameter dropped
+      immediately showed the real active theme with no banner,
+      confirming nothing leaks to a normal visitor.
+
+
+### LPP-015. Lumora Gallery Shortcodes
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+An optional integration plugin letting authors embed content from a
+separately-installed Lumora Gallery site into Lumora Press posts/pages
+via shortcodes: whole albums, the newest N images from an album,
+specific image(s) from an album, and the newest N images across the
+entire gallery. Thumbnails link to the real full-size image and open it
+in Lumora Press's own existing PhotoSwipe lightbox
+(`MediaViewer`/`ContentRenderer::addLightboxAttributes()`, LP-031) —
+no new lightbox JavaScript needed, just the same `data-pswp-*`
+attribute convention every other lightbox-wrapped image in this
+codebase already uses. Each rendered gallery block also links to the
+album's own page on the Gallery site below the images.
+
+Per `CLAUDE.md`'s Future Compatibility/Independence rules, this is
+strictly optional: Lumora Press must remain fully functional with this
+plugin absent or deactivated, and Lumora Gallery must never be required
+or assumed installed. No role/capability gate on the shortcode itself:
+it renders the same for every visitor and is available to whoever can
+already edit the post/page it's typed into, the same as every other
+shortcode in this codebase (`include/shortcodes.php`,
+`app/Core/Shortcodes/Shortcodes.php`,
+`app/Services/FolderGalleryShortcode.php` — none of which are
+role-gated either). Ordinary Lumora Press content-authoring permissions
+already govern who can put a shortcode into published content in the
+first place; this feature doesn't need a second, narrower access model
+layered on top of that.
+
+### Data access
+
+Lumora Gallery has no REST API. Following the precedent already
+established by `content/plugins/wordpress-importer/`'s direct database
+connection (`WordPressSource`), this plugin should open its own
+independent, read-only PDO connection to a separately-configured Lumora
+Gallery database (host/name/user/password/prefix entered on this
+plugin's own Settings screen) rather than assuming any shared Core,
+API, or filesystem access between the two applications. No changes to
+Lumora Gallery's own codebase are required for this half of the
+integration — see the companion ticket below for the one piece that
+does need Gallery-side work.
+
+Relevant Lumora Gallery schema (`install/schema.sql`, read-only from
+this plugin's side):
+
+- `{PREFIX}albums` — `id`, `category_id`, `folder`, `title`,
+  `description`, `visibility` (0=public/1=private), `pos`, `hits`,
+  `thumb_image_id`.
+- `{PREFIX}images` — `id`, `album_id`, `filename`, `title`, `filesize`,
+  `width`, `height`, `hits`, `approved` (1=visible/0=hidden/pending),
+  `pos`, `added_at`. Thumbnail file is always
+  `LUMORA_THUMB_PREFIX . filename` in the same album folder as the
+  full-size original.
+
+Only `visibility = 0` (public) albums and `approved = 1` images may
+ever be queried or rendered by this plugin — a private album or an
+unapproved/pending image must never be reachable through a Lumora Press
+shortcode, regardless of the inserting staff member's own Gallery
+permissions (this plugin has no concept of a Gallery user account or
+Gallery-side login at all — it's a read-only, unauthenticated-as-a-
+gallery-visitor data source).
+
+### Checklist
+
+#### Settings
+
+- [x] New Settings screen (own top-level admin menu entry, mirroring
+      Downloads/Contact Forms/Lumora Shield's own pattern) for the
+      Gallery database connection (host, port, database name, username,
+      password, table prefix) and the Gallery site's public base URL
+      (needed to build "View album" links and thumbnail/full-image
+      URLs, since this plugin has no access to Gallery's own PHP
+      URL-building helpers)
+- [x] "Test connection" action confirming the configured credentials
+      can open a read-only connection and see at least the `albums`/
+      `images` tables, without exposing raw connection errors/stack
+      traces to the admin screen (per `CLAUDE.md`'s "fail securely"
+      requirement)
+- [x] Graceful behavior when the Gallery database is unreachable at
+      shortcode-render time (network/DB down, credentials revoked after
+      being saved): render nothing rather than a fatal error or a
+      broken image, matching `FolderGalleryShortcode`'s own "fewer
+      thumbnails than expected is fine, a crash is not" precedent
+
+#### Shortcodes
+
+- [x] `[lumora_gallery_album]` — all public/approved images in one
+      album, by `album_id` or `folder`
+- [x] `[lumora_gallery_album count="N"]` — newest N images from one
+      album (requires `album_id`/`folder` plus `count`)
+- [x] `[lumora_gallery_album image_id="..."]` — one or more specific
+      images from an album, by `image_id` (comma-separated for
+      multiple, e.g. `image_id="4,9,12"`)
+- [x] `[lumora_gallery_newest count="N"]` — newest N images across the
+      entire gallery (every public album, approved images only)
+- [x] Every variant's thumbnail links to the real full-size image and
+      opens it in Lumora Press's existing PhotoSwipe lightbox — reuse
+      `MediaViewer::markUsed()` so `footer.php` loads PhotoSwipe only on
+      pages that actually use it, and the same `data-pswp-width`/
+      `data-pswp-height`/`data-pswp-caption` attribute convention
+      `ContentRenderer::addLightboxAttributes()` already establishes
+      (the Gallery `images` table's own `width`/`height` columns supply
+      the dimensions directly, no image processing needed on this
+      plugin's side)
+- [x] Every variant renders a "View album" link to the album's own page
+      on the Gallery site (built from the configured Gallery base URL +
+      album folder/id) below the thumbnails
+- [x] Public-facing markup follows `CLAUDE.md`'s Public-Facing CSS
+      Rule: stable `lp-gallery-shortcode__*`-style classes, styling in
+      the active theme's `style.css` (propagated to every theme under
+      `custom themes/` per that same rule), no inline styles, dark-mode
+      variant included
+- [x] New "Lumora Gallery Shortcodes &rsaquo; Shortcodes" admin page
+      listing every supported shortcode with its attributes and a
+      ready-to-copy example of each — same shape as the Downloads
+      plugin's own `admin/views/downloads/shortcodes.php` (LPP-009):
+      one `<h2><code>[shortcode]</code></h2>` section per shortcode, an
+      attributes list, and a handful of `<pre><code>` example snippets
+      covering the real variants (whole album by `album_id`/by
+      `folder`, `count="N"`, `image_id="..."`, and
+      `[lumora_gallery_newest count="N"]`). Needs a second child menu
+      entry ("Shortcodes") alongside the existing "Settings" one in
+      `admin/index.php`'s `lumora-gallery-shortcodes` menu block,
+      mirroring the Downloads plugin's own `settings`/`shortcodes`
+      sibling-children pattern. Unlike Downloads' page (which pulls
+      real category names/IDs from this site's own database for its
+      example values), this plugin has no local album data to draw
+      from — examples should use clearly-a-placeholder values
+      (`album_id="12"`, `folder="some-album"`) rather than implying a
+      real album exists
+
+#### Companion Lumora Gallery work (see LG-052 in Lumora Gallery's own
+      TODO.md — tracked there, not here, since it's a change to a
+      different codebase)
+
+- [x] Basic `[lumora_gallery_album]` shortcode text (with the correct
+      `album_id`/`folder`) shown on Lumora Gallery's own Album
+      information admin page, and the equivalent single-image shortcode
+      shown on its Image information admin page — a copy-paste
+      convenience for staff, not something this plugin can build itself
+- [x] Same shortcode-snippet display on the equivalent public-facing
+      Gallery pages (album page, image page), visible only to a logged-
+      in staff visitor there too
+
+**2026-08-31:** Implemented as designed above —
+`content/plugins/lumora-gallery-shortcodes/` (`GallerySettingsService`
+for the persisted connection settings via `ActiveConfig`/`PressConfig`,
+same pattern `LumoraShieldService` already established;
+`GalleryQueryService` for the read-only queries against the configured
+Gallery database, every method scoped to `visibility = 0`/`approved = 1`
+and swallowing `Throwable` into an empty result; `GalleryShortcode` for
+the `content_html` rendering). Settings screen at Lumora Gallery
+Shortcodes → Settings, its own top-level admin menu entry mirroring
+Lumora Shield/Visitor Stats. `image_id` needs no separate `album_id`/
+`folder` attribute — an image id is already globally unique in the
+Gallery's own schema, so `[lumora_gallery_album image_id="4,9,12"]`
+alone resolves the owning album automatically for the "View album" link
+via a new `GalleryQueryService::findAlbumForImage()`. 45 new unit tests
+(`GalleryQueryServiceTest.php`, `GalleryShortcodeTest.php`) against a
+new SQLite-native `albums`/`images` fixture
+(`SqliteDatabaseFactory::withLumoraGalleryFixtures()`, the same "just
+enough to exercise the query-building logic" scope that factory's own
+`ngg_*` WordPress-importer fixtures already establish for a foreign
+schema); full suite (1971 tests) and PHPStan both pass clean. `.lp-
+gallery-shortcode__*` CSS added to the default theme and propagated to
+both `custom themes/duskline` and `custom themes/xena-theme`, matching
+`.lp-folder-gallery`'s own structure/dark-mode-via-shared-tokens
+approach. Verified end-to-end on the dev install against a real,
+already-populated Lumora Gallery dev database
+(`lumoragallery_preview`): both shortcode variants rendered real
+thumbnails whose full-size/thumbnail URLs returned 200 OK, correct
+`data-pswp-width`/`data-pswp-height` attributes were present, PhotoSwipe
+loaded via `MediaViewer::markUsed()`, the "View album"/"View gallery"
+links resolved correctly, and the Settings screen's "Save & Test
+Connection" action reported "Connected successfully" against those real
+credentials. Test post and its content removed from the dev database
+afterward; the plugin was left active there with its Settings pointed
+at that real Gallery database, since it's a genuine working
+configuration rather than leftover test data — flagged to Ariane in
+case she'd rather deactivate it or point it elsewhere.
+
+**2026-08-31 (follow-up):** Added the "Lumora Gallery Shortcodes ›
+Shortcodes" admin doc page — `admin/views/lumora-gallery-shortcodes/
+shortcodes.php`, a new "Shortcodes" child menu entry alongside
+"Settings" in `admin/index.php`'s `lumora-gallery-shortcodes` block,
+same shape as Downloads' own `admin/views/downloads/shortcodes.php`
+(LPP-009): one section per shortcode with an attributes list and
+copy-paste `<pre><code>` examples. Since this plugin has no local
+album data of its own, every example uses an explicit placeholder
+(`album_id="12"`, `folder="some-album"`) rather than a real one. Also
+shows a warning banner (`GallerySettingsService::isConfigured()`)
+when no Gallery database connection is set up yet, linking to the
+Settings screen. Verified live on the dev install both with the real
+`lumoragallery_preview` connection configured (no warning shown) and
+with it temporarily cleared (warning appeared correctly, then the
+real settings were restored byte-for-byte). Full suite (1971 tests)
+still passes. This closes out the ticket — every checklist item,
+including the companion LG-052 work (shipped and released as Lumora
+Gallery v1.18.0), is now done.
+
+### Deliverables
+
+- `content/plugins/lumora-gallery-shortcodes/` plugin (own `README.md`,
+  own Settings screen, `plugin.php` main file)
+- Unit tests covering shortcode parsing/rendering against a fixture
+  Gallery-schema SQLite database (mirroring how
+  `content/plugins/downloads/` and `wordpress-importer` tests avoid
+  needing a real MySQL connection), including the visibility/approved
+  filtering
+- `docs/THIRD-PARTY.md`/`docs/DEVELOPER-APIS.md` updates if this
+  plugin introduces any new hook/filter or third-party dependency
+  beyond the already-documented PhotoSwipe
+
+### LPP-016. WordPress Importer: Render/Convert NextGEN Gallery Shortcodes
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+`WordPressImportService::importNextGenGalleries()` (LPP-004, already
+shipped) already imports every NextGEN gallery/album's images into a
+real Media Manager Folder — but any `[nggallery ...]`/`[ngg_images
+...]`/`[album ...]` shortcode left in migrated post/page content is
+only ever flagged as an import warning by `flagUnsupportedShortcodes()`
+(`WordPressImportService.php:3212`) and rendered as inert literal
+bracket text, "since NextGEN's own gallery display has no Lumora Press
+equivalent yet" (that method's own comment, and `admin/views/
+maintenance/import.php`'s "NextGEN Gallery" import-options blurb, both
+still accurate as of this ticket). This ticket closes that gap: convert
+the recognized NextGEN shortcode forms into Lumora Press's own existing
+`[lumora_folder_gallery folder_id="Y" link="full"]` shortcode
+(`app/Services/FolderGalleryShortcode.php`, LP-122) at render time, so
+a migrated page just works without hand-editing — the same "shortcode
+already sitting inert in migrated content becomes something real"
+shape `DownloadsShortcode` already established for Simple Download
+Monitor's `[sdm_show_dl_from_category]` (LPP-004/007).
+
+### How resolution works
+
+`WordPressImportService::createOrUpdateFolder()`
+(`WordPressImportService.php:2142-2160`) already records a
+`ContentImportRegistry` entry for every Folder it creates — entity type
+`'folder'`, external id the NextGEN gallery's own `gid` (galleries,
+`(string) $gallery['gid']`, `importNextGenGalleries()` line ~2640) or
+the NextGEN album's own `id` (albums, `(string) $album['id']`, same
+method, ~line 2628). This means a NextGEN gallery/album id embedded in
+a shortcode resolves straight to its imported Folder via
+`ContentImportRegistry::existingLocalId('wordpress_import', 'folder',
+$externalId)` — the exact same resolution shape
+`DownloadsShortcode::resolveItemByExternalId()` already uses for
+`'media'`/`'redirect'`, just against `'folder'` instead. No new mapping
+table, no changes to `importNextGenGalleries()` itself required — the
+data this needs was already being recorded.
+
+### Design
+
+New `NextGenGalleryShortcode` class in
+`content/plugins/wordpress-importer/src/`, mirroring
+`DownloadsShortcode`'s own shape (constructor-injectable
+`ContentImportRegistry`/`FolderService` for tests, a lazy real
+`Database` connection otherwise). Registered on the `content_html`
+filter in `wordpress-importer.php`, but **at priority 5, not
+`DownloadsShortcode`'s 20** — this class must rewrite its matched
+shortcode text into `[lumora_folder_gallery ...]` syntax *before* core's
+own `FolderGalleryShortcode` (registered at the default priority 10 in
+`include/bootstrap.php:609`) gets a chance to scan the same
+`content_html` pass, since `HookManager::applyFilters()` threads one
+string through every registered callback in priority order within a
+single pass (confirmed: not a separate re-render step) — a rewrite
+landing at priority 10+ would be scanned too late for
+`FolderGalleryShortcode` to ever see it.
+
+An id that doesn't resolve (gallery/album never imported — no gallery
+path was configured for that import run, or the source picture files
+were missing) renders nothing, matching every other shortcode class's
+own established "fewer images than expected is fine, broken markup is
+not" convention (`FolderGalleryShortcode`, `DownloadsShortcode`, both
+already do this).
+
+### Checklist
+
+- [x] `[nggallery id="X"]` — one gallery, rewritten to
+      `[lumora_folder_gallery folder_id="Y" link="full"]`
+- [x] `[nggallery ids="1,2,3"]` — multiple galleries; since
+      `FolderGalleryShortcode` only ever renders one Folder per
+      shortcode instance, resolve each id independently and emit one
+      `[lumora_folder_gallery folder_id="..."]` block per resolved
+      gallery, concatenated in the given order (an unresolved id in the
+      list is simply skipped, not treated as a hard failure for the
+      whole shortcode)
+- [x] `[album id="X"]` — a NextGEN album; resolves to the album's own
+      parent Folder (which already contains every child gallery's
+      images, since `importNextGenGalleries()` files them underneath
+      it) the same way a gallery id resolves to its Folder
+- [x] `[ngg_images source="galleries" container_ids="X" ...]` /
+      `source="albums" container_ids="X" ...]` — NextGEN 3+'s newer
+      shortcode form; `container_ids` may itself be comma-separated,
+      handled the same way `[nggallery ids="..."]` is above.
+      `display_type`/other NextGEN-specific display attributes are
+      ignored — this always renders Lumora Press's own single grid
+      layout regardless of what NextGEN's original display type was
+- [x] `[ngg src="galleries" ids="X" display="..." thumbnail_crop="0"
+      ...]` — an older/alternate NextGEN shortcode form using `ngg` as
+      the tag name with `src`/`ids` attributes (functionally equivalent
+      to `[ngg_images source=... container_ids=...]` above, just
+      different attribute names); `display`/`thumbnail_crop`/other
+      NextGEN-specific attributes ignored for the same reason
+- [x] `[nggtags gallery="X"]` (deprecated tag-based form) and
+      `[ngg_slideshow id="X" ...]` (an interactive slideshow display,
+      not a static grid) stay **out of scope** — left exactly as today
+      (flagged as an import warning, rendered as inert text). Worth
+      revisiting only if a real migrated site actually uses either.
+- [x] `flagUnsupportedShortcodes()`'s existing `[ngg` warning
+      (`WordPressImportService.php:3212`) is narrowed so it only fires
+      for the still-unsupported forms above (`[nggtags`, `[ngg_slideshow`),
+      not every `[ngg`-prefixed shortcode — a page using only the newly
+      supported forms shouldn't get a stale "no Lumora Press equivalent
+      yet" warning once one actually exists
+- [x] Update `admin/views/maintenance/import.php`'s "NextGEN Gallery"
+      import-options blurb (currently: "Any page still using a
+      `[ngg_...]` shortcode is listed in the warnings below rather than
+      rendered, since NextGEN's own gallery display has no Lumora Press
+      equivalent yet") to describe the new behavior accurately, the same
+      way its neighboring "Simple Download Monitor" bullet already
+      describes `[sdm_show_dl_from_category]` rendering automatically
+- [x] Unit tests: shortcode parsing/rewriting for every supported form
+      above (including the multi-id and album cases), the priority-5
+      registration actually running before `FolderGalleryShortcode`'s
+      render within one `content_html` pass (an end-to-end fixture
+      test, not just this class in isolation), and an unresolved id
+      rendering nothing rather than broken markup
+- [x] Verify end-to-end against a real NextGEN-sourced import (the same
+      kind of fixture data LPP-004's own original verification used):
+      a migrated page's `[nggallery id="X"]` renders a real thumbnail
+      grid whose thumbnails open the correct full-size images in the
+      PhotoSwipe lightbox
+
+**2026-08-31:** Implemented as designed above — new
+`NextGenGalleryShortcode` (`content/plugins/wordpress-importer/src/`),
+registered on `content_html` at priority 5 in `wordpress-importer.php`.
+`flagUnsupportedShortcodes()` narrowed to only warn on `[nggtags`/
+`[ngg_slideshow`; the pre-existing
+`WordPressImportServiceTest::testRunImportsNextGenGalleryGalleriesAndTheirMedia`
+fixture (using the real `[ngg_images source="galleries" ids="2"]` form
+from a production import) was updated to assert zero warnings for that
+now-supported shortcode instead of one. 11 new unit tests
+(`NextGenGalleryShortcodeTest.php`), including an end-to-end test
+chaining the real `FolderGalleryShortcode` after the rewrite to prove
+the priority-5-before-10 ordering actually produces working markup, not
+just correct-looking rewritten text. Full suite (1949 tests) and
+PHPStan both pass clean. Verified live on the dev install: a real post
+with `[nggallery id="..."]` (external id mapped to an existing Media
+Manager Folder via a `content_import_records` row, mirroring what
+`importNextGenGalleries()` itself records) rendered a full
+`lp-folder-gallery` grid — every thumbnail's `<img>` returned 200 OK,
+correct `data-pswp-width`/`data-pswp-height` attributes were present,
+and PhotoSwipe's CSS/JS loaded via `MediaViewer::markUsed()` exactly as
+LP-031's existing lightbox convention expects. Test post and its
+`content_import_records` row were removed from the dev database
+afterward.
+
+------
+
+### LPP-017. Insert Shortcode Picker: Register Contact Forms and Gallery Shortcodes
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (5/5 checklist items complete)
+
+### Goal
+
+LP-110 built the Insert Shortcode picker with exactly three registered
+shortcodes — Font Awesome's `[icon]`, Downloads' `[lumora_downloads]`,
+and WordPress Importer's `[sdm_show_dl_from_category]` — "matching this
+ticket's own three-shortcode scope" by design at the time. Two real
+shortcode-bearing plugins have shipped since (Contact Forms/LPP-003 and
+Lumora Gallery Shortcodes/LPP-015) and neither was ever added to the
+picker's registry, so `[contact_form]`/`[lumora_gallery_album]`/
+`[lumora_gallery_newest]` still had to be typed by hand even though
+every other active shortcode had a form-based picker. Raised by the
+user after noticing the picker felt Downloads-only in practice.
+
+Core's own `[lumora_folder_gallery]` (LP-122) has the identical gap but
+was explicitly left out of this ticket's scope by the user's own
+choice — still typeable by hand only.
+
+### Checklist
+
+- [x] `contact-forms.php` hooks `register_shortcodes`, registering
+      `[contact_form]` with an `id` Select field built from
+      `ContactFormService::listAll()` — mirrors `downloads.php`'s own
+      `$kernel->database`/`$kernel->config` construction pattern
+- [x] `lumora-gallery-shortcodes.php` hooks `register_shortcodes`,
+      registering `[lumora_gallery_album]` (`album_id` Select) and
+      `[lumora_gallery_newest]` (`count` Number, default `10`). New
+      `GalleryQueryService::listAlbums()` method (public albums,
+      title-sorted) backs the Select's choices — queried directly
+      against the plugin's own separately-configured Gallery
+      connection, not `$kernel`, the same way `GalleryShortcode`
+      itself already does. An unconfigured/unreachable Gallery
+      connection yields an empty choices list rather than an error.
+      Covers only the album shortcode's "whole album" variant —
+      `count`/`image_id` on `[lumora_gallery_album]` are left typeable
+      by hand, matching LP-110's own established scope convention
+- [x] Unit test: `GalleryQueryServiceTest::testListAlbumsReturnsPublicAlbumsSortedByTitle`
+      and `testListAlbumsReturnsEmptyArrayOnQueryFailure` (a dropped
+      `albums` table, mirroring every other query method's own
+      fail-safe test in this class)
+- [x] `ContactFormService::listAll()` already had its own test coverage
+      (`ContactFormServiceTest`) — reused as-is, no new test needed for
+      registration itself since it's a thin picker-metadata wrapper
+      around already-tested behavior, matching LP-110's own choice not
+      to directly unit-test its three registration closures either
+- [x] Browser-verified on the dev install: all six shortcodes now
+      appear in the picker (`Icon`, `Downloads from Category
+      (Imported)`, `Downloads from Category`, `Contact Form`, `Gallery
+      Album`, `Gallery — Newest Images`). Inserted `[lumora_gallery_album]`
+      against a real configured Gallery connection (produced
+      `[lumora_gallery_album album_id="1"]` against a real album title
+      list) and `[contact_form]` against a real configured form
+      (produced `[contact_form id="1"]`) — both exactly the minimal
+      text hand-typing would produce. Full PHP Test Suite (2069 tests,
+      96 skipped Integration/ as expected without a configured test DB)
+      still passes.
+
+### LPP-018. Lumora Gallery Shortcodes: Auto-Detect Connection Settings from config.php
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+Lumora Gallery Shortcodes &rsaquo; Settings requires typing the Gallery
+site's database host/name/user/password/table prefix by hand, one
+field at a time — every value one could instead read straight off the
+Gallery install's own `config.php`, the same problem the WordPress
+Importer plugin already solved for a source WordPress site's
+`wp-config.php` (`WordPressConfigParser`, `admin/views/maintenance/
+import.php`'s "Auto-detect from wp-config.php" section). Port that
+exact pattern here.
+
+Lumora Gallery's `config.php` uses `define('DB_HOST', ...)`/
+`DB_NAME`/`DB_USER`/`DB_PASS`/`DB_PREFIX` constants (see that
+project's own `config.sample.php`) — close enough to WordPress's own
+shape to reuse the identical plain-text, never-`include`d/`eval`d
+parsing approach, just with different constant names and no
+`$table_prefix` variable form or uploads-path resolution to handle
+(this plugin only ever needs a database connection, never filesystem
+access to the Gallery install).
+
+One value config.php can't provide, unlike wp-config.php's uploads
+path: Gallery's `base_url` setting isn't a config.php constant at all
+— it lives in Gallery's own `{prefix}config` database table. Detecting
+it needs an actual best-effort read-only query against the
+just-detected connection (before the admin has saved anything), not
+more text parsing.
+
+### Checklist
+
+- [x] `GalleryConfigParser` (`content/plugins/lumora-gallery-shortcodes/
+      src/GalleryConfigParser.php`) — mirrors `WordPressConfigParser`'s
+      exact safety contract (plain-text pattern matching only, never
+      `include`d/`eval`d) for `DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASS`/
+      `DB_PREFIX`, including the same host:port splitting behavior.
+- [x] `GallerySettingsService::detectBaseUrl(array $settings): ?string`
+      — a best-effort, read-only query for the `base_url` row in the
+      just-detected (not-yet-saved) connection's `{prefix}config`
+      table; fails silently (`null`) on any connection/query error,
+      matching `connect()`/`testConnection()`'s existing fail-safe
+      shape.
+- [x] Settings screen: a "Auto-detect from config.php" section (own
+      form/CSRF action, hidden carry-forward fields for whatever's
+      already typed in the connection form below it) mirroring the
+      WordPress Importer's identical two-forms-on-one-page UX exactly,
+      including a `$formValues`/`$showPasswordPlaceholder` merge so a
+      freshly-detected (not yet saved) password round-trips correctly
+      on Save instead of being silently discarded by the existing
+      "posted-back dots means keep the saved password" logic.
+- [x] `PHP Test Suite` coverage: 6 new `GalleryConfigParserTest` cases
+      mirroring `WordPressConfigParserTest`'s own shape (standard
+      parse, host:port split, no-port-present, partial config, missing
+      file throws, never-executed-as-PHP proof).
+      `GallerySettingsService::detectBaseUrl()` itself has no unit
+      test, matching the pre-existing gap for its sibling `connect()`/
+      `testConnection()` methods (all three need a real MySQL
+      connection, untestable via the SQLite fixture factory).
+- [x] Verified end-to-end against `lumoragallery-preview`, a real
+      Lumora Gallery dev install on this machine: pointed Detect at
+      its real `config.php`, confirmed every DB_* field pre-filled
+      correctly (including correcting a deliberately-wrong persisted
+      `db_host` back to the real one) and the real `base_url` was
+      read back from the Gallery's own database and pre-filled too;
+      confirmed the password field shows a masked placeholder when
+      the detected value matches what's already saved, and the real
+      plaintext value when it doesn't (so it isn't lost on Save);
+      Save & Test Connection against the freshly-detected values
+      succeeded for real. Full `PHP Test Suite` (1995 tests) passes.
