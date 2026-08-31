@@ -6,6 +6,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Lumora Gallery Shortcodes plugin (LPP-015): a new optional plugin
+  embedding albums/images from a separately-installed Lumora Gallery
+  site into posts and pages — `[lumora_gallery_album]` (a whole album,
+  the newest N images from it, or specific images by id) and
+  `[lumora_gallery_newest]` (the newest N images across the entire
+  gallery). Thumbnails open the real full-size image in the same
+  PhotoSwipe lightbox every other gallery in Lumora Press uses, and
+  each block links back to the album (or the gallery site itself) on
+  the Gallery. Reads the Gallery's database directly, read-only, via
+  its own Settings screen — Lumora Gallery is never required for Lumora
+  Press to work, and nothing on the Gallery side needs to change.
 - WordPress Importer (LPP-016): NextGEN Gallery shortcodes
   (`[nggallery id=...]`/`ids="..."`, `[album id=...]`, `[ngg_images
   source="galleries"/"albums" container_ids=...]`, and the older `[ngg

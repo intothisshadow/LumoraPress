@@ -391,6 +391,13 @@ $lumoraShieldActive = in_array('lumora-shield', $activePlugins, true);
  * same way.
  */
 $visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
+/*
+ * LPP-015: mirrors $lumoraShieldActive/$visitorStatsActive's exact
+ * reasoning immediately above — Lumora Gallery Shortcodes' admin screen
+ * is its entire reason to exist, so it gets a real top-level menu entry,
+ * gated the same way.
+ */
+$galleryShortcodesActive = in_array('lumora-gallery-shortcodes', $activePlugins, true);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
@@ -472,6 +479,17 @@ $menu = [
         'visitor-stats' => [
             'label' => 'Visitor Stats',
             'icon' => '📈',
+            'capability' => 'manage_options',
+            'default_child' => 'settings',
+            'children' => [
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+            ],
+        ],
+    ] : []),
+    ...($galleryShortcodesActive ? [
+        'lumora-gallery-shortcodes' => [
+            'label' => 'Gallery Shortcodes',
+            'icon' => '🖼️',
             'capability' => 'manage_options',
             'default_child' => 'settings',
             'children' => [

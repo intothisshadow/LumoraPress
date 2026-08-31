@@ -1905,3 +1905,69 @@ img.lp-folder-gallery__thumb {
         height: 100px;
     }
 }
+
+/* =========================================================
+   Lumora Gallery Shortcodes (LPP-015)
+   ========================================================= */
+/*
+ * Rendered by the optional Lumora Gallery Shortcodes plugin's
+ * [lumora_gallery_album]/[lumora_gallery_newest] shortcodes — a row of
+ * thumbnails pulled from a separately-installed Lumora Gallery site,
+ * plus a "View album"/"View gallery" link back to it. Deliberately
+ * structured like .lp-folder-gallery/.lp-downloads-list above (same
+ * item-grid + optional title shape) so it reads as part of the same
+ * design system rather than a one-off.
+ */
+.lp-gallery-shortcode {
+    margin: 1.5em 0;
+}
+
+.lp-gallery-shortcode__title {
+    margin: 0 0 0.5em;
+}
+
+.lp-gallery-shortcode__items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75em;
+    margin: 0 0 0.75em;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-gallery-shortcode__item {
+    display: block;
+}
+
+.lp-gallery-shortcode__link,
+.lp-gallery-shortcode__thumb {
+    display: block;
+}
+
+/* "img.lp-gallery-shortcode__thumb" — see img.lp-folder-gallery__thumb's
+   own comment above for why the element selector is needed to win
+   against .lp-post__content img's lower-specificity max-width rule. */
+img.lp-gallery-shortcode__thumb {
+    width: 150px;
+    height: 150px;
+    object-fit: cover;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+}
+
+.lp-gallery-shortcode__view-link {
+    display: inline-block;
+    font-size: 0.9rem;
+    color: var(--lp-accent);
+}
+
+.lp-gallery-shortcode__view-link:hover {
+    color: var(--lp-accent-hover);
+}
+
+@media (max-width: 720px) {
+    img.lp-gallery-shortcode__thumb {
+        width: 100px;
+        height: 100px;
+    }
+}

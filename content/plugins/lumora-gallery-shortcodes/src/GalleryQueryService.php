@@ -1,0 +1,276 @@
+<?php
+
+/**
+ * Read-only queries against a separately-installed Lumora Gallery site's database, backing this plugin's shortcodes.
+ *
+ * @package LumoraPress
+ * @subpackage Plugins
+ * @author Ariane
+ * @copyright Copyright (c) 2026 Ariane
+ * @license GPL-3.0-or-later
+ * @link https://coding.unloved-heart.net/scripts/lumorapress
+ * @source https://github.com/intothisshadow/LumoraPress
+ * @since 0.8.0
+ */
+
+declare(strict_types=1);
+
+namespace LumoraPress\Plugins\LumoraGalleryShortcodes;
+
+use LumoraPress\Core\Database\Database;
+use Throwable;
+
+/**
+ * Every query here is scoped to `visibility = 0` (public) albums and
+ * `approved = 1` images unconditionally — a private album or an
+ * unapproved/pending image must never be reachable through a Lumora
+ * Press shortcode (see this ticket's own "Data access" note in
+ * `TODO-PLUGINS.md`), regardless of the inserting staff member's own
+ * Gallery permissions. This plugin has no concept of a Gallery user
+ * account or login at all; it reads exactly what a logged-out Gallery
+ * visitor could see.
+ *
+ * Every public method swallows `Throwable` and returns an empty
+ * result rather than letting a query failure (a stale/dropped table, a
+ * connection that died mid-request) surface as a fatal error on this
+ * site's own public pages — matches `FolderGalleryShortcode`'s own
+ * "fewer thumbnails than expected is fine, a crash is not" precedent.
+ *
+ * `LIMIT` is always an already-`(int)`-cast, clamped PHP value
+ * interpolated directly into the SQL string, never bound as a
+ * parameter — matches `MediaService::query()`'s own established
+ * convention in this codebase (a bound `LIMIT :param` is unreliable
+ * across PDO drivers/configurations without extra type-binding
+ * ceremony this codebase doesn't otherwise use).
+ */
+final class GalleryQueryService
+{
+    private const MAX_IMAGES = 200;
+
+    public function __construct(
+        private readonly Database $database,
+        private readonly string $tablePrefix,
+    ) {
+    }
+
+    /**
+     * @return array{id: int, folder: string, title: string}|null
+     */
+    public function findAlbum(?int $albumId, ?string $folder): ?array
+    {
+        try {
+            if ($albumId !== null) {
+                $row = $this->database->fetchOne(
+                    'SELECT id, folder, title FROM ' . $this->albumsTable() . ' WHERE id = :id AND visibility = 0',
+                    ['id' => $albumId],
+                );
+            } elseif ($folder !== null && $folder !== '') {
+                $row = $this->database->fetchOne(
+                    'SELECT id, folder, title FROM ' . $this->albumsTable() . ' WHERE folder = :folder AND visibility = 0',
+                    ['folder' => $folder],
+                );
+            } else {
+                return null;
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $row === null ? null : ['id' => (int) $row['id'], 'folder' => (string) $row['folder'], 'title' => (string) $row['title']];
+    }
+
+    /**
+     * The public album a given image belongs to — used by
+     * `GalleryShortcode` to resolve the "View album" link when
+     * `image_id` was given with no explicit `album_id`/`folder` of its
+     * own.
+     *
+     * @return array{id: int, folder: string, title: string}|null
+     */
+    public function findAlbumForImage(int $imageId): ?array
+    {
+        try {
+            $row = $this->database->fetchOne(
+                'SELECT a.id, a.folder, a.title FROM ' . $this->albumsTable() . ' a
+                    INNER JOIN ' . $this->imagesTable() . ' i ON i.album_id = a.id
+                    WHERE i.id = :image_id AND a.visibility = 0',
+                ['image_id' => $imageId],
+            );
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $row === null ? null : ['id' => (int) $row['id'], 'folder' => (string) $row['folder'], 'title' => (string) $row['title']];
+    }
+
+    /**
+     * Every approved image in one album, in the Gallery's own manual
+     * ordering (`pos`), the same order the Gallery site itself displays
+     * an album in.
+     *
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int}>
+     */
+    public function imagesForAlbum(int $albumId): array
+    {
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT id, filename, title, width, height FROM ' . $this->imagesTable() . '
+                    WHERE album_id = :album_id AND approved = 1
+                 ORDER BY pos ASC, id ASC
+                    LIMIT ' . self::MAX_IMAGES,
+                ['album_id' => $albumId],
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map($this->hydrateImage(...), $rows);
+    }
+
+    /**
+     * The newest `count` approved images from one album, newest first —
+     * a distinct ordering from `imagesForAlbum()` above, deliberately:
+     * "newest N" is meant to read most-recent-first, not in the album's
+     * own manual display order.
+     *
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int}>
+     */
+    public function newestInAlbum(int $albumId, int $count): array
+    {
+        $limit = max(1, min($count, self::MAX_IMAGES));
+
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT id, filename, title, width, height FROM ' . $this->imagesTable() . '
+                    WHERE album_id = :album_id AND approved = 1
+                 ORDER BY added_at DESC, id DESC
+                    LIMIT ' . $limit,
+                ['album_id' => $albumId],
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map($this->hydrateImage(...), $rows);
+    }
+
+    /**
+     * One or more specific approved images, by id, each still required
+     * to belong to a public album — `image_id="4,9,12"` needs no
+     * separate `album_id`/`folder` attribute, since an image id is
+     * already globally unique in the Gallery's own schema; this joins
+     * to `albums` purely to enforce the same public-album visibility
+     * check every other query here applies, not to scope by one album.
+     * `$imageIds` order is preserved in the result (not re-sorted by
+     * date/position), so `image_id="9,4,12"` renders in exactly that
+     * order.
+     *
+     * @param array<int, int> $imageIds
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int}>
+     */
+    public function imagesByIds(array $imageIds): array
+    {
+        if ($imageIds === []) {
+            return [];
+        }
+
+        $imageIds = array_slice($imageIds, 0, self::MAX_IMAGES);
+        $placeholders = [];
+        $params = [];
+
+        foreach ($imageIds as $index => $imageId) {
+            $key = "image_id{$index}";
+            $placeholders[] = ":{$key}";
+            $params[$key] = $imageId;
+        }
+
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT i.id, i.filename, i.title, i.width, i.height FROM ' . $this->imagesTable() . ' i
+                    INNER JOIN ' . $this->albumsTable() . ' a ON a.id = i.album_id
+                    WHERE i.approved = 1 AND a.visibility = 0 AND i.id IN (' . implode(',', $placeholders) . ')',
+                $params,
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $byId = [];
+
+        foreach ($rows as $row) {
+            $byId[(int) $row['id']] = $this->hydrateImage($row);
+        }
+
+        $ordered = [];
+
+        foreach ($imageIds as $imageId) {
+            if (isset($byId[$imageId])) {
+                $ordered[] = $byId[$imageId];
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * The newest `count` approved images across every public album,
+     * gallery-wide.
+     *
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int, albumId: int, albumFolder: string}>
+     */
+    public function newestAcrossGallery(int $count): array
+    {
+        $limit = max(1, min($count, self::MAX_IMAGES));
+
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT i.id, i.filename, i.title, i.width, i.height, i.album_id, a.folder AS album_folder
+                    FROM ' . $this->imagesTable() . ' i
+                    INNER JOIN ' . $this->albumsTable() . ' a ON a.id = i.album_id
+                    WHERE i.approved = 1 AND a.visibility = 0
+                 ORDER BY i.added_at DESC, i.id DESC
+                    LIMIT ' . $limit,
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'filename' => (string) $row['filename'],
+                'title' => (string) $row['title'],
+                'width' => (int) $row['width'],
+                'height' => (int) $row['height'],
+                'albumId' => (int) $row['album_id'],
+                'albumFolder' => (string) $row['album_folder'],
+            ],
+            $rows,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{id: int, filename: string, title: string, width: int, height: int}
+     */
+    private function hydrateImage(array $row): array
+    {
+        return [
+            'id' => (int) $row['id'],
+            'filename' => (string) $row['filename'],
+            'title' => (string) $row['title'],
+            'width' => (int) $row['width'],
+            'height' => (int) $row['height'],
+        ];
+    }
+
+    private function albumsTable(): string
+    {
+        return $this->tablePrefix . 'albums';
+    }
+
+    private function imagesTable(): string
+    {
+        return $this->tablePrefix . 'images';
+    }
+}
