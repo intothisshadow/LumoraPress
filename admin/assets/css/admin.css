@@ -938,12 +938,36 @@ body.lp-admin-login {
 }
 
 .lp-theme-card__screenshot-wrap {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--lp-admin-bg);
     border-bottom: 1px solid var(--lp-admin-border);
     padding: 0.75rem;
+}
+
+/*
+ * LP-137: bulk-select checkbox for an inactive theme's card, overlaid
+ * on its screenshot corner rather than taking its own row in the
+ * card body — there's no list/table view here to give it a header
+ * column the way Plugins/Media's bulk checkboxes get one.
+ */
+.lp-theme-card__select {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    box-shadow: var(--lp-admin-shadow);
+    cursor: pointer;
 }
 
 .lp-theme-card__screenshot {

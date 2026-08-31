@@ -42,6 +42,7 @@ if ($form !== '') {
     $result = match ($form) {
         'activate_theme' => $controller->activateTheme($_POST, $csrfToken),
         'delete_theme' => $controller->deleteTheme($_POST, $csrfToken),
+        'bulk_delete_themes' => $controller->bulkDeleteThemes($_POST, $csrfToken),
         'update_theme' => $controller->updateTheme($_POST, $_FILES, $csrfToken),
         'install_theme' => $controller->installTheme($_FILES, $csrfToken),
         'branding' => $controller->saveBranding($_POST, $_FILES, $currentUser->id, $csrfToken),
@@ -81,6 +82,17 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
     <div class="lp-alert lp-alert--success">Theme deleted.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['bulk_deleted'])): ?>
+    <?php $bulkDeletedThemeCount = (int) $_GET['bulk_deleted']; ?>
+    <?php $bulkSkippedThemeCount = (int) ($_GET['bulk_skipped'] ?? 0); ?>
+    <div class="lp-alert lp-alert--success">
+        <?= $bulkDeletedThemeCount ?> theme<?= $bulkDeletedThemeCount === 1 ? '' : 's' ?> deleted.
+        <?php if ($bulkSkippedThemeCount > 0): ?>
+            <?= $bulkSkippedThemeCount ?> skipped (active, or already removed).
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
 <?php if (isset($_GET['updated'])): ?>
     <div class="lp-alert lp-alert--success">Updated &ldquo;<?= esc_html((string) $_GET['updated']) ?>&rdquo;.</div>
 <?php endif; ?>
@@ -93,6 +105,23 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
             <label for="theme-search">Search themes</label>
             <input type="search" id="theme-search" data-lp-theme-search placeholder="Search by name, author, or tag&hellip;">
         </p>
+    <?php endif; ?>
+
+    <?php $hasDeletableThemes = array_filter($themeList, static fn (\LumoraPress\Core\Theme\ThemeInfo $info): bool => !$info->isActive) !== []; ?>
+
+    <?php if ($hasDeletableThemes): ?>
+        <form id="themes-bulk-form" method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__bulk-actions" data-lp-bulk-form>
+            <?= Csrf::field('bulk_delete_themes') ?>
+            <input type="hidden" name="form" value="bulk_delete_themes">
+            <label class="lp-visually-hidden" for="themes-select-all">Select all</label>
+            <input type="checkbox" id="themes-select-all" data-lp-select-all="theme_slugs[]" data-lp-select-all-scope="section">
+            <label class="lp-visually-hidden" for="themes-bulk-action">Bulk action</label>
+            <select id="themes-bulk-action" name="bulk_action">
+                <option value="">Bulk actions</option>
+                <option value="delete">Delete</option>
+            </select>
+            <button type="submit" class="lp-button lp-button--secondary" data-lp-confirm="Delete the selected themes permanently? This cannot be undone.">Apply</button>
+        </form>
     <?php endif; ?>
 
     <div class="lp-theme-grid" data-lp-theme-grid>
@@ -109,12 +138,22 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
              * invalidating whichever form was rendered first (the
              * LP-012-style collision its own docblock above warns about,
              * just within a single theme's two forms rather than across
-             * themes).
+             * themes). LP-137's new card-level quick Delete button
+             * reuses $deleteCsrfField for the exact same reason, now
+             * that Delete also renders twice per theme (card + details)
+             * instead of once.
              */
             $activateCsrfField = Csrf::field('activate_theme_' . $info->slug);
+            $deleteCsrfField = Csrf::field('delete_theme_' . $info->slug);
             ?>
             <div class="lp-theme-card<?= $info->isActive ? ' lp-theme-card--active' : '' ?>" data-lp-theme-card data-theme-search="<?= esc_attr($searchHaystack) ?>">
                 <div class="lp-theme-card__screenshot-wrap">
+                    <?php if (!$info->isActive): ?>
+                        <label class="lp-theme-card__select">
+                            <span class="lp-visually-hidden">Select "<?= esc_html($info->name) ?>"</span>
+                            <input type="checkbox" name="theme_slugs[]" value="<?= esc_attr($info->slug) ?>" form="themes-bulk-form">
+                        </label>
+                    <?php endif; ?>
                     <?php if ($info->screenshotUrl !== null): ?>
                         <img class="lp-theme-card__screenshot" src="<?= esc_url($info->screenshotUrl) ?>" alt="">
                     <?php else: ?>
@@ -144,6 +183,12 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                                 <input type="hidden" name="form" value="activate_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--primary">Activate</button>
+                            </form>
+                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this theme permanently? This cannot be undone.">
+                                <?= $deleteCsrfField ?>
+                                <input type="hidden" name="form" value="delete_theme">
+                                <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                <button type="submit" class="lp-button lp-button--danger">Delete</button>
                             </form>
                         <?php endif; ?>
                     </div>
@@ -222,7 +267,7 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
                                 <button type="submit" class="lp-button lp-button--primary">Activate</button>
                             </form>
                             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this theme permanently? This cannot be undone.">
-                                <?= Csrf::field('delete_theme_' . $info->slug) ?>
+                                <?= $deleteCsrfField ?>
                                 <input type="hidden" name="form" value="delete_theme">
                                 <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                 <button type="submit" class="lp-button lp-button--danger">Delete</button>

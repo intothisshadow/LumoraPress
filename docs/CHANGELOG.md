@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Appearance &rsaquo; Themes (LP-137): inactive themes can now be
+  deleted directly from the Themes grid — a quick "Delete" action on
+  each card (previously only available inside the "Details" dialog),
+  plus a checkbox-driven "Bulk actions" bar for deleting several
+  inactive themes at once.
 - Comments (LP-135, LP-136): the status filter row (All / Pending /
   Approved / Spam / Trash) now shows a count on every tab, matching
   All Posts/Pages/Downloads' existing `Label (N)` convention. "All"

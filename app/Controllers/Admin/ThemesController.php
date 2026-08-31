@@ -111,6 +111,55 @@ final class ThemesController
     }
 
     /**
+     * LP-137: bulk counterpart to deleteTheme() above — same per-slug
+     * active-theme guard, applied to every submitted slug rather than
+     * one, skipping (never erroring on) anything active or already
+     * gone so one bad slug in the batch doesn't abort the rest.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function bulkDeleteThemes(array $post, ?string $csrfToken): AdminActionResult
+    {
+        if (!Csrf::verify('bulk_delete_themes', $csrfToken)) {
+            return $this->invalidRequest();
+        }
+
+        $slugs = array_values(array_unique(array_map('strval', (array) ($post['theme_slugs'] ?? []))));
+
+        if ($slugs === []) {
+            return AdminActionResult::error('Select at least one theme.');
+        }
+
+        $themesBySlug = [];
+
+        foreach ($this->themes->discover() as $info) {
+            $themesBySlug[$info->slug] = $info;
+        }
+
+        $deletedCount = 0;
+        $skippedCount = 0;
+
+        foreach ($slugs as $slug) {
+            $target = $themesBySlug[$slug] ?? null;
+
+            if ($target === null || $target->isActive) {
+                $skippedCount++;
+
+                continue;
+            }
+
+            try {
+                $this->themeInstaller->delete($slug);
+                $deletedCount++;
+            } catch (\Throwable) {
+                $skippedCount++;
+            }
+        }
+
+        return AdminActionResult::redirect(admin_url('appearance/themes') . '?bulk_deleted=' . $deletedCount . '&bulk_skipped=' . $skippedCount);
+    }
+
+    /**
      * @param array<string, mixed> $post
      * @param array<string, mixed> $files
      */
