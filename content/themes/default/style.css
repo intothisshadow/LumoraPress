@@ -1590,6 +1590,20 @@ img {
     text-decoration: underline;
 }
 
+/* LP-132: shown only when Settings > Privacy has a Privacy Policy Page
+   configured — see footer.php's own privacy_policy_url() check. */
+.lp-site-footer__privacy-link {
+    color: var(--lp-accent);
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.lp-site-footer__privacy-link:hover,
+.lp-site-footer__privacy-link:focus {
+    color: var(--lp-accent-hover);
+    text-decoration: underline;
+}
+
 /* LP-123: additional per-theme footer content, distinct from the
    fixed "Powered by Lumora Press" line above it
    (.lp-site-footer__powered-by). */

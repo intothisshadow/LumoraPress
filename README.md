@@ -292,6 +292,31 @@ an older PHP version can be safely phased out.
   (`GitHubReleaseProvider`) — enabling or disabling one never affects the
   other.
 
+## Cookies
+
+Lumora Press sets a small, fixed set of cookies — useful reference for
+writing your own site's privacy/cookie policy.
+
+- **Session cookie** (`PHPSESSID` or your server's configured session
+  cookie name). Strictly necessary — keeps a logged-in admin/editor
+  session working. Set only for a logged-in user, never for an
+  anonymous visitor.
+- **Remember-me cookie**, set only when a user checks "Remember Me" on
+  the login screen. Strictly necessary for the feature the user
+  explicitly opted into; never set otherwise.
+- **`lp_commenter_name`/`lp_commenter_email`/`lp_commenter_url`** —
+  optional convenience cookies that pre-fill a guest's name/email/
+  website on their next comment. Off by default site-wide (Settings
+  &rsaquo; Discussion &rsaquo; "Enable comment cookies consent"), and
+  even when the site owner turns that on, an individual guest still
+  has to check "Save my name/email in this browser for next time" on
+  the comment form itself before any of the three is ever set — no
+  guest gets these cookies without their own explicit, per-comment
+  opt-in.
+
+Nothing else in Lumora Press core sets a cookie. A theme or plugin you
+install may set its own — check its own documentation.
+
 ## Current Status
 
 **Version 0.8.0**

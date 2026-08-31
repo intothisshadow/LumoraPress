@@ -26,6 +26,10 @@
         </nav>
         <p class="lp-site-footer__powered-by"><?= powered_by_html() ?></p>
         <a class="lp-site-footer__feed-link" href="<?= esc_url(home_url('feed')) ?>">Subscribe via RSS</a>
+        <?php $lpPrivacyPolicyUrl = privacy_policy_url(); ?>
+        <?php if ($lpPrivacyPolicyUrl !== null): ?>
+            <a class="lp-site-footer__privacy-link" href="<?= esc_url($lpPrivacyPolicyUrl) ?>">Privacy Policy</a>
+        <?php endif; ?>
         <?php if (has_footer_html()): ?>
             <?php footer_html(); ?>
         <?php endif; ?>

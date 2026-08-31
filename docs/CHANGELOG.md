@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Default theme footer (LP-132): now links to the Page configured in
+  Settings &rsaquo; Privacy as the site's Privacy Policy Page, when one
+  is set — previously that setting had no visible effect anywhere on
+  the public site unless an admin manually added the link to a Footer
+  menu or Theme Options' custom Footer HTML.
 - Lumora Gallery Shortcodes plugin (LPP-015): a new optional plugin
   embedding albums/images from a separately-installed Lumora Gallery
   site into posts and pages — `[lumora_gallery_album]` (a whole album,
