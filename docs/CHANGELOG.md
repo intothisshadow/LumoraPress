@@ -184,6 +184,17 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Downloads &rsaquo; Shortcodes and Lumora Gallery Shortcodes &rsaquo;
+  Shortcodes: the `[shortcode ...]` example blocks ran off the right
+  edge of the screen on narrow mobile viewports instead of wrapping,
+  since a bare `<pre>` has no wrapping or box styling of its own.
+  Every admin panel's shortcode example now wraps and sits in its own
+  bordered box instead.
+- Appearance &rsaquo; Themes: each theme card's screenshot preview sat
+  in a near-black letterbox background, making it look like a stray
+  black border around the image. Now uses the same light page
+  background every other admin panel uses, with a subtle bottom border
+  instead.
 - Admin bulk-actions bar (Media Manager's "Move selected to&hellip;"
   row, and the Categories/Pages/Posts/Comments/Users/Downloads list
   screens' "Bulk actions" row): on narrow mobile viewports, the row's

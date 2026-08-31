@@ -631,6 +631,25 @@ body.lp-admin-login {
 }
 
 /*
+ * A bare <pre><code> shortcode example (Downloads/Lumora Gallery
+ * Shortcodes' own doc pages) has no box of its own and no wrapping by
+ * default, so a long attribute string runs off the right edge on a
+ * narrow viewport instead of wrapping. Docs pages that already have a
+ * dedicated pre rule (e.g. .lp-theme-details__document) take
+ * precedence via specificity, so this is just the fallback for plain
+ * panel content.
+ */
+.lp-admin__panel pre {
+    padding: 0.6rem 0.75rem;
+    margin: 0.5rem 0;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/*
  * LP-091: bled to the panel's own edges via negative margin (exactly
  * offsetting .lp-admin__panel/.lp-admin__widget's uniform 1.5rem
  * padding, so this only works because every panel shares that same
@@ -868,7 +887,8 @@ body.lp-admin-login {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--lp-admin-sidebar-bg);
+    background: var(--lp-admin-bg);
+    border-bottom: 1px solid var(--lp-admin-border);
     padding: 0.75rem;
 }
 
