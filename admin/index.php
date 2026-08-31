@@ -494,6 +494,7 @@ $menu = [
             'default_child' => 'settings',
             'children' => [
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),

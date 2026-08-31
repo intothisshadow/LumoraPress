@@ -41,6 +41,9 @@ Available to whoever can already edit the post/page a shortcode is
 typed into — no separate role/capability gate, the same as every other
 shortcode in Lumora Press.
 
+**Lumora Gallery Shortcodes &rsaquo; Shortcodes** in the admin has the
+full attribute reference and copy-paste examples for both shortcodes.
+
 ## Settings
 
 Lumora Gallery Shortcodes &rsaquo; Settings needs:

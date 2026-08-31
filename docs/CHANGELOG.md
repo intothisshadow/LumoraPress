@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Lumora Gallery Shortcodes plugin (LPP-015): new "Shortcodes" admin
+  page documenting `[lumora_gallery_album]`/`[lumora_gallery_newest]`
+  — attributes and copy-paste examples for every variant, same shape
+  as the Downloads plugin's own Shortcodes reference page.
 - Default theme footer (LP-132): now links to the Page configured in
   Settings &rsaquo; Privacy as the site's Privacy Policy Page, when one
   is set — previously that setting had no visible effect anywhere on
