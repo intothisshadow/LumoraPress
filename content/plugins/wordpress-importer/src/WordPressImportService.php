@@ -3195,13 +3195,18 @@ final class WordPressImportService
     /**
      * WordPress shortcodes this import has no equivalent for (Simple
      * Download Monitor's own display shortcode, and NextGEN Gallery's
-     * own gallery-embed shortcode) are left as literal, inert text in
-     * imported content — this import brings the underlying download/
-     * gallery-image data in via importDownloads()/importNextGenGalleries()
-     * above, but has no shortcode processor of its own to make either
-     * one actually render anything. Flagged as a warning per occurrence
-     * so every affected page/post is visible in the import summary
-     * rather than silently shipping broken-looking content.
+     * `[nggtags]`/`[ngg_slideshow]` forms) are left as literal, inert
+     * text in imported content — flagged as a warning per occurrence so
+     * every affected page/post is visible in the import summary rather
+     * than silently shipping broken-looking content.
+     *
+     * NextGEN's other, more common shortcode forms (`[nggallery
+     * id=...]`/`[nggallery ids="..."]`, `[album id=...]`, `[ngg_images
+     * ...]`, `[ngg src=... ids=... ...]`) are deliberately *not* flagged
+     * here (LPP-016) — `NextGenGalleryShortcode` rewrites those into
+     * core's own `[lumora_folder_gallery]` shortcode at render time, so
+     * a page using only those forms renders correctly and a stale "no
+     * Lumora Press equivalent yet" warning would be actively wrong.
      */
     private function flagUnsupportedShortcodes(int $wpId, string $title, string $content): void
     {
@@ -3209,8 +3214,8 @@ final class WordPressImportService
             $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [sdm_show_dl...] shortcode — Simple Download Monitor's download listing has no Lumora Press equivalent yet, so it will show as plain text.";
         }
 
-        if (str_contains($content, '[ngg')) {
-            $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [ngg...] shortcode — NextGEN Gallery's own gallery display has no Lumora Press equivalent yet, so it will show as plain text. The gallery's images were still imported into Media Manager.";
+        if (str_contains($content, '[nggtags') || str_contains($content, '[ngg_slideshow')) {
+            $this->warnings[] = "#{$wpId} (\"{$title}\") still contains a [nggtags...]/[ngg_slideshow...] shortcode — NextGEN Gallery's tag-based gallery and slideshow displays have no Lumora Press equivalent yet, so they will show as plain text. The gallery's images were still imported into Media Manager.";
         }
 
         if (str_contains($content, '[table ')) {

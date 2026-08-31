@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- WordPress Importer (LPP-016): NextGEN Gallery shortcodes
+  (`[nggallery id=...]`/`ids="..."`, `[album id=...]`, `[ngg_images
+  source="galleries"/"albums" container_ids=...]`, and the older `[ngg
+  src=... ids=...]` form) left in migrated post/page content now render
+  a real image grid automatically — thumbnails link to the full-size
+  image and open it in the same PhotoSwipe lightbox every other gallery
+  in Lumora Press uses. No manual page editing needed after import.
+  `[nggtags ...]`/`[ngg_slideshow ...]` still have no equivalent and are
+  flagged as an import warning as before.
 - Insert Shortcode toolbar button, in both the Markdown and WYSIWYG
   editors: pick a registered shortcode and fill in its attributes via a
   real form — a category picker, an icon browser, a checkbox — instead

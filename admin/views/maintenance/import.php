@@ -709,10 +709,13 @@ endif;
                 Folder named after the gallery. Requires a local filesystem
                 copy of the source site's own <code>wp-content/gallery</code>
                 folder (separate from the uploads folder above — see the
-                "Gallery folder path" field below). Any page still using a
-                <code>[ngg_...]</code> shortcode is listed in the warnings
-                below rather than rendered, since NextGEN's own gallery
-                display has no Lumora Press equivalent yet.
+                "Gallery folder path" field below). A page using
+                <code>[nggallery id=...]</code>, <code>[album id=...]</code>,
+                <code>[ngg_images ...]</code>, or <code>[ngg src=... ids=...]</code>
+                automatically renders a real image grid after import — no
+                manual page editing needed. <code>[nggtags ...]</code> and
+                <code>[ngg_slideshow ...]</code> still have no Lumora Press
+                equivalent and are listed in the warnings below instead.
             </li>
         </ul>
 

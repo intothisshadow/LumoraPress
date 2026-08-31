@@ -44,6 +44,7 @@ require_once __DIR__ . '/src/InternalLinkRewriter.php';
 require_once __DIR__ . '/src/ImportProgress.php';
 require_once __DIR__ . '/src/WordPressImportService.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
+require_once __DIR__ . '/src/NextGenGalleryShortcode.php';
 
 /*
  * The import flow itself (WordPressSource/WordPressImportService) has
@@ -66,6 +67,18 @@ require_once __DIR__ . '/src/DownloadsShortcode.php';
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
+
+/*
+ * NextGenGalleryShortcode (LPP-016) rewrites migrated NextGEN Gallery
+ * shortcodes into core's own [lumora_folder_gallery] syntax — it never
+ * renders anything itself, so it must run at a priority *lower* than
+ * FolderGalleryShortcode's own content_html registration (the default
+ * priority 10, see include/bootstrap.php) for that rewritten text to
+ * still be seen and rendered within the same filter pass.
+ */
+$nextGenGalleryShortcode = new NextGenGalleryShortcode();
+
+add_filter('content_html', static fn (string $html): string => $nextGenGalleryShortcode->rewriteShortcodes($html), 5);
 
 /*
  * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"

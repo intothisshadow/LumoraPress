@@ -110,11 +110,18 @@ a local copy of the source site's `wp-content/uploads` folder.
   become real Media items filed into that folder — needs a separate
   local filesystem copy of the source site's `wp-content/gallery` folder
   (a sibling of `wp-content/uploads`, entered on its own "Gallery folder
-  path" field; left blank, this step is skipped entirely). A page/post
-  still containing a `[ngg_...]` shortcode is flagged in the warnings
-  rather than rendered — the gallery's images are still imported either
-  way, just not the shortcode display itself. NextGEN's separate album
-  grouping (a set of galleries) isn't imported.
+  path" field; left blank, this step is skipped entirely). NextGEN's
+  separate album grouping (`ngg_album`, a set of galleries) is imported
+  too, as its own parent Folder. A page/post using `[nggallery
+  id=...]`/`ids="..."`, `[album id=...]`, `[ngg_images
+  source="galleries"/"albums" container_ids=...]`, or the older `[ngg
+  src=... ids=...]` form renders a real image grid automatically after
+  import, thumbnails linking to the full-size image in the same
+  PhotoSwipe lightbox every other gallery in Lumora Press uses — no
+  manual page editing needed. `[nggtags ...]`/`[ngg_slideshow ...]`
+  still have no Lumora Press equivalent and are flagged in the warnings
+  instead; the gallery's images are still imported either way, just not
+  the shortcode display itself.
 - A Simple Download Monitor download's own featured image (set the same
   way a Post/Page's featured image is, via `_thumbnail_id`) is imported
   as that download's thumbnail — shown on the Downloads plugin's Add/
