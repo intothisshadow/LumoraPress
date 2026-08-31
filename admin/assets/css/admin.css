@@ -1660,6 +1660,24 @@ body.lp-admin-login {
     min-width: 0;
 }
 
+/*
+ * .lp-editor-media-dialog__search's 220px flex-basis assumes it's a row
+ * flex item inside .lp-editor-media-dialog__header (openMediaPicker()'s
+ * shape). The Icon/Shortcode/Emoji pickers instead append their search
+ * input directly into .lp-editor-media-dialog itself — a COLUMN flex
+ * container — where the *same* 220px basis and flex-grow: 1 apply to the
+ * vertical main axis instead, ballooning the input to 220px+ tall and
+ * growing further into any leftover dialog height. This direct-child
+ * selector (higher specificity than the bare class above) restores
+ * normal single-line sizing for exactly that case, without touching the
+ * header-wrapped search input openMediaPicker() still uses correctly.
+ */
+.lp-editor-media-dialog > .lp-editor-media-dialog__search {
+    flex: 0 0 auto;
+    width: 100%;
+    margin-bottom: 0.75rem;
+}
+
 .lp-editor-media-dialog__folder-select {
     flex: 0 1 220px;
     min-width: 0;
