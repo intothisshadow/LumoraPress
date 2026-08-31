@@ -179,6 +179,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Admin bulk-actions bar (Media Manager's "Move selected to&hellip;"
+  row, and the Categories/Pages/Posts/Comments/Users/Downloads list
+  screens' "Bulk actions" row): on narrow mobile viewports, the row's
+  dropdowns ran off the right edge of the screen instead of wrapping,
+  making the "Apply"/second dropdown unreachable without horizontal
+  scrolling. The row now wraps its controls onto their own lines when
+  they don't fit.
 - WordPress Importer (LP-129): an imported post/page whose original
   featured image couldn't actually be brought in (most often an empty or
   mistyped "Uploads folder path") silently ended up with no featured

@@ -2620,10 +2620,12 @@ body.lp-admin-login {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .lp-media-manager__bulk-bar select {
     width: auto;
+    max-width: 100%;
 }
 
 .lp-media-edit__preview {
@@ -3613,6 +3615,11 @@ select:focus {
     align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.lp-admin__bulk-actions select {
+    max-width: 100%;
 }
 
 .lp-status-badge--pending,
