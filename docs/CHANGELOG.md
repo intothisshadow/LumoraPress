@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Plugins page (LP-133): inactive plugins can now be deleted directly
+  from the Installed Plugins list — a quick "Delete" action on each
+  table row and grid card (previously only available inside the
+  "Details" dialog), plus a checkbox-driven "Bulk actions" bar in the
+  List view for deleting several inactive plugins at once.
 - Contact Forms plugin (LPP-003): a "Use Contact Form Template" button
   on Contact Forms &rsaquo; Add New fills in a ready-made Subject,
   Name, Email, and Message form, all required, instead of building a

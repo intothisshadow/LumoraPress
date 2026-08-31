@@ -118,7 +118,7 @@ if ($form === 'activate_plugin' && Csrf::verify('activate_plugin_' . $origin . '
 
     header('Location: ' . admin_url('plugins') . '?deactivated=1');
     exit;
-} elseif ($form === 'delete_plugin' && Csrf::verify('delete_plugin_' . $postedSlug, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+} elseif ($form === 'delete_plugin' && Csrf::verify('delete_plugin_' . $origin . '_' . $postedSlug, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $slug = $postedSlug;
     $target = $kernel->pluginRegistry->infoFor($slug);
 
@@ -135,6 +135,38 @@ if ($form === 'activate_plugin' && Csrf::verify('activate_plugin_' . $origin . '
         } catch (\Throwable $exception) {
             $error = $exception->getMessage();
         }
+    }
+} elseif ($form === 'bulk_delete_plugins' && Csrf::verify('bulk_delete_plugins', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $bulkAction = is_string($_POST['bulk_action'] ?? null) ? $_POST['bulk_action'] : '';
+    $requestedSlugs = array_values(array_unique(array_map('strval', (array) ($_POST['plugin_slugs'] ?? []))));
+
+    if ($bulkAction !== 'delete') {
+        $error = 'Choose a bulk action to apply.';
+    } elseif ($requestedSlugs === []) {
+        $error = 'Select at least one plugin.';
+    } else {
+        $deletedCount = 0;
+        $skippedCount = 0;
+
+        foreach ($requestedSlugs as $requestedSlug) {
+            $target = $kernel->pluginRegistry->infoFor($requestedSlug);
+
+            if ($target === null || $target->isActive) {
+                $skippedCount++;
+
+                continue;
+            }
+
+            try {
+                $kernel->pluginInstaller->delete($requestedSlug);
+                $deletedCount++;
+            } catch (\Throwable $exception) {
+                $skippedCount++;
+            }
+        }
+
+        header('Location: ' . admin_url('plugins') . '?bulk_deleted=' . $deletedCount . '&bulk_skipped=' . $skippedCount);
+        exit;
     }
 } elseif ($form === 'install_plugin' && Csrf::verify('install_plugin', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     if (!isset($_FILES['plugin_zip']) || $_FILES['plugin_zip']['error'] === UPLOAD_ERR_NO_FILE) {
@@ -194,6 +226,7 @@ if ($pendingToken !== null) {
 
 $pluginList = $kernel->pluginRegistry->discover();
 $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
+$hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Plugin\PluginInfo $info): bool => !$info->isActive) !== [];
 ?>
 <h1 class="lp-admin__title">Plugins</h1>
 
@@ -211,6 +244,17 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
 
 <?php if (isset($_GET['deleted'])): ?>
     <div class="lp-alert lp-alert--success">Plugin deleted.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['bulk_deleted'])): ?>
+    <?php $bulkDeletedCount = (int) $_GET['bulk_deleted']; ?>
+    <?php $bulkSkippedCount = (int) ($_GET['bulk_skipped'] ?? 0); ?>
+    <div class="lp-alert lp-alert--success">
+        <?= $bulkDeletedCount ?> plugin<?= $bulkDeletedCount === 1 ? '' : 's' ?> deleted.
+        <?php if ($bulkSkippedCount > 0): ?>
+            <?= $bulkSkippedCount ?> skipped (still active, or already removed).
+        <?php endif; ?>
+    </div>
 <?php endif; ?>
 
 <?php if (isset($_GET['installed'])): ?>
@@ -301,9 +345,27 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
         <p class="lp-admin__widget-placeholder">No plugins are installed yet. Upload one below to get started.</p>
     <?php else: ?>
         <div class="lp-plugin-view-wrapper" data-lp-plugin-view-wrapper data-view="<?= esc_attr($listView) ?>">
+        <?php if ($hasDeletablePlugins): ?>
+            <form id="plugins-bulk-form" method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__bulk-actions" data-lp-bulk-form>
+                <?= Csrf::field('bulk_delete_plugins') ?>
+                <input type="hidden" name="form" value="bulk_delete_plugins">
+                <label class="lp-visually-hidden" for="plugins-bulk-action">Bulk action</label>
+                <select id="plugins-bulk-action" name="bulk_action">
+                    <option value="">Bulk actions</option>
+                    <option value="delete">Delete</option>
+                </select>
+                <button type="submit" class="lp-button lp-button--secondary" data-lp-confirm="Delete the selected plugins permanently? This cannot be undone.">Apply</button>
+            </form>
+        <?php endif; ?>
         <table class="lp-table lp-plugin-table" data-lp-plugin-table>
             <thead>
                 <tr>
+                    <?php if ($hasDeletablePlugins): ?>
+                        <th scope="col">
+                            <label class="lp-visually-hidden" for="plugins-select-all">Select all</label>
+                            <input type="checkbox" id="plugins-select-all" data-lp-select-all="plugin_slugs[]" data-lp-select-all-scope="table">
+                        </th>
+                    <?php endif; ?>
                     <th scope="col">Plugin</th>
                     <th scope="col">Status</th>
                     <th scope="col">Version</th>
@@ -318,12 +380,23 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
                     $rowSearchHaystack = strtolower($info->name . ' ' . $info->author . ' ' . implode(' ', $info->tags));
                     $rowStatusValue = $info->isActive ? 'active' : 'inactive';
                     $rowTemplateId = 'lp-plugin-details-' . $info->slug;
+                    $rowActivateFormId = 'plugin-activate-form-row-' . $info->slug;
+                    $rowDeactivateFormId = 'plugin-deactivate-form-row-' . $info->slug;
+                    $rowDeleteFormId = 'plugin-delete-form-row-' . $info->slug;
                     ?>
                     <tr
                         data-lp-plugin-row
                         data-plugin-search="<?= esc_attr($rowSearchHaystack) ?>"
                         data-plugin-status="<?= esc_attr($rowStatusValue) ?>"
                     >
+                        <?php if ($hasDeletablePlugins): ?>
+                            <td>
+                                <?php if (!$info->isActive): ?>
+                                    <label class="lp-visually-hidden" for="plugin-select-<?= esc_attr($info->slug) ?>">Select "<?= esc_html($info->name) ?>"</label>
+                                    <input type="checkbox" id="plugin-select-<?= esc_attr($info->slug) ?>" name="plugin_slugs[]" value="<?= esc_attr($info->slug) ?>" form="plugins-bulk-form">
+                                <?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                         <td><?= esc_html($info->name) ?></td>
                         <td>
                             <?php if ($info->isActive): ?>
@@ -340,27 +413,58 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
                         <td class="lp-admin__row-actions">
                             <button type="button" class="lp-button--link" data-lp-plugin-details-trigger data-plugin-template="<?= esc_attr($rowTemplateId) ?>">Details</button>
                             <?php if ($info->isActive): ?>
-                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
-                                    <?= Csrf::field('deactivate_plugin_row_' . $info->slug) ?>
-                                    <input type="hidden" name="form" value="deactivate_plugin">
-                                    <input type="hidden" name="origin" value="row">
-                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                    <button type="submit" class="lp-button--link">Deactivate</button>
-                                </form>
-                            <?php elseif (!$info->isDisabled): ?>
-                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
-                                    <?= Csrf::field('activate_plugin_row_' . $info->slug) ?>
-                                    <input type="hidden" name="form" value="activate_plugin">
-                                    <input type="hidden" name="origin" value="row">
-                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                    <button type="submit" class="lp-button--link">Activate</button>
-                                </form>
+                                <span class="lp-admin__inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('deactivate_plugin_row_' . $info->slug)) ?>" form="<?= esc_attr($rowDeactivateFormId) ?>">
+                                    <input type="hidden" name="form" value="deactivate_plugin" form="<?= esc_attr($rowDeactivateFormId) ?>">
+                                    <input type="hidden" name="origin" value="row" form="<?= esc_attr($rowDeactivateFormId) ?>">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>" form="<?= esc_attr($rowDeactivateFormId) ?>">
+                                    <button type="submit" class="lp-button--link" form="<?= esc_attr($rowDeactivateFormId) ?>">Deactivate</button>
+                                </span>
+                            <?php else: ?>
+                                <?php if (!$info->isDisabled): ?>
+                                    <span class="lp-admin__inline-form">
+                                        <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('activate_plugin_row_' . $info->slug)) ?>" form="<?= esc_attr($rowActivateFormId) ?>">
+                                        <input type="hidden" name="form" value="activate_plugin" form="<?= esc_attr($rowActivateFormId) ?>">
+                                        <input type="hidden" name="origin" value="row" form="<?= esc_attr($rowActivateFormId) ?>">
+                                        <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>" form="<?= esc_attr($rowActivateFormId) ?>">
+                                        <button type="submit" class="lp-button--link" form="<?= esc_attr($rowActivateFormId) ?>">Activate</button>
+                                    </span>
+                                <?php endif; ?>
+                                <span class="lp-admin__inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('delete_plugin_row_' . $info->slug)) ?>" form="<?= esc_attr($rowDeleteFormId) ?>">
+                                    <input type="hidden" name="form" value="delete_plugin" form="<?= esc_attr($rowDeleteFormId) ?>">
+                                    <input type="hidden" name="origin" value="row" form="<?= esc_attr($rowDeleteFormId) ?>">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>" form="<?= esc_attr($rowDeleteFormId) ?>">
+                                    <button type="submit" class="lp-button--link lp-button--link--danger" form="<?= esc_attr($rowDeleteFormId) ?>" data-lp-confirm="Delete this plugin permanently? This cannot be undone.">Delete</button>
+                                </span>
                             <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+
+        <?php
+        /*
+         * Out-of-band target forms for each row's Activate/Deactivate/
+         * Delete button above — standalone, empty <form>s the buttons
+         * point at via the HTML `form=""` attribute, since a <form>
+         * can't nest inside plugins-bulk-form (same fix
+         * admin/views/posts/categories.php uses for its own row actions).
+         */
+        foreach ($pluginList as $info):
+            ?>
+            <?php if ($info->isActive): ?>
+                <form id="plugin-deactivate-form-row-<?= esc_attr($info->slug) ?>" method="post" action="<?= esc_url(admin_url('plugins')) ?>"></form>
+            <?php else: ?>
+                <?php if (!$info->isDisabled): ?>
+                    <form id="plugin-activate-form-row-<?= esc_attr($info->slug) ?>" method="post" action="<?= esc_url(admin_url('plugins')) ?>"></form>
+                <?php endif; ?>
+                <form id="plugin-delete-form-row-<?= esc_attr($info->slug) ?>" method="post" action="<?= esc_url(admin_url('plugins')) ?>"></form>
+            <?php endif; ?>
+            <?php
+        endforeach;
+        ?>
 
         <div class="lp-plugin-grid" data-lp-plugin-grid>
             <?php foreach ($pluginList as $info): ?>
@@ -410,13 +514,22 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                     <button type="submit" class="lp-button lp-button--secondary">Deactivate</button>
                                 </form>
-                            <?php elseif (!$info->isDisabled): ?>
-                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
-                                    <?= Csrf::field('activate_plugin_card_' . $info->slug) ?>
-                                    <input type="hidden" name="form" value="activate_plugin">
+                            <?php else: ?>
+                                <?php if (!$info->isDisabled): ?>
+                                    <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+                                        <?= Csrf::field('activate_plugin_card_' . $info->slug) ?>
+                                        <input type="hidden" name="form" value="activate_plugin">
+                                        <input type="hidden" name="origin" value="card">
+                                        <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                        <button type="submit" class="lp-button lp-button--primary">Activate</button>
+                                    </form>
+                                <?php endif; ?>
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this plugin permanently? This cannot be undone.">
+                                    <?= Csrf::field('delete_plugin_card_' . $info->slug) ?>
+                                    <input type="hidden" name="form" value="delete_plugin">
                                     <input type="hidden" name="origin" value="card">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                    <button type="submit" class="lp-button lp-button--primary">Activate</button>
+                                    <button type="submit" class="lp-button lp-button--danger">Delete</button>
                                 </form>
                             <?php endif; ?>
                         </div>
@@ -514,8 +627,9 @@ $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
                                     </form>
                                 <?php endif; ?>
                                 <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this plugin permanently? This cannot be undone.">
-                                    <?= Csrf::field('delete_plugin_' . $info->slug) ?>
+                                    <?= Csrf::field('delete_plugin_details_' . $info->slug) ?>
                                     <input type="hidden" name="form" value="delete_plugin">
+                                    <input type="hidden" name="origin" value="details">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
                                     <button type="submit" class="lp-button lp-button--danger">Delete</button>
                                 </form>
