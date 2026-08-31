@@ -38,7 +38,7 @@ use LumoraPress\Models\Tag;
 if (!function_exists('post_permalink')) {
     function post_permalink(Post $post): string
     {
-        return Permalinks::service()->postUrl($post);
+        return preview_theme_link(Permalinks::service()->postUrl($post));
     }
 }
 
@@ -74,21 +74,21 @@ if (!function_exists('page_permalink')) {
         );
         $segments[] = $page->slug;
 
-        return home_url(implode('/', $segments));
+        return preview_theme_link(home_url(implode('/', $segments)));
     }
 }
 
 if (!function_exists('category_permalink')) {
     function category_permalink(Category $category): string
     {
-        return Permalinks::service()->categoryUrl($category);
+        return preview_theme_link(Permalinks::service()->categoryUrl($category));
     }
 }
 
 if (!function_exists('tag_permalink')) {
     function tag_permalink(Tag $tag): string
     {
-        return Permalinks::service()->tagUrl($tag);
+        return preview_theme_link(Permalinks::service()->tagUrl($tag));
     }
 }
 
@@ -222,17 +222,20 @@ if (!function_exists('search_result_permalink')) {
         if ($result->type === 'page') {
             $page = ActivePages::pages()->findBySlug($result->slug);
 
-            return $page !== null ? page_permalink($page) : site_url($result->slug);
+            // page_permalink() already threads a preview through itself
+            // (LP-138) — don't double-append for the common case, only
+            // for the site_url() fallback below, which doesn't.
+            return $page !== null ? page_permalink($page) : preview_theme_link(site_url($result->slug));
         }
 
         $permalinks = Permalinks::service();
 
-        return match ($result->type) {
+        return preview_theme_link(match ($result->type) {
             'post' => $permalinks->postUrlForSlugAndDate($result->slug, $result->publishedAt),
             'category' => $permalinks->categoryUrlFromSlug($result->slug),
             'tag' => $permalinks->tagUrlFromSlug($result->slug),
             'author' => site_url('author/' . $result->slug),
             default => $permalinks->postUrlForSlugAndDate($result->slug, $result->publishedAt),
-        };
+        });
     }
 }

@@ -57,6 +57,41 @@ final class ThemePreview
     }
 
     /**
+     * Appends the `?lp_preview_theme=` query parameter to $url when a
+     * preview is active for this request, so clicking through the site
+     * (a post/page/category/tag/author link, a nav menu item) keeps
+     * previewing the same theme instead of silently reverting to the
+     * real active theme on the very next click (LP-138). A no-op —
+     * returns $url unchanged — for the overwhelming majority of
+     * requests, where no preview is active; safe to call unconditionally
+     * from every internal link-building function.
+     *
+     * Refuses to touch a URL pointing at a different host (a nav menu's
+     * custom link can point anywhere, not just this site) — an
+     * admin-only preview parameter has no business leaking onto a
+     * third-party URL a visitor happens to click while it's active.
+     * post_permalink()/page_permalink()/etc. only ever return same-host
+     * URLs by construction, so this only ever actually matters for
+     * nav_menu()'s external "custom link" items.
+     */
+    public static function appendToLink(string $url): string
+    {
+        if (self::$theme === null || $url === '') {
+            return $url;
+        }
+
+        $urlHost = parse_url($url, PHP_URL_HOST);
+
+        if ($urlHost !== null && strcasecmp($urlHost, (string) parse_url(home_url(), PHP_URL_HOST)) !== 0) {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url . $separator . 'lp_preview_theme=' . rawurlencode(self::$theme->slug);
+    }
+
+    /**
      * Inserts the preview bar markup immediately after the page's
      * opening <body> tag. Works against the fully-rendered HTML string
      * rather than a template hook so it applies to every theme

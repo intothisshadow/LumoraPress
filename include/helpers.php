@@ -685,6 +685,23 @@ if (!function_exists('home_url')) {
     }
 }
 
+if (!function_exists('preview_theme_link')) {
+    /**
+     * Threads an admin's active theme preview (LP-044/LP-138) through an
+     * internal navigation link — see ThemePreview::appendToLink()'s own
+     * docblock. Every function that builds a link a visitor might click
+     * while browsing the site (post_permalink(), page_permalink(),
+     * category_permalink(), tag_permalink(), author_url(),
+     * search_result_permalink(), nav_menu()) routes through this, so a
+     * theme is never a "for-authors-only" feature theme templates have to
+     * remember to apply themselves.
+     */
+    function preview_theme_link(string $url): string
+    {
+        return \LumoraPress\Core\Theme\ThemePreview::appendToLink($url);
+    }
+}
+
 if (!function_exists('site_origin')) {
     /**
      * This site's own origin (scheme://host[:port], no path) — the same

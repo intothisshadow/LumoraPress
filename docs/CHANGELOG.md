@@ -203,6 +203,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Appearance &rsaquo; Themes' "Preview" (LP-138): previewing an
+  inactive theme only ever lasted for the single homepage load the
+  "Preview" link opened — clicking any post, category, tag, author, or
+  nav menu link immediately (and silently) reverted to the real active
+  theme, with no way to actually browse a previewed theme beyond the
+  homepage. Every internal link a theme's own templates render now
+  carries the preview forward for the rest of the browsing session,
+  the same way Lumora Gallery's own theme preview already works.
 - Dashboard: a long, unbreakable filename in the Popular Downloads
   widget (or a long title in any other widget's meta list) overflowed
   past the widget's right edge instead of wrapping, since a flex row's

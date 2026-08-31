@@ -70,7 +70,7 @@ if (!function_exists('lp_render_nav_menu_branch')) {
             $hasChildren = $node['children'] !== [];
 
             echo '<li class="' . $itemClass . ($hasChildren ? ' lp-nav-menu__item--has-children' : '') . '">'
-                . '<a href="' . esc_url((string) $item['url']) . '"' . $target . $titleAttribute . '>' . esc_html((string) $item['label']) . '</a>';
+                . '<a href="' . esc_url(preview_theme_link((string) $item['url'])) . '"' . $target . $titleAttribute . '>' . esc_html((string) $item['label']) . '</a>';
 
             if ($hasChildren) {
                 echo '<ul class="lp-nav-menu__submenu">';

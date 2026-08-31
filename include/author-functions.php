@@ -43,7 +43,7 @@ if (!function_exists('author_url')) {
     {
         $author = Authors::users()->findById($post->authorId);
 
-        return $author !== null ? site_url('author/' . Authors::users()->authorSlug($author)) : null;
+        return $author !== null ? preview_theme_link(site_url('author/' . Authors::users()->authorSlug($author))) : null;
     }
 }
 
