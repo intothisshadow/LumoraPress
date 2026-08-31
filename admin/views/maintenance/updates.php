@@ -550,7 +550,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         </p>
         <p class="lp-field__hint" data-lp-update-stage><?= esc_html($updateStageLabels[$installProgress['stage']] ?? $installProgress['stage']) ?></p>
         <p class="lp-field__hint" data-lp-update-detail hidden></p>
-        <p class="lp-field__hint">This page updates on its own — leave it open until it finishes.</p>
+        <div class="lp-alert lp-alert--warning">This page updates on its own — leave it open until it finishes.</div>
 
         <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-install-continue">
             <?= Csrf::field('update_continue_install') ?>
@@ -721,7 +721,7 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <?php if ($backupNowProgress !== null): ?>
             <p class="lp-field__hint">Backing up — <span data-lp-update-stage><?= esc_html($updateStageLabels[$backupNowProgress['stage']] ?? $backupNowProgress['stage']) ?></span></p>
             <p class="lp-field__hint" data-lp-update-detail hidden></p>
-            <p class="lp-field__hint">This page updates on its own — leave it open until it finishes.</p>
+            <div class="lp-alert lp-alert--warning">This page updates on its own — leave it open until it finishes.</div>
             <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" id="update-backup-continue" class="lp-admin__inline-form">
                 <?= Csrf::field('backup_now_continue') ?>
                 <input type="hidden" name="form" value="continue_backup_now">

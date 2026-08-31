@@ -231,13 +231,13 @@ $geoipRangeCount = $viewStats->geoipRangeCount();
     </p>
 
     <?php if ($geoipBatchState !== null): ?>
-        <p class="lp-field__hint">
+        <div class="lp-alert lp-alert--warning">
             The country data is imported in batches to avoid a single
             request timing out on this server. This page will keep
             advancing on its own — leave it open until the status above
             shows a final range count. If JavaScript is disabled, click
             "Continue Import" below to advance one batch at a time.
-        </p>
+        </div>
         <form method="post" action="<?= esc_url(admin_url('visitor-stats/settings')) ?>" id="geoip-import-continue">
             <?= Csrf::field('visitor_stats_geoip_import_batch') ?>
             <input type="hidden" name="form" value="visitor_stats_geoip_import_batch">
