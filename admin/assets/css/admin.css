@@ -4330,7 +4330,6 @@ a.lp-button--link.lp-button--link--view:hover {
 .lp-sidebar-box__header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     cursor: grab;
@@ -4345,6 +4344,37 @@ a.lp-button--link.lp-button--link--view:hover {
 .lp-sidebar-box__title {
     font-weight: 600;
     color: var(--lp-admin-accent);
+}
+
+/* Keyboard-accessible alternative to dragging (LP-139) — same
+   Move Up/Move Down button pair as .lp-admin__widget-move
+   (Dashboard, LP-134), reusing sortable.js's shared
+   data-lp-sortable-move click handler; margin-left: auto pushes this
+   group, and the collapse toggle after it, to the header's far end
+   now that .lp-sidebar-box__header no longer relies on
+   justify-content: space-between to place just one trailing child. */
+.lp-sidebar-box__move {
+    display: inline-flex;
+    gap: 0.1rem;
+    margin-left: auto;
+}
+
+.lp-sidebar-box__move button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+    opacity: 0.55;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.65rem;
+    line-height: 1;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-sidebar-box__move button:hover,
+.lp-sidebar-box__move button:focus-visible {
+    opacity: 1;
+    background: var(--lp-admin-panel-bg);
 }
 
 .lp-sidebar-box__toggle {
@@ -4543,6 +4573,35 @@ a.lp-button--link.lp-button--link--view:hover {
 
 .lp-pages-tree__title {
     flex: 1 1 auto;
+}
+
+/* Keyboard-accessible alternative to dragging (LP-139) — same
+   Move Up/Move Down button pair as .lp-admin__widget-move
+   (Dashboard, LP-134) and .lp-sidebar-box__move (Post/Page editor
+   sidebar, LP-139), reusing sortable.js's shared
+   data-lp-sortable-move click handler. */
+.lp-pages-tree__move {
+    display: inline-flex;
+    gap: 0.1rem;
+    flex: 0 0 auto;
+}
+
+.lp-pages-tree__move button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+    opacity: 0.55;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.65rem;
+    line-height: 1;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-pages-tree__move button:hover,
+.lp-pages-tree__move button:focus-visible {
+    opacity: 1;
+    background: var(--lp-admin-panel-bg);
 }
 
 /* The tree view isn't a .lp-table, so its title links never matched

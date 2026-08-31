@@ -78,6 +78,14 @@
  * then persists the result the same way a drop does — persistState() in
  * AJAX mode, or the reposition form in form mode. Pages that don't render
  * these buttons see no change at all.
+ *
+ * As of LP-139, every screen this file drives renders these buttons:
+ * Dashboard (LP-134, the original consumer), the Post/Page editor
+ * sidebar's meta boxes, and the Pages tree view — the two latter had no
+ * keyboard reorder path at all before LP-139, unlike Widgets/Menus (which
+ * already had their own separate, real Move Up/Move Down <button>
+ * elements posting through a full-page reload, predating this shared
+ * mechanism and intentionally left as-is rather than migrated).
  */
 (function () {
     'use strict';

@@ -646,6 +646,10 @@ if ($isTreeView) {
                     >
                         <?php if ($canEditPage($listedPage)): ?>
                             <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true">&#10021;</span>
+                            <span class="lp-pages-tree__move">
+                                <button type="button" data-lp-sortable-move="up" aria-label="Move &ldquo;<?= esc_attr($listedPage->title) ?>&rdquo; up">&#9650;</button>
+                                <button type="button" data-lp-sortable-move="down" aria-label="Move &ldquo;<?= esc_attr($listedPage->title) ?>&rdquo; down">&#9660;</button>
+                            </span>
                             <label class="lp-visually-hidden" for="page-select-<?= (int) $listedPage->id ?>">Select "<?= esc_html($listedPage->title) ?>"</label>
                             <input type="checkbox" id="page-select-<?= (int) $listedPage->id ?>" name="page_ids[]" value="<?= (int) $listedPage->id ?>" form="pages-bulk-form">
                         <?php endif; ?>

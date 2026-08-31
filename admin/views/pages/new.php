@@ -712,6 +712,10 @@ if ($savedLayout['order'] === []) {
                     <div class="lp-sidebar-box<?= $isCollapsed ? ' lp-sidebar-box--collapsed' : '' ?>" data-lp-sortable-item data-lp-sortable-id="<?= esc_attr($boxId) ?>">
                         <div class="lp-sidebar-box__header" data-lp-drag-handle>
                             <span class="lp-sidebar-box__title"><?= esc_html($boxTitles[$boxId] ?? $boxId) ?></span>
+                            <span class="lp-sidebar-box__move">
+                                <button type="button" data-lp-sortable-move="up" aria-label="Move &ldquo;<?= esc_attr($boxTitles[$boxId] ?? $boxId) ?>&rdquo; up">&#9650;</button>
+                                <button type="button" data-lp-sortable-move="down" aria-label="Move &ldquo;<?= esc_attr($boxTitles[$boxId] ?? $boxId) ?>&rdquo; down">&#9660;</button>
+                            </span>
                             <?php if ($isCollapsible): ?>
                                 <button type="button" class="lp-sidebar-box__toggle" data-lp-sidebar-box-toggle aria-expanded="<?= $isCollapsed ? 'false' : 'true' ?>" aria-label="Toggle <?= esc_attr($boxTitles[$boxId] ?? $boxId) ?>">
                                     <span aria-hidden="true">&#9662;</span>

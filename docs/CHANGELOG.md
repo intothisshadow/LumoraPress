@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Post/Page editor sidebar and Pages tree view (LP-139): neither screen
+  had any keyboard-accessible way to reorder items — the shared
+  drag-and-drop script behind both is mouse-only, and unlike Appearance
+  &rsaquo; Widgets/Menus (which already had their own separate Move
+  Up/Move Down buttons), these two had no fallback at all. Both now get
+  the same Move Up/Move Down button pair Dashboard's reorderable widgets
+  already introduced, reusing that same reorder mechanism.
 - Downloads (LPP-013): a Download's "Download" button masked its real server file path in the page's own HTML, but one click still revealed it — `/media/{id}/download` redirected straight to the real `content/uploads/...` URL. It now streams the file directly instead. A Description image (or its lightbox preview) is masked the same way, through a new `/media/{id}/view` inline endpoint.
 - Lumora Gallery Shortcodes: the "View album" link `[lumora_gallery_album]` renders below its thumbnails pointed at `{base_url}/?album={id}` — the Gallery site's homepage with a query string it never reads, not a real album page. Gallery serves every public URL through dedicated front-controller files rather than a home-page router (`album.php?album={id}` for an album), so the link now points at `album.php` like it should.
 
