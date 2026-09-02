@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Tags (LP-011): the admin Tags list gained checkboxes and a bulk-actions
+  bar — Delete, Merge into&hellip; (reassigns every merged tag's posts to
+  the target and removes the source tags), and a one-click Remove unused
+  tags — mirroring Categories' own bulk actions. Each row's post count
+  now links to the admin Posts list pre-filtered to that tag. A post's
+  own tags are now shown on its single-post page (both bundled themes),
+  linked to their tag archive, and every post's page shows a "Related
+  Posts" block of other posts sharing at least one tag with it,
+  most-shared-tags-first.
 - Emoji Picker plugin (LPP-006): a new bundled plugin adding a search-
   and-browse emoji picker to the Post/Page/Downloads editor toolbar
   (both the Visual/HTML and Markdown editors), with a per-user

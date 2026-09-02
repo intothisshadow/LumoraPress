@@ -521,6 +521,87 @@ img {
     text-decoration: underline;
 }
 
+/* LP-011 — get_the_tags()/the_tags() rendered as a pill list below a
+   single post's own content, distinct from .lp-widget__tag-cloud-item
+   (different component, even though visually similar). */
+.lp-post__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+}
+
+.lp-post__tags-item a {
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: 999px;
+    color: var(--lp-text);
+    display: inline-block;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+    text-decoration: none;
+}
+
+.lp-post__tags-item a:hover,
+.lp-post__tags-item a:focus {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
+}
+
+/* LP-011 — the_related_posts(), rendered under a single post's own
+   article, before comments. */
+.lp-related-posts {
+    border-top: 1px solid var(--lp-border);
+    margin: 2rem 0 0;
+    max-width: 68ch;
+    padding-top: 1.5rem;
+}
+
+.lp-related-posts__title {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 1.25rem;
+    margin: 0 0 1rem;
+}
+
+.lp-related-posts__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-related-posts__item {
+    flex: 1 1 160px;
+    max-width: 200px;
+}
+
+.lp-related-posts__thumbnail {
+    margin-bottom: 0.5rem;
+}
+
+.lp-related-posts__thumbnail img {
+    border-radius: var(--lp-radius);
+    display: block;
+    height: auto;
+    max-width: 100%;
+}
+
+.lp-related-posts__link {
+    color: var(--lp-text);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.lp-related-posts__link:hover,
+.lp-related-posts__link:focus {
+    color: var(--lp-accent);
+    text-decoration: underline;
+}
+
 /* Only ever rendered when edit_post_link() actually returned a URL for
    the current visitor — a quiet footer note inside the post, not a
    prominent button, since it's only ever meant for the signed-in

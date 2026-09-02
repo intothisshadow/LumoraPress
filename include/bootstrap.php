@@ -60,6 +60,8 @@ use LumoraPress\Core\Shortcodes\Shortcodes;
 use LumoraPress\Core\Theme\ActiveAuth;
 use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
+use LumoraPress\Core\Theme\ActivePosts;
+use LumoraPress\Core\Theme\ActiveTags;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
@@ -659,6 +661,15 @@ ActivePages::set($pages);
 ActiveCategories::set($categories);
 ActiveAuth::set($auth);
 require LUMORA_ROOT . '/include/permalink-functions.php';
+
+/*
+ * A post's own tags, and posts related to it by shared tags (LP-011) —
+ * same bridge shape as ActiveCategories above, for the same reason
+ * (themes have no route to TagService/PostService of their own).
+ */
+ActiveTags::set($tags);
+ActivePosts::set($posts);
+require LUMORA_ROOT . '/include/taxonomy-functions.php';
 
 /*
  * the_content()/get_the_content()/the_excerpt()/get_the_excerpt() (LP-079)

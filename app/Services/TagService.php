@@ -131,6 +131,88 @@ final class TagService
         return $deleted;
     }
 
+    /**
+     * Merges $sourceId into $targetId: every post tagged with $sourceId
+     * gains $targetId instead (existence-checked first, since post_tags'
+     * composite primary key would otherwise collide for a post already
+     * carrying both tags — same guard CategoryService::bulkAddToPosts()
+     * uses), $sourceId's own post_tags rows are dropped, and $sourceId
+     * itself is deleted. Tags have no hierarchy to reparent, unlike
+     * CategoryService::merge() — this is the flat equivalent.
+     *
+     * Returns false without changing anything if $sourceId and $targetId
+     * are the same, or either doesn't exist.
+     */
+    public function merge(int $sourceId, int $targetId): bool
+    {
+        if ($sourceId === $targetId || $this->findById($sourceId) === null || $this->findById($targetId) === null) {
+            return false;
+        }
+
+        $this->database->transaction(function () use ($sourceId, $targetId): void {
+            $postIds = array_map(
+                static fn (array $row): int => (int) $row['post_id'],
+                $this->database->fetchAll(
+                    'SELECT post_id FROM ' . $this->postTagsTable() . ' WHERE tag_id = :tag_id',
+                    ['tag_id' => $sourceId],
+                ),
+            );
+
+            foreach ($postIds as $postId) {
+                $exists = $this->database->fetchOne(
+                    'SELECT 1 FROM ' . $this->postTagsTable() . ' WHERE post_id = :post_id AND tag_id = :tag_id',
+                    ['post_id' => $postId, 'tag_id' => $targetId],
+                ) !== null;
+
+                if (!$exists) {
+                    $this->database->execute(
+                        'INSERT INTO ' . $this->postTagsTable() . ' (post_id, tag_id) VALUES (:post_id, :tag_id)',
+                        ['post_id' => $postId, 'tag_id' => $targetId],
+                    );
+                }
+            }
+
+            $this->database->execute(
+                'DELETE FROM ' . $this->postTagsTable() . ' WHERE tag_id = :tag_id',
+                ['tag_id' => $sourceId],
+            );
+
+            $this->database->execute(
+                'DELETE FROM ' . $this->table() . ' WHERE id = :id',
+                ['id' => $sourceId],
+            );
+        });
+
+        $this->hooks?->doAction('tag_merged', $sourceId, $targetId);
+
+        return true;
+    }
+
+    /**
+     * Deletes every tag with zero assigned posts (the admin Tags list's
+     * "Remove unused tags" bulk action) — a one-click cleanup for tags
+     * left behind once their last post was untagged/deleted/edited,
+     * rather than requiring an administrator to hunt them down one at a
+     * time. Returns the number of tags removed.
+     */
+    public function deleteUnused(): int
+    {
+        $ids = array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $this->database->fetchAll(
+                'SELECT t.id FROM ' . $this->table() . ' t
+                    LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+                 WHERE pt.tag_id IS NULL',
+            ),
+        );
+
+        foreach ($ids as $id) {
+            $this->delete($id);
+        }
+
+        return count($ids);
+    }
+
     public function findById(int $id): ?Tag
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);

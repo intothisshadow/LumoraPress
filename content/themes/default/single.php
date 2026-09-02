@@ -35,11 +35,19 @@ get_header(['post' => $post]);
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
+            <?php if (post_has_tags($post)): ?>
+                <ul class="lp-post__tags">
+                    <?php foreach (get_the_tags($post) as $postTag): ?>
+                        <li class="lp-post__tags-item"><a href="<?= esc_url(tag_permalink($postTag)) ?>"><?= esc_html($postTag->name) ?></a></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
             <?php $postEditUrl = edit_post_link($post); ?>
             <?php if ($postEditUrl !== null): ?>
                 <p class="lp-post__edit-link"><a href="<?= esc_url($postEditUrl) ?>">Edit this post</a></p>
             <?php endif; ?>
         </article>
+        <?php the_related_posts($post); ?>
         <?php comments_template($comment_data); ?>
     </main>
     <?php get_sidebar(); ?>

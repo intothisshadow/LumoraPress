@@ -707,6 +707,52 @@ final class PostService
     }
 
     /**
+     * Posts visible to public site visitors that share at least one tag
+     * with $excludePostId, ranked by how many tags they share (most
+     * shared tags first) and then by recency — the "Related Posts" block
+     * on a single post's own page (LP-011). $excludePostId is always
+     * omitted from the results regardless of whether it's tagged with
+     * itself (it isn't, but excluding by id rather than relying on that
+     * is the correct guard either way). Returns an empty array for a
+     * tagless post ($tagIds === []) without querying, same as
+     * paginateByTag() would for a tag nothing is assigned to.
+     *
+     * @param array<int, int> $tagIds
+     * @return array<int, Post>
+     */
+    public function relatedByTags(int $excludePostId, array $tagIds, int $limit = 5): array
+    {
+        if ($tagIds === []) {
+            return [];
+        }
+
+        $limit = max(1, $limit);
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+        $params = ['now' => $now, 'now_unpublish' => $now, 'exclude_id' => $excludePostId];
+        $placeholders = [];
+
+        foreach (array_values(array_unique($tagIds)) as $i => $tagId) {
+            $key = "tag_id_{$i}";
+            $placeholders[] = ':' . $key;
+            $params[$key] = $tagId;
+        }
+
+        $where = $this->publicWhereClause('p');
+        $join = 'INNER JOIN ' . $this->tablePrefix . 'post_tags pt ON pt.post_id = p.id'
+            . ' AND pt.tag_id IN (' . implode(',', $placeholders) . ')';
+
+        $rows = $this->database->fetchAll(
+            'SELECT p.*, COUNT(pt.tag_id) AS shared_tag_count FROM ' . $this->table() . " p {$join}"
+                . " WHERE {$where} AND p.id != :exclude_id"
+                . ' GROUP BY p.id'
+                . " ORDER BY shared_tag_count DESC, p.published_at DESC LIMIT {$limit}",
+            $params,
+        );
+
+        return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
      * Posts visible to public site visitors written by $authorId (LP-021,
      * for the REST API's ?author= filter) — no join needed, unlike
      * paginateByCategory()/paginateByTag(), since author_id is a direct
