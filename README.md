@@ -4,476 +4,143 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
-## Compatibility
+**Current release**: 0.9.0
 
-Lumora Press is inspired by classic WordPress (circa 2012–2015) in
-philosophy and workflow — traditional PHP theme templates, a familiar
-`add_action()`/`do_action()`/`add_filter()`/`apply_filters()` hook API —
-but it is an independent, from-scratch codebase, not a WordPress fork or
-compatibility layer. **Actual WordPress themes and plugins will not work
-unmodified.** Themes call WordPress-specific template tags and globals
-(`wp_head()`, `get_header()`, `$wp_query`, ...) that don't exist here;
-plugins call WordPress-specific APIs (`WP_Query`, `wpdb`,
-`wp_enqueue_script()`, ...) that Lumora Press doesn't implement, even
-where its own hook names or theme file names look similar. A developer
-familiar with classic WordPress theme/plugin development will recognize
-the shape of both systems immediately, but existing WordPress themes and
-plugins need to be rewritten against Lumora Press's own APIs (see
-Architecture below), not simply dropped in.
+## Who is Lumora Press for?
+
+Lumora Press is made for people who want to run their own website without turning website management into a full-time job.
+
+It is particularly suited to:
+
+- Personal websites and blogs
+- Fansites and fan communities
+- Hobby and interest sites
+- Small community websites
+- Developers who enjoy building traditional PHP themes and plugins
+
+If you like the simplicity of classic WordPress but want a smaller, independent, self-hosted platform, Lumora Press is built for you.
+
+## Features
+
+### Compatibility
+
+Lumora Press is inspired by the philosophy and workflow of classic WordPress, particularly its pre-block-editor era — traditional PHP theme templates and a familiar `add_action()`/`do_action()`/`add_filter()`/`apply_filters()` hook API.
+
+Lumora Press is an independent, from-scratch codebase, not a WordPress fork or compatibility layer. **Actual WordPress themes and plugins will not work unmodified.** WordPress themes depend on WordPress-specific template tags and globals such as `wp_head()`, `get_header()`, and `$wp_query`; plugins commonly depend on APIs such as `WP_Query`, `wpdb`, and `wp_enqueue_script()`, which Lumora Press does not implement.
+
+Developers familiar with classic WordPress will find the overall structure familiar, but existing WordPress themes and plugins must be adapted to Lumora Press's own APIs. See [Themes & Plugins](#themes--plugins) below.
+
+### Publishing
+- Posts and Pages, with hierarchical page URLs
+- Drafts, scheduling, revisions, previews, and trash
+- Categories and tags, with archive pages, merge, and bulk actions
+- Sticky and private posts
+- Threaded comments and moderation
+- RSS and Atom feeds (site-wide and per-category)
+- Full-text search across posts and pages
+
+### Media
+- Media library with virtual folders and metadata
+- Featured images with manual cropping
+- Multi-file uploads with per-file progress
+- FTP media import
+- Image lightbox viewer
+- Download statistics for documents, archives, audio, and video
+
+### Appearance
+- Classic PHP themes (header.php, single.php, etc.)
+- Theme browser with live, whole-site preview
+- Theme Options / Customize screen — no CSS editing required
+- Custom CSS
+- Widgets and navigation menus
+- Built-in theme file editor
+- Public light/dark mode toggle
+
+### Administration
+- User and role management
+- Maintenance mode
+- Automatic backups and one-click rollback
+- Updates via GitHub Releases or a manual ZIP upload
+- Portable settings export/import between installs
+- Token-authenticated REST API
+
+### SEO & Privacy
+- SEO titles and meta descriptions
+- Canonical URLs
+- XML sitemap and JSON-LD structured data
+- Admin-managed URL redirects
+- Configurable `robots.txt`/`noindex`
+- Optional, off-by-default anonymous install ping (see [Privacy](#privacy-anonymous-install-ping))
+
+For the complete feature list and implementation details, see [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Requirements
 
 - PHP 8.2, 8.3, or 8.4
 - MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search)
-- The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip`
-  is required only for the manual core-update and theme-install features)
+- The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip` is required only for the manual core-update and theme-install features)
 - Apache with `mod_rewrite` (the shipped `.htaccess` files assume Apache)
-- `config/`, `storage/logs/`, `storage/sessions/`, `storage/cache/`, and
-  `content/uploads/` writable by the web server user
+- `config/`, `storage/logs/`, `storage/sessions/`, `storage/cache/`, and `content/uploads/` writable by the web server user
 
-The installer checks all of the above before doing anything else and shows
-a clear, specific message if something is missing (`LumoraPress\Core\RequirementsCheck`).
+The installer checks all of the above before doing anything else and shows a clear, specific message if something is missing.
 
 ## Installation
 
-1. Point your web server's document root at this directory (`LumoraPress/`),
-   or at a subdirectory of it if you're hosting Lumora Press alongside other
-   sites (e.g. `https://example.com/blog/`) — both are supported, and the
-   installer detects which one it's running under automatically.
-2. Visit the site in a browser. If no configuration exists yet, you will be
-   redirected to the installer automatically.
-3. Follow the two-step installer: database connection details, then site
-   name, timezone, language, and the administrator account.
-4. The `install/` directory is removed automatically once installation
-   succeeds (permissions allowing — if it can't be removed, the success
-   page tells you to delete it by hand, and the admin Dashboard keeps
-   showing a reminder until it's gone — including if a manual update ever
-   restores it).
+1. Point your web server's document root at this directory (`LumoraPress/`), or at a subdirectory of it if you're hosting Lumora Press alongside other sites (e.g. `https://example.com/blog/`) — both are supported, and the installer detects which one it's running under automatically.
+2. Visit the site in a browser. If no configuration exists yet, you will be redirected to the installer automatically.
+3. Follow the two-step installer: database connection details, then site name, timezone, language, and the administrator account.
+4. The `install/` directory is removed automatically once installation succeeds (permissions allowing — if it can't be removed, the success page tells you to delete it by hand, and the admin Dashboard keeps showing a reminder until it's gone — including if a manual update ever restores it).
 5. Log in at `/admin/` (or `/blog/admin/` etc. for a subdirectory install).
-
-## Directory Structure
-
-```
-LumoraPress/
-├── admin/          Admin area (dashboard, settings, etc.) — reached via /admin
-├── assets/         Framework-owned static JS/CSS themes depend on but don't vendor themselves
-├── app/
-│   ├── Core/        Framework internals (database, hooks, security, theming, routing)
-│   ├── Controllers/ Front-end and admin request handlers
-│   ├── Models/       Plain data/domain objects (User, UserRole, ...)
-│   ├── Services/     Business logic (UserService, MediaService, ...)
-│   └── Views/         Reserved for future server-rendered app views
-├── config/          Generated config.php (never committed; contains credentials)
-├── content/
-│   ├── plugins/      Installed plugins
-│   ├── themes/        Installed themes (default theme ships here)
-│   └── uploads/       Media library uploads
-├── docs/            Project documentation (this folder)
-├── include/         Bootstrap and procedural helper APIs (hooks, theme, widgets, menus)
-├── install/         The installer, reached via /install
-├── storage/         Logs, cache, sessions, update backups/staging (never web-accessible)
-├── vendor/          Reserved for future Composer dependencies
-├── index.php        Front controller / application entry point
-└── version.php      Current application version
-```
-
-## Architecture
-
-Lumora Press follows a small service-oriented architecture rather than a full framework:
-
-- **`LumoraPress\Core\Kernel`** — the composition root. One `Kernel` instance
-  is built in `include/bootstrap.php` and passed explicitly to entry scripts
-  instead of relying on global state.
-- **`LumoraPress\Core\Database\Database`** — a thin PDO wrapper: prepared
-  statements only, transactions, and helper methods (`fetchAll`, `fetchOne`,
-  `execute`, `insertGetId`).
-- **`LumoraPress\Core\Database\Migrator`** — applies versioned `.sql` files
-  from a migrations directory, tracking what has run.
-- **`LumoraPress\Core\PressConfig`** — configuration in two layers: file-based
-  bootstrap config (`config/config.php`) for credentials/secrets, and a
-  database-backed, cached "options" layer for editable site settings.
-- **`LumoraPress\Core\Hooks\HookManager`** — the engine behind the classic
-  `add_action()` / `do_action()` / `add_filter()` / `apply_filters()` plugin
-  API, exposed procedurally via `include/hooks.php`.
-- **`LumoraPress\Core\Theme\ThemeRenderer`** — locates and renders classic
-  PHP theme templates (`header.php`, `single.php`, etc.), with `get_header()`
-  / `get_footer()` / `get_sidebar()` helpers available inside templates.
-- **`LumoraPress\Core\Theme\ThemeOptions`** — the Theme Options system
-  (Appearance &rsaquo; Customize): themes and plugins register sections and
-  fields (`ThemeOptionField`, one of `ThemeOptionType::{Text,Textarea,Number,
-  Checkbox,Select,Color,Url,Html}`) via `add_action('register_theme_options', function
-  (ThemeOptions $options) { ... })`, and the admin page + validation +
-  storage are generated automatically. A field with a `cssVariable` is
-  exposed to every public page as a CSS custom property via the
-  `theme_options_css()` template helper (or read directly with
-  `theme_option($key)`); core ships sixteen built-in options — Colors (Accent,
-  Text, Muted Text, Background, Alt Background, Border), Typography (Body
-  font, Base font size, Line height, Google Fonts URL + font family — the
-  URL field is restricted to `fonts.googleapis.com`), Layout (Content
-  width), Header (site title toggle, header image height), Welcome
-  Message (Markdown/HTML/Plain content + placement), and Footer (Markdown/
-  HTML/Plain content). Values are scoped per active theme — each theme
-  keeps its own independent set.
-- **`LumoraPress\Core\Widgets\WidgetManager`** and
-  **`LumoraPress\Core\Menus\MenuManager`** — sidebar/widget and nav-menu
-  registration and rendering, exposed procedurally for theme authors.
-- **`LumoraPress\Core\Security\Auth`**, **`SessionManager`**, **`Csrf`**,
-  **`LoginThrottle`**, **`RememberMeService`**, **`ContentSecurityPolicy`**,
-  **`FormTiming`**, **`PasswordResetService`**, **`PasswordResetThrottle`** —
-  session-based authentication with session-fixation protection, secure
-  cookie defaults, per-action CSRF tokens, database-backed login attempt
-  throttling by IP address (thresholds configurable on Settings &rsaquo;
-  Security), an optional "Remember Me" persistent login via a rotating,
-  single-use selector/validator cookie, a strict, same-origin-only
-  Content-Security-Policy header sent on every response, an HMAC-signed
-  submission-timing check that rejects scripted instant form submissions,
-  and self-service password reset via a single-use, one-hour-expiring
-  emailed link (Log In &rsaquo; "Forgot password?"), itself IP-rate-limited
-  the same way login attempts are.
-- **`LumoraPress\Core\Mail\Mailer`** — a minimal outbound-email interface,
-  backed by `NativeMailer` (PHP's built-in `mail()`, no external mail
-  library) — used today for password-reset emails.
-- **`LumoraPress\Core\Http\Router`** — a small, dependency-free router with
-  `{param}` (single path segment) and `{param*}` (LP-084; matches
-  greedily across slashes, for a variable-depth path like a hierarchical
-  Page URL) placeholders; no third-party routing library.
-- **`LumoraPress\Core\Http\BasePath`** — holds the install's base path
-  (empty for a domain-root install, e.g. `/blog` for a subdirectory
-  install), captured once by the installer and persisted to
-  `config/config.php`. The `site_url()`/`admin_url()`/`admin_asset_url()`
-  helpers read it so every internal link and static asset reference stays
-  correct regardless of where the app is installed.
-- **`LumoraPress\Core\Http\SiteUrl`** — holds the site's absolute URL
-  (scheme + host + base path). The installer auto-detects it from the
-  install request and stores it as an editable `site_url` option, falling
-  back to live detection for installs made before this option existed.
-  The `home_url()` helper reads it for contexts that need an absolute URL
-  rather than `site_url()`'s root-relative one (RSS feeds, outbound
-  emails, canonical tags — none of which exist yet, but the foundation is
-  in place for when they do).
-- **`LumoraPress\Core\InstallerCleanup`** — best-effort recursive directory
-  removal, used by the installer to remove itself after a successful
-  install.
-- **`LumoraPress\Core\RequirementsCheck`** — checks the PHP version,
-  required extensions, and writable directories before the installer
-  attempts anything else.
-
-The document root is the project root itself (`LumoraPress/`), matching
-classic WordPress's flat layout: `admin/` and `install/` are real,
-independently reachable directories, while `app/`, `include/`, `config/`,
-and `vendor/` are denied direct web access via `.htaccess` and are only ever
-loaded through PHP `require`.
 
 ## Updating
 
-Administrators can update Lumora Press from the admin panel under
-**Maintenance &rsaquo; Updates** (`/admin/maintenance/updates`), without FTP or SSH access,
-either of two ways, each on its own tab (**GitHub**, the default tab, and
-**Manual Update**):
+Administrators can update Lumora Press entirely from within the admin panel — no FTP or SSH required — under **Maintenance &rsaquo; Updates**. You can either check GitHub Releases directly or upload an official release ZIP by hand.
 
-- **Check for Updates (GitHub)** — click "Check for Updates" to query the
-  GitHub Releases API (configurable repository, optional personal access
-  token, and a stable/pre-release channel setting) for the latest release.
-  If a newer version is available, "Download & Check" downloads the
-  official curated release package, verifies its SHA-256 checksum when the
-  release publishes one, and continues into the same review/confirm flow
-  as a manual upload. This stays a fully manual, administrator-initiated
-  process — nothing downloads or installs automatically.
-- **Upload Update Package** — upload an official Lumora Press release ZIP
-  directly.
+- The update package is validated before anything is touched.
+- Core files and the database are backed up automatically first.
+- Any database migrations the new version needs run automatically.
+- Your uploads, your own themes/plugins, and your configuration are never overwritten.
+- If anything goes wrong mid-update, Lumora Press rolls back to the pre-update backup automatically.
+- If the admin panel itself ever becomes unreachable after a failed update, the backup files can also be restored by hand.
 
-Either way, the package is validated (integrity, structure, version
-number) and checked for compatibility (PHP version, required extensions,
-disk space, writable directories, connected database server version,
-`config/config.php`'s own health, and that the backup destination is
-writable with enough free space) before anything is touched. Two further
-checks are non-blocking warnings rather than reasons to stop: another user
-recently active in the admin area, and a core file that appears to have
-been hand-edited since it was last installed and is about to be
-overwritten.
-
-1. Review the summary screen — it shows the version change and any
-   warnings — then confirm.
-2. Lumora Press automatically backs up the core application files and the
-   database to `storage/backups/` before applying the update (each backup
-   is verified immediately after being written, so a corrupted or
-   truncated one is caught before the update proceeds), briefly enables
-   maintenance mode for the duration of the update (restored to whatever
-   it was set to beforehand once finished — the admin area itself always
-   stays reachable), runs any new database migrations, and verifies the
-   new version took effect. If anything goes wrong after the backup, it
-   automatically restores the files and database from that backup. On a
-   site with a large database, the backup step runs in batches across
-   several auto-advancing page loads rather than one long request — the
-   page keeps advancing on its own, no action needed.
-
-Every download, validation, and install step shows live, step-by-step
-progress on the Updates page while it runs (e.g. Backing up files &rarr;
-Backing up database &rarr; Applying update files &rarr; Running database
-migrations), rather than leaving the page blank until it finishes — a
-failed step is shown distinctly from a completed one, so the actual
-point of failure stays visible.
-
-Every download, validation, and install step shows live, step-by-step
-progress on the Updates page while it runs (e.g. Backing up files &rarr;
-Backing up database &rarr; Applying update files &rarr; Running database
-migrations), rather than leaving the page blank until it finishes — a
-failed step is shown distinctly from a completed one, so the actual
-point of failure stays visible.
-
-Every attempt (success, failure, or rollback) is recorded in the
-`{prefix}update_log` table, tagged with its source (`github` or `manual`),
-and listed on the Updates page. Only `app/`,
-`admin/`, `include/`, `install/`, `docs/`, the default theme, the bundled
-Font Awesome, Dummy Content, WordPress Importer, Downloads, and Contact
-Forms plugins
-(`content/plugins/font-awesome`, `content/plugins/dummy-content`,
-`content/plugins/wordpress-importer`, `content/plugins/downloads`,
-`content/plugins/contact-forms`), and
-the root PHP files are ever replaced — `config/`, `content/uploads/`, any user-installed plugin, any
-theme other than the default, and `storage/` are never touched.
-`install/` is deleted again automatically once the update succeeds (the
-same best-effort cleanup the installer itself performs), so a package that
-ships it doesn't leave it lying around on disk. If a future release drops
-one of those top-level core paths entirely, the old one is automatically
-removed too — tracked via a small on-disk manifest, scoped so it can only
-ever act on Lumora Press's own core paths, never anything else on the
-server.
-
-Every backup pair is also listed in a **Backups** panel on the Updates
-page — "Back up now" creates one on demand, independent of running an
-actual update — with one-click "Restore" and "Delete" per backup (both
-behind a confirmation prompt). The Updates page also shows the database
-schema's migration status and a System status panel (PHP version, ZIP/cURL
-availability, file permissions, disk space, and the update staging
-directory), reflecting this server's current environment independent of
-anything else on the page.
-
-If a newer version is available on GitHub, a notice appears on the
-**Dashboard** as well as the Updates page — Lumora Press checks
-automatically (Dashboard-triggered, not a real server cron job, since none
-is required to install Lumora Press) on a schedule you control from the
-GitHub Update Settings panel (hourly/daily/weekly, or disabled entirely).
-This only ever checks; nothing downloads or installs without an explicit
-click.
-
-If the admin panel itself becomes unreachable after a failed update,
-restore manually: unzip the most recent `storage/backups/files-*.zip` over
-the installation directory, and re-import the most recent
-`storage/backups/db-*.sql` into the database (both files are plain,
-human-readable formats — `storage/` is never web-accessible, so retrieve
-them via FTP/SFTP or your hosting file manager).
+Update history, backup management, and full mechanics are documented in [`docs/UPDATES.md`](docs/UPDATES.md).
 
 ## Privacy: Anonymous Install Ping
 
-Lumora Press includes an opt-in, off-by-default mechanism to anonymously
-count active installs. This provides the developer with a rough,
-privacy-respecting understanding of real-world adoption, including which
-PHP versions are still in active use — useful for deciding when support for
-an older PHP version can be safely phased out.
+Lumora Press includes an opt-in, off-by-default mechanism to anonymously count active installs. This provides the developer with a rough, privacy-respecting understanding of real-world adoption, including which PHP versions are still in active use — useful for deciding when support for an older PHP version can be safely phased out.
 
-- **Off by default.** Nothing is ever sent unless you explicitly enable
-  **Anonymous install ping** in Settings &rsaquo; Privacy.
+- **Off by default.** Nothing is ever sent unless you explicitly enable **Anonymous install ping** in Settings &rsaquo; Privacy.
 - **What is sent, and nothing else:**
-  - A randomly generated install ID, created the first time the feature is
-    enabled. It has no relationship to your domain, content, admin
-    account, or any other data — there is no way to trace it back to your
-    specific site from the ping alone.
+  - A randomly generated install ID, created the first time the feature is enabled. It has no relationship to your domain, content, admin account, or any other data — there is no way to trace it back to your specific site from the ping alone.
   - Your installed Lumora Press version.
   - Your PHP version.
-- **What is never sent:** your domain or site title, admin email, post/
-  page/comment content, visitor data, or anything else.
-- **Cadence.** The ping fires once immediately when you enable the
-  feature, then at most roughly once a month afterward. It never fires on
-  every page load. A "Send a test ping now" button on the Settings &rsaquo;
-  Privacy screen lets you confirm it's working without waiting a month.
-- **Independence from the update checker.** This uses a completely
-  separate request from the GitHub release-check described above
-  (`GitHubReleaseProvider`) — enabling or disabling one never affects the
-  other.
+- **What is never sent:** your domain or site title, admin email, post/page/comment content, visitor data, or anything else.
+- **Cadence.** The ping fires once immediately when you enable the feature, then at most roughly once a month afterward. It never fires on every page load. A "Send a test ping now" button on the Settings &rsaquo; Privacy screen lets you confirm it's working without waiting a month.
+- **Independence from the update checker.** This uses a completely separate request from the GitHub release-check described above — enabling or disabling one never affects the other.
 
 ## Cookies
 
-Lumora Press sets a small, fixed set of cookies — useful reference for
-writing your own site's privacy/cookie policy.
+Lumora Press sets a small, fixed set of cookies — useful reference for writing your own site's privacy/cookie policy.
 
-- **Session cookie** (`PHPSESSID` or your server's configured session
-  cookie name). Strictly necessary — keeps a logged-in admin/editor
-  session working. Set only for a logged-in user, never for an
-  anonymous visitor.
-- **Remember-me cookie**, set only when a user checks "Remember Me" on
-  the login screen. Strictly necessary for the feature the user
-  explicitly opted into; never set otherwise.
-- **`lp_commenter_name`/`lp_commenter_email`/`lp_commenter_url`** —
-  optional convenience cookies that pre-fill a guest's name/email/
-  website on their next comment. Off by default site-wide (Settings
-  &rsaquo; Discussion &rsaquo; "Enable comment cookies consent"), and
-  even when the site owner turns that on, an individual guest still
-  has to check "Save my name/email in this browser for next time" on
-  the comment form itself before any of the three is ever set — no
-  guest gets these cookies without their own explicit, per-comment
-  opt-in.
+- **Session cookie** (`PHPSESSID` or your server's configured session cookie name). Strictly necessary — keeps a logged-in admin/editor session working. Set only for a logged-in user, never for an anonymous visitor.
+- **Remember-me cookie**, set only when a user checks "Remember Me" on the login screen. Strictly necessary for the feature the user explicitly opted into; never set otherwise.
+- **`lp_commenter_name` / `lp_commenter_email` / `lp_commenter_url`** — optional convenience cookies that pre-fill a guest's name/email/website on their next comment. Off by default site-wide (Settings &rsaquo; Discussion &rsaquo; "Enable comment cookies consent"), and even when the site owner turns that on, an individual guest still has to check "Save my name/email in this browser for next time" on the comment form itself before any of the three is ever set — no guest gets these cookies without their own explicit, per-comment opt-in.
 
-Nothing else in Lumora Press core sets a cookie. A theme or plugin you
-install may set its own — check its own documentation.
+Nothing else in Lumora Press core sets a cookie. A theme or plugin you install may set its own — check its own documentation.
 
-## Current Status
+## Themes & Plugins
 
-**Version 0.9.0**
+Themes are built from familiar, traditional PHP template files (`header.php`, `footer.php`, `single.php`, `page.php`, `archive.php`, `functions.php`, and friends) — no block editor, no `theme.json`, no Full Site Editing. Plugins use a classic hook API (`add_action()`/`do_action()`/`add_filter()`/`apply_filters()`).
 
-- **Foundation** — installer, routing, database layer, configuration
-  service, authentication, user roles, admin dashboard, classic theme
-  system, plugin hook API, widgets, and navigation menus.
-- **Posts** — full CRUD with drafts/scheduling/pending review, Private
-  and Sticky posts, scheduled unpublishing, Trash & restore, bulk
-  actions (including change author/category/visibility), duplicate,
-  custom fields, preview, author archives, categories and tags,
-  revision history.
-- **Pages** — static pages with parent/child relationships, hierarchical
-  URLs matching that structure (e.g. `/about/team`), a
-  drag-and-drop-reorderable tree view, drafts/scheduling/pending
-  review, Private pages, comments, Trash & restore, bulk actions,
-  duplicate, Quick Edit, search & filtering, preview, breadcrumbs, and
-  revision history.
-- **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
-  best-effort conversion between formats, text/image alignment, underline,
-  a fixed-palette font color, blockquotes, an Attachment Display
-  Settings step (size, link-to) when inserting media, and an Insert
-  Folder button that drops a whole Media folder into the content as a
-  row of thumbnails.
-- **Categories & Tags** — taxonomies for posts, with per-item archive
-  pages. Categories support Trash with restore, Merge (moves a
-  category's posts and child categories into another before removing
-  it), and bulk actions (Move to Trash / Restore / Delete Permanently /
-  Merge), matching Posts/Pages where applicable.
-- **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the
-  post URL structure (Post name, Day and name, Month and name, or a
-  custom token-based pattern) and rename the Category/Tag archive URL
-  prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`.
-- **Comments** — threaded discussion on both Posts and Pages, with
-  moderation (including bulk approve/spam/trash/delete), a per-status
-  count on every filter tab (All/Pending/Approved/Spam/Trash), an
-  Empty Spam action alongside Empty Trash, honeypot/CSRF/
-  submission-timing spam protection, and optional Akismet spam-checking
-  (Settings &rsaquo; Security — off by default, never required).
-- **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
-  for comment defaults (required name/email, registered-only commenting,
-  auto-close after N days, cookie-remembered guest info, threading depth,
-  pagination and ordering), moderation (manual-approval, link/keyword
-  holds, disallowed-keyword rejection, a `comment_is_spam` filter for
-  spam-detection plugins), admin/author email notifications, and avatars
-  (Gravatar rating/default, or a locally uploaded default image).
-- **Privacy Policy Page** — a Settings &rsaquo; Privacy screen to name an
-  existing Page as the site's privacy policy, exposed to themes via the
-  `privacy_policy_url()` template tag.
-- **RSS & Atom feeds** — a site-wide feed of published posts, plus a
-  per-category feed (`/category/{slug}/feed`) for each category.
-- **Search** — full-text search across posts and pages.
-- **User management** — admin-managed accounts and roles, with Trash &
-  restore, bulk actions (trash/restore/delete/change role),
-  search/filter by username, email, or role, and avatars (Gravatar by
-  default, with an optional per-user upload).
-- **Updates** — install official release ZIPs from the admin panel, either
-  by checking GitHub Releases directly or uploading a ZIP manually, with
-  automatic backup and rollback either way.
-- **Maintenance mode** — take the public site offline for visitors while
-  admins keep working.
-- **Portable Settings Export/Import** (Maintenance &rsaquo; Tools) —
-  download a file with one install's Permalinks, Reading, Discussion,
-  Media/Thumbnails, and General's non-identity settings, then import it
-  into a *different*, unrelated Lumora Press install to copy that
-  configuration across — with a before/after preview shown before
-  anything is applied. Site identity (URL, tagline, admin email) and
-  anything install-specific (Security, Privacy, Redirects, Cache,
-  Embeds, or a setting referencing a specific local media file or page)
-  is never included.
-- **Appearance** — theme browser (install, activate, preview — a
-  previewed theme now persists across the whole site as you click
-  through it, not just the page you started on — and delete inactive
-  themes individually or in bulk), branding, custom CSS, a tabbed
-  Customize screen (Header, Welcome Message, Body — colors/typography/
-  layout/post display, Menu, Widgets, Footer; values are scoped per
-  active theme, no CSS editing required), widgets (drag-to-reorder,
-  including the Dashboard's own widgets, per signed-in user), navigation
-  menus, and a built-in theme file editor.
-- **Plugin browser** — install, activate, and manage plugins from the
-  admin panel, including deleting inactive plugins individually or in
-  bulk.
-- **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
-  developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
-  with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
-  Font Awesome, off by default), plus a searchable icon picker in the
-  post/page/downloads editor toolbar once enabled.
-- **Emoji Picker plugin** (bundled, active by default) — a search-and-
-  browse-by-category emoji picker in the post/page/downloads editor
-  toolbar (Visual/HTML and Markdown), with a per-user Recently Used
-  category and a small developer API (an `lp_emoji_dataset` filter, an
-  `lp_emoji_inserted` action, `lp_emoji_picker_button()` for use outside
-  the default toolbars). Inserts a plain Unicode character — no images,
-  shortcodes, or third-party requests (Settings &rsaquo; Writing &rsaquo;
-  Emoji Picker).
-- **Lumora Shield plugin** (bundled) — optional hardening features
-  beyond core's own basics: an optional "hide author archives entirely"
-  setting on top of core's own always-on author-archive username-
-  enumeration protection; a log of blocked enumeration attempts with
-  configurable retention and optional email alerts; and content/
-  behavioral spam heuristics (excessive links, uppercase/punctuation,
-  hidden Unicode characters, repeated phrases, prior spam history,
-  posting frequency, duplicate content) feeding both core's
-  `comment_is_spam` extension point and, when the Contact Forms plugin
-  is active, its own `contact_form_is_spam` filter (Lumora Shield
-  &rsaquo; Settings, all off/on-by-sensible-default).
-- **Media Manager** — multi-file uploads with per-file progress, virtual
-  folders, metadata, thumbnail generation, a lightbox viewer (covering
-  both featured images and images embedded directly in post/page
-  content), download statistics for document/archive/audio/video files,
-  and usage tracking with delete-time warnings.
-- **Featured images** — per-post/page featured images with manual
-  cropping (with a configurable output size), or crop any already-
-  uploaded image directly from its Media Manager edit screen into a new,
-  independently reusable featured-image-ready Library item.
-- **FTP media import** — bring in files already on the server without a
-  browser upload.
-- **REST API** — a versioned, token-authenticated API for posts, pages,
-  categories, tags, comments, and search.
-- **Settings** — site info, date/time formatting, SEO/social sharing
-  defaults, and more.
-- **Reading settings** — choose a "latest posts" or static-page homepage
-  (with an optional separate posts page), set how many posts each
-  listing page shows, and discourage search engines from indexing the
-  site (a virtual `robots.txt` plus a `noindex` meta tag).
-- **Front page & archive post display** — Appearance &rsaquo; Customize
-  &rsaquo; Body &rsaquo; Post Display controls whether the front page and archives show each post's
-  full content or an excerpt (with a configurable Read More link and
-  automatic excerpt length), and whether the featured image appears in
-  listings. A Read More tag, insertable from the content editor toolbar,
-  lets an author choose the excerpt cutoff point by hand. Single-post
-  pages always show the complete post regardless of this setting.
-- **Caching** — HTTP cache headers and conditional `304` responses on
-  cacheable public pages, first-class LiteSpeed Cache purge integration
-  (auto-detected, with a manual override), and automatic cache
-  invalidation whenever content or settings change.
-- **SEO tools** — per-post/page SEO title and meta description overrides,
-  canonical URLs, an XML sitemap, JSON-LD structured data, and
-  admin-managed URL redirects.
-- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify,
-  CodePen, Twitter/X, or Bluesky link on its own line in a post/page and it
-  automatically becomes an embedded player, tweet, or post (Settings
-  &rsaquo; Embeds). No outbound request is made to build the embed, with
-  one exception: a Bluesky link is resolved once against Bluesky's own
-  servers when the post/page is saved, not on every page view. Themes and
-  plugins can register additional providers via
-  `apply_filters('embed_providers', ...)`.
-- **Default Editor** — a site-wide default content editor (Settings
-  &rsaquo; General), with a per-user override on each user's own "My
-  Profile" page (or set for them by an administrator) and an optional
-  toggle to lock everyone to the site default.
-- **Public light/dark mode toggle** — a header button lets a visitor
-  explicitly pick Light or Dark, persisted in their browser and applied
-  before the page paints; falls back to the OS's preference when no
-  explicit choice has been made.
-- **Post categories & edit link** — single posts and post listings show
-  each post's assigned categories, and a signed-in author/editor with
-  permission sees a quick "Edit this post" link on the single post view.
+- Building a theme: [`docs/THEME-DEVELOPMENT.md`](docs/THEME-DEVELOPMENT.md)
+- Building a plugin, or the hook/filter reference: [`docs/DEVELOPER-APIS.md`](docs/DEVELOPER-APIS.md)
 
-See `TODO.md` for planned work and known gaps.
+## Documentation
+
+- [`docs/FEATURES.md`](docs/FEATURES.md) — full feature inventory
+- [`docs/UPDATES.md`](docs/UPDATES.md) — update system mechanics
+- [`docs/THEME-DEVELOPMENT.md`](docs/THEME-DEVELOPMENT.md) — theme author reference
+- [`docs/DEVELOPER-APIS.md`](docs/DEVELOPER-APIS.md) — hooks, filters, and plugin reference
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — codebase structure and core services, for contributors
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common problems and fixes
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) / [`docs/HISTORY.md`](docs/HISTORY.md) — release history

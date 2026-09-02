@@ -105,6 +105,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 |---|---|---|---|
 | `tag_saved` | action | `Tag $tag` | [`TagService`](../app/Services/TagService.php): `create()`, `update()`. |
 | `tag_deleted` | action | `int $id` | `delete()`. |
+| `tag_merged` | action | `int $sourceId, int $targetId` | `merge()`, after the merge transaction completes. |
 
 ### Media lifecycle
 
@@ -270,6 +271,15 @@ route-registration hook exists.
 | `lp_emoji_picker_enabled` / `lp_emoji_picker_editor_enabled` / `lp_emoji_picker_data` | filter | `bool $enabled` / `bool $enabled, string $editor` (`'wysiwyg'`\|`'markdown'`) / `array $default` (`{dataset, defaultCategory, recentLimit}`) | Same plugin — decoupling facades the editor-hosting admin views (`posts/new.php`, `pages/new.php`, `downloads/add-new.php`) call through `lp_emoji_picker_enabled()`/`lp_emoji_picker_editor_enabled()`/`lp_emoji_picker_data()` ([`include/helpers.php`](../include/helpers.php)) instead of a direct `EmojiPickerService` reference, mirroring `lp_fontawesome_enabled`/`lp_fontawesome_css_urls`'s identical reasoning. |
 | `lp_emoji_picker_trigger_html` | filter | `string $html, array $args` (`label?`, `target?`) | Same plugin — backs the `lp_emoji_picker_button(array $args = [])` template tag, for rendering a self-contained trigger button outside the default editor toolbars (e.g. a theme's comment form). Returns `''` when the plugin is inactive/disabled, always safe to call unconditionally. |
 | `lp_emoji_inserted` | action | `string $emoji, int $userId` | Same plugin — fired from the `emoji_picker_record_recent` AJAX sub-action (core, in each editor-hosting admin view — not the plugin itself, since "recently used" persistence is `UserService::addRecentEmoji()`'s job) whenever an insert is recorded to that user's recently-used list. |
+
+### Icons
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `lp_fontawesome_enabled` | filter | `bool $enabled` | Font Awesome plugin — backs the `lp_fontawesome_enabled()` template tag ([`include/helpers.php`](../include/helpers.php)). Falls through to `false` when the plugin is inactive/disabled, so a theme can call it unconditionally with no `function_exists()`/"is this plugin active" guard of its own. |
+| `lp_fontawesome_enqueue` | action | none | Font Awesome plugin — backs the `lp_fontawesome_enqueue()` template tag, called from a theme's `header.php` (or anywhere before it) when the theme's own markup uses `lp_icon()`/hand-written `fa-*` classes outside the `[icon]` shortcode, so the plugin's own per-request diagnostics can attribute the load to it. Doesn't itself control whether the stylesheet loads — that's gated purely on the plugin's "enabled" setting. |
+| `lp_icon` | filter | `string $html, string $name, array<string, mixed> $args` | Font Awesome plugin — backs the `lp_icon(string $name, array $args = [])` template tag, rendering one icon's `<i>` markup directly from PHP (e.g. `lp_icon('camera', ['label' => 'Camera'])`). `$args` accepts `style`, `size`, `rotate`, `flip`, `animation`, `color`, `class`, `label` — see `FontAwesomeService::icon()`. Returns `''` when no icon plugin is active/enabled, always safe to call unconditionally from theme markup. |
+| `lp_register_icon_pack` | action | `string $key, array<string, mixed> $config` | Font Awesome plugin — backs the `lp_register_icon_pack(string $key, array $config)` template tag, for registering an additional icon pack (e.g. a custom SVG set) alongside Font Awesome's own `fa` pack. |
 
 ### Application lifecycle & updates
 
