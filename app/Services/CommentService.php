@@ -222,6 +222,48 @@ final class CommentService
     }
 
     /**
+     * Batched countForPost() for a listing page — one query for every
+     * post shown rather than one per row. Missing/zero-comment post ids
+     * are simply absent from the result rather than present with 0, so
+     * callers should read it via ($counts[$postId] ?? 0).
+     *
+     * @param array<int, int> $postIds
+     * @return array<int, int>
+     */
+    public function countsForPosts(array $postIds, CommentStatus $status = CommentStatus::Approved): array
+    {
+        $postIds = array_values(array_unique(array_map('intval', $postIds)));
+
+        if ($postIds === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = ['status' => $status->value];
+
+        foreach ($postIds as $i => $postId) {
+            $key = "post_id_{$i}";
+            $placeholders[] = ':' . $key;
+            $params[$key] = $postId;
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT post_id, COUNT(*) AS comment_count FROM ' . $this->table()
+            . ' WHERE post_id IN (' . implode(',', $placeholders) . ') AND status = :status'
+            . ' GROUP BY post_id',
+            $params,
+        );
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $counts[(int) $row['post_id']] = (int) $row['comment_count'];
+        }
+
+        return $counts;
+    }
+
+    /**
      * Mirrors countForPost() exactly, for Pages.
      */
     public function countForPage(int $pageId, CommentStatus $status = CommentStatus::Approved): int

@@ -16,9 +16,11 @@
 /** @var array<int, \LumoraPress\Models\Post> $posts */
 /** @var array{page: int, totalPages: int}|null $pagination */
 /** @var string|null $archive_description */
+/** @var array<int, int> $comment_counts */
 get_header();
 $posts ??= [];
 $archive_description ??= null;
+$comment_counts ??= [];
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
@@ -49,6 +51,7 @@ $archive_description ??= null;
                                 <?php if (post_categories($post) !== []): ?>
                                     <span class="lp-post-list__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
                                 <?php endif; ?>
+                                &middot; <?php comments_link($post, $comment_counts[$post->id] ?? 0); ?>
                             </p>
                             <?php $moreTagContent = get_the_content_up_to_more_tag($post); ?>
                             <?php if ($moreTagContent !== null): ?>

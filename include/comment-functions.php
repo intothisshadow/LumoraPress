@@ -43,6 +43,33 @@ if (!function_exists('comment_avatar_url')) {
     }
 }
 
+if (!function_exists('comments_link')) {
+    /**
+     * The classic "X Comments" link for a post listing card, linking
+     * through to the post's own comment thread. Renders plain closed
+     * text with no link only when there's nothing to see and no way to
+     * add to it (closed and zero comments) — a closed thread that
+     * already has comments still links through so they remain readable.
+     */
+    function comments_link(Post $post, int $commentCount): void
+    {
+        if ($commentCount === 0 && !$post->commentsOpen) {
+            echo '<span class="lp-post-list__comments lp-post-list__comments--closed">Comments Closed</span>';
+
+            return;
+        }
+
+        $label = match ($commentCount) {
+            0 => 'No Comments',
+            1 => '1 Comment',
+            default => $commentCount . ' Comments',
+        };
+        ?>
+        <a class="lp-post-list__comments" href="<?= esc_url(post_permalink($post) . '#comments') ?>"><?= esc_html($label) ?></a>
+        <?php
+    }
+}
+
 if (!function_exists('comment_form')) {
     /**
      * Renders one comment submission form — the top-level "Leave a

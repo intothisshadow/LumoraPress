@@ -225,6 +225,7 @@ All of these accept `Post|Page|SearchResult $item` — anything with a
 | `comments_template(array $vars = []): void` | Fires the `comments_template` action, then renders the theme's own `comments.php` (no-op if it doesn't exist). Call this from `single.php`/`page.php` rather than writing comment markup by hand. |
 | `comment_avatar_url(string $email, string $rating = 'g', string $default = 'mp', int $size = 48): string` | A Gravatar URL — used internally by `comment_list()`, exposed if you need it directly. |
 | `format_comment_content(string $raw): string` | Escapes raw comment text and auto-links bare URLs. |
+| `comments_link(Post $post, int $commentCount): void` | The classic "X Comments" link for a post-listing card, linking to `post_permalink($post) . '#comments'`. Renders "No Comments"/"1 Comment"/"N Comments", or plain "Comments Closed" text with no link when the post has comments closed and zero comments. `index.php`/`archive.php` receive a `$comment_counts` array (`[postId => count]`, already batch-fetched — see missing ids as 0) to pass in as `$commentCount`. |
 
 ### Theme layout (`header.php`/`footer.php`/`sidebar.php`)
 

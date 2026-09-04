@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Comments count & link on post listings (LP-141): the homepage/Posts-page listing and every category, tag, author, and date archive now show each post's comment count next to its categories, linking through to that post's own comment thread — the classic "X Comments" link. Shows "Comments Closed" with no link only when a post has comments closed and no existing comments to read.
 - Featured Image placement (LP-143): a new "Featured Image" section under Appearance &rsaquo; Customize &rsaquo; Body lets a site choose, via two small clickable preview diagrams, whether a single post's or page's featured image appears above the title (the new default) or beside it as before. On the default theme's Classic homepage layout, the same choice also switches the front-page listing between the two arrangements.
 - Tags (LP-011): the admin Tags list gained checkboxes and a bulk-actions
   bar — Delete, Merge into&hellip; (reassigns every merged tag's posts to

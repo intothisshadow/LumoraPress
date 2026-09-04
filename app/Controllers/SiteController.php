@@ -140,7 +140,23 @@ final class SiteController
             'page_title' => $pageTitle,
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
+    }
+
+    /**
+     * Batched comment counts for a page of listing posts — one query for
+     * the whole page rather than one per post (see comments_link()).
+     *
+     * @param array<int, Post> $posts
+     * @return array<int, int>
+     */
+    private function commentCountsFor(array $posts): array
+    {
+        return $this->comments->countsForPosts(array_map(
+            static fn (Post $post): int => $post->id,
+            $posts,
+        ));
     }
 
     /**
@@ -798,6 +814,7 @@ final class SiteController
             'archive_description' => null,
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
     }
 
@@ -825,6 +842,7 @@ final class SiteController
             'archive_description' => $category->description,
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
     }
 
@@ -852,6 +870,7 @@ final class SiteController
             'archive_description' => $tag->description,
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
     }
 
@@ -869,6 +888,7 @@ final class SiteController
             'archive_type' => 'date',
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
     }
 
@@ -898,6 +918,7 @@ final class SiteController
             'archive_type' => 'date',
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
+            'comment_counts' => $this->commentCountsFor($pagination['posts']),
         ]);
     }
 

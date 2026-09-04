@@ -15,7 +15,9 @@
 /** @var array<int, \LumoraPress\Models\Post> $posts */
 /** @var array{page: int, totalPages: int} $pagination */
 /** @var string|null $page_title */
+/** @var array<int, int> $comment_counts */
 get_header();
+$comment_counts ??= [];
 ?>
 <?php if ($page_title === null): ?>
     <?php
@@ -67,6 +69,7 @@ get_header();
                                 <?php if (post_categories($post) !== []): ?>
                                     <span class="lp-post-list__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
                                 <?php endif; ?>
+                                &middot; <?php comments_link($post, $comment_counts[$post->id] ?? 0); ?>
                             </p>
                             <?php $moreTagContent = get_the_content_up_to_more_tag($post); ?>
                             <?php if ($moreTagContent !== null): ?>

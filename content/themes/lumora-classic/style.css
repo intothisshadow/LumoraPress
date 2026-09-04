@@ -521,6 +521,21 @@ img {
     text-decoration: underline;
 }
 
+/* comments_link() rendered inline in the post-list meta line. */
+a.lp-post-list__comments {
+    color: var(--lp-accent);
+    text-decoration: none;
+}
+
+a.lp-post-list__comments:hover,
+a.lp-post-list__comments:focus {
+    text-decoration: underline;
+}
+
+.lp-post-list__comments--closed {
+    color: var(--lp-text-muted);
+}
+
 /* LP-011 — get_the_tags()/the_tags() rendered as a pill list below a
    single post's own content, distinct from .lp-widget__tag-cloud-item
    (different component, even though visually similar). */
