@@ -36,6 +36,18 @@ final class PageService
 {
     private const DEFAULT_PER_PAGE = 20;
 
+    /**
+     * Request-scoped memoization of listAllForTree()'s result. A single
+     * request routinely calls it more than once (e.g. the admin "All
+     * Pages" tree view also builds its own parent-select dropdown from
+     * the same tree) — this avoids repeating the identical query.
+     * Cleared by any method that can change which pages exist in the
+     * tree or their parent/order within it.
+     *
+     * @var array<int, array{page: Page, depth: int}>|null
+     */
+    private ?array $treeCache = null;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -103,6 +115,7 @@ final class PageService
             throw new RuntimeException('Failed to load the page that was just created.');
         }
 
+        $this->treeCache = null;
         $this->hooks?->doAction('page_saved', $page);
 
         return $page;
@@ -170,6 +183,7 @@ final class PageService
             throw new RuntimeException('Failed to load the page that was just updated.');
         }
 
+        $this->treeCache = null;
         $this->hooks?->doAction('page_saved', $page);
 
         return $page;
@@ -272,6 +286,7 @@ final class PageService
         ) > 0;
 
         if ($trashed) {
+            $this->treeCache = null;
             $this->hooks?->doAction('page_deleted', $id);
         }
 
@@ -284,10 +299,16 @@ final class PageService
      */
     public function restore(int $id): bool
     {
-        return $this->database->execute(
+        $restored = $this->database->execute(
             'UPDATE ' . $this->table() . " SET status = 'draft', trashed_at = NULL WHERE id = :id",
             ['id' => $id],
         ) > 0;
+
+        if ($restored) {
+            $this->treeCache = null;
+        }
+
+        return $restored;
     }
 
     /**
@@ -316,6 +337,7 @@ final class PageService
         ) > 0;
 
         if ($changed) {
+            $this->treeCache = null;
             $page = $this->findById($id);
 
             if ($page !== null) {
@@ -369,10 +391,16 @@ final class PageService
             $parentId = null;
         }
 
-        return $this->database->execute(
+        $moved = $this->database->execute(
             'UPDATE ' . $this->table() . ' SET parent_id = :parent_id, menu_order = :menu_order WHERE id = :id',
             ['parent_id' => $parentId, 'menu_order' => $this->nextMenuOrder($parentId), 'id' => $id],
         ) > 0;
+
+        if ($moved) {
+            $this->treeCache = null;
+        }
+
+        return $moved;
     }
 
     /**
@@ -422,6 +450,7 @@ final class PageService
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
 
         if ($deleted) {
+            $this->treeCache = null;
             $this->hooks?->doAction('page_deleted', $id);
         }
 
@@ -760,12 +789,16 @@ final class PageService
      */
     public function listAllForTree(): array
     {
+        if ($this->treeCache !== null) {
+            return $this->treeCache;
+        }
+
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " WHERE status != 'trashed' ORDER BY parent_id, menu_order, id",
         );
         $pages = array_map($this->hydrate(...), $rows);
 
-        return $this->flattenForTree($pages, null, 0);
+        return $this->treeCache = $this->flattenForTree($pages, null, 0);
     }
 
     /**
@@ -853,6 +886,8 @@ final class PageService
                 );
             }
         });
+
+        $this->treeCache = null;
 
         return true;
     }
