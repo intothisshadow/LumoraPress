@@ -16,12 +16,9 @@
 /** @var \LumoraPress\Models\Post|null $post */
 /** @var \LumoraPress\Models\Page|null $page */
 
-/*
- * Open Graph / Twitter Card meta tags — only rendered for a single
- * post/page view, the only views with one canonical "primary image".
- * $post/$page arrive here via get_header(['post' => $post]) /
- * get_header(['page' => $page]); every other caller still calls it bare.
- */
+// Open Graph / Twitter Card meta tags — only rendered for a single
+// post/page view. $post/$page arrive via get_header(['post' => $post]);
+// every other caller still calls it bare.
 $og_item = $post ?? $page ?? null;
 $og_url = $og_item instanceof \LumoraPress\Models\Post
     ? post_permalink($og_item)
@@ -30,11 +27,8 @@ $og_description = $og_item !== null
     ? ($og_item->excerpt !== '' ? $og_item->excerpt : make_excerpt(content_plain_text($og_item->content, $og_item->contentFormat)))
     : '';
 
-/*
- * A post/page's own meta_title/meta_description override (set on its
- * editor screen) always wins when present, then falls through to the
- * excerpt/content-derived description above, then the site-wide default.
- */
+// A post/page's own meta_title/meta_description override always wins,
+// then the excerpt/content-derived description, then the site default.
 $seo_title = $og_item?->metaTitle ?? $page_title ?? null;
 $seo_description = $og_item?->metaDescription ?? ($og_description !== '' ? $og_description : null);
 $meta_description = $seo_description ?? meta_description();
@@ -45,13 +39,9 @@ $meta_description = $seo_description ?? meta_description();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php
-    /*
-     * A plain (non-deferred, non-module) <script src> runs synchronously
-     * here, before anything else in <head> — including style.css below —
-     * so it can set data-theme from localStorage before the page paints.
-     * It must be an external file: script-src has no CSP nonce/
-     * unsafe-inline allowance (see theme-toggle.js's own docblock).
-     */
+    // A plain synchronous <script src>, before anything else in <head>,
+    // so it can set data-theme from localStorage before the page paints.
+    // Must be an external file — script-src has no unsafe-inline.
     ?>
     <script src="<?= esc_url(core_asset_url('js/theme-toggle.js')) ?>"></script>
     <title><?= $seo_title !== null && $seo_title !== '' ? esc_html($seo_title) . ' ‹ ' : '' ?><?= esc_html(site_name()) ?></title>
@@ -100,13 +90,9 @@ $meta_description = $seo_description ?? meta_description();
     <?php endif; ?>
     <?php if ($og_item instanceof \LumoraPress\Models\Post): ?>
         <?php
-        /*
-         * BlogPosting structured data for a single post only — pages/
-         * archives/search have no equivalent schema.org type worth
-         * forcing. Author name is deliberately omitted: there's no
-         * author-display-name helper bridged to themes yet, and
-         * schema.org's `author` property is recommended, not required.
-         */
+        // BlogPosting structured data for a single post only. Author
+        // name is deliberately omitted — schema.org's `author` is
+        // recommended, not required.
         $jsonLd = [
             '@context' => 'https://schema.org',
             '@type' => 'BlogPosting',
@@ -131,18 +117,15 @@ $meta_description = $seo_description ?? meta_description();
 
         $jsonLd['publisher'] = ['@type' => 'Organization', 'name' => site_name()];
         ?>
-        <?php // Slashes deliberately left escaped (json_encode's default) so a title/description containing the literal text "</script>" can never break out of this tag. ?>
+        <?php // Slashes left escaped (json_encode default) so a title containing "</script>" can't break out of this tag. ?>
         <script type="application/ld+json"><?= json_encode($jsonLd) ?></script>
     <?php endif; ?>
     <?php if (custom_css() !== ''): ?>
         <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= custom_css() ?></style>
     <?php endif; ?>
     <?php
-    /*
-     * The wp_head()-equivalent extension point — lets a plugin (currently
-     * just Font Awesome) print its own <link>/<style> tags into <head>
-     * without this theme needing to know it exists.
-     */
+    // The wp_head()-equivalent extension point — lets a plugin print its
+    // own <link>/<style> tags into <head> without the theme knowing.
     do_action('head_assets');
     ?>
 </head>
