@@ -11615,3 +11615,539 @@ more text parsing.
       plaintext value when it doesn't (so it isn't lost on Save);
       Save & Test Connection against the freshly-detected values
       succeeded for real. Full `PHP Test Suite` (1995 tests) passes.
+
+## 0.10.0 (2026-09-04)
+
+### LP-080. Featured Image Size Setting, Bulk Upload, and Media-Manager Cropping
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (13/13 checklist items)
+
+### Goal
+
+Three related Featured Image / Media Manager improvements: (1) an
+admin-configurable output size for the manually-cropped featured image
+(today hardcoded to the `large` thumbnail size's width —
+`ThumbnailService::generateFeaturedCrop()`), (2) genuine multi-file
+upload in the Media Manager, so uploading many images destined to become
+featured images doesn't mean one-file-at-a-time round trips, and (3) a
+"Create Cropped Featured Image" action in the Media Manager that crops an
+already-uploaded image into a brand-new, independently selectable Media
+Library item, rather than cropping being reachable only from inside a
+specific post/page's own featured-image field (LP-040's original scope).
+
+### Architecture Notes
+
+**No queue/cron/background-job infrastructure exists anywhere in this
+codebase** (confirmed by grep across `app/` — every "bulk" admin action
+here, e.g. `ThumbnailService::queueForBulkRegeneration()` +
+`admin/views/media/thumbnails.php`'s Continue-button progress bar, is a
+manual batch-per-request pattern, not real async processing). This ticket
+does not introduce one either — multi-file upload (item 2) is real
+browser-driven concurrency (the client sequentially POSTs one file per
+request to the *same*, unchanged `MediaService::upload()` +
+`ThumbnailService::generate()` endpoint, just without a full page reload
+between files), not a server-side background queue.
+
+**CSRF tokens are single-use** (`Csrf::verify()` unsets the stored token
+on success — `app/Core/Security/Csrf.php`). Sequential AJAX requests
+reusing one page-load token would fail from the second file onward. The
+upload endpoint must return a **freshly generated token in its JSON
+response** for the client to use on the next request — the same fix this
+ticket's multi-upload work needs is *also* a latent, currently-unfixed
+bug in the existing single-file AJAX content-editor image upload
+(`editor_upload` in `admin/views/posts/new.php`/`pages.php`, used by
+`content-editor.js`'s `uploadFile()`): uploading two images into a post's
+body without a full page reload between them already fails today for the
+same reason. Not fixed here (different form/flow, separate call sites) —
+flagged as a follow-up.
+
+**Fixed (2026-08-11):** a real, separate bug reported live — every
+multi-file upload failed with "network error" on every file, even though
+the uploads succeeded server-side. Root cause: `admin/index.php` wraps
+the whole page dispatch in one `ob_start()` (never cleared before a
+view's own PHP runs — see `DECISIONS.md`), and
+`admin/views/media/upload.php`'s `ajax=1` JSON branches never discarded
+that buffer before echoing, unlike `editor_upload`'s already-correct
+handling of the exact same situation in `admin/views/posts/new.php`/
+`pages.php`. The response body was actually buffered admin HTML followed
+by the JSON — not valid JSON on its own — so the browser's
+`response.json()` call in `multi-upload.js` threw on every file,
+regardless of file size or type. Fixed by discarding the buffer before
+setting the JSON content type, matching `editor_upload`'s pattern. New
+regression coverage: `Unit/AdminViewsGuardTest.php` now asserts every
+admin view sending a `Content-Type: application/json` response also
+calls `ob_get_level()` first, catching this class of bug in any admin
+view, not just this one.
+
+**Crop output size** — `generateFeaturedCrop()`'s cap changes from a
+hardcoded `sizes()['large']['width']` to a new `featured_image_crop_size`
+option, resolved through the same "validate against the currently
+enabled thumbnail size names, fall back to `large`" pattern
+`lightbox_large_size` already establishes (`admin/views/settings/media.php`).
+
+**Crop-from-Media-Manager output model**: produces a **new, independent
+Media Library item** (its own file + `{prefix}media` row, its own small/
+medium/large thumbnails generated afterward) rather than attaching
+reusable crop metadata to the original image. The original file is never
+modified. This deliberately avoids introducing a second "does this post's
+own crop or the media item's default crop win" precedence rule alongside
+the existing per-post `featuredImageCrop` column — the two mechanisms
+stay completely independent: the per-post crop (LP-040) is unaffected by
+this ticket in every way.
+
+This extends LP-040's existing, already-accepted featured-image-crop
+mechanic (a deliberately narrow "select a rectangle for a post's featured
+image" feature) to a new entry point — it stays a Lumora Press-only
+concern (`MediaService`/`ThumbnailService`) and introduces no dependency
+on Lumora Gallery, which has no image-editing/cropping capability of its
+own and isn't a place this kind of feature would ever live regardless.
+
+### Featured Image Crop Size Setting
+
+- [x] New `featured_image_crop_size` option — a Select field on
+      `admin/views/media/thumbnails.php`'s existing "Thumbnail Settings"
+      panel (next to `default_featured_image_media_id`, not a new
+      Settings page — matches this project's established "thumbnail/
+      size-related settings live next to the Media Manager workflow"
+      placement, see that file's own LP-061 note), offering every
+      currently-*enabled* thumbnail size name (small/medium/large),
+      default `large` — byte-for-byte the current behavior when
+      unconfigured.
+- [x] `ThumbnailService::generateFeaturedCrop()`'s output-width cap reads
+      this option (falling back to `large`, then `1024`, if the
+      configured size was since disabled/removed) instead of the
+      hardcoded `large` lookup.
+- [x] `ThumbnailService::createCroppedFeaturedMedia()` (new, see below)
+      uses the same resolved size.
+
+### Multi-File Upload
+
+- [x] `admin/views/media/upload.php`'s file `<input>` gains the
+      `multiple` attribute.
+- [x] New client-side upload queue (new `admin/assets/js/multi-upload.js`,
+      progressive enhancement — the plain form still works with
+      JavaScript off, one file, full-page redirect, exactly as today):
+      when more than one file is selected, intercepts the submit,
+      uploads each file **sequentially** (matching this codebase's
+      existing "small batches, not aggressive parallelism" house style —
+      see `queueForBulkRegeneration()`'s batches-of-10) via `fetch()`
+      against the same upload endpoint, and shows a per-file
+      queued/uploading/done/failed status list.
+- [x] `upload.php`'s POST handler gains an `ajax=1` branch: on success,
+      returns JSON (`id`, `fileName`, and a **freshly generated CSRF
+      token** for the next request) instead of redirecting; on failure,
+      a JSON error with a non-2xx status. The non-AJAX branch (redirect
+      to the uploaded item's edit screen) is unchanged.
+- [x] Thumbnail generation (`ThumbnailService::generate()`) still runs
+      synchronously per file, exactly as today — unchanged, no attempt
+      to defer/optimize that part in this ticket (see Explicitly Out of
+      Scope).
+- [x] After the whole queue finishes, the page shows a summary (N
+      uploaded, N failed with reasons) and links to the Media Library.
+
+### Create Cropped Featured Image (Media Manager)
+
+- [x] New "Create Cropped Featured Image" section on a single image's
+      Media Manager edit screen (`admin/views/media/media.php`), below
+      the existing Thumbnails panel — reuses the existing
+      `admin/assets/js/featured-image-crop.js` drag-rectangle widget
+      unmodified (same `[data-lp-featured-crop]` markup contract; the
+      widget already only cares about finding its expected child
+      elements via `querySelector`, not about the surrounding form's
+      shape) against this image, in its own standalone form (not bundled
+      into a bigger "save everything" form, since this is a single,
+      deliberate one-off admin action — matches the `regenerate_thumbnails`
+      form's shape).
+- [x] `ThumbnailService::createCroppedFeaturedMedia(array $sourceMedia,
+      array $crop, int $uploadedByUserId, ?int $folderId): ?array` — crops
+      (reusing `generateFeaturedCrop()`'s clamp/EXIF-rotate/resize/encode
+      logic, factored into a shared private helper rather than
+      duplicated), writes a **new, uniquely-named** file (not the
+      existing content-addressed cache naming `generateFeaturedCrop()`
+      uses for its own per-post-crop cache files — a deliberate new
+      Library asset should get its own filename even for an identical
+      rectangle chosen twice, the same "duplicates are fine" precedent
+      `MediaService::upload()` already sets for re-uploading the same
+      file), registers it as a new `{prefix}media` row (new
+      `MediaService::registerExistingFile()`, mirroring the insert shape
+      `upload()`/`MediaImportService::import()` already use), inherits
+      the source image's alt text, lands in the source image's own
+      folder, and generates its own small/medium/large thumbnails before
+      returning.
+- [x] New Media Library item is immediately selectable as any post's or
+      page's featured image via the existing "Choose from Media Manager"
+      picker — no changes needed there.
+- [x] Server-side validation: reject a missing/zero-size crop rectangle
+      with a visible error, the same as every other admin form here.
+
+### Explicitly Out of Scope
+
+- [x] Fixing the identical single-use-CSRF-token bug in the content
+      editor's own `editor_upload` AJAX image-upload flow — same root
+      cause, different call site; flagged above as a follow-up, not
+      bundled into this ticket. Fixed as a side effect of LP-115's
+      "Upload New" picker step: `PostsController::uploadEditorImage()`
+      returns a freshly issued `csrfToken` in every response (success
+      and error paths alike), and `content-editor.js`'s `uploadFile()`
+      writes it back into `data-upload-csrf` for the next call, mirroring
+      `multi-upload.js`'s pattern for the Media Manager.
+
+### Success Criteria
+
+- An admin can choose which thumbnail size a manually-cropped featured
+  image is capped to, site-wide, with `large` remaining the default
+  (unconfigured) behavior.
+- Selecting several files at once in the Media Manager's upload screen
+  uploads all of them with visible per-file progress, without a full
+  page reload between files.
+- An admin can crop any already-uploaded image from its own Media
+  Manager edit screen and get back a new, independently selectable
+  Media Library item — the original file is never modified, and the new
+  item behaves exactly like any normally-uploaded image afterward
+  (its own thumbnails, selectable as a featured image anywhere).
+
+**Implemented.** `ThumbnailService::generateFeaturedCrop()`'s shared
+crop/EXIF-rotate/resample/encode pipeline was factored into a private
+`cropResizeAndEncode()` helper (plus a `clampCrop()` helper), reused by
+the new `createCroppedFeaturedMedia()`; both read the new
+`featured_image_crop_size` option via a new `featuredCropMaxWidth()`
+private method. `MediaService::registerExistingFile()` inserts a row for
+a file already on disk (the same INSERT shape `upload()`/
+`MediaImportService::import()` already use). Multi-file upload
+(`admin/assets/js/multi-upload.js`) only intercepts the form when 2+
+files are selected — a single file still submits natively with the
+classic redirect, unchanged. Covered by new tests in
+`Unit/Services/ThumbnailServiceTest.php` (`featured_image_crop_size`
+resolution/fallback, `createCroppedFeaturedMedia()`'s distinct-row/
+own-thumbnails/inherited-alt-text/unique-filenames behavior) and
+`Unit/Services/MediaServiceTest.php` (`registerExistingFile()`). Full PHP
+8.2/8.3/8.4 matrix run via `./run-tests-all-php.sh` — see `PHP Test
+Suite/TEST_LOG.md`.
+
+------
+
+### LP-139. Keyboard-Accessible Reordering: Post/Page Editor Sidebar & Pages Tree
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+While scoping LP-134 (Reorderable Dashboard Widgets), a grep of
+`admin/assets/js/sortable.js` confirmed it had zero `keydown` handling —
+pure HTML5 drag-and-drop, mouse-only. This script (per its own docblock)
+drives four screens total: Appearance &rsaquo; Widgets and Appearance
+&rsaquo; Menus (LP-048/LP-049), the Post/Page editor sidebar's meta-box
+reordering (LP-083's AJAX mode), and the Pages tree view (LP-009/LP-010's
+flat, depth-indented drag-and-drop list). `CLAUDE.md`'s Accessibility
+section requires keyboard navigation as a project goal, so a mouse-only
+reorder mechanism is a real gap wherever nothing else covers it.
+
+Checking each of the four screens individually (not just trusting the
+grep) found the actual gap was narrower than "all four": Widgets and
+Menus already ship their own separate, real `<button>` Move Up/Move Down
+pair predating `sortable.js` (confirmed keyboard-accessible via Tab/
+Enter/Space, no drag gesture required — see LP-048/LP-049's own
+checklist notes). Only the Post/Page editor sidebar and the Pages tree
+view had *no* keyboard reorder path at all.
+
+LP-134 had already generalized `sortable.js` itself with an opt-in
+`data-lp-sortable-move="up"/"down"` button contract (see that file's own
+docblock) for the Dashboard widgets screen — the natural fix here is to
+reuse that exact mechanism on the two screens still missing it, rather
+than inventing a second keyboard-reorder pattern.
+
+### Checklist
+
+- [x] Post/Page editor sidebar (`admin/views/posts/new.php` and
+      `admin/views/pages/new.php` — separate templates, no shared
+      partial, both edited identically): each `.lp-sidebar-box__header`
+      gains a `.lp-sidebar-box__move` Move Up/Move Down button pair,
+      wired through `sortable.js`'s existing AJAX-mode click handler
+      (`persistState()`, same as a drag).
+- [x] Pages tree view (`admin/views/pages/all-pages.php`): each
+      `.lp-pages-tree__item` gains a `.lp-pages-tree__move` Move Up/Move
+      Down button pair (gated behind the same `$canEditPage()` check the
+      drag handle already uses), wired through `sortable.js`'s existing
+      form-mode click handler (fills the `reposition_page` form's hidden
+      fields, `requestSubmit()`) — reordering stays scoped to true
+      siblings via the existing `data-lp-sortable-parent` matching, same
+      as a drag.
+- [x] New CSS for both button groups in `admin.css`, mirroring
+      `.lp-admin__widget-move`'s existing look (LP-134) —
+      `.lp-sidebar-box__header` dropped its `justify-content:
+      space-between` (now three children instead of up to two) in favor
+      of `margin-left: auto` on `.lp-sidebar-box__move`, matching how
+      `.lp-admin__widget-move` already self-positions.
+- [x] `sortable.js`'s own docblock updated to record that all four
+      screens it drives now have *a* keyboard reorder path — two via
+      its own shared Move Up/Move Down buttons (Dashboard, editor
+      sidebar/Pages tree), two via Widgets/Menus' independent
+      pre-existing buttons — rather than reading as a script-wide gap.
+- [x] Verified on the dev install: Tab reaches each new Move Up/Move
+      Down button; clicking Move Down on a mid-list post editor meta box
+      persists across a reload (AJAX mode, same as dragging); clicking
+      Move Down on a mid-tree page in the Pages tree reorders it among
+      its true siblings and persists (form mode, same as dragging); a
+      button at a list boundary (topmost/bottommost item) is a no-op
+      rather than erroring, matching the existing drag boundary
+      behavior.
+
+------
+
+### LP-141. Show Comments Count & Link on Posts
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (9/9 checklist items)
+
+### Goal
+
+Post listings (the homepage/Posts-page listing and the category/tag/author/date archive listing — the two templates, `index.php`/`archive.php`, that iterate real `Post` objects) should display each post's comment count, linking through to the post's comment thread on its single view — the classic "X Comments" link seen on the reference platforms in `CLAUDE.md`'s inspiration list. `search.php` is out of scope: it iterates `SearchResult` rows covering posts, pages, categories, tags, and authors alike, not `Post` objects, so a comment count there would need a materially different lookup and isn't part of this ticket.
+
+### Scoping notes
+
+- `CommentService::countForPost()` already exists but is one query per post — fine for a single post view, an N+1 on a listing page. Add a batch `countsForPosts(array $postIds): array<int, int>` method (same `IN (...)` placeholder pattern as `ThumbnailService::thumbnailsForMany()`) so a listing page costs one extra query total, not one per row.
+- `CommentModerationService::commentsOpenFor()` already resolves per-post/sitewide "comments open" — reuse it rather than re-deriving from `$post->commentsOpen` directly, so the sitewide `comments_enabled` option is honored the same way the single view already honors it.
+- New template tag `comments_link(Post $post, ?int $commentCount = null)` in `include/comment-functions.php`, mirroring the `comment_form()`/`comment_list()` pattern already there. Renders "No Comments"/"1 Comment"/"N Comments" linking to `post_permalink($post) . '#comments'`, or a plain "Comments Closed" (no link) when comments are closed for that post and the count is 0. `$commentCount` is optional so a caller that already has a batch-fetched count avoids a redundant query; omitted, it falls back to a live `countForPost()` call for any future single-post caller.
+- `SiteController`: add a `commentCountsFor(array $posts): array<int, int>` helper and pass `'comment_counts' => $this->commentCountsFor($pagination['posts'])` into the `index.php` render call (`renderPostsListing()`) and all four `archive.php` render call sites (`author()`, `category()`, `tag()`, `archive()`, `archiveByMonth()` — five sites total sharing `archive.php`).
+- Themes: render `comments_link($post, $comment_counts[$post->id] ?? null)` in the existing `.lp-post-list__meta` line (next to the categories span) in `lumora-classic`'s `index.php`/`archive.php`, then propagate the identical addition to `custom themes/duskline` and `custom themes/xena-central` (both share the exact same `.lp-post-list__meta` markup already).
+- CSS: new `.lp-post-list__comments` rule(s) in `lumora-classic/style.css`, following the existing `.lp-post-list__categories` link-color/hover pattern (`style.css:502-521`) — dark mode is inherited via the same `var(--lp-accent)`/`var(--lp-text-muted)` custom properties, no separate dark-mode block needed.
+- Tests: `CommentServiceTest` coverage for `countsForPosts()` (empty array input, mixed post IDs with/without comments, status filtering); a template-tag test for `comments_link()` covering the zero/singular/plural count text and the closed-with-zero "Comments Closed" case.
+- `docs/DEVELOPER-APIS.md`: document the new `CommentService::countsForPosts()` method under its existing Services section.
+- `docs/THEME-DEVELOPMENT.md`: document the new `comments_link()` template tag under its existing Comment API section.
+
+### Checklist
+
+- [x] `CommentService::countsForPosts(array $postIds, CommentStatus $status = CommentStatus::Approved): array<int, int>` batch method + unit tests
+- [x] `comments_link(Post $post, int $commentCount): void` template tag in `include/comment-functions.php` + unit tests (implemented with a required `$commentCount` — no live-query fallback path, since every current caller already has a batch-fetched count in hand)
+- [x] `SiteController::commentCountsFor()` helper wired into `renderPostsListing()` and all five `archive.php` render call sites
+- [x] `lumora-classic/index.php` renders `comments_link()` in the post-list meta line
+- [x] `lumora-classic/archive.php` renders `comments_link()` in the post-list meta line
+- [x] `custom themes/duskline` — propagate the same `index.php`/`archive.php` addition
+- [x] `custom themes/xena-central` — propagate the same `index.php`/`archive.php` addition
+- [x] `lumora-classic/style.css` — `.lp-post-list__comments` styling (light + confirms dark mode inherits via existing custom properties); matching additive styling also applied to `duskline`/`xena-central`'s own `style.css`
+- [x] `docs/THEME-DEVELOPMENT.md` updated (`docs/DEVELOPER-APIS.md` needed no change — it documents hooks/plugin lifecycle, not individual service methods); dev install synced; browser-verified against `lumorapress-preview` (homepage listing, category archive, and the resulting single-post `#comments` link all confirmed working)
+
+------
+
+### LP-142. Code Comment Cleanup
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Completed 2026-09-02 (Pass 1): swept every `.php` file in `LumoraPress/` (312 files, 224 modified) — admin/, app/Controllers/, app/Core/, app/Models/, app/Services/, content/plugins/, content/themes/default/, include/, install/, and the root-level files. Stripped stale `LP-XXX`/`LPP-XXX` ticket references and internal-doc pointers (`CLAUDE.md`, `MEMORY.md`, `DECISIONS.md`, `SESSION.md`, `TODO.md`, `TODO-PLUGINS.md`) out of body comments, trimmed verbose multi-paragraph docblocks, and removed a handful of stale/duplicate docblocks — while keeping every required file-header docblock, license/copyright notice, and genuine why-rationale comment intact. Comment-only changes throughout; `php -l` passed on all 312 files with no syntax errors.
+
+Completed 2026-09-04 (Pass 2): a second, more aggressive tightening pass over the same full scope, targeting class/method docblocks that were still too long (multi-paragraph architectural narration, exhaustive caller/component lists, restated implementation detail). `admin/` (42/65 files trimmed), `app/Core/`+`app/Models/` (79/96), `content/themes/default/`+`include/`+`install/`+root (15/34), and `app/Services/`+`app/Controllers/`+`content/plugins/` (45/116, including the 3184-line `WordPressImportService.php`) were each swept — every surviving comment was reviewed against the "1–3 lines, why not what" bar, with structural `@param`/`@return` type-shape docs and already-tight rationale left untouched. Every modified file passed `php -l`; comment-only changes throughout, and all edits were mirrored to the dev preview install as they landed.
+
+Go through the **entire codebase** and review all code comments for clarity and usefulness.
+
+Comments should explain intent or non-obvious behavior, not document every implementation detail. Avoid listing callers, enumerating every affected function, describing obvious control flow, or explaining routine performance characteristics.
+
+- Remove **extraneous, redundant, or unnecessary comments** that do not add meaningful information.
+- Keep comments that explain **why** something is done, non-obvious behavior, important constraints, workarounds, security considerations, or other context that cannot be understood easily from the code itself.
+- Rewrite overly verbose comments to be **short, clear, and to the point**.
+- Avoid comments that merely restate what the code already clearly does.
+- Comments should explain **intent or non-obvious behavior**, not document every implementation detail.
+- Avoid listing every function that calls a helper, enumerating every affected code path, or explaining obvious control flow.
+- Detailed explanations of **how or why a change was introduced**, historical context, TODO history, or implementation history generally belong in **git history, commit messages, changelogs, or project documentation**, rather than inline code comments.
+- Keep comments consistent in tone and style throughout the codebase.
+- Do not remove important documentation, licensing/copyright notices, file headers, or comments required by the project.
+- Do not change functionality or behavior; this is strictly a **comment cleanup and refinement** task.
+
+**Pass 2**
+
+Instruction:
+
+```
+Do another comment-review pass specifically looking for comments that are still too verbose. The previous cleanup was not aggressive enough. Treat comments longer than necessary as candidates for further reduction. Preserve the important "why", but remove implementation history, exhaustive lists of callers/components, obvious control-flow explanations, and detailed architectural narration. If the information would be more appropriate in Git history, a commit message, changelog, class/method documentation, or project documentation, remove it from the inline comment. Aim for comments that can normally be understood in 1–3 lines. Do not alter code behavior.
+```
+
+The goal is for every remaining comment to be **useful, concise, and intentional**, with the code itself carrying as much of the explanation as reasonably possible.
+
+------
+
+### LP-143. Lumora Classic Theme: Selectable Magazine & Classic Homepage Layouts
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Final checklist item (2026-09-04), built in three passes:
+
+1. First pass shipped "Show featured image above title" as a plain Checkbox Theme Option (`show_featured_image_above_title`), default off, wired into `single.php`/`page.php` for all three shipped themes.
+2. Second pass (Ariane pointed out Lumora Classic's Classic homepage layout still showed images beside posts): extended the same option to `content/themes/lumora-classic/index.php`'s front-page listing via a `lp-content--thumbnail-above` modifier class, scoped so it only overrides Classic's beside-the-post arrangement (Magazine already puts the image above per LP-094).
+3. Third pass (Ariane asked for "a cleaner option"): replaced the Checkbox with a Select field, `featured_image_position` (`'above'`/`'beside'`, default now `'above'`, its own `featured_image` section rather than folded into Post Display), and gave it a dedicated admin UI in `admin/views/appearance/customize.php` — two small clickable SVG diagram cards (one per choice) instead of a `<select>`, the default choice marked with a "Default" badge, styled via new `.lp-visual-choice*` classes in `admin/assets/css/admin.css` (uses `:has()` for the selected/focus-visible card border, native `<label>`-wraps-`<input type=radio">` for click-anywhere-on-card and full keyboard/screen-reader support — no JS needed). `ThemeCustomizerController::saveSection()` needed no changes at all, since it already reads `$_POST['opt_{key}']` generically regardless of which widget produced it.
+
+All three shipped themes (`content/themes/lumora-classic`, `custom themes/duskline`, `custom themes/xena-central`) read the same core-registered `featured_image_position` field via `theme_option()` (no `cssVariable`, so no LP-095 override-precedence concern). Reusing the same 320px/200px-mobile `object-fit: cover` hero-banner treatment LP-094 established for listings (`.lp-post__thumbnail--hero`). Duskline/Xena Central and archive.php/search.php don't get the homepage-listing override since neither has a "beside" listing variant to begin with — only Lumora Classic's own Classic homepage layout does.
+
+Verified end-to-end against the dev install across all three passes: raw HTML/DOM order via `curl` and live browser JS (`element.matches(':has(...)')`, not `getComputedStyle`, since this session's screenshot/computed-style readout was stuck stale/blank all session — a tool-side rendering quirk, confirmed by `matches()` reporting the correct selector match while `getComputedStyle` on the same element didn't move), the save round-trip (toggling both choices via a real form submit, confirming the front end changed accordingly each time), and Duskline's Customize screen (confirming the picker isn't Lumora-Classic-specific). Left the dev install on the new default (`'above'`, Lumora Classic active) rather than reverting, since that's now the intended out-of-the-box state.
+
+Renamed from "Classic Fansite" to "Lumora Classic" on 2026-09-04, ahead of it becoming the new Lumora Press default theme — both `custom themes/lumora-classic/` and `content/themes/lumora-classic/` (directories, `Theme Name` header, `lumora_classic`/`lumora_classic_home_layout` option keys) and the dev preview install's stored `active_theme`/`theme_options_*` rows were updated to match. All checklist items below were completed under the old name; they're recorded here as-is since the rename didn't change any actual functionality.
+
+Also on 2026-09-04: made Lumora Classic the actual bundled default theme and deleted the old `content/themes/default` theme entirely (both in `LumoraPress/` source and the dev preview install). Updated every hardcoded `'default'` theme-slug fallback to `'lumora-classic'` — `install/index.php`'s fresh-install `active_theme`, `include/bootstrap.php`'s runtime fallback and its own hardcoded core-paths fallback list, `core-paths.php` itself, and `ThemeOptions`'s constructor default — plus the `docs/THEME-DEVELOPMENT.md`/`docs/THIRD-PARTY.md`/`docs/DEVELOPER-APIS.md` path references and `CLAUDE.md`'s CHANGELOG-rule theme list. `docs/CHANGELOG.md`/`docs/HISTORY.md`'s historical "default theme" mentions were left untouched per the no-rewrite-history rule. Verified end-to-end against the dev preview install: front-end renders, Appearance › Themes no longer lists "Default," Lumora Classic shows Active.
+
+### Goal
+
+Give the Lumora Classic theme a stronger archive-oriented visual structure inspired by traditional fan sites while preserving Lumora Press’s own palette, typography system, accessibility behavior, and theme hooks.
+
+The homepage now supports two distinct presentation modes:
+
+- **Magazine** — a featured lead story followed by two cards across
+- **Classic** — one post per row, with the featured image beside the post content
+
+### Checklist
+
+- [x] Redesigned `custom themes/lumora-classic/style.css` with a contained masthead, configurable hero image, layered site branding/navigation, welcome-message band, editorial story cards, sidebar panels, article surfaces, and responsive breakpoints.
+- [x] Kept the reference image’s composition as inspiration only; colors, shadows, typography, spacing values, and surface treatment are original to Lumora Press.
+- [x] Updated the theme metadata from `Default` to `Classic Fansite` (later renamed `Lumora Classic`), including the new description and version `0.2.0`.
+- [x] Added a homepage section heading in `custom themes/lumora-classic/index.php` for the latest archive stories.
+- [x] Added the theme-scoped `lumora_classic_home_layout` option in `custom themes/lumora-classic/functions.php`.
+- [x] Added the **Lumora Classic** option section under the theme’s Appearance → Customize controls.
+- [x] Set **Magazine** as the default layout to preserve the current homepage presentation.
+- [x] Added the Magazine layout with one full-width featured story and a two-column card grid for subsequent posts.
+- [x] Added the Classic layout with one post per row, thumbnail beside the title and excerpt, and a stacked mobile layout.
+- [x] Preserved existing post thumbnails, lightbox behavior, excerpts, full-content mode, pagination, widgets, navigation menus, search, dark mode, and responsive behavior.
+- [x] Updated `admin/views/appearance/customize.php` so theme-defined option sections are automatically displayed under the Body tab instead of being silently ignored.
+- [x] Installed the updated theme under `content/themes/lumora-classic/` in the bundled Lumora Press source.
+- [x] Packaged the updated theme and Lumora Press source bundle for installation.
+- [x] Add option to show featured image above post
+
+------
+
+### LP-146. Visual Editor Toolbar: Read More Icon & Source Code Placement
+
+**Status:** Complete (3/3 checklist items done)
+
+- [x] Give the Visual/HTML editor's Insert Read More Tag button a scissors icon, matching the Markdown editor's own More Tag button (which already uses `fa-scissors`).
+- [x] Move the Source Code button from the toolbar's overflow row into the main row, next to Insert Read More Tag and Code Sample.
+- [x] Move the Table button into the overflow row (Source Code's old slot), next to Fullscreen and Help.
+
+Browser-verified in the Visual/HTML editor at `admin/posts/new`: toolbar order is now Insert Read More Tag (scissors icon) → Source Code → Code Sample, with Table relocated to the overflow row alongside Fullscreen/Help.
+
+------
+
+### LP-147. More Tag Marker Leaking Into Single Post View
+
+**Status:** Complete (2/2 checklist items done)
+
+- [x] Fix `single.php` in every bundled/custom theme (lumora-classic, duskline, xena-central) to render a post's content via `the_content($post)` instead of calling `render_content($post->content, $post->contentFormat)` directly — the latter never strips the More tag marker (only `get_the_content()`/`the_content()` in `include/content-display-functions.php` do), so a post with a More tag showed the literal `<!--more-->` text (Markdown) or the visible "Read More" label (Visual/HTML's `span.lp-more-tag`) in the middle of its own single-post page instead of the marker being invisible there and only cutting off listing/archive previews.
+- [x] Add a regression test (`PHP Test Suite/Unit/BundledThemeMoreTagRegressionTest.php`) that statically scans every bundled theme's `single.php` for this exact pattern.
+
+Browser-verified: a Markdown post with a `<!--more-->` marker now renders full, marker-free content on its own single-post page (`/2026/09/04/test-2`). Discovered by Ariane noticing the literal marker/label rendering live in the preview install.
+
+------
+
+### LP-148. Visual Editor Read More Marker Never Actually Styled
+
+**Status:** Complete (2/2 checklist items done)
+
+- [x] Root cause: TinyMCE's `content_style` option injects a raw, unnonced inline `<style>` into the editor iframe — the admin CSP's `style-src 'self'` (no `unsafe-inline`) silently drops it, so the `.lp-more-tag` marker rendered as plain unstyled text the whole time, not the visually-distinguished divider LP-079's comments claimed.
+- [x] Fixed by shipping the rule as a real linked stylesheet instead: new `admin/assets/css/content-editor-iframe.css`, loaded via TinyMCE's `content_css` (array, alongside the existing theme-stylesheet preview URL) instead of `content_style`. Every view that renders the Visual/HTML editor (`admin/views/posts/new.php`, `pages/new.php`, `downloads/add-new.php` ×2, `appearance/customize.php`) now passes its URL via a new `data-more-tag-stylesheet` attribute, admin_asset_url()'s usual cache-busting `?v=` included. Also swapped the marker's grey/neutral color scheme for the same blue accent (`#2271b1`) used elsewhere in the admin UI, with a light blue background band, at Ariane's request for stronger visual separation from real content.
+
+Browser-verified: the marker's computed `color`/`background-color`/`border` now resolve to the intended values inside the TinyMCE iframe (previously computed to browser defaults, proving the old inline style never applied), both via direct `setContent()` and via clicking the actual "Insert Read More Tag" toolbar button. Full `composer test` suite (2051 tests) still green.
+
+------
+
+### LP-149. Visual Editor Toolbar: Move Read More Tag Before Bullet List
+
+**Status:** Complete (2/2 checklist items done)
+
+- [x] Move the Insert Read More Tag button earlier in the toolbar, from next to Code/Code Sample to right before Bullet List (immediately after the alignment button group).
+- [x] Give Insert Shortcode its own icon (`addtag`) — it was accidentally sharing Source Code's `sourcecode` icon, making the two indistinguishable at a glance.
+
+Browser-verified in the Visual/HTML editor at `admin/posts/new`: toolbar order is now &hellip; Align Justify → Insert Read More Tag → Bullet List → Numbered List → &hellip;, and Insert Shortcode's rendered `<svg>` no longer matches Source Code's.
+
+------
+
+### LPP-013. Downloads/Media Download Links Still Reveal the Real Server File Path After One Click
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+### Goal
+
+**Correction to this ticket's own original framing below, confirmed
+with a real reproduction (2026-08-26):** a File-typed Download's
+"Download" button link (`Download::$url`, `site_url('media/{id}/download')`,
+`DownloadService::hydrate()`) *looks* masked in the page's own HTML —
+but `SiteController::mediaDownload()`
+(`app/Controllers/SiteController.php:1255-1274`) is a pure redirect:
+
+```php
+header('Location: ' . $this->media->url($item));
+exit;
+```
+
+So the masking is cosmetic only — one click and the browser's address
+bar shows the real `content/uploads/...` path regardless. Reproduced
+live: a `[sdm_show_dl_from_category category_slug="digital-paper" ...]`
+listing shows the button linking to
+`http://localhost/lumorapress-preview/media/52517/download`, but
+clicking it lands on
+`http://localhost/lumorapress-preview/content/uploads/digitalpaper/0004-amalthea/extant_textures_0004-amalthea1-2ca69120.jpg`.
+This is every `/media/{id}/download` link site-wide, not just
+Downloads-plugin items — `mediaDownload()`'s own docblock confirms this
+redirect-then-count-a-download-stat design was deliberate (LP-006 Media
+Statistics), just never intended to also *hide* the destination.
+
+A Download's **Description** field content (a separately embedded
+preview image/link, e.g. "Click on the thumbnail to see a bigger
+preview" content migrated by the WordPress Importer, or typed by hand
+via LPP-010's Insert Image button) is a related but distinct instance
+of the same underlying gap — it never goes through `/media/{id}/download`
+at all, `DownloadsShortcode::renderList()` renders it through
+`ContentRenderer` with the media's real URL baked directly into the
+HTML `src`/`href`, no redirect hop needed to see it.
+
+### Decisions (2026-08-31)
+
+- `mediaDownload()` now streams (`readfile()`, real `Content-Type`/
+  `Content-Disposition: attachment` headers) unconditionally — no
+  size-based fallback to redirecting. `MediaService::stream()` is the
+  shared implementation both routes below call.
+- A second route, `/media/{id}/view` (`SiteController::mediaView()`),
+  streams inline (`Content-Disposition: inline`) for embedded preview
+  images — the primary Download button still uses `/media/{id}/download`.
+  `mediaView()` is images-only (404s otherwise); masking a non-image
+  Description embed has no inline-preview use case.
+- Scope: Downloads plugin only (its Download button, already masked in
+  HTML via `site_url('media/{id}/download')` — only the redirect target
+  leaked, now fixed — and its own Description field). Site-wide masking
+  of every post/page's embedded media was explicitly ruled out — no
+  stated demand for it, and it's a much larger change.
+
+### Checklist
+
+- [x] `mediaDownload()` streams the file itself
+      (`MediaService::stream()`, `readfile()` with the real
+      `Content-Type`/`Content-Disposition: attachment` headers) instead
+      of redirecting.
+- [x] A separate masked `/media/{id}/view` endpoint
+      (`SiteController::mediaView()`) streams inline
+      (`Content-Disposition: inline`) for embedded preview images —
+      Downloads' own Description-field images now render through this,
+      via the new `DownloadMediaUrlMasker` (Downloads plugin,
+      `content/plugins/downloads/src/`), which rewrites any `<img src>`/
+      `<a href>` in a rendered Description still pointing at the real
+      upload path back to `/media/{id}/view` (`MediaService::
+      findByFilePath()` does the reverse id lookup; migration `0057`
+      indexes `media.file_path` for it).
+- [x] Scope decided and applied: Downloads plugin only (button +
+      Description field) — see Decisions above.
+- [x] The masked `/media/{id}/view` URL still works with the existing
+      PhotoSwipe lightbox: `DownloadMediaUrlMasker::mask()` runs strictly
+      after `ContentRenderer::addLightboxAttributes()`, so
+      `data-pswp-width`/`data-pswp-height`/`data-pswp-caption` are
+      already resolved from the real file before the `href` gets
+      rewritten to the masked URL — the masked URL itself resolves to
+      real image bytes (`Content-Disposition: inline`), not another
+      redirect hop.
+- [x] Regression/unit tests: `MediaServiceTest` covers `stream()`
+      (returns bytes and `true` for a real file, `false` for a missing
+      one) and `findByFilePath()`; `DownloadsShortcodeTest` covers a
+      Description image being masked to `/media/{id}/view` and an
+      external (non-Media) image URL being left untouched. Full suite
+      (2001 tests) passes.
+- [x] Verified end-to-end in the dev install (Ariane's real migrated
+      data, download id 409 / media id 52517 — the exact case this
+      ticket's own reproduction cited): `/media/52517/download` now
+      returns `200 OK` with real JPEG bytes and `Content-Disposition:
+      attachment`, no `Location` header; `/media/52517/view` returns
+      inline; a temporary `[lumora_downloads download_id="409"]` test
+      page rendered the Download button as `/media/52517/download` and
+      the Description thumbnail link as `/media/52460/view` — no
+      `content/uploads/...` path anywhere in the rendered HTML.

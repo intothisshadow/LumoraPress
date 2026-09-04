@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-04
+
 ### Added
 
 - Comments count & link on post listings (LP-141): the homepage/Posts-page listing and every category, tag, author, and date archive now show each post's comment count next to its categories, linking through to that post's own comment thread — the classic "X Comments" link. Shows "Comments Closed" with no link only when a post has comments closed and no existing comments to read.

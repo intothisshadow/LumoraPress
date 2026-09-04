@@ -5,7 +5,7 @@ quick scannable overview, see the "Features" section of the root
 [`README.md`](../README.md) instead — this document goes into
 implementation-level detail on each area.
 
-**Version 0.9.0**
+**Version 0.10.0**
 
 - **Foundation** — installer, routing, database layer, configuration
   service, authentication, user roles, admin dashboard, classic theme
@@ -45,7 +45,10 @@ implementation-level detail on each area.
   count on every filter tab (All/Pending/Approved/Spam/Trash), an
   Empty Spam action alongside Empty Trash, honeypot/CSRF/
   submission-timing spam protection, and optional Akismet spam-checking
-  (Settings &rsaquo; Security — off by default, never required).
+  (Settings &rsaquo; Security — off by default, never required). Every
+  post listing (the homepage and every category/tag/author/date
+  archive) shows each post's comment count linking through to its own
+  comment thread, the classic "X Comments" link.
 - **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
   for comment defaults (required name/email, registered-only commenting,
   auto-close after N days, cookie-remembered guest info, threading depth,
@@ -121,7 +124,10 @@ implementation-level detail on each area.
 - **Featured images** — per-post/page featured images with manual
   cropping (with a configurable output size), or crop any already-
   uploaded image directly from its Media Manager edit screen into a new,
-  independently reusable featured-image-ready Library item.
+  independently reusable featured-image-ready Library item. A site-wide
+  Customize option chooses whether a featured image appears above the
+  title or beside it, with the front page's Classic layout following
+  the same choice.
 - **FTP media import** — bring in files already on the server without a
   browser upload.
 - **REST API** — a versioned, token-authenticated API for posts, pages,
