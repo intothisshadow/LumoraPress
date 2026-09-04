@@ -42,6 +42,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - Single post page (LP-147): a post's More tag marker leaked into its own full-content view instead of only cutting off listing/archive previews — a Markdown post showed the literal `<!--more-->` text, and a Visual/HTML post showed a visible "Read More" label, right in the middle of the published page. Every bundled theme's `single.php` now renders content through `the_content()`, which strips the marker, instead of calling the lower-level renderer directly on raw content.
+- Visual/HTML editor's Read More Tag marker (LP-148): the divider styling meant to set the marker apart from surrounding text while editing never actually applied — the admin CSP's `style-src 'self'` silently drops TinyMCE's own inline `content_style` option, so the marker rendered as plain, unstyled text with no visual indication it wasn't real content. It now loads as a real linked stylesheet instead, and uses the same blue accent as the rest of the admin UI.
 - Post/Page editor sidebar and Pages tree view (LP-139): neither screen
   had any keyboard-accessible way to reorder items — the shared
   drag-and-drop script behind both is mouse-only, and unlike Appearance

@@ -193,7 +193,7 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
         <?php elseif ($field->type === ThemeOptionType::Url): ?>
             <input type="url" id="<?= esc_attr($fieldId) ?>" name="opt_<?= esc_attr($field->key) ?>" value="<?= esc_attr($currentValue) ?>" placeholder="https://fonts.googleapis.com/css2?family=...">
         <?php elseif ($field->type === ThemeOptionType::Html): ?>
-            <div class="lp-content-editor" data-lp-content-editor data-format="<?= esc_attr($formatValue) ?>">
+            <div class="lp-content-editor" data-lp-content-editor data-format="<?= esc_attr($formatValue) ?>" data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>">
                 <textarea id="<?= esc_attr($fieldId) ?>" name="opt_<?= esc_attr($field->key) ?>" rows="8"><?= esc_html($currentValue) ?></textarea>
             </div>
         <?php else: ?>

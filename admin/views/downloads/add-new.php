@@ -599,6 +599,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                     data-emoji-record-csrf="<?= esc_attr(Csrf::token('emoji_picker_record_recent')) ?>"
                 <?php endif; ?>
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+                data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                 data-autosave-id="<?= esc_attr('download-' . $editingDownload->id) ?>"
             >
                 <label for="download-description">Description</label>
@@ -712,6 +713,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                     data-emoji-record-csrf="<?= esc_attr(Csrf::token('emoji_picker_record_recent')) ?>"
                 <?php endif; ?>
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+                data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                 data-autosave-id=""
             >
                 <label for="download-description">Description</label>

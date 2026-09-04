@@ -672,6 +672,7 @@ if ($savedLayout['order'] === []) {
                         data-emoji-record-csrf="<?= esc_attr(Csrf::token('emoji_picker_record_recent')) ?>"
                     <?php endif; ?>
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
+                    data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
                 >
                     <label for="page-content">Content</label>

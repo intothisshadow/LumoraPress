@@ -1907,6 +1907,21 @@
             // existing Post/Page from a live, searchable list.
             var basePlugins = 'lists table code codesample searchreplace fullscreen wordcount help';
 
+            // Both are real linked stylesheets loaded into the iframe via
+            // content_css — the admin CSP's style-src 'self' has no
+            // 'unsafe-inline', so TinyMCE's own inline content_style
+            // option is silently dropped there (see the content_css
+            // comment below).
+            var contentCssUrls = [];
+
+            if (container.dataset.moreTagStylesheet) {
+                contentCssUrls.push(container.dataset.moreTagStylesheet);
+            }
+
+            if (container.dataset.themeStylesheet) {
+                contentCssUrls.push(container.dataset.themeStylesheet);
+            }
+
             // Same has-{color}-color class convention as the align
             // formats below — one custom format per fixed palette color,
             // consumed by the lumoraFontColor menu button in setup().
@@ -1937,17 +1952,18 @@
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag code codesample | '
                         + 'searchreplace fullscreen table help',
                     // LP-079: visually distinguishes the More tag marker
-                    // (span.lp-more-tag) while editing — this stylesheet
-                    // only ever loads inside TinyMCE's own editing iframe,
-                    // never on the public site (the marker itself is
-                    // always stripped before the_content()/the_excerpt()
-                    // render anything — see ContentRenderer::
-                    // splitAtMoreTag()), so it's safe to make the marker
-                    // look nothing like its final (nonexistent) public
-                    // appearance.
-                    content_style: '.lp-more-tag { display: block; text-align: center; '
-                        + 'color: #888; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; '
-                        + 'padding: 0.5em 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; }',
+                    // (span.lp-more-tag) while editing — never on the public
+                    // site (the marker itself is always stripped before
+                    // the_content()/the_excerpt() render anything — see
+                    // ContentRenderer::splitAtMoreTag()), so it's safe to
+                    // make the marker look nothing like its final
+                    // (nonexistent) public appearance. Shipped as a real
+                    // linked stylesheet (content_css) rather than TinyMCE's
+                    // own inline content_style option — the admin CSP's
+                    // style-src 'self' (no 'unsafe-inline') silently drops
+                    // an unnonced inline <style>, which is exactly what
+                    // content_style injects into the iframe.
+                    content_css: contentCssUrls,
                     // TinyMCE's align toolbar defaults to an inline
                     // style="text-align: ..." — HtmlSanitizer never
                     // allows a style attribute at all (an arbitrary-CSS
@@ -1984,7 +2000,6 @@
                     // inserted here (via Insert from Media Manager or
                     // typed by hand) must stay exactly as given.
                     relative_urls: false,
-                    content_css: (container.dataset.themeStylesheet || undefined),
                     images_upload_handler: function (blobInfo) {
                         return uploadFile(container, blobInfo.blob()).then(function (json) {
                             return json.url;
