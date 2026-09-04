@@ -257,7 +257,7 @@ require LUMORA_ROOT . '/include/menus.php';
 
 $themesPath = LUMORA_ROOT . '/content/themes';
 $themesUrl = BasePath::get() . '/content/themes';
-$activeThemeSlug = (string) $config->option('active_theme', 'default');
+$activeThemeSlug = (string) $config->option('active_theme', 'lumora-classic');
 
 $theme = new ThemeRenderer(
     themesPath: $themesPath,
@@ -541,7 +541,7 @@ require LUMORA_ROOT . '/include/comment-functions.php';
 $corePathsFile = LUMORA_ROOT . '/core-paths.php';
 $updateCorePaths = is_file($corePathsFile) ? require $corePathsFile : [
     'app', 'admin', 'assets', 'include', 'install',
-    'content/themes/default', 'content/plugins/font-awesome', 'content/plugins/dummy-content',
+    'content/themes/lumora-classic', 'content/plugins/font-awesome', 'content/plugins/dummy-content',
     'content/plugins/wordpress-importer', 'content/plugins/downloads',
     'index.php', 'version.php', '.htaccess', 'README.md', 'LICENSE.md', 'docs', 'core-paths.php',
 ];

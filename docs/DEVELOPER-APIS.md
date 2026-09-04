@@ -123,7 +123,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
-| `head_assets` | action | none | Theme convention, not core — `content/themes/default/header.php` calls `do_action('head_assets')` right before `</head>`; every theme is expected to do the same (mirrors WordPress's `wp_head`). The Font Awesome plugin listens here to print its `<link>` tag. |
+| `head_assets` | action | none | Theme convention, not core — `content/themes/lumora-classic/header.php` calls `do_action('head_assets')` right before `</head>`; every theme is expected to do the same (mirrors WordPress's `wp_head`). The Font Awesome plugin listens here to print its `<link>` tag. |
 | `footer_assets` | action | none | Same theme convention, fired right before `</body>`. **Core itself listens here** ([`FooterAssets`](../app/Core/Theme/FooterAssets.php), registered in `include/bootstrap.php`) to emit lightbox/embed script tags — a theme that skips this hook silently breaks `the_post_thumbnail_lightbox()` and auto-embeds. |
 | `get_header` / `get_footer` / `get_sidebar` | action | none | Fired at the top of the corresponding [`get_header()`/`get_footer()`/`get_sidebar()`](../include/theme.php) template-tag function, before the partial is rendered. |
 | `comments_template` | action | none | Fired inside `comments_template()`, before `comments.php` renders. |

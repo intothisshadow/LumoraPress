@@ -45,7 +45,7 @@ final class ThemeOptions
 
     public function __construct(
         private readonly PressConfig $config,
-        private readonly string $activeThemeSlug = 'default',
+        private readonly string $activeThemeSlug = 'lumora-classic',
     ) {
     }
 

@@ -223,7 +223,7 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
                 $config->setOption('site_url', $siteUrl);
                 $config->setOption('timezone', $timezone);
                 $config->setOption('locale', $locale);
-                $config->setOption('active_theme', 'default');
+                $config->setOption('active_theme', 'lumora-classic');
                 $config->setOption('active_plugins', '[]');
 
                 unset($_SESSION['install_db'], $_SESSION['install_step'], $_SESSION['install_suggested_prefix']);

@@ -19,8 +19,12 @@ get_header();
 ?>
 <?php if ($page_title === null): ?>
     <?php
-    // WebSite structured data — only on the genuine homepage. The
-    // "Posts page" (own URL) always passes a non-null $page_title.
+    /*
+     * WebSite structured data — only on the genuine homepage. This
+     * template is shared with the "Posts page" at its own URL, which
+     * always passes a non-null $page_title, so that check distinguishes
+     * the two here.
+     */
     $websiteJsonLd = [
         '@context' => 'https://schema.org',
         '@type' => 'WebSite',
@@ -35,8 +39,16 @@ get_header();
     ?>
     <script type="application/ld+json"><?= json_encode($websiteJsonLd) ?></script>
 <?php endif; ?>
-<div id="lp-content" class="lp-content lp-layout">
+<?php $lpHomeLayout = theme_option('lumora_classic_home_layout') === 'classic' ? 'classic' : 'magazine'; ?>
+<div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?> lp-layout">
     <main class="lp-main">
+        <?php if ($page_title === null && $posts !== []): ?>
+            <header class="lp-main-header">
+                <p class="lp-eyebrow">The latest from the archive</p>
+                <h1 class="lp-page-title">Stories worth keeping</h1>
+                <p class="lp-main-header__intro">A considered collection of notes, discoveries, and details from the Lumora Press archive.</p>
+            </header>
+        <?php endif; ?>
         <?php if ($posts === []): ?>
             <p class="lp-empty-state">No posts have been published yet.</p>
         <?php else: ?>

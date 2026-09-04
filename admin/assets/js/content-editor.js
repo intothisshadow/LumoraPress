@@ -67,7 +67,7 @@
     var TINYMCE_JS = 'https://cdn.jsdelivr.net/npm/tinymce@' + TINYMCE_VERSION + '/tinymce.min.js';
 
     // Fixed font-color palette (LP-016 parity), shared by both editors.
-    // Applied as a has-{name}-color class (content/themes/default/style.css)
+    // Applied as a has-{name}-color class (content/themes/lumora-classic/style.css)
     // rather than an inline style="color:..." — HtmlSanitizer never allows
     // a style attribute (see its docblock), so an arbitrary color picker
     // isn't an option here. MarkdownParser::FONT_COLORS carries the same
@@ -1954,7 +1954,7 @@
                     // injection surface this project deliberately
                     // avoids), so alignment is applied as a class
                     // instead, the same has-text-align-* convention
-                    // Gutenberg uses. See content/themes/default/
+                    // Gutenberg uses. See content/themes/lumora-classic/
                     // style.css for the matching CSS.
                     formats: Object.assign({
                         alignleft: { selector: 'p,h1,h2,h3,h4,h5,h6,td,th,div', classes: 'has-text-align-left' },

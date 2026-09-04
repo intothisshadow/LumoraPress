@@ -72,11 +72,12 @@ version.
   version and a shared `.lp-pswp-caption` UI extension:
   [`admin/assets/js/media-viewer.js`](../admin/assets/js/media-viewer.js)
   (admin Media Manager preview) and
-  [`content/themes/default/assets/js/media-viewer.js`](../content/themes/default/assets/js/media-viewer.js)
-  (public-facing theme galleries) — deliberately separate copies so the
-  admin does not depend on whichever theme happens to be active. The
-  stylesheet (`photoswipe.css`) is loaded via `<link>` in both
-  `admin/views/layout-footer.php` and `content/themes/default/footer.php`.
+  [`assets/js/media-viewer.js`](../assets/js/media-viewer.js) (public-facing
+  galleries, served via `core_asset_url()` from `FooterAssets::render()` so
+  it's theme-independent, not vendored per theme) — deliberately separate
+  copies so the admin does not depend on whichever theme happens to be
+  active. The stylesheet (`photoswipe.css`) is loaded via `<link>` in both
+  `admin/views/layout-footer.php` and `FooterAssets::render()`.
 
 ## CodeMirror
 
@@ -182,7 +183,8 @@ version.
   above — split out from it because, unlike the five iframe-only
   providers, Twitter/X has no plain-iframe embed. `EmbedService::wrap()`
   instead emits a `<blockquote class="twitter-tweet">` and
-  `content/themes/default/footer.php` conditionally loads
+  `FooterAssets::render()` (called from every theme's `footer.php` via
+  `do_action('footer_assets')`) conditionally loads
   `platform.twitter.com/widgets.js`, which scans the page on load and
   replaces each matching blockquote with its own rendered iframe. Unlike
   the iframe-only providers above, this one *does* download and execute a
@@ -217,7 +219,7 @@ version.
 - **Purpose:** LP-071's Bluesky provider for the same Auto-Embed feature —
   the same script+blockquote shape as Twitter/X above (`EmbedService::wrap()`
   emits `<blockquote class="bluesky-embed">`, and
-  `content/themes/default/footer.php` conditionally loads
+  `FooterAssets::render()` conditionally loads
   `embed.bsky.app/static/embed.js`, which scans the page and replaces each
   matching blockquote with its own rendered iframe), but with one further
   difference from every other provider in this file: Bluesky's blockquote

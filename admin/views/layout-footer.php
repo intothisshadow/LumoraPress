@@ -56,9 +56,9 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/auto-submit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/color-field-reset.js')) ?>" defer></script>
 <?php if (\LumoraPress\Core\Theme\MediaViewer::isUsed()): ?>
-    <!-- Media Viewer & Lightbox — see content/themes/default/footer.php's identical block for why this is CDN-loaded and conditional. -->
+    <!-- Media Viewer & Lightbox — see content/themes/lumora-classic/footer.php's identical block for why this is CDN-loaded and conditional. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css">
-    <?php /* See content/themes/default/footer.php's identical block for why this is a data-* attribute rather than an inline <script> — CSP's script-src has no inline allowance. */ ?>
+    <?php /* See content/themes/lumora-classic/footer.php's identical block for why this is a data-* attribute rather than an inline <script> — CSP's script-src has no inline allowance. */ ?>
     <script type="module" data-lp-media-viewer data-show-filenames="<?= $kernel->config->option('lightbox_show_filenames', '0') === '1' ? '1' : '0' ?>" src="<?= esc_url(admin_asset_url('js/media-viewer.js')) ?>"></script>
 <?php endif; ?>
 </body>

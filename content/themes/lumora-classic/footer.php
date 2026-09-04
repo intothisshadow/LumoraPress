@@ -37,8 +37,12 @@
 </footer>
 <script src="<?= esc_url(core_asset_url('js/dynamic-style.js')) ?>"></script>
 <?php
-// Lightbox and Twitter/Bluesky embed scripts are core features, not
-// theme markup — FooterAssets::render() only emits each one when used.
+/*
+ * Lightbox CSS/JS and Twitter/Bluesky embed scripts are core features,
+ * not theme markup — do_action() hands off to FooterAssets::render()
+ * (app/Core/Theme/FooterAssets.php), which only emits each one when it
+ * was actually used earlier in this request.
+ */
 do_action('footer_assets');
 ?>
 </body>

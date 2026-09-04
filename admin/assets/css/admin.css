@@ -3541,7 +3541,7 @@ select:focus {
 /*
  * Forgot-password honeypot (LP-058) — same off-screen-positioning
  * technique as the public comment form's .lp-comment-form__honeypot
- * (content/themes/default/style.css), duplicated here since admin pages
+ * (content/themes/lumora-classic/style.css), duplicated here since admin pages
  * never load the active theme's stylesheet.
  */
 .lp-login__honeypot {

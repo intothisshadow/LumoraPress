@@ -3,9 +3,10 @@
  * every `.lp-gallery` container's `<a data-pswp-width="..." data-pswp-height="...">`
  * children into a PhotoSwipe lightbox — used on the Media Manager's
  * image edit/preview view (admin/views/media/media.php). Deliberately a
- * separate copy from content/themes/default/assets/js/media-viewer.js
- * rather than the admin depending on whatever theme happens to be
- * active — keep both in sync when changing lightbox behavior. Only
+ * separate copy from assets/js/media-viewer.js (the public-facing copy,
+ * served via core_asset_url() from FooterAssets::render()), since admin
+ * pages never load that or any other public-facing asset — keep both in
+ * sync when changing lightbox behavior. Only
  * loaded (see admin/views/layout-footer.php) when MediaViewer::isUsed()
  * was set; that same file puts the "show filenames" setting on this
  * script tag's own data-show-filenames attribute (found via

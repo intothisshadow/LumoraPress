@@ -51,7 +51,7 @@ Themes admin screen's thumbnail/gallery.
 
 Beyond `style.css`, the templates below are what `SiteController` and
 `ThemeRenderer` actually request. The default theme
-(`content/themes/default/`) is a complete, working reference
+(`content/themes/lumora-classic/`) is a complete, working reference
 implementation — copy it as a starting point rather than building from
 this document alone.
 
@@ -564,5 +564,5 @@ visitors.
 <?php get_footer(); ?>
 ```
 
-For the full picture, read `content/themes/default/` — every template
+For the full picture, read `content/themes/lumora-classic/` — every template
 listed in this document, working, styled, and dark-mode-aware.

@@ -23,7 +23,7 @@ return [
     'assets',
     'include',
     'install',
-    'content/themes/default',
+    'content/themes/lumora-classic',
     'content/plugins/font-awesome',
     'content/plugins/dummy-content',
     'content/plugins/wordpress-importer',

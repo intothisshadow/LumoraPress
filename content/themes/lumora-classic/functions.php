@@ -28,3 +28,24 @@ register_nav_menu('primary', 'Primary Menu');
 register_nav_menu('footer', 'Footer Menu');
 register_nav_menu('social', 'Social Links Menu');
 register_nav_menu('secondary', 'Secondary Menu');
+
+add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOptions $options): void {
+    $options->registerSection(
+        'lumora_classic',
+        'Lumora Classic',
+        'Choose the homepage composition used by this theme.'
+    );
+
+    $options->registerField(new \LumoraPress\Core\Theme\ThemeOptionField(
+        key: 'lumora_classic_home_layout',
+        section: 'lumora_classic',
+        type: \LumoraPress\Core\Theme\ThemeOptionType::Select,
+        label: 'Homepage layout',
+        default: 'magazine',
+        choices: [
+            'magazine' => 'Magazine — featured story and two cards',
+            'classic' => 'Classic — one post per row',
+        ],
+        help: 'The magazine layout gives the first post visual priority and places the remaining posts in a two-column grid.',
+    ));
+});
