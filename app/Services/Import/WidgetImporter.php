@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Appends widget instances from ImportedWidgetInstance DTOs into their target sidebars and records provenance (LPP-004 Stage 8).
+ * Appends widget instances from ImportedWidgetInstance DTOs into their target sidebars and records provenance.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,16 +21,11 @@ use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Services\ContentImportRegistry;
 
 /**
- * Unlike MediaImporter/PostImporter, WidgetManager has no database-backed
- * create() — setWidgets() only mutates its in-memory state (see
- * WidgetManager's own docblock). This class does not persist the
- * "widgets_config" option itself; the caller (WordPressImportService)
- * does that once after every widget in a batch has been imported,
- * mirroring admin/views/appearance/widgets.php's own save closure.
- *
- * Appends to whatever a sidebar already holds (via widgetsFor()) rather
- * than replacing it outright — importing must never wipe out widgets a
- * site already had before the import ran.
+ * Unlike MediaImporter/PostImporter, WidgetManager has no database-backed create() —
+ * setWidgets() only mutates in-memory state, so this class does not persist the
+ * "widgets_config" option itself; the caller does that once after every widget is imported.
+ * Appends to whatever a sidebar already holds rather than replacing it, since importing must
+ * never wipe out widgets a site already had.
  */
 final class WidgetImporter
 {

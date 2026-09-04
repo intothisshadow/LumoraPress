@@ -18,12 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Cache;
 
 /**
- * Default/fallback driver (LP-037's "Initial drivers: Null driver
- * (default/no caching)") — used whenever no supported reverse-proxy/edge
- * cache is detected. Every purge call is a deliberate no-op: with no
- * external cache to tell, there's nothing to do, but CacheManager can
- * still call purgeUrl()/purgeTag()/purgeAll() unconditionally without
- * checking which driver is active first.
+ * Fallback driver used when no supported edge cache is detected. Every
+ * purge call is a deliberate no-op, so CacheManager can call them
+ * unconditionally without checking which driver is active.
  */
 final class NullCacheDriver implements CacheDriverInterface
 {

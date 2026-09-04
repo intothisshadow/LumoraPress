@@ -22,15 +22,10 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-023: Settings > Embeds. A bare provider URL alone on its own line in
- * a post/page automatically expands into an embedded player when the
- * matching toggle below is on — see EmbedService's own docblock for the
- * detection rules and why this never makes an outbound HTTP request, with
- * one deliberate exception: Bluesky (LP-071) resolves each post URL once,
- * at save time, via BlueskyResolverService — see that class's own
- * docblock.
- */
+// A bare provider URL alone on its own line automatically expands into
+// an embedded player when the matching toggle below is on. Never makes
+// an outbound HTTP request, except Bluesky, which resolves each post
+// URL once at save time.
 $embeds = $kernel->embeds;
 $errors = [];
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';

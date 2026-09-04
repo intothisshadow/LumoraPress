@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Validates and installs a plugin ZIP directly into content/plugins/{slug} (LP-045).
+ * Validates and installs a plugin ZIP directly into content/plugins/{slug}.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -23,31 +23,13 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Validates and installs a plugin ZIP directly into
- * content/plugins/{slug} (LP-045). Mirrors ThemeInstaller closely — same
- * path-traversal/size/entry-count safety checks, same "extract to a temp
- * directory, only rename into place once everything succeeded" rollback
- * shape — with two differences a plugin's shape requires:
- *
- * 1. A plugin's header lives in its main PHP file, named identically to
- *    its own directory (content/plugins/{slug}/{slug}.php — see
- *    PluginManager::load()), not in a fixed-name file like style.css, so
- *    the slug has to be derived from the archive's directory structure
- *    itself rather than parsed out of a filename constant.
- * 2. Unlike a theme (LP-034's ThemeInstaller, which always installs
- *    immediately since only one theme is ever "in the way" at a time —
- *    the currently active one, guarded separately by isActive), a
- *    plugin install can collide with an already-installed plugin of the
- *    same slug, and LP-045 requires showing the admin what's being
- *    installed *before* committing, with an explicit Replace/Cancel
- *    choice on collision. That needs a two-request flow: stage() moves
- *    the uploaded ZIP to a short-lived holding directory and returns a
- *    token, inspectStaged() reads it back for the confirmation screen,
- *    and finalize() performs the real install/replace once confirmed.
- *    A stale stage is never a security problem (it can only be replayed
- *    into the same guarded install() path a direct upload would already
- *    reach), so no expiry beyond "next install or explicit cancel
- *    deletes it" is implemented.
+ * Validates and installs a plugin ZIP into content/plugins/{slug}. Mirrors ThemeInstaller
+ * closely — same safety checks, same extract-then-rename rollback shape — with two
+ * differences: a plugin's header lives in its main PHP file (named after its own directory),
+ * not a fixed-name file like style.css, so the slug is derived from directory structure; and
+ * an install can collide with an existing plugin of the same slug, requiring a two-request
+ * confirm flow (stage() holds the upload, inspectStaged() previews it, finalize() applies
+ * it). A stale stage is never a security problem, so no expiry beyond next-install-or-cancel.
  */
 final class PluginInstaller
 {
@@ -226,8 +208,7 @@ final class PluginInstaller
 
         // Only remove the previous installation once the new one has
         // extracted successfully — if extraction above had failed, the
-        // existing plugin is left completely untouched (LP-045's
-        // "roll back installation on failure").
+        // existing plugin is left completely untouched.
         if ($alreadyExists) {
             $this->removeDirectory($destination);
         }

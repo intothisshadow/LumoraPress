@@ -32,20 +32,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * Progress polling (Import Options — detailed progress indicator):
- * a separate, lightweight GET the page's own JS (admin/assets/js/
- * update-progress.js, already built for Maintenance > Updates and
- * generic enough to reuse as-is here — see that file's own docblock)
- * hits every second or so while a Start/Resume Import POST below is
- * still running on another connection. Handled first, before any
- * session-write work or view rendering, and intentionally never checks
- * CSRF — this only ever reads ImportProgress's on-disk state, so there
- * is nothing here for CSRF to protect. Still requires the same admin
- * session/manage_options capability every other branch of this page
- * does, since that gate already ran in admin/index.php before this file
- * was even required.
- */
+// Progress polling: a lightweight GET the page's own JS hits every second
+// while a Start/Resume Import POST runs on another connection. No CSRF
+// check needed — it only reads ImportProgress's on-disk state.
 if ($wordPressImporterActive && ($_GET['ajax'] ?? null) === 'progress') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -65,18 +54,10 @@ $summary = null;
 $redirectMappingReport = [];
 $warnings = [];
 
-/*
- * Connection fields are never persisted server-side between requests —
- * nothing is written to the session or database, the same "credentials
- * aren't stored anywhere" posture this plugin's implementation plan
- * calls for. Within a single request/response, though, every field an
- * admin has entered so far is carried forward via hidden inputs on
- * whichever of the Detect/Test Connection/Import forms didn't itself
- * collect that field — so clicking "Test Connection" (which only POSTs
- * the connection + uploads-path fields) doesn't blank out the Gallery
- * folder path or wp-config.php path fields that live on the other two
- * forms further down the same page.
- */
+// Connection fields are never persisted server-side — nothing is written
+// to the session or database. Within one request/response, though, every
+// entered field is carried forward via hidden inputs on whichever form
+// didn't itself collect it, so submitting one form doesn't blank the others.
 $formValues = [
     // 'database' (a live/local-copy MySQL connection) or 'wxr' (a local
     // WordPress WXR .xml export file) — see $buildSource below for the
@@ -95,17 +76,10 @@ $formValues = [
 ];
 
 if ($wordPressImporterActive) {
-    /*
-     * WordPressImportService's class is guaranteed to already be loaded —
-     * PluginManager::loadActive() required
-     * content/plugins/wordpress-importer/wordpress-importer.php earlier
-     * this same request, in include/bootstrap.php.
-     *
-     * $downloadsActive gates the Downloads plugin the same way — null
-     * when it's inactive, so WordPressImportService falls back to its
-     * own default (every download still imports as a plain Media item/
-     * Redirect, just without a `downloads` table row on top).
-     */
+    // WordPressImportService's class is guaranteed to already be loaded.
+    // $downloadsActive gates the Downloads plugin the same way — null
+    // when inactive, so a download still imports as a plain Media item/
+    // Redirect, just without a `downloads` table row on top.
     $downloadCategoriesService = $downloadsActive ? new DownloadCategoryService(
         $kernel->database,
         (string) $kernel->config->get('table_prefix', 'lp_'),
@@ -120,17 +94,9 @@ if ($wordPressImporterActive) {
         $kernel->mediaStats,
     ) : null;
 
-    /*
-     * Dispatches on the "Source type" radio (see the shared field
-     * markup below) to build whichever WordPressSourceInterface
-     * implementation the admin picked — WordPressImportService itself
-     * never has to know or care which one it's driving (see that
-     * class's own constructor docblock). Throws the same way either
-     * branch's own constructor already does (WordPressSource::connect()
-     * on an unreachable database, WordPressXmlSource on a missing/
-     * malformed file) — every caller below already wraps this in its
-     * own try/catch.
-     */
+    // Dispatches on the "Source type" radio to build whichever
+    // WordPressSourceInterface implementation the admin picked —
+    // WordPressImportService never has to know which one it's driving.
     $buildSource = static function () use ($formValues): WordPressSourceInterface {
         if ($formValues['source_type'] === 'wxr') {
             return new WordPressXmlSource($formValues['wxr_path']);
@@ -180,14 +146,10 @@ if ($wordPressImporterActive) {
         );
     };
 
-    /*
-     * removeAll()/lastImportSummary()/inProgressBatch() are pure
-     * ContentImportRegistry lookups that never touch the source
-     * WordPress database — this builds the service with source: null
-     * (see WordPressImportService's own constructor docblock) instead of
-     * opening — and requiring the admin to re-enter credentials for —
-     * a connection those three methods never use.
-     */
+    // removeAll()/lastImportSummary()/inProgressBatch() are pure
+    // ContentImportRegistry lookups that never touch the source database,
+    // so this builds the service with source: null rather than requiring
+    // the admin to re-enter credentials those methods never use.
     $buildRegistryOnlyService = static fn (): WordPressImportService => new WordPressImportService(
         source: null,
         userImporter: $kernel->userImporter,
@@ -272,12 +234,8 @@ if ($wordPressImporterActive) {
             $source = $buildSource();
 
             if (!$source->testConnection()) {
-                // Only WordPressSource::testConnection() can actually
-                // return false — WordPressXmlSource's constructor
-                // already throws (caught below) rather than returning a
-                // half-built instance, so this branch is unreachable for
-                // a WXR source, but the message stays DB-specific since
-                // it's the only source type that reaches it in practice.
+                // Only WordPressSource::testConnection() can return false —
+                // WXR's constructor already throws, so this is DB-only.
                 $testResult = ['ok' => false, 'message' => "Connected, but no `{$formValues['db_prefix']}posts` table was found. Check the table prefix."];
             } elseif (!is_dir($formValues['uploads_path'])) {
                 $testResult = ['ok' => false, 'message' => 'The uploads folder path does not exist or is not readable by the web server.'];
@@ -290,9 +248,8 @@ if ($wordPressImporterActive) {
                         . ($siteName !== null && $siteName !== '' ? " Source site: \"{$siteName}\"." : ''),
                 ];
 
-                // A preview only — nothing here is written anywhere. See
-                // "Site settings" below for the opt-in checkbox that
-                // actually applies these when Import runs for real.
+                // A preview only — nothing here is written. "Site
+                // settings" below is the opt-in checkbox that applies these.
                 $sitePreview = [
                     'Site title' => html_entity_decode($wpOptions['blogname'] ?? '', ENT_QUOTES, 'UTF-8'),
                     'Tagline' => html_entity_decode($wpOptions['blogdescription'] ?? '', ENT_QUOTES, 'UTF-8'),
@@ -320,28 +277,14 @@ if ($wordPressImporterActive) {
     }
 
     if ($form === 'start_wordpress_import' && Csrf::verify('start_wordpress_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        // Dry run shares this same form/CSRF action with a real import —
-        // see the "Dry run" checkbox's own comment in the view below for
-        // why this is one form instead of two. Branching here (after the
-        // single Csrf::verify() call above) rather than in a separate
-        // elseif condition matters: Csrf::verify() is one-time-use (it
-        // removes the token from the session on a successful check), so
-        // calling it a second time for a second condition on the same
-        // submission would always fail. The Resume form never submits a
-        // dry_run field at all, so an in-progress-batch resume always
-        // takes the real-run branch below regardless.
-        // Test Connection already checks is_dir($formValues['uploads_path'])
-        // (above), but that's a separate, skippable form submission — an
-        // admin can reach this form having never clicked Test Connection,
-        // or having since changed the path. Media (and every post/page
-        // featured image, which resolves through the very same uploads
-        // folder — see WordPressImportService::importMedia()) would then
-        // silently import with nothing brought in rather than failing
-        // loudly (LP-129), so the same check is repeated here as a hard
-        // gate before either a dry run or a real import runs. Only
-        // enforced when Media is actually selected — an admin who
-        // deliberately unchecked it has nothing under this path to import,
-        // so an empty/invalid uploads_path is not a mistake in that case.
+        // Dry run shares this form/CSRF action with a real import — since
+        // Csrf::verify() is one-time-use, branching here (not a second
+        // elseif) is required. The Resume form never submits dry_run, so
+        // an in-progress resume always takes the real-run branch below.
+        // Test Connection already checked uploads_path, but that's a
+        // separate, skippable submission — repeated here as a hard gate
+        // (only when Media is selected) so media/featured images don't
+        // silently import empty instead of failing loudly.
         $importOptionsToRun = $optionsFromPost();
 
         if (($importOptionsToRun['media'] ?? false) && !is_dir($formValues['uploads_path'])) {
@@ -353,40 +296,25 @@ if ($wordPressImporterActive) {
                 $importError = 'Could not preview: ' . $exception->getMessage();
             }
         } else {
-            // A real site's content can take a while to walk row by row —
-            // this runs as one long synchronous request (matching
-            // DummyContentGenerator's own precedent; see this feature's
-            // implementation plan for why no background-job/polling
-            // infrastructure exists in this codebase yet) rather than
-            // timing out at PHP's default execution limit. Each stage's own
-            // progress is still persisted to the database as it completes
-            // (WordPressImportService::runNextStage()), so an interruption
-            // partway through — a host's own hard execution limit despite
-            // this, a lost connection — leaves a resumable batch behind
-            // rather than losing all progress.
+            // Runs as one long synchronous request rather than timing out
+            // at PHP's default execution limit. Each stage's progress is
+            // persisted as it completes, so an interruption leaves a
+            // resumable batch behind rather than losing all progress.
             set_time_limit(0);
 
             $importProgress = new ImportProgress(LUMORA_ROOT);
 
-            // See admin/views/maintenance/updates.php's identical pattern
-            // (and UpdateProgress's own docblock) for why this releases the
-            // session lock before a long-running operation: PHP's default
-            // session handler locks the session file for the whole request,
-            // so without this, the polling GET above would simply queue
-            // behind this request and never observe anything until the
-            // import was already done.
+            // Releases the session lock so the polling GET above can
+            // observe progress instead of queuing behind this request.
             session_write_close();
 
             try {
                 $service = $buildImportService();
                 $submittedOptions = $importOptionsToRun;
 
-                // A resumable batch always continues with its own original
-                // options (see startOrResume()'s own docblock) — reflected
-                // here too, so the progress bar's declared stage list
-                // matches what will actually run, not what was just
-                // resubmitted on the (possibly stripped-down, selection-less)
-                // Resume form.
+                // A resumable batch continues with its own original
+                // options, reflected here so the progress bar's stage
+                // list matches what actually runs, not the Resume form.
                 $preExisting = $service->inProgressBatch();
                 $plannedStages = $preExisting['plannedStages'] ?? $service->plannedStages($submittedOptions);
                 $completedStages = $preExisting['completedStages'] ?? [];
@@ -418,11 +346,8 @@ if ($wordPressImporterActive) {
 
                 $importProgress->complete();
 
-                // The service instance (and its in-memory warnings() log)
-                // doesn't survive the redirect below — stashed in the
-                // session for one read, the same "flash message" technique
-                // as Csrf's own one-time token, since this screen has no
-                // generic flash-message mechanism to reuse.
+                // The service's in-memory warnings() log doesn't survive
+                // the redirect, so it's stashed in the session for one read.
                 session_start();
                 $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
 
@@ -432,24 +357,17 @@ if ($wordPressImporterActive) {
                 $importProgress->complete();
                 $importError = $exception->getMessage();
 
-                // See the 'start_wordpress_import' branch's own
-                // session_write_close() above for why this is needed before
-                // the rest of the page renders — only reached on failure
-                // here, since success already exited via the redirect above.
+                // Needed before the rest of the page renders — only
+                // reached on failure, since success already redirected.
                 session_start();
             }
         }
     }
 
     if ($form === 'remove_wordpress_import' && Csrf::verify('remove_wordpress_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        // No source connection is needed to remove already-imported
-        // content — every id to delete lives in content_import_records,
-        // not the source database — so this constructs the service with
-        // an unconnected/unused WordPressSource rather than requiring
-        // the admin to re-enter DB credentials just to roll back. Works
-        // the same whether the batch being removed finished normally or
-        // was left in-progress by an interruption — every id it created
-        // so far is already recorded either way.
+        // No source connection is needed — every id to delete lives in
+        // content_import_records, not the source database — so this
+        // avoids requiring the admin to re-enter DB credentials to roll back.
         $buildRegistryOnlyService()->removeAll();
 
         header('Location: ' . admin_url('maintenance/import') . '?removed=1');
@@ -459,27 +377,17 @@ if ($wordPressImporterActive) {
     $imported = isset($_GET['imported']);
     $removed = isset($_GET['removed']);
 
-    // Deliberately *not* unset after this one read — a real live import
-    // found this exact spot losing genuine warnings (a "file not found"
-    // for a Download whose source file the host had deleted) the moment
-    // this screen was viewed a second time (a refresh, browser back/
-    // forward, anything) before the admin had actually read them,
-    // leaving a clean-looking "no warnings" summary despite the import
-    // having produced one. Left in session, it now simply keeps showing
-    // the most recent import's warnings on every view of this screen
-    // until a *new* import overwrites it — the 'start_wordpress_import'
-    // branch above always sets a fresh value before its own redirect, so
-    // nothing stale from an unrelated earlier import can survive past
-    // the next real import.
+    // Deliberately *not* unset after this read — an earlier version lost
+    // genuine warnings the moment this screen was viewed a second time
+    // before the admin read them. Left in session, it keeps showing the
+    // most recent import's warnings until a new import overwrites it.
     if ($imported && isset($_SESSION['lp_wordpress_import_warnings'])) {
         $warnings = $_SESSION['lp_wordpress_import_warnings'];
     }
 
-    // Separates a genuine follow-up action (an unsupported plugin/post
-    // type, a leftover shortcode with no rendering equivalent) from a
-    // routine per-item warning, so the post-import summary screen below
-    // can surface "you should look at this" items in their own section
-    // instead of burying them in one long flat list.
+    // Separates a genuine follow-up action from a routine per-item
+    // warning, so the summary screen can surface "look at this" items
+    // in their own section instead of one long flat list.
     $actionNeededWarnings = array_values(array_filter($warnings, [WordPressImportService::class, 'isActionNeededWarning']));
     $routineWarnings = array_values(array_filter($warnings, static fn (string $warning): bool => !WordPressImportService::isActionNeededWarning($warning)));
 
@@ -488,14 +396,9 @@ if ($wordPressImporterActive) {
     $summary = $inProgress === null ? $registryOnlyService->lastImportSummary() : null;
     $redirectMappingReport = $summary !== null ? $registryOnlyService->redirectMappingReport($summary['batchId']) : [];
 
-    /*
-     * Redirect Mapping report (URL & Link Migration) — a plain GET, same
-     * "read-only, nothing here for CSRF to protect" reasoning as the
-     * ?ajax=progress branch above, gated by the same admin session this
-     * whole page already requires. Streamed rather than saved to disk —
-     * this data already lives in the database (RedirectService +
-     * ContentImportRegistry), so there's nothing to clean up afterward.
-     */
+// Redirect Mapping report — a plain read-only GET, same reasoning as the
+// ?ajax=progress branch above. Streamed rather than saved to disk since
+// the data already lives in the database.
     if (($_GET['download'] ?? null) === 'redirect_mapping' && $redirectMappingReport !== []) {
         while (ob_get_level() > 0) {
             ob_end_clean();
@@ -519,15 +422,10 @@ if ($wordPressImporterActive) {
 <h1 class="lp-admin__title">Import</h1>
 
 <?php
-/*
- * A consolidated, one-time "Import Summary" screen, shown immediately
- * after a real import run completes — before the admin is returned to
- * the normal Import screen below. $imported is only ever true right
- * after the redirect start_wordpress_import's run branch sends here
- * (?imported=1); a `return` mid-view is safe since admin/index.php
- * still requires views/layout-footer.php afterward regardless of
- * where this file itself stops.
- */
+// A one-time "Import Summary" screen shown immediately after a real
+// import completes ($imported is true only right after that redirect).
+// A `return` mid-view is safe since admin/index.php still requires
+// layout-footer.php afterward regardless.
 if ($wordPressImporterActive && $imported):
     $pluralLabels = [
         'post' => 'posts', 'page' => 'pages', 'user' => 'users',
@@ -720,20 +618,12 @@ endif;
         </ul>
 
         <?php
-        /*
-         * The "Source type" radio pair plus whichever field set it
-         * selects (database connection fields, or a WXR file path) —
-         * shared by the Resume form, Test Connection form, and the main
-         * Import form below, each of which still POSTs independently
-         * with its own CSRF token and its own copy of every field (see
-         * this section's own comment further below on why), this just
-         * avoids maintaining three physically separate copies of this
-         * particular markup. Both field sets render unconditionally
-         * (no JS-driven show/hide) — the radio alone decides which one
-         * the server actually reads from on submit, so neither needs a
-         * `required` attribute that could block submission of the
-         * other's fields.
-         */
+        // Shared by the Resume, Test Connection, and Import forms — each
+        // still POSTs independently with its own CSRF token, this just
+        // avoids three physical copies of the markup. Both field sets
+        // render unconditionally; the radio alone decides which one the
+        // server reads on submit, so neither needs `required`.
+
         $renderConnectionFields = static function (string $idPrefix) use ($formValues): void {
             ?>
             <ul class="lp-field__hint">
@@ -811,10 +701,8 @@ endif;
                 'category' => 'categories', 'tag' => 'tags', 'comment' => 'comments', 'media' => 'media',
                 'nav_menu' => 'menus', 'widget_instance' => 'widgets',
             ];
-            // "*_snap" entries are internal pre-import option/progress
-            // snapshots (see WordPressImportService::removeAll()'s
-            // docblock) — not real imported content, so they're excluded
-            // from this user-facing summary line entirely.
+            // "*_snap" entries are internal pre-import snapshots, not
+            // real imported content, so excluded from this summary line.
             $displayCounts = array_filter($summary['counts'], static fn (string $type): bool => !str_ends_with($type, '_snap'), ARRAY_FILTER_USE_KEY);
             ?>
             <p class="lp-field__hint">
@@ -910,13 +798,9 @@ endif;
             </form>
         <?php else: ?>
             <?php
-            // Separate forms, each with its own CSRF action name and its
-            // own copy of the connection fields, rather than one form
-            // with multiple submit buttons sharing a token — see
-            // CommentService's own docblock (and this project's SESSION.md
-            // handoff notes) on why a shared CSRF action name across
-            // multiple buttons on one page silently breaks every button
-            // but the last one rendered.
+            // Separate forms, each with its own CSRF action name, rather
+            // than one form with buttons sharing a token — a shared name
+            // across buttons silently breaks all but the last rendered.
             ?>
             <h3>Auto-detect from wp-config.php</h3>
 
@@ -941,11 +825,9 @@ endif;
                 </p>
 
                 <?php
-                // This form only ever collects wp_config_path — every other
-                // field already entered on the Test Connection/Import forms
-                // further down the page is carried forward as a hidden input
-                // so submitting Detect doesn't blank them out (see this
-                // file's own comment above $formValues for why).
+                // This form only collects wp_config_path; every other
+                // field is carried forward as a hidden input so Detect
+                // doesn't blank them out.
                 ?>
                 <input type="hidden" name="source_type" value="<?= esc_attr($formValues['source_type']) ?>">
                 <input type="hidden" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
@@ -979,8 +861,7 @@ endif;
 
                 <?php
                 // Carried forward so Test Connection doesn't blank out
-                // fields that live only on the Detect/Import forms — see
-                // this file's own comment above $formValues for why.
+                // fields that live only on the Detect/Import forms.
                 ?>
                 <input type="hidden" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>">
                 <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
@@ -989,20 +870,11 @@ endif;
             </form>
 
             <?php
-            /*
-             * The "Content to import"/"Site settings"/"Import options"
-             * fields render once via this closure, inside the single
-             * Import form below. Dry run and a real Start/Resume Import
-             * used to be two entirely separate forms with two full
-             * copies of every field — confusing on a long page, and
-             * unnecessary once dry run became just another option
-             * rather than a different destination. They now share one
-             * form/CSRF action ('start_wordpress_import'); a "Dry run"
-             * checkbox decides which the server actually does. This
-             * closure still exists mainly so the Resume form above
-             * (which needs its own smaller field set, not this one) and
-             * this shared block don't duplicate id-prefixing logic.
-             */
+            // Renders once via this closure, inside the single Import
+            // form below. Dry run and a real Start/Resume Import share
+            // one form/CSRF action; a "Dry run" checkbox decides which
+            // the server does. This closure avoids duplicating the
+            // id-prefixing logic the smaller Resume form above also needs.
             $renderSharedImportFields = static function (string $idPrefix) use ($formValues, $renderConnectionFields): void {
                 $renderConnectionFields($idPrefix);
                 ?>
@@ -1023,8 +895,7 @@ endif;
                 <?php
                 // Carried forward so submitting Import doesn't blank out
                 // the wp-config.php path field that lives only on the
-                // Detect form — see this file's own comment above
-                // $formValues for why.
+                // Detect form.
                 ?>
                 <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
 

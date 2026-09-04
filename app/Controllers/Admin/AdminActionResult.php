@@ -23,7 +23,7 @@ namespace LumoraPress\Controllers\Admin;
  * PHPUnit test can assert on the outcome without needing to intercept a
  * real exit() call. The thin admin view is responsible for turning a
  * non-null redirectUrl into an actual redirect() call once control
- * returns to it. See DECISIONS.md's LP-082 entry for why this exists.
+ * returns to it.
  */
 final readonly class AdminActionResult
 {

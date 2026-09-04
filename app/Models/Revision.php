@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A single stored snapshot of a Post/Page body, for the Revisions feature (LP-017).
+ * A single stored snapshot of a Post/Page body, for the Revisions feature.
  *
  * @package LumoraPress
  * @subpackage Models

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Download counters for media (LP-006).
+ * Download counters for media.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,20 +21,11 @@ use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
 
 /**
- * Download counters for media (LP-006) — deliberately narrower than that
- * ticket's full wishlist: image "views" and audio/video "plays" both need
- * a public request to route through PHP to be countable at all, and
- * nothing in this app currently generates such a request (every `<img>`/
- * `<audio>`/`<video>` embed points straight at a static file under
- * content/uploads — see MediaService::url()). Rather than add PHP
- * overhead to every image render on every page (a real cost for a project
- * whose stated goal is fast shared-hosting performance), this service
- * only counts explicit "download" clicks — a distinct, deliberate action,
- * routed through the new /media/{id}/download endpoint
- * (SiteController::mediaDownload()) — for document/archive/audio/video
- * media. Image view counting and audio/video "plays" (as distinct from a
- * download) are deferred; both would need a content-pipeline change this
- * ticket doesn't otherwise require (see TODO.md's LP-006 entry).
+ * Download counters for media — narrower than a full "views/plays" tracker, since every
+ * `<img>`/`<audio>`/`<video>` embed points straight at a static file, generating no
+ * countable PHP request. Rather than add PHP overhead to every image render, this service
+ * only counts explicit "download" clicks through /media/{id}/download for document/archive/
+ * audio/video media. Image views and audio/video "plays" are deferred.
  */
 final class MediaStatsService
 {
@@ -76,7 +67,7 @@ final class MediaStatsService
     /**
      * Sets a media item's download count directly, rather than
      * incrementing it — for preserving a historical count from an
-     * external source (e.g. LPP-004's WordPress import, seeding a
+     * external source (e.g. a WordPress import, seeding a
      * migrated download's count from Simple Download Monitor's own
      * total) instead of every migrated item silently restarting at 0.
      * Overwrites any existing row's count outright; not meant to be
@@ -127,7 +118,7 @@ final class MediaStatsService
      * Full media rows (same shape as MediaService::find()/query()'s
      * items, so admin/views/media.php's existing grid-rendering needs no
      * branching to handle these) with `downloads`/`last_downloaded_at`
-     * merged in — LP-006's "Most Downloaded Files" built-in view.
+     * merged in — the "Most Downloaded Files" built-in view.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -146,7 +137,7 @@ final class MediaStatsService
     }
 
     /**
-     * LP-006's "Recently Downloaded" built-in view.
+     * The "Recently Downloaded" built-in view.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -166,7 +157,7 @@ final class MediaStatsService
 
     /**
      * Downloadable-category media (never image — see class docblock) with
-     * zero recorded downloads. LP-006's "Never Downloaded" built-in view.
+     * zero recorded downloads. The "Never Downloaded" built-in view.
      *
      * @return array<int, array<string, mixed>>
      */

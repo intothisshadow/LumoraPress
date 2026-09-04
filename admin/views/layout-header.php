@@ -30,27 +30,18 @@ if (!isset($kernel)) {
 
 $version = require LUMORA_ROOT . '/version.php';
 
-/*
- * LP-087: rendered server-side from the already-authenticated
- * $currentUser, before the stylesheet is even requested, so there's no
- * flash-of-wrong-theme and no cookie/JS needed. Auto (the default)
- * omits the attribute entirely, leaving admin.css's
- * prefers-color-scheme media query as the sole source of truth — same
- * as before this feature existed.
- */
+// Rendered server-side before the stylesheet is requested, so there's no
+// flash-of-wrong-theme. Auto (the default) omits the attribute entirely,
+// leaving admin.css's prefers-color-scheme query as the sole source of truth.
 $themeAttribute = match ($currentUser->themePreference) {
     ThemePreference::Light => ' data-theme="light"',
     ThemePreference::Dark => ' data-theme="dark"',
     ThemePreference::Auto => '',
 };
 
-/*
- * LP-087: the sidebar's quick toggle only ever switches between Light and
- * Dark, never Auto — starting from Auto, clicking it commits to Dark
- * first (an arbitrary but predictable direction). Getting back to "follow
- * the system" is a deliberate choice made on the Profile page's
- * Appearance panel, not something the quick toggle cycles through.
- */
+// The quick toggle only switches between Light and Dark, never Auto —
+// starting from Auto it commits to Dark first. Returning to "follow the
+// system" is a deliberate choice made on the Profile page instead.
 $isDarkPreference = $currentUser->themePreference === ThemePreference::Dark;
 $nextThemePreference = $isDarkPreference ? ThemePreference::Light : ThemePreference::Dark;
 $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark mode';
@@ -131,10 +122,10 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
             <a class="lp-admin__logout" href="<?= esc_url(admin_url('logout')) ?>">Log Out</a>
         </div>
     </aside>
-    <?php /* LP-096: dismissible backdrop behind the mobile off-canvas sidebar drawer; hidden entirely above the 782px breakpoint (see admin.css), and above it via display:none regardless of state. */ ?>
+    <?php /* Dismissible backdrop behind the mobile off-canvas sidebar drawer; hidden entirely above the 782px breakpoint (see admin.css), and above it via display:none regardless of state. */ ?>
     <div class="lp-admin__sidebar-backdrop" data-lp-mobile-nav-backdrop></div>
     <main id="lp-admin-content" class="lp-admin__content">
-        <?php /* LP-096: hamburger toggle for the mobile off-canvas sidebar; hidden entirely above the 782px breakpoint via admin.css, not just visually collapsed, so it's never in the desktop tab order. */ ?>
+        <?php /* Hamburger toggle for the mobile off-canvas sidebar; hidden entirely above the 782px breakpoint via admin.css, not just visually collapsed, so it's never in the desktop tab order. */ ?>
         <button
             type="button"
             class="lp-admin__mobile-nav-toggle"

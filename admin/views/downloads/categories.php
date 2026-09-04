@@ -23,10 +23,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// Mirrors admin/views/posts/categories.php's shape closely — see that
-// file's own comments for the out-of-band target-form pattern used
-// below. No dedicated Controller class, matching every other Downloads
-// admin screen's own established convention (see all-downloads.php).
+// No dedicated Controller class, matching every other Downloads admin
+// screen's convention.
 $downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
 $canDeleteCategories = $currentUser->can('upload_files');
 
@@ -363,12 +361,8 @@ if ($action === 'edit') {
             </form>
 
             <?php
-            /*
-             * Out-of-band target forms for each row's Trash/Restore/Delete
-             * Permanently button above — see admin/views/posts/categories.php's
-             * identical comment (LP-068) for why a <form> can't nest inside
-             * download-categories-bulk-form.
-             */
+            // Out-of-band target forms — a <form> can't nest inside
+            // download-categories-bulk-form.
             if ($canDeleteCategories):
                 foreach ($rows as $row):
                     $listedCategory = $row['category'];

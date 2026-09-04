@@ -1,7 +1,7 @@
 <?php
 
 /**
- * CRUD, hierarchy, and lifecycle for Downloads' own dedicated category taxonomy (LPP-011).
+ * CRUD, hierarchy, and lifecycle for Downloads' own dedicated category taxonomy.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -22,21 +22,12 @@ use LumoraPress\Core\Database\Database;
 use RuntimeException;
 
 /**
- * A Download has exactly one category (a single `downloads.category_id`
- * column), unlike Posts' many-to-many relationship with Category via
- * `post_categories` — so this service has no join table and no
- * assign-to-post-equivalent method. Structurally closer to FolderService
- * (single FK column, `parent_id` nesting, no join table) than to
- * CategoryService, but adopts CategoryService's trash-then-permanent-delete
- * lifecycle and merge() instead of FolderService::delete()'s
- * refuse-if-non-empty rule — a leftover/duplicate imported category should
- * be removable even while it still has downloads filed under it, the same
- * way a Category can be deleted out from under its posts.
+ * A Download has exactly one category (a single FK column, no join table),
+ * with CategoryService's trash-then-delete lifecycle and merge() so a
+ * leftover category is removable even while downloads still reference it.
  *
- * Every query here uses a distinct placeholder name per occurrence, even
- * when binding the same value twice — see CategoryService's own docblock
- * for why (Database::connect() disables emulated prepared statements, and
- * MySQL's native prepare protocol rejects a repeated named placeholder).
+ * Every query uses a distinct placeholder name per occurrence — MySQL's
+ * native prepare protocol rejects a repeated named placeholder.
  */
 final class DownloadCategoryService
 {
@@ -132,11 +123,10 @@ final class DownloadCategoryService
     }
 
     /**
-     * Orphans any child categories (their parent_id becomes NULL rather
-     * than cascading the delete to them), clears category_id on any
-     * Download still referencing this category (left Uncategorized, not
-     * deleted), then deletes the category itself — mirrors
-     * CategoryService::delete()'s orphan-on-delete shape.
+     * Orphans any child categories (parent_id becomes NULL rather than
+     * cascading the delete to them), clears category_id on any Download
+     * still referencing this category (left Uncategorized, not deleted),
+     * then deletes the category itself.
      */
     public function delete(int $id): bool
     {
@@ -159,12 +149,10 @@ final class DownloadCategoryService
     }
 
     /**
-     * Permanently deletes every currently-trashed category in one action
-     * — collapses the "select all in Trash, bulk Delete Permanently" two
-     * step flow into one click. Reuses delete()'s own orphan/uncategorize
-     * behavior per row rather than a raw bulk DELETE, so a trashed
-     * category's children and downloads are handled safely instead of
-     * left with a dangling parent_id/category_id reference.
+     * Permanently deletes every currently-trashed category in one action.
+     * Reuses delete()'s own orphan/uncategorize behavior per row rather
+     * than a raw bulk DELETE, so children and downloads are handled
+     * safely instead of left with a dangling parent_id/category_id.
      *
      * @return int how many categories were removed
      */
@@ -187,16 +175,9 @@ final class DownloadCategoryService
     }
 
     /**
-     * Merges $sourceId into $targetId: every download filed under
-     * $sourceId is reassigned to $targetId, $sourceId's child categories
-     * are reparented to $targetId, and $sourceId itself is deleted. If
-     * $targetId was itself a child of $sourceId, it's orphaned rather than
-     * reparented to itself — mirrors CategoryService::merge()'s identical
-     * shape, minus the join-table reassignment (a single FK column here
-     * instead of post_categories).
-     *
-     * Returns false without changing anything if $sourceId and $targetId
-     * are the same, or either doesn't exist.
+     * Merges $sourceId into $targetId: downloads and child categories are
+     * reassigned, then $sourceId is deleted. Returns false if the ids are
+     * equal or either doesn't exist.
      */
     public function merge(int $sourceId, int $targetId): bool
     {
@@ -298,9 +279,7 @@ final class DownloadCategoryService
 
     /**
      * A flat list of {id, name} suitable for a "Parent Category" <select>,
-     * excluding $excludeId itself and its direct children — mirrors
-     * CategoryService::listAllForParentSelect()'s identical shallow-cycle
-     * trade-off.
+     * excluding $excludeId itself and its direct children.
      *
      * @return array<int, array{id: int, name: string}>
      */

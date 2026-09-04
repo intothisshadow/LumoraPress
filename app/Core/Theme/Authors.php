@@ -21,11 +21,8 @@ use LumoraPress\Services\UserService;
 use RuntimeException;
 
 /**
- * Static bridge exposing UserService (LP-008 author archives/profile
- * links) to the procedural the_author()/author_url() helpers in
- * include/helpers.php — same shape as FeaturedImages, since resolving a
- * post's author is a live, per-post lookup each render rather than a
- * value that can be snapshotted once at bootstrap like SiteBranding's.
+ * Bridges UserService to the_author()/author_url() — a live, per-post
+ * lookup each render, so it can't be snapshotted like SiteBranding.
  */
 final class Authors
 {

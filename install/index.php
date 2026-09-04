@@ -34,14 +34,9 @@ $root = dirname(__DIR__);
 
 require $root . '/app/Core/Autoloader.php';
 
-/*
- * The install script may be running from the domain root
- * (https://example.com/install/) or from a subdirectory install
- * (https://example.com/lumorapress/install/). Every redirect and every
- * asset link the installer emits must be built from the script's actual
- * location rather than assuming root, or a subdirectory install 404s the
- * moment step 1 redirects.
- */
+// The installer may be running from the domain root or a subdirectory,
+// so every redirect/asset link must be built from the script's actual
+// location, or a subdirectory install 404s at step 1.
 $installScriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/install/index.php'));
 $installUrl = rtrim($installScriptDir, '/') . '/';
 $baseUrl = rtrim(dirname($installScriptDir), '/') . '/';
@@ -50,12 +45,8 @@ $autoloader = new Autoloader();
 $autoloader->addNamespace('LumoraPress', $root . '/app');
 $autoloader->register();
 
-/*
- * Must run after the autoloader is registered above — SiteUrl isn't
- * required directly anywhere in this file, so calling it any earlier
- * fatals with "Class not found" (silently, as a blank page, since the
- * installer hasn't set up its own error handler yet at this point either).
- */
+// Must run after the autoloader is registered above, or this fatals
+// with "Class not found" — silently, since no error handler yet exists.
 $detectedSiteUrl = SiteUrl::detect(
     isHttps: !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
     host: (string) ($_SERVER['HTTP_HOST'] ?? 'localhost'),
@@ -89,13 +80,9 @@ $sessions = new SessionManager(
 );
 $sessions->start();
 
-/**
- * Generates a cryptographically random, predictable-prefix-free table
- * prefix (e.g. "lum_a8f3d1_") so a fresh install never defaults to the
- * guessable "lp_". The suggestion is kept in the install session so it
- * stays stable across re-renders (e.g. a validation error) instead of
- * changing on every page load.
- */
+// Generates a random table prefix (e.g. "lum_a8f3d1_") so a fresh
+// install never defaults to the guessable "lp_". Kept in the session
+// so it stays stable across re-renders.
 $generateTablePrefix = static function (): string {
     return 'lum_' . bin2hex(random_bytes(3)) . '_';
 };
@@ -242,17 +229,10 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
                 unset($_SESSION['install_db'], $_SESSION['install_step'], $_SESSION['install_suggested_prefix']);
                 $sessions->destroy();
 
-                /*
-                 * The success page is fully rendered into a string BEFORE
-                 * any cleanup attempt (LP-004), since removing install/
-                 * removes views/success.php (and this very script) too —
-                 * safe to unlink on Unix-like filesystems while the
-                 * process is still running against the already-open
-                 * inode, but only once nothing else still needs to read
-                 * it from disk. The placeholder comment in success.php is
-                 * substituted afterwards so the page can report the
-                 * outcome without needing to know it in advance.
-                 */
+                // Rendered into a string BEFORE cleanup, since removing
+                // install/ removes views/success.php (and this script)
+                // too — safe on Unix while the process still holds the
+                // open inode. The placeholder is substituted afterward.
                 ob_start();
                 require __DIR__ . '/views/success.php';
                 $successHtml = (string) ob_get_clean();

@@ -76,8 +76,8 @@ final class Auth
         $id = $_SESSION[self::SESSION_KEY] ?? null;
         $this->resolvedUser = $id === null ? null : $this->users->findById((int) $id);
 
-        // LP-032: a session started before the account was trashed must
-        // stop working immediately, not just on its next login attempt.
+        // A session started before the account was trashed must stop
+        // working immediately, not just on its next login attempt.
         if ($this->resolvedUser?->trashedAt !== null) {
             $this->resolvedUser = null;
         }

@@ -23,7 +23,7 @@ namespace LumoraPress\Core\Plugin;
  * "Plugin Name: / Description: / Version: / Author: / Plugin URI: /
  * Author URI: / License: / License URI: / Tags: / Requires at least: /
  * Requires PHP: / Requires Plugins:" convention) plus any preview images
- * and documentation files present in the plugin directory (LP-045).
+ * and documentation files present in the plugin directory.
  */
 final class PluginInfo
 {

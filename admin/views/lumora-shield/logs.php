@@ -22,11 +22,7 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LPP-001. Only reachable while the plugin is active — see
- * appearance/font-awesome.php's identical reasoning, mirrored on
- * lumora-shield/settings.php.
- */
+// Only reachable while the plugin is active.
 $service = LumoraShieldService::instance();
 
 // Simple "show more" pagination rather than numbered pages, matching

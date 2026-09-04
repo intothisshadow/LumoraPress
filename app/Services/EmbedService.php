@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Auto-embed (LP-023): expands a bare provider URL alone on its own line into an embedded player, tweet, or post.
+ * Auto-embed: expands a bare provider URL alone on its own line into an embedded player, tweet, or post.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -22,36 +22,15 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Theme\ScriptEmbeds;
 
 /**
- * Auto-embed (LP-023): expands a bare provider URL, alone on its own
- * line/paragraph, into an embedded iframe when a post/page renders — the
- * classic WordPress auto-embed behavior. Hooked to ContentRenderer's
- * 'content_html' filter (see render()), which only fires *after*
- * HtmlSanitizer::clean() — every `<iframe>` this class emits is built from
- * a fixed, hardcoded-per-provider template with an interpolated ID it
- * extracted itself, never sanitizer-passed user markup, so `iframe` never
- * needs to be added to HtmlSanitizer::ALLOWED_TAGS. Twitter/X (LP-070) and
- * Bluesky (LP-071) are the two providers that aren't a plain iframe — each
- * emits its own `<blockquote>` shape instead, same "fixed template, not
- * sanitizer-passed markup" reasoning applies regardless of tag.
+ * Auto-embed: expands a bare provider URL, alone on its own line, into an embedded iframe
+ * when a post/page renders — classic WordPress auto-embed behavior. Hooked to
+ * ContentRenderer's 'content_html' filter, after HtmlSanitizer::clean(); every tag it emits
+ * is a fixed hardcoded-per-provider template, never sanitizer-passed user markup.
  *
- * Deliberately a fixed, developer-maintained provider allowlist with
- * regex-based ID extraction from the URL — not the oEmbed HTTP discovery
- * protocol. Fetching a provider's oembed endpoint at render/save time
- * would mean this app making outbound requests to attacker-influenceable
- * hosts, an SSRF surface with no precedent anywhere else in this
- * codebase, for a benefit (arbitrary unlisted providers) that doesn't
- * matter for a short, curated list. No network request is ever made by
- * this class itself — Bluesky is the one provider whose id (an AT-URI +
- * CID, not derivable from the URL by regex) requires an outbound request
- * to resolve at all, but that request is made once, ahead of time, by
- * BlueskyResolverService::resolveContent() at save time (see its own
- * class docblock); matchBluesky() below only ever reads that resolver's
- * local cache, so render()/buildEmbed() still never block on the network.
- *
- * Comment content is untouched by this class: CommentService/
- * format_comment_content() never passes comment text through
- * ContentRenderer's 'content_html' filter, so guest-submitted comments
- * simply never reach render() at all.
+ * Uses a fixed, developer-maintained provider allowlist with regex-based ID extraction, not
+ * the oEmbed HTTP discovery protocol, to avoid an SSRF surface. No network request is ever
+ * made here — Bluesky's id is resolved ahead of time by BlueskyResolverService at save time;
+ * matchBluesky() only reads its local cache. Comment content never reaches render().
  */
 final class EmbedService
 {
@@ -86,12 +65,9 @@ final class EmbedService
         private readonly PressConfig $config,
         private readonly HookManager $hooks,
         /**
-         * LP-071: nullable so every existing `new EmbedService($config,
-         * $hooks)` call site across the PHP Test Suite keeps compiling
-         * unchanged, the same reasoning PostService's optional $hooks
-         * param already documents. Null only disables the Bluesky
-         * provider's match() (it always returns null without a resolver
-         * to consult) — every other provider is unaffected.
+         * Nullable so existing test call sites keep compiling. Null only
+         * disables the Bluesky provider's match(); every other provider
+         * is unaffected.
          */
         private readonly ?BlueskyResolverService $bluesky = null,
     ) {
@@ -148,18 +124,11 @@ final class EmbedService
     }
 
     /**
-     * Every registered provider, core's seven plus anything a plugin/theme
-     * added via the 'embed_providers' filter (LP-023's Developer API) —
-     * each entry is a `key`/`label`/`match` (callable(string $url): ?array{src:string,title:string}
-     * or null when the URL doesn't match that provider) shape, plus `type`
-     * (LP-070): `'iframe'` (the default wrap() assumes when a
-     * plugin-registered entry omits it, so the five original core
-     * providers and any existing third-party 'embed_providers' provider
-     * keep working unchanged) or `'blockquote'` for a provider like
-     * Twitter/X with no plain-iframe embed — see wrap()'s branch. Not
-     * cached: a plugin activated/deactivated mid-session should see its
-     * provider added/removed immediately, and this only runs when
-     * auto-embed is enabled and the content actually contains "http".
+     * Every registered provider, core's seven plus anything a plugin/
+     * theme added via the 'embed_providers' filter. `type` defaults to
+     * `'iframe'` when omitted; `'blockquote'` is for a provider like
+     * Twitter/X with no plain-iframe embed. Not cached: a plugin
+     * activated/deactivated mid-session should see its provider change immediately.
      *
      * @return array<int, array{key: string, label: string, match: callable, allow: string, allowfullscreen: bool, aspect: string, type?: string}>
      */
@@ -268,28 +237,13 @@ final class EmbedService
     }
 
     /**
-     * Adds each enabled provider's iframe origin to the frame-src
-     * directive so the browser's default same-origin-only CSP (see
-     * ContentSecurityPolicy's own docblock) doesn't silently drop every
-     * embed — the exact scenario that class's docblock names as the
-     * reason this filter exists. Added unconditionally whenever a
-     * provider is enabled, not only when the current request's content
-     * actually contains a matching embed: the CSP header is sent in
-     * include/bootstrap.php, before any post/page content is rendered,
-     * so "did this specific page use it" isn't knowable yet — the same
-     * "always allow, don't bother checking per-page" approach
-     * include/bootstrap.php's own jsDelivr/Google Fonts additions already
-     * take.
+     * Adds each enabled provider's iframe origin to the frame-src directive so the browser's
+     * default same-origin-only CSP doesn't silently drop the embed. Added unconditionally
+     * whenever a provider is enabled, since the CSP header is sent before content renders.
      *
-     * Twitter/X (LP-070) and Bluesky (LP-071) each widen script-src and
-     * frame-src instead of just frame-src, since neither is a plain
-     * `<iframe>`: each provider's own hosted script scans the page for its
-     * blockquote markup and replaces it with an iframe it injects itself.
-     * Twitter/X additionally widens connect-src for
-     * syndication.twitter.com, which widgets.js calls to fetch a tweet's
-     * content — Bluesky's oEmbed content is instead resolved once ahead of
-     * time by BlueskyResolverService (see its own class docblock), so its
-     * widget script has no equivalent runtime API call to make.
+     * Twitter/X and Bluesky also widen script-src and frame-src, since each replaces its
+     * blockquote with an injected iframe via a hosted script rather than a plain iframe.
+     * Twitter/X additionally widens connect-src for syndication.twitter.com.
      *
      * @param array<string, string> $directives
      * @return array<string, string>
@@ -336,21 +290,11 @@ final class EmbedService
 
     private function buildEmbed(string $rawUrl): ?string
     {
-        // Entity-decoded before matching/building — the surrounding HTML
-        // (an <a href="..."> attribute, or htmlspecialchars()'d Plain-
-        // format text) may have encoded "&" as "&amp;" in the URL's own
-        // query string, which would otherwise break both the regex
-        // extraction below and, for SoundCloud, the re-embedded original
-        // URL. See include/helpers.php's format_comment_content() for the
-        // same escape-then-decode ordering issue this mirrors.
+        // Entity-decoded before matching/building — the surrounding HTML may have encoded "&" as "&amp;" in the URL's query string.
         $url = html_entity_decode(trim($rawUrl), ENT_QUOTES | ENT_HTML5);
 
         foreach ($this->providers() as $provider) {
-            // Per-provider on/off only applies to the five core providers
-            // this class ships with settings for — a provider a plugin
-            // registered via 'embed_providers' has no toggle here and is
-            // always considered on; that plugin owns its own enable/
-            // disable story if it wants one.
+            // Per-provider on/off only applies to the core providers; a plugin-registered provider has no toggle here and is always on.
             $isCore = in_array($provider['key'], self::DEFAULT_PROVIDERS, true);
 
             if ($isCore && !$this->providerEnabled($provider['key'])) {
@@ -380,16 +324,7 @@ final class EmbedService
         $src = $match['src'];
 
         if (($provider['type'] ?? 'iframe') === 'blockquote') {
-            // Neither Twitter/X (LP-070) nor Bluesky (LP-071) has a
-            // plain-iframe embed — each provider's own script (loaded
-            // conditionally in footer.php, see ScriptEmbeds) scans the
-            // page after load and replaces its blockquote with its own
-            // rendered iframe. markUsed() tells footer.php that this
-            // provider's own script actually needs to be emitted for this
-            // request. The two providers' blockquote shapes differ
-            // (Bluesky's carries data-bluesky-uri/data-bluesky-cid;
-            // Twitter's carries nothing but the link), so this branches
-            // on provider key rather than sharing one template.
+            // Neither has a plain-iframe embed — each provider's own script (loaded conditionally, see ScriptEmbeds) scans the page and replaces the blockquote with an iframe.
             ScriptEmbeds::markUsed($provider['key']);
 
             $html = $provider['key'] === 'bluesky'
@@ -539,14 +474,10 @@ final class EmbedService
     }
 
     /**
-     * Extracts a tweet's author handle and status id from a status-permalink
-     * URL and re-normalizes it onto twitter.com regardless of which host
-     * (twitter.com/www.twitter.com/mobile.twitter.com/x.com/www.x.com) the
-     * author actually pasted — widgets.js accepts either host in the
-     * blockquote's href, but a single canonical form keeps the generated
-     * markup predictable. Unlike SoundCloud, the raw pasted URL is never
-     * re-embedded verbatim: only the regex-validated handle/id pair flows
-     * into the returned src.
+     * Extracts a tweet's author handle and status id and re-normalizes
+     * onto twitter.com regardless of which host was pasted, for
+     * predictable generated markup. Unlike SoundCloud, the raw pasted
+     * URL is never re-embedded verbatim.
      *
      * @return array{src: string, title: string}|null
      */
@@ -570,15 +501,11 @@ final class EmbedService
     }
 
     /**
-     * Unlike every other match* method, this is an instance method, not a
-     * static one — it needs $this->bluesky to look up the post's AT-URI/
-     * CID, which (unlike a regex-extractable id) cannot be derived from
-     * the URL alone. See BlueskyResolverService's class docblock for why:
-     * that lookup is a pure local cache read here, resolved ahead of time
-     * by BlueskyResolverService::resolveContent() at save time, not a
-     * network call made during render(). A URL that hasn't been resolved
-     * yet (or never successfully resolves) returns null here — same as a
-     * malformed URL for any other provider — and is left as a plain link.
+     * Unlike every other match* method, this is an instance method — it
+     * needs $this->bluesky to look up the post's AT-URI/CID, which can't
+     * be derived from the URL alone. This is a pure local cache read,
+     * resolved ahead of time at save time, never a network call during
+     * render(). An unresolved URL returns null, left as a plain link.
      *
      * @return array{src: string, title: string, atUri: string, cid: string}|null
      */

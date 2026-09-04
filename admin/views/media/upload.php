@@ -60,15 +60,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $folderId = (int) ($_POST['folder_id'] ?? 0);
         $isAjax = ($_POST['ajax'] ?? '') === '1';
 
-        // admin/index.php's ob_start() buffer already holds layout-header.php's
-        // HTML shell by the time this runs — discard it before sending a
-        // JSON response, or that buffered HTML would still flush to the
-        // client ahead of/around this JSON on exit, breaking
-        // multi-upload.js's response.json() parse (every file "fails" with
-        // a network error even though the upload itself succeeded — see
-        // the identical comment in admin/views/posts/new.php's
-        // editor_upload handler, the pattern this branch was always meant
-        // to match but didn't).
+        // Discard admin/index.php's output buffer before sending a JSON
+        // response, or the buffered HTML would flush alongside it and
+        // break multi-upload.js's response.json() parse.
         if ($isAjax) {
             while (ob_get_level() > 0) {
                 ob_end_clean();
@@ -90,15 +84,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $uploaded = $mediaService->upload($_FILES['file'], $currentUser->id, $folderId > 0 ? $folderId : null);
                 $thumbnailService->generate($uploaded);
 
-                /*
-                 * LP-080: multi-file upload (admin/assets/js/multi-upload.js)
-                 * sequentially POSTs one file per request against this same
-                 * endpoint. Csrf::verify() unsets the token it just checked
-                 * (single-use, see app/Core/Security/Csrf.php), so each
-                 * response hands back a *new* token for the next file's
-                 * request — without this, every file after the first would
-                 * fail CSRF verification.
-                 */
+                // multi-upload.js POSTs one file per request; Csrf::verify()
+                // is single-use, so each response hands back a fresh token
+                // or every file after the first would fail verification.
                 if ($isAjax) {
                     echo json_encode([
                         'id' => $uploaded['id'],

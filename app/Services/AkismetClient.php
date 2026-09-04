@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Optional Akismet spam-checking for comments (LP-025).
+ * Optional Akismet spam-checking for comments.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -20,18 +20,10 @@ namespace LumoraPress\Services;
 use LumoraPress\Core\PressConfig;
 
 /**
- * Optional Akismet spam-checking for comments (LP-025). Entirely off by
- * default — `akismet_enabled` must be turned on and an API key configured
- * (Settings live on the Comments admin page, alongside the moderation
- * queue) — and comments work exactly as before if it's never enabled, per
- * this project's "never require an Akismet account to use comments" rule.
- *
- * Modeled on GitHubReleaseProvider's HTTP pattern: an injectable POST
- * closure for tests, curl-first with a `file_get_contents` fallback, and
- * fails open — `checkComment()` returns null (rather than throwing) on any
- * network/API problem, so a down or misconfigured Akismet never blocks a
- * comment from posting; it just leaves the existing local moderation
- * decision (trust signal / capability check) untouched.
+ * Optional Akismet spam-checking for comments, off by default — comments work exactly as
+ * before if never enabled. Modeled on GitHubReleaseProvider's HTTP pattern (injectable POST
+ * closure, curl-first with a fallback) and fails open: `checkComment()` returns null rather
+ * than throwing on any network/API problem, leaving the existing local moderation untouched.
  */
 final class AkismetClient
 {

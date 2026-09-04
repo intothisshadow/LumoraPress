@@ -18,12 +18,6 @@ declare(strict_types=1);
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Models\Post;
 
-/**
- * Author display/link helpers (LP-008) — reads UserService via the
- * Authors static bridge, mirroring include/media-functions.php's
- * FeaturedImages-backed helpers.
- */
-
 if (!function_exists('author_name')) {
     function author_name(Post $post): string
     {

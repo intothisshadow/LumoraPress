@@ -1,7 +1,7 @@
 <?php
 
 /**
- * FTP Media Import (LP-041): registers media files that already exist on the server's filesystem.
+ * FTP Media Import: registers media files that already exist on the server's filesystem.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,22 +21,13 @@ use LumoraPress\Core\Database\Database;
 use RuntimeException;
 
 /**
- * FTP Media Import (LP-041): registers media files that already exist on
- * the server's filesystem (dropped there via FTP/SFTP/a hosting file
- * manager) into the Media Manager, without a browser upload round-trip.
- * Deliberately a sibling of MediaService, not logic bolted onto it —
- * MediaService's own docblock scopes it to "validated uploads", and this
- * is a distinct ingestion path with its own safety rules (server-path
- * validation has nothing to do with $_FILES) — but it reuses
- * MediaService's allow-list/filename-sanitizing/duplicate-hash machinery
- * rather than duplicating it (see MediaService's docblock).
+ * FTP Media Import: registers media files already on the server's filesystem (dropped there
+ * via FTP/SFTP/a hosting file manager) into the Media Manager, without a browser upload. A
+ * sibling of MediaService with its own server-path safety rules, but reuses MediaService's
+ * allow-list/filename-sanitizing/duplicate-hash machinery.
  *
- * Every path this class touches is re-validated with isPathAllowed()
- * immediately before use, never trusted from an earlier request (e.g. a
- * path round-tripped through a preview form) — the same "don't trust
- * anything past the first check" posture MediaService::upload() applies
- * to MIME types (never trusts the client-supplied $file['type'], always
- * re-detects via mime_content_type()).
+ * Every path is re-validated with isPathAllowed() immediately before use, never trusted from
+ * an earlier request.
  */
 final class MediaImportService
 {
@@ -86,23 +77,13 @@ final class MediaImportService
     }
 
     /**
-     * LP-064: lists real, immediate (non-recursive) subdirectories of
-     * $scanParent as candidates for the admin to add to the allowed
-     * import directories, instead of having to already know exact server
-     * paths to type in blind. Deliberately shallow and non-configurable
-     * to an arbitrary starting point — the caller always passes
-     * dirname(LUMORA_ROOT), the one location most likely to hold an
-     * FTP-dropped sibling folder on shared hosting — so this never turns
-     * into a general-purpose file browser. A pure read: nothing here
-     * writes to $allowedDirectories or the filesystem; alreadyAllowed is
-     * just a display hint for the view.
+     * Lists real, immediate (non-recursive) subdirectories of $scanParent as candidates for
+     * the admin to add to allowed import directories, instead of typing exact server paths
+     * blind. Deliberately shallow — the caller always passes dirname(LUMORA_ROOT) — so this
+     * never becomes a general-purpose file browser. A pure read.
      *
-     * @param array<int, string> $allowedDirectories Existing allowed
-     *     directories, used only to flag which candidates are already
-     *     configured.
-     * @param array<int, string> $exclude Resolved-away paths (e.g.
-     *     LUMORA_ROOT itself — importing from the app's own install
-     *     directory isn't a real use case).
+     * @param array<int, string> $allowedDirectories Used only to flag already-configured candidates.
+     * @param array<int, string> $exclude Resolved-away paths, e.g. LUMORA_ROOT itself.
      * @return array<int, array{path: string, alreadyAllowed: bool}>
      */
     public function discoverCandidateDirectories(
@@ -315,8 +296,8 @@ final class MediaImportService
             return ['status' => 'failed', 'mediaId' => null, 'reason' => 'Unable to copy the file into the uploads directory.'];
         }
 
-        // "Optimize images after import" (LP-041) — always opt-in per
-        // import run (see the admin screen's checkbox), never automatic.
+        // "Optimize images after import" — always opt-in per import run
+        // (see the admin screen's checkbox), never automatic.
         // Runs after the copy, before file_size is read below, so the
         // recorded size reflects whatever optimizeInPlace() actually left
         // on disk (the optimized file if it was smaller, the untouched

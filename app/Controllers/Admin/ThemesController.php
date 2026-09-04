@@ -25,20 +25,13 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\ThemeInstaller;
 
 /**
- * Extracted from admin/views/appearance/themes.php (LP-082) — the first
- * admin view to move its POST-handling business logic (CSRF verification,
- * validation, and the actual theme/config/media mutations) out of a
- * template file and into a testable class. The view itself becomes a thin
- * wrapper: it reads $_POST/$_FILES, calls one of these methods, and turns
- * the returned AdminActionResult into either a redirect() call or an
- * inline $error string. See DECISIONS.md's LP-082 entry for why methods
- * here return a result instead of redirecting themselves.
+ * POST-handling logic for the admin Appearance > Themes screen. The
+ * view stays a thin wrapper: reads $_POST/$_FILES, calls a method here,
+ * and turns the returned AdminActionResult into a redirect or an error.
  *
- * Every CSRF action name below reproduces the exact per-slug scoping the
- * view already used (LP-081) — a bare 'activate_theme'/'delete_theme'
- * name shared across every theme card's form would let one theme's
- * request invalidate another's token, since Csrf::field()/verify() are
- * keyed purely by action name.
+ * Every CSRF action name is scoped per-slug — a shared name across
+ * every theme card's form would let one theme's request invalidate
+ * another's token.
  */
 final class ThemesController
 {
@@ -111,10 +104,8 @@ final class ThemesController
     }
 
     /**
-     * LP-137: bulk counterpart to deleteTheme() above — same per-slug
-     * active-theme guard, applied to every submitted slug rather than
-     * one, skipping (never erroring on) anything active or already
-     * gone so one bad slug in the batch doesn't abort the rest.
+     * Bulk counterpart to deleteTheme() — skips (never errors on)
+     * anything active or already gone, so one bad slug doesn't abort the rest.
      *
      * @param array<string, mixed> $post
      */
@@ -258,12 +249,8 @@ final class ThemesController
     }
 
     /**
-     * The view previously left a failed CSRF check as a silent no-op (the
-     * request just fell through to a normal re-render with no feedback)
-     * — a side effect of the old if/elseif chain requiring both the form
-     * name *and* Csrf::verify() to match before anything ran. Now that
-     * every branch always executes and returns a result, a failed check
-     * gets an actual message instead of vanishing silently.
+     * A failed CSRF check gets an actual error message rather than
+     * silently falling through to a normal re-render.
      */
     private function invalidRequest(): AdminActionResult
     {

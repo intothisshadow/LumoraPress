@@ -24,16 +24,12 @@ use LumoraPress\Services\MediaService;
 use Throwable;
 
 /**
- * Extracted the same way LP-082's ThemesController was (see its own
- * docblock and DECISIONS.md) — the admin views for LP-123's Customize/
- * Reset screens stay thin, reading $_POST/$_FILES and turning the
- * returned AdminActionResult into a redirect or an inline error.
+ * POST handling for the Customize/Reset Theme Options screens. Admin
+ * views stay thin, reading $_POST/$_FILES and turning the returned
+ * AdminActionResult into a redirect or an inline error.
  *
- * Every CSRF action name reproduces the exact per-section scoping
- * admin/views/appearance/theme-options.php already established
- * (SESSION.md's LP-012 postmortem: every form actually rendered on one
- * page needs a unique CSRF action name, not just every page) — the
- * Customize screen packs even more forms onto one page than that one did.
+ * Every CSRF action name is scoped per-section: every form actually
+ * rendered on the Customize screen needs its own unique action name.
  */
 final class ThemeCustomizerController
 {
@@ -45,8 +41,7 @@ final class ThemeCustomizerController
 
     /**
      * Saves or resets every field in one registered section (Colors,
-     * Typography, Layout, Post Display, Welcome Message, Footer) — the
-     * generic field-loop logic theme-options.php used to run inline.
+     * Typography, Layout, Post Display, Welcome Message, Footer).
      *
      * @param array<string, mixed> $post
      */
@@ -92,10 +87,9 @@ final class ThemeCustomizerController
     }
 
     /**
-     * The Header tab's form combines the two plain ThemeOptionFields
-     * (show_site_title, header_height) with the bespoke header-image
-     * upload/remove — this needs its own method rather than saveSection()
-     * since a file upload doesn't fit that method's plain-field loop.
+     * The Header tab combines two plain ThemeOptionFields with a bespoke
+     * header-image upload/remove, so it needs its own method rather than
+     * saveSection()'s plain-field loop.
      *
      * @param array<string, mixed> $post
      * @param array<string, mixed> $files

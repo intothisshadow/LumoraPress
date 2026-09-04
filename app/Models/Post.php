@@ -39,10 +39,9 @@ final class Post
         /** @var array{x: int, y: int, width: int, height: int}|null */
         public readonly ?array $featuredImageCrop = null,
         /**
-         * LP-022 SEO overrides — null means "use $title"/"derive from
-         * $excerpt or $content" respectively; see the_seo_title()/
-         * the_seo_description() in include/helpers.php for that fallback
-         * chain.
+         * SEO overrides — null means "use $title"/"derive from $excerpt or
+         * $content" respectively; see the_seo_title()/the_seo_description()
+         * in include/helpers.php for that fallback chain.
          */
         public readonly ?string $metaTitle = null,
         public readonly ?string $metaDescription = null,
@@ -53,13 +52,9 @@ final class Post
     }
 
     /**
-     * Whether the post is currently visible to an anonymous/public site
-     * visitor: published outright (or scheduled with a published_at time
-     * that has already passed), not yet past its unpublish_at time (if
-     * any — LP-008's "Schedule unpublishing"), and not Private (LP-008's
-     * "Private posts" — see isVisibleToViewer() for the version that
-     * additionally allows a permitted logged-in user to see a Private
-     * post).
+     * Visible to an anonymous visitor: published (or due), not past its
+     * unpublish_at time, and not Private. See isVisibleToViewer() for the
+     * logged-in-staff version.
      */
     public function isPubliclyVisible(): bool
     {
@@ -72,10 +67,8 @@ final class Post
 
     /**
      * Same as isPubliclyVisible(), but a Private post also counts as
-     * visible when $canViewPrivate is true — the caller (SiteController)
-     * decides that by checking the current user's edit_posts capability
-     * or authorship, since Post itself has no notion of "the current
-     * viewer."
+     * visible when $canViewPrivate is true — the caller decides that,
+     * since Post has no notion of "the current viewer."
      */
     public function isVisibleToViewer(bool $canViewPrivate): bool
     {

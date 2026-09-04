@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Optional Cloudflare Turnstile verification for Contact Form submissions (LPP-003).
+ * Optional Cloudflare Turnstile verification for Contact Form submissions.
  *
  * @package LumoraPress
  * @subpackage Plugins

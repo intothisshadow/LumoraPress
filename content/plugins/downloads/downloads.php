@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Downloads plugin's main file (LPP-008): plugin metadata header.
+ * The Downloads plugin's main file: plugin metadata header.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -44,45 +44,14 @@ require_once __DIR__ . '/src/DownloadService.php';
 require_once __DIR__ . '/src/DownloadMediaUrlMasker.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 
-/*
- * Its admin screens (admin/views/downloads/*.php, reachable only while
- * this plugin is active — see admin/index.php's $downloadsActive-gated
- * 'downloads' $menu entry) construct DownloadService directly from
- * $kernel's own already-existing services, the same pattern
- * admin/views/maintenance/import.php uses for WordPressImportService.
- * See DownloadService's own docblock for why it deliberately reuses
- * MediaService/RedirectService rather than reimplementing file storage
- * or URL redirection.
- *
- * DownloadsShortcode renders public-facing content, so — unlike the
- * admin screens above — it needs a real, always-on hook: the same
- * 'content_html' filter Font Awesome's [icon] shortcode and the
- * WordPress Importer plugin's own (unrelated) shortcode both use (see
- * font-awesome.php/wordpress-importer.php). It needs no Kernel services
- * at *registration* time (only when a page's content actually contains
- * `[lumora_downloads]`, at which point it opens its own database
- * connection — see its own docblock), so it's safe to construct here at
- * plugin-load time.
- */
+// Needs no Kernel services until content actually contains [lumora_downloads]
+// (it opens its own database connection then), so it's safe to construct here.
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
 
-/*
- * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
- * button — purely additive, doesn't change how [lumora_downloads ...]
- * itself renders (still the content_html filter above). Needs a live
- * list of this plugin's own Download categories (a wholly separate
- * table/concept from Media Folders — see DownloadCategory's own
- * docblock) to build category_id's choices, which requires
- * $kernel->database and isn't available yet at this point in the file —
- * see include/shortcodes.php's own docblock for why this hooks
- * 'register_shortcodes' instead of calling register_shortcode()
- * directly here. Covers only the "list every download in a category"
- * form (DownloadsShortcode::renderOne()'s third variant) — download_id
- * (embed one specific download) and count (a "newest N" list) are left
- * typeable by hand, matching the ticket's own three-shortcode scope.
- */
+// Category choices need $kernel->database, unavailable this early, so this
+// hooks 'register_shortcodes' rather than calling register_shortcode() directly.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
     $categoryService = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
     $categoryChoices = [];

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Thumbnail generation (LP-001): derives resized copies of image uploads using GD.
+ * Thumbnail generation: derives resized copies of image uploads using GD.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -26,24 +26,15 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Thumbnail Generation (LP-001): derives resized copies of image uploads
- * using GD only (no Imagick dependency, since GD ships on effectively all
- * shared hosting — the audience this project targets). Deliberately a
- * sibling of MediaService rather than logic bolted onto it: MediaService's
- * own docblock scopes it to "validated uploads, folders, metadata,
- * search", and thumbnailing is a distinct concern with its own storage
- * table, exactly the "focused service classes" rule in CLAUDE.md.
+ * Thumbnail Generation: derives resized copies of image uploads using
+ * GD only (no Imagick dependency, since GD ships on effectively all
+ * shared hosting). A focused sibling of MediaService, not logic bolted
+ * onto it, since thumbnailing is a distinct concern with its own storage table.
  *
- * There is no upload/delete hook in this codebase yet (MediaUsageChecker
- * and FolderService are also called explicitly from admin/views/media.php,
- * not via do_action), so generate()/deleteForMedia() are likewise called
- * explicitly from there rather than wired through a new event.
- *
- * WebP/AVIF are only ever produced when the running GD build actually
- * supports them (checked via function_exists()) — skipped with a logged
- * notice otherwise, never a hard failure. Metadata stripping needs no
- * separate step: GD's image* encoders never carry EXIF/ICC chunks through
- * from the source image, so every generated thumbnail is already clean.
+ * WebP/AVIF are only produced when the running GD build supports them —
+ * skipped with a logged notice otherwise, never a hard failure.
+ * Metadata stripping needs no separate step: GD's encoders never carry
+ * EXIF/ICC chunks through from the source.
  */
 final class ThumbnailService
 {
@@ -61,15 +52,10 @@ final class ThumbnailService
     private readonly Closure $readExif;
 
     /**
-     * Per-request memoization for thumbnailsFor() (LP-008 Performance) —
-     * rendering one item's featured image through the theme API
-     * (has_post_thumbnail()/the_post_thumbnail()/
-     * the_post_thumbnail_lightbox() in include/media-functions.php) looks
-     * up the same media id's thumbnail rows more than once per item. One
-     * instance of this service lives for the whole request (built once in
-     * bootstrap.php), so caching by media id here collapses those repeats
-     * into a single query. generateOne()/deleteForMedia() evict an id's
-     * entry whenever its rows actually change.
+     * Per-request memoization for thumbnailsFor() — rendering one item's
+     * featured image through the theme API looks up the same media id's
+     * thumbnail rows more than once per item. generateOne()/
+     * deleteForMedia() evict an id's entry whenever its rows change.
      *
      * @var array<int, array<int, array<string, mixed>>>
      */
@@ -77,18 +63,13 @@ final class ThumbnailService
 
     /**
      * @param Closure(string): (array<string, mixed>|false)|null $readExif
-     *     Overrides EXIF reading — defaults to exif_read_data() (only when
-     *     the exif extension is actually loaded; shared hosting frequently
-     *     omits it, so the default reader reports "no EXIF data" rather
-     *     than fatally calling an undefined function). Exists so tests can
-     *     exercise orientation handling without needing a real
-     *     EXIF-embedded fixture file, the same DI-for-testability pattern
-     *     MediaService's $moveUploadedFile and RequirementsCheck's
-     *     $extensionLoaded use. Note that isRotatedByExif()/
+     *     Overrides EXIF reading — defaults to exif_read_data() only when
+     *     the exif extension is loaded (shared hosting frequently omits
+     *     it). Exists so tests can exercise orientation handling without
+     *     a real EXIF-embedded fixture. isRotatedByExif()/
      *     applyExifOrientation() call $readExif directly and must not
-     *     re-gate on function_exists('exif_read_data') themselves — doing
-     *     so would ignore an injected closure whenever the real extension
-     *     isn't loaded, defeating the whole point of injecting one.
+     *     re-gate on function_exists('exif_read_data') themselves, or an
+     *     injected closure would be ignored when the extension isn't loaded.
      */
     public function __construct(
         private readonly Database $database,
@@ -258,11 +239,8 @@ final class ThumbnailService
 
     /**
      * Bulk form of thumbnailsFor() — one query for every id rather than
-     * one per id, for callers building a per-image size list across a
-     * whole media library at once (LP-075's "Attachment Display
-     * Settings" step needs every image's available sizes up front, and
-     * an N+1 query per image there would scale badly on a library with
-     * hundreds of uploads).
+     * one per id, so building a per-image size list across a whole
+     * library doesn't scale badly with an N+1 query per image.
      *
      * @param array<int, int> $mediaIds
      * @return array<int, array<int, array<string, mixed>>> media_id => its thumbnail rows
@@ -312,32 +290,14 @@ final class ThumbnailService
     }
 
     /**
-     * Manually-cropped featured image (LP-040) — a distinct concern from
-     * the automatic per-size thumbnails above: this is keyed by the exact
-     * crop rectangle requested (a post/page's own editorial choice), not a
-     * named size, and deliberately produces a single output only, with no
-     * responsive srcset variants (see media-functions.php's
-     * post_thumbnail_url()) — a manual crop is a one-off decision, not a
-     * systematic size like "medium"/"large". Not tracked in
-     * `media_thumbnails` (that table is keyed by (media_id, size_name),
-     * one row per named size — a crop has neither) — deterministic,
-     * content-addressed file naming is used instead: the output filename
-     * is derived from the crop rectangle itself, so two posts cropping the
-     * same image identically naturally share one file, a changed crop
-     * produces a new file, and an existing file for the same rectangle is
-     * reused rather than regenerated. Changing or clearing a crop leaves
-     * its old output file on disk (no reference-counting to know it's
-     * safe to delete) — an accepted, documented gap, the same class of
-     * disk-cleanup debt this project already accepts elsewhere (e.g.
-     * ThemeFileEditor's backup pruning is time/count-based, not exact).
+     * Manually-cropped featured image, keyed by the exact crop rectangle rather than a named
+     * size, producing a single output with no responsive srcset variants. Not tracked in
+     * `media_thumbnails`; deterministic, content-addressed file naming means identical crops
+     * share one file. Changing/clearing a crop leaves the old output file on disk.
      *
      * @param array<string, mixed> $media
-     * @param array{x: int, y: int, width: int, height: int} $crop Pixel
-     *     rectangle against the media's original (post-EXIF-rotation)
-     *     dimensions — out-of-bounds values are clamped, never rejected
-     *     outright, so a stale crop against a since-replaced image with
-     *     different dimensions still produces *something* sane rather
-     *     than silently doing nothing.
+     * @param array{x: int, y: int, width: int, height: int} $crop Pixel rectangle against the
+     *     original dimensions — out-of-bounds values are clamped, never rejected.
      * @return array{url: string, width: int, height: int}|null
      */
     public function generateFeaturedCrop(array $media, array $crop): ?array
@@ -392,26 +352,14 @@ final class ThumbnailService
     }
 
     /**
-     * LP-080: crops $sourceMedia into a brand-new, independent Media
-     * Library item — a distinct concern from generateFeaturedCrop()
-     * above, which produces a cache file for one post/page's own
-     * `featuredImageCrop` and is never registered as its own `media`
-     * row. This is reachable from the Media Manager (not just a specific
-     * post/page's featured-image field), and its output is meant to be
-     * selected as *any* post/page's featured image afterward — so it
-     * needs its own row, own thumbnails, and its own uniquely-named file
-     * (never the content-addressed cache naming above: a deliberate new
-     * Library asset should get its own filename even when the exact same
-     * rectangle is chosen twice, the same "duplicates are fine" behavior
-     * re-uploading a file already has via MediaService::upload()).
-     *
-     * The original file is never touched.
+     * Crops $sourceMedia into a brand-new, independent Media Library item — unlike
+     * generateFeaturedCrop()'s cache file, this is reachable from Media Manager and needs
+     * its own row, thumbnails, and uniquely-named file. The original file is never touched.
      *
      * @param array<string, mixed> $sourceMedia
      * @param array{x: int, y: int, width: int, height: int} $crop
-     * @return array<string, mixed>|null the newly created media row, or
-     *     null if $sourceMedia isn't an image, its file is missing, or
-     *     the crop/encode step failed
+     * @return array<string, mixed>|null null if $sourceMedia isn't an image, its file is
+     *     missing, or the crop/encode step failed
      */
     public function createCroppedFeaturedMedia(array $sourceMedia, array $crop, int $uploadedByUserId, ?int $folderId = null): ?array
     {
@@ -476,14 +424,10 @@ final class ThumbnailService
     }
 
     /**
-     * The output width every manually-cropped featured image (both
-     * generateFeaturedCrop()'s per-post/page cache and
-     * createCroppedFeaturedMedia()'s new Library item above) is capped
-     * to — LP-080's `featured_image_crop_size` option, naming one of the
-     * currently *enabled* thumbnail sizes. Falls back to `large`, then a
-     * fixed 1024px, if the configured size was since disabled or removed
-     * (e.g. a filter unregistered it) — a crop still needs some sane cap
-     * either way rather than failing outright.
+     * The output width every manually-cropped featured image is capped
+     * to — the `featured_image_crop_size` option, naming one of the
+     * currently enabled thumbnail sizes. Falls back to `large`, then a
+     * fixed 1024px, if the configured size was since disabled or removed.
      */
     private function featuredCropMaxWidth(): int
     {
@@ -547,27 +491,11 @@ final class ThumbnailService
     }
 
     /**
-     * Re-encodes an image file in place through GD's own decode/encode
-     * pipeline — LP-041's "Optimize images after import", a lossy
-     * recompression pass, not a dedicated lossless optimizer: no cwebp/
-     * mozjpeg/etc. tooling exists in this codebase (GD only, see this
-     * class's own docblock), so this reuses the exact same quality-
-     * controlled encoders ($jpegQuality/$webpQuality via encode()) that
-     * thumbnails already use. Always opt-in per call site — nothing here
-     * runs automatically; the FTP Media Import screen only calls this when
-     * an administrator checks "Optimize images after import" for that
-     * specific import.
+     * Re-encodes an image file in place through GD's decode/encode pipeline — a lossy
+     * recompression pass (GD only, no cwebp/mozjpeg). Always opt-in per call site. GIFs are
+     * skipped, since GD only reads a GIF's first frame and would destroy the animation.
      *
-     * GIFs are skipped outright: GD's decoder only reads a GIF's first
-     * frame, so round-tripping an animated GIF through it would silently
-     * destroy the animation. The file is only overwritten if the
-     * recompressed version actually comes out smaller — a source that's
-     * already well-compressed (or was uploaded below the configured
-     * quality already) is left untouched rather than risking a
-     * quality-for-nothing swap.
-     *
-     * @return bool true if the file was rewritten, false if it was left
-     *     as-is (unsupported/corrupt source, a GIF, or no size win)
+     * @return bool true if the file was rewritten, false if left as-is
      */
     public function optimizeInPlace(string $path, string $mimeType): bool
     {
@@ -608,11 +536,9 @@ final class ThumbnailService
     }
 
     /**
-     * Removes `media_thumbnails` rows (and their files) whose parent media
-     * row no longer exists. DB-level reconciliation only — not a
-     * filesystem tree walk — since deleteForMedia() already keeps files
-     * and rows in lockstep on the normal delete path; this exists as a
-     * safety net, not the primary cleanup mechanism.
+     * Removes `media_thumbnails` rows (and their files) whose parent
+     * media row no longer exists — a safety net, not the primary cleanup
+     * mechanism (deleteForMedia() keeps files/rows in lockstep normally).
      */
     public function deleteOrphaned(): int
     {
@@ -637,10 +563,8 @@ final class ThumbnailService
 
     /**
      * Processes one batch of image media for bulk regeneration. Callers
-     * (the admin view) loop this across requests, incrementing $offset by
-     * $batchSize each time until `done` is true — no queue/cron
-     * infrastructure exists in this codebase, so this is the same
-     * "batch-per-request" shape as everything else here.
+     * loop this across requests, incrementing $offset by $batchSize each
+     * time until `done` is true — no queue/cron infrastructure exists here.
      *
      * @return array{processed: int, total: int, done: bool}
      */
@@ -722,15 +646,7 @@ final class ThumbnailService
         $this->encode($canvas, $destination, $mimeType);
         imagedestroy($canvas);
 
-        // Delete-then-insert rather than an upsert: a previous row for
-        // this (media_id, size_name) may point at a differently-named
-        // file (e.g. the source extension changed on re-upload), and an
-        // UPDATE-only upsert would silently orphan that old file on disk
-        // while the DB moved on. Explicitly removing the old row+file
-        // first keeps them in lockstep, the same guarantee
-        // deleteForMedia() provides. Also keeps this portable to SQLite
-        // (no MySQL-only ON DUPLICATE KEY UPDATE), matching this
-        // codebase's SqliteDatabaseFactory-based unit test convention.
+        // Delete-then-insert rather than an upsert: a previous row may point at a differently-named file, and an UPDATE-only upsert would orphan it on disk. Also keeps this portable to SQLite.
         $existing = $this->database->fetchOne(
             'SELECT file_path FROM ' . $this->table() . ' WHERE media_id = :media_id AND size_name = :size_name',
             ['media_id' => (int) $media['id'], 'size_name' => $sizeName],

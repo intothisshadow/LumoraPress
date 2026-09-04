@@ -21,11 +21,8 @@ use LumoraPress\Services\PostService;
 use RuntimeException;
 
 /**
- * Static bridge exposing PostService to include/taxonomy-functions.php's
- * get_related_posts()/the_related_posts() — same shape as ActiveTags,
- * since finding the posts related to the one currently rendering is a
- * live, per-post lookup each render rather than a value SiteBranding can
- * snapshot once at bootstrap.
+ * Bridges PostService to get_related_posts()/the_related_posts() — a live,
+ * per-post lookup each render, so it can't be snapshotted like SiteBranding.
  */
 final class ActivePosts
 {

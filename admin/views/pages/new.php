@@ -30,12 +30,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * Shared shape for one Media row in the "Insert Image" picker (LP-115)
- * — see PostsController::buildEditorPickerItem()'s identical docblock
- * (posts/new.php delegates its JSON sub-actions to PostsController;
- * pages/new.php has no controller of its own, so this stays inline
- * here, matching editor_upload/convert_content's existing pattern below).
+/**
+ * Shared shape for one Media row in the "Insert Image" picker. This page
+ * has no controller of its own, so this stays inline here.
  *
  * @param array<string, mixed> $item
  * @param array<int, array<string, mixed>> $thumbnailsForItem
@@ -68,14 +65,10 @@ $buildEditorPickerItem = static function (array $item, array $thumbnailsForItem)
     ];
 };
 
-/*
- * Editor image upload and format-switch conversion — see the identical
- * block's docblock in admin/views/posts/new.php for why these live here as
- * JSON sub-actions rather than their own admin page/route.
- */
+// Editor image upload and format-switch conversion, as JSON sub-actions
+// rather than their own admin page/route.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_upload') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why the output buffer must be discarded here.
+    // Discard the output buffer before sending a JSON response.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -96,20 +89,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     try {
         $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
-        // Matches admin/views/media/upload.php's own multi-upload flow —
-        // without this, an image uploaded straight from the editor
-        // (LP-115's "Upload New" picker step) would report no size
-        // options at all in $buildEditorPickerItem() above.
+        // Without this, an image uploaded from the editor's "Upload New"
+        // step would report no size options in $buildEditorPickerItem().
         $kernel->thumbnails->generate($uploaded);
 
-        // See the identical comment in admin/views/posts/new.php's matching
-        // block for why a fresh token is returned on every response here.
         echo json_encode([
             'data' => ['filePath' => $kernel->media->url($uploaded)],
             'url' => $kernel->media->url($uploaded),
-            // LP-115: lets a freshly uploaded image drop straight into the
-            // picker's own Attachment Display Settings step, same shape
-            // media_picker_query below returns per item.
+            // Lets a freshly uploaded image drop straight into the
+            // picker's Attachment Display Settings step.
             'item' => $buildEditorPickerItem($uploaded, $kernel->thumbnails->thumbnailsFor((int) $uploaded['id'])),
             'csrfToken' => Csrf::token('editor_upload'),
         ]);
@@ -122,8 +110,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'media_picker_query') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why the output buffer must be discarded here.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -152,9 +138,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     }
 
     $result = $kernel->media->query($filters, $perPage, ($page - 1) * $perPage);
-    // One batched query for every item's thumbnails rather than one per
-    // item (LP-075's thumbnailsForMany() precedent) — a 40-item page
-    // would otherwise mean 40 separate thumbnail lookups.
+    // One batched query for every item's thumbnails rather than one per item.
     $thumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(
         array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
     );
@@ -165,25 +149,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
             $result['items'],
         ),
         'total' => $result['total'],
-        // Csrf::verify() is single-use — the picker fires this query
-        // repeatedly (every search keystroke, folder change, and "Load
-        // More" click) within one dialog session, so each response must
-        // hand back a fresh token the same way editor_upload already
-        // does for repeat uploads.
+        // Csrf::verify() is single-use, so each response must hand back
+        // a fresh token for the picker's next query within the dialog.
         'csrfToken' => Csrf::token('media_picker_query'),
     ]);
     exit;
 }
 
-/*
- * Featured Image sidebar box's own grid picker (featured-image-
- * picker.js) — see PostsController::queryFeaturedImagePicker()'s
- * identical docblock (posts/new.php delegates to that controller; this
- * page has no controller of its own) for why this is a separate
- * sub-action/CSRF action name from media_picker_query above rather than
- * shared: both pickers can be open on the same editor page, and
- * Csrf::token() overwrites the single stored token per action name.
- */
+// Featured Image sidebar box's own grid picker — a separate sub-action
+// from media_picker_query above since both pickers can be open at once
+// and Csrf::token() overwrites the single stored token per action name.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'featured_image_picker_query') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -228,13 +203,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
-/*
- * "Insert/Edit Link" dialog's "Or link to existing content" search
- * (LP-130, openLinkPicker() in content-editor.js) — see posts/new.php's
- * identical block's own docblock for why this spans both PostService
- * and PageService rather than living on a single content-type
- * controller, and is duplicated here rather than shared.
- */
+// "Insert/Edit Link" dialog's "Or link to existing content" search —
+// spans both PostService and PageService rather than a single controller.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'link_picker_query') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -288,11 +258,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why the output buffer must be discarded here, and why
     // FontAwesomeService's class must be guarded rather than assumed
-    // loaded (this page is reachable regardless of which plugins are
-    // active, unlike appearance/font-awesome.php's own settings screen).
+    // loaded — this page is reachable regardless of which plugins are active.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -312,9 +279,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'emoji_picker_record_recent') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why this is core UserService work rather than delegated
-    // to the (optional) Emoji Picker plugin's own service.
+    // Core UserService work, not delegated to the optional Emoji Picker
+    // plugin's own service.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -343,8 +309,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'convert_content') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why the output buffer must be discarded here.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -429,16 +393,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        // Visibility (LP-009) is a publish-time decision, same gate as
-        // Status above — mirrors admin/views/posts/new.php exactly.
+        // Visibility is a publish-time decision, same gate as Status
+        // above — mirrors admin/views/posts/new.php exactly.
         $visibility = $canPublish
             ? (PageVisibility::tryFrom((string) ($_POST['visibility'] ?? '')) ?? PageVisibility::Public)
             : ($existing?->visibility ?? PageVisibility::Public);
 
-        // Featured image resolution (LP-040): upload wins over the
-        // existing-image select, which wins over "remove", which wins
-        // over just keeping the current value — same precedence
-        // admin/views/posts/new.php uses.
+        // Featured image resolution: upload wins over the existing-image
+        // select, which wins over "remove", which wins over the current value.
         $featuredImageId = $existing?->featuredImageId;
 
         if (($_POST['remove_featured_image'] ?? '') === '1') {
@@ -461,7 +423,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        // Manual crop (LP-040) — see the identical block in
+        // Manual crop — see the identical block in
         // admin/views/posts/new.php for the full rationale.
         $featuredImageCrop = null;
         $cropForId = (int) ($_POST['featured_image_crop_for_id'] ?? 0);
@@ -488,7 +450,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($title === '') {
             $error = 'A title is required.';
         } elseif ($error === null) {
-            // LP-017: snapshot the pre-update content as a revision before
+            // Snapshot the pre-update content as a revision before
             // it's overwritten — see the identical block in
             // admin/views/posts/new.php for the full rationale.
             if ($existing !== null) {
@@ -509,12 +471,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             $pageService->updateSeo($page->id, $metaTitle, $metaDescription);
 
-            // "Trusted staff shouldn't have to add a domain in Settings
-            // just to embed an image" — see the identical block in
-            // admin/views/posts/new.php for the full rationale, including
-            // why this scans the *rendered* HTML rather than the raw
-            // $content (a Markdown page stores `![alt](url)`, not a
-            // literal <img> tag).
+            // Trusted staff shouldn't have to add a domain in Settings
+            // just to embed an image. Scans the *rendered* HTML rather
+            // than raw $content, since a Markdown page stores
+            // `![alt](url)`, not a literal <img> tag.
             if ($canEditOthersPages) {
                 $renderedForAutoTrust = $kernel->content->render($content, $contentFormat);
                 TrustedImageOrigins::autoTrustFromContent($kernel->config, $renderedForAutoTrust, site_origin());
@@ -612,14 +572,8 @@ $page = $editingPage;
 $statusOptions = [PageStatus::Draft, PageStatus::PendingReview, PageStatus::Published, PageStatus::Scheduled];
 $parentOptions = $pageService->listAllForParentPicker($page?->id);
 $currentFeaturedImage = $page?->featuredImageId !== null ? $kernel->media->find($page->featuredImageId) : null;
-/*
- * LP-115: the "Insert Image" picker's grid used to be preloaded here as
- * one data-media-library JSON blob (every image in the library, up to
- * 500 of them) — replaced by an on-demand AJAX query (the
- * media_picker_query sub-action above) so opening the picker doesn't
- * require loading the whole library first. Only the (small) Folder tree
- * is still preloaded, for the picker's Folder filter <select>.
- */
+// The "Insert Image" picker's grid is queried on demand rather than
+// preloaded; only the (small) Folder tree is preloaded, for its filter.
 $editorFolderTree = array_map(
     static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
     $kernel->folders->listAllForTree(),
@@ -645,16 +599,10 @@ $savedOrder = array_values(array_intersect($savedLayout['order'], $availableBoxe
 $boxOrder = array_values(array_unique(array_merge($savedOrder, $availableBoxes)));
 $collapsedBoxes = array_values(array_intersect($savedLayout['collapsed'], $collapsibleBoxes));
 
-/*
- * updateEditorLayoutPreferences() always writes order and collapsed
- * together as one snapshot (see UserService), so a real save never
- * leaves order empty — an empty $savedLayout['order'] reliably means
- * this user has never customized this screen's sidebar at all, not
- * that they explicitly saved zero collapsed boxes. SEO defaults to
- * collapsed on that first-ever visit, matching classic WordPress's
- * own postbox defaults for optional/secondary fields — see the
- * matching comment in admin/views/posts/new.php.
- */
+// updateEditorLayoutPreferences() always writes order and collapsed
+// together, so an empty $savedLayout['order'] reliably means this user
+// has never customized the sidebar. SEO defaults to collapsed on that
+// first visit, matching classic WordPress's own postbox defaults.
 if ($savedLayout['order'] === []) {
     $collapsedBoxes = array_values(array_intersect(['seo'], $collapsibleBoxes));
 }
@@ -833,11 +781,8 @@ if ($savedLayout['order'] === []) {
 
                                 case 'comments': ?>
                                     <?php
-                                    // Settings > Discussion's "Allow comments on new posts" (LP-047)
-                                    // only sets the default for a brand-new page's checkbox below —
-                                    // an existing page's own saved comments_open value always wins.
-                                    // Pages have no Discussion fields of their own, so this borrows
-                                    // the Posts-labeled setting rather than adding a page-specific one.
+                                    // The Posts-labeled setting only sets the default for a
+                                    // brand-new page; an existing page's saved value always wins.
                                     $defaultCommentsOpen = $page !== null ? $page->commentsOpen : $kernel->commentModeration->defaultCommentsOpenForNewPosts();
                                     ?>
                                     <label class="lp-field--checkbox">

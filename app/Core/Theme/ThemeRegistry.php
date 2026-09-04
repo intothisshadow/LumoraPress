@@ -18,20 +18,12 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Discovers installed themes under content/themes (LP-034), one directory
- * per theme — same "directory = installable unit" shape as
- * PluginManager::discover(), just with metadata parsing on top since a
- * theme (unlike a plugin) has a whole Appearance UI built around it.
+ * Discovers installed themes under content/themes, one directory per theme,
+ * and parses each style.css header plus preview images and README/CHANGELOG
+ * files for the Appearance page's details panel.
  *
- * A theme with no parseable "Theme Name:" header still gets listed (with
- * its slug title-cased as a fallback name) rather than silently excluded
- * — a missing/malformed style.css header should never make an installed
- * theme invisible or unselectable.
- *
- * LP-044 (Theme Browser) extended this beyond the original four header
- * fields to the rest of the classic WordPress style.css header block,
- * plus preview-image and README/CHANGELOG detection, so the Appearance
- * page can show a real theme details panel before activation.
+ * A theme with no parseable "Theme Name:" header still gets listed, with
+ * its slug title-cased as a fallback name, rather than silently excluded.
  */
 final class ThemeRegistry
 {
@@ -39,7 +31,7 @@ final class ThemeRegistry
 
     /**
      * Priority order for the primary card image when more than one
-     * preview basename is present — matches the order specified in LP-044.
+     * preview basename is present.
      */
     private const PREVIEW_BASENAMES = ['preview', 'thumbnail', 'screenshot'];
 
@@ -185,12 +177,10 @@ final class ThemeRegistry
     }
 
     /**
-     * Finds every preview image in the theme directory named
-     * preview.*, thumbnail.*, or screenshot.* (LP-044), plus numbered
-     * variants (screenshot-2.png, screenshot-3.jpg, ...) so a theme can
-     * provide multiple screenshots for the details panel gallery. The
-     * first entry (by basename priority, then ascending number) is used
-     * as the card thumbnail.
+     * Finds every preview image named preview.*, thumbnail.*, or
+     * screenshot.*, plus numbered variants (screenshot-2.png, ...). The
+     * first entry, by basename priority then ascending number, is the
+     * card thumbnail.
      *
      * @return array<int, string>
      */

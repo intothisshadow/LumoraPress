@@ -35,10 +35,8 @@ $warnUsages = null;
 
 /**
  * Builds an indented, depth-first flat list of {id, label} for a
- * "move to folder" <select>, excluding $excludeIds (e.g. a folder being
- * moved, plus its own descendants — FolderService::update() enforces the
- * same rule server-side; this just keeps the UI from offering an option
- * the server would reject).
+ * "move to folder" <select>, excluding $excludeIds — keeps the UI from
+ * offering an option FolderService::update() would reject server-side.
  *
  * @param array<int, Folder> $allFolders
  * @param array<int, int> $excludeIds
@@ -69,10 +67,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $backToList = admin_url('media/media') . ($currentFolderParam !== '' ? '?folder=' . urlencode($currentFolderParam) : '');
 
     if ($form === 'save_folder_tree_state' && Csrf::verify('save_folder_tree_state', $token)) {
-        // admin/index.php's ob_start() buffer already holds
-        // layout-header.php's HTML shell by the time this runs — discard
-        // it before sending a JSON response, matching the identical
-        // pattern in admin/views/media/upload.php's AJAX upload handler.
+        // Discard admin/index.php's output buffer before sending JSON —
+        // matches media/upload.php's AJAX handler.
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
@@ -200,12 +196,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
     } elseif ($form === 'set_default_featured_image' && $currentUser->can('manage_options') && Csrf::verify('set_default_featured_image', $token)) {
-        // LP-099: the same site-wide default-featured-image option
-        // Media Manager > Thumbnails' own dropdown writes
-        // (admin/views/media/thumbnails.php) — kept behind the identical
-        // manage_options gate that page already applies to this same
-        // option, even though this page itself only requires
-        // upload_files (see that file's own LP-061 note for why).
+        // The same site-wide default-featured-image option Media Manager
+        // > Thumbnails' own dropdown writes, kept behind the same
+        // manage_options gate even though this page only needs upload_files.
         $id = (int) ($_POST['id'] ?? 0);
         $kernel->config->setOption('default_featured_image_media_id', (string) $id);
         header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
@@ -344,16 +337,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $action = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
 $allFolders = $folderService->listAll();
 
-/*
- * LP-097: Thumbnails/List view-mode toggle, persisted per-user (not
- * just per-session) via UserService::setListViewMode() — the same
- * one-JSON-blob-column pattern editorLayoutPreferences already uses.
- * A "layout" query param on any Search & Filter/pagination link would
- * otherwise be dropped, so the choice is saved as soon as an admin
- * clicks the toggle (a plain GET link, matching this screen's existing
- * fully-reload-based filtering — no AJAX needed) and every other link
- * on this screen keeps working unchanged without needing to know about it.
- */
+// Thumbnails/List view-mode toggle, persisted per-user via
+// UserService::setListViewMode(). Saved as soon as the toggle is
+// clicked (a plain GET link) so every other link keeps working unchanged.
 $requestedListView = is_string($_GET['layout'] ?? null) ? $_GET['layout'] : null;
 
 if ($requestedListView === 'grid' || $requestedListView === 'list') {
@@ -516,17 +502,10 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
 
             <?php if ($currentUser->can('manage_options')): ?>
                 <?php
-                /*
-                 * LP-099: a direct way to set/unset the site-wide default
-                 * featured image (LP-040 — used as the featured image, and
-                 * Open Graph/Twitter Card image, for any post/page that
-                 * doesn't have its own) from the image itself, instead of
-                 * only via a long filename <select> on Media Manager >
-                 * Thumbnails. Both write the same
-                 * default_featured_image_media_id option that page's own
-                 * dropdown does, so either place keeps working
-                 * interchangeably.
-                 */
+                // A direct way to set/unset the site-wide default
+                // featured image from the image itself, instead of only
+                // via the dropdown on Media Manager > Thumbnails — both
+                // write the same option interchangeably.
                 $isDefaultFeaturedImage = (int) $kernel->config->option('default_featured_image_media_id', '0') === (int) $editingMedia['id'];
                 ?>
                 <div class="lp-default-featured-image">
@@ -723,41 +702,27 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     $folderSearchTerm = trim((string) ($_GET['folder_q'] ?? ''));
     $folderTreeFolders = $folderSearchTerm !== '' ? $folderService->search($folderSearchTerm) : $allFolders;
 
-    /*
-     * LP-121: sidebar file-count badges. directCountsByFolderId() is one
-     * grouped query regardless of how many folders/files exist; the
-     * cumulative roll-up (a folder's badge includes its subfolders'
-     * items, matching how a file explorer reports folder size) then costs
-     * zero further queries since it's built from that same result plus
-     * the folder list already loaded above.
-     */
+    // Sidebar file-count badges. directCountsByFolderId() is one grouped
+    // query; the cumulative roll-up (a folder's badge includes its
+    // subfolders' items) costs no further queries.
     $mediaDirectCounts = $mediaService->directCountsByFolderId();
     $mediaCumulativeCounts = $folderService->cumulativeCounts($mediaDirectCounts);
     $mediaTotalCount = $mediaService->countAll();
     $unassignedMediaCount = $mediaDirectCounts[0] ?? 0;
 
-    // LP-120: which folders this user has collapsed — everything else
-    // defaults to expanded (see UserService::getCollapsedMediaFolders()).
+    // Which folders this user has collapsed — everything else defaults
+    // to expanded (see UserService::getCollapsedMediaFolders()).
     // Ancestors of the currently active folder are always forced open
     // (without touching the saved state), so navigating into a folder
     // never leaves it hidden inside a collapsed ancestor.
     $collapsedFolderIds = $kernel->users->getCollapsedMediaFolders($currentUser->id);
     $activeFolderAncestorIds = $currentFolderId !== null ? $folderService->ancestorIds($currentFolderId) : [];
 
-    /*
-     * LP-006's built-in views (Unused / Most Downloaded / Recently
-     * Downloaded / Never Downloaded) and LP-005's Smart Collections
-     * (Recently Uploaded / Missing Alt Text / Large Files / ZIP Downloads /
-     * Featured Images) — unpaginated, capped lists rather than folded into
-     * the regular filter+pagination query() above, the same "quick, capped
-     * listing" precedent already used elsewhere for picker dropdowns (e.g.
-     * settings/general.php's OG image select,
-     * `$kernel->media->query(['type' => 'image'], 500, 0)`). "Unused" and
-     * "Featured Images" only know about the structured references
-     * MediaUsageChecker/PostService/PageService check (featured images,
-     * site logo/favicon/default OG image) — see MediaUsageChecker's
-     * class docblock — not media embedded in post/page body content.
-     */
+    // The built-in views and Smart Collections are unpaginated, capped
+    // lists rather than folded into the regular query() below. "Unused"
+    // and "Featured Images" only know about structured references
+    // (featured images, site logo/favicon/OG image), not media embedded
+    // in post/page body content.
     if ($view === 'unused') {
         $usedIds = $usageChecker->usedMediaIds();
         $items = array_values(array_filter(
@@ -864,13 +829,9 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
             $isActive = $currentFolderRaw === (string) $folder->id;
             $folderCount = $mediaCumulativeCounts[$folder->id] ?? 0;
             $hasChildren = array_filter($allFolders, static fn (Folder $f): bool => $f->parentId === $folder->id) !== [];
-            // Both the quick delete button (LP-120) and the Manage panel's
-            // own delete form submit the exact same delete_folder action,
-            // so they share one issued token rather than each calling
-            // Csrf::field() separately — a second token() call under the
-            // same action key would silently invalidate the first before
-            // either form could be submitted (see Csrf::token()'s
-            // single-token-per-action storage).
+            // The quick delete button and the Manage panel's delete form
+            // share one issued token — a second Csrf::token() call under
+            // the same action would invalidate the first.
             $deleteToken = Csrf::token('delete_folder_' . $folder->id);
 
             echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . '">';
@@ -1000,11 +961,8 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
 
         <div class="lp-media-manager__main">
             <?php
-            // Every other link on this screen (folder/view/pagination/
-            // Search & Filter) must keep working unchanged regardless of
-            // which layout is active — swapping just the "layout" param
-            // preserves the rest of the current query string rather than
-            // resetting it back to "All Files"/no filter.
+            // Swapping just the "layout" param preserves the rest of the
+            // current query string instead of resetting filters.
             $layoutLinkQuery = static fn (string $mode): string => http_build_query(array_merge($_GET, ['layout' => $mode]));
             ?>
             <p class="lp-media-manager__view-toggle" role="group" aria-label="View">

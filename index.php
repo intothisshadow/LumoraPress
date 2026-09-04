@@ -18,12 +18,9 @@ declare(strict_types=1);
 $root = __DIR__;
 
 if (!is_file($root . '/config/config.php')) {
-    /*
-     * No config yet means PressConfig/BasePath aren't available, so the
-     * installer's location has to be derived the same way install/index.php
-     * derives its own — from the currently executing script's path — or a
-     * subdirectory install redirects to the domain root and 404s.
-     */
+    // PressConfig/BasePath aren't available without a config file, so the
+    // installer's location is derived from the executing script's path,
+    // same as install/index.php does for itself.
     $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/index.php')), '/');
     header('Location: ' . $scriptDir . '/install/');
     exit;
@@ -32,24 +29,14 @@ if (!is_file($root . '/config/config.php')) {
 /** @var \LumoraPress\Core\Kernel $kernel */
 $kernel = require $root . '/include/bootstrap.php';
 
-/*
- * Route patterns (Router::get()/post() calls in include/bootstrap.php) are
- * registered without the install's base path prefix (e.g. "/admin", not
- * "/lumorapress/admin"), but $_SERVER['REQUEST_URI'] always carries it on
- * a subdirectory install. Without stripping it here first, every route
- * fails to match on any subdirectory install and every request 404s —
- * see DECISIONS.md's "Subdirectory installs never matched a route".
- */
+// Route patterns are registered without the install's base path prefix
+// (e.g. "/admin", not "/lumorapress/admin"), but REQUEST_URI carries it
+// on a subdirectory install, so it's stripped here before matching.
 $requestUri = \LumoraPress\Core\Http\BasePath::stripFrom($_SERVER['REQUEST_URI'] ?? '/');
 
-/*
- * Theme preview (LP-044's optional "Preview theme" action): lets an admin
- * see a not-yet-activated theme rendered on the real front end without
- * touching the site-wide active_theme option, so no other visitor is
- * affected. Gated on the requester actually being logged in with
- * manage_themes — the query param alone must never be enough, since it's
- * otherwise just an anonymous, attacker-controlled input.
- */
+// Theme preview renders a not-yet-activated theme without touching the
+// site-wide active_theme option. Gated on manage_themes — the query
+// param alone is attacker-controlled and must never be trusted.
 $previewSlug = is_string($_GET['lp_preview_theme'] ?? null) ? trim($_GET['lp_preview_theme']) : '';
 
 if ($previewSlug !== '') {
@@ -78,39 +65,18 @@ if ($kernel->maintenance->shouldBlock($requestUri)) {
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
     $output = ob_get_clean();
 
-    // Previewing a theme always requires a logged-in manage_themes user
-    // (see the gate above), so CacheManager::isCacheable() is already
-    // false here regardless — applyHeaders() is still called for the
-    // explicit `Cache-Control: no-store, private` it sends in that case,
-    // rather than leaving this response with no cache header at all.
+    // applyHeaders() is still called here (though isCacheable() is always
+    // false for a preview) for its explicit `Cache-Control: no-store`.
     $kernel->cache->applyHeaders((string) $output);
     echo \LumoraPress\Core\Theme\ThemePreview::injectBanner((string) $output, $exitUrl);
 } elseif ((string) (parse_url($requestUri, PHP_URL_PATH) ?? '') === '/admin' || str_starts_with((string) (parse_url($requestUri, PHP_URL_PATH) ?? ''), '/admin/')) {
-    /*
-     * LP-037's output-buffer wrapping below is skipped for /admin: that
-     * route requires admin/index.php, which already opens its own,
-     * never-explicitly-closed ob_start() (see that file's docblock —
-     * "flushed automatically at script end"). Nesting a second buffer
-     * around it would make ob_get_clean() here pop admin's inner buffer
-     * instead of this one, leaving this one dangling. Not a concern for
-     * caching anyway — SiteController never marks an admin response
-     * cacheable, there's nothing for CacheManager to do here.
-     */
+    // /admin skips the output-buffer wrapping below: admin/index.php opens
+    // its own ob_start() (flushed at script end), and nesting a second
+    // buffer here would pop the wrong one via ob_get_clean().
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
 } else {
-    /*
-     * LP-037: buffered (rather than letting the router's dispatched
-     * action echo straight through, as before) so CacheManager can
-     * compute a content-hash ETag and decide on a 304 only after the
-     * full response is known — see CacheManager::applyHeaders()'s
-     * docblock. Every non-admin route goes through this, not just
-     * SiteController's cacheable ones: API/POST/other responses simply
-     * never opted in (SiteController::markCacheableForGuests()), so they
-     * still get a safe default (applyHeaders() only skips the body for a
-     * genuinely cacheable, conditionally-matched request) and any header
-     * a route already sent for itself (e.g. SiteController::feed()'s own
-     * Cache-Control/ETag) is left alone, never overwritten.
-     */
+    // Buffered so CacheManager can compute a content-hash ETag and decide
+    // on a 304 only once the full response is known.
     ob_start();
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
     $output = ob_get_clean();

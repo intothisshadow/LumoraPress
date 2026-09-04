@@ -21,16 +21,11 @@ use DateTimeImmutable;
 use LumoraPress\Models\ContentFormat;
 
 /**
- * $url, $fileSizeBytes, and $targetUrl are all resolved by
- * DownloadService::hydrate() — a File download's $url is its Media
- * item's download endpoint and $fileSizeBytes comes from that same row
- * ($targetUrl stays null); a Url download's $url is its Redirect's own
- * source path (not the raw external target, so hit-counting via
- * RedirectService::recordHit() still applies), $fileSizeBytes stays
- * null, and $targetUrl is the real external destination — the value an
- * edit form needs to show/submit, since re-submitting $url itself would
- * point the redirect at this site's own local URL instead of the real
- * external destination.
+ * $url, $fileSizeBytes, and $targetUrl are resolved by DownloadService::hydrate().
+ * For a File download, $url is the Media download endpoint and $fileSizeBytes
+ * comes from that row ($targetUrl stays null). For a Url download, $url is the
+ * Redirect's own source path (so hit-counting still applies) and $targetUrl is
+ * the real external destination shown/submitted by the edit form.
  */
 final class Download
 {
@@ -38,37 +33,19 @@ final class Download
         public readonly int $id,
         public readonly string $title,
         public readonly string $description,
-        // Reuses posts/pages' own ContentFormat enum and
-        // `{table}.description_format` column convention (LPP-010)
-        // rather than inventing a parallel one — the Description field
-        // is edited with the exact same shared editor component.
+        // Reuses posts/pages' ContentFormat enum since Description uses the same shared editor.
         public readonly ContentFormat $descriptionFormat,
         public readonly ?int $folderId,
-        // The download's real, dedicated taxonomy (LPP-011) —
-        // decoupled from $folderId, which now only ever governs where a
-        // File-typed download's underlying Media item physically sits in
-        // the Media Library, not how the download is categorized.
+        // The download's own taxonomy, decoupled from $folderId (which only
+        // governs where a File download's Media item sits in the Media Library).
         public readonly ?int $categoryId,
         public readonly DownloadType $type,
         public readonly ?int $mediaId,
-        // LPP-012: whether $mediaId's Media row was created *for* this
-        // download (a normal upload — create()'s own File branch, or a
-        // WordPress import) versus attached from one that already
-        // existed independently in the Media Library
-        // (createFromExistingMedia()/replaceFile() with a picked file).
-        // Only an owned Media row is ever considered for cleanup when
-        // this download is deleted or its file replaced — see
-        // delete()'s/replaceFile()'s own docblocks. Meaningless (left
-        // true, the harmless default) for a Url-typed download, which
-        // has no $mediaId at all.
+        // Whether $mediaId's row was created for this download vs. attached from
+        // an existing one — only an owned row is cleaned up on delete/replace.
         public readonly bool $mediaOwned,
-        // A separate representative image, distinct from $mediaId's own
-        // file — the same concept Simple Download Monitor's post-
-        // thumbnail metabox represents on a source `sdm_downloads` post
-        // (a WordPress import, LPP-004, is currently the only writer of
-        // this field). Meaningful for either $type: a File download's
-        // own file may not be an image at all (a .zip has nothing to
-        // preview), and a Url download has no local file whatsoever.
+        // A separate representative image, since a File's own file may not be
+        // one (e.g. a .zip) and a Url download has no local file at all.
         public readonly ?int $thumbnailMediaId,
         public readonly ?int $redirectId,
         public readonly string $url,

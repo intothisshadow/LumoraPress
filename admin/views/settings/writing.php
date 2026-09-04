@@ -23,13 +23,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LPP-006. Only reachable while the plugin is active (admin/index.php
- * only adds this menu entry in that case), so EmojiPickerService's class
- * is guaranteed to already be loaded — PluginManager::loadActive()
- * required content/plugins/emoji-picker/emoji-picker.php earlier this
- * same request, in include/bootstrap.php.
- */
+// Only reachable while the plugin is active, so EmojiPickerService's
+// class is guaranteed to already be loaded.
 $service = EmojiPickerService::instance();
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 

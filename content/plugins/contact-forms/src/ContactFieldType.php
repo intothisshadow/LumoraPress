@@ -18,7 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\ContactForms;
 
 /**
- * Deliberately a fixed, small list (LPP-003 v1) rather than an extensible
+ * Deliberately a fixed, small list rather than an extensible
  * custom-field-type registry — Name/Subject/Text/Email/Message/Textarea all
  * render as a plain text input or textarea with different labels/
  * validation, which covers what most contact forms actually need without

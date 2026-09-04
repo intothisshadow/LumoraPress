@@ -25,15 +25,9 @@ use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Theme\ThemeRenderer;
 
 /**
- * Site-wide maintenance mode gate (LP-033, first pass). Called once from
- * index.php, between BasePath stripping and Router::dispatch() — there is
- * no pre-dispatch hook in Router itself, so this is the earliest point
- * with access to config, auth, and the resolved request path.
- *
- * /admin/* is always exempt (an Administrator must always be able to log
- * in and turn maintenance mode off); /install/* needs no special-casing
- * here since it's a wholly separate front controller that never reaches
- * this code path at all.
+ * Site-wide maintenance mode gate, called once from index.php between
+ * BasePath stripping and Router::dispatch(). /admin/* is always exempt
+ * so an Administrator can always log in and turn maintenance mode off.
  */
 final class MaintenanceGate
 {
@@ -51,9 +45,7 @@ final class MaintenanceGate
 
     /**
      * $requestUri is the raw, BasePath-stripped request URI (may still
-     * carry a query string) — the path is extracted the same way
-     * Router::dispatch() does, so "/admin?x=1" is recognized as admin
-     * just as reliably as "/admin/settings".
+     * carry a query string), extracted the same way Router::dispatch() does.
      */
     public function shouldBlock(string $requestUri): bool
     {
@@ -72,10 +64,9 @@ final class MaintenanceGate
 
     /**
      * True when the manual toggle is on, or the current time falls inside
-     * an optional scheduled start/end window — checked at request time,
-     * the same "no background job" pattern PostService uses for scheduled
-     * posts. A malformed schedule value is treated as unset (fail open):
-     * a config typo must never accidentally take the whole site offline.
+     * an optional scheduled start/end window. A malformed schedule value
+     * is treated as unset (fail open) — a config typo must never
+     * accidentally take the whole site offline.
      */
     public function isActive(): bool
     {
@@ -87,10 +78,9 @@ final class MaintenanceGate
     }
 
     /**
-     * Whether the currently signed-in user (if any) bypasses an active
-     * maintenance mode. Guests never bypass. Result is run through the
-     * maintenance_mode_bypass filter so plugins can register their own
-     * bypass rules (LP-033's Developer API requirement).
+     * Whether the signed-in user (if any) bypasses an active maintenance
+     * mode. Guests never bypass. Run through the maintenance_mode_bypass
+     * filter so plugins can register their own bypass rules.
      */
     public function bypassesFor(): bool
     {
@@ -108,9 +98,7 @@ final class MaintenanceGate
     /**
      * Sends the 503 response and renders the theme's maintenance page.
      * Deliberately does not call exit() — index.php calls this instead of
-     * dispatch(), not in addition to it, and lets the script end
-     * naturally, matching how Router::dispatch()/SiteController::notFound()
-     * don't exit() themselves either.
+     * dispatch(), letting the script end naturally.
      */
     public function respond(): void
     {
@@ -156,9 +144,8 @@ final class MaintenanceGate
     }
 
     /**
-     * Seconds until maintenance_end_at if it's set and still in the
-     * future; otherwise maintenance_retry_after_seconds (default 3600,
-     * '0' meaning "omit the header").
+     * Seconds until maintenance_end_at if set and still in the future;
+     * otherwise maintenance_retry_after_seconds ('0' omits the header).
      */
     private function retryAfterSeconds(): ?int
     {

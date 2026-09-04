@@ -19,13 +19,10 @@ namespace LumoraPress\Core\Http;
 
 /**
  * Lightweight, dependency-free router. Patterns use {param} placeholders
- * matched against a single path segment, e.g. "/post/{slug}", or
- * {param*} placeholders (LP-084) matched greedily across slashes for a
- * variable-depth path, e.g. "/{path*}" capturing "about/team" whole. A
- * greedy pattern is only ever safe to register *last*, after every
- * fixed-segment route — dispatch() tries routes in registration order and
- * returns on the first match, so a greedy pattern registered earlier
- * would shadow every fixed route that follows it.
+ * matched against a single path segment, or {param*} matched greedily
+ * across slashes. Register greedy patterns last — dispatch() returns on
+ * the first match in registration order, so an earlier greedy pattern
+ * would shadow every fixed route after it.
  */
 final class Router
 {

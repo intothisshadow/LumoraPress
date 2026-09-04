@@ -23,17 +23,9 @@ use LumoraPress\Models\User;
 
 /**
  * Comment theme API, mirroring classic WordPress's comment_form()/
- * wp_list_comments() split: comment_form() renders one CSRF-protected
- * submission form, comment_list() renders a nested thread (each reply
- * itself embedding a comment_form() call). Both used to be defined inline,
- * per-theme, inside content/themes/default/comments.php and
- * custom themes/duskline/comments.php identically — every theme author
- * writing a comments.php from scratch had to correctly reproduce Gravatar
- * hashing, honeypot/timing anti-spam fields, and a CSRF action-naming
- * detail that already caused a real bug once (see comment_form()'s own
- * docblock). Centralizing it here means a theme's comments.php only needs
- * to own its own wrapper markup (heading, flash messages, pagination) and
- * call these two functions for the parts that matter for security.
+ * wp_list_comments() split. Centralizing this here means a theme's
+ * comments.php only owns its wrapper markup and calls these two
+ * functions for the security-sensitive parts.
  */
 
 if (!function_exists('comment_avatar_url')) {
@@ -57,18 +49,10 @@ if (!function_exists('comment_form')) {
      * Comment" form when $parentId is null, or an inline reply form when
      * it isn't (comment_list() calls this once per node in the tree).
      *
-     * Each form on a page needs its own CSRF action name — Csrf::field()
-     * overwrites the session's token for a given action name on every
-     * call, so a page with the top-level form plus one reply form per
-     * comment would leave every form but the last-rendered one silently
-     * submitting an already-invalidated token if they all shared one name
-     * (see CommentService's/SiteController's own docblocks for the real
-     * incident this exact mistake caused). Scoped per post/page id and
-     * parent id below so that can't happen here. A Page's action name
-     * additionally carries a 'page_' prefix a Post's doesn't — a post
-     * and a page can share the same numeric id (each table's ids start
-     * from 1), so an unprefixed name would let the two collide in the
-     * same session (see SiteController::submitPageComment()'s docblock).
+     * Each form needs its own CSRF action name — Csrf::field() overwrites
+     * the session's token per action name, so forms sharing one name would
+     * invalidate each other. Scoped per post/page id and parent id; pages
+     * get a 'page_' prefix since a post and page can share a numeric id.
      *
      * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool} $guestFieldOptions
      */
@@ -137,12 +121,9 @@ if (!function_exists('comment_form')) {
 
 if (!function_exists('comment_list')) {
     /**
-     * Renders a nested comment thread — each node's reply control expands
-     * to its own comment_form() call. "Maximum nesting level" caps visual
-     * indentation via $maxDepth, not the data: replies past the cap still
-     * render (nothing is dropped), just as siblings at the deepest
-     * allowed depth rather than nesting further, matching classic
-     * WordPress's own behavior.
+     * Renders a nested comment thread. $maxDepth caps visual indentation
+     * only, not the data — replies past the cap still render, flattened
+     * as siblings at the deepest depth, matching classic WordPress.
      *
      * @param array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $tree
      * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool} $guestFieldOptions

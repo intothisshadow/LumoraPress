@@ -17,10 +17,6 @@ declare(strict_types=1);
 
 namespace LumoraPress\Models;
 
-/**
- * The outcome of a single manual update attempt, recorded in the
- * update_log table.
- */
 enum UpdateStatus: string
 {
     case Success = 'success';

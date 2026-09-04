@@ -25,17 +25,10 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-123: replaces the single flat Theme Options page with six tabs
- * (Header / Welcome Message / Body / Menu / Widgets / Footer). "Body"
- * groups the pre-existing colors/typography/layout/post_display sections
- * under one tab rather than being a registered ThemeOptions section
- * itself — see $tabSections below. POST handling lives in
- * ThemeCustomizerController (LP-082's extracted-controller pattern, first
- * used by ThemesController) — this view only reads the request,
- * dispatches to the matching controller method, and turns the returned
- * AdminActionResult into a redirect or an inline $error string.
- */
+// "Body" groups the colors/typography/layout/post_display sections under
+// one tab rather than being its own registered ThemeOptions section. POST
+// handling lives in ThemeCustomizerController; this view just dispatches
+// to it and turns the AdminActionResult into a redirect or $error string.
 $controller = new ThemeCustomizerController($kernel->themeOptions, $kernel->media);
 
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -70,6 +63,16 @@ $tabSections = [
     'widgets' => [],
     'footer' => ['footer'],
 ];
+
+// Theme-defined sections are registered after the built-ins; Body is the
+// neutral home for them so this screen never needs to know their keys.
+$renderedSectionKeys = array_merge(...array_values($tabSections));
+foreach ($kernel->themeOptions->sections() as $sectionKey => $section) {
+    if (!in_array($sectionKey, $renderedSectionKeys, true)) {
+        $tabSections['body'][] = $sectionKey;
+    }
+}
+
 $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'] : 'header';
 
 $currentHeaderImageId = $kernel->themeOptions->headerImageMediaId();
@@ -84,24 +87,10 @@ foreach ($kernel->themes->discover() as $themeInfo) {
     }
 }
 
-/**
- * Renders one ThemeOptionField's control markup — the same branch-on-type
- * logic theme-options.php used inline, now shared by every section's form
- * on this page, plus a new ThemeOptionType::Html branch reusing
- * content-editor.js's WYSIWYG/Markdown/HTML toggle (see
- * admin/views/pages/new.php's reference markup). Image upload/media-picker
- * wiring is deliberately left unconnected here (data-upload-url etc. are
- * all optional and fail soft per content-editor.js's own docblock) — a
- * Welcome Message/Footer field is typically short text, not full post
- * content, so that plumbing is out of scope for this first pass; embedding
- * an already-uploaded image's URL by hand still works.
- *
- * Local closures rather than global function declarations — no other
- * admin view in this project defines global functions, and this view
- * only ever runs once per request anyway (admin/index.php's dispatch
- * requires exactly one view file), so there's no reuse case for these
- * outside this file.
- */
+// Renders one ThemeOptionField's control, shared by every section's form
+// here. The Html branch reuses content-editor.js's WYSIWYG/Markdown/HTML
+// toggle but leaves its media-picker wiring unconnected — a Welcome
+// Message/Footer field is typically short text, not full post content.
 $renderThemeOptionField = function (ThemeOptionField $field, string $currentValue, string $formatValue = 'html'): void {
     $fieldId = 'theme-option-' . str_replace('_', '-', $field->key);
     ?>
@@ -157,11 +146,8 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
     <?php
 };
 
-/**
- * Renders one registered section as its own form — identical to what
- * theme-options.php rendered for every section flat on the page, now
- * reused per-tab and per-sub-section within the Body tab.
- */
+// Renders one registered section as its own form, reused per-tab and
+// per-sub-section within the Body tab.
 $renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderThemeOptionField): void {
     $section = $kernel->themeOptions->sections()[$sectionKey] ?? null;
 
@@ -182,11 +168,8 @@ $renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderT
 
             <?php foreach ($kernel->themeOptions->fieldsForSection($section->key) as $field): ?>
                 <?php
-                // An Html field's companion {key}_format Select field (see
-                // ThemeOptions::registerStandardOptions()) picks which
-                // editor mode content-editor.js opens in — read it by the
-                // established naming convention rather than hardcoding
-                // welcome_message/footer_html specifically.
+                // An Html field's companion {key}_format Select field picks
+                // its content-editor.js mode, read by naming convention.
                 $formatValue = $field->type === ThemeOptionType::Html
                     ? $kernel->themeOptions->value($field->key . '_format')
                     : 'html';

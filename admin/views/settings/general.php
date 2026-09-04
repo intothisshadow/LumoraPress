@@ -23,29 +23,11 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-042: Feeds, Search, and REST API were previously three of several
- * sections on one big admin/views/settings.php — moved here verbatim
- * (same option keys, same CSRF action names) as Settings > General now
- * that Settings has sub-pages. Site title, logo, favicon, and custom CSS
- * intentionally stay on the Appearance > Branding screen rather than
- * duplicating that working upload flow here.
- *
- * Of LP-042's original General checklist, this session added: Website
- * URL, Administration email, Tagline, Timezone (plus the bootstrap.php
- * fix that makes it actually apply — see that file's docblock), Date/Time
- * format (see LumoraPress\Core\Theme\SiteBranding::dateFormat()/
- * timeFormat() and the the_date()/the_time() theme helpers), Meta
- * description, and Default Open Graph image. (The Footer copyright text
- * setting this originally also added was later removed in favor of a
- * fixed "Powered by Lumora Press" attribution — see footer.php in each
- * theme.)
- * Still deferred, each needing real infrastructure that doesn't exist yet
- * rather than just a settings field: user registration and its default
- * role (no public sign-up flow exists), default language (no i18n string
- * system consumes `locale` yet), and first day of week (nothing in this
- * app — no calendar widget — reads it).
- */
+// Site title, logo, favicon, and custom CSS intentionally stay on
+// Appearance > Branding rather than duplicating that upload flow here.
+// User registration, default language, and first day of week are
+// deliberately not offered — each needs infrastructure that doesn't
+// exist yet, not just a settings field.
 $error = null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
@@ -91,8 +73,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
     $kernel->config->setOption('meta_description', trim((string) ($_POST['meta_description'] ?? '')));
 
     // Upload wins over the existing-image select, which wins over
-    // "remove", which wins over just keeping the current value — same
-    // precedence admin/views/posts.php's Featured Image field uses.
+    // "remove", which wins over the current value.
     if (($_POST['remove_default_og_image'] ?? '') === '1') {
         $kernel->config->setOption('default_og_image_media_id', '');
     }

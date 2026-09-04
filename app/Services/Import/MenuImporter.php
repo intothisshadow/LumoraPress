@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates a named menu (with its items) from an ImportedMenu DTO and records provenance (LPP-004 Stage 8).
+ * Creates a named menu (with its items) from an ImportedMenu DTO and records provenance.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,20 +21,14 @@ use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Services\ContentImportRegistry;
 
 /**
- * Unlike PageImporter/PostImporter, MenuManager has no database-backed
- * create() of its own — createMenu()/addMenuItem() only mutate its
- * in-memory state (see MenuManager's own docblock). This class does not
- * persist the "nav_menus" option itself; the caller (WordPressImportService)
- * does that once after every menu in a batch has been imported, mirroring
- * admin/views/appearance/menus.php's own $persistMenus closure.
+ * Unlike PageImporter/PostImporter, MenuManager has no database-backed create() — its
+ * createMenu()/addMenuItem() only mutate in-memory state, so this class does not persist the
+ * "nav_menus" option itself; the caller (WordPressImportService) does that once after every
+ * menu in a batch is imported.
  *
- * Items are resolved parent-before-child via a multi-pass loop (the same
- * approach WordPressImportService already uses for category/folder
- * hierarchies) rather than assuming $menu->items is already in a
- * topological order — a source's own item ordering (WordPress's
- * menu_order, for instance) doesn't guarantee that. An item whose parent
- * never resolves (a genuine data oddity, not normal WordPress state) is
- * added top-level rather than dropped.
+ * Items resolve parent-before-child via a multi-pass loop, since a source's own ordering
+ * doesn't guarantee a topological order. An item whose parent never resolves is added
+ * top-level rather than dropped.
  */
 final class MenuImporter
 {

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Core logic for the bundled Lumora Shield plugin (LPP-001): settings, Stop User Enumeration, Monitoring, and Comment Analysis.
+ * Core logic for the bundled Lumora Shield plugin: settings, Stop User Enumeration, Monitoring, and Comment Analysis.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -21,35 +21,18 @@ use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
 
 /**
- * First modules built for the much larger LPP-001 Lumora Shield ticket:
- * Stop User Enumeration, Monitoring, and Comment Analysis.
+ * Three modules: Stop User Enumeration, Monitoring, and Comment Analysis.
  *
- * Stop User Enumeration: a 2026-08-28 re-audit of the ticket's own
- * "nothing to protect yet" note found one real gap since introduced —
- * `/author/{slug}` (LP-008) returned 200 for any real username (even one
- * with zero published posts) and 404 for a made-up one, a plain
- * username-existence oracle. The zero-published-posts half of that fix
- * has no real tradeoff, so it lives unconditionally in
- * `SiteController::author()` itself; this plugin's only remaining job
- * there is the one genuine optional tradeoff — hiding every author
- * archive outright, including real ones with published posts.
+ * Stop User Enumeration: the unconditional half (404 a zero-published-post author) already
+ * lives in `SiteController::author()`; this plugin's only job is the genuine optional
+ * tradeoff — hiding every author archive outright, including real ones with posts.
  *
- * Monitoring: records every 'lumora_shield_enumeration_blocked' event
- * `SiteController::author()` fires (a no-op unless something listens),
- * so an administrator can see who's probing for valid usernames. No
- * cron/scheduler exists anywhere in this codebase, so retention cleanup
- * runs probabilistically on write rather than on a schedule — the same
- * shape PHP's own session garbage collector uses.
+ * Monitoring: records every 'lumora_shield_enumeration_blocked' event so an admin can see
+ * who's probing for usernames. No cron exists in this codebase, so retention cleanup runs
+ * probabilistically on write, like PHP's own session garbage collector.
  *
- * Comment Analysis: a set of independent content/behavioral heuristics
- * (see CommentAnalyzer) that push a comment toward Spam via the existing
- * 'comment_is_spam' filter, the same one Akismet already uses.
- *
- * Everything else in the ticket's User Enumeration Protection checklist
- * remains N/A per the 2026-08-28 audit (no XML-RPC, no REST user
- * endpoint, generic login/password-reset responses already exist in
- * core) — deliberately not built speculatively against surface area
- * that doesn't exist yet.
+ * Comment Analysis: independent content/behavioral heuristics (see CommentAnalyzer) that
+ * push a comment toward Spam via the same 'comment_is_spam' filter Akismet uses.
  */
 final class LumoraShieldService
 {
@@ -129,16 +112,10 @@ final class LumoraShieldService
     }
 
     /**
-     * The `lumora_shield_author_archive_visible` filter listener
-     * (registered in lumora-shield.php). $default is whatever core would
-     * otherwise decide by the time this runs — SiteController::author()
-     * has already 404'd a zero-published-post author unconditionally, so
-     * $default is always true here — passed through unchanged unless
-     * "hide author archives entirely" is on, so disabling the plugin
-     * restores exact core-only behavior. $publishedPostCount isn't
-     * needed by this module's own logic (core's own check already used
-     * it), but stays part of the filter's contract for any other
-     * listener that might want it.
+     * The `lumora_shield_author_archive_visible` filter listener. $default is always true
+     * here (core already 404s a zero-published-post author) and is passed through unchanged
+     * unless "hide author archives entirely" is on, so disabling the plugin restores exact
+     * core-only behavior.
      */
     public function authorArchiveVisible(bool $default, int $publishedPostCount): bool
     {
@@ -168,20 +145,10 @@ final class LumoraShieldService
     }
 
     /**
-     * The `contact_form_is_spam` filter listener (registered in
-     * lumora-shield.php) — Contact Forms' own submission handler already
-     * has CSRF/honeypot/FormTiming/per-IP rate limiting/CAPTCHA/Akismet
-     * (see that plugin's own docblock), but no link-count/length/
-     * uppercase-ratio content check of its own. Reuses
-     * `CommentAnalyzer::contentReasons()` — the same pure, database-free
-     * content checks Comment Analysis already applies to comments —
-     * against every submitted field value joined together, since a
-     * contact form's field set is arbitrary (Name/Email/Subject/Message/
-     * Text/Textarea/Checkbox/Select), not a single fixed "content"
-     * column. Deliberately content-only, not behavioral: Contact Forms
-     * already rate-limits by IP on its own, and there's no equivalent
-     * "prior spam history"/"duplicate elsewhere" identity table for
-     * contact-form submitters the way comments have.
+     * The `contact_form_is_spam` filter listener. Contact Forms already has its own
+     * CSRF/honeypot/rate-limiting/CAPTCHA/Akismet, but no content check — this reuses
+     * `CommentAnalyzer::contentReasons()` against every submitted field value joined
+     * together, since a contact form's field set is arbitrary. Content-only, not behavioral.
      *
      * @param array<string, string> $data
      */

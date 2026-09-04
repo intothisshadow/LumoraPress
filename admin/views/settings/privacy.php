@@ -25,14 +25,9 @@ if (!isset($kernel)) {
 $error = null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
-/*
- * Anonymous Install Ping — off by default, opt-in. Deliberately a
- * separate form/CSRF token from the privacy-policy-page selector below,
- * since the two settings are unrelated and this one also needs its own
- * post-save side effect (firing an immediate first ping the moment it's
- * switched on). See InstallPingService's class docblock for what is and
- * isn't sent.
- */
+// Anonymous Install Ping — off by default, opt-in. A separate form/CSRF
+// token from the privacy-policy-page selector below, since this one also
+// needs its own post-save side effect (firing an immediate first ping).
 $installPingError = null;
 
 if ($form === 'install_ping_settings' && Csrf::verify('install_ping_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -66,16 +61,9 @@ if ($form === 'install_ping_test' && Csrf::verify('install_ping_test', is_string
     }
 }
 
-/*
- * New Settings > Privacy sub-page — names an existing Page as the site's
- * privacy policy, the same "point at an existing Page rather than invent
- * a second content type" approach Settings > Reading's homepage/posts
- * page selectors already use. privacy_policy_url() (a new template tag,
- * include/theme-functions.php) is the only thing that reads this value —
- * whether/where a theme links to it is left to the theme's own markup,
- * matching LPP-004's WordPress Importer, which can now write this key
- * on import.
- */
+// Names an existing Page as the site's privacy policy rather than
+// inventing a second content type. privacy_policy_url() is the only
+// thing that reads this value; where a theme links to it is its own choice.
 if ($form === 'privacy_policy_settings' && Csrf::verify('privacy_policy_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $privacyPolicyPageIdInput = (int) ($_POST['privacy_policy_page_id'] ?? 0);
     $kernel->config->setOption('privacy_policy_page_id', $privacyPolicyPageIdInput > 0 ? (string) $privacyPolicyPageIdInput : '');

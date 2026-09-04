@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A plain data holder describing one nav menu (name + items) to create via MenuImporter (LPP-004 Stage 8), independent of where the data came from.
+ * A plain data holder describing one nav menu (name + items) to create via MenuImporter, independent of where the data came from.
  *
  * @package LumoraPress
  * @subpackage Services

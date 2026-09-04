@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Core logic for the bundled Emoji Picker plugin (LPP-006): settings and the bundled emoji dataset.
+ * Core logic for the bundled Emoji Picker plugin: settings and the bundled emoji dataset.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -20,25 +20,13 @@ namespace LumoraPress\Plugins\EmojiPicker;
 use LumoraPress\Core\ActiveConfig;
 
 /**
- * Resolves settings and the bundled emoji dataset — see emoji-picker.php
- * for hook registration; this class is deliberately hook-agnostic so it
- * can be unit tested without booting the full application, mirroring
- * FontAwesomeService's identical shape (LPP-002).
+ * Resolves settings and the bundled emoji dataset. Deliberately hook-agnostic so it can be
+ * unit tested without booting the full application; hook registration lives in
+ * emoji-picker.php. The dataset (data/emoji.php) is a curated subset of Unicode CLDR
+ * annotations, extendable via the `lp_emoji_dataset` filter in dataset() below.
  *
- * The dataset itself (data/emoji.php) is a curated subset of Unicode CLDR
- * emoji annotations, not the full ~1,400+ entry CLDR set — see that
- * file's own docblock for why, and for how a site extends or replaces it
- * via the `lp_emoji_dataset` filter applied in dataset() below.
- *
- * Unlike FontAwesomeService's icon search (queried server-side per
- * keystroke, since Font Awesome's full icon set is large), the emoji
- * dataset is small enough to send to the browser once and filter there —
- * see content-editor.js's openEmojiPicker(), and the ticket's own
- * Performance requirement ("no external network requests at any point").
- * This class therefore has no AJAX query method of its own; "recently
- * used" persistence (the one thing that does need a request) is core
- * UserService's concern, dispatched from the editor-hosting admin views
- * directly, not this plugin — see UserService::addRecentEmoji().
+ * The dataset is small enough to send to the browser once and filter there, so this class
+ * has no AJAX query method; "recently used" persistence is core UserService's concern.
  */
 final class EmojiPickerService
 {

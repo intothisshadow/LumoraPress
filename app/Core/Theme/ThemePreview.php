@@ -18,19 +18,11 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Static bridge tracking whether the current request is an admin's
- * "Preview" of a not-yet-activated theme (LP-044's optional "Preview
- * theme" action), and rendering the front-end banner that marks the
- * page as a preview rather than the live site.
- *
- * The public front controller (index.php) is the only caller of
- * activate() — it swaps ThemeRenderer's active theme for the request
- * only (config's active_theme option is never touched, so no other
- * visitor is affected) after confirming the requester is authorized,
- * then records that here so injectBanner() knows to mark the output.
- * Mirrors SiteBranding/FeaturedImages: a static bridge because themes
- * render through procedural template files with no other route to
- * request-scoped state.
+ * Tracks whether the current request is an admin's "Preview" of a
+ * not-yet-activated theme, and renders the front-end banner marking the
+ * page as a preview. Only the front controller calls activate(), and only
+ * for the current request — config's active_theme is never touched, so no
+ * other visitor is affected.
  */
 final class ThemePreview
 {
@@ -57,22 +49,11 @@ final class ThemePreview
     }
 
     /**
-     * Appends the `?lp_preview_theme=` query parameter to $url when a
-     * preview is active for this request, so clicking through the site
-     * (a post/page/category/tag/author link, a nav menu item) keeps
-     * previewing the same theme instead of silently reverting to the
-     * real active theme on the very next click (LP-138). A no-op —
-     * returns $url unchanged — for the overwhelming majority of
-     * requests, where no preview is active; safe to call unconditionally
-     * from every internal link-building function.
-     *
-     * Refuses to touch a URL pointing at a different host (a nav menu's
-     * custom link can point anywhere, not just this site) — an
-     * admin-only preview parameter has no business leaking onto a
-     * third-party URL a visitor happens to click while it's active.
-     * post_permalink()/page_permalink()/etc. only ever return same-host
-     * URLs by construction, so this only ever actually matters for
-     * nav_menu()'s external "custom link" items.
+     * Appends `?lp_preview_theme=` to $url when a preview is active, so
+     * clicking through the site keeps previewing the same theme instead
+     * of reverting on the next click. No-op when no preview is active, or
+     * when $url points at a different host — an admin-only preview
+     * parameter shouldn't leak onto an external nav menu link.
      */
     public static function appendToLink(string $url): string
     {
@@ -92,11 +73,9 @@ final class ThemePreview
     }
 
     /**
-     * Inserts the preview bar markup immediately after the page's
-     * opening <body> tag. Works against the fully-rendered HTML string
-     * rather than a template hook so it applies to every theme
-     * unmodified, including custom themes with no knowledge of preview
-     * mode at all.
+     * Inserts the preview bar markup after the page's opening <body> tag.
+     * Works against the rendered HTML string rather than a template hook
+     * so it applies to every theme, including ones unaware of preview mode.
      */
     public static function injectBanner(string $html, string $exitUrl): string
     {

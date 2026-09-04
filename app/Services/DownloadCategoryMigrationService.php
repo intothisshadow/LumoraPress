@@ -1,7 +1,7 @@
 <?php
 
 /**
- * One-time backfill from a Download's old Folder-based categorization to its new dedicated category taxonomy (LPP-011).
+ * One-time backfill from a Download's old Folder-based categorization to its new dedicated category taxonomy.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -20,29 +20,17 @@ namespace LumoraPress\Services;
 use LumoraPress\Core\Database\Database;
 
 /**
- * Before LPP-011, a Download's "category" was really a Media Manager
- * Folder (`downloads.folder_id`, pointing at `media_folders`) — every
- * Download created before this ticket shipped is still categorized that
- * way. This service turns each such Folder into a real
- * `download_categories` row (preserving name and parent hierarchy) and
- * backfills `downloads.category_id` to point at it, so upgrading never
- * silently loses a download's existing categorization.
+ * Originally, a Download's "category" was really a Media Manager Folder
+ * (`downloads.folder_id`). This service turns each such Folder into a real
+ * `download_categories` row (preserving name and parent hierarchy) and backfills
+ * `downloads.category_id`, so upgrading never silently loses a download's categorization.
  *
- * Deliberately writes directly via parameterized SQL rather than going
- * through DownloadCategoryService — that class lives in the Downloads
- * plugin (content/plugins/downloads/src/), not core, and this repair must
- * still run correctly even on an install where that plugin happens to be
- * inactive at the moment an admin runs it from Maintenance > Tools (the
- * `download_categories`/`downloads` tables themselves are core migrations,
- * independent of the plugin's own active/inactive state) — mirrors
- * EntityDecodeRepairService's identical "bypass the normal service layer"
- * reasoning for the same kind of one-time, narrowly-scoped repair.
+ * Writes directly via parameterized SQL rather than through DownloadCategoryService, since
+ * that class lives in the Downloads plugin and this repair must still run even when the
+ * plugin is inactive — mirrors EntityDecodeRepairService's reasoning.
  *
- * Idempotent: a Folder already turned into a matching (by name + parent)
- * `download_categories` row on an earlier run is reused rather than
- * duplicated, and a Download that already has `category_id` set is left
- * untouched — safe to run more than once, and a no-op once every
- * Folder-categorized Download has been backfilled.
+ * Idempotent: a Folder already matched to a `download_categories` row is reused, and a
+ * Download that already has `category_id` set is left untouched.
  */
 final class DownloadCategoryMigrationService
 {
@@ -85,14 +73,9 @@ final class DownloadCategoryMigrationService
     }
 
     /**
-     * Resolves (creating if needed) the download category that should
-     * stand in for $folderId, walking up the Folder's own parent_id chain
-     * first so a nested Folder tree (e.g. "Digital Paper" >
-     * "Game Of Thrones Papers") becomes an equally nested category tree,
-     * not a flattened one. Memoized in $categoryIdByFolderId across the
-     * whole migrate() run so a Folder referenced by many downloads (or
-     * appearing as an ancestor of several other Folders) is only ever
-     * resolved once.
+     * Resolves (creating if needed) the download category standing in for $folderId,
+     * walking up the Folder's parent_id chain first so a nested Folder tree stays nested,
+     * not flattened. Memoized in $categoryIdByFolderId so a shared Folder is resolved once.
      *
      * @param array<int, int> $categoryIdByFolderId
      */

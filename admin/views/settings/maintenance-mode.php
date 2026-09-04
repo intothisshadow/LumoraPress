@@ -22,21 +22,14 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-042: Maintenance Mode (LP-033) was previously one of several sections
- * on one big admin/views/settings.php — moved here verbatim (same option
- * keys, same CSRF action names) as Settings > Maintenance Mode now that
- * Settings has sub-pages. The Dashboard's one-click toggle button posts
- * here too (see admin/views/dashboard.php).
- */
+// The Dashboard's one-click toggle button posts here too (see
+// admin/views/dashboard.php).
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
 /**
  * Parses a <input type="datetime-local"> value into the app's stored
- * 'Y-m-d H:i:s' format, same try/catch-then-null pattern
- * admin/views/posts.php uses for published_at. Returns '' (meaning
- * "unset") for an empty or unparseable value rather than null, since
- * PressConfig options are always strings.
+ * 'Y-m-d H:i:s' format. Returns '' (meaning "unset") for an empty or
+ * unparseable value, since PressConfig options are always strings.
  */
 $parseScheduleInput = static function (string $raw): string {
     $raw = trim($raw);

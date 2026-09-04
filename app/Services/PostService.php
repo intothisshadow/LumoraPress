@@ -31,18 +31,12 @@ use RuntimeException;
  * Post CRUD, slug generation, and the queries behind the homepage/single
  * post/admin list views. Scheduled posts are stored with their future
  * published_at and become visible automatically once that time passes
- * (see the "published OR due" clause in publicWhereClause()) — nothing
- * needs to run a background job to flip their status.
+ * — nothing needs to run a background job to flip their status.
  *
- * $hooks is optional (LP-037) so every existing `new PostService($db,
- * $prefix)` call site — dozens across the PHP Test Suite — keeps
- * compiling unchanged; only include/bootstrap.php's real instance passes
- * one. Firing 'post_saved'/'post_deleted' here rather than from the admin
- * views that call these methods (the pattern general_settings_saved/
- * comment_posted already use) is deliberate: posts are also written by
- * ApiController's REST endpoints and the Dashboard's Quick Draft form,
- * not just admin/views/posts/new.php, so this is the one choke point
- * every caller actually shares.
+ * Firing 'post_saved'/'post_deleted' here rather than from the admin
+ * views is deliberate: posts are also written by ApiController's REST
+ * endpoints and the Dashboard's Quick Draft form, so this is the one
+ * choke point every caller actually shares.
  */
 final class PostService
 {
@@ -192,12 +186,10 @@ final class PostService
     }
 
     /**
-     * LP-022 SEO title/description overrides — a dedicated method rather
-     * than two more params on create()/update() (already long), the same
-     * "metadata is its own call" split MediaService::updateMetadata()
-     * uses apart from upload(). Empty strings are stored as NULL so
-     * the_seo_title()/the_seo_description() fall back correctly rather
-     * than treating "" as a deliberate empty override.
+     * SEO title/description overrides — a dedicated method rather than
+     * two more params on the already-long create()/update(). Empty
+     * strings are stored as NULL so the SEO template tags fall back
+     * correctly rather than treating "" as a deliberate override.
      */
     public function updateSeo(int $id, ?string $metaTitle, ?string $metaDescription): void
     {
@@ -220,14 +212,8 @@ final class PostService
 
     /**
      * Soft-deletes a post ("Move to Trash") — sets status to Trashed and
-     * records when, rather than removing the row. Trashed posts are never
-     * publicly visible (Post::isPubliclyVisible() only returns true for
-     * Published/due-Scheduled) and are excluded from paginateForAdmin()'s
-     * default "All" view (see its own docblock), the same way WordPress
-     * hides Trash from every other admin list view. There is no automatic
-     * purge of old trashed posts — an administrator uses delete() (via the
-     * admin UI's "Delete Permanently" action, only offered for already-
-     * trashed posts) to actually remove one.
+     * records when, rather than removing the row. There is no automatic
+     * purge; delete() is the only way to actually remove one.
      */
     public function trash(int $id): bool
     {
@@ -245,12 +231,8 @@ final class PostService
 
     /**
      * Restores a trashed post — always back to Draft, never straight back
-     * to its previous status (Published/Scheduled), a deliberate safety
-     * choice: silently resurfacing a trashed post as publicly visible
-     * again without a human deciding to republish it is exactly the kind
-     * of surprising behavior CLAUDE.md's "fail securely" posture argues
-     * against, even though restoring the exact prior status is closer to
-     * WordPress's own behavior.
+     * to its previous status, so a post never resurfaces publicly
+     * without a human deciding to republish it.
      */
     public function restore(int $id): bool
     {
@@ -261,11 +243,9 @@ final class PostService
     }
 
     /**
-     * Directly changes a post's status without touching any other field
-     * (title/content/slug/...) — backs the admin list's per-row and bulk
-     * "Mark as Draft"/"Publish" actions, which have no other field to
-     * submit. Scheduled is deliberately not reachable through this method
-     * since scheduling also needs a publish date; use update() for that.
+     * Directly changes a post's status without touching any other field.
+     * Scheduled is deliberately not reachable here since scheduling also
+     * needs a publish date; use update() for that.
      */
     public function setStatus(int $id, PostStatus $status): bool
     {
@@ -300,11 +280,8 @@ final class PostService
     }
 
     /**
-     * LP-008's "Sticky posts" — pins/unpins a post at the top of the
-     * homepage listing (see paginatePublished()'s sticky-first ordering).
-     * A distinct method rather than another update() param toggled
-     * per-save, matching setStatus()'s "one field, one method" precedent
-     * for the admin list's per-row/bulk actions.
+     * Pins/unpins a post at the top of the homepage listing (see
+     * paginatePublished()'s sticky-first ordering).
      */
     public function setSticky(int $id, bool $isSticky): bool
     {
@@ -315,7 +292,7 @@ final class PostService
     }
 
     /**
-     * LP-008's "Private posts" — see PostVisibility's docblock and
+     * "Private posts" — see PostVisibility's docblock and
      * Post::isVisibleToViewer().
      */
     public function setVisibility(int $id, PostVisibility $visibility): bool
@@ -327,11 +304,9 @@ final class PostService
     }
 
     /**
-     * LP-008's "Author assignment" — reassigns a post to a different
-     * existing user. Gated by edit_others_posts in the admin UI (the same
-     * capability that already gates seeing/editing another author's post
-     * at all), not enforced here since PostService has no notion of "the
-     * current user."
+     * Reassigns a post to a different existing user. Gated by
+     * edit_others_posts in the admin UI, not enforced here since
+     * PostService has no notion of "the current user."
      */
     public function reassignAuthor(int $id, int $authorId): bool
     {
@@ -342,8 +317,7 @@ final class PostService
     }
 
     /**
-     * Bulk form of reassignAuthor() — LP-008's Bulk Actions "Change
-     * author".
+     * Bulk form of reassignAuthor() — the Bulk Actions "Change author".
      *
      * @param array<int, int> $ids
      * @return int how many posts were reassigned
@@ -362,8 +336,7 @@ final class PostService
     }
 
     /**
-     * Bulk form of setVisibility() — LP-008's Bulk Actions "Change
-     * visibility".
+     * Bulk form of setVisibility() — the Bulk Actions "Change visibility".
      *
      * @param array<int, int> $ids
      * @return int how many posts were updated
@@ -382,11 +355,9 @@ final class PostService
     }
 
     /**
-     * LP-008's Custom Fields — every meta_key/meta_value pair stored
-     * against $postId, in insertion order. A plain array<string, string>
-     * rather than a richer type: this is deliberately the "simple
-     * key/value list" scope (see TODO.md's LP-008 entry), not a typed
-     * custom-fields schema.
+     * Every meta_key/meta_value pair stored against $postId, in
+     * insertion order — deliberately a simple key/value list, not a
+     * typed custom-fields schema.
      *
      * @return array<int, array{key: string, value: string}>
      */
@@ -404,12 +375,10 @@ final class PostService
     }
 
     /**
-     * Replaces every custom field on $postId with $pairs — the same
-     * "delete then re-insert" approach CategoryService::assignToPost()
-     * uses for post_categories, so the admin edit screen's repeatable
-     * key/value row editor doesn't need to diff against what was there
-     * before. Rows with a blank key are silently dropped (an empty
-     * trailing row from the UI, not a deliberate field).
+     * Replaces every custom field on $postId with $pairs (delete then
+     * re-insert), so the admin edit screen's repeatable row editor
+     * doesn't need to diff against what was there before. Rows with a
+     * blank key are silently dropped.
      *
      * @param array<int, array{key: string, value: string}> $pairs
      */
@@ -452,15 +421,10 @@ final class PostService
     }
 
     /**
-     * Clones a post as a new Draft titled "{title} (Copy)" — LP-008's
-     * "Duplicate existing posts". $authorId is the user performing the
-     * duplication (not necessarily the original post's author), the same
-     * "acting user becomes the author" rule create() already applies
-     * everywhere else. Categories/tags are deliberately not copied here —
-     * the caller reads the original's assignments and re-assigns them to
-     * the new post id afterward, the same two-step
-     * create-then-assignToPost() pattern admin/views/posts.php's save
-     * handler already uses.
+     * Clones a post as a new Draft titled "{title} (Copy)". $authorId is
+     * the user performing the duplication, not necessarily the
+     * original's author. Categories/tags aren't copied here — the
+     * caller reads the original's assignments and re-assigns them afterward.
      */
     public function duplicate(int $id, int $authorId): ?Post
     {
@@ -529,9 +493,7 @@ final class PostService
     }
 
     /**
-     * Backs the "(N)" counts on the admin post list's status filter tabs,
-     * including the Trash tab (which paginateForAdmin() excludes from its
-     * default "All" view — see that method's docblock).
+     * Backs the "(N)" counts on the admin post list's status filter tabs, including the Trash tab.
      */
     public function countByStatus(PostStatus $status): int
     {
@@ -549,10 +511,8 @@ final class PostService
     }
 
     /**
-     * Titles of every post using $mediaId as its featured image — used by
-     * MediaUsageChecker to warn before deleting a referenced file, same
-     * "block/warn because referenced" purpose countByAuthor() serves for
-     * the admin Users screen.
+     * Titles of every post using $mediaId as its featured image — used
+     * by MediaUsageChecker to warn before deleting a referenced file.
      *
      * @return array<int, string>
      */
@@ -567,11 +527,9 @@ final class PostService
     }
 
     /**
-     * Every distinct media id currently set as a post's featured image
-     * (LP-006's "Unused Media" admin view, via MediaUsageChecker::
-     * usedMediaIds()) — one bounded query rather than a per-media-id
-     * lookup, so it scales with the number of posts that have a featured
-     * image rather than the number of media items in the library.
+     * Every distinct media id currently set as a post's featured image —
+     * one bounded query rather than a per-media-id lookup, so it scales
+     * with the number of posts, not the size of the media library.
      *
      * @return array<int, int>
      */
@@ -585,17 +543,11 @@ final class PostService
     }
 
     /**
-     * Posts visible to public site visitors: published outright, or
-     * scheduled with a published_at time that has already passed; never
-     * Private (LP-008), never past their unpublish_at time (LP-008). LP-008
-     * "Sticky posts" are ordered first (is_sticky DESC), then
-     * newest-first by published_at among both the sticky and non-sticky
-     * groups — the same "pinned to the top of the front page only"
-     * behavior classic WordPress uses; paginateByCategory()/
-     * paginateByTag()/paginateByAuthor()/paginateByMonth() below
-     * deliberately don't apply sticky ordering, since a sticky post is
-     * meant to stay visible on the front page, not follow it into every
-     * archive.
+     * Posts visible to public site visitors: published outright or due
+     * (scheduled with a past published_at), never Private, never past
+     * their unpublish_at time. Sticky posts are ordered first, then
+     * newest-first — the archive methods below deliberately don't apply
+     * sticky ordering, since a sticky post stays pinned to the front page only.
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -708,14 +660,9 @@ final class PostService
 
     /**
      * Posts visible to public site visitors that share at least one tag
-     * with $excludePostId, ranked by how many tags they share (most
-     * shared tags first) and then by recency — the "Related Posts" block
-     * on a single post's own page (LP-011). $excludePostId is always
-     * omitted from the results regardless of whether it's tagged with
-     * itself (it isn't, but excluding by id rather than relying on that
-     * is the correct guard either way). Returns an empty array for a
-     * tagless post ($tagIds === []) without querying, same as
-     * paginateByTag() would for a tag nothing is assigned to.
+     * with $excludePostId, ranked by shared-tag count then recency — the
+     * "Related Posts" block. Returns an empty array for a tagless post
+     * without querying.
      *
      * @param array<int, int> $tagIds
      * @return array<int, Post>
@@ -753,10 +700,9 @@ final class PostService
     }
 
     /**
-     * Posts visible to public site visitors written by $authorId (LP-021,
-     * for the REST API's ?author= filter) — no join needed, unlike
-     * paginateByCategory()/paginateByTag(), since author_id is a direct
-     * column on this table.
+     * Posts visible to public site visitors written by $authorId (for
+     * the REST API's ?author= filter) — no join needed since author_id
+     * is a direct column.
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -793,7 +739,7 @@ final class PostService
 
     /**
      * Posts visible to public site visitors published in a given calendar
-     * month (LP-048, for the Archives widget's monthly links and the
+     * month (for the Archives widget's monthly links and the
      * `/archive/{year}/{month}` route behind them).
      *
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
@@ -832,7 +778,7 @@ final class PostService
 
     /**
      * Post counts grouped by calendar month, newest first — backs the
-     * Archives widget (LP-048). Limited to $limit months so a long-running
+     * Archives widget. Limited to $limit months so a long-running
      * blog doesn't render an unbounded link list.
      *
      * @return array<int, array{year: int, month: int, count: int}>
@@ -860,13 +806,8 @@ final class PostService
 
     /**
      * A flat {id, title, slug} list for the admin Menus screen's "Add
-     * Posts" checkbox list (LP-049) — mirrors
-     * PageService::listAllForParentSelect()'s shape. Regardless of
-     * non-trashed status, same as that method: an editor building a
-     * menu may knowingly link to a not-yet-published post. Trashed
-     * posts are excluded (LP-108) — unlike a Draft/Pending/Scheduled
-     * post, a trashed one isn't a genuine, if premature, choice to link
-     * to.
+     * Posts" checkbox list, regardless of publish status — an editor may
+     * knowingly link to a not-yet-published post. Trashed posts are excluded.
      *
      * @return array<int, array{id: int, title: string, slug: string}>
      */
@@ -886,17 +827,12 @@ final class PostService
 
     /**
      * Every post for the admin post list, filtered by status. With no
-     * filter, Trashed posts are excluded from this "All" view — the same
-     * way WordPress's post list hides Trash unless it's the explicitly
-     * selected filter, since there's no automatic purge to otherwise stop
-     * old trashed posts from cluttering every other view forever. Pass
+     * filter, Trashed posts are excluded from this "All" view; pass
      * PostStatus::Trashed explicitly to see the Trash list itself.
      *
      * @param array{term?: string, authorId?: int, categoryId?: int, tagId?: int, dateFrom?: string, dateTo?: string} $filters
      *     term: matches title (LIKE). authorId/categoryId/tagId: exact
-     *     match. dateFrom/dateTo: 'Y-m-d' strings against created_at —
-     *     admin-list filters (LP-008), same "quick, capped listing"
-     *     `array $filters` shape MediaService::query() already uses.
+     *     match. dateFrom/dateTo: 'Y-m-d' strings against created_at.
      * @return array{posts: array<int, Post>, total: int, page: int, perPage: int, totalPages: int}
      */
     public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PostStatus $statusFilter = null, array $filters = []): array
@@ -936,13 +872,7 @@ final class PostService
             $params['tag_id'] = (int) $filters['tagId'];
         }
 
-        // Filters/sorts by the post's own date (published_at, falling
-        // back to created_at for a Draft or other status with no
-        // publish date yet) rather than created_at alone — matches the
-        // admin list's own "Date" column and the public theme's
-        // the_date(), so "newest first"/a date-range filter reflects
-        // the post's actual date instead of when its database row was
-        // inserted (e.g. a bulk import's own timestamp).
+        // Filters/sorts by the post's own date, falling back to created_at when there's no publish date yet.
         if (($filters['dateFrom'] ?? '') !== '') {
             $conditions[] = 'COALESCE(p.published_at, p.created_at) >= :date_from';
             $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
@@ -978,22 +908,13 @@ final class PostService
     }
 
     /**
-     * "Published outright, or due (scheduled with a past published_at),
-     * AND publicly Visible, AND not past its unpublish_at time" — the
-     * exact set of conditions that makes a post visible to an anonymous
-     * guest anywhere on the public site. Referenced by this class's own
-     * docblock; every paginate*() method above builds its WHERE clause
-     * from this rather than repeating the three conditions inline, so
-     * LP-008's Private-posts/Schedule-unpublishing additions only needed
-     * to land in one place. $columnPrefix is the table alias to qualify
-     * each column with (e.g. 'p' for the joined paginateByCategory()/
-     * paginateByTag() queries), or '' for an unaliased single-table query.
-     * Every caller must bind both ':now' and ':now_unpublish' to the same
-     * current-time string — two distinct placeholder names for the same
-     * value, not one reused twice, because Database::connect() disables
-     * emulated prepares and MySQL's native protocol rejects a repeated
-     * named placeholder in one query (see PHP-TEST-SUITE.md's "Known
-     * gaps" — CategoryService/PageService hit this exact bug before).
+     * The exact set of conditions that makes a post visible to an
+     * anonymous guest: published or due, publicly visible, and not past
+     * unpublish_at. Every paginate*() method builds its WHERE clause
+     * from this. $columnPrefix is the table alias to qualify each column
+     * with, or '' for an unaliased query. Every caller must bind both
+     * ':now' and ':now_unpublish' to the same value — two distinct
+     * placeholders, since MySQL's real prepared statements reject a repeated named one.
      */
     private function publicWhereClause(string $columnPrefix = ''): string
     {
@@ -1005,13 +926,10 @@ final class PostService
     }
 
     /**
-     * A Draft carries published_at as a planned date rather than an
-     * enforced one (LP-018 "Draft scheduling") — it has no effect on
-     * visibility, since publicWhereClause() never matches Draft regardless
-     * of this value, but it lets an author note when they intend to
-     * publish and survives a later Draft -> Scheduled transition without
-     * re-entering the date. PendingReview/Trashed have no such use for it
-     * and stay forced to null.
+     * A Draft carries published_at as a planned date, not an enforced
+     * one — it has no effect on visibility, but lets an author note when
+     * they intend to publish and survives a later Draft -> Scheduled
+     * transition without re-entering the date.
      */
     private function resolvePublishedAt(
         PostStatus $status,
@@ -1043,16 +961,10 @@ final class PostService
 
     /**
      * Runs Html-format content through HtmlSanitizer before it's ever
-     * stored — defense in depth on top of ContentRenderer already
-     * sanitizing at render time (see that class's docblock): the REST API
-     * (ApiController) exposes the raw `content` column directly, not just
-     * the rendered `content_html`, so an unsanitized stored value would
-     * still be a stored-XSS vector for any API consumer even though no
-     * themed page would ever render it unsafely. A plain `new
-     * HtmlSanitizer()` here is deliberate, not a missing DI wire-up — see
-     * include/bootstrap.php's note that it's dependency-free pure
-     * computation, same as MarkdownParser. Markdown/Plain content isn't
-     * executable HTML in its stored form, so both pass through untouched.
+     * stored — defense in depth on top of ContentRenderer's render-time
+     * sanitizing, since the REST API exposes the raw `content` column
+     * directly, not just rendered HTML. Markdown/Plain content isn't
+     * executable HTML in stored form, so both pass through untouched.
      */
     private function sanitizeStoredContent(string $content, ContentFormat $format): string
     {
@@ -1126,11 +1038,9 @@ final class PostService
 
     /**
      * Decodes the `featured_image_crop` column, rejecting anything that
-     * isn't a well-formed {x,y,width,height} rectangle of non-negative
-     * integers with a positive width/height — a hand-crafted or corrupted
-     * value should silently fall back to "no crop" (automatic centered
-     * thumbnailing) rather than ever reach ThumbnailService with garbage
-     * coordinates.
+     * isn't a well-formed {x,y,width,height} rectangle — a corrupted
+     * value silently falls back to "no crop" rather than reaching
+     * ThumbnailService with garbage coordinates.
      *
      * @return array{x: int, y: int, width: int, height: int}|null
      */

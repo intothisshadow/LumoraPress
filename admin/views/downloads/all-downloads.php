@@ -26,9 +26,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// See add-new.php's identical comment: this view is only ever reachable
-// while the Downloads plugin is active, so DownloadService's class is
-// guaranteed to already be loaded.
+// Only reachable while the Downloads plugin is active, so DownloadService's
+// class is guaranteed to already be loaded.
 $downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
 $downloads = new DownloadService(
     $kernel->database,
@@ -42,13 +41,8 @@ $downloads = new DownloadService(
 
 $error = null;
 
-/*
- * No dedicated Controller class — the Downloads plugin has never used
- * one (all-downloads.php/add-new.php have always handled their own POST
- * bodies inline via DownloadService calls directly); this keeps that
- * established plugin convention rather than introducing core's
- * app/Controllers/Admin/-style architecture into a plugin.
- */
+// No dedicated Controller class — this plugin handles its own POST bodies
+// inline via DownloadService calls, its established convention.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -302,13 +296,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         </form>
 
         <?php
-        /*
-         * Out-of-band target forms for each row action button above —
-         * see all-posts.php's identical comment (LP-068) for why a
-         * <form> nested inside another <form> is invalid HTML and would
-         * silently merge every row's hidden fields into the bulk-action
-         * form's own submit.
-         */
+        // Out-of-band target forms for each row action button — a nested
+        // <form> is invalid HTML and would merge into the bulk-action form.
         foreach ($pagination['downloads'] as $listedDownload):
             if ($isTrashView):
                 ?>

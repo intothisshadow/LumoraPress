@@ -21,12 +21,8 @@ use ErrorException;
 use Throwable;
 
 /**
- * Central error and exception handler.
- *
  * Converts PHP errors into exceptions, logs all failures to disk, and
- * renders either a generic public message or a detailed debug report
- * depending on configuration. Never exposes stack traces or filesystem
- * paths to visitors outside of debug mode.
+ * renders a generic public message unless debug mode is enabled.
  */
 final class ErrorHandler
 {

@@ -18,11 +18,12 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Mail;
 
 /**
- * Minimal outbound-email abstraction (LP-058). Kept as an interface rather
- * than a concrete class so tests can substitute a capturing fake instead of
- * sending real mail — the same DI-for-testability pattern GitHubReleaseProvider's
- * injectable HTTP closures use, just as an interface since a mailer is a
- * natural service boundary rather than a single function call.
+ * Minimal outbound-email abstraction. Kept as an interface rather than a
+ * concrete class so tests can substitute a capturing fake instead of
+ * sending real mail — the same DI-for-testability pattern
+ * GitHubReleaseProvider's injectable HTTP closures use, just as an
+ * interface since a mailer is a natural service boundary rather than a
+ * single function call.
  */
 interface Mailer
 {

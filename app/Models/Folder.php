@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The virtual media Folder domain model (LP-005).
+ * The virtual media Folder domain model.
  *
  * @package LumoraPress
  * @subpackage Models

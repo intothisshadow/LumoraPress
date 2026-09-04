@@ -47,25 +47,16 @@ use LumoraPress\Services\SearchService;
 use LumoraPress\Services\TagService;
 
 /**
- * REST API (LP-021), versioned under /api/v1. One class handling every
- * resource, the same "one big class per surface" shape SiteController
- * already uses for the public site — no controller-per-resource split
- * exists as a precedent to match instead.
+ * REST API, versioned under /api/v1. One class handling every resource,
+ * mirroring SiteController's "one big class per surface" shape.
  *
- * Reads (GET) are always public and only ever return published/approved
- * content, regardless of whether a bearer token is presented — there is
- * no "view your own drafts via the API" mode in this pass (see the
- * planning notes for why: it would add a second visibility model on top
- * of Post::isPubliclyVisible()/Page::isPubliclyVisible(), out of scope
- * here). Writes require a bearer token (Authorization: Bearer
+ * Reads (GET) are always public and only return published/approved
+ * content. Writes require a bearer token (Authorization: Bearer
  * {selector}:{validator}, resolved via ApiTokenService) and repeat the
- * exact same capability + ownership checks admin/views/posts.php and
- * pages.php already encode — canManagePost()/canDeletePost() (and their
- * Page equivalents) are deliberately small, pure, directly-testable
- * methods rather than being buried inside the HTTP-handling actions,
- * since SiteController itself has no unit tests (it leans on raw
- * superglobals/header() calls that make that impractical) — this class
- * is structured so its core logic doesn't have that problem.
+ * same capability + ownership checks admin/views/posts.php and pages.php
+ * use — canManagePost()/canDeletePost() (and their Page equivalents) are
+ * kept as small, pure, directly-testable methods since SiteController
+ * itself has no unit tests to lean on.
  */
 final class ApiController
 {
@@ -108,11 +99,8 @@ final class ApiController
         $this->content = $content ?? new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), $hooks);
         $this->akismet = $akismet ?? new AkismetClient($config, '');
         $this->commentModeration = $commentModeration ?? new CommentModerationService($config, $comments);
-        // Unlike commentModeration above, this has no zero-dependency
-        // default to fall back to (it needs a Mailer + UserService) — a
-        // caller that doesn't pass one (e.g. a test double) simply gets no
-        // API-submitted-comment notifications, matching how $content/
-        // $akismet already tolerate being omitted.
+        // No zero-dependency default (needs a Mailer + UserService) — a
+        // caller that omits it simply gets no comment notifications.
         $this->commentNotifications = $commentNotifications;
     }
 
@@ -171,16 +159,11 @@ final class ApiController
 
     /**
      * Whether $status may be set given $user's capabilities — mirrors
-     * admin/views/posts.php's "Contributors can only ever save as a
-     * draft" rule: publishing (Published or Scheduled) needs
-     * publish_posts, Draft never needs any extra capability.
-     *
-     * Deliberately does not special-case Trashed here — this is also
-     * called with a post's *existing* status when a PATCH body doesn't
-     * include "status" at all (see postsUpdate()), and an already-trashed
-     * post must stay trashed through an unrelated field edit. Callers that
-     * resolve a *new* status from request input reject "trashed" before
-     * ever calling this method — see postsStore()/postsUpdate().
+     * admin/views/posts.php's "Contributors can only save as draft" rule.
+     * Does not special-case Trashed: this is also called with a post's
+     * existing status on a partial update, so an already-trashed post
+     * must stay trashed. Callers reject a request to set "trashed"
+     * before calling this method.
      */
     public function canSetStatus(User $user, PostStatus|PageStatus $status): bool
     {
@@ -408,9 +391,7 @@ final class ApiController
 
         $status = PostStatus::tryFrom((string) ($body['status'] ?? 'draft')) ?? PostStatus::Draft;
 
-        // A brand-new post can never be created pre-trashed — "trashed" is
-        // only ever reached by later trashing an existing post (see
-        // canSetStatus()'s docblock for why this isn't handled there).
+        // A new post can never be created pre-trashed.
         if ($status === PostStatus::Trashed || !$this->canSetStatus($user, $status)) {
             $status = PostStatus::Draft;
         }
@@ -467,10 +448,7 @@ final class ApiController
         $body = $this->requestBody();
         $requestedStatus = isset($body['status']) ? PostStatus::tryFrom((string) $body['status']) : null;
 
-        // An explicit "trashed" request is ignored (falls back to whatever
-        // the post's status already was) rather than accepted — see
-        // canSetStatus()'s docblock for why "trashed" isn't reachable
-        // through this field at all.
+        // An explicit "trashed" request is ignored, falling back to the existing status.
         $status = ($requestedStatus !== null && $requestedStatus !== PostStatus::Trashed) ? $requestedStatus : $existing->status;
 
         if (!$this->canSetStatus($user, $status)) {
@@ -1021,11 +999,8 @@ final class ApiController
 
     /**
      * Public write endpoint — mirrors SiteController::submitComment()'s
-     * pending/auto-approve/flood-control rules exactly, minus the
-     * honeypot/CSRF fields that only make sense for an HTML form (a
-     * bearer-token-less API request has no ambient browser credential to
-     * forge in the first place, and a scripted API client filling a
-     * hidden field is not the threat honeypots defend against).
+     * pending/auto-approve/flood-control rules, minus the honeypot/CSRF
+     * fields that only make sense for an HTML form.
      *
      * @param array<string, string> $params
      */
@@ -1037,12 +1012,8 @@ final class ApiController
 
         $user = $this->resolveUser($this->authorizationHeader());
 
-        // Distinct from the general "comments" resource toggle above: an
-        // administrator can keep reading/moderating comments via the API
-        // on while specifically blocking anonymous (no bearer token)
-        // submissions — the closest analog to the original XML-RPC
-        // ticket's "remote publishing" concern, since this is the one
-        // write endpoint reachable with no token at all.
+        // Lets an admin keep the API's read/moderation on while blocking
+        // anonymous (no bearer token) comment submissions specifically.
         if ($user === null && $this->config->option('rest_api_comments_public_submission_enabled', '1') === '0') {
             ApiResponse::error('Public comment submission via the API is disabled.', 403, 'public_submission_disabled');
 
@@ -1059,16 +1030,14 @@ final class ApiController
             return;
         }
 
-        // "Automatically close comments after N days" (LP-047) and the
-        // site-wide toggle both apply here too, not just the per-post
-        // flag this endpoint used to check on its own.
+        // Applies the auto-close-after-N-days rule and the site-wide toggle, not just the per-post flag.
         if (!$this->commentModeration->commentsOpenFor($post)) {
             ApiResponse::error('Comments are closed for this post.', 403);
 
             return;
         }
 
-        // "Require user registration before commenting" (LP-047).
+        // "Require user registration before commenting".
         if ($user === null && $this->commentModeration->requiresRegistrationToComment()) {
             ApiResponse::error('This site requires a registered account (bearer token) to comment.', 403, 'registration_required');
 
@@ -1081,10 +1050,7 @@ final class ApiController
         $guestUrl = trim((string) ($body['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
 
-        // "Comment author name/email required" (LP-047) — see
-        // SiteController::submitComment()'s identical block for why a
-        // disabled requirement fills a placeholder rather than leaving the
-        // NOT NULL guest_name/guest_email columns empty.
+        // When name/email aren't required, fill a placeholder rather than leave the NOT NULL columns empty.
         if ($user === null) {
             if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {
                 $guestName = __('Anonymous');
@@ -1128,9 +1094,7 @@ final class ApiController
             content: $content,
         );
 
-        // Akismet (LP-025) — see SiteController::submitComment()'s
-        // identical block for why this can only push toward Spam, never
-        // away from it.
+        // Akismet can only push status toward Spam, never away from it.
         if ($this->akismet->isEnabled()) {
             $isSpam = $this->akismet->checkComment([
                 'comment_type' => 'comment',
@@ -1149,9 +1113,7 @@ final class ApiController
             }
         }
 
-        // Same 'comment_is_spam' filter SiteController::submitComment()
-        // applies (LP-047) — a future spam-detection plugin only needs to
-        // hook this once to cover both entry points.
+        // Same filter SiteController::submitComment() applies, so a spam-detection plugin covers both entry points.
         if (apply_filters('comment_is_spam', false, $guestName, $guestEmail, $guestUrl, $content, $ipAddress) === true) {
             $status = CommentStatus::Spam;
         }
@@ -1290,16 +1252,10 @@ final class ApiController
     // =================================================================
 
     /**
-     * REST API Access Controls (LP-039, retargeting the original
-     * "XML-RPC API Controls" ticket at the REST API this codebase
-     * actually has): the first line of every public action method.
-     * Fires `rest_api_request` for every request (allowed or not, so a
-     * plugin can observe real traffic), then checks the global
-     * `rest_api_enabled` toggle and the per-resource
-     * `rest_api_resource_{$resource}_enabled` toggle (each filterable via
-     * `rest_api_enabled`/`rest_api_resource_enabled`) — writes a JSON 403
-     * and returns false the moment either is off, so callers just need
-     * `if (!$this->gate('posts')) { return; }`.
+     * First line of every public action method. Fires `rest_api_request`
+     * for every request, then checks the global `rest_api_enabled` toggle
+     * and the per-resource `rest_api_resource_{$resource}_enabled` toggle,
+     * writing a JSON 403 and returning false the moment either is off.
      */
     private function gate(string $resource): bool
     {
@@ -1343,12 +1299,9 @@ final class ApiController
     }
 
     /**
-     * Resolves the bearer token, requires it to grant $capability, and
-     * writes a 401/403 JSON error itself when it doesn't — the common
-     * "simple capability, no ownership" gate Categories/Tags/Comment
-     * moderation all share. Returns the resolved User on success, or
-     * null after already writing the error response (callers just need
-     * to `if (!$user instanceof User) { return; }`).
+     * Resolves the bearer token and requires it to grant $capability,
+     * writing a 401/403 JSON error itself when it doesn't. Returns the
+     * resolved User on success, or null after writing the error response.
      */
     private function requireCapability(string $capability): ?User
     {

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Theme File Editor (LP-050): browse, view, and edit a single theme's own source files from the admin.
+ * Theme File Editor: browse, view, and edit a single theme's own source files from the admin.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,28 +21,16 @@ use ParseError;
 use RuntimeException;
 
 /**
- * Theme File Editor (LP-050): browse, view, and edit a single theme's own
- * source files directly from the admin area — a built-in alternative to
- * FTP/SSH for quick template tweaks, in the spirit of classic WordPress's
- * Appearance > Theme File Editor.
+ * Theme File Editor: browse, view, and edit a theme's source files from the admin area — a
+ * built-in alternative to FTP/SSH, in the spirit of classic WordPress's Theme File Editor.
  *
- * Every public method takes a theme slug and a caller-supplied relative
- * path and re-resolves both with realpath() immediately before touching
- * disk, confirming the result is still contained inside that one theme's
- * directory — the same "never trust a path carried from an earlier
- * request" posture MediaImportService::isPathAllowed() documents (a
- * relative path round-tripped through a hidden form field between page
- * load and submit is exactly the kind of value that could be tampered
- * with). This also means symlinks inside a theme directory can't be used
- * to escape it, since realpath() resolves them before the containment
- * check runs.
+ * Every public method re-resolves the theme slug and caller-supplied relative path with
+ * realpath() immediately before touching disk, confirming containment inside that theme's
+ * directory — the same "never trust a path from an earlier request" posture
+ * MediaImportService::isPathAllowed() documents; this also blocks symlink escapes.
  *
- * Editing is restricted to a fixed allow-list of plain-text extensions
- * (EDITABLE_EXTENSIONS) — a theme's images, fonts, and any other binary
- * asset are simply invisible to this class, both in the browse tree and as
- * a read/write target, satisfying LP-050's "hide unsupported/binary
- * files" without needing real MIME sniffing for content this class never
- * touches.
+ * Editing is restricted to a fixed allow-list of plain-text extensions (EDITABLE_EXTENSIONS),
+ * so a theme's images/fonts/binary assets are simply invisible to this class.
  */
 final class ThemeFileEditor
 {
@@ -204,16 +192,10 @@ final class ThemeFileEditor
     }
 
     /**
-     * Best-effort PHP syntax check with no shell/subprocess dependency —
-     * this project deliberately avoids shell_exec/exec for anything
-     * (see UpdateBackupService's docblock: "no mysqldump or shell_exec,
-     * since either may be unavailable on shared hosting"), which rules out
-     * the usual `php -l` approach. TOKEN_PARSE makes token_get_all() throw
-     * a real ParseError on malformed syntax (unmatched braces/quotes,
-     * unexpected tokens, ...) instead of silently returning a partial
-     * token list — not a full semantic check the way `php -l` is, but a
-     * genuine tokenizer-level syntax check that needs nothing beyond PHP
-     * itself, satisfying LP-050's "where possible" qualifier honestly.
+     * Best-effort PHP syntax check with no shell/subprocess dependency, since this project
+     * avoids shell_exec/exec (shared hosting may not allow it), ruling out `php -l`.
+     * TOKEN_PARSE makes token_get_all() throw a real ParseError on malformed syntax instead
+     * of silently returning a partial token list — a tokenizer-level check, not a full one.
      */
     public function checkPhpSyntax(string $contents): ?string
     {

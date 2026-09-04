@@ -18,8 +18,8 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 /**
- * LP-122: lets an author insert a whole Media folder into post/page
- * content as one row of thumbnails, instead of inserting each image
+ * Lets an author insert a whole Media folder into post/page content as
+ * one row of thumbnails, instead of inserting each image
  * individually via the existing Insert Image flow. Registered on the
  * `content_html` filter (see include/bootstrap.php), the same hook
  * Font Awesome's `[icon]` shortcode and the Downloads plugin's

@@ -27,24 +27,15 @@ use RuntimeException;
 /**
  * Comment CRUD, moderation, and the public comment tree for a post or page.
  *
- * Commenter identity is denormalized onto the comment row itself
- * (guest_name/guest_email/guest_url) rather than joined from
- * {prefix}users, even when user_id is set — a comment is a snapshot of
- * who posted it at the time, not a live reference, and this avoids an
- * N+1 join against UserService for every admin/public listing. user_id
- * is kept purely so moderation tooling can trace every comment back to
- * an account.
+ * Commenter identity is denormalized onto the comment row itself (guest_name/guest_email/
+ * guest_url) even when user_id is set — a comment is a snapshot of who posted it, not a live
+ * reference, avoiding an N+1 join for every listing. user_id is kept only for moderation
+ * tooling to trace a comment back to an account. See CategoryService's docblock for why
+ * every query uses a distinct placeholder name per occurrence.
  *
- * Every query here uses a distinct placeholder name per occurrence, even
- * when binding the same value twice — see CategoryService's docblock and
- * PHP-TEST-SUITE.md's "Known gaps" for why this matters against a real
- * MySQL connection.
- *
- * $hooks is optional (LP-037) — see PostService's docblock for why.
- * create() deliberately does not fire a hook itself:
- * SiteController::submitComment() already fires 'comment_posted' after
- * calling it, and firing a second, redundant action here would double up
- * every listener a plugin (or LP-037's own cache invalidation) attaches.
+ * create() deliberately does not fire a hook itself: SiteController::submitComment() already
+ * fires 'comment_posted' after calling it, so firing a second one here would double up
+ * every listener.
  */
 final class CommentService
 {
@@ -60,7 +51,7 @@ final class CommentService
      * own docblock for why this is a nullable pair rather than a
      * polymorphic content_id/content_type column.
      *
-     * $commentedAt lets a bulk importer (e.g. LPP-004's WordPress import)
+     * $commentedAt lets a bulk importer (e.g. a WordPress import)
      * preserve a source comment's original date instead of always
      * stamping "now" — every other caller leaves it null.
      */
@@ -180,9 +171,8 @@ final class CommentService
      * single per-comment delete would — not a bare bulk DELETE. Unlike
      * Categories/Posts/Pages, Trash here is a status value rather than a
      * trashed_at column (see this class's own docblock on Comment status).
-     * Backs both emptyTrash() (Trash) and LP-136's Empty Spam action
-     * (Spam) — there was never anything Trash-specific in the original
-     * implementation this generalizes.
+     * Backs both emptyTrash() (Trash) and the Empty Spam action (Spam) —
+     * there is nothing Trash-specific about this implementation.
      *
      * @return int how many comments were removed
      */
@@ -255,12 +245,9 @@ final class CommentService
     {
         $page = max(1, $page);
 
-        // LP-135: matches PostService::paginateForAdmin()'s identical
-        // "All excludes Trash" convention — an unfiltered query used to
-        // return literally every comment, Trash included, which made the
-        // Comments screen's own "All" tab count impossible to state
-        // accurately (it would have had to sum all four statuses instead
-        // of the other three tabs' own status labels).
+        // Matches PostService::paginateForAdmin()'s "All excludes Trash"
+        // convention, so the Comments screen's "All" tab count can be
+        // stated as a sum of the other three tabs' own status labels.
         $where = $statusFilter !== null ? 'WHERE c.status = :status' : "WHERE c.status != 'trash'";
         $params = $statusFilter !== null ? ['status' => $statusFilter->value] : [];
 
@@ -311,7 +298,7 @@ final class CommentService
     }
 
     /**
-     * The most recent approved comments site-wide (LP-048, for the Recent
+     * The most recent approved comments site-wide (for the Recent
      * Comments widget) — unlike recentForAdmin(), which intentionally
      * includes every status for moderators, this must never surface a
      * pending/spam/trashed comment to public site visitors.
@@ -375,16 +362,10 @@ final class CommentService
     }
 
     /**
-     * Approved comments for a post as a paginated, orderable thread list
-     * (LP-047 Discussion Settings: "Enable comment pagination"/"Comments
-     * per page"/"Display oldest or newest comments first"). Pagination
-     * counts top-level threads (a top-level comment plus every one of its
-     * nested replies counts as one page entry), the same convention
-     * classic WordPress's own comment pagination uses — not paginated by
-     * raw row count, since splitting a reply from its parent mid-thread
-     * would be confusing to read. When $threaded is false, nesting is
-     * ignored entirely and every comment paginates as its own flat entry
-     * in $order.
+     * Approved comments for a post as a paginated, orderable thread list. Pagination counts
+     * top-level threads (a comment plus its nested replies is one page entry), not raw row
+     * count, so a reply is never split from its parent mid-thread. When $threaded is false,
+     * nesting is ignored and every comment paginates as its own flat entry.
      *
      * @return array{comments: array<int, array{comment: Comment, children: array<mixed>}>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -498,7 +479,7 @@ final class CommentService
     /**
      * Same window as recentCommentFromIpExists(), but a count rather than
      * a single-window existence check — for a graduated posting-frequency
-     * signal (LPP-001's Comment Analysis module) rather than a flat yes/no.
+     * signal (used by anti-spam plugins) rather than a flat yes/no.
      */
     public function countRecentFromIp(string $ipAddress, int $windowSeconds): int
     {
@@ -514,7 +495,7 @@ final class CommentService
      * Mirrors hasPreviouslyApprovedComment()'s exact user_id/guest_email
      * preference and case-insensitive email match, checking Spam status
      * instead of Approved — a prior-spam trust signal for anti-spam
-     * plugins (LPP-001's Comment Analysis module).
+     * plugins.
      */
     public function hasPreviousSpamHistory(?int $userId, ?string $guestEmail): bool
     {
@@ -539,8 +520,8 @@ final class CommentService
      * Whether this exact content string already exists as some other
      * comment (any status, any post/page) — classic copy-pasted-spam
      * behavior. Not scoped to "a *different* post" specifically: the
-     * 'comment_is_spam' filter's signature (LP-047) carries no post/page
-     * ID at all, so a plugin calling this from that filter has no way to
+     * 'comment_is_spam' filter's signature carries no post/page ID at
+     * all, so a plugin calling this from that filter has no way to
      * exclude "the post being commented on right now" in the first
      * place — an exact byte-for-byte match already present anywhere is
      * suspicious enough on its own for a brand-new submission.

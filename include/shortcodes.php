@@ -19,19 +19,13 @@ use LumoraPress\Core\Shortcodes\ShortcodeField;
 use LumoraPress\Core\Shortcodes\Shortcodes;
 
 /**
- * Procedural shortcode-registration API (LP-110) — adds a `[name]`
- * shortcode to the editor toolbar's "Insert Shortcode" picker. This is
- * metadata only (the picker's form fields); it never changes what a
- * `[name ...]` typed by hand renders as — that still goes through the
- * existing `content_html` filter (add_filter()) exactly as before.
+ * Procedural shortcode-registration API — adds a `[name]` shortcode to
+ * the editor toolbar's "Insert Shortcode" picker. Metadata only (the
+ * picker's form fields); rendering still goes through `content_html`.
  *
- * A plugin needing choices/data that only exist once real services are
- * available (e.g. a live list of Folders or Download categories) can't
- * call this directly from its own top-level file — a plugin's main file
- * loads before Kernel exists, the same constraint documented in
- * DEVELOPER-APIS.md's "Admin UI extension points" section for widgets/
- * menus. Hook the 'register_shortcodes' action instead (fired once,
- * after Kernel is fully built — see bootstrap.php):
+ * A plugin needing database-backed choices can't call this from its own
+ * top-level file (loaded before Kernel exists) — hook 'register_shortcodes'
+ * instead, fired once Kernel is built:
  *
  *     add_action('register_shortcodes', function ($registry, $kernel) {
  *         register_shortcode('my_shortcode', 'My Shortcode', [...]);

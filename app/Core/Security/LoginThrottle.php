@@ -21,15 +21,12 @@ use LumoraPress\Core\Database\Database;
 use Throwable;
 
 /**
- * Login attempt throttling (brute-force protection), keyed by IP address
- * and persisted in the database rather than the session — an attacker
- * hammering the login form won't necessarily carry cookies between
- * requests, so a session-only counter would never actually engage.
+ * Login attempt throttling, keyed by IP and persisted in the database
+ * rather than the session — an attacker hammering the login form won't
+ * necessarily carry cookies, so a session-only counter would never engage.
  *
- * The attempted username is recorded alongside each failure for an
- * administrator's own visibility (e.g. "who is being targeted"), but the
- * lockout decision itself is keyed on IP address only, since that is the
- * signal that actually resists a distributed or username-rotating attack.
+ * The attempted username is logged for admin visibility, but the lockout
+ * decision itself is IP-only, since that resists a username-rotating attack.
  */
 final class LoginThrottle
 {
@@ -44,18 +41,11 @@ final class LoginThrottle
 
     /**
      * Seconds remaining before this IP may attempt to log in again, or 0
-     * if it is not currently locked out.
+     * if not locked out.
      *
-     * Fails open on a database error: if the throttle table itself can't
-     * be read (e.g. a transient DB issue, or the migration hasn't run on
-     * an older install yet), this returns 0 rather than blocking every
-     * login attempt. The tradeoff is deliberate — a brief loss of
-     * brute-force protection during an unrelated database problem is
-     * preferable to locking every administrator out of a site that is
-     * otherwise working (see CLAUDE.md's Error Handling: "log detailed
-     * errors internally, show generic user-friendly messages publicly").
-     * The error itself is still logged so the underlying problem is
-     * visible.
+     * Fails open on a database error: a brief loss of brute-force
+     * protection is preferable to locking every admin out of an otherwise
+     * working site. The error is still logged.
      */
     public function secondsUntilUnlocked(string $ipAddress): int
     {
@@ -134,8 +124,7 @@ final class LoginThrottle
     /**
      * @return array<int, array{ip_address: string, username: ?string, attempted_at: string}>
      *
-     * Fails open (returns an empty list) on a database error, mirroring
-     * secondsUntilUnlocked()'s own reasoning — a broken read here must
+     * Fails open (empty list) on a database error — a broken read must
      * never crash the Maintenance > Logs admin screen.
      */
     public function recentAttempts(int $limit = 50): array

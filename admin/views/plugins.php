@@ -22,14 +22,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-098: the Grid/List view-mode toggle persists via a fire-and-forget
- * JSON sub-action (the toggle itself switches instantly client-side —
- * see plugin-browser.js — this just remembers the choice for next time,
- * the same way admin/views/posts/new.php's editor_upload is a JSON
- * sub-action rather than its own admin page/route). Handled before the
- * CSRF-gated form dispatch below since it's not a real page submission.
- */
+// The Grid/List view-mode toggle persists via a fire-and-forget JSON
+// sub-action — the toggle itself switches instantly client-side; this
+// just remembers the choice for next time.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'set_list_view') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -50,14 +45,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
-/*
- * LP-045: Plugin Browser. Mirrors admin/views/appearance/themes.php's Theme
- * Management section — same "form" + CSRF-action-per-operation dispatch
- * pattern — extended with a two-step install flow (stage → confirm/
- * cancel) so an upload that collides with an already-installed plugin
- * can be reviewed and either replaced or cancelled, rather than either
- * silently overwriting or being rejected outright.
- */
+// Plugin Browser: a two-step install flow (stage -> confirm/cancel) so
+// an upload colliding with an already-installed plugin can be reviewed
+// and either replaced or cancelled.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 $pendingInstall = null;
@@ -76,19 +66,10 @@ $writeActivePlugins = static function (array $slugs) use ($kernel): void {
     $kernel->config->setOption('active_plugins', json_encode(array_values($slugs)));
 };
 
-/*
- * Every plugin renders its Activate/Deactivate/Delete forms twice (once
- * on the card, once in the details panel), and Csrf::field() overwrites
- * the session token for a given action name on every call — so a bare
- * "activate_plugin" action name would leave the card's button silently
- * submitting an already-invalidated token once the details panel's
- * identical form renders after it. Scoping every action name by slug
- * AND by which form rendered it (via a hidden "origin" field) keeps
- * every rendered form's token distinct. See CommentService's identical
- * fix (admin/views/comments.php, action names like
- * "comment_moderate_{id}_{status}") and MEMORY.md for the original
- * incident this mirrors.
- */
+// Every plugin renders its Activate/Deactivate/Delete forms twice (card
+// and details panel), and Csrf::field() overwrites the session token per
+// action name on every call — scoping by slug AND by an "origin" field
+// keeps every rendered form's token distinct.
 $origin = is_string($_POST['origin'] ?? null) ? $_POST['origin'] : '';
 $postedSlug = trim((string) ($_POST['slug'] ?? ''));
 
@@ -445,13 +426,9 @@ $hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Pl
         </table>
 
         <?php
-        /*
-         * Out-of-band target forms for each row's Activate/Deactivate/
-         * Delete button above — standalone, empty <form>s the buttons
-         * point at via the HTML `form=""` attribute, since a <form>
-         * can't nest inside plugins-bulk-form (same fix
-         * admin/views/posts/categories.php uses for its own row actions).
-         */
+        // Out-of-band target forms for each row's action buttons —
+        // standalone <form>s the buttons point at via form="", since a
+        // <form> can't nest inside plugins-bulk-form.
         foreach ($pluginList as $info):
             ?>
             <?php if ($info->isActive): ?>

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A plain data holder describing one widget instance to create via WidgetImporter (LPP-004 Stage 8), independent of where the data came from.
+ * A plain data holder describing one widget instance to create via WidgetImporter, independent of where the data came from.
  *
  * @package LumoraPress
  * @subpackage Services

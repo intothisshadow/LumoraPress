@@ -55,7 +55,7 @@ final class SiteController
 {
     /**
      * Minimum seconds between two comments from the same IP address —
-     * basic flood control (LP-012). Not user-configurable yet.
+     * basic flood control. Not user-configurable yet.
      */
     private const COMMENT_FLOOD_WINDOW_SECONDS = 30;
 
@@ -107,10 +107,8 @@ final class SiteController
     }
 
     /**
-     * The configured "Blog pages show at most" size (LP-046 Reading
-     * settings), shared by the homepage post listing and every archive
-     * view (category/tag/date/month) below — mirrors how feed_item_limit
-     * already centralizes the equivalent RSS/Atom setting in FeedService.
+     * The configured "Blog pages show at most" size (Settings > Reading),
+     * shared by the homepage listing and every archive view below.
      */
     private function postsPerPage(): int
     {
@@ -118,14 +116,10 @@ final class SiteController
     }
 
     /**
-     * Opts the current response into HTTP caching (LP-037) — only for a
-     * guest; a logged-in visitor's response is never marked cacheable, so
-     * they always get a fresh render (and never risk being served
-     * another visitor's cached copy of an admin-bar-less guest page, or
-     * vice versa). Every route that calls this renders identically for
-     * every guest with the same URL — no embedded CSRF form, no
-     * per-visitor content — see CacheManager::markPageCacheable()'s
-     * docblock for why singlePost() deliberately never does.
+     * Opts the current response into HTTP caching — only for a guest, so
+     * a logged-in visitor always gets a fresh render and never risks
+     * being served another visitor's cached page. Every caller renders
+     * identically for every guest at the same URL.
      *
      * @param array<int, string> $tags
      */
@@ -150,12 +144,9 @@ final class SiteController
     }
 
     /**
-     * Whether $pageId is the configured "Posts page" (LP-046) — the page
-     * whose own URL shows the latest-posts listing instead of that page's
-     * stored content, the same "static homepage + separate posts page"
-     * combination WordPress's Reading settings offer. Only meaningful
-     * while a static homepage is configured; with the default "latest
-     * posts" homepage there's no separate posts page to redirect to.
+     * Whether $pageId is the configured "Posts page" — a page whose own
+     * URL shows the latest-posts listing instead of its stored content.
+     * Only meaningful while a static homepage is configured.
      */
     private function isConfiguredPostsPage(int $pageId): bool
     {
@@ -178,8 +169,7 @@ final class SiteController
             return;
         }
 
-        // No-op unless a plugin listens (e.g. Visitor & Post View
-        // Statistics) — core carries no view-tracking logic of its own.
+        // No-op unless a plugin listens — core has no view-tracking of its own.
         do_action('single_post_viewed', $post, !$this->auth->check());
 
         $this->theme->render('single.php', [
@@ -191,12 +181,8 @@ final class SiteController
 
     /**
      * Everything comments_template() needs for $post, bundled into one
-     * array a theme's single.php forwards straight through
-     * (comments_template($comment_data)) instead of re-listing each key by
-     * hand. Before this, single.php had to name all ~15 keys itself —
-     * meaning a new field added here later would silently never reach
-     * comments.php until every theme's single.php was also updated to
-     * list it. Shared by singlePost() and previewPost().
+     * array a theme's single.php forwards straight through rather than
+     * re-listing each key by hand. Shared by singlePost() and previewPost().
      *
      * @return array<string, mixed>
      */
@@ -212,10 +198,7 @@ final class SiteController
 
     /**
      * Pagination, ordering, threading, and avatar display view data for
-     * $post's comment thread — all Settings > Discussion (LP-047) options
-     * rather than hardcoded as publicTreeForPost() always was before that
-     * ticket. Merged into commentTemplateData() above; kept as its own
-     * method since it has nothing to do with $currentUser/comments_open.
+     * $post's comment thread, driven by Settings > Discussion options.
      *
      * @return array<string, mixed>
      */
@@ -226,9 +209,7 @@ final class SiteController
         $maxNesting = max(0, (int) $this->config->option('comment_max_nesting_level', '5'));
 
         if ($this->config->option('comment_pagination_enabled', '0') !== '1') {
-            // Pagination disabled: one "page" holding every comment on the
-            // post. 100000 comfortably exceeds any realistic thread size
-            // while keeping paginateForPost()'s single query/slice path.
+            // Pagination disabled: one "page" of up to 100000 comments, comfortably past any realistic thread size.
             $pagination = $this->comments->paginateForPost($post->id, 1, 100000, $order, $threaded);
         } else {
             $perPage = max(1, (int) $this->config->option('comment_per_page', '50'));
@@ -362,12 +343,7 @@ final class SiteController
             exit;
         }
 
-        // The submitted parent_id also selects which form's CSRF token to
-        // check against — comments.php gives the top-level form and each
-        // reply form (one per visible comment) their own action name for
-        // exactly this reason (see that file's comment for why a single
-        // shared name would leave every form but the last-rendered one
-        // with an already-invalidated token).
+        // parent_id also selects which form's CSRF token to check — each reply form has its own action name.
         $rawParentId = (int) ($_POST['parent_id'] ?? 0);
         $csrfAction = 'comment_submit_' . $post->id . '_' . ($rawParentId > 0 ? $rawParentId : 'root');
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -385,9 +361,9 @@ final class SiteController
             exit;
         }
 
-        // Submission timing (LP-025): a real visitor takes at least a few
-        // seconds to fill in the form, so an instant submission is a bot
-        // signal. Same "fail silently" treatment as the honeypot above.
+        // Submission timing: a real visitor takes at least a few seconds
+        // to fill in the form, so an instant submission is a bot signal.
+        // Same "fail silently" treatment as the honeypot above.
         $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
         $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
 
@@ -406,9 +382,7 @@ final class SiteController
 
         $authUser = $this->auth->user();
 
-        // "Require user registration before commenting" (LP-047) — checked
-        // before touching any submitted guest fields, since a guest who
-        // hits this has nothing else worth validating.
+        // Checked before touching any submitted guest fields.
         if ($authUser === null && $this->commentModeration->requiresRegistrationToComment()) {
             header('Location: ' . $redirectTo . '?comment=login_required#comment-form');
             exit;
@@ -423,13 +397,7 @@ final class SiteController
         $guestUrl = trim((string) ($_POST['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
 
-        // "Comment author name/email required" (LP-047): when a guest
-        // field isn't required, a blank value is filled with a placeholder
-        // rather than left empty — guest_name/guest_email are NOT NULL
-        // columns (every existing admin/API comment list assumes a
-        // displayable name and a syntactically valid email is always
-        // present), so "not required" means "don't force the visitor to
-        // type one," not "store nothing."
+        // When a field isn't required, fill a placeholder rather than leave it empty — guest_name/guest_email are NOT NULL columns.
         if ($authUser === null) {
             if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {
                 $guestName = __('Anonymous');
@@ -462,12 +430,7 @@ final class SiteController
             content: $content,
         );
 
-        // Akismet (LP-025), when enabled, can only push a comment toward
-        // Spam — never away from it — so this is strictly additive on top
-        // of the trust-signal decision above. A null result (Akismet
-        // unreachable/misconfigured) leaves that decision untouched. A
-        // future spam-detection plugin (e.g. Lumora Shield) can hook the
-        // same 'comment_is_spam' filter (LP-047) to apply the same rule.
+        // Akismet, when enabled, can only push a comment toward Spam, never away — additive on the decision above.
         if ($this->akismet->isEnabled()) {
             $isSpam = $this->akismet->checkComment([
                 'comment_type' => 'comment',
@@ -509,10 +472,7 @@ final class SiteController
             $this->commentNotifications->notifyNewComment($comment, $post);
         }
 
-        // "Enable comment cookies consent" (LP-047) — a guest who checked
-        // "Save my name/email in this browser" gets those fields
-        // pre-filled next time; unchecking (or the site-wide setting being
-        // off) never writes/clears anything the visitor didn't ask for.
+        // A guest who checked "Save my info" gets those fields pre-filled next time; unchecking never writes/clears anything.
         if ($authUser === null && $this->config->option('comment_cookies_consent_enabled', '0') === '1' && ($_POST['comment_save_info'] ?? '') === '1') {
             $expires = time() + (86400 * 90);
             setcookie('lp_commenter_name', $guestName, $expires, '/');
@@ -528,32 +488,10 @@ final class SiteController
     }
 
     /**
-     * Mirrors submitComment() exactly, for Pages. Kept as a separate
-     * method rather than a Post|Page-generalized one — the two content
-     * types have no shared interface to dispatch through generically,
-     * and this method is entirely local logic (no shared helper calls
-     * that would otherwise need their own Post/Page branching beyond
-     * what CommentService/CommentModerationService/
-     * CommentNotificationService already expose as parallel methods).
-     *
-     * Uses a distinct CSRF action prefix ('comment_submit_page_' rather
-     * than 'comment_submit_') — a post and a page can share the same
-     * numeric id (each table's ids start from 1), and Csrf::verify()
-     * keys tokens by action name alone, so an unprefixed action name
-     * would let a page-5 comment form's token collide with a post-5
-     * comment form's token in the same session (see comment_form()'s
-     * own docblock for the exact "same action name, different form"
-     * mistake this project has already been bitten by once).
-     *
-     * Handles both the hierarchical "/{path*}/comment" route (LP-084;
-     * $params['path'] is everything before "/comment") and the legacy
-     * "/page/{slug}/comment" one ($params['slug']) — the actual page is
-     * always found by its own (globally unique) final slug either way,
-     * so no path-walk/validation is needed here the way pageByPath()
-     * needs one for GET: posting a comment through a URL with a
-     * stale/wrong ancestor segment still lands on the one real page that
-     * slug belongs to, it just wouldn't have been reachable by GET at
-     * that exact URL.
+     * Mirrors submitComment(), for Pages. Kept separate since posts and pages have no shared
+     * interface to dispatch through. Uses a distinct CSRF action prefix
+     * ('comment_submit_page_') since a post and page can share the same numeric id and
+     * Csrf::verify() keys tokens by action name alone.
      *
      * @param array<string, string> $params
      */
@@ -710,11 +648,10 @@ final class SiteController
     }
 
     /**
-     * A post accepts comments only if the post itself and the site as a
-     * whole allow it, and — Settings > Discussion's "Automatically close
-     * comments after N days" — the post isn't past that window. Delegates
-     * to CommentModerationService (LP-047) so SiteController and
-     * ApiController share one answer.
+     * A post accepts comments only if the post and the site both allow
+     * it, and the post isn't past the auto-close window. Delegates to
+     * CommentModerationService so SiteController and ApiController share
+     * one answer.
      */
     private function commentsOpenFor(Post $post): bool
     {
@@ -722,12 +659,8 @@ final class SiteController
     }
 
     /**
-     * LP-008's "Private posts" — whether the current visitor is permitted
-     * to see $post even though it's Private: logged in, and either the
-     * post's own author or holding edit_posts (Editor/Administrator/
-     * Author/Contributor all qualify, matching who can already see a
-     * draft they didn't write via the admin list's own edit_others_posts
-     * gate).
+     * Whether the current visitor may see $post despite it being
+     * Private: logged in, and either its author or holding edit_posts.
      */
     private function canViewPrivatePost(Post $post): bool
     {
@@ -737,9 +670,8 @@ final class SiteController
     }
 
     /**
-     * Mirrors canViewPrivatePost() exactly — Pages reuse the Posts
-     * capabilities, since no dedicated page capabilities exist yet (see
-     * admin/views/pages/new.php's identical reasoning for $canEditPage).
+     * Mirrors canViewPrivatePost() — Pages reuse the Posts capabilities
+     * since no dedicated page capabilities exist yet.
      */
     private function canViewPrivatePage(Page $page): bool
     {
@@ -751,8 +683,7 @@ final class SiteController
     /**
      * The final segment of a "/{path*}/comment" route's matched path
      * (e.g. "team" from "about/team") — submitPageComment()'s fallback
-     * for deriving the page's own slug when it wasn't reached through
-     * the legacy single-segment "/page/{slug}/comment" route instead.
+     * for deriving the page's slug outside the legacy route.
      */
     private static function lastPathSegment(string $path): string
     {
@@ -768,15 +699,11 @@ final class SiteController
     }
 
     /**
-     * LP-008's "Preview button" — lets an author/editor view a post
-     * exactly as it will render publicly (single.php, comments and all)
-     * without publishing it and without any other visitor ever being
-     * able to reach it, since this bypasses isVisibleToViewer() entirely
-     * rather than issuing a shareable signed URL. Gated by the same
-     * ownership rule admin/views/posts/new.php already applies to editing
-     * a post at all (edit_others_posts, or being the post's own author).
-     * Deliberately never cached (see singlePost()'s own docblock note —
-     * neither method calls markCacheableForGuests()).
+     * "Preview button" — lets an author/editor view a post exactly as it
+     * will render publicly, without publishing it or making it reachable
+     * by any other visitor (bypasses isVisibleToViewer() entirely rather
+     * than issuing a shareable signed URL). Gated by the same ownership
+     * rule as editing a post. Deliberately never cached.
      *
      * @param array<string, string> $params
      */
@@ -800,11 +727,9 @@ final class SiteController
     }
 
     /**
-     * Mirrors previewPost() exactly, for Pages — a distinct
-     * `/preview-page/{id}` route (not `/preview/{id}`) since post and
-     * page ids each start from 1 in their own tables and would
-     * otherwise collide. Deliberately never cached, same reasoning as
-     * previewPost()'s own docblock.
+     * Mirrors previewPost() for Pages — a distinct `/preview-page/{id}`
+     * route since post and page ids each start from 1 and would
+     * otherwise collide. Deliberately never cached.
      *
      * @param array<string, string> $params
      */
@@ -829,28 +754,10 @@ final class SiteController
     }
 
     /**
-     * LP-008's public author archives (`/author/{slug}`) — the slug is
-     * computed from the user's username (UserService::findByAuthorSlug()),
-     * not a stored column; see that method's docblock.
-     *
-     * LPP-001: this route was a plain username-existence oracle on its
-     * own — any real username resolved (200, possibly an empty archive)
-     * while a made-up one 404'd. A user with zero published posts has no
-     * archive content anyone legitimately wants to browse, so 404ing
-     * them exactly like a nonexistent slug costs nothing — fixed
-     * unconditionally here in core, not gated behind the optional Lumora
-     * Shield plugin, since there's no real feature/tradeoff being
-     * removed. The `lumora_shield_author_archive_visible` filter (a
-     * no-op returning $visible unchanged unless that plugin is active)
-     * remains for its one *actual* optional tradeoff: an administrator
-     * choosing to hide every author archive outright, including real
-     * ones with published posts.
-     *
-     * Every 404 branch below fires 'lumora_shield_enumeration_blocked'
-     * ($slug, $reason, $ipAddress) — a no-op unless something listens
-     * (Lumora Shield's Monitoring sub-module logs it), so a plugin can
-     * observe/record enumeration probing without core owning a logging
-     * subsystem of its own.
+     * Public author archives (`/author/{slug}`). A user with zero published posts 404s
+     * exactly like a nonexistent slug, closing a username-enumeration oracle unconditionally.
+     * The `lumora_shield_author_archive_visible` filter remains for hiding every author
+     * archive outright. Every 404 branch fires 'lumora_shield_enumeration_blocked'.
      *
      * @param array<string, string> $params
      */
@@ -966,9 +873,7 @@ final class SiteController
     }
 
     /**
-     * Posts published in a given calendar month (LP-048, behind the
-     * Archives widget's monthly links). Reuses archive.php, same as the
-     * plain date archive above and category()/tag() below.
+     * Posts published in a given calendar month, behind the Archives widget's monthly links.
      *
      * @param array<string, string> $params
      */
@@ -1015,15 +920,12 @@ final class SiteController
     }
 
     /**
-     * The hierarchical Page route (LP-084) — "/{path*}", registered last
-     * in bootstrap.php's route table, after every other route, since a
-     * greedy placeholder would otherwise shadow every fixed-pattern route
-     * that came after it (see Router's own docblock). $params['path'] is
-     * the whole matched path — "about/team" for a nested page, "about"
-     * for a top-level one — resolved segment by segment via
-     * PageService::findByPath(), so a URL whose claimed ancestor chain
-     * doesn't match the page's *real* one 404s instead of resolving by
-     * its final slug alone.
+     * The hierarchical Page route — "/{path*}", registered last in
+     * bootstrap.php's route table since a greedy placeholder would
+     * otherwise shadow every fixed-pattern route after it.
+     * $params['path'] is resolved segment by segment via
+     * PageService::findByPath(), so a URL with a wrong ancestor chain
+     * 404s instead of resolving by its final slug alone.
      *
      * @param array<string, string> $params
      */
@@ -1039,11 +941,7 @@ final class SiteController
             return;
         }
 
-        // LP-046: with a static homepage configured, the designated
-        // "Posts page" shows the latest-posts listing at its own URL
-        // instead of its own stored content — mirroring how visiting that
-        // same page ID as the homepage already renders it as a static
-        // page above, this is the other half of that pairing.
+        // With a static homepage configured, the designated "Posts page" shows the latest-posts listing, not its own content.
         if ($this->isConfiguredPostsPage($page->id)) {
             $this->renderPostsListing($page->title);
 
@@ -1054,27 +952,17 @@ final class SiteController
         $this->theme->render('page.php', [
             'page_title' => $page->title,
             'page' => $page,
-            // LP-009 Hierarchy UI breadcrumbs: root-first ancestor chain,
-            // empty for a top-level page. Computed here (not inside the
-            // theme API) since theme templates only ever receive curated
-            // $vars, never a raw service — see
-            // get_page_breadcrumbs()/the_page_breadcrumbs() in
-            // include/content-display-functions.php, which are pure
-            // formatting functions over this array.
+            // Root-first ancestor chain, empty for a top-level page. Computed here since theme templates only ever receive curated $vars.
             'page_ancestors' => $this->pages->ancestors($page->id),
             'comment_data' => $this->commentTemplateDataForPage($page, $this->auth->user()),
         ]);
     }
 
     /**
-     * The pre-LP-084 flat "/page/{slug}" URL — kept as a permanent
-     * redirect to the page's real hierarchical URL rather than left to
-     * 404, so an already-indexed or bookmarked link from before this
-     * change keeps working. A bare slug lookup is enough to find the
-     * right page regardless of how deeply nested it now is: slugs stay
-     * globally unique (see PageService::findBySlugAndParent()'s
-     * docblock for why LP-084 kept that scope rather than making it
-     * per-parent).
+     * The legacy flat "/page/{slug}" URL — kept as a permanent redirect
+     * to the page's real hierarchical URL so old indexed/bookmarked
+     * links keep working. A bare slug lookup suffices since slugs stay
+     * globally unique regardless of nesting depth.
      *
      * @param array<string, string> $params
      */
@@ -1093,11 +981,10 @@ final class SiteController
     }
 
     /**
-     * Site-wide feed of published posts (LP-013). `/feed` and `/feed/rss`
-     * serve RSS 2.0; `/feed/atom` serves Atom 1.0. Bypasses ThemeRenderer
-     * entirely — feeds are XML, not a themed HTML page — and sets caching
-     * headers itself (Last-Modified/ETag/Cache-Control, with conditional
-     * GET support) since ThemeRenderer never touches response headers.
+     * Site-wide feed of published posts. `/feed` and `/feed/rss` serve
+     * RSS 2.0; `/feed/atom` serves Atom 1.0. Bypasses ThemeRenderer
+     * entirely and sets caching headers itself (Last-Modified/ETag/
+     * Cache-Control, with conditional GET support).
      *
      * @param array<string, string> $params
      */
@@ -1122,13 +1009,10 @@ final class SiteController
     }
 
     /**
-     * Category-scoped counterpart of feed() (LP-010): `/{category_base}/
-     * {slug}/feed` and `/{category_base}/{slug}/feed/atom` serve RSS 2.0/
-     * Atom 1.0 for just that category's published posts, reusing the same
-     * FeedService item-building and emitFeed() caching/rendering plumbing
-     * as the site-wide feed — only the channel, item source, and links
-     * differ. 404s on an unknown category the same way category() does,
-     * rather than falling back to the site-wide feed.
+     * Category-scoped counterpart of feed(), reusing the same
+     * FeedService/emitFeed() plumbing — only the channel, item source,
+     * and links differ. 404s on an unknown category rather than falling
+     * back to the site-wide feed.
      *
      * @param array<string, string> $params
      */
@@ -1162,9 +1046,7 @@ final class SiteController
     }
 
     /**
-     * Shared caching/conditional-GET/rendering plumbing for feed() and
-     * categoryFeed() — everything past "which channel/items/links" is
-     * identical between a site-wide and a category-scoped feed.
+     * Shared caching/conditional-GET/rendering plumbing for feed() and categoryFeed().
      *
      * @param array{title: string, description: string} $channel
      * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
@@ -1320,13 +1202,10 @@ final class SiteController
     }
 
     /**
-     * Virtual /robots.txt (LP-046 Reading settings > Search Engine
-     * Visibility) — there's no physical robots.txt file in the app root
-     * (see .htaccess's "serve existing files directly" rule), so this
-     * route is what actually answers the request. Mirrors the two states
-     * classic WordPress's own "Discourage search engines" option
-     * produces: a blanket Disallow when discouraged, otherwise just the
-     * admin area kept out of search results.
+     * Virtual /robots.txt (Settings > Reading > Search Engine
+     * Visibility) — no physical file exists, so this route answers the
+     * request directly: a blanket Disallow when discouraged, otherwise
+     * just the admin area kept out of search results.
      *
      * @param array<string, string> $params
      */
@@ -1346,18 +1225,12 @@ final class SiteController
     }
 
     /**
-     * Explicit "download this file" link target (LP-006 Media Statistics)
-     * — counts a download for document/archive/audio/video media, then
-     * streams the file itself (LPP-013) rather than redirecting to the
-     * real static file URL: a redirect left the real `content/uploads/...`
-     * path visible in the browser's address bar after a single click,
-     * defeating the masking this route was meant to provide in the first
-     * place. Images pass through uncounted: this ticket deliberately
-     * doesn't track image "views", since every `<img>` on every page
-     * would otherwise need to route through PHP to be countable (see
-     * MediaStatsService's docblock) — this route only exists at all
-     * because a distinct, explicit download click is a request PHP
-     * already gets to see.
+     * Explicit "download this file" link target — counts a download for
+     * document/archive/audio/video media, then streams the file rather
+     * than redirecting (a redirect would expose the real
+     * `content/uploads/...` path, defeating this route's masking).
+     * Images pass through uncounted: tracking every `<img>` view would
+     * require routing all image requests through PHP.
      *
      * @param array<string, string> $params
      */
@@ -1388,17 +1261,10 @@ final class SiteController
     }
 
     /**
-     * Masked inline-preview link target (LPP-013) — the counterpart to
-     * mediaDownload() above for content that must display in place
-     * rather than force a download: a Download's Description-field image
-     * (DownloadsShortcode's own DownloadMediaUrlMasker) and, via that same
-     * masker, the self-link ContentRenderer::addLightboxAttributes() wraps
-     * it in for the PhotoSwipe lightbox. Streams with
-     * `Content-Disposition: inline` instead of `attachment`. Images only —
-     * masking a non-image file's Description embed has no inline-preview
-     * use case, and streaming an arbitrary document/archive/video inline
-     * here would just be a second, redundant path to mediaDownload()'s
-     * own job.
+     * Masked inline-preview counterpart to mediaDownload() — streams
+     * with `Content-Disposition: inline` instead of `attachment`. Images
+     * only; a non-image file has no inline-preview use case and would
+     * just duplicate mediaDownload()'s job.
      *
      * @param array<string, string> $params
      */
@@ -1423,11 +1289,8 @@ final class SiteController
     }
 
     /**
-     * Checks for an admin-configured redirect (LP-022) before actually
-     * answering 404 — the same request-path normalization
-     * canonical_url() (include/helpers.php) uses, so a redirect saved
-     * against "old-page" matches a request for "/old-page" regardless of
-     * how it was entered.
+     * Checks for an admin-configured redirect before answering 404,
+     * using the same path normalization as canonical_url().
      */
     public function notFound(): void
     {
@@ -1445,13 +1308,9 @@ final class SiteController
     }
 
     /**
-     * XML sitemap (LP-022, sitemaps.org protocol) — every published
-     * post/page plus every category/tag archive URL. Single flat file,
-     * capped at the protocol's own 50,000-URL limit per sitemap; a large
-     * blog beyond that would need splitting into a sitemap index, not
-     * built here (see TODO.md's LP-022 entry). Not run through
-     * CacheManager — infrequent crawler traffic, not worth the added
-     * complexity for this first pass.
+     * XML sitemap (sitemaps.org protocol) — every published post/page
+     * plus every category/tag archive URL. Single flat file capped at
+     * the protocol's 50,000-URL limit; not run through CacheManager.
      *
      * @param array<string, string> $params
      */

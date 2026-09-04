@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Centralizes which content editor a given screen should open in (LP-066/LP-067).
+ * Centralizes which content editor a given screen should open in.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -22,17 +22,11 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\ContentFormat;
 
 /**
- * Centralizes "which content editor should this screen open in" (LP-066
- * Site Default Editor, LP-067 Allow Users to Choose Editor — merged from
- * LP-065, see DECISIONS.md). Two options live in PressConfig
- * ('default_editor', the site-wide choice; 'lock_editor_to_default',
- * whether per-user overrides are honored at all); a user's own choice
- * lives on their own row (`users.preferred_editor`, null meaning "use the
- * site default" — see UserService::updateEditorPreference()).
- *
- * Precedence (activeEditor()): locked → site default; not locked and the
- * user has a registered preference → that preference; otherwise → site
- * default.
+ * Centralizes "which content editor should this screen open in". `default_editor` and
+ * `lock_editor_to_default` live in PressConfig; a user's own choice lives on
+ * `users.preferred_editor` (null meaning "use the site default"). Precedence
+ * (activeEditor()): locked -> site default; unlocked with a user preference -> that
+ * preference; otherwise -> site default.
  */
 final class EditorPreferenceService
 {
@@ -48,16 +42,10 @@ final class EditorPreferenceService
     }
 
     /**
-     * Every editor a post/page can be authored in — core's three plus
-     * anything a plugin added via the 'registered_editors' filter (LP-066's
-     * "editors registered by plugins" Technical Note). Value/label pairs
-     * rather than ContentFormat instances directly: a plugin can't add a
-     * new case to a native PHP enum, so a plain array is the only shape
-     * that's actually extensible. Core content is still always rendered
-     * via ContentFormat, though — a plugin-added "editor" is expected to
-     * ultimately produce Markdown, HTML, or Plain-formatted content;
-     * this list is about which authoring UI is offered, not a fourth
-     * storage format.
+     * Every editor a post/page can be authored in — core's three plus anything a plugin
+     * added via 'registered_editors'. Value/label pairs, not ContentFormat instances, since
+     * a plugin can't add a case to a native PHP enum; content is still always ultimately
+     * stored as Markdown, HTML, or Plain — this list is about the authoring UI only.
      *
      * @return array<int, array{value: string, label: string}>
      */
@@ -84,13 +72,10 @@ final class EditorPreferenceService
 
     /**
      * The site-wide default editor. Falls back to Plain Text — never to a
-     * hardcoded Markdown assumption — when nothing is configured yet
-     * would resolve to an unregistered/disabled editor (LP-066's "Gracefully
-     * fall back to the Plain Text Editor if the configured editor is
-     * unavailable or disabled"). A fresh install with no 'default_editor'
-     * option set yet defaults to Markdown, matching this app's pre-existing
-     * hardcoded new-post behavior, so upgrading an existing site changes
-     * nothing until an administrator visits Settings > General.
+     * hardcoded Markdown assumption — when the configured editor is
+     * unregistered/disabled. A fresh install with no 'default_editor'
+     * option set yet defaults to Markdown, so upgrading an existing site
+     * changes nothing until an administrator visits Settings > General.
      */
     public function defaultEditor(): ContentFormat
     {

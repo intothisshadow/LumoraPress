@@ -38,17 +38,16 @@ final class Page
         /** @var array{x: int, y: int, width: int, height: int}|null */
         public readonly ?array $featuredImageCrop = null,
         /**
-         * LP-022 SEO overrides — see Post's identical fields for the
-         * fallback chain (the_seo_title()/the_seo_description() in
-         * include/helpers.php).
+         * SEO overrides — see Post's identical fields for the fallback
+         * chain (the_seo_title()/the_seo_description() in include/helpers.php).
          */
         public readonly ?string $metaTitle = null,
         public readonly ?string $metaDescription = null,
         public readonly ?DateTimeImmutable $trashedAt = null,
         /**
-         * Position among siblings sharing the same parentId (LP-009's
-         * Hierarchy UI) — lower sorts first. Only meaningful within one
-         * parentId group; not a global ordering across the whole table.
+         * Position among siblings sharing the same parentId — lower sorts
+         * first. Only meaningful within one parentId group; not a global
+         * ordering across the whole table.
          */
         public readonly int $menuOrder = 0,
         public readonly PageVisibility $visibility = PageVisibility::Public,
@@ -57,12 +56,8 @@ final class Page
     }
 
     /**
-     * Whether the page is currently visible to an anonymous/public site
-     * visitor: published outright (or scheduled with a published_at time
-     * that has already passed), and not Private (LP-009's "Private
-     * pages" — mirrors Post::isPubliclyVisible() exactly). See
-     * isVisibleToViewer() for the version that additionally allows a
-     * permitted logged-in user to see a Private page.
+     * Visible to an anonymous visitor: published (or due) and not
+     * Private. See isVisibleToViewer() for the logged-in-staff version.
      */
     public function isPubliclyVisible(): bool
     {
@@ -75,10 +70,8 @@ final class Page
 
     /**
      * Same as isPubliclyVisible(), but a Private page also counts as
-     * visible when $canViewPrivate is true — the caller (SiteController)
-     * decides that by checking the current user's edit_posts capability
-     * or authorship, since Page itself has no notion of "the current
-     * viewer."
+     * visible when $canViewPrivate is true — the caller decides that,
+     * since Page has no notion of "the current viewer."
      */
     public function isVisibleToViewer(bool $canViewPrivate): bool
     {

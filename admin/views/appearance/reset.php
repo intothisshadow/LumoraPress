@@ -23,14 +23,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-123: previously a section at the bottom of the flat Theme Options
- * page, sharing that page with six other routine save actions — moved to
- * its own dedicated page so a destructive whole-theme reset is no longer
- * one accidental click away from everyday editing. Resets only the
- * active theme's own values (see ThemeOptions's per-theme scoping) — a
- * different theme's Customize values are untouched.
- */
+// Kept on its own page, separate from Customize's routine saves, so a
+// destructive reset is never one accidental click away. Resets only the
+// active theme's own values.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 

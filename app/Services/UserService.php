@@ -31,13 +31,10 @@ use LumoraPress\Models\UserRole;
 final class UserService
 {
     /**
-     * Per-request memoization for findById() (LP-008 Performance) — an
-     * archive/index/search-results render calls the_author_link() once per
-     * post, and the same author id typically repeats across many posts in
-     * one listing. One instance of this service lives for the whole
-     * request (built once in bootstrap.php), so caching by id here
-     * collapses those repeats into a single query. Every write method
-     * below that can change a row already in this cache must evict it.
+     * Per-request memoization for findById() — an archive/index render
+     * calls the_author_link() once per post, and the same author id
+     * typically repeats. Every write method below that can change a
+     * cached row must evict it.
      *
      * @var array<int, User|null>
      */
@@ -84,14 +81,10 @@ final class UserService
     }
 
     /**
-     * LP-008's public author archives (`/author/{slug}`) — there's no
-     * dedicated `slug` column on users, so this slugifies every
-     * username the same way PostService/CategoryService/etc. already
-     * slugify their own titles/names (see this class's own slugify())
-     * and compares against $slug, rather than adding a new schema
-     * column just for this. Fine at the scale of a typical blog's
-     * author list; listAll() is already used unbounded elsewhere (e.g.
-     * the admin Users screen).
+     * Public author archives (`/author/{slug}`) — there's no dedicated
+     * `slug` column on users, so this slugifies every username and
+     * compares against $slug rather than adding a new schema column.
+     * Fine at the scale of a typical blog's author list.
      */
     public function findByAuthorSlug(string $slug): ?User
     {
@@ -150,29 +143,19 @@ final class UserService
     }
 
     /**
-     * Obviously guessable usernames for the highest-value role —
-     * mirrors the same first thing every WordPress-hardening
-     * convention checks for. Not applied to Editor/Author/Contributor,
-     * where a login username being *somewhat* guessable is a smaller
-     * blast radius than for Administrator.
+     * Obviously guessable usernames for the highest-value role. Not
+     * applied to Editor/Author/Contributor, where a guessable login
+     * username is a smaller blast radius than for Administrator.
      */
     private const GUESSABLE_ADMINISTRATOR_USERNAMES = ['admin', 'administrator', 'root', 'webmaster', 'superuser', 'owner'];
 
     /**
-     * A post's public byline is the account's Display Name
-     * (author_name(), include/author-functions.php), so an identical
-     * login username and Display Name effectively publishes half of an
-     * admin/staff account's credentials to every site visitor. Checked
-     * explicitly by the installer's admin-account step and the admin
-     * Add/Edit User screen before calling create()/update() below —
-     * deliberately not enforced inside create()/update() themselves,
-     * since those are also called by the WordPress Importer and Dummy
-     * Content generator, and an otherwise-harmless imported/generated
-     * account shouldn't abort the whole batch over this rule. Static,
-     * like isGuessableAdministratorUsername() below — a pure string
-     * comparison with no database dependency, callable (e.g. from the
-     * installer's admin-account step) before a real Database
-     * connection even exists yet.
+     * A post's public byline is the account's Display Name, so an
+     * identical login username and Display Name effectively publishes
+     * half of an admin/staff account's credentials. Checked explicitly
+     * by the installer and Add/Edit User screen before calling
+     * create()/update(), not enforced inside them, since the Importer
+     * and Dummy Content generator shouldn't abort a whole batch over this.
      */
     public static function usernameMatchesDisplayName(string $username, string $displayName): bool
     {
@@ -207,7 +190,7 @@ final class UserService
     }
 
     /**
-     * $registeredAt lets a bulk importer (e.g. LPP-004's WordPress import)
+     * $registeredAt lets a bulk importer (e.g. a WordPress import)
      * preserve a source account's original registration date instead of
      * always stamping "now" — every other caller leaves it null.
      */
@@ -284,8 +267,8 @@ final class UserService
     }
 
     /**
-     * LP-066/LP-067: $format = null means "use the site default editor"
-     * (the profile page's "Use site default" option) — stored as SQL NULL,
+     * $format = null means "use the site default editor" (the profile
+     * page's "Use site default" option) — stored as SQL NULL,
      * not an empty string, so it's unambiguous from "never set."
      */
     public function updateEditorPreference(int $id, ?ContentFormat $format): void
@@ -299,8 +282,8 @@ final class UserService
     }
 
     /**
-     * LP-087: unlike updateEditorPreference(), $preference is never null —
-     * Auto (follow the OS/browser setting) is itself a stored value here,
+     * Unlike updateEditorPreference(), $preference is never null — Auto
+     * (follow the OS/browser setting) is itself a stored value here,
      * since there's no site-wide theme setting to defer to.
      */
     public function updateThemePreference(int $id, ThemePreference $preference): void
@@ -314,13 +297,9 @@ final class UserService
     }
 
     /**
-     * LP-083: the saved item order/collapse state for a sortable.js
-     * AJAX-mode group, for the given screen type ('post'|'page', the
-     * Post/Page editor sidebar; 'dashboard' since LP-134, the Dashboard's
-     * widget order — which has no collapse concept, so 'collapsed' is
-     * always empty there). An empty 'order' means "nothing saved yet" —
-     * the caller falls back to its own built-in default item list, since
-     * only the view knows which items exist for that screen.
+     * The saved item order/collapse state for a sortable.js group, for
+     * the given screen type. An empty 'order' means "nothing saved
+     * yet" — the caller falls back to its own built-in default item list.
      *
      * @return array{order: array<int, string>, collapsed: array<int, string>}
      */
@@ -337,11 +316,9 @@ final class UserService
     }
 
     /**
-     * Persists $order/$collapsed for one screen type without disturbing the
-     * other screen type's saved state — the column holds both under one
-     * JSON blob (LONGTEXT, matching this codebase's existing widgets_config
-     * precedent rather than a native MySQL JSON column type), so this is a
-     * read-modify-write.
+     * Persists $order/$collapsed for one screen type without disturbing
+     * the other's saved state — the column holds both under one JSON
+     * blob, so this is a read-modify-write.
      *
      * @param array<int, string> $order
      * @param array<int, string> $collapsed
@@ -366,11 +343,9 @@ final class UserService
     }
 
     /**
-     * LP-097/LP-098: this user's saved Grid/List view-mode choice for the
-     * given admin list screen ('media', 'plugins', ...), defaulting to
-     * 'grid' — every such screen only ever had a grid/card layout before
-     * these tickets, so an admin who's never touched the toggle keeps
-     * seeing exactly what they always saw.
+     * This user's saved Grid/List view-mode choice for the given admin
+     * list screen, defaulting to 'grid' since every such screen only had
+     * a grid layout before this feature.
      */
     public function getListViewMode(int $id, string $screenType): string
     {
@@ -383,8 +358,7 @@ final class UserService
 
     /**
      * Persists $mode for one screen type without disturbing another
-     * screen's saved choice — mirrors updateEditorLayoutPreferences()'s
-     * identical one-JSON-blob-column read-modify-write shape.
+     * screen's saved choice — same read-modify-write shape as updateEditorLayoutPreferences().
      */
     public function setListViewMode(int $id, string $screenType, string $mode): void
     {
@@ -407,10 +381,9 @@ final class UserService
     }
 
     /**
-     * LP-120: the Media Manager folder ids this user currently has
-     * collapsed in the sidebar tree — everything else defaults to
-     * expanded, so a user who's never touched a toggle sees every folder
-     * open, matching the tree's pre-LP-120 always-expanded behavior.
+     * The Media Manager folder ids this user currently has collapsed in
+     * the sidebar tree — everything else defaults to expanded, so a user
+     * who's never touched a toggle sees every folder open.
      *
      * @return array<int, int>
      */
@@ -436,8 +409,8 @@ final class UserService
     }
 
     /**
-     * LPP-006: this user's most recently inserted emoji, newest first —
-     * backs the Emoji Picker's "Recently used" category. Mirrors
+     * This user's most recently inserted emoji, newest first — backs the
+     * Emoji Picker's "Recently used" category. Mirrors
      * getCollapsedMediaFolders()'s identical flat-JSON-array-column
      * shape (no per-screen-type keying needed, unlike
      * getEditorLayoutPreferences()/getListViewMode() — there is only one
@@ -528,7 +501,7 @@ final class UserService
 
     /**
      * Total registered (non-trashed) user count — backs the Statistics
-     * widget's user count (LP-048), mirroring listAll()'s own
+     * widget's user count, mirroring listAll()'s own
      * $includeTrashed default of excluding trashed accounts.
      */
     public function countAll(bool $includeTrashed = false): int
@@ -559,17 +532,10 @@ final class UserService
     }
 
     /**
-     * Search/filter/paginate for the admin Users screen (LP-032). Mirrors
-     * PostService::paginateForAdmin()'s shape. $trashedOnly toggles between
-     * the normal list (trashed_at IS NULL) and the Trash view (trashed_at
-     * IS NOT NULL) — there is no "both" mode, matching the Posts admin's
-     * own Trash-is-a-separate-tab convention.
-     *
-     * Three distinct LIKE placeholders (:term/:term2/:term3) rather than
-     * one reused three times — Database::connect() disables emulated
-     * prepares, and MySQL's native protocol rejects a repeated named
-     * placeholder (see PostService::paginateForAdmin()'s own docblock and
-     * PHP-TEST-SUITE.md's "Known gaps").
+     * Search/filter/paginate for the admin Users screen, mirroring PostService's shape.
+     * $trashedOnly toggles between the normal list and Trash view; there is no "both" mode.
+     * Uses three distinct LIKE placeholders rather than one reused, since MySQL's native
+     * prepare protocol rejects a repeated named placeholder.
      *
      * @return array{users: array<int, User>, total: int, page: int, perPage: int, totalPages: int}
      */

@@ -17,11 +17,6 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Widgets\Widgets;
 
-/**
- * Procedural widget API for themes (register_sidebar, dynamic_sidebar)
- * and plugins (register_widget).
- */
-
 if (!function_exists('register_sidebar')) {
     function register_sidebar(string $id, string $name, string $description = ''): void
     {

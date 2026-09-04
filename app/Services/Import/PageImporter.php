@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates, skips, or overwrites a Page from an ImportedPage DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
+ * Creates, skips, or overwrites a Page from an ImportedPage DTO, resolving its parent through a caller-maintained id map and recording provenance.
  *
  * @package LumoraPress
  * @subpackage Services

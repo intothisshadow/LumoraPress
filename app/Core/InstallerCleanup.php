@@ -21,28 +21,23 @@ use ErrorException;
 
 /**
  * Best-effort recursive directory removal, used by the installer to
- * remove itself (install/) after a successful install (LP-004). Never
- * throws: a locked-down shared host that won't let PHP delete its own
- * files is an expected, unremarkable outcome, not an error condition —
- * the caller is responsible for telling the administrator to remove the
- * directory by hand when remove() returns false.
- *
- * Deliberately its own small class rather than a free function (see
- * CLAUDE.md's Service Layer rule against new business logic as free
- * functions), even though it has no state and no dependencies.
+ * remove itself (install/) after a successful install. Never throws: a
+ * locked-down shared host that won't let PHP delete its own files is an
+ * expected, unremarkable outcome, not an error condition — the caller is
+ * responsible for telling the administrator to remove the directory by
+ * hand when remove() returns false.
  */
 final class InstallerCleanup
 {
     /**
      * Recursively removes $directory and everything inside it, including
-     * the file that is currently executing this code (e.g. install/index.php
-     * deleting install/ while it's still running) — safe on Unix-like
-     * filesystems, where unlinking an open file only removes its directory
-     * entry; the process keeps running against the already-open inode.
+     * the file currently executing this code — safe on Unix-like
+     * filesystems, where unlinking an open file only removes its
+     * directory entry and the process keeps running against the
+     * already-open inode.
      *
-     * Returns true only if the entire directory tree was removed. Stops
-     * and returns false at the first failure rather than continuing to
-     * delete a partial, inconsistent subset of the tree.
+     * Returns true only if the entire tree was removed; stops at the
+     * first failure rather than leaving a partial, inconsistent subset.
      */
     public function remove(string $directory): bool
     {

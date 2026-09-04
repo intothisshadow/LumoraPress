@@ -20,30 +20,12 @@ namespace LumoraPress\Core\Cache;
 use LumoraPress\Core\PressConfig;
 
 /**
- * The framework-agnostic Cache API (LP-037) — one instance per request,
- * built in include/bootstrap.php and shared as $kernel->cache. Two
- * distinct jobs:
- *
- *  1. HTTP response caching for the current request. Opt-in, not
- *     detected automatically: a SiteController action calls
- *     markPageCacheable() only for routes it knows are safe to cache
- *     (see that method's docblock for why this matters — pages embedding
- *     a per-session CSRF-protected form, like a single post's comment
- *     form, must never opt in). index.php reads isCacheable()/
- *     applyHeaders() after rendering to decide what headers a guest GET
- *     request gets; every other request (POST, admin, logged-in, or a
- *     route that never opted in) gets a safe "don't cache this"
- *     response by default.
- *
- *  2. Purging an external reverse-proxy/edge cache (LiteSpeed today —
- *     see LiteSpeedCacheDriver) when content changes, via the
- *     'post_saved'/'page_saved'/.../'option_changed' listeners
- *     include/bootstrap.php registers after constructing this class.
- *
- * Deliberately does not track image views or maintain its own page-cache
- * storage — Lumora Press has no server-side HTML cache of its own; it
- * only emits headers for whatever reverse proxy/browser/CDN sits in
- * front of it, and purges that same external system on change.
+ * The framework-agnostic Cache API — one instance per request, shared as
+ * $kernel->cache. Two jobs: (1) HTTP response caching, opt-in via
+ * markPageCacheable() so pages with a per-session CSRF form never cache;
+ * (2) purging an external reverse-proxy/edge cache (LiteSpeed today) on
+ * content change. Lumora Press has no server-side HTML cache of its own —
+ * it only emits headers and purges the external system that honors them.
  */
 final class CacheManager
 {
@@ -68,16 +50,10 @@ final class CacheManager
     }
 
     /**
-     * Opts the current response into HTTP caching, with the given cache
-     * tags attached (for later purgeTag() calls — e.g. a single
-     * category archive registers 'category_5' alongside a blanket
-     * 'posts' tag). Callers must only call this for a response that is
-     * genuinely safe to serve to every visitor identically: no embedded
-     * per-session CSRF form (a stale cached token can never validate for
-     * a different visitor's session — see Csrf's docblock), no
-     * user-specific content. SiteController::singlePost() deliberately
-     * never calls this, since single.php renders a CSRF-protected
-     * comment form.
+     * Opts the current response into HTTP caching, with cache tags
+     * attached for later purgeTag() calls. Only call this for a response
+     * safe to serve identically to every visitor — no embedded
+     * per-session CSRF form, no user-specific content.
      *
      * @param array<int, string> $tags
      */
@@ -138,25 +114,18 @@ final class CacheManager
     }
 
     /**
-     * Emits response headers for the current request and reports whether
-     * the body should actually be sent — called once from index.php,
-     * after output buffering has captured whatever the router produced,
-     * so $body is the complete rendered page and a content-hash ETag can
-     * be computed from it. Not cacheable (POST, admin, logged-in,
-     * disabled, or a route that never opted in) always gets a safe
-     * `Cache-Control: no-store, private` and the body is still sent —
-     * only a cacheable response can ever end in a 304. No headers_sent()
-     * guard: index.php always calls this only after buffering the full
-     * response (see its LP-037 docblock), so headers are never actually
-     * on the wire yet by this point in normal operation.
+     * Emits response headers and reports whether the body should still be
+     * sent. Called once from index.php after output buffering, so $body
+     * is the complete rendered page and a content-hash ETag can be
+     * computed from it. A non-cacheable response always gets a safe
+     * `Cache-Control: no-store, private`; only a cacheable one can end in
+     * a 304.
      */
     public function applyHeaders(string $body): bool
     {
         if (!$this->isCacheable()) {
-            // Only when nothing else has already set one — a handful of
-            // routes (SiteController::feed(), which predates this class)
-            // manage their own Cache-Control/ETag headers directly and
-            // must never have them overwritten here.
+            // Some routes manage their own Cache-Control/ETag headers directly
+            // and must not be overwritten here.
             if (!$this->hasSentHeader('Cache-Control')) {
                 header('Cache-Control: no-store, private');
             }
@@ -169,10 +138,8 @@ final class CacheManager
 
         header('Cache-Control: public, max-age=' . $lifetime);
         header('ETag: ' . $etag);
-        // Cookie-sensitive rather than a blanket Vary: * — a shared cache
-        // still gets to reuse the response for every guest (no cookie or
-        // an identical one), it just won't hand a guest-rendered copy to
-        // a logged-in visitor whose session cookie differs.
+        // Cookie-sensitive rather than Vary: * so shared guest responses stay
+        // cacheable while logged-in visitors still get their own copy.
         header('Vary: Cookie');
 
         if ($this->tags !== [] && $this->driver->name() === 'litespeed') {
@@ -241,13 +208,10 @@ final class CacheManager
     }
 
     /**
-     * Recent purges (LP-037's Admin Integration "Recent purge log"),
-     * newest first. Written to a small JSON file under storage/cache/
-     * rather than a PressConfig option deliberately: PressConfig::
-     * setOption() fires the 'option_changed' hook this class's own
-     * bootstrap.php listener uses to trigger purgeAll() on configuration
-     * changes — logging a purge through setOption() would immediately
-     * trigger another purge, which logs again, forever.
+     * Recent purges, newest first, for the admin cache screen. Stored in a
+     * plain JSON file rather than a PressConfig option — logging via
+     * setOption() would fire 'option_changed', which triggers another
+     * purge, which logs again, forever.
      *
      * @return array<int, array{type: string, value: string, at: string}>
      */

@@ -25,14 +25,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-140: Export Settings is a plain GET with no state change, so it
- * needs no CSRF check — but (mirroring admin/views/appearance/editor.php's
- * own file-download handler) it does need to discard the admin chrome
- * HTML admin/index.php has already queued into the output buffer
- * (ob_start(), see its own docblock) before it can send a raw file body
- * with its own headers.
- */
+// A plain GET with no state change needs no CSRF check, but it does need
+// to clear admin/index.php's output buffer before sending a raw file body.
 if (($_GET['export_settings'] ?? '') === '1') {
     $exportJson = $kernel->settingsPortability->export();
     $exportFilename = 'lumorapress-settings-' . date('Y-m-d') . '.json';
@@ -48,23 +42,16 @@ if (($_GET['export_settings'] ?? '') === '1') {
     exit;
 }
 
-/*
- * LP-140: Import Settings mirrors admin/views/plugins.php's own
- * stage → inspect → confirm/cancel upload flow exactly (see
- * SettingsPortabilityService's class docblock) — stage_settings_import
- * moves the upload aside and redirects with a token so the confirmation
- * screen below doesn't need the file re-uploaded, confirm_settings_import
- * applies it, cancel_settings_import discards it unapplied.
- */
+// Import Settings uses a stage -> inspect -> confirm/cancel upload flow:
+// stage_settings_import moves the upload aside and redirects with a token
+// so the confirmation screen doesn't need the file re-uploaded;
+// confirm_settings_import applies it, cancel_settings_import discards it.
 $settingsImportError = null;
 $settingsImportApplied = null;
 
-/*
- * $form is redefined identically inside the $dummyContentActive block
- * below (LPP-005, predating this ticket) — reading the same POST value
- * twice into the same-named variable is harmless since both reads see
- * the same request.
- */
+// $form is redefined identically inside the $dummyContentActive block
+// below — reading the same POST value twice into the same-named
+// variable is harmless since both reads see the same request.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
 if ($form === 'stage_settings_import' && Csrf::verify('stage_settings_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -115,29 +102,17 @@ if ($pendingSettingsImportToken !== null) {
 
 $settingsImportedCount = isset($_GET['settings_imported']) ? (int) $_GET['settings_imported'] : null;
 
-/*
- * Unlike the old dedicated "Dummy Content" menu entry, this page is
- * always reachable (Maintenance > Tools is a fixed core menu slot), so
- * every plugin-specific section below must gate on the plugin actually
- * being active — $dummyContentActive comes from admin/index.php, computed
- * before this view is required, the same way it previously gated the
- * standalone menu entry itself.
- */
+// This page is always reachable (a fixed core menu slot), so every
+// plugin-specific section below must gate on $dummyContentActive.
 $dummyContentGenerated = false;
 $dummyContentRemoved = false;
 $dummyContentError = null;
 $dummyContentSummary = null;
 
 if ($dummyContentActive) {
-    /*
-     * LPP-005. DummyContentGenerator's class is guaranteed to already be
-     * loaded — PluginManager::loadActive() required
-     * content/plugins/dummy-content/dummy-content.php earlier this same
-     * request, in include/bootstrap.php. Constructed here directly from
-     * $kernel's own services (not itself a Kernel property) — see
-     * dummy-content.php's own docblock for why this plugin has nothing to
-     * register at load time.
-     */
+    // DummyContentGenerator's class is guaranteed to already be loaded.
+    // Constructed here directly from $kernel's own services, not itself
+    // a Kernel property.
     $generator = new DummyContentGenerator(
         userImporter: $kernel->userImporter,
         postImporter: $kernel->postImporter,
@@ -195,12 +170,8 @@ if ($dummyContentActive) {
     $dummyContentSummary = $generator->lastGeneratedSummary();
 }
 
-/*
- * LP-113: repairs plain-text fields double-encoded by a pre-fix
- * WordPress Importer run — see EntityDecodeRepairService's own class
- * docblock for the full "TV &amp; Movies" bug and why this bypasses the
- * normal Category/Tag/Post/Page/Comment/User services entirely.
- */
+// Repairs plain-text fields double-encoded by a pre-fix WordPress
+// Importer run, bypassing the normal content services entirely.
 $entityDecodeResults = null;
 $entityDecodeError = null;
 
@@ -212,17 +183,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     }
 }
 
-/*
- * LPP-011: backfills downloads.category_id for every Download still
- * categorized the old way (via folder_id, pointing at a Media Manager
- * Folder) from before Downloads gained its own dedicated category
- * taxonomy — see DownloadCategoryMigrationService's own class docblock.
- * Only shown while the Downloads plugin is active, matching every other
- * plugin-specific section on this screen — the underlying tables are
- * core migrations either way, but there is nothing meaningful to
- * migrate *into* without that plugin's own admin screens to manage the
- * result.
- */
+// Backfills downloads.category_id for every Download still categorized
+// the old way (via folder_id) from before Downloads gained its own
+// category taxonomy. Only shown while the plugin is active.
 $downloadCategoryMigrationResults = null;
 $downloadCategoryMigrationError = null;
 

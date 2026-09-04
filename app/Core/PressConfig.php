@@ -56,14 +56,8 @@ final class PressConfig
     }
 
     /**
-     * Bound after construction (include/bootstrap.php, right after
-     * HookManager itself is built — PressConfig exists before it, the
-     * same reason bindDatabase() above is a separate call rather than a
-     * constructor param), the same "bind once, use everywhere" pattern.
-     * Backs LP-037's generic 'option_changed' invalidation hook in
-     * setOption() below — the one choke point every settings/widget/menu/
-     * theme-activation write already shares, since all of them are
-     * options.
+     * Bound after construction, same reason as bindDatabase() above.
+     * Backs the 'option_changed' hook fired from setOption() below.
      */
     public function bindHooks(HookManager $hooks): void
     {
@@ -129,10 +123,9 @@ final class PressConfig
         }
 
         // Fires regardless of whether a database is bound — setOption()
-        // already works in-memory-only without one (see
-        // PressConfigTest::testOptionAndSetOptionWorkInMemoryWithoutABoundDatabase()),
-        // so 'option_changed' should behave the same way rather than
-        // silently never firing in that mode.
+        // already works in-memory-only without one, so 'option_changed'
+        // should behave the same way rather than silently never firing
+        // in that mode.
         $this->hooks?->doAction('option_changed', $key, $serialized);
     }
 

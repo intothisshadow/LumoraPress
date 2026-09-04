@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Site search across Posts and Pages (LP-014).
+ * Site search across Posts and Pages.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -24,39 +24,19 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\SearchResult;
 
 /**
- * Site search across Posts, Pages, Categories, Tags, and Authors (LP-014).
- * Post/Page relevance ranking uses real MySQL/MariaDB FULLTEXT indexes
- * (`0011_add_fulltext_index_to_posts_and_pages.sql`) via
- * MATCH(...) AGAINST(...) — title matches are weighted higher than body
- * matches. Each table has two FULLTEXT indexes (title+content, and title
- * alone): MySQL requires a MATCH() column list to exactly match a defined
- * FULLTEXT index's column list, so scoring title matches separately from
- * the combined title+content match needs its own dedicated index — a
- * single MATCH(title, content) index cannot also serve MATCH(title)
- * queries. This is MySQL-only (SQLite has no FULLTEXT/MATCH AGAINST
- * syntax), same tradeoff as PressConfig::setOption()'s
- * "ON DUPLICATE KEY UPDATE" — see SqliteDatabaseFactory's docblock — so
- * searchTable() itself is covered only by Integration tests against a
- * real server. paginateResults() is deliberately factored out as a pure,
- * DB-free static method so the merge/sort/paginate math stays
- * unit-testable against plain SearchResult fixtures.
+ * Site search across Posts, Pages, Categories, Tags, and Authors. Post/Page ranking uses
+ * real MySQL/MariaDB FULLTEXT indexes via MATCH(...) AGAINST(...), weighting title matches
+ * higher than body — two indexes per table (title+content, title alone) since MySQL requires
+ * a MATCH() column list to exactly match a defined index's columns. MySQL-only, so
+ * searchTable() is covered only by Integration tests. paginateResults() is factored out as a
+ * pure, DB-free static method so merge/sort/paginate stays unit-testable.
  *
- * Categories/Tags/Authors are a much smaller table (personal-blog scale —
- * tens, not tens of thousands, unlike Posts/Pages), so a plain `LIKE`
- * match is proportionate rather than needing its own FULLTEXT index; this
- * also means, unlike searchTable(), these three are portable to SQLite and
- * covered directly by Unit tests. Scoring uses a simple heuristic (exact
- * name match > name starts with > name contains > description contains)
- * rather than MySQL's relevance algorithm, so it can never be perfectly
- * comparable to a Post/Page FULLTEXT score — acceptable for a first pass,
- * see paginateResults()'s combined-ranking caveat below.
+ * Categories/Tags/Authors are much smaller (personal-blog scale), so a plain `LIKE` match is
+ * proportionate and portable to SQLite. Scoring uses a simple heuristic rather than MySQL's
+ * relevance algorithm, so it's never perfectly comparable to a Post/Page FULLTEXT score.
  *
- * Posts and Pages are queried independently (each capped at
- * search_max_results), merged, and re-sorted by score — a query matching
- * more rows than search_max_results in one table won't have every match
- * considered for the combined ranking. Acceptable for a personal-blog-
- * scale install (see CLAUDE.md's "tens of thousands of posts" performance
- * goal), not an unlimited-scale search engine.
+ * Posts and Pages are queried independently (each capped at search_max_results), merged, and
+ * re-sorted — a table matching more rows than the cap won't have every match considered.
  */
 final class SearchService
 {

@@ -68,11 +68,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-// The always-present blank trailing row (LPP-003) mirrors Custom Fields'
-// identical convention (admin/views/posts/new.php) — without JavaScript,
-// filling it in and saving still adds a field; the JS enhancement
-// (contact-form-fields.js) only makes adding/removing/reordering rows
-// nicer without a full page reload per change.
+// The always-present blank trailing row means filling it in and saving
+// still adds a field without JavaScript; contact-form-fields.js just
+// makes adding/removing/reordering rows nicer.
 $fieldRows = $editingForm !== null
     ? array_map(static fn ($field): array => ['label' => $field->label, 'type' => $field->type->value, 'required' => $field->required, 'options' => implode(', ', $field->options)], $editingForm->fields)
     : [];

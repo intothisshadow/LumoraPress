@@ -21,17 +21,11 @@ use DateTimeImmutable;
 
 /**
  * One row of a SearchService result set — a Post, Page, Category, Tag, or
- * Author (`type` distinguishes which), reduced to the fields a search
- * results listing needs. Deliberately data-only, no URL-building method of
- * its own: templates call search_result_permalink() (LP-078,
- * include/permalink-functions.php) instead, since a 'post' result's link
- * must honor the configured permalink structure the same way
- * post_permalink() does everywhere else.
+ * Author (`type` distinguishes which). Deliberately no URL-building method
+ * of its own: templates call search_result_permalink() instead, so a
+ * 'post' result's link honors the configured permalink structure.
  *
- * featuredImageId mirrors Post/Page's own field (LP-040) so search results
- * can show a thumbnail and participate in the LP-031 lightbox the same way
- * other listings do — always null for Category/Tag/Author results, which
- * have no featured image concept.
+ * featuredImageId is always null for Category/Tag/Author results.
  */
 final class SearchResult
 {

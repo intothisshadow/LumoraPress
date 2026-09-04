@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Dashboard panel echoed by the Visitor & Post View Statistics plugin's 'dashboard_widgets' listener (LPP-014).
+ * The Dashboard panel echoed by the Visitor & Post View Statistics plugin's 'dashboard_widgets' listener.
  *
  * @package LumoraPress
  * @subpackage Plugins

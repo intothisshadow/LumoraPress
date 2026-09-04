@@ -2,7 +2,7 @@
 
 /**
  * Validates and installs, or updates in place, a theme ZIP directly into
- * content/themes/{slug} (LP-034/LP-081).
+ * content/themes/{slug}.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -24,21 +24,12 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Validates and installs, or updates in place, a theme ZIP directly into
- * content/themes/{slug} (LP-034/LP-081). Deliberately much simpler than
- * UpdatePackageValidator/UpdateService (LP-026): a theme install/update
- * only ever touches one self-contained directory — it never overlays live
- * core files — so there is no migration/checksum/active-user-warning
- * ceremony needed beyond update()'s own rename-swap rollback. The
- * path-traversal and size/entry-count safety checks mirror
- * UpdatePackageValidator's (smaller limits here — a theme is not a whole
- * application), but the *content* requirements are theme-specific: a
- * style.css with a non-empty "Theme Name:" header, rather than a
- * version.php manifest — read directly out of the archive before
- * extracting, so a missing header is rejected without ever touching the
- * filesystem. update()'s staged-extract-then-rename-swap approach mirrors
- * Lumora Gallery's ThemeService::updateFromZip() (LG-043) — reference
- * material only; this project introduces no dependency on that one.
+ * Validates and installs, or updates in place, a theme ZIP into content/themes/{slug}.
+ * Much simpler than UpdatePackageValidator/UpdateService, since a theme touches only one
+ * self-contained directory and never overlays live core files. Path-traversal and
+ * size/entry-count checks mirror UpdatePackageValidator's (smaller limits here), but content
+ * requirements are theme-specific: a style.css with a "Theme Name:" header, read directly
+ * out of the archive before extracting so a missing header is rejected without touching disk.
  */
 final class ThemeInstaller
 {
@@ -53,7 +44,7 @@ final class ThemeInstaller
     }
 
     /**
-     * Removes an installed theme's directory entirely (LP-044's "Delete
+     * Removes an installed theme's directory entirely (the "Delete
      * inactive themes" action). Whether the theme is currently active is
      * the caller's concern — this class only knows about the filesystem,
      * not which theme is active — so callers must check ThemeInfo::$isActive
@@ -99,20 +90,12 @@ final class ThemeInstaller
     }
 
     /**
-     * Replaces an already-installed theme's files with the contents of a
-     * new ZIP, in place — LP-081's counterpart to install(), which always
-     * hard-rejects an existing destination. The archive is extracted to a
-     * staging directory and validated exactly as install() validates one
-     * (same style.css + "Theme Name:" header requirement — the header's
-     * declared name does not need to match $slug; the slug the site
-     * already knows this theme by always wins, since that's what every
-     * active_theme option/nav menu/widget assignment references), then
-     * swapped into place via two fast rename() calls: the live directory
-     * is displaced first, the staged one takes its place second, and only
-     * then is the displaced original removed. If the second rename fails,
-     * the displaced original is renamed straight back — the window where
-     * $destination doesn't exist at all is as small as the filesystem
-     * allows, and a failure never leaves the theme half-installed.
+     * Replaces an already-installed theme's files in place with a new ZIP's contents — the
+     * counterpart to install(), which hard-rejects an existing destination. Validated the
+     * same way install() validates (the header's declared name need not match $slug; the
+     * site's existing slug always wins), then swapped into place via two rename() calls: the
+     * live directory is displaced first, the staged one takes its place, then the displaced
+     * original is removed. If the second rename fails, the original is renamed straight back.
      */
     public function update(string $zipPath, string $slug): ThemeInfo
     {

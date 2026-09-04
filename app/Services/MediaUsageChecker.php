@@ -21,16 +21,10 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\PressConfig;
 
 /**
- * Describes where a media file is used, so the admin Media Manager (LP-005)
- * can warn before deleting a referenced file. Checks every known reference
- * as of this session — a post's or page's featured image (LP-040), the
- * site logo/favicon/default Open Graph image options (LP-034/LP-042), and
- * passes the result through the media_usage filter so plugins can extend
- * it without editing this class, the same extensibility pattern
- * FeedService/SearchService/MaintenanceGate already established. Does not
- * scan post/page body content for inline embeds (an author-inserted
- * `<img>`/link baked into stored HTML/Markdown) — only these structured
- * references.
+ * Describes where a media file is used, so the admin Media Manager can warn before deleting
+ * a referenced file. Checks featured images and the site logo/favicon/OG-image options, then
+ * passes the result through the media_usage filter so plugins can extend it. Does not scan
+ * post/page body content for inline embeds — only these structured references.
  */
 final class MediaUsageChecker
 {
@@ -76,17 +70,10 @@ final class MediaUsageChecker
     }
 
     /**
-     * Every media id referenced anywhere this class knows how to check in
-     * bulk (LP-006's "Unused Media" admin view) — built from a handful of
-     * bounded queries (PostService::featuredImageIdsInUse()/
-     * PageService::featuredImageIdsInUse()) plus the three media-id
-     * options, not a describeUsage() call per media item, so it scales
-     * with the number of posts/pages rather than the number of media
-     * items. Unlike describeUsage(), this does not run the media_usage
-     * filter hook — a plugin-added usage source can't be enumerated in
-     * bulk without that plugin's own cooperation — so it's a best-effort
-     * listing aid, not the authoritative check; describeUsage() (used by
-     * the actual delete flow) still is.
+     * Every media id referenced anywhere this class can check in bulk (the "Unused Media"
+     * admin view) — built from bounded queries, not a describeUsage() call per item, so it
+     * scales with post/page count. Unlike describeUsage(), this skips the media_usage filter,
+     * so it's a best-effort listing aid, not the authoritative check.
      *
      * @return array<int, int>
      */

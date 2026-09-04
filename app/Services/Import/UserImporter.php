@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates or reuses a User from an ImportedUser DTO, recording provenance only for newly created accounts (LPP-004/LPP-005 Phase 1).
+ * Creates or reuses a User from an ImportedUser DTO, recording provenance only for newly created accounts.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -22,18 +22,10 @@ use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\UserService;
 
 /**
- * Re-running the same import (a re-uploaded WXR file, a second Dummy
- * Content generation) must not create a second account for the same
- * WordPress author or duplicate a username collision — importOrReuse()
- * checks for an existing username/email match first and returns that
- * account unchanged when found.
- *
- * Deliberately only registers *newly created* users into
- * ContentImportRegistry, never a reused existing one: a reused account
- * wasn't created by this batch, so a later "remove everything this
- * batch created" must never be able to delete it. See
- * ContentImportRegistry's own docblock on why deletion always goes
- * through the caller's own tracked ids, never a blanket query.
+ * Re-running the same import must not create a second account for the same author —
+ * importOrReuse() checks for an existing username/email match first. Only registers newly
+ * created users into ContentImportRegistry, never a reused one, so a later "remove everything
+ * this batch created" can never delete an account it didn't create.
  */
 final class UserImporter
 {

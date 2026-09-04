@@ -31,23 +31,15 @@ $maintenanceActive = $kernel->maintenance->isActive();
 $updateStatus = ['available' => false, 'latest_version' => null, 'changelog_url' => null];
 
 if ($currentUser->can('manage_options')) {
-    // Cron-free "scheduled" check (LP-027) — see GitHubReleaseProvider::maybeCheckForUpdates()'s
-    // docblock. Throttled internally, so this is safe on every Dashboard load.
+    // Cron-free "scheduled" check, throttled internally, so this is safe
+    // on every Dashboard load.
     $kernel->githubUpdates->maybeCheckForUpdates();
     $updateStatus = $kernel->githubUpdates->cachedUpdateStatus((string) $version['version']);
 }
 
-/*
- * LP-134: reorderable Dashboard widgets. Every id below is a stable
- * identifier a signed-in user's saved widget order can reference —
- * reuses the exact same per-user JSON blob LP-083's Post/Page editor
- * sidebar order already established (UserService::
- * getEditorLayoutPreferences()/updateEditorLayoutPreferences(), screen
- * type 'dashboard' instead of 'post'/'page'; there's no per-widget
- * collapse concept here, so 'collapsed' is always empty for this
- * screen). The actual title/markup for each id still lives inline in
- * the switch() below, same as the editor sidebar's own boxes.
- */
+// Reorderable Dashboard widgets. Each id is a stable identifier for the
+// saved order, reusing the same per-user JSON blob the editor sidebar
+// uses (screen type 'dashboard' instead of 'post'/'page').
 $widgetTitles = [
     'recent_posts' => 'Recent Posts',
     'recent_comments' => 'Recent Comments',
@@ -64,29 +56,16 @@ if ($currentUser->can('upload_files')) {
 
 $availableWidgetIds[] = 'update_status';
 
-/*
- * A plugin declares its own dashboard widget id(s) via this filter so
- * its panel can be individually repositioned among the built-in
- * widgets above — see docs/DEVELOPER-APIS.md. The actual widget markup
- * still only ever comes from the existing do_action('dashboard_widgets')
- * call below (unchanged since LP-045/LPP-014); if more than one plugin
- * ever registers an id here at once, their combined output still
- * renders as a single contiguous block, positioned wherever the
- * earliest of their ids sorts in the saved order — independently
- * reordering multiple plugins' widgets from each other would need a
- * bigger change to how the 'dashboard_widgets' action itself works,
- * not something this ticket's single real consumer (Visitor & Post
- * View Statistics) needs.
- */
+// A plugin declares its own dashboard widget id(s) via this filter so its
+// panel can be repositioned among the built-ins; the markup itself still
+// comes from do_action('dashboard_widgets') below.
 $pluginWidgetIds = array_values(array_filter((array) apply_filters('dashboard_widget_ids', [], $currentUser), 'is_string'));
 $availableWidgetIds = array_merge($availableWidgetIds, $pluginWidgetIds);
 
 $savedDashboardLayout = $kernel->users->getEditorLayoutPreferences($currentUser->id, 'dashboard');
 $savedWidgetOrder = array_values(array_intersect($savedDashboardLayout['order'], $availableWidgetIds));
 // Saved order first, then any widget not already in it appended at the
-// end — covers a first-ever visit and a widget id introduced after a
-// user's layout was last saved (mirrors posts/new.php's identical
-// $boxOrder merge for the editor sidebar).
+// end — covers a first-ever visit and a widget id introduced later.
 $widgetOrder = array_values(array_unique(array_merge($savedWidgetOrder, $availableWidgetIds)));
 
 ob_start();
@@ -151,18 +130,10 @@ $pluginWidgetsRendered = false;
     <?php foreach ($widgetOrder as $widgetId): ?>
         <?php if (in_array($widgetId, $pluginWidgetIds, true)): ?>
             <?php
-            /*
-             * Every currently-active plugin's widget markup arrived in
-             * one combined buffer (captured above via do_action()), so
-             * it's echoed once, at the position of whichever of its
-             * declared ids comes first in $widgetOrder — see the
-             * $pluginWidgetIds comment above for why a second/third
-             * plugin id can't be individually positioned yet. Each
-             * plugin's own view is responsible for its own
-             * data-lp-sortable-item/data-lp-sortable-id/drag-handle
-             * markup (see content/plugins/visitor-stats/views/
-             * dashboard-widget.php), not this loop.
-             */
+            // Every active plugin's widget markup arrived in one combined
+            // buffer, echoed once at the position of whichever declared id
+            // comes first in $widgetOrder. Each plugin's view owns its own
+            // sortable/drag-handle markup, not this loop.
             if (!$pluginWidgetsRendered && $pluginWidgetsHtml !== '') {
                 echo $pluginWidgetsHtml;
                 $pluginWidgetsRendered = true;
@@ -271,14 +242,8 @@ $pluginWidgetsRendered = false;
 
     <?php if (!$pluginWidgetsRendered && $pluginWidgetsHtml !== ''): ?>
         <?php
-        /*
-         * A plugin that echoes a dashboard widget without also
-         * registering its id via the dashboard_widget_ids filter (an
-         * older/third-party plugin written before LP-134) still gets
-         * its panel shown — just always last, since there's no
-         * declared id to place it by. See docs/DEVELOPER-APIS.md for
-         * the up-to-date contract a plugin should follow instead.
-         */
+        // A plugin that echoes a widget without registering its id via
+        // dashboard_widget_ids still gets shown — just always last.
         echo $pluginWidgetsHtml;
         ?>
     <?php endif; ?>

@@ -39,13 +39,8 @@ $error = null;
  */
 $canEditPost = static fn (Post $post): bool => $canEditOthersPosts || $post->authorId === $currentUser->id;
 
-/*
- * POST handling itself lives in PostsController (LP-082, following the
- * ThemesController precedent — see DECISIONS.md); this view only reads
- * the request, dispatches to the matching controller method, and turns
- * the returned AdminActionResult into either a redirect or an inline
- * $error string.
- */
+// POST handling lives in PostsController; this view dispatches to it and
+// turns the AdminActionResult into a redirect or $error string.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -343,22 +338,10 @@ $allTagsForFilter = $kernel->tags->listAll();
         </form>
 
         <?php
-        /*
-         * Out-of-band target forms for each row action button above
-         * (LP-068): a <form> nested inside another <form> is invalid
-         * HTML — the browser's parse-error recovery silently closes the
-         * *outer* form (the bulk-action form above) as soon as it hits
-         * the first inner </form> tag, which was merging every row's
-         * hidden name="form"/name="id" fields into the bulk-action
-         * form's own POST body. Since same-named fields keep only their
-         * last value, every "Apply" click was actually being processed
-         * server-side as whichever row-action form happened to close the
-         * outer form first (in practice, the first row's Duplicate/
-         * Restore action) — regardless of which bulk action or posts
-         * were actually selected. Each button/hidden-input above now
-         * targets one of these standalone forms via the HTML `form=""`
-         * attribute instead of being a descendant of it.
-         */
+        // Out-of-band target forms for each row action button — a <form>
+        // nested inside another is invalid HTML and merges fields into
+        // the outer bulk-action form. Each button targets one of these
+        // standalone forms via form="" instead.
         foreach ($pagination['posts'] as $listedPost):
             if (!$canEditPost($listedPost)) {
                 continue;

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Content and behavioral spam heuristics for the bundled Lumora Shield plugin's Comment Analysis module (LPP-001).
+ * Content and behavioral spam heuristics for the bundled Lumora Shield plugin's Comment Analysis module.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -23,13 +23,12 @@ use LumoraPress\Core\ActiveKernel;
  * Pushes a comment toward Spam via the existing 'comment_is_spam' filter
  * (the same one Akismet already uses — see SiteController::submitComment()'s
  * own docblock, which names Lumora Shield by name as the intended
- * eventual consumer). No blacklist/reputation-score engine exists yet
- * (see LPP-001's own "don't build speculatively" scoping), so this is
- * deliberately a set of independent, individually-explainable checks —
- * any one of them tripping is enough to flag Spam, mirroring how a
- * single Akismet "yes" already works today. Nothing here can *un-spam* a
- * comment another listener already flagged (see the `comment_is_spam`
- * filter's own contract).
+ * eventual consumer). No blacklist/reputation-score engine exists yet, so
+ * this is deliberately a set of independent, individually-explainable
+ * checks — any one of them tripping is enough to flag Spam, mirroring
+ * how a single Akismet "yes" already works today. Nothing here can
+ * *un-spam* a comment another listener already flagged (see the
+ * `comment_is_spam` filter's own contract).
  */
 final class CommentAnalyzer
 {

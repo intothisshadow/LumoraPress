@@ -22,10 +22,8 @@ use RuntimeException;
 
 /**
  * Static bridge exposing the bootstrapped EditorPreferenceService to the
- * procedural get_default_editor()/get_active_editor()/registered_editors()
- * helpers (LP-066/LP-067) — mirrors ActiveConfig/ActiveTheme: admin views
- * reach the service directly via $kernel->editorPreferences, but a theme
- * or plugin has no such route to Kernel-wired services of its own.
+ * procedural editor-preference helpers — a theme or plugin has no other
+ * route to Kernel-wired services of its own.
  */
 final class ActiveEditorPreference
 {

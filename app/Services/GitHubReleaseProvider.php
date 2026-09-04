@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Fetches release metadata from the GitHub Releases API for the administrator-initiated Check for Updates flow (LP-027).
+ * Fetches release metadata from the GitHub Releases API for the administrator-initiated Check for Updates flow.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,31 +21,15 @@ use LumoraPress\Core\PressConfig;
 use RuntimeException;
 
 /**
- * Fetches release metadata from the GitHub Releases API for the
- * administrator-initiated "Check for Updates" flow (LP-027).
+ * Fetches release metadata from the GitHub Releases API for the "Check for Updates" flow.
+ * The `update_channel` option selects stable (`/releases/latest`) or prerelease
+ * (`/releases`, most recent non-draft entry) and `update_github_repo`/`update_github_token`
+ * make the source and rate limit configurable for forks.
  *
- * The active channel ('stable' or 'prerelease', via the `update_channel`
- * option) selects which endpoint is queried:
- *   stable:     GET /repos/{repo}/releases/latest (GitHub already excludes
- *               drafts and prereleases from this endpoint)
- *   prerelease: GET /repos/{repo}/releases (most recent non-draft entry,
- *               whether marked prerelease or not)
- *
- * The repository is configurable via `update_github_repo` (default
- * intothisshadow/LumoraPress) so forks can point at their own releases.
- * An optional `update_github_token` personal access token raises the
- * unauthenticated API rate limit (60/hour) and is required for a private
- * fork's releases; it is only ever sent to api.github.com, never to a
- * third-party redirect target.
- *
- * Prefers the curated release asset LP-052 produces
- * (`LumoraPress-v{version}.zip`) over GitHub's raw tag-archive zipball,
- * falling back to the zipball when a release wasn't cut with the curated
- * asset attached. Both download paths go through the GitHub API's
- * asset/zipball endpoints (never a bare `browser_download_url` redirect)
- * so the same Accept/Authorization headers apply uniformly and an
- * Authorization header is never handed to curl to forward across a
- * cross-host redirect.
+ * Prefers the curated release asset build-release.sh produces over GitHub's raw tag-archive
+ * zipball, falling back to the zipball when absent. Both paths go through the GitHub API's
+ * own endpoints, never a bare `browser_download_url` redirect, so an Authorization header is
+ * never forwarded across a cross-host redirect.
  */
 final class GitHubReleaseProvider
 {
@@ -144,9 +128,8 @@ final class GitHubReleaseProvider
      * `update_check_interval` seconds (floor: 1 hour) via the
      * `update_last_checked_at` option, and no-ops entirely when
      * `update_auto_check_enabled` is off. Only ever checks — never
-     * downloads or installs anything, matching this ticket's Phase 1
-     * "stay manual, administrator-initiated" requirement for the actual
-     * update step.
+     * downloads or installs anything; the actual update step stays
+     * manual and administrator-initiated.
      */
     public function maybeCheckForUpdates(): void
     {
@@ -216,14 +199,9 @@ final class GitHubReleaseProvider
     }
 
     /**
-     * Reads back the result of the most recent check (manual, via
-     * checkNow(), or via maybeCheckForUpdates()) without making a network
-     * call itself — safe to call on every admin page load. Only
-     * `available`/`latest_version` are compared against the currently
-     * installed version; everything else is display-only — actually
-     * downloading a release always goes through fetchLatestRelease()
-     * again rather than trusting this cache, since GitHub asset URLs can
-     * go stale between checks.
+     * Reads back the result of the most recent check without making a network call — safe to
+     * call on every admin page load. Downloading always goes through fetchLatestRelease()
+     * again rather than trusting this cache, since GitHub asset URLs can go stale.
      *
      * @return array{
      *     available: bool,

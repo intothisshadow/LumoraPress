@@ -38,15 +38,10 @@ final class BasePath
     }
 
     /**
-     * Strips the install's base path from the front of a raw request URI
-     * (e.g. "/lumorapress/admin/?x=1" -> "/admin/?x=1" for a subdirectory
-     * install), so Router::dispatch() can match its patterns — which are
-     * registered without the base path prefix, e.g. "/admin" — against a
-     * subdirectory install's requests. A no-op for a domain-root install
-     * (base path ""). If the URI doesn't actually start with the base
-     * path, it's returned unchanged rather than mangled, since that means
-     * something else is going on (e.g. a request outside the install
-     * path) that this method has no business guessing about.
+     * Strips the install's base path from a raw request URI (e.g.
+     * "/lumorapress/admin/?x=1" -> "/admin/?x=1") so Router::dispatch()
+     * can match its base-path-free route patterns. No-op for a
+     * domain-root install, or if the URI doesn't start with the base path.
      */
     public static function stripFrom(string $uri): string
     {

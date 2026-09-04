@@ -18,10 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Http;
 
 /**
- * Consistent JSON envelope for the REST API (LP-021) — no existing
- * JSON-response convention existed anywhere in this codebase before this;
- * every endpoint in ApiController goes through these two methods so the
- * shape never drifts per-endpoint.
+ * Consistent JSON envelope for the REST API. Every ApiController endpoint
+ * goes through these two methods so the response shape never drifts
+ * per-endpoint.
  *
  * Success: {"data": ...} for a single resource, {"data": [...], "meta": {...}}
  * for a paginated collection. Failure: {"error": {"message": ..., "code": ...}}.

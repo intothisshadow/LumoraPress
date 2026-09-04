@@ -40,13 +40,9 @@ $error = null;
  */
 $canEditPage = static fn (Page $page): bool => $canEditOthersPages || $page->authorId === $currentUser->id;
 
-/*
- * Quick Edit (LP-009) — a JSON sub-action, same pattern as
- * admin/views/pages/new.php's editor_upload/convert_content: the row
- * stays on the list screen and updates in place via JS rather than
- * navigating to the full editor. Handled before the CSRF-gated
- * redirect-based dispatch below since it never redirects.
- */
+// Quick Edit — a JSON sub-action: the row stays on the list screen and
+// updates in place via JS. Handled before the redirect-based dispatch
+// below since it never redirects.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'quick_edit') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -158,14 +154,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         $existing = $id > 0 ? $pageService->findById($id) : null;
 
-        // Permanent delete is only offered (and only honoured) for pages
-        // already in the Trash — Move to Trash is the only reachable path
-        // to actually removing a page from every other status, the same
-        // "delete means trash first" guardrail admin/views/posts/all-posts.php
-        // enforces.
+        // Permanent delete is only offered for pages already in the
+        // Trash — Move to Trash is the only reachable path to removing a
+        // page from every other status.
         if ($existing !== null && $existing->status === PageStatus::Trashed && $canDeletePages && $canEditPage($existing)) {
-            // Revisions live outside PageService (see RevisionService's
-            // docblock) — clean them up here before the page itself is gone.
+            // Revisions live outside PageService, so cleaned up here
+            // before the page itself is gone.
             $kernel->revisions->deleteAllFor(RevisionableType::Page, $id);
             $pageService->delete($id);
         }
@@ -214,10 +208,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('pages/all-pages'));
         exit;
     } elseif ($form === 'reposition_page') {
-        // Drag-and-drop reordering (LP-009 Hierarchy UI), tree view only
-        // (the "All" tab) — sortable.js fills these fields and submits
-        // this one shared form on drop, same pattern
-        // admin/views/appearance/menus.php's reposition_item uses.
+        // Drag-and-drop reordering, tree view only — sortable.js fills
+        // these fields and submits this one shared form on drop.
         $draggedId = (int) ($_POST['dragged_id'] ?? 0);
         $targetId = (int) ($_POST['target_id'] ?? 0);
         $positionValue = (string) ($_POST['position'] ?? 'before');
@@ -449,17 +441,10 @@ if ($isTreeView) {
         <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No pages yet.' ?></p>
     <?php else: ?>
         <?php
-        /*
-         * The bulk-action form and (in tree view) the sortable-group's
-         * own reposition form are siblings, not nested — a <form>
-         * inside another <form> is invalid HTML and the browser's
-         * parse-error recovery silently closes the outer one at the
-         * first </form> it hits (see all-posts.php's identical note).
-         * In tree view, the bulk-action form has no visible table/list
-         * inside it at all; every checkbox instead uses the HTML5
-         * form="pages-bulk-form" attribute to submit into it despite
-         * living in the separate <ul data-lp-sortable-group> below.
-         */
+        // The bulk-action form and (in tree view) the reposition form
+        // are siblings, not nested — a <form> inside another is invalid
+        // HTML. In tree view, checkboxes use form="pages-bulk-form" to
+        // submit despite living in the separate <ul> below.
         ?>
         <form id="pages-bulk-form" method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>" <?= $isTreeView ? '' : 'data-lp-bulk-form' ?>>
             <?= Csrf::field('pages_bulk_action') ?>
@@ -699,14 +684,9 @@ if ($isTreeView) {
         <?php endif; ?>
 
         <?php
-        /*
-         * Out-of-band target forms for each row's Duplicate/Trash/Restore/
-         * Delete Permanently button above (same LP-068 nested-form fix
-         * all-posts.php uses) — standalone, empty <form>s the buttons
-         * point at via the HTML `form=""` attribute instead of being
-         * descendants of pages-bulk-form or the sortable group's own
-         * reposition form.
-         */
+        // Out-of-band target forms for each row's action buttons —
+        // standalone <form>s the buttons point at via form="", instead of
+        // being descendants of pages-bulk-form or the reposition form.
         foreach ($listedPages as $listedPage):
             if (!$canEditPage($listedPage)) {
                 continue;
@@ -728,15 +708,9 @@ if ($isTreeView) {
                 <?php endif; ?>
                 <?php if (!$isTreeView): ?>
                     <?php
-                    /*
-                     * Quick Edit's form (LP-009) — unlike the other
-                     * out-of-band forms above, this one carries real
-                     * visible fields (via form="" on each input/select
-                     * in the row above), submitted as JSON by
-                     * quick-edit.js rather than a normal redirect.
-                     * Tree view has no Quick Edit row this pass, so no
-                     * form is rendered there.
-                     */
+                    // Quick Edit's form carries real visible fields (via
+                    // form="" on each row input), submitted as JSON by
+                    // quick-edit.js rather than a redirect.
                     ?>
                     <form
                         id="page-quick-edit-form-<?= (int) $listedPage->id ?>"

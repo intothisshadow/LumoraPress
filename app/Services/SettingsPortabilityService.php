@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Exports and imports the portable subset of this installation's Settings-screen options, for copying configuration between two unrelated Lumora Press installs (LP-140).
+ * Exports and imports the portable subset of this installation's Settings-screen options, for copying configuration between two unrelated Lumora Press installs.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,68 +21,25 @@ use LumoraPress\Core\PressConfig;
 use RuntimeException;
 
 /**
- * "Portable" here means safe to apply on a second, completely unrelated
- * install (different database, different content, different users) — not
- * "every option this site has". Two categories of option are deliberately
- * left out of PORTABLE_FIELDS below, and must stay out if this list is
- * ever extended:
+ * "Portable" means safe to apply on a second, unrelated install, not "every option this site
+ * has". Left out of PORTABLE_FIELDS: identity fields (site_url, site_tagline, admin_email),
+ * which describe this install rather than a copyable choice; local references
+ * (avatar_default_media_id, homepage_page_id, etc.), which point at a row id meaningless on
+ * another install; and anything under Security, Privacy, Redirects, Maintenance Mode, Cache,
+ * and Embeds, which is install-specific by nature.
  *
- *  - Identity/per-install fields: site_url, site_tagline, admin_email.
- *    These describe *this* install, not a configuration choice worth
- *    copying elsewhere.
- *  - Local references: avatar_default_media_id, default_og_image_media_id,
- *    homepage_page_id, homepage_posts_page_id. Each stores a database row
- *    id from *this* install's own media/pages tables — importing it
- *    verbatim into an unrelated install would point at a row that either
- *    doesn't exist there or (worse) exists but means something else. The
- *    enum-ish sibling of a couple of these (e.g. homepage_display, which
- *    only says "static page" vs "latest posts" without naming *which*
- *    page) is still portable and stays in the list.
- *  - Anything under Security, Privacy, Redirects, Maintenance Mode,
- *    Cache, and Embeds — install-specific by nature (redirects map old
- *    URLs *on this site*; a CDN hostname belongs to this host) or judged
- *    not worth the review during LP-140 to confirm otherwise. Not in
- *    PORTABLE_FIELDS, so never touched by export or import.
+ * Thumbnail sizes and REST API resource toggles are per-name option keys rather than one
+ * fixed key each — THUMBNAIL_SIZE_NAMES/REST_API_RESOURCES list the core-registered names,
+ * and allFields() expands them. A plugin-registered thumbnail size is deliberately excluded,
+ * since it may not be option-backed at all.
  *
- * Thumbnail sizes (`thumbnail_size_{name}_*`) and REST API resource
- * toggles (`rest_api_resource_{resource}_enabled`) are per-name/per-
- * resource option keys rather than one fixed key each — THUMBNAIL_SIZE_NAMES
- * and REST_API_RESOURCES list the core-registered names this ships with
- * (ThumbnailService::DEFAULT_SIZES and general.php's own hardcoded
- * resource list respectively) and allFields() expands them. A
- * plugin/theme-registered thumbnail size added via the `thumbnail_sizes`
- * filter is deliberately NOT included — such a size may not be
- * config-option-backed at all (a plugin can hardcode its own dimensions),
- * so exporting "whatever ThumbnailService::sizes() currently reports"
- * could silently create a phantom option override the plugin never
- * expected to see read back.
+ * sanitize() only coerces to the right scalar type, not each field's bespoke validation (e.g.
+ * avatar_max_rating's allowlist) — a deliberate scope decision, since only an Administrator
+ * can reach this feature and already has direct write access to these same option keys.
  *
- * Every value round-trips through the exact same PressConfig::setOption()
- * every Settings screen's own POST handler already calls — sanitize()
- * only coerces to the right scalar type (bool -> '1'/'0', int -> a plain
- * integer string, string -> trimmed), it does not re-implement each
- * field's own bespoke validation (e.g. avatar_max_rating's G/PG/R/X
- * allowlist, or comment_per_page's 1-500 clamp). This is a deliberate
- * scope decision, not an oversight: only an Administrator can reach this
- * feature (Maintenance > Tools, capability manage_options — see
- * admin/index.php's $menu), and an Administrator already has direct,
- * unrestricted write access to every one of these same option keys via
- * the Settings screens themselves. A field that ends up with an
- * out-of-range value after import is exactly as recoverable as one set
- * that way by hand: revisit the same Settings screen and save it, which
- * re-validates and overwrites.
- *
- * Upload flow mirrors PluginInstaller's stage()/inspectStaged()/
- * finalize()/discardStaged() shape exactly: stage() moves an uploaded
- * file out of PHP's request-scoped tmp location into a holding directory
- * so a confirmation screen doesn't need the file re-uploaded,
- * inspectStaged() reads it back for a before/after preview without
- * applying anything, and finalize() applies it and always discards the
- * staged file afterward (a staged import is only ever meant to be
- * finalized once). A stale stage is never a security problem the way a
- * stale plugin-install stage isn't either — it can only be replayed
- * through the same allowlisted, type-coerced write path a direct import
- * would already reach.
+ * Upload flow mirrors PluginInstaller's stage()/inspectStaged()/finalize()/discardStaged()
+ * shape: stage() holds an uploaded file for a confirmation screen, inspectStaged() previews
+ * it without applying anything, and finalize() applies it and discards the staged file.
  */
 final class SettingsPortabilityService
 {

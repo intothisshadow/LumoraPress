@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A plain data holder describing one page to create via PageImporter (LPP-004/LPP-005 Phase 1), independent of where the data came from.
+ * A plain data holder describing one page to create via PageImporter, independent of where the data came from.
  *
  * @package LumoraPress
  * @subpackage Services

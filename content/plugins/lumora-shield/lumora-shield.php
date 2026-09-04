@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Lumora Shield plugin's main file (LPP-001): plugin metadata header and bootstrap.
+ * The Lumora Shield plugin's main file: plugin metadata header and bootstrap.
  *
  * @package LumoraPress
  * @subpackage Plugins

@@ -23,14 +23,10 @@ use DOMNode;
 use DOMText;
 
 /**
- * Converts (already-sanitized) HTML back to Markdown — LP-016's "Export
- * clean Markdown where possible" / "Switch between Markdown and WYSIWYG".
- * Only needs to round-trip HtmlSanitizer::ALLOWED_TAGS's tag set, since
- * that's the only HTML this application ever produces or stores — it is
- * not a general-purpose HTML-to-Markdown tool. Anything outside that set
- * can't reach here in the first place (already stripped before storage),
- * so there is no "unsupported tag" case to handle beyond falling back to
- * the tag's text content.
+ * Converts (already-sanitized) HTML back to Markdown, so a post/page can
+ * be switched between Markdown and WYSIWYG editing. Only needs to
+ * round-trip HtmlSanitizer::ALLOWED_TAGS's tag set — not a
+ * general-purpose HTML-to-Markdown tool.
  */
 final class HtmlToMarkdownConverter
 {
@@ -109,12 +105,9 @@ final class HtmlToMarkdownConverter
     }
 
     /**
-     * A `<span class="has-{color}-color">` (LP-016's fixed-palette font
-     * color) round-trips to MarkdownParser's `[text]{.color}` marker;
-     * only a recognized MarkdownParser::FONT_COLORS name converts, so a
-     * span this app didn't itself generate (e.g. the LP-079 More tag
-     * marker) falls through to its plain inner text like any other
-     * unhandled tag.
+     * A `<span class="has-{color}-color">` round-trips to MarkdownParser's
+     * `[text]{.color}` marker; only a recognized FONT_COLORS name
+     * converts, otherwise it falls through to plain inner text.
      */
     private function renderSpan(DOMElement $span, string $inner): string
     {

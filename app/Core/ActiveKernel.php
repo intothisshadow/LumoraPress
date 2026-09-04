@@ -20,16 +20,10 @@ namespace LumoraPress\Core;
 use RuntimeException;
 
 /**
- * Static bridge exposing the fully-constructed Kernel — mirrors
- * ActiveConfig/ActiveTheme, but for plugin code that needs more than one
- * Kernel-wired service (e.g. Database *and* Mailer *and* CommentService)
- * and would otherwise need a separate single-purpose bridge for each.
- * Only usable from code that runs during/after a real request — a
- * plugin's own top-level bootstrap file executes before Kernel exists
- * (PluginManager::loadActive() runs well before `new Kernel(...)` in
- * include/bootstrap.php), so registering a hook callback that reads
- * ActiveKernel::instance() lazily, only once actually invoked, is the
- * supported pattern — calling it eagerly at plugin-load time throws.
+ * Static bridge exposing the fully-constructed Kernel, for plugin code
+ * that needs several Kernel-wired services at once. A plugin's top-level
+ * bootstrap file runs before Kernel exists, so only read this lazily from
+ * inside a hook callback — reading it eagerly at plugin-load time throws.
  */
 final class ActiveKernel
 {

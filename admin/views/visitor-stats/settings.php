@@ -27,19 +27,11 @@ $viewStats = new ViewStatsService($kernel->database, (string) $kernel->config->g
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 
-/*
- * "Live progress, no full-page reload per batch" — mirrors admin/assets/
- * js/update-continue.js and the maintenance/updates.php GET ?ajax=progress
- * branch it pairs with: admin/assets/js/geoip-import-continue.js drives
- * the batch loop below via fetch() instead of the plain redirect-per-batch
- * a <form> submit would do, so the panel updates in place instead of
- * visibly reloading (and scrolling to the top of the page) once per batch
- * — the Blocks CSV alone can need dozens of batches. That script marks
- * its request with this header; the batch branch below responds with
- * JSON instead of falling through to the full page render only when it's
- * present, so a plain form submit (no JS, or the script failing to load)
- * keeps working exactly as before.
- */
+// geoip-import-continue.js drives the batch loop via fetch() instead of
+// a redirect-per-batch <form> submit, so the panel updates in place
+// instead of reloading once per batch. It marks its request with this
+// header; the batch branch responds with JSON only when present, so a
+// plain form submit (no JS) still works via the redirect fallback.
 $isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 
 $respondJson = static function (array $payload): never {
@@ -94,16 +86,10 @@ if ($form === 'visitor_stats_geoip_import' && Csrf::verify('visitor_stats_geoip_
 }
 
 if ($form === 'visitor_stats_geoip_import_from_path' && Csrf::verify('visitor_stats_geoip_import_from_path', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    // Deliberately does not accept a free-form "read this exact file"
-    // path for the CSV case — only a directory, within which just these
-    // two exact, hardcoded filenames are ever read. A zip path is the
-    // one exception: it's still one specific admin-supplied file, opened
-    // and immediately validated as a real ZIP archive before anything
-    // inside it is trusted, so it carries the same bounded risk as the
-    // directory case rather than an arbitrary-file-read one. Mirrors the
-    // same "admin-supplied path, not admin-supplied arbitrary read"
-    // caution LP-041's Media Import allowlist already applies for the
-    // same underlying reason.
+    // For the CSV case, only a directory is accepted, within which just
+    // two exact hardcoded filenames are read — never a free-form file
+    // path. A zip path is the exception, but it's validated as a real
+    // ZIP archive before anything inside it is trusted.
     $suppliedPath = rtrim(trim((string) ($_POST['geoip_directory'] ?? '')), '/');
 
     if ($suppliedPath !== '' && is_file($suppliedPath) && strtolower(pathinfo($suppliedPath, PATHINFO_EXTENSION)) === 'zip') {
@@ -135,15 +121,10 @@ if ($form === 'visitor_stats_geoip_import_from_path' && Csrf::verify('visitor_st
 }
 
 if ($form === 'visitor_stats_geoip_import_batch' && Csrf::verify('visitor_stats_geoip_import_batch', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    // Each batch is capped (ViewStatsService::DEFAULT_IMPORT_BATCH_SIZE
-    // rows) specifically so it finishes well within a shared host's
-    // default execution-time limit — set_time_limit(0) is still applied
-    // per batch as a safety margin, not because a batch is expected to
-    // run long. The Blocks CSV itself can be ~450k rows, far more than
-    // one request should attempt in a single pass; see MEMORY.md/
-    // TODO-PLUGINS.md's LPP-014 addendum for why the prior one-shot
-    // importGeoCsv() call was timing out at the webserver/proxy layer
-    // even though the import itself completed successfully server-side.
+    // Each batch is capped so it finishes well within a shared host's
+    // execution-time limit; set_time_limit(0) is a safety margin, not
+    // because a batch is expected to run long. The Blocks CSV can be
+    // ~450k rows — far too many for a single-pass import.
     set_time_limit(0);
 
     $byteOffset = (int) ($_POST['byte_offset'] ?? 0);
@@ -179,10 +160,8 @@ if ($form === 'visitor_stats_geoip_import_batch' && Csrf::verify('visitor_stats_
                     'done' => false,
                     'imported_so_far' => $importedSoFar,
                     'byte_offset' => $result['nextByteOffset'],
-                    // Csrf::verify() above already consumed this request's
-                    // token (single-use) — a fresh one for the JS's next
-                    // fetch() call, since a plain JSON response carries no
-                    // embedded <form> to read one back out of.
+                    // A fresh token for the JS's next fetch() call, since
+                    // a plain JSON response has no <form> to read one from.
                     'csrf_token' => Csrf::token('visitor_stats_geoip_import_batch'),
                 ]);
             }

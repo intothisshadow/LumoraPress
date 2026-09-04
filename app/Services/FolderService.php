@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Virtual media folders (LP-005), purely organizational and independent of a file's actual filesystem location.
+ * Virtual media folders, purely organizational and independent of a file's actual filesystem location.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -24,26 +24,14 @@ use LumoraPress\Models\Folder;
 use RuntimeException;
 
 /**
- * Virtual media folders (LP-005) — purely organizational, never touching
- * the physical filesystem or a file's public URL (MediaService::url()/
- * delete() are keyed off file_path, never folder_id, so reassigning a
- * file's folder is a plain UPDATE with zero effect on where the file
- * actually lives or how it's served).
+ * Virtual media folders — purely organizational, never touching the physical filesystem or
+ * a file's public URL, since MediaService keys off file_path, never folder_id.
  *
- * Unlike CategoryService/PageService's parent_id hierarchy — which only
- * guards against a record becoming its own *direct* parent, an accepted,
- * documented shallow trade-off in this codebase — folders support
- * unlimited nesting with full ancestor-chain cycle prevention via
- * descendantIds(), since a Media Manager's folder tree is expected to go
- * deeper than a category list ever would.
- *
- * Unlike CategoryService's listAllForParentSelect(), cycle exclusion
- * happens in PHP (descendantIds()) rather than as extra WHERE clauses in
- * SQL, so no query here binds the same value under two placeholder
- * names — sidestepping that whole class of bug (Database::connect()
- * disables emulated prepares, and MySQL's native protocol rejects a
- * repeated named placeholder; see CategoryService's docblock) rather than
- * having to get it right per-query.
+ * Unlike CategoryService/PageService's parent_id hierarchy, which only guards against a
+ * record becoming its own direct parent, folders support unlimited nesting with full
+ * ancestor-chain cycle prevention via descendantIds(), done in PHP rather than extra SQL
+ * WHERE clauses — sidestepping the repeated-placeholder issue CategoryService's docblock
+ * describes.
  */
 final class FolderService
 {
@@ -131,8 +119,7 @@ final class FolderService
 
     /**
      * Refuses to delete a non-empty folder (child folders or assigned
-     * media) rather than orphaning its contents — LP-005's checklist
-     * explicitly says "Delete empty folders," unlike
+     * media) rather than orphaning its contents, unlike
      * CategoryService::delete()'s orphan-on-delete precedent.
      */
     public function delete(int $id): bool
@@ -181,8 +168,8 @@ final class FolderService
      * alphabetical among siblings, then the next sibling) — mirrors
      * CategoryService::listAllForTree()/PageService::listAllForTree()'s
      * identical shape, for the editor "Insert Image" picker's Folder
-     * filter (LP-115) to render indented the same way those other
-     * nested pickers already do.
+     * filter to render indented the same way those other nested pickers
+     * already do.
      *
      * @return array<int, array{folder: Folder, depth: int}>
      */
@@ -212,14 +199,9 @@ final class FolderService
     }
 
     /**
-     * Folders whose name contains $term (case-insensitive), plus every
-     * ancestor of each match — LP-005's "Folder search". Ancestors are
-     * included so the sidebar tree (which can only render a folder once
-     * its parent chain up to the root is also present) still shows each
-     * match in its proper place rather than as a set of disconnected
-     * leaves. Built from one listAll() call rather than a query per
-     * folder, the same "small dataset, filter in PHP" approach
-     * descendantIds() already uses.
+     * Folders whose name contains $term (case-insensitive), plus every ancestor of each
+     * match, so the sidebar tree can render each match in its proper place rather than as
+     * disconnected leaves. Built from one listAll() call, not a query per folder.
      *
      * @return array<int, Folder>
      */
@@ -291,7 +273,7 @@ final class FolderService
 
     /**
      * Every ancestor of $id (parent, grandparent, ...), NOT including $id
-     * itself — LP-120's sidebar tree uses this to force a folder open
+     * itself — the sidebar tree uses this to force a folder open
      * regardless of its own saved collapsed state whenever it's on the
      * path to the currently active folder, so navigating into a folder
      * never leaves it hidden inside a collapsed ancestor. Built from one
@@ -320,19 +302,12 @@ final class FolderService
     }
 
     /**
-     * Rolls per-folder direct item counts
-     * (MediaService::directCountsByFolderId()) up through the tree so each
-     * folder's badge (LP-121) reflects everything filed inside it, nested
-     * subfolders included — not just items directly assigned to that exact
-     * folder. Built from a single listAll() call rather than
-     * descendantIds() per folder, so this stays one query regardless of how
-     * many folders exist. Unassigned items (folder_id 0/null in
-     * $directCounts) are never rolled into any real folder's total, since
-     * they aren't part of the tree.
+     * Rolls per-folder direct item counts up through the tree so each folder's badge
+     * reflects nested subfolders too. Built from one listAll() call, not descendantIds() per
+     * folder. Unassigned items (folder_id 0/null) are never rolled into any folder's total.
      *
      * @param array<int, int> $directCounts folder_id => direct item count
-     * @return array<int, int> folder_id => cumulative item count (own +
-     *     every descendant's)
+     * @return array<int, int> folder_id => cumulative item count
      */
     public function cumulativeCounts(array $directCounts): array
     {

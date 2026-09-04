@@ -20,44 +20,22 @@ namespace LumoraPress\Services;
 use LumoraPress\Core\Database\Database;
 
 /**
- * WordPress HTML-entity-encodes plain-text fields (term names, post/page
- * titles and excerpts, display names, comment author names/content) before
- * storing them — typing "TV & Movies" into wp-admin saves `TV &amp;
- * Movies`. Before WordPressSource::decodeEntities() (LP-113) existed, the
- * WordPress Importer stored that value verbatim; esc_html()/esc_attr()
- * (include/helpers.php) then re-encoded the already-encoded value on the
- * way out, so a category imported before that fix renders as the literal
- * text "TV &amp; Movies" instead of "TV & Movies" on the public site.
+ * Before WordPressSource::decodeEntities() existed, the WordPress Importer stored HTML
+ * entities verbatim (e.g. "TV &amp; Movies"); esc_html()/esc_attr() then re-encoded that
+ * already-encoded value on the way out, so old imports render literal entity text on the
+ * public site. That importer fix only prevents the bug for future imports — this class is
+ * the one-time repair for content already affected, run from Maintenance > Tools.
  *
- * That importer fix only prevents the bug for a *future* import — content
- * already imported (or otherwise saved) with a double-encoded value before
- * the fix landed stays broken until it's decoded once, in place. This
- * class is that one-time repair, run from Maintenance > Tools.
- *
- * Deliberately bypasses CategoryService/TagService/PostService/etc.'s own
- * update() methods and writes directly via parameterized SQL instead:
- * PostService::update()/PageService::update() need a full set of unrelated
- * fields (content, status, featured image, ...) and fire a 'post_saved'
- * hook that can trigger a real outbound request (BlueskyResolverService,
- * see bootstrap.php), and every affected update() regenerates a
- * slug from the title unless one is passed explicitly — none of which
- * belongs in a narrow "fix how this text is encoded, touch nothing else"
- * repair pass. A row is only ever written when decoding actually changes
- * at least one of its columns, so a site with no affected data performs
- * pure reads.
+ * Bypasses each service's own update() and writes directly via parameterized SQL instead,
+ * since update() needs unrelated fields and fires hooks (e.g. an outbound BlueskyResolverService
+ * request) that don't belong in a narrow encoding-only repair. A row is only written when
+ * decoding actually changes a column, so an unaffected site performs pure reads.
  */
 final class EntityDecodeRepairService
 {
     /**
-     * table => text columns to check/repair on that table. Every column
-     * here is rendered via esc_html()/esc_attr() somewhere on the public
-     * site or in admin — see this class's own docblock for the exact
-     * render sites already confirmed for each (categories.name/tags.name:
-     * CoreWidgets/theme templates; posts.title/pages.title: the_title();
-     * posts.excerpt/pages.excerpt: the_excerpt(); comments.guest_name/
-     * comments.content: comment_list()/format_comment_content();
-     * users.display_name: author bylines; media.alt_text/caption/
-     * description: image alt attributes and the Media Manager detail view).
+     * table => text columns to check/repair on that table. Every column here is rendered
+     * via esc_html()/esc_attr() somewhere on the public site or in admin.
      *
      * @var array<string, array<int, string>>
      */

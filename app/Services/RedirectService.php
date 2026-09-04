@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Admin-managed URL redirects (LP-022), checked before a request would otherwise 404.
+ * Admin-managed URL redirects, checked before a request would otherwise 404.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,7 +21,7 @@ use LumoraPress\Core\Database\Database;
 use RuntimeException;
 
 /**
- * Admin-managed URL redirects (LP-022) — checked by
+ * Admin-managed URL redirects — checked by
  * SiteController::notFound() before it actually renders a 404, so
  * retiring/renaming a post or page (or migrating from another CMS with
  * different URLs) doesn't have to mean a dead link. Returns plain arrays
@@ -39,8 +39,8 @@ final class RedirectService
 
     /**
      * $folderId lets a redirect represent a Media Manager Folder's
-     * external-link "download" (e.g. LPP-004's WordPress import, for a
-     * Simple Download Monitor file that only links off-site) so it can
+     * external-link "download" (e.g. a WordPress import, for a Simple
+     * Download Monitor file that only links off-site) so it can
      * be listed alongside that folder's real Media items — every other
      * caller leaves it null, since a plain URL redirect has no folder
      * concept of its own.
@@ -139,8 +139,8 @@ final class RedirectService
     /**
      * Sets a redirect's hit count directly, rather than incrementing it
      * — mirrors MediaStatsService::seed()'s reasoning: preserving a
-     * historical count from an external source (LPP-004's WordPress
-     * import, seeding a migrated download's count from Simple Download
+     * historical count from an external source (a WordPress import,
+     * seeding a migrated download's count from Simple Download
      * Monitor's own total) instead of every migrated redirect silently
      * restarting at 0. Not meant to be called from recordHit()'s own
      * real-request increment path.

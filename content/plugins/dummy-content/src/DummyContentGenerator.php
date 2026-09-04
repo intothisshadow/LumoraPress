@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Core logic for the bundled Dummy Content plugin (LPP-005): generates and removes realistic placeholder content via the shared import layer.
+ * Core logic for the bundled Dummy Content plugin: generates and removes realistic placeholder content via the shared import layer.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -45,20 +45,10 @@ use LumoraPress\Services\UserService;
 use RuntimeException;
 
 /**
- * Deliberately hook-agnostic and constructed directly with real Kernel
- * services (unlike FontAwesomeService's static singleton +
- * ActiveConfig::instance() pattern) — this class's only caller is the
- * admin screen, which already has $kernel by the time it runs, so there
- * is no need for the load-time-before-Kernel workaround Font Awesome
- * needs. See dummy-content.php's own docblock.
- *
  * Every created record is tagged under one batch via ContentImportRegistry
- * (source = self::SOURCE) so removeAll() can delete exactly what this
- * class created and nothing else. generate() refuses to run again while
- * a previous batch still exists — the ticket's "idempotent, re-running
- * does not duplicate" requirement is met by this hard guard rather than
- * diffing against existing content: the admin must explicitly "Remove
- * All Generated Content" before generating again.
+ * (source = self::SOURCE) so removeAll() can delete exactly what this class
+ * created. generate() refuses to run again while a previous batch still
+ * exists — the admin must remove existing generated content first.
  */
 final class DummyContentGenerator
 {
@@ -190,16 +180,9 @@ final class DummyContentGenerator
     }
 
     /**
-     * Deletes every batch this class has ever created — not just the
-     * most recent one, in case an earlier run's rows were never cleared
-     * — through each content type's own service delete() method, never
-     * a raw query, then clears the now-stale registry rows.
-     *
-     * Deletion order matters: comments before the posts they belong to,
-     * posts/pages before the users who authored them (neither
-     * PostService::delete() nor UserService::delete() enforces this
-     * itself), media/categories/tags last since nothing else here
-     * references them by a foreign key that would break.
+     * Deletes every batch this class has ever created, not just the most
+     * recent. Deletion order matters: comments before their posts, posts/
+     * pages before their authoring users, media/categories/tags last.
      *
      * @return array<string, int>
      */

@@ -54,12 +54,8 @@ $relativePath = trim((string) ($_GET['file'] ?? ''));
 $error = null;
 $unsavedContents = null;
 
-/*
- * Download is a plain GET with no state change, so it needs no CSRF check
- * — but it does need to escape the admin chrome HTML that admin/index.php
- * has already queued into the output buffer (ob_start(), see its own
- * docblock) before it can send a raw file body with its own headers.
- */
+// A plain GET with no state change needs no CSRF check, but it does need
+// to clear admin/index.php's output buffer before sending a raw file body.
 if ($slug !== '' && ($_GET['download'] ?? '') === '1' && $relativePath !== '') {
     try {
         $downloadContents = $kernel->themeFileEditor->read($slug, $relativePath);
@@ -78,16 +74,9 @@ if ($slug !== '' && ($_GET['download'] ?? '') === '1' && $relativePath !== '') {
     }
 }
 
-/*
- * Rename/Delete/Duplicate/Restore-backup each render once per tree node
- * (or per backup) on one page load — many forms with the same "form"
- * value, so each needs its own CSRF action scoped to the exact target it
- * acts on (see admin/views/appearance/widgets.php's docblock for the
- * LP-012 incident this exact mistake caused). Save/Create File/Create
- * Folder each render exactly once per page (there is only ever one
- * "currently open file" editor panel, and one create-file/create-folder
- * form), so a fixed action name per form type is safe for those.
- */
+// Rename/Delete/Duplicate/Restore-backup render once per node, so each
+// needs its own CSRF action scoped to its target; the single-instance
+// forms (Save/Create File/Create Folder) can use a fixed action name.
 $targetKey = static fn (string $path): string => sha1($slug . '|' . $path);
 
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -385,9 +374,7 @@ $editorUrl = static fn (array $query = []) => admin_url('appearance/editor') . '
 
                     <button type="submit" class="lp-button lp-button--primary" <?= $currentNode['writable'] ? '' : 'disabled' ?>>Save Changes</button>
                     <?php if ($error !== null && str_starts_with($error, 'PHP syntax error')): ?>
-                        <!-- Plain name="force_save" value="1" submit button — the browser includes a
-                             clicked submit button's own name/value with the form data automatically,
-                             so forcing a save through a known PHP syntax error needs no JS at all. -->
+                        <!-- The clicked button's own name/value submits with the form, so this needs no JS. -->
                         <button type="submit" name="force_save" value="1" class="lp-button lp-button--danger">Save Anyway</button>
                     <?php endif; ?>
                 </form>

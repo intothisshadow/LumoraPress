@@ -23,13 +23,6 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-025: this page used to be a placeholder reserving the spot LP-042
- * planned for it ("Most of LP-042's planned Security settings ... have no
- * configurable backing yet"). The login-lockout thresholds below are the
- * first of those to get a real settings UI — LoginThrottle itself already
- * existed (LP-007), just with hardcoded values.
- */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -62,11 +55,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 
     if ($form === 'trusted_image_origins' && Csrf::verify('trusted_image_origins', $token)) {
-        // Invalid lines are dropped here (TrustedImageOrigins::parse() —
-        // the same validation the csp_directives listener itself applies,
-        // include/bootstrap.php) rather than saved and then quietly
-        // ignored at header-build time, so what's shown back on this
-        // screen always matches what's actually allowed.
+        // Invalid lines are dropped here rather than saved and quietly
+        // ignored at header-build time, so this screen always matches
+        // what's actually allowed.
         $validOrigins = TrustedImageOrigins::parse((string) ($_POST['trusted_image_origins'] ?? ''));
 
         $kernel->config->setOption('trusted_image_origins', implode("\n", $validOrigins));

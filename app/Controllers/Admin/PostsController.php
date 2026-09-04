@@ -34,23 +34,13 @@ use LumoraPress\Services\ThumbnailService;
 use Throwable;
 
 /**
- * Extracted from admin/views/posts/all-posts.php and admin/views/posts/
- * new.php (LP-082, following the ThemesController precedent — see
- * DECISIONS.md's LP-082 entry for why methods here return an
- * AdminActionResult instead of calling header()/exit themselves). This is
- * also the ownership/capability-logic testing gap LP-008's own Testing
- * checklist named ("isn't unit-tested directly") and its "no end-to-end
- * admin-flow test yet" line — both close together, since neither was
- * testable until this logic existed outside a template file.
+ * POST handling for the admin Posts screens. Methods return an
+ * AdminActionResult instead of calling header()/exit themselves, so
+ * ownership/capability logic is unit-testable outside a template file.
  *
- * new.php's three AJAX-only JSON sub-actions (editor image upload, Markdown/
- * HTML format conversion, inline category quick-add — uploadEditorImage()/
- * convertContent()/quickAddCategory() below) close LP-008's "Editor
- * testing" line the same way: each has real capability/CSRF/error-handling
- * branching, so it wasn't the passthrough-with-nothing-to-test case the
- * rest of this class's earlier docblock once assumed — it just needed a
- * JSON-shaped counterpart to AdminActionResult (see each method's own
- * docblock) rather than the redirect-shaped one.
+ * The three AJAX-only JSON sub-actions (uploadEditorImage()/
+ * convertContent()/quickAddCategory()) echo JSON directly instead,
+ * since their response shape is the editor's own pre-existing contract.
  */
 final class PostsController
 {
@@ -154,11 +144,7 @@ final class PostsController
 
         $existing = $id > 0 ? $this->posts->findById($id) : null;
 
-        // Permanent delete is only offered (and only honoured) for posts
-        // already in the Trash — Move to Trash is the only reachable path
-        // to actually removing a post from every other status, the same
-        // "delete means trash first" guardrail WordPress's own list table
-        // enforces.
+        // Permanent delete is only honoured for posts already in the Trash — trash first, always.
         if (
             $existing !== null
             && $existing->status === PostStatus::Trashed
@@ -173,11 +159,7 @@ final class PostsController
     }
 
     /**
-     * Permanently deletes every trashed post the current user is allowed
-     * to touch (see canEditPost()) — same per-post revision cleanup and
-     * ownership guard as deletePermanently()/bulkAction()'s
-     * delete_permanently case, just applied to the whole Trash tab at
-     * once instead of one id or a checked selection.
+     * Permanently deletes every trashed post the current user is allowed to touch, same guard as deletePermanently().
      */
     public function emptyTrash(int $currentUserId, bool $canDeletePosts, bool $canEditOthersPosts, ?string $csrfToken): AdminActionResult
     {
@@ -263,11 +245,7 @@ final class PostsController
             return $existing !== null && $this->canEditPost($existing, $currentUserId, $canEditOthersPosts);
         }));
 
-        // Change author/Change category/Change visibility (LP-008) act on
-        // the whole editable selection in one PostService/CategoryService
-        // call rather than per-id inside the loop below, since they're not
-        // gated per-post the way trash/publish/etc. already are one row at
-        // a time.
+        // These three act on the whole editable selection in one call rather than per-id in the loop below.
         if ($bulkAction === 'change_author' && $canEditOthersPosts) {
             $targetAuthorId = (int) ($post['target_author_id'] ?? 0);
 
@@ -345,18 +323,12 @@ final class PostsController
         $commentsOpen = ($post['comments_open'] ?? null) !== null;
         $contentFormat = ContentFormat::tryFrom((string) ($post['content_format'] ?? '')) ?? get_active_editor($currentUserId);
 
-        // Contributors and anyone else without publish_posts can save as a
-        // Draft or submit for review (Pending Review, LP-008), but never
-        // set Published/Scheduled/Trashed themselves.
+        // Contributors without publish_posts can save as Draft or submit for review, never Published/Scheduled/Trashed.
         $status = $canPublish
             ? $requestedStatus
             : ($requestedStatus === PostStatus::PendingReview ? PostStatus::PendingReview : PostStatus::Draft);
 
-        // Publish date: required to actually schedule a post (Scheduled),
-        // optional as a planned date on a Draft (LP-018 "Draft scheduling")
-        // that carries forward automatically if the post is later switched
-        // to Scheduled. Gated by $canPublish, same as Visibility/Sticky/
-        // Schedule unpublishing below.
+        // Required to schedule a post, optional as a planned date on a Draft. Gated by $canPublish.
         $publishedAt = null;
 
         if ($canPublish && ($status === PostStatus::Scheduled || $status === PostStatus::Draft)) {
@@ -369,17 +341,13 @@ final class PostsController
             }
         }
 
-        // Visibility/Sticky (LP-008) are publish-time decisions, same
-        // gate as Status/Schedule above.
+        // Publish-time decisions, same gate as Status/Schedule above.
         $visibility = $canPublish
             ? (PostVisibility::tryFrom((string) ($post['visibility'] ?? '')) ?? PostVisibility::Public)
             : ($existing?->visibility ?? PostVisibility::Public);
         $isSticky = $canPublish ? ($post['is_sticky'] ?? null) !== null : ($existing?->isSticky ?? false);
 
-        // Schedule unpublishing (LP-008) — same gate; a blank field means
-        // "no scheduled unpublish", not "leave the existing one alone",
-        // since the field always round-trips the current value back
-        // through the form.
+        // Same gate; a blank field means "no scheduled unpublish", not "leave the existing one alone".
         $unpublishAt = null;
         $clearUnpublishAt = false;
 
@@ -398,9 +366,7 @@ final class PostsController
             }
         }
 
-        // Featured image resolution (LP-040): upload wins over the
-        // existing-image select, which wins over "remove", which wins
-        // over just keeping the current value.
+        // Resolution order: upload wins over existing-image select, which wins over "remove", which wins over keeping current.
         $featuredImageId = $existing?->featuredImageId;
 
         if (($post['remove_featured_image'] ?? '') === '1') {
@@ -423,11 +389,7 @@ final class PostsController
             }
         }
 
-        // Manual crop (LP-040): the hidden featured_image_crop_for_id field
-        // records which media id the on-screen rectangle was drawn against.
-        // If the featured image changed in this same request that rectangle
-        // no longer applies to anything — it's silently dropped rather than
-        // persisted against the wrong image.
+        // If the featured image changed in this same request, the crop rectangle no longer applies and is dropped.
         $featuredImageCrop = null;
         $cropForId = (int) ($post['featured_image_crop_for_id'] ?? 0);
 
@@ -451,9 +413,7 @@ final class PostsController
         }
 
         try {
-            // LP-017: snapshot the pre-update content as a revision before
-            // it's overwritten. Nothing to snapshot on create — there is no
-            // prior state yet.
+            // Snapshot pre-update content as a revision before it's overwritten. Nothing to snapshot on create.
             if ($existing !== null) {
                 $this->revisions->save(
                     RevisionableType::Post,
@@ -474,9 +434,7 @@ final class PostsController
             $this->tags->assignToPost($savedPost->id, explode(',', (string) ($post['tags'] ?? '')));
             $this->posts->updateSeo($savedPost->id, $metaTitle, $metaDescription);
 
-            // Author reassignment (LP-008) — Editor/Administrator only, same
-            // edit_others_posts gate that already lets them edit another
-            // author's post at all.
+            // Editor/Administrator only, same gate that lets them edit another author's post at all.
             if ($canEditOthersPosts) {
                 $reassignAuthorId = (int) ($post['author_id'] ?? 0);
 
@@ -485,9 +443,7 @@ final class PostsController
                 }
             }
 
-            // Custom fields (LP-008) — a repeatable key/value row editor;
-            // meta_keys[]/meta_values[] are parallel arrays built by the
-            // same index client-side.
+            // meta_keys[]/meta_values[] are parallel arrays built by the same index client-side.
             $metaKeys = is_array($post['meta_keys'] ?? null) ? $post['meta_keys'] : [];
             $metaValues = is_array($post['meta_values'] ?? null) ? $post['meta_values'] : [];
             $metaPairs = [];
@@ -526,9 +482,7 @@ final class PostsController
             && $revision->contentType === RevisionableType::Post
             && $revision->contentId === $existing->id
         ) {
-            // Snapshot the current (pre-restore) state too, so restoring is
-            // itself undoable — mirrors the snapshot-before-overwrite done
-            // on every normal save above.
+            // Snapshot the current state too, so restoring is itself undoable.
             $this->revisions->save(
                 RevisionableType::Post,
                 $existing->id,
@@ -558,15 +512,9 @@ final class PostsController
     }
 
     /**
-     * The view previously left a failed CSRF check on quick_draft/
-     * bulk_action as a silent no-op (the request just fell through to a
-     * normal re-render with no feedback) — the same class of bug LP-081
-     * found and LP-082's Themes pass fixed. Now that every branch always
-     * executes and returns a result, a failed check gets an actual message
-     * instead of vanishing silently. trash/restore_post/delete_permanently/
-     * duplicate/restore_revision already redirected explicitly on CSRF
-     * failure before this extraction, so that existing (silent-redirect)
-     * behavior is preserved unchanged for them.
+     * A failed CSRF check on quick_draft/bulk_action gets an actual
+     * error message; trash/restore_post/delete_permanently/duplicate/
+     * restore_revision redirect silently instead, unchanged from before.
      */
     private function invalidRequest(): AdminActionResult
     {
@@ -574,13 +522,9 @@ final class PostsController
     }
 
     /**
-     * Echoes a JSON body directly (never `exit`s) so PHPUnit can capture it
-     * via output buffering, the same convention `ApiController`'s endpoints
-     * already use (see `DECISIONS.md`'s LP-082 entry) — the response shape
-     * here is the editor's own pre-existing JSON contract
-     * (`content-editor.js` reads `data.filePath`/`url`/`csrfToken`/plain
-     * `error` strings), deliberately not `ApiResponse`'s REST envelope,
-     * since changing the shape would break the already-shipped client JS.
+     * Echoes a JSON body directly (never `exit`s) so PHPUnit can capture
+     * it via output buffering. Matches content-editor.js's pre-existing
+     * JSON contract rather than ApiResponse's REST envelope.
      *
      * @param array<string, mixed> $files
      */
@@ -602,25 +546,14 @@ final class PostsController
 
         try {
             $uploaded = $this->media->upload($files['file'], $currentUserId);
-            // Matches admin/views/media/upload.php's own multi-upload flow
-            // — without this, an image uploaded straight from the editor
-            // (LP-115's "Upload New" picker step) would report no size
-            // options at all in buildEditorPickerItem() below.
+            // Without this, an editor-uploaded image would report no size options in buildEditorPickerItem() below.
             $this->thumbnails->generate($uploaded);
 
-            /*
-             * Csrf::verify() is single-use — a second image upload without
-             * a full page reload would otherwise fail CSRF verification
-             * against the already-consumed token from the initial page
-             * load. content-editor.js writes this fresh token back into
-             * data-upload-csrf for the next call.
-             */
+            // Csrf::verify() is single-use — a fresh token lets a second upload succeed without a page reload.
             echo json_encode([
                 'data' => ['filePath' => $this->media->url($uploaded)],
                 'url' => $this->media->url($uploaded),
-                // LP-115: lets a freshly uploaded image drop straight into
-                // the picker's own Attachment Display Settings step,
-                // same shape queryMediaForPicker() below returns per item.
+                // Same shape queryMediaForPicker() returns, so a fresh upload drops into the picker's display-settings step.
                 'item' => $this->buildEditorPickerItem($uploaded, $this->thumbnails->thumbnailsFor((int) $uploaded['id'])),
                 'csrfToken' => Csrf::token('editor_upload'),
             ]);
@@ -631,11 +564,9 @@ final class PostsController
     }
 
     /**
-     * Paginated, search/folder-filterable image query (LP-115) for the
-     * "Insert Image" picker's grid — replaces the old single up-to-500-
-     * item `data-media-library` payload embedded on every editor page
-     * load with an on-demand AJAX query, so opening the picker on a
-     * library of any real size doesn't require loading it in full first.
+     * Paginated, search/folder-filterable image query for the "Insert
+     * Image" picker's grid, fetched on demand rather than loading the
+     * whole library on every editor page load.
      *
      * @param array<string, mixed> $post
      */
@@ -645,13 +576,10 @@ final class PostsController
     }
 
     /**
-     * Same paginated image query as queryMediaForPicker() above, reused by
-     * the Featured Image sidebar box's grid picker (featured-image-
-     * picker.js) — a distinct CSRF action name rather than sharing
-     * 'media_picker_query' since both pickers can be open on the same
-     * editor page, and Csrf::token() overwrites the single stored token
-     * per action name; issuing both under one name would let opening
-     * either picker silently invalidate the other's already-embedded token.
+     * Same query as queryMediaForPicker(), reused by the Featured Image
+     * sidebar picker — a distinct CSRF action name since both pickers
+     * can be open on the same page and Csrf::token() overwrites a
+     * shared name's token.
      *
      * @param array<string, mixed> $post
      */
@@ -688,9 +616,7 @@ final class PostsController
         }
 
         $result = $this->media->query($filters, $perPage, ($page - 1) * $perPage);
-        // One batched query for every item's thumbnails rather than one
-        // per item (LP-075's thumbnailsForMany() precedent) — a 40-item
-        // page would otherwise mean 40 separate thumbnail lookups.
+        // One batched query for every item's thumbnails rather than 40 separate lookups per page.
         $thumbnailsByMediaId = $this->thumbnails->thumbnailsForMany(
             array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
         );
@@ -701,24 +627,17 @@ final class PostsController
                 $result['items'],
             ),
             'total' => $result['total'],
-            // Csrf::verify() is single-use — the picker fires this query
-            // repeatedly (every search keystroke, folder change, and
-            // "Load More" click) within one dialog session, so each
-            // response must hand back a fresh token the same way
-            // uploadEditorImage() already does for repeat uploads.
+            // Single-use tokens: the picker fires this query repeatedly, so each response hands back a fresh one.
             'csrfToken' => Csrf::token($csrfAction),
         ]);
     }
 
     /**
-     * Shared shape for one Media row in the "Insert Image" picker
-     * (LP-115) — a `sizes` map of every size this image actually has a
-     * generated thumbnail for (plus the original as "full"), so the
-     * picker's Attachment Display Settings step (LP-075) can resolve the
-     * size/link-to choice entirely client-side with no extra request.
-     * Used by both uploadEditorImage() (one freshly uploaded item) and
-     * queryMediaForPicker() (a page of existing items) so the two stay
-     * in the same shape content-editor.js's showSettingsStep() expects.
+     * Shared shape for one Media row in the "Insert Image" picker — a
+     * `sizes` map of every generated thumbnail size plus the original as
+     * "full", so the Attachment Display Settings step resolves entirely
+     * client-side. Used by both uploadEditorImage() and
+     * queryMediaForPicker() to stay in the shape content-editor.js expects.
      *
      * @param array<string, mixed> $item
      * @param array<int, array<string, mixed>> $thumbnailsForItem

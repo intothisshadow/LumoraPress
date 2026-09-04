@@ -20,22 +20,12 @@ namespace LumoraPress\Plugins\LumoraGalleryShortcodes;
 use LumoraPress\Core\Theme\MediaViewer;
 
 /**
- * Registered on the `content_html` filter (see
- * lumora-gallery-shortcodes.php), the same hook every other shortcode
- * in this codebase renders through. No role/capability gate — available
- * to whoever can already edit the post/page it's typed into, the same
- * as `[lumora_folder_gallery]`/`[lumora_downloads]`/every other
- * shortcode here (see this ticket's own Goal note in `TODO-PLUGINS.md`
- * on why a second, narrower access model isn't needed on top of
- * ordinary content-authoring permissions).
+ * Registered on the `content_html` filter, like every other shortcode in this codebase. No
+ * role/capability gate — ordinary content-authoring permissions are the only access control.
  *
- * Every thumbnail links to the real full-size image and opens it in
- * Lumora Press's own existing PhotoSwipe lightbox
- * (`MediaViewer::markUsed()` + the same `data-pswp-*` attribute
- * convention `ContentRenderer::addLightboxAttributes()` establishes for
- * local media) — the Gallery `images` table's own `width`/`height`
- * columns supply the lightbox dimensions directly, no image processing
- * needed on this side.
+ * Every thumbnail links to the full-size image and opens it in Lumora Press's own PhotoSwipe
+ * lightbox, using the same `data-pswp-*` convention ContentRenderer establishes for local
+ * media — the Gallery `images` table's own width/height columns supply the dimensions.
  */
 final class GalleryShortcode
 {

@@ -19,10 +19,6 @@ namespace LumoraPress\Core\Theme;
 
 use RuntimeException;
 
-/**
- * Static bridge exposing the active ThemeRenderer to the procedural
- * get_header()/get_footer()/get_sidebar() template helpers.
- */
 final class ActiveTheme
 {
     private static ?ThemeRenderer $instance = null;

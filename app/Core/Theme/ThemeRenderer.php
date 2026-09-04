@@ -20,9 +20,7 @@ namespace LumoraPress\Core\Theme;
 use RuntimeException;
 
 /**
- * Locates and renders classic PHP theme templates (header.php, footer.php,
- * sidebar.php, index.php, single.php, page.php, archive.php, search.php,
- * 404.php). All public-facing HTML rendering goes through this class.
+ * All public-facing HTML rendering goes through this class.
  */
 final class ThemeRenderer
 {
@@ -57,14 +55,9 @@ final class ThemeRenderer
     }
 
     /**
-     * Appends `?v={mtime}` when $path resolves to a real file on disk —
-     * a cache-busting query string that changes automatically whenever
-     * the file itself changes, no version-number bookkeeping needed.
-     * Without this, a stylesheet/script fix shipped between releases
-     * (via the manual ZIP update, LP-026) can sit invisible in every
-     * visitor's browser cache indefinitely, since the URL never changes
-     * to tell the browser to re-fetch it — a real bug this exact gap
-     * caused (see docs/CHANGELOG.md's entry for this date).
+     * Appends `?v={mtime}` when $path resolves to a real file on disk — a
+     * cache-busting query string that updates automatically whenever the
+     * file changes, with no version-number bookkeeping needed.
      */
     public function themeUrl(string $path = ''): string
     {

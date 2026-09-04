@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Media Manager (LP-005): validated uploads and their metadata.
+ * Media Manager: validated uploads and their metadata.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -26,40 +26,20 @@ use LumoraPress\Services\Storage\MediaStorageInterface;
 use RuntimeException;
 
 /**
- * Media Manager (LP-005): validated uploads (images, documents, archives,
- * audio, video), virtual-folder assignment, metadata, and search/filtering.
- * Full-blown gallery display/organization of large image collections is
- * intentionally out of scope for this class — that's Lumora Gallery's
- * domain, a separate sibling application. Note that isn't an image-editing
- * deferral: Lumora Gallery itself has no image-editing/cropping capability
- * either (by design, and won't) — this project's own limited image
- * operations (LP-080's featured-image crop, thumbnail generation) live
- * directly in MediaService/ThumbnailService, not offloaded anywhere.
+ * Media Manager: validated uploads, virtual-folder assignment, metadata, and search.
+ * Gallery display/organization of large image collections is Lumora Gallery's domain, not
+ * this class's — Lumora Gallery has no image-editing capability either, so this project's
+ * own limited operations (featured-image crop, thumbnails) live directly here.
  *
- * Folder assignment is purely organizational — file_path (the physical
- * location) and the public URL built from it are never touched by move(),
- * so moving a file between folders can never change its stable URL. See
- * FolderService for the folder tree itself.
- *
- * isAllowedExtension()/isAllowedMimeType()/sanitizeFilename() are public
- * so MediaImportService (LP-041, importing existing server files without
- * a browser upload) can validate and name files exactly the same way
- * upload() does, without duplicating this class's allow-lists.
+ * Folder assignment is purely organizational — move() never touches file_path or the public
+ * URL, so a file's URL stays stable regardless of which folder it's filed under.
  */
 final class MediaService
 {
     /**
-     * LP-005's "Other downloadable resources" broadening: word-processing
-     * documents (doc/docx/rtf/odt — guides, fanlisting text) and rar/7z
-     * archives (downloadable themes, icon packs, wallpaper sets) on top of
-     * the original image/document/archive/audio/video set. SVG is
-     * deliberately excluded — unlike every other image type here, a
-     * browser executes an SVG's embedded `<script>` when it's opened
-     * directly (not `<img>`-embedded, but navigated to as its own
-     * document, which every media file here is reachable as via its plain
-     * static URL — see the class docblock), a stored-XSS risk WordPress
-     * itself excludes SVG from its own default allow-list for the same
-     * reason.
+     * SVG is deliberately excluded: unlike other image types here, a browser executes an
+     * SVG's embedded `<script>` when navigated to directly — a stored-XSS risk WordPress
+     * excludes SVG from its own default allow-list for the same reason.
      */
     private const ALLOWED_EXTENSIONS = [
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'ico',
@@ -70,13 +50,8 @@ final class MediaService
     ];
 
     /**
-     * text/vtt is listed alongside text/plain (LP-031's video
-     * captions/subtitles) because mime_content_type()'s detection of a
-     * .vtt file is not consistent across systems' magic databases — some
-     * report text/vtt, others fall back to text/plain, which was already
-     * allowed for other reasons. Both are accepted so a WebVTT upload
-     * isn't rejected purely due to which magic database the host happens
-     * to have installed.
+     * text/vtt is listed alongside text/plain since mime_content_type()'s detection of a
+     * .vtt file varies by host — some report text/vtt, others fall back to text/plain.
      */
     private const ALLOWED_MIME_TYPES = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -94,11 +69,8 @@ final class MediaService
     ];
 
     /**
-     * Friendly filter/display categories, keyed by the MIME types that
-     * belong to each — used by query()'s "type" filter and typeCategory()
-     * for admin-UI labeling. A MIME type not listed here (shouldn't
-     * happen, since ALLOWED_MIME_TYPES is the only way a file gets
-     * stored) falls back to "other".
+     * Friendly filter/display categories, keyed by the MIME types that belong to each — used
+     * by query()'s "type" filter and typeCategory(). An unlisted MIME type falls back to "other".
      *
      * @var array<string, array<int, string>>
      */
@@ -119,33 +91,20 @@ final class MediaService
     private readonly MediaStorageInterface $storage;
 
     /**
-     * Per-request memoization for find() (LP-008 Performance) — a single
-     * post/archive/search-results render can call the Featured Image theme
-     * API (has_post_thumbnail()/the_post_thumbnail()/
-     * the_post_thumbnail_lightbox()) several times against the same media
-     * id for one item, and the same media id often repeats across several
-     * items in a listing. One instance of this service lives for the
-     * whole request (built once in bootstrap.php), so caching by id here
-     * collapses those into a single query without needing a shared cache
-     * store. Every write method below that can change a row already in
-     * this cache must evict it — see each one's own note.
+     * Per-request memoization for find() — a single render can call the Featured Image theme
+     * API several times against the same media id, and one service instance lives for the
+     * whole request. Every write method below that can change a cached row must evict it.
      *
      * @var array<int, array<string, mixed>|null>
      */
     private array $findCache = [];
 
     /**
-     * @param Closure(string, string): bool|null $moveUploadedFile Overrides
-     *     the default storage driver's file-move operation — see
-     *     LocalFilesystemStorage's constructor docblock for why tests need
-     *     this. Ignored when $storage is given explicitly.
-     * @param ?HookManager $hooks Optional (LP-037) — see PostService's
-     *     docblock for why; fires 'media_saved'/'media_deleted' for cache
-     *     invalidation.
-     * @param ?MediaStorageInterface $storage LP-005's storage abstraction
-     *     — defaults to local disk (LocalFilesystemStorage, built from
-     *     $uploadsPath/$uploadsUrl/$moveUploadedFile) when omitted. A
-     *     future S3/R2 driver plugs in here without this class changing.
+     * @param Closure(string, string): bool|null $moveUploadedFile Overrides the default
+     *     storage driver's file-move operation for tests. Ignored when $storage is given.
+     * @param ?HookManager $hooks Fires 'media_saved'/'media_deleted' for cache invalidation.
+     * @param ?MediaStorageInterface $storage Defaults to local disk when omitted; a future
+     *     S3/R2 driver plugs in here without this class changing.
      */
     public function __construct(
         private readonly Database $database,
@@ -240,17 +199,12 @@ final class MediaService
     }
 
     /**
-     * Registers a file that already exists on disk (under $uploadsPath)
-     * as a new `media` row — LP-080's Media-Manager "Create Cropped
-     * Featured Image" (ThumbnailService::createCroppedFeaturedMedia())
-     * is the first caller: the file itself was already written by GD
-     * before this runs, so unlike upload() there's no browser-submitted
-     * upload to validate or move, just a row to insert. Mirrors the same
-     * INSERT shape upload()/MediaImportService::import() already use.
+     * Registers a file that already exists on disk as a new `media` row, with no
+     * browser-submitted upload to validate or move — used e.g. by
+     * ThumbnailService::createCroppedFeaturedMedia() for a GD-written file.
      *
-     * $uploadedAt lets a bulk importer (e.g. LPP-004's WordPress import)
-     * preserve a source attachment's original upload date instead of
-     * always stamping "now" — every other caller leaves it null.
+     * $uploadedAt lets a bulk importer preserve a source's original upload date; other
+     * callers leave it null.
      *
      * @return array<string, mixed>
      */
@@ -298,17 +252,10 @@ final class MediaService
     }
 
     /**
-     * LP-005's "Replace" action — swaps a media item's file content in
-     * place while keeping its id, file_path, and public URL exactly as
-     * they were, so every post/page/setting already pointing at it keeps
-     * working without edits. Deliberately a single-item action, not a
-     * bulk one: there's no sensible UI for mapping several different
-     * replacement files onto several different selected items in one
-     * bulk-action submit (see TODO.md's LP-005 entry).
-     *
-     * The replacement file's extension must match the original's exactly
-     * — the only way file_path (and so the URL) can stay untouched
-     * without also risking a MIME/extension mismatch on disk.
+     * The "Replace" action — swaps a media item's file content in place while keeping its
+     * id, file_path, and public URL, so everything already pointing at it keeps working.
+     * Single-item only; the replacement's extension must match the original's exactly so
+     * file_path can stay untouched without a MIME/extension mismatch on disk.
      *
      * @param array{name: string, type: string, tmp_name: string, error: int, size: int} $file
      * @return array<string, mixed>
@@ -393,12 +340,7 @@ final class MediaService
         return $updated;
     }
 
-    /**
-     * Whether $extension clears the allow-list gate — exposed publicly
-     * (alongside isAllowedMimeType()) so MediaImportService (LP-041) can
-     * validate scanned server files against the exact same allow-list
-     * upload() uses, rather than duplicating it.
-     */
+    /** Exposed publicly so MediaImportService validates against the same allow-list upload() uses. */
     public function isAllowedExtension(string $extension): bool
     {
         return in_array($extension, self::ALLOWED_EXTENSIONS, true);
@@ -422,14 +364,10 @@ final class MediaService
     }
 
     /**
-     * Reverse lookup from a stored file's relative path back to its Media
-     * row (LPP-013) — used to mask an already-rendered `content/uploads/...`
-     * URL found in free-text HTML (a Download's Description field) back to
-     * a `/media/{id}/view` link, since that content was authored against
-     * the real URL directly (content-editor.js's Insert Image button has
-     * no notion of Downloads-specific masking) rather than a media id.
-     * $relativePath must already be stripped of the uploads URL prefix —
-     * see the Downloads plugin's DownloadMediaUrlMasker::relativePathFromUrl().
+     * Reverse lookup from a file's relative path back to its Media row — used to mask an
+     * already-rendered `content/uploads/...` URL found in free-text HTML back to a
+     * `/media/{id}/view` link. $relativePath must already be stripped of the uploads URL
+     * prefix; see DownloadMediaUrlMasker::relativePathFromUrl().
      *
      * @return array<string, mixed>|null
      */
@@ -460,19 +398,12 @@ final class MediaService
     }
 
     /**
-     * LP-005's bulk "Rename" action: a find/replace substring rename
-     * across every selected item's display name. Renames file_name only —
-     * like move()/updateMetadata(), never touches file_path, so a file's
-     * public URL never changes just because its display name did (see
-     * class docblock). A no-op ($find === '') is refused rather than
-     * silently doing nothing, since str_contains('', '') is always true
-     * and would otherwise "match" (and leave unchanged, since
-     * str_replace('', $replace, $name) === $name) every selected item.
+     * The bulk "Rename" action: find/replace across every selected item's file_name only,
+     * never file_path, so a file's public URL never changes. A blank $find is refused, since
+     * str_contains('', '') would otherwise "match" every selected item as a no-op.
      *
      * @param array<int, int> $ids
-     * @return int How many of the selected ids actually had $find in
-     *     their name (and so were renamed) — items without a match are
-     *     left untouched, not renamed to a duplicate/garbage name.
+     * @return int How many ids actually had $find in their name and were renamed.
      */
     public function bulkRenameByReplacing(array $ids, string $find, string $replace): int
     {
@@ -504,18 +435,12 @@ final class MediaService
     }
 
     /**
-     * LP-005's bulk "Change metadata" action. Unlike updateMetadata()
-     * (single-item edit form, where every field is always submitted and a
-     * blank field means "clear this"), a bulk edit only ever sets fields
-     * the admin actually filled in — null here means "leave this field's
-     * existing value alone" for every selected item, not "clear it",
-     * since applying a blank caption/description/notes to every selected
-     * item at once would otherwise silently wipe out per-file text nobody
-     * asked to remove.
+     * The bulk "Change metadata" action. Unlike updateMetadata()'s single-item form, null
+     * here means "leave this field alone" rather than "clear it" — otherwise a blank field
+     * would silently wipe per-file text on every selected item at once.
      *
      * @param array<int, int> $ids
-     * @return int How many ids were updated (every valid id, regardless
-     *     of which fields were non-null)
+     * @return int How many ids were updated.
      */
     public function bulkUpdateMetadata(array $ids, ?string $altText, ?string $caption, ?string $description, ?string $notes): int
     {
@@ -557,13 +482,9 @@ final class MediaService
     }
 
     /**
-     * LP-031's video poster image and caption/subtitle track: both are
-     * just references to other media items (an image for the poster, a
-     * .vtt file for the track), so no new upload path is needed — an
-     * admin picks from already-uploaded media via a <select>. A separate
-     * method rather than folding into updateMetadata() since these two
-     * fields are video-specific, not part of the generic alt/caption/
-     * description/notes set every media type shares.
+     * Video poster image and caption track are references to other media items, picked from
+     * a <select> — no new upload path needed. Kept separate from updateMetadata() since
+     * these fields are video-specific.
      */
     public function setVideoAssets(int $id, ?int $posterMediaId, ?int $captionTrackMediaId): void
     {
@@ -582,21 +503,13 @@ final class MediaService
     }
 
     /**
-     * Filterable listing, replacing the old browse()/search() split.
+     * Filterable listing.
      *
      * @param array{folderIds?: array<int, int>, unassignedOnly?: bool, term?: string, type?: string, dateFrom?: string, dateTo?: string, widthMin?: int, widthMax?: int, heightMin?: int, heightMax?: int, sizeMin?: int, sizeMax?: int} $filters
-     *     folderIds: restrict to these folder ids — callers pass exactly
-     *     the folder(s) they mean (e.g. admin/views/media/media.php's
-     *     folder view passes only the current folder's own id, not its
-     *     descendants, so a parent folder's view never shows what's
-     *     filed under a child folder). unassignedOnly:
-     *     restrict to files with no folder ("General Uploads"); ignored if
-     *     folderIds is set. term: matches file_name. type: one of
-     *     TYPE_CATEGORY_MIME_TYPES's keys. dateFrom/dateTo: 'Y-m-d' strings.
-     *     widthMin/widthMax/heightMin/heightMax: pixel bounds against the
-     *     width/height columns (NULL for non-image files, so these
-     *     necessarily exclude them — matches the fact that a size range
-     *     only makes sense for images in the first place). sizeMin/sizeMax:
+     *     folderIds: exact folders to restrict to, not their descendants. unassignedOnly:
+     *     files with no folder; ignored if folderIds is set. term: matches file_name. type:
+     *     one of TYPE_CATEGORY_MIME_TYPES's keys. dateFrom/dateTo: 'Y-m-d' strings.
+     *     width/height bounds are NULL (and so excluded) for non-image files. sizeMin/sizeMax:
      *     byte bounds against file_size, any file type.
      * @return array{items: array<int, array<string, mixed>>, total: int}
      */
@@ -624,10 +537,8 @@ final class MediaService
 
         $termWords = preg_split('/\s+/', trim((string) ($filters['term'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
 
-        // Every word must appear somewhere in file_name (AND across
-        // words), not the whole typed string as one contiguous substring —
-        // "game wallpaper" should match "wallpaper-game-final.jpg" just as
-        // well as "game-wallpaper-01.jpg".
+        // Each word must appear in file_name (AND across words), not the whole typed
+        // string as one substring, so word order in the filename doesn't matter.
         foreach ($termWords as $i => $word) {
             $key = "term_{$i}";
             $where[] = "file_name LIKE :{$key}";
@@ -698,28 +609,18 @@ final class MediaService
         return ['items' => $items, 'total' => $total];
     }
 
-    /**
-     * Total item count across every folder — the sidebar's "All Media"
-     * badge (LP-121). A plain COUNT(*), not a query()/largestFiles()-style
-     * full row fetch just to count.
-     */
+    /** Total item count across every folder — the sidebar's "All Media" badge. */
     public function countAll(): int
     {
         return (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table());
     }
 
     /**
-     * Item counts grouped by folder_id in a single query (LP-121) — the
-     * sidebar's per-folder badges need every folder's own directly-assigned
-     * count at once, not one COUNT(*) per folder rendered (an N+1 query
-     * per page load as the folder tree grows). A folder with zero items
-     * assigned directly is simply absent from the result rather than
-     * present with 0 — FolderService::directCountsByFolderId() is the one
-     * that fills in the zeroes and rolls counts up to ancestors, since only
-     * it knows the full folder tree shape.
+     * Item counts grouped by folder_id in a single query, avoiding an N+1 per folder
+     * rendered. A folder with zero items is simply absent, not present with 0 —
+     * FolderService::directCountsByFolderId() fills in zeroes and rolls up to ancestors.
      *
-     * @return array<int, int> folder_id (or 0 for unassigned/"General
-     *     Uploads") => item count
+     * @return array<int, int> folder_id (or 0 for unassigned) => item count
      */
     public function directCountsByFolderId(): array
     {
@@ -753,10 +654,8 @@ final class MediaService
     }
 
     /**
-     * Largest files first, any type — LP-005's "Large Files" Smart
-     * Collection. An unpaginated, capped list, the same "quick, capped
-     * listing" precedent LP-006's built-in views (mostDownloaded() etc. in
-     * MediaStatsService) already established.
+     * Largest files first, any type — the "Large Files" Smart Collection. An unpaginated,
+     * capped list.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -770,10 +669,8 @@ final class MediaService
     }
 
     /**
-     * Images with no alt text set — LP-005's "Missing Alt Text" Smart
-     * Collection, an accessibility-maintenance aid (see this project's
-     * Accessibility goal). Non-image files are excluded outright since alt
-     * text is meaningless for them.
+     * Images with no alt text set — the "Missing Alt Text" Smart Collection. Non-image files
+     * are excluded, since alt text is meaningless for them.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -787,10 +684,8 @@ final class MediaService
     }
 
     /**
-     * Full media rows for a set of ids, in no particular guaranteed order
-     * beyond upload date — used to render a Smart Collection built from ids
-     * gathered elsewhere (e.g. MediaUsageChecker's featured-image lookups)
-     * rather than a query() filter.
+     * Full media rows for a set of ids — used to render a Smart Collection built from ids
+     * gathered elsewhere rather than a query() filter.
      *
      * @param array<int, int> $ids
      * @return array<int, array<string, mixed>>
@@ -848,9 +743,8 @@ final class MediaService
     }
 
     /**
-     * The file's real filesystem location — needed by callers that must
-     * read the file's actual bytes (LP-005's bulk ZIP download) rather
-     * than just link to it.
+     * The file's real filesystem location — needed by callers that read the file's actual
+     * bytes (e.g. a bulk ZIP download) rather than just link to it.
      *
      * @param array<string, mixed> $media
      */
@@ -860,31 +754,12 @@ final class MediaService
     }
 
     /**
-     * Sends $media's actual bytes as the HTTP response (LPP-013) —
-     * SiteController::mediaDownload()/mediaView() no longer just
-     * redirect to the real static file URL, which left the real
-     * `content/uploads/...` path visible in the browser's address bar
-     * after a single click. Headers only; the caller is still
-     * responsible for ending the request afterward (`exit`), same as
-     * every other header()-then-exit response in SiteController.
-     *
-     * $inline chooses `Content-Disposition: inline` (embedded preview —
-     * a lightbox/description image) vs `attachment` (an explicit
-     * "Download" click) — the same file can legitimately be served
-     * either way depending on which route requested it.
-     *
-     * `X-Content-Type-Options: nosniff` matters here specifically
-     * because several allowed types (text/plain, text/xml,
-     * application/json) are served with their real, user-controlled
-     * filename and content — without it, some browsers will sniff and
-     * render such a response as HTML if the bytes look like markup,
-     * which is a real (if narrow) stored-XSS surface for a directly
-     * PHP-streamed response in a way a webserver's own static file
-     * handling isn't normally exposed to.
-     *
-     * Returns false (nothing sent) when the file no longer exists on
-     * disk — the caller answers with its own 404 in that case, rather
-     * than this method half-sending headers for a body it can't produce.
+     * Sends $media's actual bytes as the HTTP response rather than redirecting to the real
+     * static file URL, which would expose the `content/uploads/...` path. Headers only; the
+     * caller must still `exit` afterward. $inline picks `Content-Disposition: inline` vs
+     * `attachment`. `X-Content-Type-Options: nosniff` guards against a browser sniffing a
+     * text/plain-etc. response as HTML — a narrow stored-XSS surface for streamed content.
+     * Returns false when the file no longer exists on disk, so the caller can 404 instead.
      *
      * @param array<string, mixed> $media
      */
@@ -908,8 +783,8 @@ final class MediaService
     }
 
     /**
-     * Public so MediaImportService (LP-041) builds destination filenames
-     * the same way upload() does, rather than duplicating this logic.
+     * Public so MediaImportService builds destination filenames the same
+     * way upload() does, rather than duplicating this logic.
      */
     public function sanitizeFilename(string $name): string
     {

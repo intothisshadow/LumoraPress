@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Bundled Font Awesome icon metadata (LPP-002): a curated subset of Font
+ * Bundled Font Awesome icon metadata: a curated subset of Font
  * Awesome 6 Free's solid-style icon set, used by the admin icon picker
  * (TinyMCE/EasyMDE) and its search cache — not the full upstream catalog,
  * which this plugin never vendors (see FontAwesomeService::cssUrls()'s own

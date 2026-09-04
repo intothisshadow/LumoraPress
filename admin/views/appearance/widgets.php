@@ -23,19 +23,12 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-048: widget assignments are persisted as one JSON option
- * ("widgets_config", keyed by sidebar id) rather than a dedicated table —
- * same "structured value as JSON in the options table" approach
- * active_plugins already uses. Every form below loads the full config,
- * mutates the one sidebar/widget it targets, and saves the whole thing
- * back; WidgetManager itself (in-memory for this request only) is kept in
- * sync too so the page re-renders with the change reflected immediately
- * without needing a redirect round-trip through bootstrap.php's own
- * loader. WidgetManager::INACTIVE_SIDEBAR_ID is one more entry in this
- * same JSON structure — a reserved, unregistered "sidebar" id that holds
- * deactivated widgets until they're reactivated or deleted permanently.
- */
+// Widget assignments persist as one JSON option ("widgets_config", keyed by
+// sidebar id). Each form loads the full config, mutates the one
+// sidebar/widget it targets, saves it back, and updates the in-memory
+// WidgetManager too so the page re-renders with the change immediately.
+// INACTIVE_SIDEBAR_ID is a reserved "sidebar" id in this same structure
+// that holds deactivated widgets until reactivated or deleted.
 $loadWidgetsConfig = static function () use ($kernel): array {
     $decoded = json_decode((string) $kernel->config->option('widgets_config', '{}'), true);
 
@@ -47,10 +40,8 @@ $saveWidgetsConfig = static function (array $widgetsConfig) use ($kernel): void 
 };
 
 /**
- * Field definitions per widget type, used to both render each widget's
- * settings form and to know which POSTed settings[] keys to keep on
- * save. Keeping this in one place avoids the render form and the save
- * handler drifting out of sync with each other.
+ * Field definitions per widget type, shared by the render form and the
+ * save handler so they can't drift out of sync.
  *
  * @return array<int, array{key: string, label: string, type: string, options?: array<string, string>}>
  */
@@ -62,12 +53,8 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
         'search' => [$titleField],
         'nav_menu' => [$titleField, ['key' => 'location', 'label' => 'Menu', 'type' => 'select', 'options' => $kernel->menus->locations()]],
-        // No "number to show" limit (LP-104) — the widget now renders every
-        // page as a nested tree, matching WordPress's own core Pages
-        // widget, which has never had one either. A hard item limit on a
-        // tree is ambiguous (it can orphan a shown child whose parent fell
-        // outside the cut, or include a childless parent while excluding
-        // its children), so the widget always shows the full page tree.
+        // No "number to show" limit — a hard cut on a tree is ambiguous
+        // (can orphan or strand children), so it always shows the full tree.
         'pages' => [$titleField],
         'categories' => [$titleField, ['key' => 'show_count', 'label' => 'Show post counts', 'type' => 'checkbox']],
         'recent_posts' => [$titleField, ['key' => 'limit', 'label' => 'Number of posts to show', 'type' => 'number']],
@@ -92,8 +79,7 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
 
 /**
  * Renders one widget's settings fields — shared by the per-sidebar list
- * and the Inactive Widgets list below, which otherwise duplicated this
- * exact field-type switch.
+ * and the Inactive Widgets list below.
  *
  * @param array{id: string, type: string, settings: array<string, mixed>} $widget
  * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>}> $fields
@@ -144,18 +130,9 @@ $postedWidgetId = trim((string) ($_POST['widget_id'] ?? ''));
 $postedSidebarId = trim((string) ($_POST['sidebar_id'] ?? ''));
 $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-/*
- * Every widget on this page renders its own Save/Move Up/Move Down/
- * Deactivate/Activate/Delete form, and one "Add Widget" form per sidebar —
- * many forms on one page load. Csrf::field()/verify() are keyed by action
- * *name*, and Csrf::field() overwrites the session's token for a given
- * name on every call, so reusing one shared name across all of them would
- * leave every form but the last-rendered one silently submitting an
- * already-invalidated token (see CommentService's/SiteController's own
- * docblocks for the LP-012 incident this exact mistake caused). Each
- * action name below is scoped to the specific widget/sidebar id it acts
- * on instead.
- */
+// Many forms render on this page load; Csrf::field() overwrites the
+// session's token per action name on every call, so each name below is
+// scoped to the specific widget/sidebar id it acts on.
 $postedDirection = (string) ($_POST['direction'] ?? '');
 $postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
 $postedPosition = (string) ($_POST['position'] ?? 'before');
@@ -163,16 +140,12 @@ $postedTargetSidebarId = trim((string) ($_POST['target_sidebar_id'] ?? ''));
 $csrfAction = match ($form) {
     'add_widget' => 'widget_add_' . $postedSidebarId,
     'update_widget' => 'widget_update_' . $postedWidgetId,
-    // Move Up and Move Down render as two separate forms for the same
-    // widget id — scoped by direction too, or the second-rendered form's
-    // Csrf::field() call would overwrite the first's token (same
-    // per-form-not-just-per-page scoping this whole action-name scheme
-    // exists for).
+    // Move Up/Down render as two forms for the same widget id, so scoped
+    // by direction too or the second Csrf::field() call would overwrite
+    // the first's token.
     'move_widget' => 'widget_move_' . $postedDirection . '_' . $postedWidgetId,
-    // One reposition form per sidebar (see the rendering below), not per
-    // widget — sortable.js fills in its dragged/target/position fields
-    // and submits it on drop, so this action name only needs to be
-    // scoped per sidebar.
+    // One reposition form per sidebar, not per widget — sortable.js fills
+    // its dragged/target/position fields and submits on drop.
     'reposition_widget' => 'widget_reposition_' . $postedSidebarId,
     'deactivate_widget' => 'widget_deactivate_' . $postedWidgetId,
     'activate_widget' => 'widget_activate_' . $postedWidgetId,
@@ -237,10 +210,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
 
         $error = 'That widget no longer exists.';
     } elseif ($form === 'deactivate_widget') {
-        // LP-048 "inactive widgets": moves the widget out of its sidebar
-        // and into the reserved INACTIVE_SIDEBAR_ID bucket instead of
-        // deleting it, preserving its settings so it can be reactivated
-        // (into this or any other sidebar) or deleted permanently later.
+        // Moves the widget into the reserved INACTIVE_SIDEBAR_ID bucket
+        // instead of deleting it, preserving settings for later reactivation.
         $widgetId = $postedWidgetId;
         $widgetsConfig = $loadWidgetsConfig();
         $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
@@ -267,9 +238,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         header('Location: ' . admin_url('appearance/widgets') . '?deactivated=1');
         exit;
     } elseif ($form === 'activate_widget') {
-        // Moves a widget out of the inactive bucket and appends it to a
-        // chosen registered sidebar. $sidebarId here is always
-        // INACTIVE_SIDEBAR_ID (the bucket the widget currently lives in);
+        // $sidebarId here is always INACTIVE_SIDEBAR_ID (the source);
         // target_sidebar_id is the destination the admin picked.
         if (!array_key_exists($postedTargetSidebarId, $knownSidebars)) {
             $error = 'Choose a widget area to activate this widget into.';
@@ -341,12 +310,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
         exit;
     } elseif ($form === 'reposition_widget') {
-        // Drag-and-drop reordering (LP-048): remove the dragged widget,
-        // find where the drop target now sits in the remaining list, and
-        // reinsert immediately before or after it — the standard
-        // "splice out, splice back in" reorder algorithm, so this works
-        // for a drag to any position, not just an adjacent swap like
-        // Move Up/Move Down.
+        // Splice out the dragged widget, then splice it back in at the
+        // target's position — works for a drag to any position, not just
+        // an adjacent swap.
         $widgetId = $postedWidgetId;
         $targetId = $postedTargetId;
         $widgetsConfig = $loadWidgetsConfig();
@@ -515,14 +481,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
 <?php endforeach; ?>
 
 <?php
-/*
- * LP-048 "inactive widgets": a holding area for widgets deactivated out of
- * a real sidebar above, mirroring classic WordPress's own Inactive
- * Widgets area. Always rendered (even when empty) so the feature is
- * discoverable before a widget has ever been deactivated, matching the
- * "No widgets in this area yet." placeholder pattern used for real
- * sidebars above.
- */
+// Always rendered (even when empty) so the feature is discoverable before
+// a widget has ever been deactivated.
 $inactiveWidgets = $kernel->widgets->widgetsFor(WidgetManager::INACTIVE_SIDEBAR_ID);
 ?>
 <section class="lp-admin__panel lp-widgets-area lp-widgets-area--inactive">

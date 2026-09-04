@@ -23,15 +23,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * Two independent sections (LP-034; Custom CSS moved to its own
- * appearance/custom-css.php sub-page in LP-062): Theme Management and
- * Branding — each with its own "form" value. POST handling itself lives
- * in ThemesController (LP-082, the first admin view extracted this way —
- * see DECISIONS.md); this view only reads the request, dispatches to the
- * matching controller method, and turns the returned AdminActionResult
- * into either a redirect or an inline $error string.
- */
+// Two independent sections — Theme Management and Branding — each with its
+// own "form" value. POST handling lives in ThemesController; this view
+// dispatches to it and turns the result into a redirect or $error string.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -130,19 +124,9 @@ $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId
             $searchHaystack = strtolower($info->name . ' ' . $info->author . ' ' . implode(' ', $info->tags));
             $templateId = 'lp-theme-details-' . $info->slug;
             $previewUrl = site_url('') . '?lp_preview_theme=' . rawurlencode($info->slug);
-            /*
-             * Computed once and reused in both the visible card's Activate
-             * form and its details-template counterpart below — calling
-             * Csrf::field() a second time for the same action name would
-             * overwrite the session's stored token for it, silently
-             * invalidating whichever form was rendered first (the
-             * LP-012-style collision its own docblock above warns about,
-             * just within a single theme's two forms rather than across
-             * themes). LP-137's new card-level quick Delete button
-             * reuses $deleteCsrfField for the exact same reason, now
-             * that Delete also renders twice per theme (card + details)
-             * instead of once.
-             */
+            // Computed once and reused by both the card and its details
+            // template — a second Csrf::field() call for the same action
+            // would overwrite the first form's token.
             $activateCsrfField = Csrf::field('activate_theme_' . $info->slug);
             $deleteCsrfField = Csrf::field('delete_theme_' . $info->slug);
             ?>

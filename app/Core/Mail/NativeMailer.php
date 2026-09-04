@@ -20,10 +20,8 @@ namespace LumoraPress\Core\Mail;
 /**
  * Sends mail via PHP's built-in mail() function — no PHPMailer/Symfony
  * Mailer dependency, matching the fact that the main application has no
- * Composer dependency of its own at all (only the separate PHP Test Suite
- * does). This is the only mail transport most shared hosts guarantee is
- * configured out of the box, which is exactly the deployment target
- * CLAUDE.md's Performance goals describe.
+ * Composer dependency of its own at all. This is the only mail transport
+ * most shared hosts guarantee is configured out of the box.
  */
 final class NativeMailer implements Mailer
 {

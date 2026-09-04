@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Coarse browser/device classification from a User-Agent string (LPP-014).
+ * Coarse browser/device classification from a User-Agent string.
  *
  * @package LumoraPress
  * @subpackage Plugins

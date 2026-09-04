@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates, skips, or overwrites a Comment from an ImportedComment DTO, resolving its parent through a caller-maintained id map and recording provenance (LPP-004/LPP-005 Phase 1).
+ * Creates, skips, or overwrites a Comment from an ImportedComment DTO, resolving its parent through a caller-maintained id map and recording provenance.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -38,14 +38,9 @@ final class CommentImporter
     }
 
     /**
-     * $existingContentMode is null on every call site except a
-     * deliberate re-import against a source already imported once
-     * before — see ExistingContentMode's own docblock. Overwrite is
-     * narrower here than for Post/Page/Media: CommentService offers no
-     * combined update() at all, only updateContent()/updateStatus() —
-     * a comment's author/parent/date are never changed after creation
-     * by any existing API, so those fields are simply left as they were
-     * on the first import.
+     * $existingContentMode is null except on a deliberate re-import. Overwrite is narrower
+     * here than for Post/Page/Media: CommentService has no combined update(), only
+     * updateContent()/updateStatus(), so author/parent/date are left as they were on first import.
      *
      * @param array<string, int> $externalIdToLocalId
      */

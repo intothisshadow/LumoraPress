@@ -19,7 +19,7 @@ namespace LumoraPress\Core\Theme;
 
 /**
  * A group of related Theme Options, rendered as one panel on the Theme
- * Options admin page (LP-034's "Group options into sections").
+ * Options admin page.
  */
 final class ThemeOptionSection
 {

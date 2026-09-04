@@ -24,18 +24,10 @@ use LumoraPress\Models\Tag;
 use RuntimeException;
 
 /**
- * Tag CRUD, slug generation, and the many-to-many relationship with posts
- * via {prefix}post_tags. Unlike categories, tags are non-hierarchical and
- * are typically created on the fly while writing a post — assignToPost()
- * takes tag names (from a free-text field), not ids, and resolves each
- * through findOrCreateByName().
- *
- * Every query here uses a distinct placeholder name per occurrence, even
- * when binding the same value twice — see CategoryService's docblock and
- * PHP-TEST-SUITE.md's "Known gaps" for why this matters against a real
- * MySQL connection.
- *
- * $hooks is optional (LP-037) — see PostService's docblock for why.
+ * Tag CRUD, slug generation, and the post relationship via {prefix}post_tags.
+ * Non-hierarchical, and typically created on the fly: assignToPost() takes tag names, not
+ * ids, resolved through findOrCreateByName(). See CategoryService's docblock for why every
+ * query uses a distinct placeholder name per occurrence.
  */
 final class TagService
 {
@@ -132,16 +124,10 @@ final class TagService
     }
 
     /**
-     * Merges $sourceId into $targetId: every post tagged with $sourceId
-     * gains $targetId instead (existence-checked first, since post_tags'
-     * composite primary key would otherwise collide for a post already
-     * carrying both tags — same guard CategoryService::bulkAddToPosts()
-     * uses), $sourceId's own post_tags rows are dropped, and $sourceId
-     * itself is deleted. Tags have no hierarchy to reparent, unlike
-     * CategoryService::merge() — this is the flat equivalent.
-     *
-     * Returns false without changing anything if $sourceId and $targetId
-     * are the same, or either doesn't exist.
+     * Merges $sourceId into $targetId: every post gains $targetId (existence-checked first
+     * to avoid a composite-key collision), $sourceId's rows are dropped, and $sourceId is
+     * deleted. Tags have no hierarchy to reparent, unlike CategoryService::merge(). Returns
+     * false without changing anything if $sourceId === $targetId or either doesn't exist.
      */
     public function merge(int $sourceId, int $targetId): bool
     {

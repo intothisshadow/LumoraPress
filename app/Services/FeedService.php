@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Builds the data behind the site-wide RSS/Atom feed (LP-013).
+ * Builds the data behind the site-wide RSS/Atom feed.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -24,22 +24,13 @@ use LumoraPress\Models\Category;
 use LumoraPress\Models\Post;
 
 /**
- * Builds the data behind the site-wide RSS/Atom feed (LP-013) — channel
- * metadata plus the list of feed items. Deliberately returns plain arrays
- * of raw data (post entity, author name, description, optional full
- * content) rather than XML; SiteController is responsible for formatting
- * that data into RSS 2.0/Atom 1.0 markup, same separation PostService/
- * ThemeRenderer already have for HTML.
+ * Builds the data behind the site-wide RSS/Atom feed — channel metadata plus feed items.
+ * Returns plain arrays of raw data rather than XML; SiteController formats that into RSS
+ * 2.0/Atom 1.0 markup, the same separation PostService/ThemeRenderer have for HTML.
  *
- * Takes HookManager via constructor injection rather than calling the
- * global apply_filters() bridge directly, matching UpdateService's
- * convention (see HookManager\Hooks's own docblock: "Internal services
- * receive HookManager via constructor injection instead of using this
- * bridge directly"). MediaService/ThumbnailService (LP-040, for optional
- * feed item thumbnails/enclosures) are injected the same way, rather than
- * going through the FeaturedImages static bridge that theme templates
- * use — that bridge exists for procedural template helpers with no route
- * to the Kernel, which doesn't apply here.
+ * Takes HookManager via constructor injection, matching UpdateService's convention, rather
+ * than the global apply_filters() bridge. MediaService/ThumbnailService are injected the
+ * same way, not via the FeaturedImages static bridge theme templates use for that purpose.
  */
 final class FeedService
 {
@@ -74,8 +65,7 @@ final class FeedService
     /**
      * Items visible to public site visitors, newest first — reuses
      * PostService::paginatePublished(), which already excludes drafts and
-     * not-yet-due scheduled posts (LP-013's "respect private/unpublished
-     * content" requirement).
+     * not-yet-due scheduled posts.
      *
      * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
      */
@@ -142,8 +132,7 @@ final class FeedService
         $thumbnailType = null;
         $thumbnailLength = null;
 
-        // Optional per the ticket's own wording (LP-040) — gated by
-        // feed_featured_images, default on.
+        // Gated by feed_featured_images, default on.
         if ($this->config->option('feed_featured_images', '1') !== '0' && $post->featuredImageId !== null) {
             $media = $this->media->find($post->featuredImageId);
 

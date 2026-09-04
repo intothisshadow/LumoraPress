@@ -18,21 +18,14 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Menus;
 
 /**
- * Navigation menu locations (primary, footer, social, secondary — theme-
- * registered via registerLocation()) and named, reusable menus (LP-049,
- * admin-managed) that can be assigned to any location. Mirrors
- * WidgetManager's LP-048 shape: named entities with stable string ids,
- * built for the "one JSON option, load at bootstrap, admin screen
- * mutates and re-saves the whole thing" persistence pattern.
+ * Navigation menu locations (theme-registered via registerLocation()) and
+ * named, reusable menus (admin-managed) assignable to any location.
  *
- * assign()/items()/hasItems() predate named menus (Phase 1) and assign
- * items directly to a location with no menu entity in between — kept
- * unchanged for backward compatibility (nothing in this codebase's
- * production code calls assign() today, but it remains a valid, simpler
- * way for a theme/plugin to wire up a location programmatically without
- * the admin UI at all). items()/hasItems() check for an assigned named
- * menu first and only fall back to a direct assign()-populated location
- * if no menu is assigned there.
+ * assign()/items()/hasItems() predate named menus and assign items
+ * directly to a location with no menu entity in between — kept as a
+ * simpler way for a theme/plugin to wire up a location without the admin
+ * UI. items()/hasItems() prefer an assigned named menu, falling back to
+ * a direct assign()-populated location only if none is assigned.
  */
 final class MenuManager
 {
@@ -286,12 +279,9 @@ final class MenuManager
                 continue;
             }
 
-            // Legacy assign()-populated items (Phase 1, no 'id' key at
-            // all) always have a null parentId too — recursing with
-            // $item['id'] ?? null would look for children matching that
-            // same null again, immediately re-matching every sibling and
-            // recursing forever. Only items with a real id can ever be a
-            // parent.
+            // Legacy assign()-populated items (no 'id') also have a null
+            // parentId — recursing on null again would re-match every
+            // sibling and loop forever, so only a real id can be a parent.
             $itemId = $item['id'] ?? null;
 
             $branch[] = [

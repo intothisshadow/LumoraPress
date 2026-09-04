@@ -19,11 +19,8 @@ namespace LumoraPress\Models;
 
 /**
  * Independent of PageStatus — a page can be Published and Private at the
- * same time (visible to logged-in staff, never to a guest or search
- * engine) — mirrors PostVisibility exactly, see Page::isPubliclyVisible()/
- * isVisibleToViewer() and PageService's public query methods, which AND a
- * status check with a visibility check rather than folding privacy into
- * the status enum itself.
+ * same time (visible to logged-in staff, never a guest or search engine).
+ * See Page::isPubliclyVisible()/isVisibleToViewer().
  */
 enum PageVisibility: string
 {

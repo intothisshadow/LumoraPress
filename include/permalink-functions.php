@@ -27,12 +27,10 @@ use LumoraPress\Models\SearchResult;
 use LumoraPress\Models\Tag;
 
 /**
- * Post/category/tag permalink helpers (LP-078) — the single choke point
- * every hand-built 'post/' . $post->slug / 'category/' . $category->slug /
- * 'tag/' . $tag->slug call site was migrated to, so a configured
- * permalink_structure/category_base/tag_base option is honored everywhere
- * a link is built, not just in newly-written code. Mirrors
- * include/author-functions.php's the_author_link()/author_url() shape.
+ * Post/category/tag permalink helpers — the single choke point every
+ * hand-built URL-building call site was migrated to, so a configured
+ * permalink_structure/category_base/tag_base option is honored
+ * everywhere a link is built.
  */
 
 if (!function_exists('post_permalink')) {
@@ -44,27 +42,16 @@ if (!function_exists('post_permalink')) {
 
 if (!function_exists('page_permalink')) {
     /**
-     * A Page's public URL, reflecting its position in the parent/child
-     * hierarchy (LP-084) — e.g. "/about/team" for a "Team" page under an
-     * "About" parent, "/about" for "About" itself. No PermalinkService
-     * involvement: unlike posts/categories/tags, pages have no
-     * configurable permalink structure to honor (see LP-078's "Explicitly
-     * Out of Scope" note in TODO.md) — the ancestor chain alone
-     * determines the URL. The single choke point every hand-built
-     * 'page/' . $page->slug call site was migrated away from, so a
-     * page's real URL is honored everywhere a link to it is built.
+     * A Page's public URL, reflecting its parent/child hierarchy — e.g.
+     * "/about/team" for a "Team" page under "About". No PermalinkService
+     * involvement: pages have no configurable permalink structure, so
+     * the ancestor chain alone determines the URL.
      *
-     * Absolute (home_url()), not root-relative (site_url()) — mirrors
-     * post_permalink()/category_permalink()/tag_permalink(), all of
-     * which resolve through PermalinkService's home_url()-based methods.
-     * This matters beyond consistency: this function backs the sitemap
-     * (sitemaps.org requires absolute <loc> URLs), Open Graph/Twitter
-     * Card meta tags (og:url must be absolute per the spec), and emailed
-     * comment-notification links (there is no "current site" for a mail
-     * client to resolve a relative URL against) — a relative URL in any
-     * of those three would be a real, silent bug, not just a style
-     * mismatch. Callers that only ever need an href on the same page
-     * (most of them) work identically either way.
+     * Absolute (home_url()), not root-relative — this backs the sitemap
+     * (absolute <loc> required), Open Graph meta (og:url must be
+     * absolute), and emailed comment-notification links (no "current
+     * site" for a mail client to resolve against). A relative URL in any
+     * of those would be a silent bug.
      */
     function page_permalink(Page $page): string
     {
@@ -95,11 +82,9 @@ if (!function_exists('tag_permalink')) {
 if (!function_exists('privacy_policy_url')) {
     /**
      * The site's configured Privacy Policy Page's URL (Settings >
-     * Privacy), or null when none is set or the configured page no
-     * longer exists/isn't publicly visible — a theme decides for itself
-     * whether/where to link it (e.g. a footer credit line, a comment
-     * form notice), matching page_permalink()'s "themes own their own
-     * markup" shape rather than this being auto-inserted anywhere.
+     * Privacy), or null when none is set or the page no longer
+     * exists/isn't publicly visible. A theme decides for itself
+     * whether/where to link it — nothing here is auto-inserted.
      */
     function privacy_policy_url(): ?string
     {
@@ -117,11 +102,9 @@ if (!function_exists('privacy_policy_url')) {
 
 if (!function_exists('post_categories')) {
     /**
-     * The Categories $post itself belongs to (CategoryService::
-     * categoriesForPost() — alphabetical, same ordering
-     * PermalinkService::postUrl() already relies on for its own
-     * %category% token). Empty array for an uncategorized post, never
-     * null, so a theme can loop it directly without an extra null check.
+     * The Categories $post belongs to, alphabetical (same ordering
+     * PermalinkService::postUrl() relies on for %category%). Empty
+     * array for an uncategorized post, never null.
      *
      * @return array<int, Category>
      */
@@ -133,10 +116,9 @@ if (!function_exists('post_categories')) {
 
 if (!function_exists('the_post_categories')) {
     /**
-     * post_categories(), rendered as a $separator-joined list of links
-     * (mirrors the_author_link()'s "echo, don't return markup" shape) —
-     * outputs nothing at all for an uncategorized post rather than an
-     * empty line, so a theme can call this unconditionally.
+     * post_categories(), rendered as a $separator-joined list of links.
+     * Outputs nothing for an uncategorized post, so a theme can call
+     * this unconditionally.
      */
     function the_post_categories(Post $post, string $separator = ', '): void
     {
@@ -156,13 +138,9 @@ if (!function_exists('the_post_categories')) {
 if (!function_exists('edit_post_link')) {
     /**
      * The admin edit-screen URL for $post, or null when nobody is
-     * signed in or the signed-in user isn't allowed to edit this
-     * specific post — mirrors admin/views/posts/all-posts.php's own
-     * $canEditPost closure exactly (edit_others_posts, or ownership of
-     * this particular post) so a theme's "Edit this post" link only
-     * ever shows to someone who could actually use it. Themes decide
-     * for themselves whether/how to link it, same as page_permalink()/
-     * privacy_policy_url() — nothing here is auto-inserted anywhere.
+     * signed in or isn't allowed to edit this specific post — mirrors
+     * the edit_others_posts/ownership check admin's post list already
+     * uses. Themes decide for themselves whether/how to link it.
      */
     function edit_post_link(Post $post): ?string
     {
@@ -182,10 +160,8 @@ if (!function_exists('edit_post_link')) {
 
 if (!function_exists('edit_page_link')) {
     /**
-     * edit_post_link()'s own Page counterpart — Pages have no separate
-     * capability set of their own (admin/views/pages/all-pages.php's
-     * $canEditOthersPages reads the same 'edit_others_posts' capability
-     * post editing already uses), so the gating logic mirrors it exactly.
+     * edit_post_link()'s Page counterpart — Pages have no separate
+     * capability set, reusing 'edit_others_posts'.
      */
     function edit_page_link(Page $page): ?string
     {
@@ -205,17 +181,12 @@ if (!function_exists('edit_page_link')) {
 
 if (!function_exists('search_result_permalink')) {
     /**
-     * A SearchResult row's public URL. SearchResult is deliberately
-     * data-only (see its own docblock) and doesn't carry a post's
-     * category/author, so a 'post' result's %category%/%author% tokens
-     * (if the configured structure uses them) fall back the same way
-     * PermalinkService::postUrl() falls back for an uncategorized post —
-     * see PermalinkService::postUrlForSlugAndDate()'s docblock. A 'page'
-     * result is handled before the match below rather than inside it
-     * (LP-084): building the real hierarchical URL needs the actual Page
-     * (for its ancestor chain via page_permalink()), not just its slug —
-     * falling back to a flat URL only in the unlikely case the page was
-     * deleted between being indexed and this search rendering.
+     * A SearchResult row's public URL. SearchResult is data-only and
+     * doesn't carry a post's category/author, so those tokens fall back
+     * the same way PermalinkService does for an uncategorized post. A
+     * 'page' result is handled before the match: the real hierarchical
+     * URL needs the actual Page (for page_permalink()'s ancestor chain),
+     * falling back to a flat URL only if the page was since deleted.
      */
     function search_result_permalink(SearchResult $result): string
     {
@@ -223,8 +194,8 @@ if (!function_exists('search_result_permalink')) {
             $page = ActivePages::pages()->findBySlug($result->slug);
 
             // page_permalink() already threads a preview through itself
-            // (LP-138) — don't double-append for the common case, only
-            // for the site_url() fallback below, which doesn't.
+            // — don't double-append for the common case, only for the
+            // site_url() fallback below, which doesn't.
             return $page !== null ? page_permalink($page) : preview_theme_link(site_url($result->slug));
         }
 

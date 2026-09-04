@@ -1,7 +1,7 @@
 <?php
 
 /**
- * HTML-aware rewriting of imported post/page content's own internal <a href> links to point at the corresponding newly-imported post/page (LPP-004).
+ * HTML-aware rewriting of imported post/page content's own internal <a href> links to point at the corresponding newly-imported post/page.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -21,42 +21,19 @@ use DOMDocument;
 use DOMElement;
 
 /**
- * Unlike a WordPress menu item — which stores structured metadata
- * naming exactly which post/page/term it points at (see
- * WordPressImportService::resolveMenuItemTarget()) — a plain in-content
- * `<a href="...">` is only ever a URL string, with no structured
- * reference to resolve. Content can't be assumed to use the source
- * site's *current* permalink structure either (a link written years
- * before a structure change keeps whatever it was written with), so
- * this deliberately doesn't try to reconstruct the source's permalink
- * structure and pattern-match against it. Instead it tries three
- * independent, structure-agnostic ways to identify what a link was
- * really pointing at, in order of confidence:
+ * A plain in-content `<a href>` is only a URL string with no structured
+ * reference to resolve, and content can't be assumed to use the source
+ * site's current permalink structure. This tries three structure-agnostic
+ * ways to identify a link's target, in order of confidence:
  *
- *  1. A `?p=123` / `?page_id=123` query parameter — WordPress's own
- *     "Plain" permalink style, and also what its shortlink feature
- *     always emits regardless of the site's configured structure.
- *     Unambiguous: the numeric WordPress id is right there.
- *  2. An exact match against the post/page's own `guid` column —
- *     WordPress sets this once at creation and never updates it when
- *     the permalink structure later changes, so it doesn't reflect
- *     *today's* URLs but is still a real, stable identifier a link
- *     could have been copied from.
- *  3. The link's own last non-empty path segment, matched against a
- *     post/page's slug — works for the common pretty-permalink case
- *     (`/%postname%/`-style structures, including WordPress's default
- *     "Day and name"/"Month and name" presets) without needing to know
- *     which structure was actually in use. The one deliberate
- *     imprecision here: a slug collision between an unrelated path
- *     segment and a real post/page slug is possible in principle, so
- *     this is scoped to links pointing at the source site's own domain
- *     (see $sourceHost) to reduce false positives — an external link
- *     that happens to end in a matching slug is never touched.
+ *  1. A `?p=123` / `?page_id=123` query parameter — unambiguous.
+ *  2. An exact match against the post/page's own `guid` column.
+ *  3. The link's last path segment matched against a post/page slug —
+ *     scoped to the source site's own domain (see $sourceHost) to reduce
+ *     false positives from an unrelated but similarly-named path.
  *
- * Only post/page targets are resolved — category/tag archive links and
- * author archive links are a deliberate scope boundary for this first
- * pass (see TODO-PLUGINS.md's own note on why) and are left as-is,
- * same as any other link this class doesn't recognize.
+ * Only post/page targets are resolved; category/tag/author archive links
+ * are a deliberate scope boundary and are left as-is.
  */
 final class InternalLinkRewriter
 {

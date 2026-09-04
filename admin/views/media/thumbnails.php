@@ -25,16 +25,9 @@ if (!isset($kernel)) {
 $thumbnailService = $kernel->thumbnails;
 $mediaService = $kernel->media;
 
-/*
- * "Default featured image" setting's own grid picker
- * (featured-image-picker.js) — see PostsController::
- * queryFeaturedImagePicker()'s identical docblock (the Post/Page
- * editor's own Featured Image box, which delegates to that controller)
- * for the response shape and why this is a JSON sub-action rather than
- * its own admin page/route. This page has no controller of its own, so
- * the query stays inline here, matching the other JSON-sub-action
- * views' existing pattern (posts/new.php, pages/new.php).
- */
+// "Default featured image" setting's grid picker (featured-image-picker.js).
+// This page has no controller of its own, so the query stays inline here,
+// matching other JSON-sub-action views (posts/new.php, pages/new.php).
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'featured_image_picker_query') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -127,16 +120,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('media/thumbnails') . '?' . $query);
         exit;
     } elseif ($form === 'thumbnail_settings' && $currentUser->can('manage_options') && Csrf::verify('thumbnail_settings', $token)) {
-        /*
-         * LP-061: this page (like the rest of Media Manager) only
-         * requires upload_files, which Author/Editor roles both hold —
-         * but changing thumbnail generation parameters is site-wide
-         * configuration, previously gated by manage_options on
-         * Settings > Media. The $currentUser->can('manage_options')
-         * check above (mirrored by the section below not rendering at
-         * all for a non-manage_options viewer) keeps that restriction
-         * intact even though it now lives on a less-privileged page.
-         */
+        // This page only requires upload_files, but changing thumbnail
+        // generation parameters is site-wide config gated by
+        // manage_options — the section below doesn't render for others.
         foreach (['small', 'medium', 'large'] as $sizeName) {
             $kernel->config->setOption("thumbnail_size_{$sizeName}_width", (string) max(1, (int) ($_POST["thumbnail_size_{$sizeName}_width"] ?? 150)));
             $kernel->config->setOption("thumbnail_size_{$sizeName}_height", (string) max(1, (int) ($_POST["thumbnail_size_{$sizeName}_height"] ?? 150)));
@@ -149,7 +135,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('thumbnail_max_pixels', (string) max(1, (int) ($_POST['thumbnail_max_pixels'] ?? 25_000_000)));
         $kernel->config->setOption('default_featured_image_media_id', (string) max(0, (int) ($_POST['default_featured_image_media_id'] ?? 0)));
 
-        // LP-080: the manually-cropped featured image's output-width cap.
+        // The manually-cropped featured image's output-width cap.
         // Validated against the currently *enabled* size names (same
         // pattern lightbox_large_size already establishes on Settings >
         // Media) so an invalid/removed size can never be stored.

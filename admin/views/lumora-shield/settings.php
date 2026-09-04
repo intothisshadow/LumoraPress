@@ -23,14 +23,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LPP-001. Only reachable while the plugin is active (admin/index.php only
- * adds this menu entry in that case), so LumoraShieldService's class is
- * guaranteed to already be loaded — PluginManager::loadActive() required
- * content/plugins/lumora-shield/lumora-shield.php earlier this same
- * request, in include/bootstrap.php. Mirrors appearance/font-awesome.php's
- * identical reasoning.
- */
+// Only reachable while the plugin is active, so LumoraShieldService's
+// class is guaranteed to already be loaded.
 $service = LumoraShieldService::instance();
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 

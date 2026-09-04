@@ -21,12 +21,9 @@ use LumoraPress\Services\PermalinkService;
 use RuntimeException;
 
 /**
- * Static bridge exposing PermalinkService to the procedural
- * post_permalink()/category_permalink()/tag_permalink() helpers in
- * include/permalink-functions.php — same shape as Authors, since resolving
- * a post's URL is a live, per-post/per-request lookup (the structure can
- * change at any time via Settings > Permalinks) rather than a value that
- * can be snapshotted once at bootstrap like SiteBranding's.
+ * Bridges PermalinkService to post_permalink()/category_permalink()/
+ * tag_permalink() — a live lookup, since the permalink structure can
+ * change at any time via Settings > Permalinks.
  */
 final class Permalinks
 {

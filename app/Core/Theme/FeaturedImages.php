@@ -23,13 +23,9 @@ use LumoraPress\Services\ThumbnailService;
 use RuntimeException;
 
 /**
- * Static bridge exposing MediaService/ThumbnailService/PressConfig (LP-040)
- * to the procedural has_post_thumbnail()/post_thumbnail_url()/
- * the_post_thumbnail() helpers in include/media-functions.php. Unlike
- * SiteBranding — which snapshots plain string values set once at bootstrap
- * because they never vary per request — featured images need a live,
- * per-post lookup each time, so this holds the services themselves, the
- * same shape ActiveTheme uses for ThemeRenderer.
+ * Bridges MediaService/ThumbnailService/PressConfig to the featured-image
+ * helpers. Featured images need a live, per-post lookup each render, so
+ * this holds the services themselves rather than a snapshotted value.
  */
 final class FeaturedImages
 {

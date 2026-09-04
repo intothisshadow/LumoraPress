@@ -24,26 +24,20 @@ use LumoraPress\Services\UserService;
 use Throwable;
 
 /**
- * REST API authentication (LP-021): long-lived, named, revocable tokens —
- * WordPress's "Application Passwords", not a session. Structurally the
- * same selector (public, indexed) + validator (256-bit random, only its
- * SHA-256 hash stored, hash_equals()-compared) shape as RememberMeService,
- * for the same reason documented there (a high-entropy token doesn't need
- * a slow password_hash()-style hash — brute force isn't the threat model).
+ * REST API authentication: long-lived, named, revocable tokens —
+ * WordPress's "Application Passwords", not a session. Same selector
+ * (public, indexed) + validator (256-bit random, only its SHA-256 hash
+ * stored) shape as RememberMeService: a high-entropy token doesn't need
+ * a slow password_hash()-style hash, since brute force isn't the threat.
  *
- * Deliberately does **not** rotate on use, unlike RememberMeService: an
- * API client (a script, a mobile app, a CI job) needs the same token to
- * keep working across many requests indefinitely, only ever changing when
- * the user explicitly revokes it — the opposite requirement from a
- * browser's remember-me cookie, which should be single-use precisely so a
- * stolen value only ever works once. A wrong validator for a real selector
- * is just rejected here; there's no rotation to have been bypassed, so
- * there's no "signature of a stolen, already-rotated cookie being
- * replayed" to react to the way RememberMeService::validate() does.
+ * Deliberately does not rotate on use, unlike RememberMeService — an API
+ * client needs the same token to keep working indefinitely, only
+ * changing when explicitly revoked, unlike a single-use remember-me
+ * cookie.
  *
- * Tokens are named so a user can tell several apart (e.g. "Laptop script",
- * "CI job") and revoke one without affecting the others — sent as
- * "Authorization: Bearer {selector}:{validator}".
+ * Tokens are named so a user can tell several apart and revoke one
+ * without affecting the others — sent as "Authorization: Bearer
+ * {selector}:{validator}".
  */
 final class ApiTokenService
 {

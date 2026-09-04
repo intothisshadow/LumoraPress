@@ -17,10 +17,6 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Menus\Menus;
 
-/**
- * Procedural navigation menu API for themes.
- */
-
 if (!function_exists('register_nav_menu')) {
     function register_nav_menu(string $location, string $label): void
     {
@@ -37,8 +33,8 @@ if (!function_exists('has_nav_menu')) {
 
 if (!function_exists('nav_menu')) {
     /**
-     * Renders $location as a (possibly nested — LP-049) <ul>. A location
-     * with no items assigned (no menu, and nothing set via the legacy
+     * Renders $location as a (possibly nested) <ul>. A location with no
+     * items assigned (no menu, and nothing set via the legacy
      * assign()) renders nothing at all, same as before named menus
      * existed.
      */

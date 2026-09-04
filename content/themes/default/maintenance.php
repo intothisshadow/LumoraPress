@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template shown to visitors while Maintenance Mode is active (LP-033).
+ * Default theme template shown to visitors while Maintenance Mode is active.
  *
  * @package LumoraPress
  * @subpackage Themes

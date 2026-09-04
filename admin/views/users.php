@@ -37,13 +37,9 @@ $selectableRoles = static fn (): array => array_values(array_filter(
 ));
 
 /**
- * A user can be trashed or permanently deleted only if: they are not the
- * account currently signed in, they are not the last remaining
- * Administrator, and they have not authored any posts or pages — there is
- * no admin reassignment UI yet, so removing them would orphan that
- * content's author_id. The same three guards apply to both actions (and to
- * the equivalent bulk actions below), since trashing also disables the
- * account's ability to log in.
+ * A user can be trashed or permanently deleted only if: not the account
+ * currently signed in, not the last remaining Administrator, and has not
+ * authored any posts or pages — there's no author reassignment UI yet.
  */
 $actionBlockReason = function (\LumoraPress\Models\User $target) use ($currentUser, $userService, $kernel): ?string {
     if ($target->id === $currentUser->id) {
@@ -112,13 +108,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $role = UserRole::Subscriber;
         }
 
-        // LP-124: an identical login username and Display Name
-        // effectively publishes half of an admin/staff account's
-        // credentials via the public post byline (author_name() renders
-        // Display Name) — required to differ for every role except
-        // Subscriber, which has no posting byline or backend access for
-        // the collision to matter. Administrator additionally can't use
-        // an obviously guessable username like "admin".
+        // An identical username and Display Name publishes half of a
+        // staff account's credentials via the public post byline —
+        // required to differ for every role except Subscriber, which has
+        // no posting byline.
         $isStaffRole = $role !== UserRole::Subscriber;
 
         if ($username === '' || $email === '' || ($isStaffRole && $displayName === '')) {
@@ -217,10 +210,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         $target = $id > 0 ? $userService->findById($id) : null;
 
-        // Permanent delete is only offered (and only honoured) for users
-        // already in the Trash — Trash is the only reachable path to
-        // actually removing a user from the active list, the same
-        // "delete means trash first" guardrail the Posts admin enforces.
+        // Permanent delete is only offered for users already in the
+        // Trash — Trash is the only reachable path to removing one
+        // from the active list.
         if ($target !== null && $target->trashedAt !== null && $actionBlockReason($target) === null) {
             $userService->delete($target->id);
             $kernel->rememberMe->forgetUserTokens($target->id);
@@ -588,13 +580,9 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
             </form>
 
             <?php
-            /*
-             * Out-of-band target forms for each row action button above —
-             * see admin/views/posts/all-posts.php's own docblock for why a
-             * nested <form> can't be used here: the browser's parse-error
-             * recovery would silently close the outer bulk-action form as
-             * soon as it hit the first inner </form> tag.
-             */
+            // Out-of-band target forms for each row action button — a
+            // nested <form> is invalid HTML and would close the outer
+            // bulk-action form early.
             foreach ($pagination['users'] as $listedUser):
                 if ($isTrashView):
                     ?>

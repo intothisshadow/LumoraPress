@@ -24,27 +24,18 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-078. Structure presets mirror classic WordPress's own Settings >
- * Permalinks page — "Post name" is this application's original, always
- * `/post/%postname%/` behavior and stays the default, so an unconfigured
- * site's URLs never change (see PermalinkService::postRoutePattern()'s
- * docblock). "Plain"/numeric permalinks and a Pages structure setting are
- * both deliberately out of scope — see TODO.md's LP-078 entry.
- */
+// "Post name" is this application's original, always `/post/%postname%/`
+// behavior and stays the default, so an unconfigured site's URLs never
+// change. "Plain"/numeric permalinks and a Pages structure setting are
+// deliberately out of scope.
 $permalinkPresets = [
     'postname' => '/post/%postname%/',
     'day_name' => '/%year%/%monthnum%/%day%/%postname%/',
     'month_name' => '/%year%/%monthnum%/%postname%/',
 ];
 
-/*
- * Reserved top-level path segments a category/tag base must not collide
- * with — every one of these is either a fixed front-end route
- * (bootstrap.php) or the admin/API mount point; a collision would make
- * that route (or every post, if it collided with the configured post
- * structure's own leading segment) permanently unreachable.
- */
+// Reserved top-level path segments a category/tag base must not collide
+// with — each is a fixed front-end route or the admin/API mount point.
 $reservedBaseSegments = ['post', 'page', 'author', 'archive', 'search', 'feed', 'media', 'admin', 'api', 'preview'];
 
 $error = null;
@@ -95,15 +86,9 @@ $currentPreset = $currentPreset !== false ? $currentPreset : 'custom';
 
 $hasExistingPosts = $kernel->posts->countByStatus(PostStatus::Published) > 0;
 
-/*
- * A sample Post purely for the live preview below — never persisted, only
- * ever passed to PermalinkService::postUrl(). LP-008 author archive
- * slugs and category assignment don't apply to it, so postUrl() falls
- * back to the sample slug for those tokens (see PermalinkService::
- * buildPostUrl()'s docblock) — an accurate illustration either way, since
- * the same fallback would apply to any of the admin's own uncategorized
- * posts under a %category%-based structure.
- */
+// A sample Post purely for the live preview below — never persisted.
+// Author/category tokens fall back to the sample slug, matching what
+// any uncategorized post would show under a %category%-based structure.
 $samplePost = new Post(
     id: 0,
     title: 'Sample Post',

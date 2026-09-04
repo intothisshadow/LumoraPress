@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Renders the `[contact_form id="1"]` shortcode's GET-time markup (LPP-003).
+ * Renders the `[contact_form id="1"]` shortcode's GET-time markup.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -23,24 +23,10 @@ use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
 
 /**
- * GET-time rendering only — the actual submission POST goes to a
- * dedicated `/contact-form/{id}/submit` route (registered in
- * include/bootstrap.php, gated on this plugin being active) handled by
- * ContactFormSubmissionHandler, not this class. Classic PHP theme
- * templates in this codebase echo directly rather than buffering the
- * whole page, so by the time a shortcode's content_html filter callback
- * runs, a header('Location: ...') redirect from inside it would already
- * be too late — see the plugin's own docblock (contact-forms.php) for
- * the full reasoning, which mirrors why comment submission gets its own
- * dedicated route instead of being handled inline in template rendering.
- *
- * Registered on the `content_html` filter (see contact-forms.php), the
- * same hook Downloads'/Font Awesome's own shortcodes use — but like
- * DownloadsShortcode, this needs real database-backed services a
- * plugin's load-time code can't reach yet (no $kernel exists at
- * plugin-registration time), so it opens its own independent Database
- * connection from config/config.php on first actual use, exactly mirroring
- * DownloadsShortcode::services()'s lazy-connect pattern.
+ * GET-time rendering only — the submission POST goes to a dedicated route
+ * handled by ContactFormSubmissionHandler, since themes echo directly rather
+ * than buffering the page, so a redirect from inside content_html is too late.
+ * Runs before $kernel exists, so it opens its own Database connection on first use.
  */
 final class ContactFormShortcode
 {
@@ -142,13 +128,10 @@ final class ContactFormShortcode
         if ($field->type->isMultiline()) {
             $html .= '<textarea id="' . esc_attr($inputId) . '" name="' . esc_attr($inputName) . '" rows="5"' . $requiredAttr . '></textarea>';
         } elseif ($field->type === ContactFieldType::Checkbox) {
-            // Rendered inside its own <label> instead of the shared
-            // <label for="..."> above, matching how a checkbox's label
-            // conventionally wraps the input rather than precedes it —
-            // the field-level label already printed above still gives it
-            // an accessible name via aria-describedby-free duplication
-            // being harmless here (a single short label read twice by a
-            // screen reader, not incorrect).
+            // Wrapped in its own <label> rather than using the shared
+            // <label for="..."> above, matching the conventional checkbox
+            // pattern; the label text is duplicated but harmless for
+            // screen readers.
             $html .= '<label class="lp-field--checkbox"><input type="checkbox" id="' . esc_attr($inputId) . '" name="' . esc_attr($inputName) . '" value="1"' . $requiredAttr . '> ' . esc_html($field->label) . '</label>';
         } elseif ($field->type === ContactFieldType::Select) {
             $html .= '<select id="' . esc_attr($inputId) . '" name="' . esc_attr($inputName) . '"' . $requiredAttr . '>';

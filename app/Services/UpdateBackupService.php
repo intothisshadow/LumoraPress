@@ -38,11 +38,7 @@ final class UpdateBackupService
 
     private const ROW_BATCH_SIZE = 500;
 
-    /**
-     * Rows written per backupDatabaseBatch() call — sized for one HTTP
-     * request rather than one query (see that method's docblock for why
-     * the database dump needs to span multiple requests at all).
-     */
+    /** Rows written per backupDatabaseBatch() call — sized for one HTTP request rather than one query. */
     private const BATCH_ROW_COUNT = 5000;
 
     /**
@@ -61,10 +57,8 @@ final class UpdateBackupService
     }
 
     /**
-     * Exposes the configured backup destination — UpdateService's
-     * "Verify backup location" pre-update check needs this to confirm the
-     * directory is writable with enough free space before an update ever
-     * gets as far as actually calling backupFiles()/backupDatabase().
+     * Exposes the configured backup destination for UpdateService's
+     * pre-update writable/free-space check.
      */
     public function backupsPath(): string
     {
@@ -73,14 +67,7 @@ final class UpdateBackupService
 
     public function backupFiles(string $version): string
     {
-        // Not a hard cap on this host's own configuration — requests "no
-        // limit" the same way the GeoLite2 import and WordPress Importer
-        // scans already do for a comparably slow, one-time admin
-        // operation. corePaths covers only the application's own code
-        // (never content/uploads or other user data), so this is bounded
-        // by the size of the app itself rather than by site content —
-        // unlike backupDatabase(), it isn't expected to actually need
-        // this, but it costs nothing to have it.
+        // corePaths covers only the app's own code (never user data), so this is bounded by app size, not site content — costs nothing to have anyway.
         set_time_limit(0);
 
         $this->ensureBackupsDirectory();
@@ -114,15 +101,11 @@ final class UpdateBackupService
     }
 
     /**
-     * "Backup verification" — reopens a just-created archive with
-     * ZipArchive::CHECKCONS, which validates its central directory and
-     * local file headers are internally consistent, rather than trusting
-     * that a successful write() implies a readable archive. Deliberately
-     * does not re-read every entry's bytes (that would double the I/O cost
-     * of every backup for large sites, contrary to CLAUDE.md's performance
-     * goals) — a corrupt central directory is the failure mode that
-     * actually matters here (a truncated write, a disk that filled up
-     * mid-write), and CHECKCONS catches exactly that.
+     * Reopens a just-created archive with ZipArchive::CHECKCONS to
+     * validate its central directory, rather than trusting that a
+     * successful write() implies a readable archive. Deliberately
+     * doesn't re-read every entry's bytes — CHECKCONS already catches
+     * the failure mode that matters (a truncated write or full disk).
      */
     private function verifyFilesBackup(string $path): void
     {
@@ -136,14 +119,10 @@ final class UpdateBackupService
     }
 
     /**
-     * "Backup verification" for the database half of a pair — a
-     * non-empty dump must end with the same statement marker every
-     * completed fwrite() call in writeTableData()/backupDatabase() itself
-     * appends, so a dump truncated by a crash or a full disk (ending
-     * mid-statement, with no trailing marker) is caught immediately rather
-     * than only discovered when a restore silently applies a partial SQL
-     * script. An empty dump is valid on its own (no prefixed tables yet,
-     * e.g. a fresh install) and is not flagged.
+     * A non-empty dump must end with the statement marker every
+     * completed fwrite() appends, so a dump truncated by a crash or full
+     * disk is caught immediately rather than discovered during a
+     * restore. An empty dump (no prefixed tables yet) is not flagged.
      */
     private function verifyDatabaseBackup(string $path): void
     {
@@ -287,21 +266,10 @@ final class UpdateBackupService
 
         $zip->close();
 
-        // Restore never deletes anything (see this class's docblock), so
-        // rewriting the manifest here can only ever cause a later
-        // Install to under-remove a stale leftover, never to remove
-        // something it shouldn't — keeps the manifest from describing a
-        // version that a restore just moved away from.
+        // Restore never deletes anything, so rewriting the manifest here can only cause under-removal later, never over-removal.
         $this->manifest->write($this->corePaths);
 
-        // A restore can bring back an arbitrary (possibly much older)
-        // backup — not necessarily the one taken immediately before the
-        // most recent install() — so the checksum baseline can no longer
-        // be trusted to describe what's now live. Clearing it (rather than
-        // recomputing) is the safe choice: the restored files may
-        // themselves have carried admin modifications before the backup
-        // was taken, and a fresh install() run will simply repopulate a
-        // correct baseline the next time one succeeds.
+        // An arbitrary (possibly much older) backup can be restored, so the checksum baseline can no longer be trusted — clear it rather than recompute.
         $this->checksums?->clear();
     }
 
@@ -328,27 +296,11 @@ final class UpdateBackupService
     }
 
     /**
-     * Writes up to BATCH_ROW_COUNT rows of the database dump per call —
-     * sized for one HTTP request, since dumping the whole database in
-     * one synchronous call (the original shape of this method) can
-     * complete successfully server-side yet still have its HTTP response
-     * killed by the webserver/proxy layer on a large site, the same
-     * "PHP finishes, the response doesn't arrive" failure mode diagnosed
-     * for the Visitor Stats plugin's GeoLite2 import (LPP-014). Unlike
-     * that CSV-reading case, no fseek()/resume-by-byte-offset is needed
-     * here — writing the dump is inherently append-only across calls, so
-     * (tableIndex, rowOffset) alone is enough to resume.
-     *
-     * $path is null on the very first call (this method then picks the
-     * real destination filename and opens it fresh); every subsequent
-     * call must pass back the exact path this method returned before.
-     * $tableIndex/$rowOffset must likewise be threaded straight through
-     * from the previous call's return value — 0/0 to start.
-     *
-     * The table list is re-resolved (a cheap SHOW TABLES) on every call
-     * rather than trusted from prior state, the same "recompute, don't
-     * trust stale state" choice ViewStatsService::importGeoCsvBatch()
-     * makes for its Locations CSV.
+     * Writes up to BATCH_ROW_COUNT rows of the database dump per call, sized for one HTTP
+     * request since a large synchronous dump can be killed by the webserver/proxy layer.
+     * Append-only, so (tableIndex, rowOffset) alone is enough to resume. $path is null on the
+     * first call; subsequent calls must pass back the exact path/tableIndex/rowOffset last
+     * returned.
      *
      * @return array{path: string, tableIndex: int, rowOffset: int, done: bool}
      */
@@ -359,10 +311,7 @@ final class UpdateBackupService
         int $rowOffset,
         int $batchSize = self::BATCH_ROW_COUNT,
     ): array {
-        // Each batch is capped specifically so it finishes well within a
-        // shared host's default execution-time limit; set_time_limit(0)
-        // here is a safety margin, not because a single batch is
-        // expected to run long.
+        // A safety margin — each batch is already capped to finish well within a shared host's execution-time limit.
         set_time_limit(0);
 
         $isFirstCall = $path === null;
@@ -386,10 +335,7 @@ final class UpdateBackupService
                 $table = $tables[$tableIndex];
 
                 if ($rowOffset === 0 && !$this->writeCreateStatements($handle, $table)) {
-                    // SHOW CREATE TABLE came back empty (the table
-                    // vanished mid-backup) — skip its data entirely,
-                    // mirroring the original single-shot method's own
-                    // "continue" for this same edge case.
+                    // SHOW CREATE TABLE came back empty (table vanished mid-backup) — skip its data entirely.
                     $tableIndex++;
 
                     continue;
@@ -502,17 +448,12 @@ final class UpdateBackupService
     }
 
     /**
-     * Writes up to $maxRows of $table's data, starting at $offset, in
-     * internal chunks of ROW_BATCH_SIZE (one query each, same as the
-     * original single-shot method) — bounded by $maxRows so a caller can
-     * cap how much work a single request does regardless of how large
-     * the table actually is.
+     * Writes up to $maxRows of $table's data from $offset, in internal chunks of
+     * ROW_BATCH_SIZE, bounded by $maxRows so a caller can cap work per request.
      *
      * @param resource $handle
-     * @return array{written: int, exhausted: bool} exhausted is true once
-     *     the table's real end was reached (a query returned fewer rows
-     *     than asked for) — false means $maxRows was hit first and more
-     *     of this same table remains for a later call.
+     * @return array{written: int, exhausted: bool} exhausted is false when $maxRows was hit
+     *     first and more of this table remains for a later call.
      */
     private function writeTableDataBatch($handle, string $table, int $offset, int $maxRows): array
     {

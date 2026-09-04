@@ -21,27 +21,15 @@ use LumoraPress\Core\Database\Database;
 use Throwable;
 
 /**
- * Every query here is scoped to `visibility = 0` (public) albums and
- * `approved = 1` images unconditionally — a private album or an
- * unapproved/pending image must never be reachable through a Lumora
- * Press shortcode (see this ticket's own "Data access" note in
- * `TODO-PLUGINS.md`), regardless of the inserting staff member's own
- * Gallery permissions. This plugin has no concept of a Gallery user
- * account or login at all; it reads exactly what a logged-out Gallery
- * visitor could see.
+ * Every query here is scoped to `visibility = 0` (public) albums and `approved = 1` images
+ * unconditionally, regardless of the inserting staff member's own Gallery permissions — this
+ * plugin has no Gallery login concept and reads exactly what a logged-out visitor could see.
  *
- * Every public method swallows `Throwable` and returns an empty
- * result rather than letting a query failure (a stale/dropped table, a
- * connection that died mid-request) surface as a fatal error on this
- * site's own public pages — matches `FolderGalleryShortcode`'s own
- * "fewer thumbnails than expected is fine, a crash is not" precedent.
- *
- * `LIMIT` is always an already-`(int)`-cast, clamped PHP value
- * interpolated directly into the SQL string, never bound as a
- * parameter — matches `MediaService::query()`'s own established
- * convention in this codebase (a bound `LIMIT :param` is unreliable
- * across PDO drivers/configurations without extra type-binding
- * ceremony this codebase doesn't otherwise use).
+ * Every public method swallows `Throwable` and returns an empty result rather than letting a
+ * query failure surface as a fatal error on public pages, matching FolderGalleryShortcode's
+ * precedent. `LIMIT` is always an `(int)`-cast, clamped value interpolated directly, never
+ * bound, matching MediaService::query()'s convention (bound LIMIT is unreliable across PDO
+ * drivers without extra ceremony).
  */
 final class GalleryQueryService
 {
@@ -81,8 +69,8 @@ final class GalleryQueryService
 
     /**
      * Every public album, title-sorted — backs the Insert Shortcode
-     * picker's `album_id` field (LPP-017) so an admin chooses a real
-     * album by name instead of typing its id by hand. Not used by
+     * picker's `album_id` field so an admin chooses a real album by name
+     * instead of typing its id by hand. Not used by
      * `GalleryShortcode` itself, which only ever resolves one album at a
      * time via `findAlbum()`.
      *
@@ -180,15 +168,9 @@ final class GalleryQueryService
     }
 
     /**
-     * One or more specific approved images, by id, each still required
-     * to belong to a public album — `image_id="4,9,12"` needs no
-     * separate `album_id`/`folder` attribute, since an image id is
-     * already globally unique in the Gallery's own schema; this joins
-     * to `albums` purely to enforce the same public-album visibility
-     * check every other query here applies, not to scope by one album.
-     * `$imageIds` order is preserved in the result (not re-sorted by
-     * date/position), so `image_id="9,4,12"` renders in exactly that
-     * order.
+     * One or more specific approved images by id, each still required to belong to a public
+     * album — joins to `albums` purely to enforce visibility, not to scope by one album.
+     * $imageIds order is preserved in the result, not re-sorted by date/position.
      *
      * @param array<int, int> $imageIds
      * @return array<int, array{id: int, filename: string, title: string, width: int, height: int}>

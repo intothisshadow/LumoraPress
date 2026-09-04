@@ -52,16 +52,14 @@ final class UpdateService
     private const MIN_BACKUP_FREE_BYTES = 50 * 1024 * 1024;
 
     /**
-     * "Warn about active users" — an admin is considered still active if
-     * their last authenticated request (see UserService::touchLastActive(),
-     * called once per admin page load) was within this window.
+     * An admin is considered still active if their last authenticated
+     * request was within this window.
      */
     private const ACTIVE_USER_WINDOW_SECONDS = 300;
 
     /**
-     * "Detect modified core files" — a wall of dozens of filenames would
-     * bury the actionable part of the warning, so the list is capped and
-     * the remainder summarized as a count.
+     * A wall of dozens of modified filenames would bury the actionable
+     * part of the warning, so the list is capped and the rest summarized.
      */
     private const MAX_MODIFIED_FILES_SHOWN = 10;
 
@@ -69,27 +67,16 @@ final class UpdateService
      * @param array<int, string> $corePaths Paths (relative to $installRoot) the
      *     updater overlays from the staged package onto the installation.
      * @param ?string $configFilePath config/config.php's absolute path —
-     *     nullable so every existing `new UpdateService(...)` call site in
-     *     the test suite keeps compiling unchanged (the same optional-DI
-     *     pattern PostService's docblock uses for $hooks); the
-     *     "Configuration compatibility" check below is simply skipped
-     *     when this is null. include/bootstrap.php's real instance always
-     *     passes one.
-     * @param ?PressConfig $config Nullable for the same reason as
-     *     $configFilePath — when absent, "Maintenance mode during update"
-     *     is simply skipped (install() behaves exactly as it did before
-     *     that feature existed) rather than every test call site needing
-     *     an in-memory PressConfig just to construct a service.
+     *     nullable so test call sites keep compiling; "Configuration
+     *     compatibility" is skipped when null. bootstrap.php always passes one.
+     * @param ?PressConfig $config Nullable for the same reason — when
+     *     absent, "Maintenance mode during update" is skipped.
      * @param ?UserService $users Nullable for the same reason — when
      *     absent, "Warn about active users" always reports no problems.
      * @param ?UpdateProgress $progress Nullable for the same reason —
-     *     when absent, checkUpload()/install() simply report no live
-     *     stage progress (every `$this->progress?->` call below is a
-     *     no-op), rather than every existing test call site needing a
-     *     progress double just to construct a service. Unlike every other
-     *     nullable dependency here, callers never `reset()` through this
-     *     property — see this class's own stage-reporting docblocks for
-     *     why that responsibility belongs to the view instead.
+     *     when absent, every `$this->progress?->` call below is a no-op.
+     *     Unlike the other nullable dependencies, callers never `reset()`
+     *     through this property — that responsibility belongs to the view.
      */
     public function __construct(
         private readonly Database $database,
@@ -125,31 +112,19 @@ final class UpdateService
     {
         $installedVersion = $this->installedVersion();
 
-        // reset() for this operation's stage list is the view's job, not
-        // this method's — see the constructor docblock's $progress note.
-        // A caller that never reset() first (or has no progress reporter
-        // wired at all) simply gets a no-op here, same as every other
-        // $this->progress?-> call in this class.
+        // reset() for the stage list is the view's job, not this method's — see the constructor docblock's $progress note.
         $this->progress?->stage('validate');
 
         $result = $this->validator->validateAndStage($uploadedZipPath, $installedVersion, $allowDowngrade);
 
         $this->progress?->stage('compatibility');
 
-        // Compatibility Checks: PHP version/extensions/writability are
-        // already validated above (they depend on the uploaded package
-        // itself, so they live in UpdatePackageValidator); these three
-        // depend only on this server's own current state, not anything in
-        // the package, so they run here regardless of what validateAndStage()
-        // found.
+        // Package-dependent checks (PHP version/extensions/writability) already ran in UpdatePackageValidator; these three depend only on this server's own state.
         array_push($result['blocking'], ...$this->databaseVersionProblems());
         array_push($result['blocking'], ...$this->configCompatibilityProblems());
         array_push($result['blocking'], ...$this->backupLocationProblems());
 
-        // Neither of these is a reason to block the update — an
-        // administrator may deliberately want to proceed despite another
-        // active session, or despite overwriting a file they hand-edited —
-        // so both are warnings, not blocking problems.
+        // Warnings, not blockers — an administrator may deliberately proceed anyway.
         array_push($result['warnings'], ...$this->activeUserProblems($currentUserId));
         array_push($result['warnings'], ...$this->modifiedCoreFileProblems());
 
@@ -169,11 +144,7 @@ final class UpdateService
                 'created_at' => time(),
             ], JSON_THROW_ON_ERROR));
         } else {
-            // A check added above (rather than validateAndStage() itself)
-            // may be the only reason blocking is non-empty, in which case
-            // the package is still sitting in a freshly extracted staging
-            // directory — validateAndStage() only cleans up after its own
-            // blocking reasons, never ours.
+            // validateAndStage() only cleans up after its own blocking reasons, never ours.
             $this->removeDirectory($result['staging_path']);
         }
 
@@ -183,15 +154,9 @@ final class UpdateService
     }
 
     /**
-     * "Database version" Compatibility Check — the connected MySQL/MariaDB
-     * server's own version, not to be confused with migrationStatus()'s
-     * "how many of this app's own migrations have run" (that's an
-     * expected, normal, often-not-yet-complete state right up until
-     * install() actually runs them as part of applying the update itself,
-     * not a pre-update blocker). Mirrors README.md's stated minimum
-     * (MySQL 5.6.4+ / MariaDB 10.0.5+ — InnoDB FULLTEXT support, used by
-     * search) the same way UpdatePackageValidator checks the package's own
-     * requires_php against PHP_VERSION.
+     * The connected MySQL/MariaDB server's own version — not to be
+     * confused with migrationStatus()'s migration count. Mirrors
+     * README.md's stated minimum (InnoDB FULLTEXT support, used by search).
      *
      * @return array<int, string>
      */
@@ -200,8 +165,7 @@ final class UpdateService
         try {
             $rawVersion = (string) $this->database->fetchColumn('SELECT VERSION()');
         } catch (Throwable) {
-            // Most likely a non-MySQL-protocol connection (e.g. a unit
-            // test's SQLite fixture) — nothing meaningful to check.
+            // Most likely a non-MySQL-protocol connection (e.g. a test fixture) — nothing meaningful to check.
             return [];
         }
 
@@ -219,18 +183,12 @@ final class UpdateService
 
     /**
      * Pure version-string logic split out from databaseVersionProblems()
-     * so it's unit-testable without a real database connection — the same
-     * "extract the comparison, keep the I/O thin" split
-     * RequirementsCheck's constructor-injectable $extensionLoaded uses for
-     * a different reason (testability without root/disabled extensions),
-     * applied here for testability without a real MySQL/MariaDB server.
+     * so it's unit-testable without a real database connection.
      */
     public static function isDatabaseVersionSupported(string $rawVersion): bool
     {
         if (preg_match('/^\d+\.\d+\.\d+/', $rawVersion, $matches) !== 1) {
-            // Doesn't even look like a version string — fail open rather
-            // than block an update over a server that reports its version
-            // in an unrecognised format.
+            // Fail open rather than block over an unrecognised version format.
             return true;
         }
 
@@ -242,12 +200,9 @@ final class UpdateService
     }
 
     /**
-     * "Configuration compatibility" Compatibility Check — config/config.php
-     * survives an update untouched (it's never one of $corePaths), so this
-     * confirms it's actually healthy *before* an update runs, rather than
-     * risking a config-related failure during/after the update being
-     * misattributed to the update itself. Returns [] (nothing to check)
-     * when $configFilePath wasn't provided — see the constructor docblock.
+     * config/config.php survives an update untouched, so this confirms
+     * it's healthy before the update runs rather than risking a
+     * config failure being misattributed to the update itself.
      *
      * @return array<int, string>
      */
@@ -285,14 +240,10 @@ final class UpdateService
     }
 
     /**
-     * "Verify backup location" — confirms the configured backup
-     * destination is writable with a sane minimum of free space *before*
-     * an update proceeds, rather than only discovering a stuck permission
-     * or full disk when backupFiles()/backupDatabase() itself throws deep
-     * inside install(). The directory itself is created lazily on first
-     * backup (see UpdateBackupService::ensureBackupsDirectory()), so a
-     * fresh install checks the nearest existing ancestor instead —
-     * mirrors systemStatus()'s "Temporary directory" check, one level up.
+     * Confirms the backup destination is writable with enough free space
+     * before an update proceeds, rather than discovering the problem
+     * deep inside install(). The directory is created lazily on first
+     * backup, so a fresh install checks the nearest existing ancestor.
      *
      * @return array<int, string>
      */
@@ -319,12 +270,9 @@ final class UpdateService
     }
 
     /**
-     * "Warn about active users" — surfaces a non-blocking heads-up when
-     * another administrator/editor session has been active recently, since
-     * an update briefly puts the site into maintenance mode (see
-     * beginMaintenanceMode()) and overwrites core files out from under
-     * anyone mid-edit. Returns [] when $currentUserId or $users wasn't
-     * provided (an on-demand backup or a test double, e.g.).
+     * A non-blocking heads-up when another admin/editor session has been
+     * active recently, since an update briefly enables maintenance mode
+     * and overwrites core files out from under anyone mid-edit.
      *
      * @return array<int, string>
      */
@@ -347,14 +295,10 @@ final class UpdateService
     }
 
     /**
-     * "Detect modified core files" — compares the live filesystem against
-     * the checksums recorded right after the last successful install()
-     * (see UpdateChecksumManifest's docblock). A mismatch means a core file
-     * was hand-edited (or deleted) since then; this update's overlay step
-     * will silently replace or remove it, so it's worth a heads-up before
-     * that happens. Returns [] when nothing was recorded yet (a fresh
-     * install predating this feature, or $checksums wasn't provided) —
-     * fail-safe, never a false "everything is modified" alarm.
+     * Compares the live filesystem against checksums recorded after the
+     * last successful install(). A mismatch means a core file was
+     * hand-edited since then and will be silently overwritten. Returns
+     * [] when nothing was recorded yet — fail-safe, not a false alarm.
      *
      * @return array<int, string>
      */
@@ -490,22 +434,10 @@ final class UpdateService
     }
 
     /**
-     * "Visible Update Progress" spans multiple HTTP requests for the two
-     * backup stages (see UpdateBackupService::backupDatabaseBatch()'s
-     * docblock for why) — beginInstall() does the one-time setup
-     * (validate the token, acquire the lock, begin maintenance mode, fire
-     * the "before" hook) and persists a small JSON state file;
-     * continueInstall() is then called once per request until it reports
-     * done, advancing exactly one pipeline stage per call. The lock and
-     * maintenance mode are deliberately NOT released here — they persist
-     * (the lock via its file, maintenance mode via the `PressConfig`
-     * option, both naturally surviving across requests) until
-     * continueInstall() reaches a terminal state.
-     *
-     * install() above is unchanged and still available as a single
-     * synchronous call — every existing caller/test keeps working
-     * exactly as before; the admin Updates page is the only caller
-     * switched to this staged pair.
+     * Spans multiple HTTP requests. Does the one-time setup (validate token, acquire lock,
+     * begin maintenance mode, fire the "before" hook) and persists a JSON state file;
+     * continueInstall() is then called once per request until done. install() remains
+     * available as a single synchronous call; the admin Updates page uses this pair instead.
      *
      * @return array{token: string, stage: string, from_version: string, to_version: string}
      */
@@ -681,10 +613,7 @@ final class UpdateService
 
     /**
      * Same staged shape as beginInstall()/continueInstall(), for the
-     * on-demand "Backup Now" button — two stages instead of six
-     * (backup_files, backup_database), and no maintenance-mode change
-     * (createBackupNow(), the synchronous equivalent this replaces on the
-     * admin Updates page, never touched it either).
+     * on-demand "Backup Now" button — two stages, no maintenance-mode change.
      *
      * @return array{token: string, stage: string}
      */
@@ -806,12 +735,11 @@ final class UpdateService
     }
 
     /**
-     * Shared rollback logic for install()'s and continueInstall()'s
-     * catch blocks — restores whatever backups exist so far and reports
-     * the resulting status/message, but does not itself touch the lock,
-     * maintenance mode, staging directory, logging, or hooks, since the
-     * two callers close those out slightly differently (install() via
-     * its own `finally`, continueInstall() explicitly per terminal path).
+     * Shared rollback logic for install()'s and continueInstall()'s catch
+     * blocks — restores whatever backups exist and reports the resulting
+     * status/message, but doesn't touch the lock, maintenance mode,
+     * staging directory, logging, or hooks; the two callers close those
+     * out differently.
      *
      * @return array{status: UpdateStatus, message: string}
      */
@@ -882,16 +810,7 @@ final class UpdateService
      */
     private function cleanupStage(array $effectiveCorePaths, string $stagingPath): void
     {
-        /*
-         * install/ is one of $corePaths, so a release package that ships
-         * it just re-extracted it onto the installation above —
-         * resurrecting it even on a site where the administrator had
-         * already deleted it after their original install. Best-effort
-         * only, same as the installer's own cleanup: a locked-down host
-         * that won't let PHP delete its own files is an unremarkable
-         * outcome here too, and the Dashboard's leftover-install-
-         * directory alert (LP-030) still catches it either way.
-         */
+        // install/ is a corePath, so a release package that ships it just re-extracted it — remove it again here.
         (new InstallerCleanup())->remove(rtrim($this->installRoot, '/') . '/install');
 
         $this->removeObsoleteCorePaths($effectiveCorePaths);
@@ -963,10 +882,7 @@ final class UpdateService
             throw new RuntimeException('Unable to prepare the update state directory.');
         }
 
-        // Atomic write (tmp file + rename()), same as UpdateProgress's
-        // own persistence — a request that crashes mid-write must never
-        // leave a torn, half-written state file for the next request to
-        // resume from.
+        // Atomic write (tmp file + rename()) — a crash mid-write must never leave a torn state file.
         $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
         file_put_contents($tmp, json_encode($state, JSON_THROW_ON_ERROR));
         rename($tmp, $path);
@@ -999,14 +915,9 @@ final class UpdateService
     }
 
     /**
-     * "Maintenance mode during update" — auto-enables the existing
-     * MaintenanceGate for the duration of install() (see its own docblock:
-     * /admin/* stays exempt regardless, so an administrator can always
-     * keep working through the update), and returns whatever the option
-     * held before so endMaintenanceMode() can restore it exactly — an
-     * administrator who had already turned maintenance mode on deliberately
-     * must find it still on afterward, not toggled off. Returns null (and
-     * does nothing) when $config wasn't provided.
+     * Auto-enables maintenance mode for the duration of install() (/admin/*
+     * stays exempt regardless), returning the prior value so
+     * endMaintenanceMode() can restore it exactly. No-op when $config wasn't provided.
      */
     private function beginMaintenanceMode(): ?string
     {
@@ -1059,9 +970,8 @@ final class UpdateService
     /**
      * Restores a backup pair, taking the same update lock install() does
      * so a restore can never run concurrently with an in-progress update.
-     * $filesFilename/$databaseFilename are basenames only (see
-     * UpdateBackupService::restoreFilesByFilename()'s docblock) — never
-     * full paths an admin form could tamper with.
+     * $filesFilename/$databaseFilename are basenames only, never full
+     * paths an admin form could tamper with.
      */
     public function restoreBackup(string $filesFilename, ?string $databaseFilename): void
     {
@@ -1094,10 +1004,9 @@ final class UpdateService
     }
 
     /**
-     * On-demand backup, independent of the update pipeline — for an
-     * administrator who wants a restore point before touching anything
-     * else. Takes the same lock install()/restoreBackup() do, since a
-     * database dump mid-migration would be inconsistent.
+     * On-demand backup, independent of the update pipeline. Takes the
+     * same lock install()/restoreBackup() do, since a database dump
+     * mid-migration would be inconsistent.
      *
      * @return array{files_path: string, database_path: string}
      */
@@ -1211,18 +1120,9 @@ final class UpdateService
 
     /**
      * Removes top-level `corePaths` entries that were part of a previous
-     * install/restore but aren't part of $corePaths (the *effective* set
-     * just installed — see resolveEffectiveCorePaths()) — the only case a
-     * corePath entry can go stale, since it's a value only ever set by
-     * this codebase's own core-paths.php, never derived from an uploaded
-     * release ZIP or touched by an admin, a plugin, or any file outside
-     * the fixed corePaths list. Deliberately compares against the
-     * *configured* corePaths, not "what this specific release happened to
-     * contain" — see UpdateManifest's own docblock for why.
-     *
-     * A missing/never-written manifest reads back as [], so the very
-     * first run after this exists is always a safe no-op: nothing is
-     * removed, tracking simply begins from that point on.
+     * install/restore but aren't part of the effective set just
+     * installed. A missing/never-written manifest reads back as [], so
+     * the first run after this exists is always a safe no-op.
      *
      * @param array<int, string> $corePaths
      */
@@ -1238,15 +1138,10 @@ final class UpdateService
     }
 
     /**
-     * The corePaths list this install() run should actually overlay: the
-     * currently-running (old) code's own $this->corePaths, unioned with
-     * whatever the *staged, not-yet-installed* package's own
-     * core-paths.php declares — see that file's docblock for the full
-     * "chicken-and-egg" problem this closes. A package built before
-     * core-paths.php existed (or one that's otherwise missing/malformed)
-     * just falls back to $this->corePaths alone, exactly today's
-     * pre-fix behavior — never an error, since a missing declaration here
-     * is not itself a reason to fail an update.
+     * The corePaths list this install() run should overlay: the
+     * currently-running code's own $this->corePaths, unioned with
+     * whatever the staged package's own core-paths.php declares. A
+     * package missing that file just falls back to $this->corePaths alone.
      *
      * @return array<int, string>
      */

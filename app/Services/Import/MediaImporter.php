@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Registers, skips, or overwrites a local file as a media item from an ImportedMedia DTO and records provenance (LPP-004/LPP-005 Phase 1).
+ * Registers, skips, or overwrites a local file as a media item from an ImportedMedia DTO and records provenance.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -22,21 +22,10 @@ use LumoraPress\Services\MediaService;
 use RuntimeException;
 
 /**
- * Copies $data->absolutePath into the uploads directory (under
- * $data->relativeDirectory when the source has its own folder structure
- * worth preserving, sanitized via sanitizeRelativeDirectory() below;
- * today's year/month otherwise, matching MediaService::upload()'s own
- * naming) and registers it via MediaService::registerExistingFile() —
- * deliberately not
- * MediaImportService (LP-041), whose allow-list/mirroring machinery is
- * built for the FTP-scan admin screen and would need a plugin's own
- * temp/download directory added to its allow-list for no benefit here.
- *
- * A future downloadAndImport(string $url, ...) helper (LPP-004, once its
- * WXR parser exists) would download a remote attachment URL to a local
- * temp file first, then delegate to importFromLocalFile() below — not
- * built yet since nothing calls it this phase (see the Phase 1/Phase 2
- * split in this feature's implementation plan).
+ * Copies $data->absolutePath into the uploads directory and registers it via
+ * MediaService::registerExistingFile() — deliberately not MediaImportService, whose
+ * allow-list/mirroring machinery is built for the FTP-scan admin screen and would need a
+ * plugin's own temp/download directory added for no benefit here.
  */
 final class MediaImporter
 {
@@ -48,17 +37,11 @@ final class MediaImporter
     }
 
     /**
-     * $existingContentMode is null on every call site except a
-     * deliberate re-import against a source already imported once
-     * before — see ExistingContentMode's own docblock. Overwrite is
-     * narrower here than for Post/Page: it never re-copies or replaces
-     * the underlying file (MediaService has no "replace this file in
-     * place" primitive that takes a local path rather than an uploaded
-     * $_FILES-shaped array), only alt text/caption/description/folder —
-     * the file itself is left exactly as it was on the first import.
-     * Skip and Overwrite both therefore skip every filesystem/MIME-type
-     * check below entirely once a match is found, unlike a fresh
-     * import.
+     * $existingContentMode is null except on a deliberate re-import — see
+     * ExistingContentMode's docblock. Overwrite is narrower here than for Post/Page: it
+     * never re-copies the underlying file (MediaService has no in-place replace primitive
+     * for a local path), only alt text/caption/description/folder. Skip and Overwrite both
+     * skip every filesystem/MIME-type check once a match is found.
      *
      * @return array<string, mixed>
      */

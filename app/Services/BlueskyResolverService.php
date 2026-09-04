@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Bluesky Auto-Embed's oEmbed resolution cache (LP-071).
+ * Bluesky Auto-Embed's oEmbed resolution cache.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,32 +21,15 @@ use LumoraPress\Core\Database\Database;
 use Throwable;
 
 /**
- * Bluesky Auto-Embed's oEmbed resolution cache (LP-071). Bluesky's own
- * embed widget requires a blockquote carrying the post's AT-URI
- * (`at://did:plc:.../app.bsky.feed.post/{rkey}`) and content CID — neither
- * is derivable from a plain `bsky.app/profile/{handle}/post/{rkey}` URL by
- * regex the way every other Auto-Embed provider's id is (see
- * `EmbedService`'s class docblock on why this project otherwise never
- * makes an outbound request to build an embed). This is the one
- * deliberate, scoped exception to that rule, confirmed necessary against
- * Bluesky's own oEmbed docs 2026-08-06 (see TODO.md's LP-071).
+ * Bluesky Auto-Embed's oEmbed resolution cache. Bluesky's embed widget requires an AT-URI
+ * and content CID, neither derivable by regex from a plain post URL the way other Auto-Embed
+ * providers' ids are — the one deliberate exception to `EmbedService`'s no-outbound-request rule.
  *
- * The exception is kept as narrow as possible: `resolveContent()` — the
- * only method that makes a network call — runs exactly once per distinct
- * Bluesky post URL, from the `post_saved`/`page_saved` hooks (see
- * include/bootstrap.php), never from a page render. `cached()` — the
- * method `EmbedService::matchBluesky()` actually calls at render time —
- * only ever reads the local cache table and never touches the network,
- * so rendering a post keeps this project's "auto-embed never blocks on an
- * outbound request" property intact; a not-yet-resolved (or permanently
- * unresolvable) Bluesky URL just renders as a plain link until a future
- * save resolves it.
- *
- * HTTP pattern mirrors AkismetClient/GitHubReleaseProvider: an injectable
- * GET closure for tests, curl-first with a `file_get_contents` fallback,
- * and fails open — any network/parse problem simply leaves the URL
- * unresolved rather than throwing, so a down or slow Bluesky can never
- * break saving a post/page.
+ * Kept narrow: `resolveContent()`, the only network call, runs once per distinct Bluesky URL
+ * from the `post_saved`/`page_saved` hooks, never from a page render. `cached()`, called at
+ * render time, only reads the local cache — a not-yet-resolved URL just renders as a plain
+ * link until a future save resolves it. HTTP pattern mirrors AkismetClient/
+ * GitHubReleaseProvider and fails open, so a down Bluesky can never block a save.
  */
 final class BlueskyResolverService
 {

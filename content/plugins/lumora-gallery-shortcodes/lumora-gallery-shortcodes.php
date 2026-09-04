@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Lumora Gallery Shortcodes plugin's main file (LPP-015): plugin metadata header and bootstrap.
+ * The Lumora Gallery Shortcodes plugin's main file: plugin metadata header and bootstrap.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -44,9 +44,7 @@ require_once __DIR__ . '/src/GalleryShortcode.php';
  * only opens a (separately-configured, external) database connection
  * once a page's content actually contains one of its shortcodes, via
  * GallerySettingsService — so it's safe to construct here at plugin-load
- * time, the same "no hook to register, $kernel doesn't exist yet"
- * reasoning DownloadsShortcode/NextGenGalleryShortcode's own bootstrap
- * already establishes.
+ * time, before $kernel exists.
  */
 $gallerySettings = new GallerySettingsService();
 $galleryShortcode = new GalleryShortcode($gallerySettings);
@@ -54,26 +52,21 @@ $galleryShortcode = new GalleryShortcode($gallerySettings);
 add_filter('content_html', static fn (string $html): string => $galleryShortcode->render($html));
 
 /*
- * LPP-017: picker metadata for the editor toolbar's "Insert Shortcode"
- * button (LP-110) — purely additive, doesn't change how
- * [lumora_gallery_album ...]/[lumora_gallery_newest ...] themselves
- * render (still the content_html filter above). `album_id`'s choices
- * need a live query against the separately-configured Gallery database,
- * which — like DownloadsShortcode's category list — has nothing to do
- * with this site's own Kernel, so it's queried directly here rather
- * than through $kernel; still hooked on 'register_shortcodes' (not
- * called at plugin-load time) purely to match every other
- * database-backed shortcode registration's own timing convention. An
- * unconfigured or unreachable Gallery connection yields an empty
- * choices list rather than an error — the picker still opens with
- * `album_id` simply showing no options to pick from.
+ * Picker metadata for the editor toolbar's "Insert Shortcode" button —
+ * purely additive, doesn't change how [lumora_gallery_album ...]/
+ * [lumora_gallery_newest ...] themselves render (still the content_html
+ * filter above). `album_id`'s choices need a live query against the
+ * separately-configured Gallery database, which has nothing to do with
+ * this site's own Kernel, so it's queried directly here rather than
+ * through $kernel; still hooked on 'register_shortcodes' to match every
+ * other database-backed shortcode registration's timing. An unconfigured
+ * or unreachable Gallery connection yields an empty choices list rather
+ * than an error.
  *
  * Covers only `[lumora_gallery_album]`'s "whole album" variant
- * (`album_id` alone) and `[lumora_gallery_newest]`'s `count` — the
- * album shortcode's `count` (newest N within one album) and `image_id`
- * (specific images) variants are left typeable by hand, matching
- * LP-110's own established "list everything" scope for a multi-variant
- * shortcode (see downloads.php's identical category_id-only choice).
+ * (`album_id` alone) and `[lumora_gallery_newest]`'s `count` — the album
+ * shortcode's `count` (newest N within one album) and `image_id`
+ * (specific images) variants are left typeable by hand.
  */
 add_action('register_shortcodes', static function () use ($gallerySettings): void {
     $albumChoices = [];

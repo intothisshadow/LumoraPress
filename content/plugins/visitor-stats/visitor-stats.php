@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Visitor & Post View Statistics plugin's main file (LPP-014): plugin metadata header and bootstrap.
+ * The Visitor & Post View Statistics plugin's main file: plugin metadata header and bootstrap.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -83,8 +83,8 @@ add_action('single_post_viewed', static function (Post $post, bool $isGuest): vo
 /*
  * Adds this plugin's own Dashboard panel — a no-op hook
  * (admin/views/dashboard.php) that any plugin could use, not something
- * this plugin owns. Gated on edit_posts, mirroring LP-006's Popular
- * Downloads panel's own upload_files gate.
+ * this plugin owns. Gated on edit_posts, same as other Dashboard panels
+ * with an equivalent capability requirement.
  */
 add_action('dashboard_widgets', static function (User $currentUser): void {
     if (!$currentUser->can('edit_posts') || ActiveConfig::instance()->option('track_post_views', '') !== '1') {
@@ -100,11 +100,11 @@ add_action('dashboard_widgets', static function (User $currentUser): void {
 });
 
 /*
- * LP-134: declares this widget's own stable id so a signed-in admin can
- * drag it into position among the built-in Dashboard widgets, not just
- * always see it pinned last. Mirrors the action above's exact same
- * gate — a widget that won't actually render this request shouldn't
- * reserve a slot in the saved order either.
+ * Declares this widget's own stable id so a signed-in admin can drag it
+ * into position among the built-in Dashboard widgets, not just always
+ * see it pinned last. Mirrors the action above's exact same gate — a
+ * widget that won't actually render this request shouldn't reserve a
+ * slot in the saved order either.
  */
 add_filter('dashboard_widget_ids', static function (array $ids, User $currentUser): array {
     if (!$currentUser->can('edit_posts') || ActiveConfig::instance()->option('track_post_views', '') !== '1') {

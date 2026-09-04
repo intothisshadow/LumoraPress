@@ -27,13 +27,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * DownloadService's class is guaranteed to already be loaded —
- * PluginManager::loadActive() required content/plugins/downloads/downloads.php
- * earlier this same request, in include/bootstrap.php (this view is
- * only ever reachable while the plugin is active — see admin/index.php's
- * $downloadsActive-gated 'downloads' $menu entry).
- */
+// Only reachable while the Downloads plugin is active, so DownloadService's
+// class is guaranteed to already be loaded.
 $downloadCategories = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
 $downloads = new DownloadService(
     $kernel->database,
@@ -45,12 +40,9 @@ $downloads = new DownloadService(
     $kernel->mediaStats,
 );
 
-/*
- * Shared shape for one Media row in the "Insert Image" picker (LP-115)
- * — see PostsController::buildEditorPickerItem()'s identical docblock.
- * Downloads has no controller of its own (same as pages/new.php), so
- * this stays inline here, matching editor_upload/convert_content's
- * existing pattern below.
+/**
+ * Shared shape for one Media row in the "Insert Image" picker. Downloads
+ * has no controller of its own, so this stays inline here.
  *
  * @param array<string, mixed> $item
  * @param array<int, array<string, mixed>> $thumbnailsForItem
@@ -83,17 +75,9 @@ $buildEditorPickerItem = static function (array $item, array $thumbnailsForItem)
     ];
 };
 
-/*
- * The Description field's editor image upload and format-switch
- * conversion (LPP-010) — the same shared editor component Posts/Pages
- * use (see admin/assets/js/content-editor.js), wired the same way
- * pages/new.php wires it: JSON sub-actions on this same page rather
- * than their own admin route, gated on 'upload_files' since that's the
- * capability this plugin's whole admin area is already gated behind
- * (see admin/index.php's $downloadsActive-gated 'downloads' $menu
- * entry) rather than the Posts-specific 'edit_posts'/'upload_files'
- * split PostsController/pages/new.php use.
- */
+// The Description field's editor image upload/format-switch conversion:
+// JSON sub-actions on this same page, gated on 'upload_files' since
+// that's what this plugin's whole admin area is already gated behind.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_upload') {
     // admin/index.php's ob_start() buffer already holds layout-header.php's
     // HTML shell by the time this runs — discard it before sending a
@@ -119,21 +103,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     try {
         $uploaded = $kernel->media->upload($_FILES['file'], $currentUser->id);
-        // Matches admin/views/media/upload.php's own multi-upload flow —
-        // without this, an image uploaded straight from the editor
-        // (LP-115's "Upload New" picker step) would report no size
-        // options at all in $buildEditorPickerItem() above.
+        // Without this, an image uploaded from the editor's "Upload New"
+        // step would report no size options in $buildEditorPickerItem().
         $kernel->thumbnails->generate($uploaded);
 
         echo json_encode([
             'data' => ['filePath' => $kernel->media->url($uploaded)],
             'url' => $kernel->media->url($uploaded),
             'item' => $buildEditorPickerItem($uploaded, $kernel->thumbnails->thumbnailsFor((int) $uploaded['id'])),
-            // Csrf::verify() is single-use — a second image upload without
-            // a full page reload would otherwise fail CSRF verification
-            // against the already-consumed token from the initial page
-            // load. content-editor.js writes this fresh token back into
-            // data-upload-csrf for the next call.
+            // Csrf::verify() is single-use; content-editor.js writes this
+            // fresh token back for the next call.
             'csrfToken' => Csrf::token('editor_upload'),
         ]);
     } catch (\Throwable $exception) {
@@ -173,8 +152,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     }
 
     $result = $kernel->media->query($filters, $perPage, ($page - 1) * $perPage);
-    // One batched query for every item's thumbnails rather than one per
-    // item (LP-075's thumbnailsForMany() precedent).
+    // One batched query for every item's thumbnails rather than one per item.
     $thumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(
         array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
     );
@@ -190,16 +168,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
-/*
- * "Insert/Edit Link" dialog's "Or link to existing content" search
- * (LP-130, openLinkPicker() in content-editor.js) — see posts/new.php's
- * identical block's own docblock for why this spans both PostService
- * and PageService rather than living on a single content-type
- * controller, and is duplicated here rather than shared. Gated on
- * 'upload_files' rather than 'edit_posts', matching every other
- * sub-action on this page — see the Description field's own docblock
- * above for why.
- */
+// "Insert/Edit Link" dialog's "Or link to existing content" search, gated
+// on 'upload_files' to match every other sub-action on this page.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'link_picker_query') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -253,9 +223,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'font_awesome_icon_query') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why FontAwesomeService's class must be guarded rather
-    // than assumed loaded.
+    // FontAwesomeService's class must be guarded, not assumed loaded.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -275,9 +243,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'emoji_picker_record_recent') {
-    // See the identical comment in admin/views/posts/new.php's matching
-    // block for why this is core UserService work rather than delegated
-    // to the (optional) Emoji Picker plugin's own service.
+    // Core UserService work, not delegated to the optional Emoji Picker
+    // plugin's own service.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -305,19 +272,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
-/*
- * LPP-012: "Add from server" / "Replace file" — a separate sub-action
- * from media_picker_query above rather than a shared one with a type
- * toggle, deliberately: that one is the Description field's own
- * "Insert Image" picker (content-editor.js, hardcoded to images, with
- * an Attachment Display Settings step none of this makes sense for), a
- * different feature this file also happens to host. A download's file
- * can be anything (a .zip, a .pdf, an image), so this queries every
- * Media item with no type filter at all, and returns a plain
- * {id, name, url, mimeType, typeCategory} per item — no size variants,
- * no display-settings step, just enough for downloads-picker.js to
- * render a filename + type badge and hand back the id it selected.
- */
+// "Add from server" / "Replace file" — deliberately separate from
+// media_picker_query above, which is the image-only "Insert Image"
+// picker. A download's file can be anything, so this queries every
+// Media item with no type filter and returns a plain
+// {id, name, url, mimeType, typeCategory} for downloads-picker.js.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'download_file_picker_query') {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -418,7 +377,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $description = (string) ($_POST['description'] ?? '');
         $descriptionFormat = ContentFormat::tryFrom((string) ($_POST['description_format'] ?? '')) ?? get_active_editor($currentUser->id);
         $categoryId = (int) ($_POST['category_id'] ?? 0);
-        // LPP-012: a third "existing" choice alongside file/url — an
+        // A third "existing" choice alongside file/url — an
         // already-uploaded Media item, picked via downloads-picker.js
         // rather than uploaded again.
         $typeInput = (string) ($_POST['type'] ?? 'file');
@@ -457,13 +416,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         categoryId: $categoryId > 0 ? $categoryId : null,
                     );
 
-                // LPP-010: lands back on this same screen's Edit view
-                // (rather than the All Downloads list, as before) so a
-                // File-typed download's freshly uploaded file preview
-                // image is visible immediately after upload — mirrors
-                // PostsController::save()'s identical
-                // "redirect to the edit screen for the id just saved"
-                // convention.
+                // Lands on this screen's Edit view (not All Downloads) so
+                // the freshly uploaded file's preview is visible immediately.
                 header('Location: ' . admin_url('downloads/add-new') . '?id=' . $createdDownload->id . '&saved=1');
                 exit;
             } catch (\Throwable $exception) {
@@ -483,25 +437,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if ($title === '') {
                 $error = 'Please enter a title.';
             } else {
-                /*
-                 * LPP-012: attaching/replacing a file — either a
-                 * brand-new upload (a fresh Media row, created here the
-                 * same way create()'s own File branch does) or an
-                 * already-uploaded one picked via downloads-picker.js.
-                 * Shown (and handled) regardless of the download's
-                 * *current* type — a Url-typed download can be turned
-                 * into a File-typed one this way, not just an existing
-                 * File-typed one replaced. An actual uploaded $_FILES
-                 * entry always wins over a picked existing_media_id if a
-                 * form somehow submitted both (shouldn't happen — the
-                 * view only ever shows one at a time being filled in —
-                 * but this is the more conservative "the file the admin
-                 * most recently interacted with" choice); either one
-                 * also wins over a same-request URL field edit below —
-                 * an explicit file action reads as more deliberate than
-                 * a text field that might just be showing untouched
-                 * pre-filled/autofilled content.
-                 */
+                // Attaching/replacing a file works regardless of the
+                // download's current type — a Url-typed download can
+                // become File-typed this way too. An uploaded $_FILES
+                // entry wins over a picked existing_media_id if both are
+                // submitted, and either wins over a same-request URL edit
+                // below, since an explicit file action reads as more
+                // deliberate than a possibly-untouched text field.
                 $newMediaId = null;
                 $newMediaOwned = true;
 
@@ -531,19 +473,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         $downloads->convertToFile($id, $newMediaId, newMediaOwned: $newMediaOwned);
                     }
                 } elseif ($editingDownload !== null && $editingDownload->type === DownloadType::File && $externalUrl !== '') {
-                    // LPP-012: the mirror direction — a File-typed
-                    // download whose URL field was filled in converts to
-                    // Url-typed. update() below still applies $externalUrl
-                    // too, but only to an *already*-Url-typed download —
-                    // harmless no-op there since this already just set it.
+                    // Mirror direction: a File-typed download whose URL
+                    // field was filled in converts to Url-typed.
                     $downloads->convertToUrl($id, $externalUrl);
                 }
 
-                // folder_id (LPP-011) is no longer editable from this form
-                // — it only ever governs a File-typed download's Media
-                // Library placement, decoupled from categorization now —
-                // so this update preserves whatever value the download
-                // already had rather than clearing it.
+                // folder_id isn't editable from this form; preserve
+                // whatever value the download already had.
                 $downloads->update($id, $title, $description, $editingDownload?->folderId, $externalUrl !== '' ? $externalUrl : null, $descriptionFormat, $categoryId > 0 ? $categoryId : null);
 
                 header('Location: ' . admin_url('downloads/all-downloads') . '?saved=1');
@@ -553,38 +489,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-// The download's own Category taxonomy (LPP-011) — distinct from
-// $allFolders below, which is the unrelated Media Library Folder tree the
-// "Insert Image" picker's own filter uses.
+// Distinct from $allFolders below, which is the unrelated Media Library
+// Folder tree the "Insert Image" picker's filter uses.
 $allDownloadCategories = $downloadCategories->listAll();
 
 $allFolders = $kernel->folders->listAll();
-// The "Insert Image" media picker's own Folder filter <select> (LP-115)
-// — only the (small) folder tree is preloaded; the picker's actual
-// image grid is queried on demand via the media_picker_query sub-action
-// above. Matches posts/new.php's/pages/new.php's identical variable.
+// Only the (small) folder tree is preloaded; the picker's image grid is
+// queried on demand via the media_picker_query sub-action above.
 $editorFolderTree = array_map(
     static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
     $kernel->folders->listAllForTree(),
 );
 
 /*
- * Preview image (LPP-010, extended for thumbnailMediaId per LPP-004's
- * WordPress import of a download's own featured image) — reuses
- * whatever MediaService/ThumbnailService already resolve for the
- * underlying Media row rather than any new image-processing code, the
- * same way the Media Manager's own list/grid views already show a
- * thumbnail (or, for a non-image file, the same typeCategory() text
- * badge those views fall back to — see admin/views/media/media.php's
- * identical lp-media-list__thumb--file/lp-media-grid__thumb--file
- * convention). thumbnailMediaId — an explicitly chosen representative
- * image, distinct from the download's own file — wins when set, since
- * it's meaningful for either download type (a Url-typed download has
- * no local file to preview from at all, and a File-typed download's
- * own file may not be an image, e.g. a .zip). Falls back to a
- * File-typed download's own file when no thumbnail was set. Null when
- * neither applies, or the referenced Media row has since been deleted
- * out from under it.
+ * Preview image: thumbnailMediaId — an explicitly chosen representative
+ * image, distinct from the download's own file — wins when set, since a
+ * Url-typed download has no local file and a File-typed one's file may
+ * not be an image. Falls back to the File-typed download's own file, or
+ * null if neither applies or the referenced Media row is gone.
  *
  * @var array<string, mixed>|null $previewMedia
  */
@@ -592,14 +514,8 @@ $previewMediaId = $editingDownload?->thumbnailMediaId
     ?? ($editingDownload !== null && $editingDownload->type === DownloadType::File ? $editingDownload->mediaId : null);
 $previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId) : null;
 
-/*
- * LPP-012: the current file's own filename, for the "Replace file"
- * panel and the "Download source" hint above it — deliberately looked
- * up separately from $previewMedia above, which prefers thumbnailMediaId
- * (a distinct, explicitly-chosen representative image) over the
- * download's own file when both are set, so it isn't reliably "what
- * file this download actually serves."
- */
+// Looked up separately from $previewMedia above, which can point at a
+// distinct thumbnailMediaId rather than the download's actual file.
 $currentFileMedia = $editingDownload !== null && $editingDownload->type === DownloadType::File && $editingDownload->mediaId !== null
     ? $kernel->media->find($editingDownload->mediaId)
     : null;
@@ -699,7 +615,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 </select>
             </p>
 
-            <?php /* LPP-012: a download's type isn't fixed after creation — either option below can also switch it (Url -> File via the Replace-with-a-file panel, File -> Url via the URL field), not just edit the existing source in place. See DownloadService::convertToFile()/convertToUrl()'s own docblocks. */ ?>
+            <?php /* A download's type isn't fixed after creation — either option below can also switch it (Url -> File via the Replace-with-a-file panel, File -> Url via the URL field), not just edit the existing source in place. See DownloadService::convertToFile()/convertToUrl()'s own docblocks. */ ?>
             <p class="lp-field">
                 <strong>Current source:</strong>
                 <span class="lp-field__hint">
@@ -833,7 +749,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                     <input type="text" id="download-external-url" name="external_url" placeholder="https://example.com/file.zip">
                 </p>
 
-                <?php /* LPP-012: "Add from server" — an already-uploaded Media item, instead of uploading the same file again. */ ?>
+                <?php /* "Add from server" — an already-uploaded Media item, instead of uploading the same file again. */ ?>
                 <label class="lp-field--checkbox">
                     <input type="radio" name="type" value="existing" id="download-source-existing">
                     Use an existing file from the Media Library

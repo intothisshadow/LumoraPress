@@ -20,11 +20,8 @@ namespace LumoraPress\Core\Theme;
 use RuntimeException;
 
 /**
- * Static bridge exposing the request's ThemeOptions instance to the
- * procedural theme_option()/theme_options_css() template helpers
- * (include/helpers.php) — the same "set once in bootstrap, read via a
- * static class" pattern SiteBranding and ActiveTheme already use, since
- * theme templates have no direct route to the Kernel.
+ * Bridges the request's ThemeOptions instance to theme_option()/
+ * theme_options_css() — theme templates have no direct route to the Kernel.
  */
 final class ThemeOptionsBridge
 {
@@ -47,12 +44,9 @@ final class ThemeOptionsBridge
     }
 
     /**
-     * LP-123: the header image's resolved URL, set once at bootstrap
-     * after MediaService exists (headerImageMediaId() itself is available
-     * as soon as ThemeOptions is constructed, but MediaService — needed
-     * to turn that ID into a URL — is constructed later in the request,
-     * the same ordering constraint SiteBranding's own $resolveMediaUrl
-     * closure works around for the site logo/favicon).
+     * The header image's resolved URL, set once MediaService is available —
+     * ThemeOptions itself is constructed earlier in the request, before
+     * MediaService exists to turn the media ID into a URL.
      */
     public static function setHeaderImageUrl(?string $url): void
     {

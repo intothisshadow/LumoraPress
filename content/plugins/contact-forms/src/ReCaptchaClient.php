@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Optional Google reCAPTCHA verification for Contact Form submissions (LPP-003).
+ * Optional Google reCAPTCHA verification for Contact Form submissions.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -20,16 +20,9 @@ namespace LumoraPress\Plugins\ContactForms;
 use LumoraPress\Core\PressConfig;
 
 /**
- * Off by default (`contact_forms_recaptcha_enabled` + a secret key must
- * both be set — see the Settings screen). Modeled directly on
- * AkismetClient's injectable-HTTP-closure pattern
- * (app/Services/AkismetClient.php) for the same testability, but unlike
- * Akismet — which can only ever push a submission *toward* spam, never
- * block it outright — a site owner who explicitly enables reCAPTCHA is
- * asking for a hard gate: verify() failing (wrong/expired token, or the
- * verification service itself being unreachable) means
- * ContactFormSubmissionHandler rejects the submission. Failing open here
- * would defeat the entire point of turning this on.
+ * Off by default. Unlike Akismet, which can only push toward spam, enabling
+ * this is a hard gate: verify() failing (bad token or unreachable service)
+ * rejects the submission — failing open would defeat the point of turning it on.
  */
 final class ReCaptchaClient
 {

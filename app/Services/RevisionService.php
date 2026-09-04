@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Revision history for Posts and Pages (LP-017).
+ * Revision history for Posts and Pages.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -25,7 +25,7 @@ use LumoraPress\Models\Revision;
 use LumoraPress\Models\RevisionableType;
 
 /**
- * Revision history for Posts and Pages (LP-017). A snapshot is saved by the
+ * Revision history for Posts and Pages. A snapshot is saved by the
  * caller (admin/views/posts.php, admin/views/pages.php) right before it
  * overwrites a post/page via PostService::update()/PageService::update() —
  * this service only stores/retrieves/prunes snapshots, it never reaches

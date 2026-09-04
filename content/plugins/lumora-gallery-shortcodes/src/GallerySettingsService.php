@@ -23,16 +23,12 @@ use LumoraPress\Core\Database\DatabaseConnectionException;
 use Throwable;
 
 /**
- * Settings are stored as one JSON-encoded row in this site's own options
- * table (`ActiveConfig`/`PressConfig`), the same pattern
- * `LumoraShieldService::settings()`/`saveSettings()` already established
- * — no dedicated table needed for a handful of connection fields.
+ * Settings are stored as one JSON-encoded row in this site's own options table, the same
+ * pattern `LumoraShieldService` uses — no dedicated table needed for a handful of fields.
  *
- * This plugin never assumes Lumora Gallery shares this site's database,
- * filesystem, or Kernel — it opens its own independent, read-only PDO
- * connection to a *separately-configured* Gallery database, mirroring
- * `content/plugins/wordpress-importer/`'s own `WordPressSource` pattern
- * for talking to another application's database entirely.
+ * This plugin never assumes Lumora Gallery shares this site's database, filesystem, or
+ * Kernel — it opens its own independent, read-only PDO connection to a separately-configured
+ * Gallery database, mirroring `WordPressSource`'s pattern for another application's database.
  */
 final class GallerySettingsService
 {
@@ -92,8 +88,7 @@ final class GallerySettingsService
      * refused, wrong credentials, unreachable host — so a caller never
      * has to catch a raw PDO/`DatabaseConnectionException` itself, and a
      * misconfigured or temporarily-down Gallery site never surfaces a
-     * stack trace or connection string on this site's own pages (per
-     * `CLAUDE.md`'s "fail securely" requirement).
+     * stack trace or connection string on this site's own pages.
      */
     public function connect(): ?Database
     {
@@ -141,24 +136,11 @@ final class GallerySettingsService
     }
 
     /**
-     * Best-effort auto-detection of Gallery's own `base_url` config
-     * value (Settings &rsaquo; Detect from config.php, alongside
-     * GalleryConfigParser's plain-text DB_* extraction) — unlike the
-     * DB_HOST/DB_NAME/DB_USER/DB_PASS/DB_PREFIX values, base_url isn't a
-     * config.php constant at all; Lumora Gallery stores it in its own
-     * `{prefix}config` database table (see that project's
-     * install/schema.sql), so detecting it needs an actual read-only
-     * query against the just-detected connection, not more text parsing.
-     *
-     * Takes $settings directly (the freshly-detected, not-yet-saved
-     * values from GalleryConfigParser) rather than reading
-     * self::settings(), since this runs before the admin has confirmed
-     * anything — connecting with already-saved settings here would
-     * silently ignore what config.php just reported. Fails silently
-     * (returns null) on any connection or query error, exactly like
-     * connect()/testConnection() above: an unreachable or misconfigured
-     * Gallery database during detection is not fatal to the Settings
-     * screen, it just means base_url has to be entered by hand.
+     * Best-effort auto-detection of Gallery's `base_url`, which unlike the DB_* values isn't
+     * a config.php constant — it lives in Gallery's own `{prefix}config` table, so detection
+     * needs a query against the just-detected connection. Takes $settings directly (not
+     * self::settings()) since this runs before the admin has confirmed anything. Fails
+     * silently (returns null) on any connection/query error, like connect()/testConnection().
      *
      * @param array{db_host: string, db_port: int, db_name: string, db_user: string, db_password: string, db_prefix: string} $settings
      */

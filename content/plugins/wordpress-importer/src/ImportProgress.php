@@ -18,33 +18,18 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\WordPressImporter;
 
 /**
- * A near-identical mirror of the core `UpdateProgress` class (LP-086),
- * kept as its own copy here rather than reused directly: this plugin's
- * admin view constructs its own dependencies straight from `$kernel`
- * without going through a `Kernel`-registered service (see
- * `wordpress-importer.php`'s own docblock on why — a plugin main file
- * loads before `Kernel` exists), and `UpdateProgress` itself carries no
- * update-specific logic worth sharing beyond this shape, so a second
- * small class is simpler than adding a constructor parameter to a core
- * service for one plugin's use.
+ * A near-identical mirror of the core `UpdateProgress` class, kept as its
+ * own copy since this plugin constructs its dependencies directly from
+ * `$kernel` rather than through a registered service.
  *
- * This only works because the request driving an import calls
- * `session_write_close()` before starting the long operation (see
- * admin/views/maintenance/import.php) — PHP's default session handler
- * locks the session file for the request's entire duration, so without
- * releasing that lock early, a concurrent polling request sharing the
- * same session would simply queue behind it and never observe anything
- * until the import was already done.
+ * Only works because the request driving an import calls
+ * `session_write_close()` first (see admin/views/maintenance/import.php) —
+ * otherwise a concurrent polling request sharing the session would queue
+ * behind the session lock and never observe progress until it was done.
  *
- * State is a single JSON file, like UpdateProgress's own — this is
- * transient, single-reader/single-writer progress for whichever import
- * is currently running (WordPressImportService::startOrResume()'s own
- * "one import at a time" guard already ensures only one can run), not
- * data worth persisting or querying. Real resumability after an
- * interrupted import is tracked separately, in the database, via
- * WordPressImportService's own 'progress_snap' state — this class only
- * ever drives the live progress bar for a request that's actively
- * running right now.
+ * State is a single JSON file — transient, single-reader/single-writer
+ * progress for whichever import is running. Real resumability after an
+ * interrupted import is tracked separately via the database.
  */
 final class ImportProgress
 {
@@ -77,11 +62,9 @@ final class ImportProgress
     }
 
     /**
-     * Marks $key "active" and, if some other stage was still "active" or
-     * "pending" before it in the declared list, quietly marks it "done"
-     * first — a resumed import's already-completed stages are declared
-     * straight into "done" via reset() rather than replayed through
-     * here, so this only ever needs to handle forward progress.
+     * Marks $key "active" and quietly marks any prior "active" stage "done" —
+     * only ever needs to handle forward progress, since a resumed import's
+     * completed stages are declared straight into "done" via reset().
      */
     public function stage(string $key): void
     {
@@ -166,13 +149,7 @@ final class ImportProgress
             return;
         }
 
-        // Write-then-rename rather than a direct file_put_contents(): a
-        // poller reading mid-write would otherwise sometimes see a
-        // truncated/partial JSON document, since this file is rewritten
-        // on every single stage transition while another request may be
-        // reading it at any moment. rename() on the same filesystem is
-        // atomic, so a reader only ever sees a complete previous or new
-        // version, never a half-written one.
+        // Write-then-rename so a poller never sees a half-written JSON file — rename() is atomic.
         $tmpPath = $path . '.' . bin2hex(random_bytes(4)) . '.tmp';
 
         if (file_put_contents($tmpPath, $encoded) === false) {

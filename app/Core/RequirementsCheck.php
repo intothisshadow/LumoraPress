@@ -19,16 +19,13 @@ namespace LumoraPress\Core;
 
 /**
  * Checks the PHP version, required extensions, and writable-directory
- * prerequisites before the installer attempts anything else — so a
- * missing `pdo_mysql` extension or an unwritable `config/` directory
- * produces a clear, specific message instead of a generic "Installation
- * failed: ..." further down the wizard.
+ * prerequisites before the installer attempts anything else, so a
+ * missing extension or unwritable directory produces a specific message
+ * instead of a generic failure further down the wizard.
  *
  * The PHP version and extension-loaded check are constructor-injectable
- * (defaulting to the real `PHP_VERSION` constant and `extension_loaded()`)
- * purely so both failure branches are unit-testable without needing to
- * actually run under an unsupported PHP version or with an extension
- * disabled — production code never needs to pass either argument.
+ * so both failure branches are unit-testable without actually running
+ * under an unsupported PHP version or with an extension disabled.
  */
 final class RequirementsCheck
 {

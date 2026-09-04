@@ -1,7 +1,7 @@
 <?php
 
 /**
- * How an *Importer class should handle a row whose external id was already imported by a previous batch of the same source (LPP-004).
+ * How an *Importer class should handle a row whose external id was already imported by a previous batch of the same source.
  *
  * @package LumoraPress
  * @subpackage Services

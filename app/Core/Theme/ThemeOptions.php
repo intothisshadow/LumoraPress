@@ -20,32 +20,17 @@ namespace LumoraPress\Core\Theme;
 use LumoraPress\Core\PressConfig;
 
 /**
- * LP-034's Theme Options system (originally scoped as the standalone
- * LP-023 ticket — see DECISIONS.md's "LP-023 merged into LP-034" entry).
+ * The Theme Options system. Sections and fields are registered once per
+ * request — core's registerStandardOptions() plus anything a theme/plugin
+ * adds via the 'register_theme_options' action.
  *
- * Sections and fields are registered once per request — core's own
- * standard Colors/Typography/Layout options via registerStandardOptions()
- * (called from include/bootstrap.php), plus anything a theme or plugin
- * adds by hooking `add_action('register_theme_options', function
- * (ThemeOptions $options) { ... })`.
+ * Values are scoped per active theme, stored as JSON under a
+ * `theme_options_{slug}` option — switching themes switches which values
+ * are shown/editable, each theme keeping its own independent set.
  *
- * Values are scoped per active theme (LP-123): each theme's values live
- * under their own `theme_options_{slug}` option (a JSON map of key =>
- * string value, the same "structured value as JSON" convention
- * widgets_config/nav_menus already use), keyed by $activeThemeSlug at
- * construction time. Switching the active theme genuinely switches which
- * values are shown/editable — each theme keeps its own independent set,
- * so e.g. an Accent Color chosen while duskline is active has no effect
- * once xena-central is activated. (Before LP-123, all sites shared one flat
- * `theme_options` option regardless of active theme; migration
- * 0054_migrate_theme_options_to_active_theme.sql carries any pre-existing
- * global values over to whichever theme was active at upgrade time.)
- *
- * Values are always plain strings — Checkbox stores '1'/'0', Number
- * stores a numeric string, Color stores a '#rrggbb' hex string or '' for
- * "inherit the active theme's own default" (see ThemeOptionField's
- * $allowEmpty docblock for why Colors specifically need that empty state
- * and Typography/Layout don't).
+ * Values are always plain strings — Checkbox stores '1'/'0', Number a
+ * numeric string, Color a '#rrggbb' hex string or '' for "inherit the
+ * theme's own default" (see ThemeOptionField's $allowEmpty docblock).
  */
 final class ThemeOptions
 {
@@ -80,13 +65,10 @@ final class ThemeOptions
     }
 
     /**
-     * Core's own built-in options — called once from bootstrap, before
-     * the active theme's functions.php gets a chance (via the
-     * 'register_theme_options' action) to register more. Covers Colors,
-     * Typography, Layout, Post Display (LP-034/LP-079), and Header/
-     * Welcome Message/Footer (LP-123, for the Appearance > Customize
-     * screen's tabs of the same name); Homepage, Blog, and Images remain
-     * deferred — see TODO.md's LP-034 for the exact remaining checklist.
+     * Core's own built-in options — called once from bootstrap, before a
+     * theme/plugin registers more via 'register_theme_options'. Covers
+     * Colors, Typography, Layout, Post Display, and Header/Welcome
+     * Message/Footer; Homepage, Blog, and Images remain deferred.
      */
     public function registerStandardOptions(): void
     {
@@ -235,12 +217,10 @@ final class ThemeOptions
             allowEmpty: true,
         ));
 
-        // LP-079: kept as its own section rather than folded into Layout
-        // above — that section controls page *width*, an unrelated
-        // concern from how much of each post's content a listing shows.
-        // None of these fields carry a $cssVariable: they're read
-        // directly via theme_option() in content/themes/default/index.php
-        // and archive.php to decide what to render, not injected as CSS.
+        // Its own section, not folded into Layout: page width vs. how much
+        // of each post a listing shows are unrelated concerns. None of
+        // these fields carry a $cssVariable — they're read directly via
+        // theme_option() to decide what to render, not injected as CSS.
         $this->registerSection('post_display', 'Post Display', 'Controls how posts appear on the front page and category/tag/date/author archives. Single-post pages always show the full post regardless of these settings.');
 
         $this->registerField(new ThemeOptionField(
@@ -281,11 +261,9 @@ final class ThemeOptions
             default: 'Continue reading →',
         ));
 
-        // LP-123: Header/Welcome Message/Footer, registered for the new
-        // Appearance > Customize screen's tabs of the same name. header_image
-        // itself is deliberately NOT a ThemeOptionField — a file upload
-        // doesn't fit this class's string-in/string-out sanitize() contract
-        // — see headerImageMediaId()/setHeaderImageMediaId() below instead.
+        // header_image itself is deliberately NOT a ThemeOptionField — a
+        // file upload doesn't fit this class's string-in/string-out
+        // sanitize() contract — see headerImageMediaId() below instead.
         $this->registerSection('header', 'Header', 'Controls what appears in the site header above the navigation.');
 
         $this->registerField(new ThemeOptionField(
@@ -342,10 +320,8 @@ final class ThemeOptions
             ],
         ));
 
-        // footer_html is deliberately separate from the fixed "Powered by
-        // Lumora Press" attribution every theme's footer.php prints (see
-        // powered_by_html()) — this is additional, per-theme footer
-        // content, not a replacement for it.
+        // Separate from the fixed "Powered by Lumora Press" attribution
+        // (see powered_by_html()) — this is additional content, not a replacement.
         $this->registerSection('footer', 'Footer', 'Additional footer content, shown alongside the "Powered by Lumora Press" line.');
 
         $this->registerField(new ThemeOptionField(
@@ -370,11 +346,10 @@ final class ThemeOptions
     }
 
     /**
-     * Header image is stored as a reserved key inside the same per-theme
-     * values blob rather than as a ThemeOptionField (file uploads don't fit
-     * the field system's string-in/string-out sanitize() contract) — this
-     * also means Reset Section/Reset Everything on the 'header' section
-     * clears it for free, since it lives in the same persisted array.
+     * Stored as a reserved key in the same per-theme values blob rather
+     * than as a ThemeOptionField (file uploads don't fit the string-in/
+     * string-out sanitize() contract) — this also means Reset Section on
+     * 'header' clears it for free, since it lives in the same array.
      */
     public function headerImageMediaId(): int
     {
@@ -436,7 +411,7 @@ final class ThemeOptions
      * Validates and persists a single field's value. Returns false (and
      * leaves the stored value untouched) when validation fails, so the
      * admin view can report a per-field error instead of silently storing
-     * something invalid — LP-034's "Display validation errors".
+     * something invalid.
      */
     public function set(string $key, string $rawValue): bool
     {
@@ -480,10 +455,8 @@ final class ThemeOptions
             unset($values[$field->key]);
         }
 
-        // header_image_media_id has no ThemeOptionField of its own (see its
-        // docblock above), so fieldsForSection('header') never covers it —
-        // clear it explicitly here so resetting the Header section reaches
-        // the header image too, not just show_site_title/header_height.
+        // Has no ThemeOptionField of its own, so fieldsForSection() never
+        // covers it — clear it explicitly so resetting Header reaches it too.
         if ($sectionKey === 'header') {
             unset($values['header_image_media_id']);
         }
@@ -498,22 +471,13 @@ final class ThemeOptions
 
     /**
      * Renders every field with a $cssVariable as one `:root { ... }`
-     * block, meant to be echoed inside a <style> tag in <head> — see
-     * include/helpers.php's theme_options_css(). A field with an empty,
-     * $allowEmpty-permitted value is skipped entirely rather than
-     * emitting an override — for a Color this means the active theme's
-     * own :root default, including its `prefers-color-scheme: dark`
-     * variant, keeps controlling that token; for google_fonts_family it
-     * means body_font's own choice (registered earlier, so its
-     * declaration for the same --lp-font-body comes first in the block)
-     * keeps controlling it instead. Every field without $allowEmpty has a
-     * real default and is always emitted.
+     * block, echoed inside a <style> tag via theme_options_css(). A field
+     * with an empty, $allowEmpty-permitted value is skipped entirely
+     * rather than emitting an override, so the theme's own default (dark
+     * mode included) keeps controlling that token.
      *
-     * accent_color gets a second derived declaration for
-     * --lp-accent-hover (color-mix(), already used elsewhere in the
-     * default theme's own stylesheet for its focus-ring tint) so a
-     * custom accent color doesn't leave hover/focus states pointing at
-     * the theme's original, now-mismatched, hover color.
+     * accent_color also gets a derived --lp-accent-hover declaration so a
+     * custom accent color doesn't leave hover/focus states mismatched.
      */
     public function cssVariables(): string
     {
@@ -550,14 +514,10 @@ final class ThemeOptions
         $rawValue = trim($rawValue);
 
         return match ($field->type) {
-            // A field with a $cssVariable gets its value interpolated
-            // directly into a `:root { ... }` declaration inside a plain
-            // <style> block (see cssVariables()) — stripping these four
-            // characters (never legitimate in a font-family/CSS value)
-            // blocks a trivial break-out of that one declaration/rule/tag,
-            // the same "defensive, not a security boundary" posture
-            // custom_css()'s own `</style` strip already documents for
-            // this same trust level (manage_themes administrators only).
+            // A $cssVariable field's value is interpolated directly into a
+            // :root declaration (see cssVariables()) — stripping these
+            // characters is a defensive break-out guard, not a security
+            // boundary, at the same trust level as custom_css()'s own strip.
             ThemeOptionType::Text, ThemeOptionType::Textarea => $field->cssVariable !== null
                 ? str_replace(['{', '}', '<', '>'], '', $rawValue)
                 : $rawValue,
@@ -566,10 +526,8 @@ final class ThemeOptions
             ThemeOptionType::Color => $this->sanitizeColor($field, $rawValue),
             ThemeOptionType::Number => $this->sanitizeNumber($field, $rawValue),
             ThemeOptionType::Url => $this->sanitizeUrl($field, $rawValue),
-            // Stored raw, unsanitized — same posture as custom_css() and
-            // post/page content: this is admin-authored markup trusted at
-            // this level (manage_themes only), sanitized once at render
-            // time by render_content(), not double-sanitized at storage.
+            // Stored raw, sanitized only at render time by render_content() —
+            // same posture as custom_css() and post/page content.
             ThemeOptionType::Html => $rawValue,
         };
     }
@@ -584,11 +542,8 @@ final class ThemeOptions
     }
 
     /**
-     * Requires https and (when the field restricts it) an exact host
-     * match — see ThemeOptionField::$allowedHosts. Deliberately not a
-     * general-purpose "is this a URL" check: the point is to stop this
-     * field from becoming a way to load an arbitrary stylesheet from an
-     * arbitrary host on every visitor's browser.
+     * Requires https and, when the field restricts it, an exact host
+     * match — see ThemeOptionField::$allowedHosts.
      */
     private function sanitizeUrl(ThemeOptionField $field, string $rawValue): ?string
     {
@@ -629,9 +584,8 @@ final class ThemeOptions
             return null;
         }
 
-        // Whole-number fields (every Number field registered today) stay
-        // formatted without a trailing ".0" so the stored value matches
-        // what a plain <input type="number" step="1"> submits.
+        // Formatted without a trailing ".0" to match what a plain
+        // <input type="number" step="1"> submits.
         return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
     }
 

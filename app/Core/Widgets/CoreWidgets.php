@@ -30,33 +30,20 @@ use LumoraPress\Services\TagService;
 use LumoraPress\Services\UserService;
 
 /**
- * Registers Lumora Press's built-in widget types (LP-048) against a
- * WidgetManager — Text/HTML, Custom HTML, Search, Navigation Menu, Pages,
- * Categories, Recent Posts, Recent Comments, Archives, Tag Cloud, Meta,
- * Statistics, and Social Links. Themes remain free to register additional
- * widget types of their own (content/themes/default/functions.php no
- * longer needs to — these used to live there as a single Phase 1
- * proof-of-concept widget).
+ * Registers Lumora Press's built-in widget types against a WidgetManager.
+ * Themes remain free to register additional widget types of their own.
  *
- * Deliberately not shipped in this pass: an Image widget (would need its
- * own Media Manager picker UI, the same scope narrowing LP-040 applied to
- * featured images), a Calendar widget (a full month grid is a
- * significant UI on its own), and a classic external "RSS Feed" widget
- * that fetches an arbitrary admin-supplied feed URL server-side (a
- * server-side-request surface this app doesn't otherwise have — Meta's
- * feed link only ever points at this site's own feed).
+ * No Image, Calendar, or external RSS Feed widget: those would need a
+ * media picker UI, a full month-grid UI, or a server-side-request surface
+ * this app doesn't otherwise expose.
  */
 final class CoreWidgets
 {
     /**
-     * Social Links' fixed platform list (LP-048) — a curated set rather
-     * than a free-form repeater (which would need its own "add/remove
-     * row" UI, the same scope this project has avoided for widget/menu
-     * item reordering elsewhere — see WidgetManager's own Move Up/Move
-     * Down choice). Each entry's icon name/style matches Font Awesome 6's
-     * actual icon slugs, rendered via lp_icon() — a no-op when the
-     * (optional, deferred-by-default) Font Awesome plugin isn't active,
-     * so this never depends on it being installed.
+     * Social Links' fixed platform list — curated rather than a free-form
+     * repeater, avoiding an "add/remove row" UI. Icon name/style match
+     * Font Awesome 6's slugs, rendered via lp_icon() (a no-op if the
+     * optional Font Awesome plugin isn't active).
      *
      * @var array<string, array{label: string, icon: string, style: string}>
      */
@@ -88,12 +75,9 @@ final class CoreWidgets
 
             echo '<section class="lp-widget lp-widget--text">';
             self::renderTitle($title);
-            // Routed through the same ContentRenderer/HtmlSanitizer
-            // pipeline a post/page's Html-format content uses (LP-016) —
-            // this widget's WYSIWYG field submits client-authored markup
-            // (TinyMCE output), which is untrusted the same way, unlike
-            // the Custom HTML widget below (admin-typed code, trusted at
-            // the manage_themes/manage_options level).
+            // Sanitized via the same pipeline as Html-format posts/pages —
+            // this widget's WYSIWYG field submits client-authored markup,
+            // untrusted unlike the Custom HTML widget below.
             echo '<div class="lp-widget__content">' . $content->render($text, ContentFormat::Html) . '</div>';
             echo '</section>';
         });
@@ -104,10 +88,8 @@ final class CoreWidgets
 
             echo '<section class="lp-widget lp-widget--custom-html">';
             self::renderTitle($title);
-            // Trusted admin-authored markup, same trust level as
-            // custom_css() (only manage_themes/manage_options
-            // administrators can set a widget's settings) — not escaped,
-            // by design, same as that helper.
+            // Trusted admin-authored markup (same trust level as
+            // custom_css()) — not escaped, by design.
             echo '<div class="lp-widget__content">' . $html . '</div>';
             echo '</section>';
         });
@@ -141,9 +123,8 @@ final class CoreWidgets
 
         $widgets->registerWidget('pages', 'Pages', static function (array $settings) use ($pages): void {
             $title = (string) ($settings['title'] ?? '');
-            // No "number to show" limit (LP-104) — see
-            // PageService::publicTreeForWidget()'s docblock for why a
-            // nested tree can't honor one the way the old flat list did.
+            // No "number to show" limit — a nested tree can't honor one
+            // the way a flat list can; see publicTreeForWidget().
             $list = $pages->publicTreeForWidget();
 
             if ($list === []) {
@@ -222,11 +203,8 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">';
 
             foreach ($list as $entry) {
-                // A real Post/Page lookup (rather than the
-                // postname_permalink() slug-only helper) so a custom
-                // permalink structure using %category%/%author% resolves
-                // correctly here too — this widget's default limit (5)
-                // keeps the extra query cheap.
+                // A real Post/Page lookup, not the slug-only helper, so a
+                // custom %category%/%author% permalink structure resolves.
                 if ($entry['contentType'] === 'page') {
                     $entryPage = $pages->findBySlug($entry['contentSlug']);
                     $url = ($entryPage !== null ? page_permalink($entryPage) : site_url('page/' . $entry['contentSlug']))
@@ -280,9 +258,7 @@ final class CoreWidgets
             echo '<div class="lp-widget__tag-cloud">';
 
             foreach ($list as $entry) {
-                // Scales font size from 0.85em (least-used tag) to 1.6em
-                // (most-used) — a classic "tag cloud" visual, not just a
-                // plain list.
+                // Scales font size from 0.85em to 1.6em by usage.
                 $scale = $maxCount > 0 ? $entry['postCount'] / $maxCount : 0;
                 $fontSize = 0.85 + ($scale * 0.75);
                 echo '<a class="lp-widget__tag-cloud-item" data-style-font-size="' . round($fontSize, 2) . 'em" href="'
@@ -338,11 +314,8 @@ final class CoreWidgets
 
                 $href = $key === 'email' ? 'mailto:' . $value : $value;
                 $icon = lp_icon($platform['icon'], ['style' => $platform['style'], 'label' => $platform['label']]);
-                // Without an icon (Font Awesome plugin inactive), the
-                // platform name renders as visible text instead of being
-                // screen-reader-only — an icon-shaped circle is too small
-                // to hold a readable label, so the link falls back to a
-                // plain text-link style entirely (--text modifier below).
+                // No icon (Font Awesome inactive): show the label as
+                // visible text instead of hiding it screen-reader-only.
                 $linkClass = 'lp-widget__social-link lp-widget__social-link--' . esc_attr($key)
                     . ($icon === '' ? ' lp-widget__social-link--text' : '');
 
@@ -372,21 +345,9 @@ final class CoreWidgets
     }
 
     /**
-     * Renders a flat, depth-tagged list (the shape
-     * PageService::publicTreeForWidget()/CategoryService::listAllForTree()
-     * both produce) as a real nested <ul><li> tree — the Pages and
-     * Categories widgets' shared building block (LP-104). $itemHtml gets
-     * one row and returns that row's already-escaped <li> inner content
-     * (an <a> tag, optionally with a trailing count span); this function
-     * only handles the tree structure around it.
-     *
-     * A child's <ul> nests inside its parent's still-open <li>, closed
-     * again once a subsequent row's depth drops back to or below the
-     * parent's — the standard "flat depth list -> nested markup"
-     * approach, since building a real tree in PHP first and recursing
-     * over it would need the same shape the SQL layer already avoids
-     * requiring (see publicTreeForWidget()'s own docblock on why a flat,
-     * ORDER-BY-title query is enough here).
+     * Renders a flat, depth-tagged list as a real nested <ul><li> tree —
+     * the Pages and Categories widgets' shared building block. $itemHtml
+     * returns one row's already-escaped <li> inner content.
      *
      * @param array<int, array{depth: int}> $rows
      * @param callable(array{depth: int}): string $itemHtml

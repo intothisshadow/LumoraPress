@@ -20,7 +20,7 @@ namespace LumoraPress\Core\Shortcodes;
 /**
  * Control types the shortcode insert picker (admin/assets/js/
  * content-editor.js's openShortcodePicker()) knows how to render and
- * apply. Only what LP-110's three real consumers actually need — a new
+ * apply. Only what the three real consumers actually need — a new
  * type needs a matching branch added to the picker's own field-rendering
  * code before a ShortcodeField can use it.
  */

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Discussion Settings (LP-047) email notifications for new/moderation-pending comments.
+ * Discussion Settings email notifications for new/moderation-pending comments.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -27,7 +27,7 @@ use LumoraPress\Models\Post;
 /**
  * Sends the "Notify administrator of new comments" / "...when comments
  * require moderation" / "Notify post author" emails from Settings >
- * Discussion. Uses the existing Mailer interface (LP-058) rather than a new
+ * Discussion. Uses the existing Mailer interface rather than a new
  * transport, and admin_email (already the "From" address source for
  * password-reset mail) as the default administrator recipient.
  */

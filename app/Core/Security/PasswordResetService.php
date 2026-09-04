@@ -21,31 +21,22 @@ use LumoraPress\Core\Database\Database;
 use Throwable;
 
 /**
- * Single-use password-reset tokens (LP-058), via the same selector/
- * validator pattern as RememberMeService — see that class's docblock for
- * why a split selector+validator beats one opaque token (timing-safe
- * lookup) and why a fast SHA-256 hash is correct here, not password_hash().
+ * Single-use password-reset tokens, via the same selector/validator
+ * pattern as RememberMeService (see that class for why a split beats one
+ * opaque token, and why a fast SHA-256 hash is correct here).
  *
- * Deliberately does not depend on UserService: every method here only ever
- * deals in a raw user_id, never hydrates a User — the caller (the
- * forgot-password/reset-password page handlers) already has UserService
- * for looking up the account and changing its password.
+ * Deliberately does not depend on UserService: methods deal only in a raw
+ * user_id — the caller already has UserService for the account itself.
  *
  * At most one active token per user: issueToken() deletes any existing
- * tokens for that user before inserting a fresh one, so a new request
- * supersedes an old, unused link rather than leaving both valid.
+ * token before inserting a fresh one, so a new request supersedes an old,
+ * unused link.
  *
- * Known, accepted trade-off (not fully fixed here): a forgot-password
- * request for a registered email does strictly more work (a database
- * INSERT plus a mail() call) than one for an unregistered email, which is
- * a timing side-channel an attacker could use to enumerate registered
- * addresses. Eliminating it cleanly needs async/queued mail delivery,
- * which this codebase has no infrastructure for (no cron/queue exists —
- * see GitHubReleaseProvider's own "cron-free" docblock). PasswordResetThrottle
- * caps how many requests one IP can make, which bounds how much of this
- * side-channel an attacker can practically exploit, but does not close it
- * outright — the remaining gap is documented rather than engineered
- * around, the same treatment LoginThrottle's "fails open" trade-off gets.
+ * Known trade-off: a request for a registered email does more work (an
+ * INSERT plus mail()) than one for an unregistered email — a timing
+ * side-channel for account enumeration. PasswordResetThrottle bounds how
+ * exploitable this is per IP but doesn't close it outright; fixing it
+ * cleanly would need queued mail delivery, which this codebase lacks.
  */
 final class PasswordResetService
 {

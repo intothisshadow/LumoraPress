@@ -22,15 +22,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-047: new Settings > Discussion sub-page. Every option here is read by
- * CommentModerationService/CommentNotificationService (comment status
- * decisions, comment-open eligibility, field requirements, notifications)
- * or directly by SiteController/ApiController (threading, pagination,
- * avatars) — see those classes' docblocks. Comment *moderation itself*
- * (approve/spam/trash individual comments) stays on its own separate
- * Comments admin screen; this page is configuration only.
- */
+// Comment *moderation itself* (approve/spam/trash individual comments)
+// stays on its own separate Comments admin screen; this page is
+// configuration only.
 $error = null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 

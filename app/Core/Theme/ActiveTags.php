@@ -21,11 +21,8 @@ use LumoraPress\Services\TagService;
 use RuntimeException;
 
 /**
- * Static bridge exposing TagService to include/taxonomy-functions.php's
- * get_the_tags()/the_tags()/get_related_posts() — same shape as
- * ActiveCategories, since resolving a post's own tags is a live, per-post
- * lookup each render rather than a value SiteBranding can snapshot once
- * at bootstrap.
+ * Bridges TagService to get_the_tags()/the_tags()/get_related_posts() — a
+ * live, per-post lookup each render, so it can't be snapshotted like SiteBranding.
  */
 final class ActiveTags
 {

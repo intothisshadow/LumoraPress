@@ -18,11 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Content;
 
 /**
- * A minimal line-based diff for the Revisions (LP-017) "Compare" screen —
- * good enough to show what changed between two post/page bodies without
- * pulling in a diff library the project doesn't otherwise need. Uses the
- * standard longest-common-subsequence backtrack, the same algorithm behind
- * `diff`/`git diff`, just line-granular rather than word-granular.
+ * A minimal line-based diff for the Revisions "Compare" screen, avoiding a
+ * diff library dependency. Uses the standard longest-common-subsequence
+ * backtrack, line-granular rather than word-granular.
  */
 final class TextDiff
 {

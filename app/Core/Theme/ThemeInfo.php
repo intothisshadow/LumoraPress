@@ -18,12 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Metadata for one installed theme, as discovered by ThemeRegistry —
- * parsed from its style.css comment header (the classic WordPress
- * "Theme Name: / Description: / Version: / Author: / Theme URI: /
- * Author URI: / License: / License URI: / Tags: / Requires at least: /
- * Requires PHP:" convention) plus any preview images and documentation
- * files present in the theme directory (LP-044).
+ * Metadata for one installed theme, parsed by ThemeRegistry from its
+ * style.css comment header (the classic WordPress "Theme Name:" convention)
+ * plus any preview images and documentation files in the theme directory.
  */
 final class ThemeInfo
 {

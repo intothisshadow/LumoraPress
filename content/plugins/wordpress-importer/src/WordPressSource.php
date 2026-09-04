@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Read-only PDO access to a source WordPress database (LPP-004).
+ * Read-only PDO access to a source WordPress database.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -23,37 +23,20 @@ use LumoraPress\Models\UserRole;
 use Throwable;
 
 /**
- * Wraps a second, independent Database connection (Database::connect()
- * against the *source* WordPress site's own MySQL/MariaDB credentials —
- * a different server/database entirely from this application's own) and
- * exposes typed, read-only queries over the standard WordPress core
- * schema. Every query names its columns and filters explicitly by
- * post_type/taxonomy/option_name — never a bare `SELECT *` over
- * wp_posts/wp_options — because a real WordPress install's database
- * typically carries dozens of unrelated plugin tables (stats, caching,
- * consent, import history) mixed in alongside the core tables this class
- * cares about, and wp_options in particular can carry millions of rows
- * from tracking/analytics plugins.
- *
- * No writes happen here at all — this class only ever reads.
+ * Wraps a second Database connection to the *source* WordPress site's own
+ * MySQL/MariaDB server and exposes typed, read-only queries over its core
+ * schema. Every query names its columns and filters explicitly — never a
+ * bare `SELECT *` — since a real WordPress database mixes in dozens of
+ * unrelated plugin tables, and wp_options can carry millions of rows from
+ * tracking plugins alone.
  */
 final class WordPressSource implements WordPressSourceInterface
 {
     /**
-     * WordPress HTML-entity-encodes plain-text fields (term names, post/
-     * page titles and excerpts, display names, comment author names/
-     * content) before storing them — typing "TV & Movies" into wp-admin
-     * saves `TV &amp; Movies` in the database. Lumora Press's own
-     * esc_html()/esc_attr() (include/helpers.php) then re-encode that
-     * already-encoded value on the way out, producing `TV &amp;amp;
-     * Movies` in the rendered HTML source — which a browser displays as
-     * the literal text "TV &amp; Movies" rather than "TV & Movies"
-     * (LP-113). Every plain-text field read by this class must be
-     * decoded exactly once, here at the read boundary, before any
-     * importer or service ever stores it — mirrors the identical
-     * html_entity_decode() WordPressImportService::importSiteSettings()
-     * already applies to blogname/blogdescription, extended to every
-     * other plain-text field this class reads.
+     * WordPress HTML-entity-encodes plain-text fields before storing them
+     * (e.g. "TV & Movies" saves as `TV &amp; Movies`). Lumora Press's own
+     * esc_html()/esc_attr() would re-encode that on output, so every
+     * plain-text field this class reads must be decoded exactly once here.
      */
     private static function decodeEntities(string $value): string
     {
@@ -61,27 +44,19 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * The only option_name values this class ever reads — see class
-     * docblock for why a full table scan is never acceptable here.
+     * The only option_name values this class ever reads.
      *
      * @var array<int, string>
      */
     private const SITE_OPTION_KEYS = [
         'blogname', 'blogdescription', 'timezone_string', 'gmt_offset',
         'permalink_structure', 'date_format', 'time_format',
-        // 'home'/'siteurl' (LPP-004 URL & Link Migration) — the source
-        // site's own base URL, read so internal in-content links can be
-        // scoped to the source's own domain rather than rewriting a link
-        // to some unrelated external site that happens to share a path
-        // segment. WordPress keeps these as two separate options
-        // (siteurl can differ from home on a install where WordPress
-        // itself lives in a subdirectory) — 'home' is the one actual
-        // page/post permalinks are built from.
+        // home/siteurl can differ (e.g. WordPress in a subdirectory);
+        // 'home' is the one page/post permalinks are actually built from.
         'home', 'siteurl',
-        // Homepage (Settings > Reading's "Your homepage displays").
-        // page_on_front/page_for_posts are WordPress page IDs, resolved
-        // to local page IDs by WordPressImportService once the 'pages'
-        // stage has run — see its applyPageDependentSiteSettings().
+        // page_on_front/page_for_posts are WordPress page IDs, resolved to
+        // local ids once the 'pages' stage runs — see
+        // WordPressImportService::applyPageDependentSiteSettings().
         'show_on_front', 'page_on_front', 'page_for_posts',
         // Reading.
         'posts_per_page', 'posts_per_rss', 'rss_use_excerpt', 'blog_public',
@@ -122,11 +97,9 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * True only if the connection is live *and* a wp_posts table exists
-     * under the given prefix — a wrong table prefix against an otherwise
-     * reachable database server is the most common failure mode here,
-     * and connect()'s own DatabaseConnectionException only covers
-     * "couldn't reach the server at all" (see this class's connect()).
+     * True only if the connection is live *and* a posts table exists under
+     * the given prefix — a wrong prefix against an otherwise reachable
+     * server is the most common failure mode here.
      */
     public function testConnection(): bool
     {
@@ -189,10 +162,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * Reads {prefix}capabilities from wp_usermeta (WordPress's native
-     * PHP-serialized role storage) and maps it to the closest matching
-     * UserRole, falling back to Subscriber for a WordPress role with no
-     * Lumora Press equivalent (e.g. a custom role a plugin added).
+     * Reads {prefix}capabilities from wp_usermeta and maps it to the
+     * closest UserRole, falling back to Subscriber for an unmapped role.
      */
     public function userRole(int $wpUserId): UserRole
     {
@@ -248,13 +219,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * Every `nav_menu_item` post's WordPress menu (taxonomy `nav_menu`)
-     * term id, in one query — purpose-built for LPP-004 Stage 8's menu
-     * import, joining term_relationships/term_taxonomy directly rather
-     * than calling termIdsForPost() once per item (WordPress ties a menu
-     * item to its menu the exact same way a post is tied to a category —
-     * via term_relationships — so this is that same join, just scoped to
-     * one taxonomy and returned in bulk).
+     * Every `nav_menu_item` post's `nav_menu` term id, in one query rather
+     * than calling termIdsForPost() once per item.
      *
      * @return array<int, int> nav_menu_item post id => nav_menu term id
      */
@@ -279,9 +245,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * A single option's raw value by its exact name — used for
-     * `sidebars_widgets` and `theme_mods_{stylesheet}` (LPP-004 Stage 8),
-     * neither of which fits siteOptions()'s fixed allowlist above.
+     * A single option's raw value by exact name — for options like
+     * `sidebars_widgets` that don't fit siteOptions()'s fixed allowlist.
      */
     public function option(string $name): ?string
     {
@@ -295,21 +260,10 @@ final class WordPressSource implements WordPressSourceInterface
 
     /**
      * Every option whose name starts with $prefix — the one deliberately
-     * widened read this class makes (see class docblock's "never a bare
-     * SELECT *" rule). Needed for classic widget instances specifically:
-     * a real WordPress site can have 70+ distinct `widget_*` option names
-     * once every plugin that ever registered a widget is counted, so
-     * there is no fixed allowlist to write the way siteOptions() does —
-     * $prefix is always a hardcoded literal from calling code (e.g.
-     * `'widget_'`), never user input, and the LIKE pattern's value is
-     * still parameterized, so this stays just as safe as the narrower
-     * queries elsewhere in this class while covering data siteOptions()'s
-     * own approach structurally cannot. $prefix's own characters are not
-     * escaped against LIKE's `%`/`_` wildcards — deliberately: every real
-     * caller passes a fixed literal like `'widget_'` with no wildcard
-     * meaning of its own, so escaping would add complexity (and a
-     * database-portable `ESCAPE` clause is more fragile than it looks —
-     * see this method's own regression test) for no real protection.
+     * widened read this class makes, needed because a site can have 70+
+     * distinct `widget_*` option names with no fixed allowlist to write.
+     * $prefix is always a hardcoded literal from calling code, never user
+     * input, so its LIKE wildcard characters are intentionally unescaped.
      *
      * @return array<string, string>
      */
@@ -366,11 +320,8 @@ final class WordPressSource implements WordPressSourceInterface
                 'post_author' => (int) $row['post_author'],
                 'post_date' => (string) $row['post_date'],
                 'post_content' => (string) $row['post_content'],
-                // post_title/post_excerpt are plain-text fields rendered
-                // via esc_html() (unlike post_content, which is stored as
-                // real HTML and correctly interpreted by HtmlSanitizer's
-                // DOM parser regardless of any entity-encoding within it)
-                // — see decodeEntities()'s docblock.
+                // Plain-text fields need decoding; post_content is real
+                // HTML and HtmlSanitizer handles any encoding within it.
                 'post_title' => self::decodeEntities((string) $row['post_title']),
                 'post_excerpt' => self::decodeEntities((string) $row['post_excerpt']),
                 'post_status' => (string) $row['post_status'],
@@ -385,10 +336,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * First value per meta_key, keyed by key — every meta key this
-     * importer reads (_wp_attached_file, _thumbnail_id,
-     * _wp_attachment_image_alt) is single-valued in practice, even
-     * though WordPress's schema technically allows repeats.
+     * First value per meta_key — every key this importer reads is
+     * single-valued in practice, even though the schema allows repeats.
      *
      * @return array<string, string>
      */
@@ -430,10 +379,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * Mirrors termNamesForPost() exactly, returning term ids instead of
-     * names — for a caller that already has a wpTermId => local id map
-     * built (e.g. Folders imported from a non-hierarchy-free taxonomy)
-     * and needs to resolve through it rather than by name.
+     * Mirrors termNamesForPost(), returning term ids instead of names, for
+     * a caller resolving through an already-built wpTermId => local id map.
      *
      * @return array<int, int>
      */
@@ -470,9 +417,7 @@ final class WordPressSource implements WordPressSourceInterface
                 'comment_post_ID' => (int) $row['comment_post_ID'],
                 'comment_parent' => (int) $row['comment_parent'],
                 'user_id' => (int) $row['user_id'],
-                // comment_author/comment_content are both rendered via
-                // esc_html() (format_comment_content(), include/
-                // helpers.php) — see decodeEntities()'s docblock.
+                // Both are plain-text fields rendered via esc_html().
                 'comment_author' => self::decodeEntities((string) $row['comment_author']),
                 'comment_author_email' => (string) $row['comment_author_email'],
                 'comment_author_url' => (string) $row['comment_author_url'],
@@ -485,23 +430,11 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * Simple Download Monitor's own download total for one `sdm_downloads`
-     * post: `sdm_count_offset` postmeta (an admin-settable "starting
-     * count", read the same way sdm_upload/sdm_description already are)
-     * plus every row logged in its own `{prefix}sdm_downloads` table —
-     * confirmed against a real production SDM install: post #2174's
-     * offset of 275 plus 920 logged rows matched its real displayed
-     * total of 1195 exactly. Only the aggregate count (and the most
-     * recent log row's timestamp) is read here, never the log rows
-     * themselves — each one carries a visitor IP/country/user agent/
-     * referrer, an unasked-for privacy footprint this importer has no
-     * reason to bring in.
-     *
-     * `{prefix}sdm_downloads` (a plugin table, not core WordPress) won't
-     * exist at all on a source site that never ran Simple Download
-     * Monitor — caught the same way testConnection() above catches a
-     * connection-level failure, since a query against a genuinely
-     * missing table throws regardless of how carefully it's scoped.
+     * Simple Download Monitor's download total: `sdm_count_offset`
+     * postmeta plus every logged row. Only the aggregate count and most
+     * recent timestamp are read, never per-visitor log data (IP, country,
+     * user agent). The `sdm_downloads` table won't exist on a site that
+     * never ran the plugin — caught the same way as testConnection().
      *
      * @return array{count: int, lastDownloadedAt: ?DateTimeImmutable}
      */
@@ -529,27 +462,12 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * NextGEN Gallery's own `ngg_gallery` table, one row per gallery —
-     * confirmed against a real production database (this ticket's own
-     * established practice): `path` is the gallery's actual on-disk
-     * folder name under `wp-content/gallery/` (e.g.
-     * `/wp-content/gallery/some-gallery-name/`), *not* necessarily the
-     * same as `slug` — the two can differ when a gallery was renamed
-     * after creation, so importNextGenGalleries() resolves a picture's
-     * file location from `path`, never `slug`.
-     *
-     * Unlike siteOptions()'s fixed-allowlist tables, `ngg_gallery` is
-     * itself a plugin-specific table that won't exist at all on a
-     * source site that never ran NextGEN Gallery — caught the same way
-     * sdmDownloadStats() catches a missing `sdm_downloads` table.
-     *
-     * Plain-text fields here (`name`, `title`, `galdesc`) are
-     * deliberately not run through decodeEntities() — NextGEN Gallery
-     * has its own admin save routine, entirely separate from
-     * `wp_insert_post()`/`wp_insert_term()`, so decodeEntities()'s own
-     * rationale (WordPress's *own* KSES filtering double-encoding on
-     * the way out) doesn't clearly apply, and no real NextGEN data
-     * examined so far contains an HTML entity to confirm either way.
+     * NextGEN Gallery's `ngg_gallery` table. `path` is the actual on-disk
+     * folder name and can differ from `slug` when a gallery was renamed
+     * after creation, so file lookups always use `path`. Plain-text fields
+     * here aren't run through decodeEntities() — NextGEN Gallery has its
+     * own save routine, separate from WordPress's own KSES-filtered one.
+     * Missing on a source site that never ran the plugin.
      *
      * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
      */
@@ -578,9 +496,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * NextGEN Gallery's own `ngg_pictures` table, scoped to one gallery
-     * — see nextGenGalleries()'s own docblock for why plain-text fields
-     * here aren't run through decodeEntities() either.
+     * NextGEN Gallery's `ngg_pictures` table, scoped to one gallery — see
+     * nextGenGalleries() for why fields here aren't entity-decoded.
      *
      * @return array<int, array{pid: int, filename: string, description: string, alttext: string, imagedate: string, exclude: int}>
      */
@@ -612,16 +529,10 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * NextGEN Gallery's own `ngg_album` table — groups a set of
-     * galleries together. Confirmed against a real production database
-     * (LPP-004's own established practice, not NextGEN's public schema
-     * docs): there is no `gallery_ids` column at all, and member
-     * gallery ids are not a PHP-serialized array either — `sortorder`
-     * is base64-encoded JSON, e.g. `WyI5IiwiOCJd` decoding to
-     * `["9","8"]`. A malformed/empty `sortorder` (either base64 or
-     * JSON decoding fails, or the JSON isn't an array) yields an empty
-     * `galleryIds` list rather than throwing — the album itself still
-     * gets created, just with nothing nested under it yet.
+     * NextGEN Gallery's `ngg_album` table. Member gallery ids live in
+     * `sortorder` as base64-encoded JSON (e.g. `WyI5IiwiOCJd` → `["9","8"]`),
+     * not a `gallery_ids` column. A malformed/empty value yields an empty
+     * `galleryIds` list rather than throwing — the album still gets created.
      *
      * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
      */
@@ -667,10 +578,8 @@ final class WordPressSource implements WordPressSourceInterface
     }
 
     /**
-     * A single aggregate query, never a row dump — matches the class
-     * docblock's "never a bare SELECT *" rule even though this scans
-     * every row in {prefix}posts, since only post_type and a count ever
-     * leave the database.
+     * A single aggregate query, never a row dump — only post_type and a
+     * count ever leave the database.
      *
      * @return array<string, int>
      */

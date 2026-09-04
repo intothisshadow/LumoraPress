@@ -21,11 +21,6 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-037: this page used to be a placeholder reserving the spot LP-042
- * planned for it ("Lumora Press does not yet have a site-wide page or
- * object caching engine"). $kernel->cache (CacheManager) now exists.
- */
 $cache = $kernel->cache;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {

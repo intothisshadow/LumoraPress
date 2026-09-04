@@ -23,32 +23,20 @@ use DOMNode;
 use DOMText;
 
 /**
- * Allowlist HTML sanitizer (LP-015/LP-016) — the single XSS boundary for
- * everything ContentRenderer outputs, regardless of whether the HTML came
- * from MarkdownParser's own output, hand-typed "HTML mode" content, or
- * TinyMCE's client-submitted markup. All three are untrusted by the time
- * they reach here (MarkdownParser's output is regenerated from arbitrary
- * author input; raw HTML and TinyMCE output are literally arbitrary
- * client input) — so every allowed tag/attribute below is a deliberate,
- * reviewed choice, not a default.
- *
- * Built on DOMDocument rather than regex stripping: regex-based HTML
- * sanitization is a well-known source of bypasses (malformed/nested tags
- * confuse a regex but not a real parser). Parsing into a DOM, walking it,
- * and re-serializing only the allowed structure is the same approach
- * mature sanitizers (e.g. DOMPurify) use.
+ * Allowlist HTML sanitizer — the single XSS boundary for everything
+ * ContentRenderer outputs (Markdown output, hand-typed HTML, and TinyMCE
+ * markup are all untrusted by the time they reach here). Built on
+ * DOMDocument rather than regex stripping, since regex-based sanitization
+ * is a well-known source of bypasses on malformed/nested tags.
  */
 final class HtmlSanitizer
 {
     /** @var array<string, array<int, string>> tag => allowed attributes */
     private const ALLOWED_TAGS = [
-        // 'class' on 'p'/headings (LP-016) carries the WYSIWYG editor's
-        // text-alignment classes (has-text-align-left/center/right/
-        // justify) — TinyMCE's align toolbar is configured to apply
-        // these classes rather than its inline-style default, since
-        // this sanitizer never allows a 'style' attribute at all (an
-        // arbitrary-CSS injection surface this project deliberately
-        // avoids).
+        // 'class' on 'p'/headings carries the WYSIWYG editor's text-alignment
+        // classes — TinyMCE applies these instead of inline styles, since
+        // this sanitizer never allows a 'style' attribute (an arbitrary-CSS
+        // injection surface).
         'p' => ['class'],
         'br' => [],
         'hr' => [],
@@ -63,18 +51,11 @@ final class HtmlSanitizer
         'blockquote' => [],
         'ul' => ['class'], 'ol' => ['class'], 'li' => ['class', 'id'],
         'input' => ['type', 'disabled', 'checked'],
-        // data-pswp-width/height/caption (LP-075/LP-076) let the WYSIWYG
-        // editor embed a linked image's own real dimensions directly at
-        // authoring time — needed because a "Link To: Media File" insert
-        // can link to a file at a different size than the inline <img>
-        // displays, so ContentRenderer's render-time lightbox pass can't
-        // reliably infer the linked file's real size from the <img>
-        // alone (see ContentRenderer::addLightboxAttributes()).
+        // data-pswp-width/height/caption let the editor embed a linked
+        // image's real dimensions at authoring time, since a "Link To:
+        // Media File" insert can link to a size the inline <img> doesn't show.
         'a' => ['href', 'title', 'rel', 'target', 'id', 'class', 'aria-label', 'data-pswp-width', 'data-pswp-height', 'data-pswp-caption'],
-        // 'class' is needed for LP-076's "no-lightbox" opt-out and
-        // LP-075's "size-{name}" display-size classes — both purely
-        // presentational, the same trust level 'class' already carries
-        // on every other allowed tag below.
+        // 'class' carries the "no-lightbox" opt-out and "size-{name}" display classes.
         'img' => ['src', 'alt', 'title', 'width', 'height', 'loading', 'class'],
         'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'th' => ['class', 'scope'], 'td' => ['class'],
         'nav' => ['class', 'aria-label'],
@@ -88,13 +69,10 @@ final class HtmlSanitizer
     private const ALLOWED_URL_SCHEMES = ['http', 'https', 'mailto', 'tel'];
 
     /**
-     * Tags a real HTML5 parser never allows inside flow content that is
-     * itself inside a `<p>` — a browser implicitly closes the `<p>`
-     * instead. libxml2's HTML parser (what DOMDocument::loadHTML() uses)
-     * follows the older HTML4 table instead and simply nests them, so
-     * malformed nesting that a browser would silently repair survives
-     * unchanged through DOMDocument. repairNesting() below fixes it
-     * explicitly rather than relying on the browser to paper over it.
+     * Tags a real browser would implicitly close a `<p>` for rather than
+     * nest inside it. libxml2's HTML parser doesn't do this, so
+     * repairNesting() below fixes the resulting malformed nesting
+     * explicitly.
      *
      * @var array<int, string>
      */
@@ -149,19 +127,9 @@ final class HtmlSanitizer
 
     /**
      * Fixes invalid block-inside-`<p>` nesting without touching tags or
-     * attributes — deliberately separate from clean()'s allowlist pass,
-     * because it also runs on content_html filter output (shortcode
-     * markup a plugin generated after clean() already ran, e.g. a
-     * Downloads listing's `<div>`), which must survive verbatim and
-     * cannot be re-run through an allowlist without risking stripping
-     * legitimate plugin markup.
-     *
-     * Handles two real cases: a block-level element (commonly a `<div>`
-     * a shortcode expanded into, still sitting where the shortcode's
-     * bracket text used to be) landing inside a `<p>` that Markdown/HTML
-     * parsing already wrapped around it; and a second `<p>` opened
-     * before an earlier one closes, which libxml2 nests as a literal
-     * child rather than auto-closing the way a browser would.
+     * attributes — kept separate from clean()'s allowlist pass because it
+     * also runs on content_html filter output (shortcode markup generated
+     * after clean() already ran), which must survive verbatim.
      */
     public function repairNesting(string $html): string
     {
@@ -226,12 +194,9 @@ final class HtmlSanitizer
     }
 
     /**
-     * A `<div>` (unlike a second `<p>`) *does* make libxml2's parser
-     * implicitly close an already-open `<p>` — but it leaves the now
-     *-empty `<p></p>` behind rather than dropping it the way a browser
-     * would when adopting the same content. unnestBlocksFromParagraphs()
-     * never even sees these (the div already isn't nested by the time
-     * DOMDocument hands back the tree), so they need their own cleanup.
+     * A `<div>` closes an already-open `<p>` in libxml2's parser but
+     * leaves the now-empty `<p></p>` behind rather than dropping it, so it
+     * needs its own cleanup pass.
      */
     private function removeEmptyParagraphs(DOMElement $root): void
     {
@@ -285,11 +250,10 @@ final class HtmlSanitizer
     }
 
     /**
-     * Splits $element into a "before" copy and an "after" copy around
-     * $child, then replaces $element (in its own parent) with whichever
-     * of [before, child, after] actually has content — an empty
-     * before/after (e.g. a block-level element that opened $element)
-     * is dropped rather than left behind as a stray empty tag.
+     * Splits $element into "before"/"after" copies around $child, then
+     * replaces $element with whichever of [before, child, after] actually
+     * has content — an empty before/after is dropped rather than left as
+     * a stray empty tag.
      */
     private function splitAroundChild(DOMElement $element, DOMNode $child): void
     {

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The one place a post/page's raw stored content becomes safe, final HTML (LP-015/LP-016).
+ * The one place a post/page's raw stored content becomes safe, final HTML.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -28,14 +28,14 @@ use LumoraPress\Models\ContentFormat;
 
 /**
  * The one place a post/page's raw stored `content` becomes safe, final
- * HTML (LP-015/LP-016) — branches on ContentFormat:
+ * HTML — branches on ContentFormat:
  *
  *   Markdown -> MarkdownParser::toHtml() -> HtmlSanitizer::clean()
  *   Html     -> HtmlSanitizer::clean() directly (hand-typed or TinyMCE
  *               output — both are untrusted client input by the time
  *               they're stored, same as Markdown's generated HTML)
- *   Plain    -> nl2br(escaped text) — the exact pre-LP-015 behaviour,
- *               preserved for rows that predate this column
+ *   Plain    -> nl2br(escaped text) — the original behaviour, preserved
+ *               for rows that predate the other formats
  *
  * Every branch ends in HtmlSanitizer, so there is exactly one XSS
  * boundary for all three formats rather than one per editor.
@@ -43,49 +43,28 @@ use LumoraPress\Models\ContentFormat;
 final class ContentRenderer
 {
     /**
-     * Extensions MediaService actually accepts for images, minus the
-     * types it excludes from public display (ico) — matches which files
-     * a content `<a href="...">` could plausibly point at directly. Kept
-     * here rather than referencing MediaService's own allow-list
-     * constant, since that list also covers non-image types this check
-     * has no interest in — see LP-076's docblock for why ContentRenderer
-     * otherwise stays free of any MediaService dependency.
+     * Extensions MediaService accepts for images, minus ico (excluded
+     * from public display). Kept local rather than referencing
+     * MediaService's own list, to stay free of that dependency.
      */
     private const LIGHTBOXABLE_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     /**
-     * LP-079's More tag — the equivalent of WordPress's `<!--more-->` —
-     * on raw stored `content`, typed by the author into the Markdown/
-     * Plain textarea directly. Detected/split on the *raw* content,
-     * before render() ever runs, since HtmlSanitizer strips HTML
-     * comments outright (see its cleanNode() — a comment node is neither
-     * DOMText nor DOMElement, so it's simply removed) and would destroy
-     * this marker before it could ever be found in already-sanitized
-     * output. Markdown/Plain content is never sanitized at all (see
-     * PostService::sanitizeStoredContent()'s docblock), so the literal
-     * text survives there unmodified until this class explicitly looks
-     * for it.
+     * The More tag (WordPress's `<!--more-->` equivalent), typed by the
+     * author into the Markdown/Plain textarea directly. Detected on the
+     * raw content before render() ever runs, since HtmlSanitizer strips
+     * HTML comments outright and would destroy this marker first.
      */
     private const MORE_TAG_TEXT_MARKER = '<!--more-->';
 
     /**
      * The WYSIWYG-format equivalent — an Html-format post's raw content
-     * *is* sanitized at save time (PostService::sanitizeStoredContent()),
-     * so an HTML comment could never survive being stored in the first
-     * place. `<span class="lp-more-tag">...</span>` uses only tag/
-     * attribute combinations HtmlSanitizer's own allowlist already
-     * permits (see its ALLOWED_TAGS — 'span' => ['class']), so it
-     * round-trips through sanitization intact. The pattern matches any
-     * inner text (content-editor.js's TinyMCE button inserts a visible
-     * "Read More" label so the marker isn't just an invisible empty
-     * element while editing) — that text is discarded along with the
-     * rest of the match, never rendered. The first alternative also
-     * consumes a single wrapping `<p>...</p>` when the marker is its
-     * only content — exactly what that same TinyMCE button inserts
-     * (`<p><span class="lp-more-tag">...</span></p>`) — so splitting
-     * doesn't leave a stray empty paragraph behind; the second
-     * alternative is the bare-span fallback for a marker not wrapped
-     * that way (e.g. hand-edited HTML).
+     * is sanitized at save time, so an HTML comment marker could never
+     * survive. `<span class="lp-more-tag">...</span>` uses only tags
+     * HtmlSanitizer's allowlist permits, so it round-trips intact. The
+     * first alternative also consumes a wrapping `<p>` so splitting
+     * doesn't leave a stray empty paragraph; the second is the bare-span
+     * fallback for hand-edited HTML.
      */
     private const MORE_TAG_HTML_MARKER_PATTERN = '#<p[^>]*>\s*<span[^>]*\bclass="lp-more-tag"[^>]*>.*?</span>\s*</p>|<span[^>]*\bclass="lp-more-tag"[^>]*>.*?</span>#is';
 
@@ -108,13 +87,7 @@ final class ContentRenderer
         $html = $this->addLightboxAttributes($html);
         $html = $this->hooks->applyFilters('content_html', $html, $content, $format);
 
-        // Runs last, after every content_html shortcode has expanded —
-        // a block-level shortcode (Downloads, folder galleries) commonly
-        // expands in place of bracket text Markdown/HTML already wrapped
-        // in a <p>, and HTML-format content can arrive with pre-existing
-        // malformed <p> nesting (e.g. imported from another site). Kept
-        // separate from HtmlSanitizer::clean()'s allowlist pass since
-        // shortcode-generated markup must survive this step verbatim.
+        // Runs last, after every shortcode has expanded — a block-level shortcode commonly leaves malformed <p> nesting behind that needs repairing.
         return $this->sanitizer->repairNesting($html);
     }
 
@@ -130,17 +103,11 @@ final class ContentRenderer
 
     /**
      * Splits $rawContent at its first More tag, operating on the raw,
-     * un-rendered source (see the two MORE_TAG_*_MARKER constants'
-     * docblocks for why it must happen here rather than after render()).
-     * The marker itself is removed, never present in either returned
-     * half.
+     * un-rendered source. The marker itself is removed from both halves.
      *
-     * With no marker present, the first element is $rawContent
-     * unchanged and the second is null — callers use that null/non-null
-     * distinction to tell "the whole post, nothing to cut" from "here's
-     * the author's chosen cutoff point." See get_the_excerpt()/
-     * get_the_content() (include/content-display-functions.php) for the
-     * actual callers.
+     * With no marker present, the first element is $rawContent unchanged
+     * and the second is null — callers use that distinction to tell
+     * "nothing to cut" from "here's the author's chosen cutoff point."
      *
      * @return array{0: string, 1: ?string}
      */
@@ -169,28 +136,11 @@ final class ContentRenderer
     }
 
     /**
-     * LP-076: makes every content-embedded image lightbox-capable
-     * (PhotoSwipe/LP-031), not just the featured image
-     * (`the_post_thumbnail_lightbox()` in include/media-functions.php,
-     * the only other place `data-pswp-*` attributes are emitted). Runs
-     * on already-sanitized HTML — the attributes added here are never at
-     * risk of being an injection vector, so this is a plain second DOM
-     * pass rather than something folded into HtmlSanitizer's allowlist.
-     *
-     * An `<img>` already wrapped in an author-added `<a>` keeps that
-     * link untouched unless its href looks like a direct link to an
-     * image file — an intentional link to something else (an external
-     * page, a different post) is never hijacked into a lightbox trigger.
-     * An unwrapped `<img>` is wrapped in a new self-link instead, so a
-     * plain inserted image (no "Link To" chosen) still opens a lightbox.
-     * A `no-lightbox` class, on either element, opts out entirely.
-     *
-     * render_content() (include/theme.php) is what actually checks for
-     * this method's output and calls MediaViewer::markUsed()/wraps the
-     * result in `.lp-gallery` — kept out of this class since
-     * ContentRenderer::render() is also used for excerpts/OG descriptions
-     * (via toPlainText(), which strips these attributes right back out
-     * again) where that side effect would be meaningless.
+     * Makes every content-embedded image lightbox-capable (PhotoSwipe), not just the
+     * featured image, as a second DOM pass over already-sanitized HTML. An `<img>` already
+     * wrapped in an author-added `<a>` keeps that link untouched unless it looks like a
+     * direct image link; an unwrapped `<img>` is wrapped in a new self-link. A `no-lightbox`
+     * class on either element opts out.
      */
     private function addLightboxAttributes(string $html): string
     {
@@ -225,14 +175,7 @@ final class ContentRenderer
                     continue;
                 }
 
-                // LP-075's "Link To: Media File" step can link to a size
-                // other than the one the inline <img> displays (e.g. a
-                // Thumbnail-size image linked to the Full-size original)
-                // — for that case the editor embeds the *linked* file's
-                // own real data-pswp-width/height/caption directly (see
-                // content-editor.js's TinyMCE insertion), which must win
-                // over inferring from the <img>'s own, possibly smaller,
-                // display-size attributes below.
+                // "Link To: Media File" can link to a different size than the inline <img> displays; the editor's own embedded dimensions must win over inferring below.
                 if ($existingLink->hasAttribute('data-pswp-width')) {
                     continue;
                 }
@@ -251,35 +194,19 @@ final class ContentRenderer
                 $link->appendChild($img);
             }
 
-            // A stable marker present regardless of whether width/height
-            // are known — Markdown-authored images never carry width/
-            // height at all (Markdown has no attribute syntax), so
-            // data-pswp-width alone can't be the "this anchor belongs to
-            // a lightbox gallery" signal both render_content() and
-            // media-viewer.js's gallery selector need; without this, a
-            // Markdown-authored image was silently never lightboxed —
-            // its self-link existed, but nothing marked it as such.
+            // A stable marker regardless of whether width/height are known — Markdown images never carry those attributes, so data-pswp-width alone can't be the gallery signal.
             $link->setAttribute('data-pswp-lightbox', '1');
 
             $width = (int) $img->getAttribute('width');
             $height = (int) $img->getAttribute('height');
             $linkHref = $link->getAttribute('href');
 
-            // The <img>'s own width/height attributes are only trusted
-            // as a last resort. They're expected to match the *linked*
-            // file's real dimensions in the self-link case, but imported
-            // WordPress content breaks that: the importer rewrites
-            // src/href to the full-size original (it never generates
-            // derivative sizes) while deliberately leaving width/height
-            // at the old post's smaller display size (see
-            // ContentImageRewriter::rewriteImage()) — so a self-link's
-            // attributes can still be stale. Resolving the real file
-            // directly is cheap (a local getimagesize() header read) and
-            // removes that assumption entirely. PhotoSwipe uses
-            // data-pswp-width/height to size the slide *before* the real
-            // image finishes loading, not just as a caption hint — a
-            // wrong value visibly stretches/distorts or undersizes the
-            // displayed image, it's not cosmetic.
+            // The <img>'s own width/height are only trusted as a last
+            // resort — imported WordPress content can leave them stale
+            // (rewritten src/href to the full-size original, but old
+            // display-size width/height left behind). Resolving the real
+            // file directly is a cheap getimagesize() read, and PhotoSwipe
+            // needs a correct value to size the slide before the image loads.
             $resolved = $this->resolveImageDimensions($linkHref);
 
             if ($resolved !== null) {
@@ -318,11 +245,7 @@ final class ContentRenderer
     private function looksLikeImageUrl(string $url): bool
     {
         if ($url === '' || parse_url($url, PHP_URL_HOST) !== null) {
-            // No host means relative/root-relative — same-site by
-            // construction. A URL with a host is only ever same-site if
-            // it matches this install, which isn't worth resolving here;
-            // treating any absolute external URL as "not an image link"
-            // simply leaves the author's link untouched, the safe default.
+            // No host means relative/root-relative, same-site by construction. An absolute external URL is treated as "not an image link", the safe default.
             return false;
         }
 
@@ -335,13 +258,8 @@ final class ContentRenderer
     /**
      * Reads a same-site image URL's real pixel dimensions directly off
      * disk — only ever called for a URL looksLikeImageUrl() already
-     * confirmed is relative/root-relative (never a host), so this is
-     * never resolving an arbitrary external address. dirname(__DIR__, 2)
-     * rather than the LUMORA_ROOT constant — this class is also
-     * exercised by the PHP Test Suite's bootstrap, which never defines
-     * that constant (see admin_asset_url()'s identical note in
-     * include/helpers.php) — so a self-contained path derived from this
-     * file's own location works in both contexts.
+     * confirmed is relative/root-relative. dirname(__DIR__, 2) rather
+     * than LUMORA_ROOT, since the test suite's bootstrap never defines that constant.
      *
      * @return array{0: int, 1: int}|null
      */
@@ -361,18 +279,12 @@ final class ContentRenderer
     }
 
     /**
-     * Best-effort conversion when an author switches a post/page's editor
-     * format in the admin UI (LP-016's "Switch between Markdown and
-     * WYSIWYG" / "Import existing Markdown" / "Export clean Markdown
-     * where possible"). Only meaningfully converts between Markdown and
-     * Html — Plain has no structure to convert from/to, so it's always
-     * returned unchanged; going TO Plain from either format also returns
-     * the source unchanged; deliberately not stripped, since "plain
-     * text" here means "stop interpreting formatting," not "discard
-     * content" (an author switching Html -> Plain by mistake shouldn't
-     * lose visible content). Only ever needs to round-trip
-     * HtmlSanitizer::ALLOWED_TAGS's tag set, since that's the only HTML
-     * this application ever stores in the first place.
+     * Best-effort conversion when an author switches a post/page's
+     * editor format. Only meaningfully converts between Markdown and
+     * Html — Plain has no structure to convert from/to, so any
+     * conversion involving Plain returns the source unchanged rather
+     * than stripping it (switching to Plain by mistake shouldn't lose
+     * visible content).
      */
     public function convertFormat(string $content, ContentFormat $from, ContentFormat $to): string
     {
@@ -389,10 +301,9 @@ final class ContentRenderer
 
     /**
      * Plain-text rendering for excerpts/search snippets/OG descriptions —
-     * strips the rendered HTML back down to text rather than
-     * strip_tags()-ing the raw Markdown/HTML source directly, so a
-     * Markdown excerpt never leaks literal "**bold**"/"# heading" syntax
-     * (see include/helpers.php's make_excerpt(), which this feeds).
+     * strips the rendered HTML rather than strip_tags()-ing the raw
+     * source directly, so a Markdown excerpt never leaks literal
+     * "**bold**"/"# heading" syntax.
      */
     public function toPlainText(string $content, ContentFormat $format): string
     {

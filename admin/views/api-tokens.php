@@ -22,16 +22,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * Self-service API token management (LP-021). Every authenticated role
- * can reach this page (see admin/index.php's $menu entry, capability
- * null) but every action here is scoped to $currentUser->id — a user can
- * only ever see or revoke their own tokens, never anyone else's
- * (ApiTokenService::revoke() also enforces this server-side, so this
- * isn't just a UI-level restriction). There is no cross-user token
- * oversight view yet (an administrator can't see other users' tokens
- * here) — deferred, not silently dropped.
- */
+// Every action here is scoped to $currentUser->id — a user can only see
+// or revoke their own tokens; ApiTokenService::revoke() enforces this too.
 $error = null;
 $issuedToken = null;
 

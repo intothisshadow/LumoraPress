@@ -18,20 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Emits the same conditional markup every theme's footer.php used to
- * duplicate directly: PhotoSwipe's CSS/JS when MediaViewer::isUsed()
- * (LP-031, "load lightbox assets only on pages that contain an image"),
- * and each script-based Auto-Embed provider's own <script> when
- * ScriptEmbeds::isUsed() for it (LP-070/LP-071, same "only on pages that
- * actually need it" shape). Registered on the 'footer_assets' action in
- * bootstrap.php — a theme's footer.php only needs one
- * `do_action('footer_assets')` call, the same "hook instead of
- * hand-copied conditionals" shape header.php already uses for
- * 'head_assets' (there, a plugin registers the listener; here, core
- * does). A theme that reimplements footer.php without knowing these
- * bridge classes exist no longer has to — it just needs the one hook
- * call, or lightboxes/embeds silently never load images/tweets
- * regardless.
+ * Emits PhotoSwipe and Auto-Embed provider assets only on pages that need
+ * them, so themes call `do_action('footer_assets')` once instead of
+ * hand-copying conditional markup into footer.php.
  */
 final class FooterAssets
 {

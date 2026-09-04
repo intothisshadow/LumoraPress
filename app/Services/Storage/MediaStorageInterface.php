@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The storage-driver interface MediaService goes through instead of touching the filesystem directly (LP-005).
+ * The storage-driver interface MediaService goes through instead of touching the filesystem directly.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -18,16 +18,16 @@ declare(strict_types=1);
 namespace LumoraPress\Services\Storage;
 
 /**
- * LP-005's "Future-Proof Storage" — the storage-driver seam MediaService
- * goes through instead of touching the filesystem directly, so a future
+ * "Future-Proof Storage" — the storage-driver seam MediaService goes
+ * through instead of touching the filesystem directly, so a future
  * Amazon S3/Cloudflare R2/other S3-compatible driver can be a drop-in
  * implementation of this interface rather than a rewrite of
  * upload()/replace()/delete()'s internals. Only LocalFilesystemStorage
  * exists today — no remote driver, third-party SDK, or credential/config
  * UI has been built yet; that remains a substantially larger feature on
- * its own (see TODO.md's LP-005 entry). ThumbnailService and
- * MediaImportService still talk to the local filesystem directly and are
- * not yet routed through this interface — out of scope for this pass.
+ * its own. ThumbnailService and MediaImportService still talk to the
+ * local filesystem directly and are not yet routed through this
+ * interface — out of scope for this pass.
  */
 interface MediaStorageInterface
 {

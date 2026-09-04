@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A plain data holder describing one post to create via PostImporter (LPP-004/LPP-005 Phase 1), independent of where the data came from.
+ * A plain data holder describing one post to create via PostImporter, independent of where the data came from.
  *
  * @package LumoraPress
  * @subpackage Services

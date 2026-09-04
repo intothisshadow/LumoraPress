@@ -18,17 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Static bridge exposing site identity (name, tagline, logo, favicon,
- * custom CSS — LP-034; meta description, default Open Graph image,
- * date/time display format — LP-042; search engine visibility — LP-046)
- * to the procedural site_name()/site_tagline()/site_logo_url()/
- * favicon_url()/custom_css()/meta_description()/default_og_image_url()/
- * the_date()/the_time()/search_engines_discouraged() helpers used by
- * themes. Mirrors SiteUrl/
- * BasePath: themes have no other route to PressConfig/MediaService, and
- * these values are identical on every page, so threading them through
- * every SiteController render() call would mean touching every action
- * for one request-scoped, set-once-at-bootstrap value.
+ * Bridges site identity (name, tagline, logo, favicon, custom CSS, SEO
+ * defaults) to theme helpers. Themes have no other route to
+ * PressConfig/MediaService, so this snapshots the values once at bootstrap.
  */
 final class SiteBranding
 {

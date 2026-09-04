@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The WordPress Importer plugin's main file (LPP-004): plugin metadata header.
+ * The WordPress Importer plugin's main file: plugin metadata header.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -46,54 +46,23 @@ require_once __DIR__ . '/src/WordPressImportService.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 require_once __DIR__ . '/src/NextGenGalleryShortcode.php';
 
-/*
- * The import flow itself (WordPressSource/WordPressImportService) has
- * nothing to hook at load time — its entire surface is the admin
- * Maintenance > Import screen (admin/views/maintenance/import.php),
- * which constructs those two directly from $kernel's own services plus
- * the admin-supplied source DB credentials/uploads path, the same
- * "no hook to register, $kernel doesn't exist yet" reasoning
- * dummy-content.php's own docblock explains (see DEVELOPER-APIS.md's
- * "Plugin file structure" section too).
- *
- * DownloadsShortcode (LPP-007) is different: it renders public-facing
- * content, so it needs a real, always-on hook — the same 'content_html'
- * filter Font Awesome's [icon] shortcode uses (see
- * font-awesome.php). It needs no Kernel services at *registration*
- * time (only when a page's content actually contains the shortcode, at
- * which point it opens its own database connection — see its own
- * docblock), so it's safe to construct here at plugin-load time.
- */
+// The import flow itself has nothing to hook at load time — its entire
+// surface is the admin Maintenance > Import screen, constructed directly
+// from $kernel once it exists. DownloadsShortcode needs a real, always-on
+// hook instead, since it renders public-facing content.
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
 
-/*
- * NextGenGalleryShortcode (LPP-016) rewrites migrated NextGEN Gallery
- * shortcodes into core's own [lumora_folder_gallery] syntax — it never
- * renders anything itself, so it must run at a priority *lower* than
- * FolderGalleryShortcode's own content_html registration (the default
- * priority 10, see include/bootstrap.php) for that rewritten text to
- * still be seen and rendered within the same filter pass.
- */
+// Rewrites migrated NextGEN Gallery shortcodes into core's own syntax, so
+// it must run at a lower priority than FolderGalleryShortcode's default 10.
 $nextGenGalleryShortcode = new NextGenGalleryShortcode();
 
 add_filter('content_html', static fn (string $html): string => $nextGenGalleryShortcode->rewriteShortcodes($html), 5);
 
-/*
- * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
- * button — purely additive, doesn't change how
- * [sdm_show_dl_from_category ...] itself renders (still the
- * content_html filter above). Needs $kernel->folders (a live list of
- * Media Folders, to build category_slug's choices) to exist, which
- * isn't true yet at this point in the file — see
- * include/shortcodes.php's own docblock for why this hooks
- * 'register_shortcodes' instead of calling register_shortcode()
- * directly here. Only [sdm_show_dl_from_category] is covered — this
- * file's other two shortcodes ([sdm_download], [sdm_latest_downloads])
- * are left typeable by hand, matching the ticket's own three-shortcode
- * scope.
- */
+// $kernel->folders isn't available yet at this point, so this hooks
+// 'register_shortcodes' rather than calling register_shortcode() directly.
+// Only [sdm_show_dl_from_category] is covered; the other two are typed by hand.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel) use ($downloadsShortcode): void {
     $folderChoices = [];
 

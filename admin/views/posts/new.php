@@ -33,25 +33,15 @@ if (!isset($kernel)) {
 
 $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->tags, $kernel->revisions, $kernel->media, $kernel->thumbnails, $kernel->content);
 
-/*
- * Editor image upload (LP-015/LP-016), format-switch conversion, and
- * inline category creation (LP-008) are all JSON-responding sub-actions
- * of this same POST handler rather than their own admin page/route — a
- * small AJAX-only endpoint has nowhere else to live without adding an
- * unwanted visible nav entry. Handled before the CSRF-gated form dispatch
- * below since these fire from JS on this same edit screen, not the save
- * form itself. POST handling itself lives in PostsController (LP-082);
- * this view only discards the buffered HTML shell, sets the JSON
- * Content-Type, dispatches to the matching controller method (which
- * echoes the JSON body directly rather than returning a value — see
- * uploadEditorImage()'s own docblock for why), and exits.
- */
+// Editor image upload, format-switch conversion, and inline category
+// creation are all JSON-responding sub-actions of this POST handler
+// rather than their own admin page/route. POST handling lives in
+// PostsController; this view discards the buffered HTML shell, sets the
+// JSON Content-Type, dispatches to the matching controller method
+// (which echoes the JSON body directly), and exits.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'font_awesome_icon_query', 'emoji_picker_record_recent'], true)) {
-    // admin/index.php's ob_start() buffer already holds layout-header.php's
-    // HTML shell by the time this runs (views/{page}/{subpage}.php is
-    // required after layout-header.php unconditionally) — discard it
-    // before sending a JSON response, or that buffered HTML would still
-    // flush to the client ahead of/around this JSON on exit.
+    // Discard admin/index.php's output buffer before sending a JSON
+    // response, or the buffered HTML would flush alongside it.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -60,13 +50,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
 
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    // font_awesome_icon_query is handled separately from the match()
-    // below since it belongs to an optional plugin — FontAwesomeService
-    // is only ever require_once'd (see font-awesome.php) when that
-    // plugin is active, so this view (reachable regardless of which
-    // plugins are active) must guard the class reference rather than
-    // assume it's loaded, unlike appearance/font-awesome.php's own
-    // settings screen, which is only ever reachable while active.
+    // font_awesome_icon_query is handled separately since it belongs to
+    // an optional plugin — this view is reachable regardless of which
+    // plugins are active, so FontAwesomeService's class must be guarded.
     if ($_POST['form'] === 'font_awesome_icon_query') {
         if (class_exists(FontAwesomeService::class, false)) {
             FontAwesomeService::instance()->queryIconsForPicker($_POST, $csrfToken);
@@ -78,17 +64,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
         exit;
     }
 
-    /*
-     * LPP-006: unlike font_awesome_icon_query above, this sub-action is
-     * core UserService work, not delegated to the (optional) Emoji
-     * Picker plugin's own service — the plugin only ever supplies the
-     * dataset/settings (see EmojiPickerService's class docblock), so
-     * "recently used" persistence lives here regardless of whether the
-     * plugin happens to be active at the moment this fires (a stale
-     * client-side picker session posting after the plugin was just
-     * deactivated is harmless — it just records a value nothing reads
-     * back until the plugin is active again).
-     */
+    // Unlike font_awesome_icon_query above, this is core UserService
+    // work, not delegated to the optional Emoji Picker plugin's service
+    // — "recently used" persists regardless of whether the plugin is
+    // active when this fires.
     if ($_POST['form'] === 'emoji_picker_record_recent') {
         if (!Csrf::verify('emoji_picker_record_recent', $csrfToken)) {
             http_response_code(403);
@@ -111,15 +90,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
         exit;
     }
 
-    // link_picker_query is handled separately from the match() below
-    // since it spans both Posts and Pages (a link picker opened from
-    // the Post editor must still be able to target an existing Page,
-    // and vice versa) — PostsController only holds a PostService, so
-    // this queries $kernel->posts/$kernel->pages directly rather than
-    // adding a PageService dependency to a controller named for the
-    // other content type. Duplicated verbatim in pages/new.php's own
-    // identical block, matching media_picker_query's existing
-    // per-view-duplication precedent there.
+    // link_picker_query spans both Posts and Pages, so this queries
+    // $kernel->posts/$kernel->pages directly rather than adding a
+    // PageService dependency to a controller named for the other type.
     if ($_POST['form'] === 'link_picker_query') {
         if (!$currentUser->can('edit_posts') || !Csrf::verify('link_picker_query', $csrfToken)) {
             http_response_code(403);
@@ -192,16 +165,9 @@ $error = null;
  */
 $canEditPost = static fn (Post $post): bool => $canEditOthersPosts || $post->authorId === $currentUser->id;
 
-/*
- * POST handling for 'save'/'restore_revision' lives in PostsController
- * (LP-082, following the ThemesController precedent — see DECISIONS.md);
- * this view only reads the request, dispatches to the matching controller
- * method, and turns the returned AdminActionResult into either a redirect
- * or an inline $error string. The 'editor_upload'/'convert_content'/
- * 'add_category' JSON sub-actions are dispatched separately above, before
- * this block, since they exit immediately with a JSON body instead of
- * rendering the rest of this page.
- */
+// POST handling for 'save'/'restore_revision' lives in PostsController;
+// this view dispatches to it and turns the result into a redirect or
+// $error string. The JSON sub-actions are dispatched separately above.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -212,17 +178,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             : $controller->restoreRevision($_POST, $currentUser->id, $canEditOthersPosts, $csrfToken);
 
         if ($result->redirectUrl !== null) {
-            // "Trusted staff shouldn't have to add a domain in Settings
-            // just to embed an image" — an Administrator/Editor's own
-            // save already just worked, so any external <img> origins in
-            // it are trusted automatically. Gated on edit_others_posts,
-            // never on the plain "can save this post" check every author
-            // passes, and never runs for restore_revision (that content
-            // was already trusted the first time it was saved). Scans the
-            // *rendered* HTML, not the raw stored content — a Markdown
-            // post stores `![alt](url)`, not a literal <img> tag, so
-            // scanning the raw source would miss the (default-editor,
-            // most common) Markdown case entirely.
+            // Trusted staff shouldn't have to add a domain in Settings
+            // just to embed an image. Gated on edit_others_posts, never
+            // the plain "can save" check, and never for restore_revision.
+            // Scans the *rendered* HTML, not raw $content, since a
+            // Markdown post stores `![alt](url)`, not a literal <img> tag.
             if ($form === 'save' && $canEditOthersPosts) {
                 $savedContentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
                 $renderedForAutoTrust = $kernel->content->render((string) ($_POST['content'] ?? ''), $savedContentFormat);
@@ -278,14 +238,8 @@ $assignedTagNames = $post !== null
     ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
     : [];
 $currentFeaturedImage = $post?->featuredImageId !== null ? $kernel->media->find($post->featuredImageId) : null;
-/*
- * LP-115: the "Insert Image" picker's grid used to be preloaded here as
- * one data-media-library JSON blob (every image in the library, up to
- * 500 of them) — replaced by an on-demand AJAX query
- * (PostsController::queryMediaForPicker()) so opening the picker doesn't
- * require loading the whole library first. Only the (small) Folder tree
- * is still preloaded, for the picker's Folder filter <select>.
- */
+// The "Insert Image" picker's grid is queried on demand rather than
+// preloaded; only the (small) Folder tree is preloaded, for its filter.
 $editorFolderTree = array_map(
     static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
     $kernel->folders->listAllForTree(),
@@ -320,17 +274,11 @@ $savedOrder = array_values(array_intersect($savedLayout['order'], $availableBoxe
 $boxOrder = array_values(array_unique(array_merge($savedOrder, $availableBoxes)));
 $collapsedBoxes = array_values(array_intersect($savedLayout['collapsed'], $collapsibleBoxes));
 
-/*
- * updateEditorLayoutPreferences() always writes order and collapsed
- * together as one snapshot (see UserService), so a real save never
- * leaves order empty — an empty $savedLayout['order'] reliably means
- * this user has never customized this screen's sidebar at all, not
- * that they explicitly saved zero collapsed boxes. SEO and Custom
- * Fields default to collapsed on that first-ever visit, matching
- * classic WordPress's own postbox defaults for optional/secondary
- * fields; Author reassignment (also collapsible) stays expanded by
- * default since it's a more consequential field to leave hidden.
- */
+// updateEditorLayoutPreferences() always writes order and collapsed
+// together, so an empty $savedLayout['order'] reliably means this user
+// has never customized the sidebar. SEO and Custom Fields default to
+// collapsed on that first visit; Author reassignment stays expanded
+// since it's a more consequential field to leave hidden.
 if ($savedLayout['order'] === []) {
     $collapsedBoxes = array_values(array_intersect(['seo', 'custom_fields'], $collapsibleBoxes));
 }
@@ -579,7 +527,7 @@ if ($savedLayout['order'] === []) {
 
                                 case 'comments': ?>
                                     <?php
-                                    // Settings > Discussion's "Allow comments on new posts" (LP-047)
+                                    // Settings > Discussion's "Allow comments on new posts"
                                     // only sets the default for a brand-new post's checkbox below — an
                                     // existing post's own saved comments_open value always wins.
                                     $defaultCommentsOpen = $post !== null ? $post->commentsOpen : $kernel->commentModeration->defaultCommentsOpenForNewPosts();

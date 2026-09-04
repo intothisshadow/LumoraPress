@@ -3,33 +3,23 @@
 declare(strict_types=1);
 
 /**
- * Bundled emoji dataset for the Emoji Picker plugin (LPP-006).
+ * Bundled emoji dataset for the Emoji Picker plugin.
  *
- * A curated subset of Unicode CLDR emoji annotations — not the full ~1,400+
- * entry CLDR set (accurately hand-authoring every language's keyword
- * annotations for that many characters is out of scope for a first pass;
- * see EmojiPickerService's own class docblock). Skin-tone/gender modifier
- * variants and multi-person family/couple sequences are deliberately
- * omitted to keep this list a manageable, single flat set — every entry
- * here is a single base codepoint (or an unmodified ZWJ sequence like
- * "family" itself), never a modifier combination. A site that needs the
- * full set, other languages, or additional entries can extend or replace
- * this array entirely via the `lp_emoji_dataset` filter rather than
- * editing this file directly, so an update never has to be reapplied by
- * hand after a core upgrade.
+ * A curated subset of Unicode CLDR emoji annotations, not the full
+ * ~1,400+ entry set. Skin-tone/gender modifiers and multi-person
+ * family/couple sequences are omitted to keep this a manageable flat
+ * list — every entry is a single base codepoint or an unmodified ZWJ
+ * sequence. A site needing the full set, other languages, or additional
+ * entries should extend or replace this array via the `lp_emoji_dataset`
+ * filter rather than editing this file, so updates survive core upgrades.
  *
- * Each entry: 'emoji' (the raw Unicode character(s)), 'name' (the CLDR
- * short name, used as the accessible label and shown in search results),
- * 'category' (one of the eight groups below, matching the picker's own
- * category tabs), 'keywords' (extra search terms beyond the name itself).
+ * Each entry: 'emoji' (raw Unicode character(s)), 'name' (CLDR short
+ * name, used as the accessible label), 'category' (matches the picker's
+ * tabs), 'keywords' (extra search terms).
  *
- * To refresh/extend this list for a new Unicode emoji revision: pull the
- * current CLDR annotations (https://github.com/unicode-org/cldr — the
- * `common/annotations/en.xml` file lists name + keywords per codepoint),
- * add new entries in the same shape, and bump the plugin's own version in
- * emoji-picker.php. No code changes are needed elsewhere — the picker
- * reads this file's whole contents at runtime (cached, see
- * EmojiPickerService::dataset()).
+ * To refresh for a new Unicode revision: pull current CLDR annotations
+ * (https://github.com/unicode-org/cldr, common/annotations/en.xml), add
+ * entries in the same shape, and bump the plugin's version.
  *
  * @return list<array{emoji: string, name: string, category: string, keywords: list<string>}>
  */

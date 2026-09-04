@@ -20,10 +20,9 @@ namespace LumoraPress\Core;
 use RuntimeException;
 
 /**
- * Static bridge exposing the bootstrapped PressConfig to plugin code —
- * mirrors ActiveTheme/ActiveContentRenderer: a plugin's main file is
- * `require_once`d from inside PluginManager::load(), so it has no
- * constructor-injection route to Kernel-wired services of its own.
+ * Static bridge exposing the bootstrapped PressConfig to plugin code — a
+ * plugin's main file has no constructor-injection route to Kernel-wired
+ * services of its own.
  */
 final class ActiveConfig
 {

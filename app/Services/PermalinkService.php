@@ -24,22 +24,13 @@ use LumoraPress\Models\Post;
 use LumoraPress\Models\Tag;
 
 /**
- * LP-078: the single choke point for post/category/tag URL construction.
- * `include/permalink-functions.php`'s post_permalink()/category_permalink()/
- * tag_permalink() theme helpers, every controller/service/admin view that
- * used to hand-build 'post/' . $post->slug, and bootstrap.php's own Router
- * registration all go through this class, so a site owner's chosen
- * permalink_structure/category_base/tag_base option is honored everywhere
- * at once rather than in some places and not others.
+ * The single choke point for post/category/tag URL construction — theme helpers, every
+ * controller/service/admin view, and Router registration all go through this class, so a
+ * site owner's permalink_structure/category_base/tag_base is honored everywhere at once.
  *
- * postUrl()'s token substitution and postRoutePattern()'s route-pattern
- * compilation are two views of the same %token% -> value mapping — one
- * substitutes a real value per post, the other substitutes a Router
- * {name} placeholder once at bootstrap time. Keeping both here (rather
- * than splitting pattern compilation into Router itself) is what lets the
- * default structure ('/post/%postname%/') compile to the exact
- * '/post/{slug}' pattern this application always registered, so an
- * unconfigured site's URLs stay byte-for-byte unchanged.
+ * postUrl()'s token substitution and postRoutePattern()'s route-pattern compilation are two
+ * views of the same %token% -> value mapping, kept together here so the default structure
+ * compiles to the exact route pattern this application always registered.
  */
 final class PermalinkService
 {
@@ -162,30 +153,13 @@ final class PermalinkService
     }
 
     /**
-     * The Router pattern matching the configured post structure — every
-     * %token% becomes a {name} placeholder Router::match() already knows
-     * how to capture (see Router's own docblock), so no Router change was
-     * needed to support date/category/author segments. The default
-     * structure compiles to exactly '/post/{slug}', the same pattern this
-     * application registered before permalink structures existed.
+     * The Router pattern matching the configured post structure — every %token% becomes a
+     * {name} placeholder Router::match() already knows how to capture.
      *
-     * %year%/%monthnum%/%day% compile to a raw digit-only regex group
-     * (`(?P<year>\d\d\d\d)`, not the generic `{year}` -> `[^/]+` a bare
-     * placeholder would give) rather than Router's normal {name}
-     * placeholder syntax — deliberately bypassing it, since Router only
-     * ever transforms literal `{name}`/`{name*}` occurrences and leaves
-     * everything else in the pattern untouched, so this still compiles
-     * cleanly into the final regex with zero Router changes needed.
-     * This matters beyond precision: LP-084's hierarchical Page route
-     * ("/{path*}") shares the same root URL namespace, registered *after*
-     * this one so a real post always wins — but a date-based structure's
-     * fixed segment count (4, for the default '/%year%/%monthnum%/
-     * %day%/%postname%/') can coincidentally match a Page nested exactly
-     * that deep too. A bare {year} (matching any non-slash text, not
-     * just digits) would swallow that Page's first segment as a "year"
-     * and 404 trying to find a matching post, never falling through to
-     * the Page route at all — confirmed against a real multi-level page
-     * tree during LP-084's own verification, not a hypothetical.
+     * %year%/%monthnum%/%day% compile to a raw digit-only regex group rather than Router's
+     * normal {name} -> `[^/]+` placeholder, since the hierarchical Page route ("/{path*}")
+     * is registered after this one: a bare {year} would swallow a same-depth Page's first
+     * segment as a "year" and 404 instead of falling through to the Page route.
      */
     public function postRoutePattern(): string
     {

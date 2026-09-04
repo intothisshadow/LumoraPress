@@ -22,9 +22,8 @@ use RuntimeException;
 
 /**
  * Static bridge exposing the bootstrapped ContentRenderer to theme
- * templates' procedural render_content() helper — mirrors ActiveTheme/
- * SiteBranding/FeaturedImages/ThemePreview: themes are plain procedural
- * PHP files with no route to Kernel-wired services of their own.
+ * templates' procedural render_content() helper — themes are plain
+ * procedural PHP files with no route to Kernel-wired services of their own.
  */
 final class ActiveContentRenderer
 {

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Font Awesome plugin's main file (LPP-002): plugin metadata header and bootstrap.
+ * The Font Awesome plugin's main file: plugin metadata header and bootstrap.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -41,12 +41,9 @@ $fontAwesome->configurePluginsPath(dirname(__DIR__));
 
 add_filter('lp_fontawesome_enabled', static fn (bool $enabled): bool => $fontAwesome->isEnabled());
 
-// Lets the admin icon picker (posts/new.php, pages/new.php,
-// downloads/add-new.php) lazy-load real icon glyphs matching whatever
+// Lets the admin icon picker lazy-load real icon glyphs matching whatever
 // delivery/version/self-hosted URL is actually configured, without those
-// views needing a direct FontAwesomeService reference — same decoupling
-// reason lp_fontawesome_enabled() exists as a filter instead of a class
-// check.
+// views needing a direct FontAwesomeService reference.
 add_filter('lp_fontawesome_css_urls', static fn (array $urls): array => $fontAwesome->cssUrls());
 
 add_action('lp_fontawesome_enqueue', static function () use ($fontAwesome): void {
@@ -64,23 +61,9 @@ add_action('lp_register_icon_pack', static function (string $key, array $config)
 // the final sanitized HTML (see renderShortcodes()'s own docblock).
 add_filter('content_html', static fn (string $html): string => $fontAwesome->renderShortcodes($html), 20);
 
-/*
- * LP-110: picker metadata for the editor toolbar's "Insert Shortcode"
- * button — purely additive, doesn't change how [icon ...] itself
- * renders (still the content_html filter above). Hooked on
- * 'register_shortcodes' rather than called directly here for
- * consistency with the other two shortcode-registering plugins (both of
- * which genuinely need Kernel's services for their own choices lists),
- * even though this one's fields need none.
- *
- * 'style'/'label' are left registered separately rather than embedded in
- * the 'name' field's own Icon picker — a manual override still makes
- * sense (the icon browser only pre-fills 'style' with whatever style the
- * chosen icon actually has; some icons support more than one), and
- * 'label' has no picker equivalent at all. 'color'/'class'/'animation'
- * are left off the picker (still typeable by hand) to keep the form to
- * the attributes actually worth a dedicated field.
- */
+// 'style'/'label' are separate fields, not embedded in the 'name' Icon picker —
+// some icons support more than one style, and 'label' has no picker equivalent.
+// 'color'/'class'/'animation' stay off the picker, still typeable by hand.
 add_action('register_shortcodes', static function (): void {
     register_shortcode('icon', 'Icon', [
         new ShortcodeField('name', 'Icon', ShortcodeFieldType::Icon, required: true, help: 'Choose an icon from the library.'),

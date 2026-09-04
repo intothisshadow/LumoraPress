@@ -1,7 +1,7 @@
 <?php
 
 /**
- * CRUD for the downloads table (LPP-008): the admin-facing identity/metadata layer sitting on top of Media items and Redirects.
+ * CRUD for the downloads table: the admin-facing identity/metadata layer sitting on top of Media items and Redirects.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -28,28 +28,15 @@ use LumoraPress\Services\ThumbnailService;
 use RuntimeException;
 
 /**
- * Deliberately does not reimplement file storage or URL redirection —
- * a File download's actual bytes are a normal MediaService-managed
- * Media row (so it keeps working with the Media Manager, the existing
- * download endpoint, and file-type/size validation exactly as before);
- * a Url download's actual link is a normal RedirectService-managed
- * Redirect row (so it keeps hit-counting and 404 fallback behavior).
- * This table only adds what neither of those had on its own: a real
- * title/description regardless of type, and a single place to list and
- * edit every download grouped by category.
+ * Doesn't reimplement file storage or URL redirection: a File download's
+ * bytes are a normal MediaService-managed Media row; a Url download's link
+ * is a normal RedirectService-managed Redirect row. This table only adds a
+ * real title/description and a place to list/edit downloads by category.
  *
- * $folderId is always also passed straight through to the underlying
- * Media/Redirect row, matching the folder_id-keyed convention
- * LPP-004/LPP-007's WordPress import already established — this is
- * deliberate, not incidental: it means a download created here is
- * automatically visible to the existing
- * `[sdm_show_dl_from_category]` shortcode (DownloadsShortcode, in the
- * wordpress-importer plugin) with no changes needed to that plugin at
- * all, since it queries Media/Redirects by folder_id directly and has
- * no idea this table exists. $categoryId (LPP-011) is this download's
- * real categorization instead — fully decoupled from $folderId, which
- * now only governs where a File-typed download's underlying Media item
- * physically sits in the Media Library.
+ * $folderId is passed straight through to the underlying Media/Redirect row
+ * so a download stays visible to code that queries Media/Redirects by
+ * folder_id directly (e.g. the WordPress Importer's own shortcode).
+ * $categoryId is this download's real, separate categorization.
  */
 final class DownloadService
 {
@@ -60,10 +47,8 @@ final class DownloadService
         private readonly RedirectService $redirects,
         private readonly DownloadCategoryService $categories,
         private readonly ?ThumbnailService $thumbnails = null,
-        // Optional (LPP-011) so this class stays constructible without
-        // MediaStatsService (LP-006) wherever a caller has no need for
-        // downloadCount()'s File-type branch — mirrors $thumbnails'
-        // existing optional-dependency convention.
+        // Optional so this class stays constructible without MediaStatsService
+        // wherever a caller has no need for downloadCount()'s File-type branch.
         private readonly ?MediaStatsService $mediaStats = null,
     ) {
     }
@@ -108,16 +93,10 @@ final class DownloadService
     }
 
     /**
-     * Inserts a `downloads` row referencing a Media item or Redirect
-     * that already exists — the shared tail create() itself uses after
-     * doing the actual upload/redirect-creation, and the entry point for
-     * a caller that created that Media/Redirect row itself and only
-     * needs the identity/metadata layer attached on top (e.g.
-     * WordPressImportService::importDownloads(), which uses its own
-     * provenance-tracked MediaImporter/RedirectService::create() calls
-     * rather than going through create() above — calling create()
-     * there would upload the file or create the redirect a second
-     * time).
+     * Inserts a `downloads` row for a Media/Redirect that already exists —
+     * the shared tail create() uses, and the entry point for a caller (e.g.
+     * a WordPress import) that created that row itself and only needs the
+     * identity/metadata layer attached on top.
      */
     public function recordExisting(string $title, string $description, ?int $folderId, DownloadType $type, ?int $mediaId, ?int $redirectId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $thumbnailMediaId = null, bool $mediaOwned = true, ?int $categoryId = null): Download
     {
@@ -153,16 +132,10 @@ final class DownloadService
     }
 
     /**
-     * $externalUrl only ever applies here to a download that's *already*
-     * Url-typed (editing its existing target) — swapping a File-typed
-     * download's file, or converting between File and Url entirely, is
-     * replaceFile()'s/convertToFile()'s/convertToUrl()'s job (LPP-012),
-     * called separately before this method by the same admin view save
-     * handler; this method only ever touches title/description/folder/
-     * (same-type) URL. $descriptionFormat left null keeps the download's
-     * existing stored format (mirrors PageService::update()'s identical
-     * "null means unchanged" convention for its own $contentFormat
-     * parameter).
+     * $externalUrl only applies to an already Url-typed download — swapping
+     * a file or converting between types is replaceFile()/convertToFile()/
+     * convertToUrl()'s job, called separately. $descriptionFormat left null
+     * keeps the existing stored format.
      */
     public function update(int $id, string $title, string $description, ?int $folderId, ?string $externalUrl, ?ContentFormat $descriptionFormat = null, ?int $categoryId = null): bool
     {
@@ -203,11 +176,8 @@ final class DownloadService
     }
 
     /**
-     * "Add from server" (LPP-012): attaches an already-uploaded Media
-     * item as a File-typed download's file, instead of uploading a new
-     * one — the same shared recordExisting() tail create()'s own upload
-     * branch ends at, just skipping the upload itself since the file
-     * already exists in the Media Library.
+     * "Add from server": attaches an already-uploaded Media item as a
+     * File-typed download's file instead of uploading a new one.
      */
     public function createFromExistingMedia(string $title, string $description, ?int $folderId, int $mediaId, ContentFormat $descriptionFormat = ContentFormat::Plain, ?int $categoryId = null): Download
     {
@@ -215,40 +185,19 @@ final class DownloadService
             throw new InvalidArgumentException('The selected file could not be found.');
         }
 
-        // mediaOwned: false — this Media row predates and exists
-        // independently of this download (see Download::$mediaOwned's
-        // own docblock), so delete()/replaceFile() must never delete it
-        // on this download's account.
+        // mediaOwned: false — this Media row predates the download,
+        // so delete()/replaceFile() must never delete it on its account.
         return $this->recordExisting($title, $description, $folderId, DownloadType::File, $mediaId, null, $descriptionFormat, mediaOwned: false, categoryId: $categoryId);
     }
 
     /**
-     * LPP-012: repoints a File-typed download at a different, already-
-     * existing Media item — $newMediaId was either just uploaded (a
-     * fresh Media row created moments earlier, $newMediaOwned true — the
-     * default, matching the common "upload a replacement" case) or
-     * picked from the server the same way createFromExistingMedia()
-     * attaches one ($newMediaOwned false); this method never creates a
-     * Media row itself. False (no-op) for a Url-typed download or an
-     * unknown $id/$newMediaId — replacing a Url download's target is
-     * update()'s $externalUrl parameter's job, not this method's.
+     * Repoints a File-typed download at a different, already-existing Media
+     * item; never creates one itself. No-op for a Url-typed download.
      *
-     * The old Media row is deleted only when it was owned (this
-     * download's own file, not one attached from the library — see
-     * Download::$mediaOwned's own docblock) *and* no other download
-     * still references it — the exact same referencedByAnotherDownload()
-     * guard delete() uses for the same reason (duplicate(), LPP-009,
-     * deliberately shares a Media/Redirect row rather than copying it,
-     * so a replace on one shared download must not orphan or break the
-     * other). An unowned old Media row is never deleted here, full
-     * stop — it existed independently of this download before being
-     * attached, so this download replacing its file is never grounds to
-     * delete it; that would be a real, permanent, on-disk file deletion
-     * of what may be a Media Library item the admin still wants,
-     * regardless of any other download referencing it. $thumbnailMediaId
-     * is left untouched — it's a separately chosen representative image
-     * (see Download's own docblock), not necessarily invalidated by
-     * swapping the underlying file.
+     * The old Media row is deleted only when it was owned and no other
+     * download still references it (duplicate() shares rather than copies
+     * rows, so this must not orphan a sibling). $thumbnailMediaId is left
+     * untouched since swapping the file doesn't invalidate it.
      */
     public function replaceFile(int $id, int $newMediaId, bool $newMediaOwned = true): bool
     {
@@ -278,25 +227,13 @@ final class DownloadService
     }
 
     /**
-     * LPP-012: converts a Url-typed download into a File-typed one — a
-     * download's type isn't fixed at creation after all; a URL that
-     * turns out to need to become a real hosted file (or vice versa,
-     * see convertToUrl() below) is a real, expected need. $newMediaId/
-     * $newMediaOwned work exactly like replaceFile()'s own — a fresh
-     * upload (owned) or a Media Library pick (not owned).
+     * Converts a Url-typed download into a File-typed one. $newMediaId/
+     * $newMediaOwned work like replaceFile()'s own.
      *
-     * The old Redirect is deleted when no other download still
-     * references it — the same referencedByAnotherDownload() guard
-     * delete()/replaceFile() already use for Media. No ownership check
-     * is needed for the Redirect the way replaceFile() needs one for
-     * Media: unlike createFromExistingMedia(), nothing ever attaches a
-     * *pre-existing, independently-created* Redirect to a download —
-     * every Redirect a download ever has was created by create()/
-     * convertToUrl() specifically for that download, so it's always
-     * safe to clean up once nothing references it any more.
-     *
-     * False (no-op) for a download that's already File-typed —
-     * replaceFile() is that method's job — or an unknown $id/$newMediaId.
+     * The old Redirect is deleted when no other download still references
+     * it — no ownership check is needed since every Redirect a download has
+     * was created specifically for it (unlike Media, none is ever attached
+     * pre-existing). No-op for a download that's already File-typed.
      */
     public function convertToFile(int $id, int $newMediaId, bool $newMediaOwned = true): bool
     {
@@ -333,22 +270,13 @@ final class DownloadService
     }
 
     /**
-     * LPP-012: converts a File-typed download into a Url-typed one —
-     * convertToFile()'s mirror. Creates a fresh Redirect the same way
-     * create()'s own Url branch does (a unique `downloads/{slug}`
-     * source path via generateUniqueSourcePath(), against the
-     * download's *current* title — a simultaneous title change in the
-     * same save is applied afterward by update(), same as it always
-     * was; this never renames an existing Redirect's source path either).
+     * Converts a File-typed download into a Url-typed one, convertToFile()'s
+     * mirror. Creates a fresh Redirect via generateUniqueSourcePath(); never
+     * renames an existing Redirect's source path.
      *
-     * The old Media row is deleted only when it was owned (see
-     * Download::$mediaOwned's own docblock — an attached-from-the-
-     * library file must never be deleted just because this download
-     * stops using it) and no other download still references it — the
-     * same guard replaceFile() uses for the same reason.
-     *
-     * False (no-op) for a download that's already Url-typed, an unknown
-     * $id, or a blank $externalUrl.
+     * The old Media row is deleted only when owned and unreferenced
+     * elsewhere — the same guard replaceFile() uses. No-op for a download
+     * that's already Url-typed, an unknown $id, or a blank $externalUrl.
      */
     public function convertToUrl(int $id, string $externalUrl): bool
     {
@@ -390,22 +318,10 @@ final class DownloadService
     }
 
     /**
-     * Deletes the linked Media or Redirect row first — a Download's whole
-     * reason to exist is to be the public download, so no orphaned Media
-     * item or Redirect should survive it. Only cascades that Media
-     * deletion when the row is owned (LPP-012: this download's own
-     * file, not one attached from the Media Library via
-     * createFromExistingMedia() — see Download::$mediaOwned's own
-     * docblock; an unowned Media row is never touched, since it existed
-     * independently before this download attached it and may still be
-     * wanted regardless of this download's fate) *and* no *other*
-     * download row still references the same media_id/redirect_id —
-     * duplicate() (LPP-009) deliberately shares the original's Media/
-     * Redirect rather than copying them, so permanently deleting one
-     * duplicate must not break the link the other still relies on. A
-     * Redirect is always considered owned — LPP-012 only ever attaches
-     * an *existing Media item*, never an existing Redirect, to a
-     * download, so that ambiguity doesn't apply there.
+     * Deletes the linked Media or Redirect row too, so nothing is orphaned.
+     * Media is only cascaded when owned and no other download row still
+     * references it (duplicate() shares rather than copies rows). A
+     * Redirect is always considered owned — none is ever pre-existing.
      */
     public function delete(int $id): bool
     {
@@ -431,8 +347,8 @@ final class DownloadService
     /**
      * Soft-deletes a download — hidden from listAllGroupedByCategory()/
      * listByCategory() (so the [lumora_downloads] shortcode and the public
-     * site stop showing it) but its underlying Media/Redirect row is left
-     * untouched; only delete() (permanent) ever removes those.
+     * site stop showing it) but its underlying Media/Redirect row is
+     * left untouched; only delete() (permanent) ever removes those.
      */
     public function trash(int $id): bool
     {
@@ -459,12 +375,7 @@ final class DownloadService
 
     /**
      * A duplicate shares the original's media_id/redirect_id rather than
-     * copying the underlying file/redirect — the same trade-off
-     * PostService::duplicate() already makes for a post's featured image
-     * (passing featuredImageId through unchanged instead of duplicating
-     * the Media row). delete()'s reference-counting guard above is what
-     * makes this safe: permanently deleting either copy only removes the
-     * shared Media/Redirect once nothing else points at it.
+     * copying the file — delete()'s reference-counting guard makes this safe.
      */
     public function duplicate(int $id): ?Download
     {
@@ -483,23 +394,15 @@ final class DownloadService
             $original->redirectId,
             $original->descriptionFormat,
             $original->thumbnailMediaId,
-            // Mirrors the original's own ownership flag — both rows now
-            // share the same media_id (this method deliberately shares
-            // rather than copies, see this method's own docblock), so
-            // whichever of the two is deleted last is the one that
-            // decides whether the shared file gets cleaned up.
+            // Mirrors the original's ownership flag since both rows now share the media_id.
             $original->mediaOwned,
             $original->categoryId,
         );
     }
 
     /**
-     * Flat, paginated, sortable admin-list method (LPP-009) — distinct
-     * from listAllGroupedByCategory(), which stays as the public-facing
-     * grouped-by-category data source. Mirrors PageService::paginateForAdmin()'s
-     * shape, but genuinely supports column sorting (via $orderBy/$orderDir)
-     * since, unlike Posts/Pages, a download list has no natural
-     * published-date ordering to fall back on.
+     * Flat, paginated, sortable admin-list method — distinct from
+     * listAllGroupedByCategory(), the public-facing data source.
      *
      * @param array{term?: string, folderId?: int, categoryId?: int} $filters
      * @return array{downloads: array<int, Download>, total: int, page: int, perPage: int, totalPages: int}
@@ -580,11 +483,8 @@ final class DownloadService
     }
 
     /**
-     * One query, grouped in PHP (small, evergreen dataset — the same
-     * trade-off PageService::listAllForTree()'s own docblock makes for
-     * pages, "not the tens-of-thousands-of-rows table Posts can be").
-     * Categories are ordered alphabetically by name; downloads with no
-     * category are grouped last under a null key.
+     * One query, grouped in PHP — a small dataset, not Posts-scale.
+     * Categories ordered alphabetically; uncategorized downloads grouped last.
      *
      * @return array<int, array{category: ?DownloadCategory, downloads: array<int, Download>}>
      */
@@ -628,10 +528,8 @@ final class DownloadService
     /**
      * One category's downloads, alphabetical by title — the
      * [lumora_downloads] shortcode's default "list everything in a
-     * category" data source (LPP-011), mirroring
-     * RedirectService::listByFolder()'s identical shape. $categoryId null
-     * means the uncategorized bucket, same convention
-     * listAllGroupedByCategory() already uses.
+     * category" data source. $categoryId null means the uncategorized
+     * bucket, same convention listAllGroupedByCategory() uses.
      *
      * @return array<int, Download>
      */
@@ -648,8 +546,8 @@ final class DownloadService
 
     /**
      * The newest $limit live downloads, optionally filtered to one
-     * category — backs [lumora_downloads]'s "newest"/"newest N" variants
-     * (LPP-011): $categoryId null means "across all downloads".
+     * category — backs [lumora_downloads]'s "newest"/"newest N" variants;
+     * $categoryId null means "across all downloads".
      *
      * @return array<int, Download>
      */
@@ -674,14 +572,9 @@ final class DownloadService
     }
 
     /**
-     * A download's click count (LPP-011) — read from whichever of the two
-     * existing, unrelated counters actually applies to this download's
-     * type, not stored on this table itself. A File-typed download's
-     * count is MediaStatsService's (LP-006), keyed by media_id and
-     * incremented at /media/{id}/download; a Url-typed download's count
-     * is its Redirect's own hit_count, incremented whenever a request
-     * falls through to it. Returns 0 when neither applies (no mediaId/
-     * redirectId, or MediaStatsService wasn't injected).
+     * A download's click count is not stored here — read from whichever
+     * existing counter applies: MediaStatsService for File, the Redirect's
+     * hit_count for Url. Returns 0 when neither applies.
      */
     public function downloadCount(Download $download): int
     {

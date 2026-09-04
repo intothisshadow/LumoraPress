@@ -24,14 +24,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-066/LP-067 (merged from LP-065 — see DECISIONS.md): every
- * authenticated role reaches this page for their OWN account only —
- * unlike admin/views/users.php (manage_users-gated, edits any user), this
- * form always operates on $currentUser->id and nothing else, the same
- * "capability: null, scoped to your own id" shape admin/views/
- * api-tokens.php already uses.
- */
+// Every authenticated role reaches this page for their own account
+// only — this form always operates on $currentUser->id and nothing else.
 $locked = $kernel->editorPreferences->isLockedToDefault();
 $error = null;
 

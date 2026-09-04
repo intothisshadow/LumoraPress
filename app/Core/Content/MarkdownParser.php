@@ -18,45 +18,26 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Content;
 
 /**
- * Converts Markdown source to HTML (LP-015). A hand-rolled, dependency-free
- * parser covering the subset of Markdown/GFM listed in TODO.md's LP-015
- * "Markdown Support" checklist — headings, paragraphs, bold, italic,
- * strikethrough, underline, a fixed-palette font color, inline code,
- * fenced code blocks, tables, blockquotes, horizontal rules,
- * ordered/unordered/task lists, links, images, and footnotes — rather
- * than a full CommonMark implementation. Lumora Press
- * avoids Composer/npm dependencies (see CLAUDE.md), so this is plain PHP
- * with no vendored library behind it.
+ * Converts Markdown source to HTML. A hand-rolled, dependency-free parser
+ * covering a deliberate subset of Markdown/GFM rather than full
+ * CommonMark, since Lumora Press avoids Composer/npm dependencies.
  *
- * Deliberately does NOT pass raw inline HTML typed in Markdown source
- * through to the output — a `<script>` typed directly in the Markdown
- * textarea is escaped as literal text, not interpreted as a tag. This is a
- * narrower behaviour than CommonMark (which allows raw HTML), chosen so
- * this class's own output is inherently safe from anything the *author*
- * types; the structural HTML it generates (links, images, table
- * attributes) is still re-checked by HtmlSanitizer before being stored, as
- * defense in depth against a bug in this parser rather than against the
- * author's input.
+ * Deliberately does NOT pass raw inline HTML through to the output — a
+ * `<script>` typed in the Markdown textarea is escaped as literal text.
+ * The structural HTML this class does generate is still re-checked by
+ * HtmlSanitizer before storage, as defense in depth.
  *
- * Two-pass design: parseBlocks() walks the source line-by-line into a
- * block tree (headings/paragraphs/lists/etc — the same lightweight
- * technique used by minimal Markdown parsers like Parsedown), then each
- * block's text content runs through parseInline() for span-level markup.
- * Code spans and images are protected behind placeholder tokens before the
- * rest of inline parsing runs, so their contents are never themselves
- * reprocessed as Markdown.
+ * Two-pass design: parseBlocks() walks the source into a block tree, then
+ * each block's text runs through parseInline() for span-level markup.
+ * Code spans and images are protected behind placeholder tokens first, so
+ * their contents are never reprocessed as Markdown.
  */
 final class MarkdownParser
 {
     /**
-     * Fixed font-color palette (LP-016 parity) — mirrors the swatch list
-     * content-editor.js offers in both editors and the has-{color}-color
-     * classes content/themes/default/style.css defines. Kept in sync by
-     * hand across all three; see parseFontColor()'s docblock for why this
-     * must stay a hardcoded allowlist rather than accepting arbitrary
-     * color names. Public because HtmlToMarkdownConverter reuses the same
-     * list when converting a `has-{color}-color` span back to this
-     * class's `[text]{.color}` marker syntax.
+     * Fixed font-color palette, mirrored by content-editor.js's swatch
+     * list and the has-{color}-color classes in style.css. Public because
+     * HtmlToMarkdownConverter reuses it for the reverse conversion.
      *
      * @var array<int, string>
      */
@@ -156,7 +137,7 @@ final class MarkdownParser
             }
 
             // ATX heading — a trailing {.left|center|right|justify}
-            // marker (LP-016) sets its alignment; see stripAlignmentMarker()'s
+            // marker sets its alignment; see stripAlignmentMarker()'s
             // docblock for why this is a trailing marker rather than an
             // attribute, the syntax Markdown otherwise has none of.
             if (preg_match('/^(#{1,6})\s+(.*?)\s*#*\s*$/', $line, $m) === 1) {
@@ -248,7 +229,7 @@ final class MarkdownParser
                 $i++;
             }
 
-            // The alignment marker (LP-016), if present, is only ever
+            // The alignment marker, if present, is only ever
             // meaningful on the paragraph's own last line — a marker
             // elsewhere is just literal text the author typed.
             $lastLine = $paragraphLines[count($paragraphLines) - 1];
@@ -262,16 +243,10 @@ final class MarkdownParser
 
     /**
      * Strips a trailing `{.left}`/`{.center}`/`{.right}`/`{.justify}`
-     * marker (LP-016) from $text, returning the cleaned text and the
-     * matched alignment (or null if there was none). Markdown has no
-     * native attribute syntax — this is a minimal, kramdown-inspired
-     * convention (a trailing inline attribute list) rather than a
-     * project-invented one, kept to the one thing this parser needs it
-     * for: text alignment on a heading or paragraph, mirroring the
-     * WYSIWYG editor's has-text-align-* classes (see
-     * content-editor.js's TinyMCE `formats` config and
-     * ContentRenderer/HtmlSanitizer, which never allows a `style`
-     * attribute at all).
+     * marker from $text, returning the cleaned text and the matched
+     * alignment (or null). A minimal, kramdown-inspired attribute-list
+     * convention, since Markdown has none natively — mirrors the WYSIWYG
+     * editor's has-text-align-* classes.
      *
      * @return array{0: string, 1: ?string}
      */
@@ -298,12 +273,9 @@ final class MarkdownParser
 
     /**
      * Parses a run of list-item lines starting at $start into a nested list
-     * block, using indentation to nest sub-lists (an item is nested under
-     * the previous item once its marker is indented further). A blank
-     * line followed by another list-item line at the same indent
-     * continues the same list (a "loose" list, rendered the same as a
-     * "tight" one here — no distinct wrapping-<p> behaviour, to keep the
-     * renderer simple).
+     * block, using indentation to nest sub-lists. A "loose" list (blank
+     * line between items) renders the same as a "tight" one — no distinct
+     * wrapping-<p> behaviour, to keep the renderer simple.
      *
      * @param array<int, string> $lines
      * @return array{0: array{type: string, ordered: bool, items: array<int, array{text: string, task: ?bool, children: array<int, array<string,mixed>>}>}, 1: int}
@@ -452,11 +424,9 @@ final class MarkdownParser
     }
 
     /**
-     * Renders $align (one of 'left'/'center'/'right'/'justify', or null
-     * for no marker) as a ` class="has-text-align-{align}"` attribute
-     * fragment — the same class convention the WYSIWYG editor's
-     * TinyMCE `formats` config applies (content-editor.js), so both
-     * editors produce identical, interchangeable output.
+     * Renders $align as a ` class="has-text-align-{align}"` fragment —
+     * the same convention the WYSIWYG editor's TinyMCE config applies, so
+     * both editors produce interchangeable output.
      */
     private function alignmentClassAttr(?string $align): string
     {
@@ -568,13 +538,9 @@ final class MarkdownParser
 
     /**
      * A flat list of every heading, one <li> per heading with a
-     * "lp-toc__level-N" class carrying its original nesting depth —
-     * deliberately not a visually-nested <ol><ol>...</ol></ol> tree
-     * (correct nested-list HTML requires each child list to live inside
-     * its parent <li>, which needs a real stack-based renderer; a flat
-     * list avoids that complexity entirely while still linking to every
-     * heading, and a theme can style the level classes as indentation if
-     * it wants a nested look).
+     * "lp-toc__level-N" class carrying its nesting depth — deliberately
+     * not a visually-nested tree, which would need a stack-based renderer.
+     * A theme can still style the level classes as indentation.
      */
     private function renderTocPlaceholders(string $html): string
     {
@@ -665,23 +631,13 @@ final class MarkdownParser
     }
 
     /**
-     * One or more trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}`/
-     * `{.no-lightbox}` markers (LP-016/LP-080, mirrors
-     * stripAlignmentMarker()'s heading/paragraph syntax) set the image's
-     * class list — the same classic-WordPress alignment class names the
-     * WYSIWYG editor's Insert Media "Alignment" step applies
-     * (content-editor.js), so both editors produce identical,
-     * interchangeable output. `alignnone` is deliberately not a marker
-     * value: it's the unmarked default, the same "no class needed"
-     * convention content/themes/default/style.css already documents.
+     * Trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}`/
+     * `{.no-lightbox}` markers set the image's class list, mirroring the
+     * WYSIWYG editor's Insert Media step. `alignnone` is deliberately not
+     * a marker value — it's the unmarked default.
      *
-     * `no-lightbox` opts the image out of ContentRenderer::
-     * addLightboxAttributes()'s automatic self-link (LP-080's "Link To:
-     * None" fix — that setting used to only control *which* URL an image
-     * links to, never whether it links at all, since every unlinked image
-     * still got a self-link for the PhotoSwipe lightbox; content-editor.js
-     * now appends this marker whenever "Link To: None" is chosen, so
-     * "None" finally means no link at all).
+     * `no-lightbox` opts out of ContentRenderer's automatic self-link for
+     * the PhotoSwipe lightbox, so "Link To: None" actually means no link.
      */
     private function parseImages(string $text): string
     {
@@ -773,16 +729,11 @@ final class MarkdownParser
     }
 
     /**
-     * `[text]{.color}` wraps text in `<span class="has-{color}-color">`
-     * (LP-016 font-color parity), reusing the same trailing-marker
-     * convention as heading/paragraph/image alignment — Markdown has no
-     * native attribute syntax, so this is a project-defined convention,
-     * not CommonMark. Only the fixed, hardcoded palette in self::
-     * FONT_COLORS is recognized: HtmlSanitizer never allows a style
-     * attribute (see its docblock), so this is the one inline construct
-     * that turns author-controlled text into a CSS class name, and an
-     * unrecognized color word is left as literal text rather than ever
-     * being interpolated into a class attribute.
+     * `[text]{.color}` wraps text in `<span class="has-{color}-color">`,
+     * a project-defined marker convention (not CommonMark). Only a
+     * hardcoded FONT_COLORS name is recognized — this is the one inline
+     * construct that turns author text into a CSS class name, so an
+     * unrecognized color is left as literal text rather than interpolated.
      */
     private function parseFontColor(string $text): string
     {
@@ -803,20 +754,16 @@ final class MarkdownParser
     /**
      * Blocks javascript:/data:/vbscript: URIs — anything not http(s),
      * mailto, or a relative/absolute path is dropped to "#". Mirrors the
-     * protocol allow-list HtmlSanitizer applies to raw-HTML-mode content,
-     * so a link is never a viable script-execution vector either way it
-     * was authored.
+     * protocol allow-list HtmlSanitizer applies to raw-HTML-mode content.
      */
     private function sanitizeUrl(string $url): string
     {
         $url = trim($url);
         $decoded = strtolower((string) preg_replace('/[\x00-\x1F\s]+/', '', $url));
 
-        // Scheme-relative "//host" resolves to an arbitrary external host
-        // — reject before the general "starts with /" allowance below
-        // would otherwise wave it through (mirrors HtmlSanitizer's
-        // isSafeUrl(), which is the second, authoritative pass every
-        // rendered Markdown link also goes through).
+        // Scheme-relative "//host" resolves to an arbitrary external host,
+        // so reject before the general "starts with /" allowance below
+        // would wave it through.
         if (str_starts_with($decoded, '//')) {
             return '#';
         }

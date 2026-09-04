@@ -22,26 +22,11 @@ use DOMElement;
 use LumoraPress\Services\MediaService;
 
 /**
- * LPP-013: a Download's Description field is free-text content (Markdown/
- * HTML/Plain, LPP-010) rendered through the same shared ContentRenderer
- * every post/page uses — content-editor.js's Insert Image button embeds
- * the real `content/uploads/...` URL directly, with no notion of
- * Downloads-specific masking, so the leak survives ContentRenderer::
- * render() unchanged. Rather than teaching the shared editor about a
- * single plugin's masking needs (it's used by posts/pages too, and this
- * ticket's scope is Downloads only — see LPP-013's own scope decision),
- * this runs as a second, Downloads-only pass over the already-rendered
- * HTML: any `<img src>`/`<a href>` pointing at a real upload path is
- * resolved back to its Media row (MediaService::findByFilePath()) and
- * rewritten to `/media/{id}/view` when one is found. A URL that doesn't
- * match a known Media row (external image, already-masked link, plain
- * text link) is left untouched.
- *
- * Runs after ContentRenderer::addLightboxAttributes() has already
- * self-linked a plain `<img>` (see that method's docblock) and after
- * HtmlSanitizer has already run — this only ever narrows an existing,
- * already-safe `src`/`href` value to a different same-origin URL, never
- * introduces new markup, so it needs no sanitization pass of its own.
+ * The shared editor embeds real `content/uploads/...` URLs with no notion
+ * of Downloads-specific masking, so this runs as a second, Downloads-only
+ * pass over the rendered HTML, rewriting known upload URLs to `/media/{id}/view`.
+ * Runs after HtmlSanitizer — it only narrows an existing safe URL, so it
+ * needs no sanitization pass of its own.
  */
 final class DownloadMediaUrlMasker
 {

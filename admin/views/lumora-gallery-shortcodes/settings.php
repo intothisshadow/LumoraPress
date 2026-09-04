@@ -25,13 +25,8 @@ if (!isset($kernel)) {
 }
 
 /*
- * LPP-015. Only reachable while the plugin is active (admin/index.php
- * only adds this menu entry in that case), so GallerySettingsService's
- * class is guaranteed to already be loaded — PluginManager::loadActive()
- * required content/plugins/lumora-gallery-shortcodes/
- * lumora-gallery-shortcodes.php earlier this same request, in
- * include/bootstrap.php. Mirrors lumora-shield/settings.php's identical
- * reasoning.
+ * Only reachable while the plugin is active, so GallerySettingsService's
+ * class is guaranteed to already be loaded.
  */
 $service = new GallerySettingsService();
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -39,13 +34,8 @@ $testResult = null;
 $detectResult = null;
 $settings = $service->settings();
 
-/*
- * Seeded from the persisted settings by default, same as before this
- * ticket — only a "detect_gallery_config" submission (below) actually
- * overwrites any of these for the response about to render. "save"/
- * "test" always redirect or re-derive from the just-saved settings, so
- * they never need $formValues at all.
- */
+// Seeded from persisted settings; only a "detect_gallery_config"
+// submission overwrites these for the response about to render.
 $formValues = [
     'db_host' => $settings['db_host'],
     'db_port' => $settings['db_port'],
@@ -88,9 +78,7 @@ if ($form === 'lumora_gallery_shortcodes_settings' && Csrf::verify('lumora_galle
     try {
         $detected = (new GalleryConfigParser())->parse($formValues['gallery_config_path']);
 
-        // Only overwrite fields config.php actually named — mirrors
-        // WordPressConfigParser's identical caller-side merge in
-        // admin/views/maintenance/import.php, for the same reason: a
+        // Only overwrite fields config.php actually named — a
         // partially-recognized config.php shouldn't blank out a field
         // the admin already typed by hand.
         foreach ($detected as $key => $value) {
@@ -103,11 +91,9 @@ if ($form === 'lumora_gallery_shortcodes_settings' && Csrf::verify('lumora_galle
             ? 'Detected database connection details from config.php.'
             : 'Detected some database connection details from config.php — enter the rest (' . implode(', ', $missing) . ') by hand.'];
 
-        // base_url isn't a config.php constant at all — Lumora Gallery
-        // stores it in its own database, so this only has a chance once
-        // enough of the connection was actually detected above to try
-        // it (see GallerySettingsService::detectBaseUrl()'s own
-        // docblock).
+        // base_url isn't a config.php constant — Lumora Gallery stores it
+        // in its own database, so this only tries once enough of the
+        // connection was detected above.
         if ($missing === [] || !in_array('table_prefix', $missing, true)) {
             $detectedBaseUrl = $service->detectBaseUrl([
                 'db_host' => $formValues['db_host'],
@@ -130,19 +116,10 @@ if ($form === 'lumora_gallery_shortcodes_settings' && Csrf::verify('lumora_galle
     }
 }
 
-/*
- * A masked "••••••••" placeholder only stands in for the password field
- * when $formValues still matches the persisted, already-saved password
- * (a normal page load, or a "Save & Test" round trip that just re-read
- * $settings back) — see the save handler above for the matching
- * "posted-back placeholder means keep the saved value" logic this has
- * to stay in sync with. A "detect from config.php" pass can put a real,
- * different, not-yet-saved plaintext password into $formValues, and
- * that must render as itself (same as the WordPress Importer's own
- * plain, unmasked db_password field), or Save would silently discard it
- * — hitting the placeholder-preserves-saved-value branch instead of
- * actually persisting what was just detected.
- */
+// The "••••••••" placeholder only stands in when $formValues still
+// matches the saved password. A "detect from config.php" pass can put a
+// real, not-yet-saved password into $formValues, which must render as
+// itself or Save would discard it by hitting the "keep saved value" branch.
 $showPasswordPlaceholder = $settings['db_password'] !== '' && $formValues['db_password'] === $settings['db_password'];
 ?>
 <h1 class="lp-admin__title">Lumora Gallery Shortcodes</h1>
@@ -194,12 +171,9 @@ $showPasswordPlaceholder = $settings['db_password'] !== '' && $formValues['db_pa
         </p>
 
         <?php
-        // This form only ever collects gallery_config_path — every
-        // other field belongs to the connection form below it; carried
-        // forward as hidden inputs so submitting Detect doesn't blank
-        // out anything already typed there, mirroring the WordPress
-        // Importer's own identical two-forms-on-one-page pattern
-        // (admin/views/maintenance/import.php).
+        // This form only collects gallery_config_path; every other field
+        // belongs to the connection form below, carried forward as
+        // hidden inputs so submitting Detect doesn't blank them out.
         ?>
         <input type="hidden" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
         <input type="hidden" name="db_port" value="<?= esc_attr((string) $formValues['db_port']) ?>">

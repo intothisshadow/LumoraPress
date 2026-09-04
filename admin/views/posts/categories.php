@@ -95,11 +95,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         $existing = $id > 0 ? $categoryService->findById($id) : null;
 
-        // Permanent delete is only offered (and only honoured) for
-        // categories already in the Trash — Move to Trash is the only
-        // reachable path to actually removing a category from the "All"
-        // view, the same "delete means trash first" guardrail
-        // admin/views/pages/all-pages.php enforces.
+        // Permanent delete is only offered for categories already in the
+        // Trash — Move to Trash is the only reachable path to removing
+        // one from the "All" view.
         if ($existing !== null && $existing->isTrashed() && $canDeleteCategories) {
             $categoryService->delete($id);
         }
@@ -369,13 +367,9 @@ if ($action === 'edit') {
             </form>
 
             <?php
-            /*
-             * Out-of-band target forms for each row's Trash/Restore/Delete
-             * Permanently button above — standalone, empty <form>s the
-             * buttons point at via the HTML `form=""` attribute, since a
-             * <form> can't nest inside categories-bulk-form (same LP-068
-             * nested-form fix admin/views/pages/all-pages.php uses).
-             */
+            // Out-of-band target forms — standalone <form>s the buttons
+            // point at via form="", since a <form> can't nest inside
+            // categories-bulk-form.
             if ($canDeleteCategories):
                 foreach ($rows as $row):
                     $listedCategory = $row['category'];

@@ -27,13 +27,8 @@ if (!isset($kernel)) {
 $commentService = $kernel->comments;
 $error = null;
 
-/**
- * Tells Akismet when a human moderator overturned its (or the local trust
- * signal's) original call, so its model improves — shared by the
- * single-row "moderate" handler and the bulk-action handler below (LP-025),
- * since a bulk approve/spam is still a human moderation decision Akismet
- * should learn from the same way a single-row one already does.
- */
+// Tells Akismet when a moderator overturned its original call, so its
+// model improves — shared by the single-row and bulk-action handlers.
 $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newStatus) use ($kernel): void {
     if (!$kernel->akismet->isEnabled() || $previousComment->status === $newStatus) {
         return;
@@ -238,9 +233,9 @@ if ($action === 'edit') {
     $isSpamView = $statusFilter === CommentStatus::Spam;
     $pagination = $commentService->paginateForAdmin($page, statusFilter: $statusFilter);
 
-    // LP-135: "All" excludes Trash (see paginateForAdmin()'s matching
-    // exclusion), so its own count is every other status summed rather
-    // than a simple total-row-count query.
+    // "All" excludes Trash (see paginateForAdmin()'s matching exclusion),
+    // so its own count is every other status summed rather than a simple
+    // total-row-count query.
     $statusCounts = [];
 
     foreach (CommentStatus::cases() as $statusCase) {
@@ -391,15 +386,9 @@ if ($action === 'edit') {
             </form>
 
             <?php
-            /*
-             * Out-of-band target forms for each row action button above —
-             * a nested <form> can't be used here since the enclosing
-             * bulk-action form already wraps the whole table (see
-             * admin/views/users.php's identical pattern/docblock): the
-             * browser's parse-error recovery would silently close the
-             * outer bulk-action form as soon as it hit the first inner
-             * </form> tag.
-             */
+            // Out-of-band target forms for each row action button above —
+            // a nested <form> can't be used since the bulk-action form
+            // already wraps the whole table.
             foreach ($pagination['comments'] as $row):
                 $comment = $row['comment'];
 

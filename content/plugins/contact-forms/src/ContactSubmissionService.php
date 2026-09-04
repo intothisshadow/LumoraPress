@@ -1,7 +1,7 @@
 <?php
 
 /**
- * CRUD for the contact_form_submissions table (LPP-003).
+ * CRUD for the contact_form_submissions table.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -121,10 +121,9 @@ final class ContactSubmissionService
     }
 
     /**
-     * A light per-IP flood guard (LPP-003) — mirrors
-     * CommentService::recentCommentFromIpExists() exactly, applied here
-     * across every form rather than scoped to one, since a bot hammering
-     * this endpoint doesn't care which form id it's hitting.
+     * A light per-IP flood guard, applied across every form rather than
+     * scoped to one, since a bot hammering this endpoint doesn't care
+     * which form id it's hitting.
      */
     public function recentSubmissionFromIpExists(string $ipAddress, int $windowSeconds): bool
     {

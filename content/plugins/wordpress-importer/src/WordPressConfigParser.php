@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Reads a source site's wp-config.php as plain text to pre-fill the import connection form (LPP-004).
+ * Reads a source site's wp-config.php as plain text to pre-fill the import connection form.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -18,19 +18,11 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\WordPressImporter;
 
 /**
- * Parses database credentials and the uploads folder location out of a
- * source WordPress install's wp-config.php, so the admin doesn't have to
- * copy each value into the Import screen's connection form by hand.
+ * Parses DB credentials and the uploads path out of a source WordPress
+ * install's wp-config.php so the admin doesn't have to copy them by hand.
  *
- * wp-config.php is treated as untrusted input from an arbitrary external
- * site's filesystem — it is read and pattern-matched as plain text
- * (line-by-line regex over `define('DB_...', '...')` and
- * `$table_prefix = '...'` statements), never `include`d or `eval`d. A
- * malformed or heavily customized wp-config.php simply yields fewer
- * detected fields rather than executing anything.
- *
- * Every returned value is a pre-fill suggestion only — the admin's own
- * connection form fields remain fully editable either way.
+ * Treated as untrusted input: read and pattern-matched as plain text, never
+ * `include`d or `eval`d. Every returned value is a pre-fill suggestion only.
  */
 final class WordPressConfigParser
 {
@@ -70,11 +62,8 @@ final class WordPressConfigParser
         }
 
         if ($dbHost !== null) {
-            // WordPress allows DB_HOST to carry a "host:port" (or, more
-            // rarely, "host:/path/to/socket") value — only a numeric
-            // suffix is split off into db_port, so an unrecognized
-            // socket-path suffix is left in db_host as-is rather than
-            // guessed at.
+            // WordPress allows DB_HOST as "host:port" or "host:/path/to/socket" —
+            // only a numeric suffix splits into db_port.
             if (preg_match('/^(.+):(\d+)$/', $dbHost, $hostMatch) === 1) {
                 $detected['db_host'] = $hostMatch[1];
                 $detected['db_port'] = $hostMatch[2];
@@ -117,12 +106,9 @@ final class WordPressConfigParser
     }
 
     /**
-     * wp-config.php conventionally sits at the WordPress install root
-     * (ABSPATH), so the uploads folder is `<that directory>/wp-content/
-     * uploads` unless overridden — WP_CONTENT_DIR replaces the
-     * `wp-content` segment (as an absolute path, or one relative to
-     * ABSPATH), and UPLOADS replaces the whole `wp-content/uploads`
-     * path, relative to ABSPATH, when either constant is present.
+     * The uploads folder defaults to `<ABSPATH>/wp-content/uploads` —
+     * WP_CONTENT_DIR overrides the `wp-content` segment, UPLOADS overrides
+     * the whole path, when either constant is present.
      */
     private static function resolveUploadsPath(string $contents, string $wpConfigPath): ?string
     {
@@ -150,13 +136,9 @@ final class WordPressConfigParser
     }
 
     /**
-     * Reads a `define('CONST', ...)` value that names a path, covering
-     * the two forms real wp-config.php files use for WP_CONTENT_DIR/
-     * UPLOADS: a plain string literal, or the common
-     * `dirname(__FILE__) . '/segment'` / `__DIR__ . '/segment'`
-     * concatenation. The latter is recognized by pattern only — never
-     * evaluated as PHP — so it only ever yields a path relative to
-     * wp-config.php's own directory, which is already what $absPath is.
+     * Reads a `define('CONST', ...)` path value, covering both a plain
+     * string literal and the common `dirname(__FILE__) . '/segment'` /
+     * `__DIR__ . '/segment'` form — matched by pattern only, never evaluated.
      */
     private static function matchDefinedPath(string $contents, string $constant, string $absPath): ?string
     {

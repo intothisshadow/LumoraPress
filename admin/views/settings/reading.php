@@ -22,13 +22,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-046: new Settings > Reading sub-page — homepage display mode, blog
- * pagination size, and search engine visibility. Feed item count/content
- * (posts per RSS/Atom feed) already live on Settings > General's Feeds
- * section (LP-013/LP-042) and are intentionally left there rather than
- * duplicated here.
- */
+// Homepage display mode, blog pagination size, and search engine
+// visibility. Feed settings live on Settings > General's Feeds section.
 $error = null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Contact Forms plugin's main file (LPP-003): plugin metadata header.
+ * The Contact Forms plugin's main file: plugin metadata header.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -46,52 +46,15 @@ require_once __DIR__ . '/src/TurnstileClient.php';
 require_once __DIR__ . '/src/ContactFormShortcode.php';
 require_once __DIR__ . '/src/ContactFormSubmissionHandler.php';
 
-/*
- * ContactFormSubmissionHandler is required above (not just referenced)
- * because include/bootstrap.php's own contact-forms-gated route
- * registration constructs it by fully-qualified class name — that
- * registration runs later in the same request, after PluginManager has
- * already required this file, so the class is guaranteed to exist by
- * then. There is no public-route-registration hook a plugin can call
- * itself (see docs/DEVELOPER-APIS.md's "no hook for a plugin to add its
- * own admin menu item or page" — the same limitation applies to public
- * routes: every route is hardcoded in bootstrap.php, itself built and
- * dispatched before any plugin's own code runs again this request).
- * Classic PHP theme templates in this codebase echo directly rather than
- * buffering the whole page, so a shortcode's content_html filter callback
- * (ContactFormShortcode, registered below) runs too late in the response
- * to safely redirect() after processing a POST — exactly the same
- * constraint that gives comment submission its own dedicated
- * bootstrap.php-registered route instead of handling it inline during
- * template rendering.
- *
- * ContactFormShortcode renders public-facing content, so — unlike the
- * admin screens under admin/views/contact-forms/, which construct
- * ContactFormService/ContactSubmissionService directly from $kernel's own
- * already-existing services, the same pattern the Downloads plugin's
- * admin screens use — it needs a real, always-on hook: the same
- * 'content_html' filter Font Awesome's [icon] shortcode and Downloads'
- * own [lumora_downloads] shortcode both use. It needs no Kernel services
- * at *registration* time (only when a page's content actually contains
- * `[contact_form]`, at which point it opens its own database connection
- * — see its own docblock), so it's safe to construct here at plugin-load
- * time.
- */
+// No hook exists for a plugin to register its own public route, and a content_html
+// filter runs too late to safely redirect() after a POST — submissions need this
+// dedicated route (constructed by class name in bootstrap.php) instead.
 $contactFormShortcode = new ContactFormShortcode();
 
 add_filter('content_html', static fn (string $html): string => $contactFormShortcode->renderShortcodes($html), 20);
 
-/*
- * LPP-017: picker metadata for the editor toolbar's "Insert Shortcode"
- * button (LP-110) — purely additive, doesn't change how
- * [contact_form id="..."] itself renders (still the content_html filter
- * above). Needs a live list of this site's own contact forms to build
- * `id`'s choices, which requires $kernel->database and isn't available
- * yet at this point in the file — see include/shortcodes.php's own
- * docblock for why this hooks 'register_shortcodes' instead of calling
- * register_shortcode() directly here, mirroring downloads.php's
- * identical category_id-choices pattern.
- */
+// Choices need a live form list ($kernel->database isn't available yet here),
+// so this hooks 'register_shortcodes' rather than calling register_shortcode() directly.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
     $formsService = new ContactFormService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
     $formChoices = [];

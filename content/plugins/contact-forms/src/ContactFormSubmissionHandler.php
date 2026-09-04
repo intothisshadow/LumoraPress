@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Handles the actual POST to /contact-form/{id}/submit (LPP-003): validation, spam checks, persistence, and email.
+ * Handles the actual POST to /contact-form/{id}/submit: validation, spam checks, persistence, and email.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -25,20 +25,9 @@ use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Services\AkismetClient;
 
 /**
- * Constructed straight from $kernel's own already-existing components by
- * the route closure in include/bootstrap.php (this class is only ever
- * reachable while the plugin is active — see that file's own
- * contact-forms-gated route registration), the same "construct directly
- * from $kernel's services" pattern the Downloads plugin's admin screens
- * already use.
- *
- * Layering mirrors SiteController's existing comment-submission flow
- * exactly: CSRF -> honeypot (fail silently) -> FormTiming (fail silently)
- * -> IP flood guard -> required-field/email validation -> optional
- * reCAPTCHA/Turnstile (fail CLOSED — see those classes' own docblocks for
- * why this differs from Akismet) -> optional Akismet (fail OPEN, can only
- * mark is_spam, never block outright) -> persist -> email (skipped for a
- * spam-flagged submission) -> redirect.
+ * Validation order: CSRF -> honeypot -> FormTiming -> IP flood guard ->
+ * field validation -> reCAPTCHA/Turnstile (fail closed) -> Akismet (fail
+ * open, can only flag as spam) -> persist -> email -> redirect.
  */
 final class ContactFormSubmissionHandler
 {
@@ -77,10 +66,7 @@ final class ContactFormSubmissionHandler
             $this->redirectWithError($redirectTarget, $id, 'expired');
         }
 
-        // Honeypot: a real visitor never fills this hidden field. Fail
-        // silently (pretend success) rather than revealing detection to
-        // the bot filling it in — mirrors the identical convention in
-        // SiteController's own comment-submission flow.
+        // Honeypot: fail silently rather than revealing detection to the bot.
         if (trim((string) ($_POST['contact_website'] ?? '')) !== '') {
             $this->redirectWithSuccess($redirectTarget, $id);
         }
@@ -123,12 +109,7 @@ final class ContactFormSubmissionHandler
 
         $isSpam = $this->checkAkismet($form, $data, $ipAddress, $userAgent, $referer);
 
-        // Same additive, can-only-push-toward-Spam shape as Akismet above
-        // (and as core's own 'comment_is_spam' filter) — a no-op unless
-        // something listens. The Lumora Shield plugin's Contact Form
-        // Protection module uses this for content checks (link limits,
-        // excessive uppercase/punctuation, hidden Unicode characters)
-        // that this plugin has no built-in equivalent for on its own.
+        // Lets other plugins add their own spam checks; a no-op unless something listens.
         $isSpam = $isSpam || apply_filters('contact_form_is_spam', false, $data, $ipAddress);
 
         $submissions->create($id, $data, $ipAddress, $referer, $isSpam);
@@ -171,11 +152,7 @@ final class ContactFormSubmissionHandler
     }
 
     /**
-     * Akismet, when enabled, can only push a submission toward Spam —
-     * never away from it — so this is strictly additive on top of
-     * everything already validated above. A null/false result (disabled,
-     * or Akismet unreachable/misconfigured) leaves $isSpam false, mirroring
-     * SiteController's own comment-Akismet layering exactly.
+     * Akismet can only push toward Spam, never away — disabled or unreachable leaves $isSpam false.
      *
      * @param array<string, string> $data
      */
@@ -230,11 +207,8 @@ final class ContactFormSubmissionHandler
     }
 
     /**
-     * The redirect target for both success and error cases: the form's
-     * own configured redirect_url if set, otherwise the page the
-     * submission came from — validated same-origin first, since an
-     * unvalidated Referer header is attacker-controlled input and must
-     * never be used as an open redirect target.
+     * Falls back to the Referer, validated same-origin first — an
+     * unvalidated Referer is attacker-controlled and must never be an open redirect target.
      */
     private function safeRedirectTarget(?string $referer, ?string $formRedirectUrl): string
     {

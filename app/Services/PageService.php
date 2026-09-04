@@ -29,11 +29,8 @@ use RuntimeException;
 /**
  * Page CRUD, slug generation, and the queries behind the frontend page
  * route and admin list view. Mirrors PostService closely — same
- * scheduled-visibility mechanism, same slug generation, same nullable
- * featured_image_id (LP-040) — plus a nullable parent_id for a basic, flat
- * parent/child relationship (no tree view, no drag-and-drop ordering, no
- * hierarchical URLs yet). $hooks is optional (LP-037) — see
- * PostService's docblock for why.
+ * scheduled-visibility mechanism and slug generation, plus a nullable
+ * parent_id for a basic, flat parent/child relationship.
  */
 final class PageService
 {
@@ -92,11 +89,7 @@ final class PageService
             ],
         );
 
-        // A brand-new page can't be its own parent — resolvePublishedAt
-        // above doesn't need the id, but the parent guard does, so it's
-        // applied after insert if the caller somehow passed the not-yet-
-        // known id (defensive; unreachable via the admin UI today, which
-        // excludes the page being edited from its own parent dropdown).
+        // A brand-new page can't be its own parent; applied after insert since the id wasn't known before.
         if ($parentId !== null && $parentId === (int) $id) {
             $this->database->execute(
                 'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE id = :id',
@@ -183,8 +176,8 @@ final class PageService
     }
 
     /**
-     * LP-022 SEO title/description overrides — mirrors PostService::
-     * updateSeo(), see its docblock for why this is a dedicated method.
+     * SEO title/description overrides — mirrors PostService::updateSeo(),
+     * see its docblock for why this is a dedicated method.
      */
     public function updateSeo(int $id, ?string $metaTitle, ?string $metaDescription): void
     {
@@ -236,17 +229,10 @@ final class PageService
     }
 
     /**
-     * Backs the admin list's Quick Edit row — updates only the handful
-     * of fields that inline form exposes (title, slug, status, parent),
-     * routing through the same `update()` used by the full editor with
-     * every other field (including the existing published/scheduled
-     * date) passed through unchanged, rather than a separate
-     * partial-UPDATE query. The admin view only ever offers Draft or
-     * Published as Quick Edit options — Quick Edit's inline form has no
-     * publish-date field, so scheduling a page remains a
-     * full-editor-only action — but this method itself works correctly
-     * for any status, since it always preserves whatever `publishedAt`
-     * the page already had.
+     * Backs the admin list's Quick Edit row — updates only the fields
+     * that inline form exposes (title, slug, status, parent), routing
+     * through the same `update()` the full editor uses, with every
+     * other field (including the existing publish date) preserved unchanged.
      */
     public function quickUpdate(int $id, string $title, PageStatus $status, ?int $parentId, ?string $slug = null): ?Page
     {
@@ -274,14 +260,9 @@ final class PageService
     }
 
     /**
-     * Soft-deletes a page (LP-009 Trash) — mirrors PostService::trash()
-     * exactly (status flips to Trashed, trashed_at records when, the row
-     * stays). Trashed pages are excluded from paginateForAdmin()'s
-     * default "All" view and listAllForTree() the same way trashed posts
-     * are hidden from every other admin list view. There is no automatic
-     * purge — delete() (via the admin UI's "Delete Permanently" action,
-     * only offered for already-trashed pages) is the only way to
-     * actually remove one.
+     * Soft-deletes a page — mirrors PostService::trash() exactly (status
+     * flips to Trashed, trashed_at records when, the row stays). There
+     * is no automatic purge; delete() is the only way to remove one.
      */
     public function trash(int $id): bool
     {
@@ -298,11 +279,8 @@ final class PageService
     }
 
     /**
-     * Restores a trashed page — always back to Draft, never straight
-     * back to its previous status, matching PostService::restore()'s
-     * documented fail-securely rationale (silently resurfacing a trashed
-     * page as publicly visible again without a human deciding to
-     * republish it would be surprising).
+     * Restores a trashed page — always back to Draft, never straight back
+     * to its previous status, so a page never resurfaces publicly without a human deciding to republish it.
      */
     public function restore(int $id): bool
     {
@@ -313,11 +291,8 @@ final class PageService
     }
 
     /**
-     * Directly changes a page's status without touching any other field
-     * — backs the admin list's per-row and bulk "Mark as Draft"/
-     * "Publish" actions, mirroring PostService::setStatus(). Scheduled
-     * is deliberately not reachable through this method since scheduling
-     * also needs a publish date; use update() for that.
+     * Directly changes a page's status without touching any other field.
+     * Scheduled is deliberately not reachable here since scheduling also needs a publish date; use update() for that.
      */
     public function setStatus(int $id, PageStatus $status): bool
     {
@@ -384,12 +359,9 @@ final class PageService
     }
 
     /**
-     * Directly changes a page's parent without touching any other field
-     * — backs the admin list's bulk "Change parent to..." action. A page
-     * can never become its own parent (mirrors create()/update()'s same
-     * guard); the moved page is placed at the end of its new sibling
-     * group via nextMenuOrder(), the same position a brand-new page
-     * under that parent would get.
+     * Directly changes a page's parent without touching any other field.
+     * A page can never become its own parent; the moved page is placed
+     * at the end of its new sibling group via nextMenuOrder().
      */
     public function setParent(int $id, ?int $parentId): bool
     {
@@ -436,13 +408,9 @@ final class PageService
     }
 
     /**
-     * Permanently removes a page. Unlike PostService::delete(), there's
-     * no self-referencing hierarchy on posts to worry about, but pages
-     * have parent_id with no FK constraint (see the base migration) — a
-     * deleted page's children would otherwise be left pointing at a
-     * parent_id that no longer exists. Direct children are reparented to
-     * top-level (parent_id = NULL) first, the same "orphan on delete"
-     * treatment WordPress itself uses for pages with children.
+     * Permanently removes a page. parent_id has no FK constraint, so a
+     * deleted page's children would otherwise point at a nonexistent
+     * parent — direct children are reparented to top-level first.
      */
     public function delete(int $id): bool
     {
@@ -482,7 +450,7 @@ final class PageService
     /**
      * Mirrors PostService::countByStatus() (which backs the admin post
      * list's status filter tab counts) — used here by the Statistics
-     * widget's published-page count (LP-048).
+     * widget's published-page count.
      */
     public function countByStatus(PageStatus $status): int
     {
@@ -501,13 +469,9 @@ final class PageService
 
     /**
      * A page by slug scoped to a specific parent (null for top-level) —
-     * the single-segment step behind findByPath()'s walk. Slugs are
-     * enforced globally unique (see generateUniqueSlug()'s own uniqueness
-     * scope, kept global rather than per-parent for LP-084 — simpler, and
-     * matches this table's existing UNIQUE KEY), so this exists to
-     * validate that a URL's claimed ancestor chain is the page's *real*
-     * one, not merely as a slug lookup — findBySlug() alone can't tell
-     * "/wrong-parent/team" apart from "/about/team".
+     * the single-segment step behind findByPath()'s walk. Validates that
+     * a URL's claimed ancestor chain is the page's real one; findBySlug()
+     * alone can't tell "/wrong-parent/team" apart from "/about/team".
      */
     public function findBySlugAndParent(string $slug, ?int $parentId): ?Page
     {
@@ -526,13 +490,10 @@ final class PageService
 
     /**
      * Resolves a hierarchical URL's root-first slug segments (e.g.
-     * ["about", "team"] for "/about/team") to the Page at the end of that
-     * chain, walking parent_id one segment at a time — the counterpart to
-     * ancestors(), which walks the same chain in reverse from an
-     * already-known page. Returns null as soon as any segment fails to
-     * match a child of the previous one (or the first segment fails to
-     * match a top-level page), so SiteController can 404 a path with a
-     * wrong or stale ancestor rather than guessing which page was meant.
+     * ["about", "team"]) to the Page at the end of that chain, walking
+     * parent_id one segment at a time. Returns null as soon as any
+     * segment fails to match, so SiteController can 404 a stale ancestor
+     * path rather than guessing which page was meant.
      *
      * @param array<int, string> $segments
      */
@@ -588,8 +549,8 @@ final class PageService
     /**
      * Pages visible to public site visitors: published outright (or
      * scheduled with a published_at time that has already passed), and
-     * not Private (LP-009's "Private pages" — mirrors
-     * PostService::publicWhereClause()'s identical visibility AND).
+     * not Private (mirrors PostService::publicWhereClause()'s identical
+     * visibility AND).
      *
      * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
      */
@@ -629,10 +590,8 @@ final class PageService
      * identical trash-exclusion default; pass PageStatus::Trashed
      * explicitly to view the Trash tab itself.
      *
-     * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
-     */
-    /**
      * @param array{term?: string, authorId?: int, parentId?: int, dateFrom?: string, dateTo?: string} $filters
+     * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
      */
     public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PageStatus $statusFilter = null, array $filters = []): array
     {
@@ -649,14 +608,7 @@ final class PageService
             $conditions[] = "status != 'trashed'";
         }
 
-        // A single search box matching either the title or the content —
-        // classic WordPress's Pages list does the same rather than
-        // offering separate title/content search fields. Two distinct
-        // placeholders bound to the same value, not :term reused twice —
-        // real (non-emulated) MySQL prepared statements reject a named
-        // placeholder used more than once in one query (see
-        // PHP-TEST-SUITE.md's "Known gaps" for the bug this already
-        // caused once in listAllForParentSelect()).
+        // Two distinct placeholders bound to the same value, not :term reused twice — MySQL's real prepared statements reject a repeated named placeholder.
         if (($filters['term'] ?? '') !== '') {
             $conditions[] = '(title LIKE :term_title OR content LIKE :term_content)';
             $params['term_title'] = '%' . $filters['term'] . '%';
@@ -673,10 +625,7 @@ final class PageService
             $params['parent_id'] = (int) $filters['parentId'];
         }
 
-        // Filters/sorts by the page's own date (published_at, falling
-        // back to created_at for a Draft or other status with no
-        // publish date yet) rather than created_at alone — see
-        // PostService::paginateForAdmin()'s identical note.
+        // Filters/sorts by the page's own date, falling back to created_at when there's no publish date yet.
         if (($filters['dateFrom'] ?? '') !== '') {
             $conditions[] = 'COALESCE(published_at, created_at) >= :date_from';
             $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
@@ -713,16 +662,9 @@ final class PageService
 
     /**
      * A flat list of {id, title} suitable for a "Parent Page" <select>,
-     * excluding $excludeId itself and its direct children (so a page can't
-     * be made the parent of its own parent one level up — deeper cycles
+     * excluding $excludeId itself and its direct children (deeper cycles
      * are an accepted gap for this basic, non-tree parent selector).
-     * Trashed pages are excluded (LP-109) — unlike
-     * PostService::listAllForMenuSelect()'s intentionally-inclusive
-     * non-trashed statuses (see that method's own docblock), nothing
-     * here suggested trashed pages belonged in a parent/front-page
-     * picker; this brings the query in line with
-     * CategoryService::listAllForParentSelect()'s existing `WHERE
-     * trashed_at IS NULL`.
+     * Trashed pages are excluded.
      *
      * @return array<int, array{id: int, title: string}>
      */
@@ -731,12 +673,7 @@ final class PageService
         if ($excludeId === null) {
             $rows = $this->database->fetchAll("SELECT id, title FROM " . $this->table() . " WHERE status != 'trashed' ORDER BY title ASC");
         } else {
-            // Two distinct placeholders for the same value: with real
-            // (non-emulated) prepared statements — see Database::connect()'s
-            // PDO::ATTR_EMULATE_PREPARES => false — MySQL's native prepare
-            // protocol treats each occurrence of a named placeholder as its
-            // own parameter, so reusing :id twice with a single bound value
-            // throws "SQLSTATE[HY093]: Invalid parameter number" at runtime.
+            // Two distinct placeholders for the same value: MySQL's real prepared statements reject a repeated named placeholder.
             $rows = $this->database->fetchAll(
                 "SELECT id, title FROM " . $this->table() . "
                     WHERE status != 'trashed' AND id != :exclude_id AND (parent_id IS NULL OR parent_id != :exclude_id_2)
@@ -753,13 +690,9 @@ final class PageService
 
     /**
      * A depth-tagged {id, title, depth} list for the New/Edit Page
-     * "Parent Page" picker (LP-105) — combines listAllForTree()'s
-     * hierarchical document order with listAllForParentSelect()'s own
-     * cycle-prevention exclusion ($excludeId itself and its direct
-     * children; deeper cycles are the same accepted gap that method
-     * already documents), so the picker can render indented like the
-     * "All Pages" tree view while still ruling out choices that would
-     * make a page its own ancestor.
+     * "Parent Page" picker — combines listAllForTree()'s hierarchical
+     * order with listAllForParentSelect()'s cycle-prevention exclusion,
+     * so the picker renders indented while ruling out a page becoming its own ancestor.
      *
      * @return array<int, array{id: int, title: string, depth: int}>
      */
@@ -787,16 +720,9 @@ final class PageService
     }
 
     /**
-     * A depth-tagged {id, title, slug, depth} list, in the same
-     * hierarchical document order as listAllForTree(), for the admin
-     * Menus screen's "Add Pages" checkbox list (LP-049) — separate from
-     * listAllForParentSelect() above since that method's shape/exclusion
-     * rules are specific to the parent-page picker, not menu building.
-     * Built on listAllForTree() rather than a flat alphabetical query
-     * (LP-103) so a child page renders indented under its parent in the
-     * Add Items panel, matching the "All Pages" tree view; trashed pages
-     * are excluded as a side effect of that reuse, which they always
-     * should have been.
+     * A depth-tagged {id, title, slug, depth} list for the admin Menus
+     * screen's "Add Pages" checkbox list. Built on listAllForTree() so a
+     * child page renders indented under its parent, matching the "All Pages" tree view.
      *
      * @return array<int, array{id: int, title: string, slug: string, depth: int}>
      */
@@ -815,12 +741,9 @@ final class PageService
 
     /**
      * Every non-trashed page as a flat, depth-tagged list in hierarchical
-     * document order (a parent immediately followed by its own children
-     * in menu_order, then the next sibling) — backs the admin "All" tab's
-     * tree view (LP-009 Hierarchy UI). One unpaginated query is
-     * acceptable here: pages are evergreen/structural content (About,
-     * Contact, FAQ, ...), not the tens-of-thousands-of-rows table Posts
-     * can be.
+     * document order — backs the admin "All" tab's tree view. One
+     * unpaginated query is acceptable: pages are evergreen/structural
+     * content, not the tens-of-thousands-of-rows table Posts can be.
      *
      * @return array<int, array{page: Page, depth: int}>
      */
@@ -835,30 +758,10 @@ final class PageService
     }
 
     /**
-     * The same shape as listAllForTree(), but restricted to what a Guest
-     * visitor may actually see — mirrors paginatePublished()'s exact
-     * visibility rule (published, or scheduled with a past publish date,
-     * AND public visibility) rather than listAllForTree()'s "everything
-     * not trashed" — backs the Pages widget's nested output (LP-104),
-     * which must never leak a draft, scheduled-future, or private page
-     * into public-facing markup just because it happens to be some
-     * visible page's child.
-     *
-     * A page whose real parent isn't itself in this filtered, public set
-     * (e.g. its parent is a draft) is dropped entirely rather than
-     * promoted to top level or attached at the wrong depth — the same
-     * "only ever nest under a genuinely present parent" behavior
-     * flattenForTree() already has for listAllForTree()/
-     * listAllForMenuSelect().
-     *
-     * Ordered by title rather than listAllForTree()'s manual menu_order —
-     * the widget's own top level (and each depth's siblings) render
-     * alphabetically, matching the flat alphabetical order the widget
-     * always used before LP-104, and CategoryService::listAllForTree()'s
-     * identical alphabetical-siblings behavior. flattenForTree() preserves
-     * this query's relative ordering when it filters by parentId at each
-     * recursion, so a single global `ORDER BY title` is enough to make
-     * every depth's siblings alphabetical, not just the top level.
+     * The same shape as listAllForTree(), but restricted to paginatePublished()'s exact
+     * visibility rule — backs the Pages widget's nested output, which must never leak a
+     * draft/scheduled/private page as some visible page's child. A page whose real parent
+     * isn't in this filtered set is dropped entirely, not promoted or misattached.
      *
      * @return array<int, array{page: Page, depth: int}>
      */
@@ -900,17 +803,9 @@ final class PageService
 
     /**
      * Moves $draggedId to a position immediately before/after $targetId
-     * among their shared siblings (LP-009 Hierarchy UI drag-and-drop) —
-     * same "splice out, splice back in" algorithm as menus.php's
-     * reposition_item handler, rewritten against real SQL rows instead of
-     * an in-memory JSON-array splice, since pages (unlike menus) are
-     * individual DB rows with no whole-tree blob to rewrite. $targetId
-     * must share $draggedId's parentId — sortable.js's client-side
-     * same-parent guard is the primary defense; a request that fails
-     * this check (a stale/tampered target id, or a different-parent
-     * target) is a silent no-op, matching that existing precedent.
-     * Re-parenting stays the "Parent Page" dropdown's/bulk "Change
-     * parent" job — this method never changes parent_id.
+     * among their shared siblings (Hierarchy UI drag-and-drop). $targetId
+     * must share $draggedId's parentId — a request that fails this check
+     * is a silent no-op. This method never changes parent_id.
      */
     public function reorder(int $draggedId, int $targetId, string $position): bool
     {
@@ -952,10 +847,8 @@ final class PageService
     }
 
     /**
-     * The next menu_order value for a new sibling under $parentId (max
-     * existing sibling + 1, or 0 if there are none yet) — so a newly
-     * created page lands at the end of its sibling group instead of
-     * colliding with an existing page at 0.
+     * The next menu_order value for a new sibling under $parentId, so a
+     * new page lands at the end of its sibling group.
      */
     private function nextMenuOrder(?int $parentId): int
     {
@@ -968,13 +861,9 @@ final class PageService
 
     /**
      * Walks the parent_id chain from $pageId up to the root, root-first
-     * — backs the public "breadcrumbs" theme API
-     * (get_page_breadcrumbs()/the_page_breadcrumbs() in
-     * include/content-display-functions.php). Returns an empty array for
-     * a top-level page. Capped at 50 hops as a defensive guard against a
-     * pathological cycle reaching this method some other way — normal
-     * create()/update() already block direct self-parenting and one-level
-     * cycles, so this is belt-and-suspenders, not a new invariant.
+     * — backs the public breadcrumbs theme API. Returns an empty array
+     * for a top-level page. Capped at 50 hops as a defensive guard
+     * against a pathological cycle reaching this method some other way.
      *
      * @return array<int, Page>
      */
@@ -1006,12 +895,7 @@ final class PageService
         ?DateTimeImmutable $existingPublishedAt = null,
     ): ?DateTimeImmutable {
         return match ($status) {
-            // Trashed is never actually reached through this path — trash()
-            // sets status/trashed_at directly via its own SQL, not through
-            // create()/update()/setStatus() — this arm exists purely so the
-            // match stays exhaustive over PageStatus, mirroring
-            // PostService::resolvePublishedAt()'s identical defensive arm.
-            // PendingReview has no publish date either, same as Posts.
+            // Trashed is never actually reached through this path (trash() sets it directly); this arm just keeps the match exhaustive.
             PageStatus::Draft, PageStatus::PendingReview, PageStatus::Trashed => null,
             PageStatus::Published => $publishedAt ?? $existingPublishedAt ?? $now,
             PageStatus::Scheduled => $publishedAt ?? $existingPublishedAt,
@@ -1084,11 +968,9 @@ final class PageService
     }
 
     /**
-     * Decodes the `featured_image_crop` column — see
-     * PostService::decodeCrop()'s identical docblock; duplicated rather
-     * than shared since these two services don't otherwise share a base
-     * class and this is a handful of lines, the same trade-off
-     * slugify()/generateUniqueSlug() already make in both services.
+     * Decodes the `featured_image_crop` column. Duplicated from
+     * PostService::decodeCrop() rather than shared — a handful of lines,
+     * not worth a base class.
      *
      * @return array{x: int, y: int, width: int, height: int}|null
      */

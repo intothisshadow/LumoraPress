@@ -22,20 +22,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LPP-015. Only reachable while the plugin is active (admin/index.php
- * only adds this menu entry in that case), so GallerySettingsService's
- * class is guaranteed to already be loaded — PluginManager::loadActive()
- * required content/plugins/lumora-gallery-shortcodes/
- * lumora-gallery-shortcodes.php earlier this same request, in
- * include/bootstrap.php. Mirrors settings.php's identical reasoning.
- *
- * Unlike Downloads' own Shortcodes page (admin/views/downloads/
- * shortcodes.php), which pulls real category names/IDs from this
- * site's own database for its example values, this plugin has no local
- * album data to draw from — every example below uses an obviously-a-
- * placeholder id/name rather than implying a real Gallery album exists.
- */
+// Only reachable while the plugin is active. Unlike Downloads' Shortcodes
+// page, this plugin has no local album data, so every example below uses
+// an obviously-a-placeholder id/name.
 $configured = (new GallerySettingsService())->isConfigured();
 ?>
 <h1 class="lp-admin__title">Lumora Gallery Shortcodes &mdash; Shortcodes</h1>

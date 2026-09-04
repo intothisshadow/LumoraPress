@@ -27,42 +27,23 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\RedirectService;
 
 /**
- * A fresh shortcode owned by this plugin — not the WordPress Importer
- * plugin's own `[sdm_show_dl_from_category]` (`DownloadsShortcode` in
- * `content/plugins/wordpress-importer/src/`, kept working as-is for
- * already-migrated content; the two are unrelated classes with the same
- * name in different namespaces, by design, mirroring that plugin's own
- * pattern rather than reusing its syntax).
+ * A same-named but unrelated class to the WordPress Importer plugin's own
+ * `[sdm_show_dl_from_category]` DownloadsShortcode — different namespaces.
  *
- * Registered on the `content_html` filter (see downloads.php), the same
- * hook Font Awesome's `[icon]` shortcode and the WordPress Importer's
- * own shortcode both use — but like that one, this needs real
- * database-backed services, which a plugin's load-time code can't reach
- * (see DEVELOPER-APIS.md's "Plugin main files load before Kernel
- * exists"). Opens its own independent Database connection from
- * config/config.php rather than waiting for $kernel, the same pattern
- * that class already established. Constructed without a ThumbnailService
- * (DownloadService's own optional dependency, only needed by its
- * upload path) since this only ever reads.
+ * Registered on the content_html filter (see downloads.php); needs real
+ * database-backed services a plugin's load-time code can't reach yet, so it
+ * opens its own Database connection rather than waiting for $kernel.
  */
 final class DownloadsShortcode
 {
     private const PATTERN = '/\[lumora_downloads([^\]]*)\]/i';
 
     /**
-     * $injectedDownloads/$injectedCategories are optional and given
-     * together, or none — tests construct this with real
-     * (SQLite-fixture-backed) service instances so renderShortcodes()
-     * never needs a real database connection; the plugin's own
-     * bootstrap constructs this with no arguments, so services() lazily
-     * opens the real one on first actual use. $injectedContent is
-     * accepted independently of the pair above (a description's
-     * Markdown/HTML rendering, LPP-010, needs no database access at
-     * all) so a test can cover rendering without also standing up the
-     * SQLite fixtures the other two require. $injectedMasker (LPP-013)
-     * is likewise independent — a test covering the URL-masking pass
-     * itself only needs a fixture MediaService, not the full downloads/
-     * categories fixture pair.
+     * $injectedDownloads/$injectedCategories are given together or not at
+     * all (tests use SQLite fixtures; the plugin's bootstrap passes none,
+     * so services() lazily opens a real connection). $injectedContent and
+     * $injectedMasker are each independent, letting a test cover rendering
+     * or URL-masking without standing up the full fixture pair.
      */
     public function __construct(
         private readonly ?DownloadService $injectedDownloads = null,
@@ -88,19 +69,9 @@ final class DownloadsShortcode
     }
 
     /**
-     * Three variants (LPP-011), checked in order:
-     *
-     * 1. `download_id` — a single download by id.
-     * 2. `count` — the newest N live downloads, sorted by date, optionally
-     *    filtered to a category (`category`/`category_id`) if also given;
-     *    with no category this is "newest N across all downloads",
-     *    `count="1"` is "newest download"/"newest in category". Distinct
-     *    ordering (newest-first) from variant 3 below, deliberately — a
-     *    "newest" list is meant to read most-recent-first, not
-     *    alphabetically.
-     * 3. Neither given — the original "list everything in a category"
-     *    form, unchanged: `category`/`category_id` required, alphabetical
-     *    by title.
+     * Three variants, checked in order: `download_id` (single download by
+     * id), `count` (newest N, optionally filtered to a category, sorted
+     * newest-first), or neither (list a category's downloads, alphabetical).
      *
      * @param array<string, string> $attributes
      */
@@ -151,18 +122,9 @@ final class DownloadsShortcode
     }
 
     /**
-     * A private, database-free ContentRenderer for turning a Download's
-     * Markdown/HTML-format description into safe HTML (LPP-010) —
-     * deliberately never the site's own shared HookManager instance:
-     * this class is itself a `content_html` filter callback (see
-     * downloads.php), and ContentRenderer::render() ends by re-running
-     * that same filter. Reusing the shared HookManager here would mean
-     * every rendered description re-triggers renderShortcodes() (and
-     * every other `content_html` listener) mid-callback. A fresh,
-     * private HookManager has nothing registered on it, so that last
-     * `applyFilters()` call inside render() is a safe no-op — the
-     * Markdown parsing and HtmlSanitizer XSS boundary (the part that
-     * actually matters for untrusted stored content) still run in full.
+     * A private HookManager, not the site's shared one — reusing the shared
+     * one would re-trigger this class's own content_html callback mid-render,
+     * since ContentRenderer::render() ends by re-running that filter.
      */
     private function content(): ContentRenderer
     {
@@ -170,10 +132,8 @@ final class DownloadsShortcode
     }
 
     /**
-     * LPP-013 — see DownloadMediaUrlMasker's own docblock. Opens the same
-     * kind of standalone MediaService this class's services() method
-     * already builds for the database-backed variants, for the same
-     * reason (a plugin's shortcode-render path has no $kernel to reuse).
+     * See DownloadMediaUrlMasker's own docblock. A shortcode-render path
+     * has no $kernel to reuse, so this opens its own standalone MediaService.
      */
     private function masker(): DownloadMediaUrlMasker
     {
@@ -203,9 +163,7 @@ final class DownloadsShortcode
     /**
      * `category_id` (an exact DownloadCategory id) wins if given;
      * otherwise `category` is matched case-insensitively against the
-     * category's own name — DownloadCategory has no slug column, the
-     * same constraint Folder had before it (and the WordPress Importer's
-     * own shortcode still works around, by slugifying the name). Neither
+     * category's own name — DownloadCategory has no slug column. Neither
      * attribute given, or no matching category, both resolve to null.
      *
      * @param array<string, string> $attributes
@@ -242,14 +200,8 @@ final class DownloadsShortcode
      */
     private function renderList(?DownloadCategory $category, array $items, bool $showSize): string
     {
-        // A Download imported with no file/URL attached yet (LPP-004's
-        // WordPress Importer: the source file was missing on disk, so
-        // the item was created for its metadata rather than dropped
-        // entirely — see importDownloads()'s own docblock) resolves to
-        // an empty Download::$url. Never shown publicly — a dead link
-        // helps no visitor — until an admin attaches a real file/URL
-        // from the Edit Download screen; it stays fully visible and
-        // editable in the admin Downloads list in the meantime.
+        // A Download with no file/URL attached yet resolves to an empty
+        // Download::$url — never shown publicly, since a dead link helps no visitor.
         $items = array_values(array_filter($items, static fn (Download $item): bool => $item->url !== ''));
 
         if ($items === []) {
@@ -275,21 +227,8 @@ final class DownloadsShortcode
             }
 
             if ($item->description !== '') {
-                // Rendered per its own stored $descriptionFormat (LPP-010)
-                // — the same Markdown/HTML/Plain branching a post/page's
-                // content already gets, since the Description field now
-                // uses that same shared editor. masker()->mask() then
-                // rewrites any embedded image URL that still points at
-                // the real upload path (LPP-013) — see that class's
-                // docblock for why this is a second pass rather than
-                // something ContentRenderer itself does. Guarded by a
-                // cheap string check first, the same "only pay for a
-                // database connection when there's actually something to
-                // do" convention services()/registry() already establish
-                // (see the WordPress Importer plugin's own
-                // DownloadsShortcode::connection() docblock) — the
-                // overwhelming majority of descriptions carry no image at
-                // all.
+                // masker()->mask() rewrites any embedded image URL that still points
+                // at the real upload path; guarded by a cheap string check first.
                 $rendered = $content->render($item->description, $item->descriptionFormat);
 
                 if (str_contains($rendered, $this->uploadsUrlPrefix())) {

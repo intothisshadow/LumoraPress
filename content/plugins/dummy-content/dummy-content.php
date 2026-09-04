@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Dummy Content plugin's main file (LPP-005): plugin metadata header.
+ * The Dummy Content plugin's main file: plugin metadata header.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -33,18 +33,5 @@ namespace LumoraPress\Plugins\DummyContent;
 
 require_once __DIR__ . '/src/DummyContentGenerator.php';
 
-/*
- * Unlike Font Awesome (LPP-002), this plugin has nothing to hook at
- * load time — it does no rendering, adds no shortcode, changes no theme
- * output. Its entire surface is a gated section on the always-present
- * Maintenance > Tools screen (admin/views/maintenance/tools.php — not a
- * dedicated menu entry of its own, since admin/index.php only shows that
- * section while this plugin is active; see that view's own comment),
- * which constructs DummyContentGenerator directly from $kernel's own
- * services rather than through any hook this file would register. See
- * this feature's implementation plan for why: $kernel doesn't exist yet
- * when a plugin's main file runs (PluginManager::load() requires this
- * file long before bootstrap.php builds Kernel), so there is nothing
- * useful for this file to do at load time beyond making the
- * DummyContentGenerator class available via the require above.
- */
+// Nothing to hook at load time — its whole surface is a gated Maintenance > Tools
+// section, which constructs DummyContentGenerator from $kernel directly.

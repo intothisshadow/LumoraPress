@@ -22,15 +22,6 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-042: this page originally held Thumbnails, Media Import, and
- * Statistics — moved here verbatim from one big admin/views/settings.php
- * now that Settings has sub-pages. LP-061 moved Thumbnails and Media
- * Import a second time, onto their corresponding LP-060 Media Manager
- * sub-pages (Thumbnails, Import from Server), since both are more
- * naturally reached from where the rest of that workflow lives. Only
- * Statistics remains here.
- */
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
 if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -41,14 +32,9 @@ if ($form === 'media_stats_settings' && Csrf::verify('media_stats_settings', is_
 } elseif ($form === 'lightbox_settings' && Csrf::verify('lightbox_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('lightbox_show_filenames', ($_POST['lightbox_show_filenames'] ?? '') === '1' ? '1' : '0');
 
-    // 'full' (the raw original) plus every enabled registered thumbnail
-    // size (small/medium/large by default, plus anything a theme/plugin
-    // added via the thumbnail_sizes filter) are the only valid values —
-    // an unrecognized submitted value falls back to 'large' rather than
-    // being stored as-is, since the_post_thumbnail_lightbox() would
-    // otherwise silently show the full original for a typo'd/tampered
-    // value (ThumbnailService::url() returns null, then falls through
-    // to the original) instead of failing loudly.
+    // 'full' plus every enabled registered thumbnail size are the only
+    // valid values; an unrecognized value falls back to 'large' rather
+    // than being stored as-is.
     $allowedLightboxSizes = ['full', ...array_keys(array_filter($kernel->thumbnails->sizes(), static fn (array $size): bool => $size['enabled']))];
     $submittedLightboxSize = is_string($_POST['lightbox_large_size'] ?? null) ? $_POST['lightbox_large_size'] : '';
     $kernel->config->setOption('lightbox_large_size', in_array($submittedLightboxSize, $allowedLightboxSizes, true) ? $submittedLightboxSize : 'large');

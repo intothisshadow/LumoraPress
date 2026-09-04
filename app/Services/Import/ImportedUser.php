@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A plain data holder describing one user to create-or-reuse via UserImporter (LPP-004/LPP-005 Phase 1), independent of where the data came from.
+ * A plain data holder describing one user to create-or-reuse via UserImporter, independent of where the data came from.
  *
  * @package LumoraPress
  * @subpackage Services

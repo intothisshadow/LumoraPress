@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Reads a WordPress WXR export file as a WordPressImportService source, an alternative to a live database connection (LPP-004).
+ * Reads a WordPress WXR export file as a WordPressImportService source, an alternative to a live database connection.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -25,42 +25,15 @@ use LumoraPress\Models\UserRole;
 use RuntimeException;
 
 /**
- * WXR ("WordPress eXtended RSS") is WordPress's own built-in export
- * format — an RSS 2.0 document with a `wp:` namespace extension
- * carrying everything a plain RSS feed can't: post types/statuses,
- * postmeta, comments/commentmeta, users, and every taxonomy's terms
- * (categories/tags via their own dedicated `<wp:category>`/`<wp:tag>`
- * elements, any other taxonomy — `sdm_categories`, `media_folder`,
- * `nav_menu`, etc. — via a generic `<wp:term>` element carrying its own
- * `<wp:term_taxonomy>` name). Schema confirmed against a real, ~18MB/
- * 6,000-item production export (`References/soobsessed.WordPress.
- * *.xml` — see MEMORY.md), not guessed from documentation alone,
- * matching this ticket's own established practice for its
- * database-connection source.
+ * WXR ("WordPress eXtended RSS") is WordPress's own export format — RSS 2.0 with a `wp:`
+ * namespace carrying post types/statuses, postmeta, comments, users, and taxonomy terms.
  *
- * The whole document is parsed once, in the constructor, into flat
- * in-memory PHP arrays keyed the same way WordPressSource's own SQL
- * queries are — every interface method below is then a plain array
- * lookup, no repeated XML traversal. This trades memory for simplicity
- * (a real ~19,000-post/6,000-item export parses in well under a second
- * and a few MB — see this class's own test coverage) rather than a
- * streaming `XMLReader` parser, which would need real cross-item state
- * (e.g. resolving a category's parent, itself referenced by slug, not
- * id — see parseCategoryLikeTerms()) that a forward-only stream can't
- * express as simply. Runs as one long synchronous admin request either
- * way, the same "no background-job infrastructure" precedent every
- * other stage in this plugin already accepts.
+ * The whole document is parsed once in the constructor into flat in-memory arrays keyed like
+ * WordPressSource's SQL queries, so every interface method is a plain array lookup rather
+ * than repeated XML traversal — trading memory for simplicity over a streaming parser.
  *
- * WXR is WordPress's *content* export format — it structurally cannot
- * carry site options, widget configuration, or a plugin's own custom
- * database tables (Simple Download Monitor's per-visit download log,
- * for one). Every interface method this class can't honestly answer
- * returns nothing (`option()`/`optionsLike()`) or a documented default
- * (`userRole()` always `UserRole::Subscriber` — WXR carries no role
- * data for an author at all) rather than guessing — see
- * WordPressSourceInterface's own docblock for why every caller in
- * WordPressImportService already treats that as a normal, gracefully-
- * degrading case.
+ * WXR can't structurally carry site options, widgets, or a plugin's custom tables, so methods
+ * that can't honestly answer return nothing or a documented default rather than guess.
  */
 final class WordPressXmlSource implements WordPressSourceInterface
 {
@@ -113,14 +86,9 @@ final class WordPressXmlSource implements WordPressSourceInterface
 
         $document = new DOMDocument();
 
-        // WXR files are untrusted input from an arbitrary external
-        // site's export — libxml's default entity/network-loading
-        // behavior is already safe against XXE for a
-        // LIBXML_NONET-less DOMDocument on modern PHP (external entity
-        // substitution is opt-in via LIBXML_NOENT, never enabled here),
-        // but LIBXML_NONET is set explicitly anyway as defense in
-        // depth against any external DTD/entity reference attempting a
-        // network fetch.
+        // WXR files are untrusted input. LIBXML_NOENT is never enabled
+        // (so XXE isn't possible), but LIBXML_NONET is set explicitly
+        // anyway as defense in depth against a network-fetching DTD.
         $previousErrorSetting = libxml_use_internal_errors(true);
 
         try {
@@ -154,12 +122,7 @@ final class WordPressXmlSource implements WordPressSourceInterface
     public function testConnection(): bool
     {
         // Construction already throws on anything that isn't a
-        // well-formed WXR document — reaching here at all means it was
-        // valid, so this is always true. Kept as a real method (not a
-        // constant) so it satisfies the interface the same way
-        // WordPressSource::testConnection() does, and so a future
-        // change here (e.g. a soft-failure constructor) has somewhere
-        // to add a real check.
+        // well-formed WXR document, so reaching here always means valid.
         return true;
     }
 
@@ -180,13 +143,9 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * WXR's `<wp:author>` blocks carry no role at all (WordPress's own
-     * export format has never included it — role assignment is lost on
-     * any WXR round-trip, not just this importer's). Every WXR-sourced
-     * user therefore imports as Subscriber; reassign roles manually
-     * after a WXR-sourced import. A direct database connection
-     * (WordPressSource::userRole()) doesn't have this limitation, since
-     * it reads the real `wp_usermeta.{prefix}capabilities` row.
+     * WXR's `<wp:author>` blocks carry no role at all, so every WXR-sourced
+     * user imports as Subscriber; reassign roles manually afterward. A
+     * direct database connection doesn't have this limitation.
      */
     public function userRole(int $wpUserId): UserRole
     {
@@ -232,8 +191,7 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * WXR has no representation of the source's wp_options table at
-     * all — see class docblock.
+     * WXR has no representation of the source's wp_options table.
      */
     public function option(string $name): ?string
     {
@@ -263,11 +221,8 @@ final class WordPressXmlSource implements WordPressSourceInterface
             static fn (array $post): bool => isset($postTypes[$post['post_type']]) && isset($statuses[$post['post_status']]),
         ));
 
-        // Matches WordPressSource::posts()'s own `ORDER BY post_parent
-        // ASC, ID ASC` — a hierarchy-dependent caller (importPages(),
-        // importCategories()'s multi-pass walk doesn't need this, but
-        // page parent/child import processes top-level pages first the
-        // same way) relies on parents appearing before their children.
+        // Matches WordPressSource::posts()'s ordering — page import
+        // relies on parents appearing before their children.
         usort($matches, static function (array $a, array $b): int {
             return $a['post_parent'] <=> $b['post_parent'] ?: $a['ID'] <=> $b['ID'];
         });
@@ -330,14 +285,10 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * A WXR export never carries Simple Download Monitor's own
-     * per-visit download-event log table (a plugin-specific database
-     * table, entirely outside what any WXR export represents) — only
-     * `sdm_count_offset` postmeta, which *is* exported (postmeta is
-     * exported verbatim for every item regardless of key). The returned
-     * count is therefore that offset alone, same fallback shape
-     * WordPressSource::sdmDownloadStats() itself already returns when
-     * the log table doesn't exist on a source database either.
+     * A WXR export never carries Simple Download Monitor's own log table,
+     * only the exported `sdm_count_offset` postmeta — same fallback shape
+     * WordPressSource::sdmDownloadStats() returns when that table is
+     * missing.
      *
      * @return array{count: int, lastDownloadedAt: ?DateTimeImmutable}
      */
@@ -347,11 +298,7 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * A WXR export is WordPress's own content export format — it has no
-     * representation of NextGEN Gallery's own `ngg_gallery`/
-     * `ngg_pictures` tables at all (a plugin-specific database table,
-     * same reasoning as sdmDownloadStats()'s own docblock), so this
-     * always returns empty rather than guessing.
+     * WXR has no representation of NextGEN Gallery's plugin tables.
      *
      * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
      */
@@ -369,8 +316,7 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * Same reasoning as nextGenGalleries() above — a WXR export has no
-     * representation of NextGEN's `ngg_album` table.
+     * Same reasoning as nextGenGalleries().
      *
      * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
      */
@@ -434,12 +380,8 @@ final class WordPressXmlSource implements WordPressSourceInterface
                 'user_login' => $login,
                 'user_email' => $this->text($xpath, $authorNode, 'wp:author_email'),
                 'display_name' => self::decodeEntities($this->text($xpath, $authorNode, 'wp:author_display_name')),
-                // Never exported in WXR — see userRole()'s own
-                // docblock for the same limitation applied to role.
-                // parseWpDate('') (WordPressImportService's own helper)
-                // already treats an empty string as "no date", the
-                // same "not set" outcome a source database's own NULL/
-                // 0000-00-00 user_registered value produces.
+                // Never exported in WXR; parseWpDate('') already treats
+                // an empty string as "no date".
                 'user_registered' => '',
             ];
 
@@ -464,17 +406,12 @@ final class WordPressXmlSource implements WordPressSourceInterface
 
             $this->postsById[$id] = [
                 'ID' => $id,
-                // 0 when the login doesn't match any <wp:author> block
-                // at all (a data oddity) — mirrors how
-                // WordPressImportService's own callers already fall
-                // back (`$wpUserIdToLocalId[$wpPost['post_author']] ??
-                // 1`) when a post_author id doesn't resolve.
+                // 0 when the login doesn't match any <wp:author> block —
+                // mirrors the post_author fallback used elsewhere.
                 'post_author' => $this->authorLoginToId[$authorLogin] ?? 0,
                 'post_date' => $this->text($xpath, $itemNode, 'wp:post_date'),
                 // content:encoded is real HTML — never entity-decoded,
-                // matching WordPressSource::posts()'s own post_content
-                // (HtmlSanitizer's DOM parser handles any entities
-                // within it correctly regardless).
+                // matching WordPressSource::posts()'s post_content.
                 'post_content' => $this->text($xpath, $itemNode, 'content:encoded'),
                 'post_title' => self::decodeEntities($this->text($xpath, $itemNode, 'title')),
                 'post_excerpt' => self::decodeEntities($this->text($xpath, $itemNode, 'excerpt:encoded')),
@@ -496,16 +433,13 @@ final class WordPressXmlSource implements WordPressSourceInterface
                 $key = $this->text($xpath, $metaNode, 'wp:meta_key');
                 $value = $this->text($xpath, $metaNode, 'wp:meta_value');
 
-                // First value wins per key — mirrors
-                // WordPressSource::postMeta()'s identical convention.
+                // First value wins per key — mirrors WordPressSource::postMeta().
                 if (!isset($meta[$key])) {
                     $meta[$key] = $value;
                 }
 
-                // _wp_old_slug is the one meta key WordPress genuinely
-                // repeats (one row per rename over time) — collected
-                // separately so oldSlugs() below can return all of them,
-                // not just the first $meta[$key] keeps.
+                // _wp_old_slug repeats (one row per rename), so it's
+                // collected separately for oldSlugs() to return in full.
                 if ($key === '_wp_old_slug') {
                     $this->oldSlugsById[$id][] = $value;
                 }
@@ -538,11 +472,8 @@ final class WordPressXmlSource implements WordPressSourceInterface
 
                 $type = $this->text($xpath, $commentNode, 'wp:comment_type');
 
-                // Matches WordPressSource::comments()'s own `comment_type
-                // IN ('comment', '')` filter — WXR also exports
-                // trackbacks/pingbacks as comment_type 'trackback'/
-                // 'pingback', neither of which this importer ever
-                // brought in from a database source either.
+                // Matches WordPressSource::comments()'s filter — WXR also
+                // exports trackbacks/pingbacks, neither imported here.
                 if ($type !== '' && $type !== 'comment') {
                     continue;
                 }
@@ -561,9 +492,8 @@ final class WordPressXmlSource implements WordPressSourceInterface
                 ];
             }
 
-            // Matches WordPressSource::comments()'s own `ORDER BY
-            // comment_parent ASC, comment_ID ASC` (CommentImporter
-            // relies on a parent comment appearing before its replies).
+            // Matches WordPressSource::comments()'s ordering — a parent
+            // comment must appear before its replies.
             usort($comments, static function (array $a, array $b): int {
                 return $a['comment_parent'] <=> $b['comment_parent'] ?: $a['comment_ID'] <=> $b['comment_ID'];
             });
@@ -573,17 +503,12 @@ final class WordPressXmlSource implements WordPressSourceInterface
     }
 
     /**
-     * Parses every taxonomy's terms up front — 'category' and
-     * 'post_tag' from their own dedicated `<wp:category>`/`<wp:tag>`
-     * elements, every other taxonomy (`sdm_categories`, `media_folder`,
-     * `nav_menu`, etc.) from the generic `<wp:term>` element, grouped by
-     * its own `<wp:term_taxonomy>` value. A term's parent is given as a
-     * *slug* (`<wp:category_parent>`/`<wp:term_parent>`), scoped to that
-     * same taxonomy — never an id the way WordPressSource's own SQL
-     * query resolves it via a JOIN — so this builds a slug => term_id
-     * map per taxonomy first and resolves parent ids from that, an
-     * unresolvable/empty parent slug falling back to 0 (top-level),
-     * matching WordPressSource::terms()'s own shape exactly.
+     * Parses every taxonomy's terms up front — 'category'/'post_tag' from
+     * their dedicated elements, everything else from the generic
+     * `<wp:term>` element. A term's parent is given as a *slug*, not an
+     * id, so this builds a slug => term_id map per taxonomy first and
+     * resolves parent ids from it, falling back to 0 (top-level) when
+     * unresolvable.
      */
     private function parseAllTerms(DOMXPath $xpath, DOMElement $channel): void
     {
@@ -643,12 +568,8 @@ final class WordPressXmlSource implements WordPressSourceInterface
 
                 $terms[] = [
                     'term_id' => $raw['term_id'],
-                    // WXR carries no separate term_taxonomy_id — every
-                    // caller in WordPressImportService only ever uses
-                    // term_id itself (for the id maps this class's own
-                    // interface methods build), never this value, so
-                    // term_id is reused here rather than inventing a
-                    // second, meaningless id space.
+                    // WXR carries no separate term_taxonomy_id; term_id
+                    // is reused rather than inventing a meaningless one.
                     'term_taxonomy_id' => $raw['term_id'],
                     'name' => $raw['name'],
                     'slug' => $raw['slug'],

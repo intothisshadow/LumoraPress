@@ -21,37 +21,18 @@ use LumoraPress\Core\Database\Database;
 use LumoraPress\Services\ContentImportRegistry;
 
 /**
- * `WordPressImportService::importNextGenGalleries()` (LPP-004) already
- * files every NextGEN gallery/album's images into a real Media Manager
- * Folder, and `createOrUpdateFolder()` already records each one in
- * `ContentImportRegistry` under content type `'folder'`, keyed by the
- * NextGEN gallery's own `gid` or album's own `id` as the external id —
- * so a NextGEN id embedded in a shortcode resolves straight to its
- * Folder via `ContentImportRegistry::existingLocalId()`, the same
- * lookup shape `DownloadsShortcode::resolveItemByExternalId()` already
- * uses for `'media'`/`'redirect'`.
+ * NextGEN gallery/album ids are recorded in `ContentImportRegistry` under
+ * content type `'folder'` by `createOrUpdateFolder()`, so a NextGEN id
+ * embedded in a shortcode resolves straight to its Folder.
  *
- * This class only ever *rewrites* matched shortcode text into
- * `[lumora_folder_gallery folder_id="Y" link="full"]` — it never
- * renders a gallery itself, that's core's own
- * `app/Services/FolderGalleryShortcode.php` (LP-122). Registered on
- * `content_html` at **priority 5** (see wordpress-importer.php), lower
- * than `FolderGalleryShortcode`'s default priority 10 — this rewrite
- * must land in the string before `FolderGalleryShortcode::render()`
- * gets its turn in the same `apply_filters('content_html', ...)` pass,
- * since `HookManager::applyFilters()` threads one string through every
- * registered callback in priority order within a single pass rather
- * than re-scanning from scratch after each filter.
+ * Only *rewrites* matched shortcode text into `[lumora_folder_gallery
+ * folder_id="Y" link="full"]` — it never renders a gallery itself. Runs at
+ * priority 5, lower than `FolderGalleryShortcode`'s default 10, so this
+ * rewrite lands before that class gets its turn in the same filter pass.
  *
- * Covers the common NextGEN shortcode forms actually seen in migrated
- * content: `[nggallery id=...]`/`[nggallery ids="..."]`, `[album
- * id=...]`, `[ngg_images source="galleries|albums"
- * container_ids="..."]`, and the older `[ngg src="galleries|albums"
- * ids="..." ...]` form. Deliberately out of scope: `[nggtags ...]`
- * (deprecated even within NextGEN itself) and `[ngg_slideshow ...]`
- * (an interactive slideshow display with no static-grid equivalent) —
- * both are left exactly as before, still flagged as an import warning
- * by `WordPressImportService::flagUnsupportedShortcodes()`.
+ * Covers the common NextGEN forms: `[nggallery]`, `[album]`, `[ngg_images]`,
+ * and the older `[ngg]` form. `[nggtags]`/`[ngg_slideshow]` are out of scope
+ * and stay flagged as an import warning instead.
  */
 final class NextGenGalleryShortcode
 {
@@ -61,24 +42,15 @@ final class NextGenGalleryShortcode
     private const PATTERN_ALBUM = '/\[album(\s[^\]]*)?\]/i';
     private const PATTERN_NGG_IMAGES = '/\[ngg_images(\s[^\]]*)?\]/i';
 
-    /**
-     * Requires whitespace immediately after "ngg" so this never matches
-     * `[nggallery ...]` (a letter follows "ngg", not whitespace) or
-     * `[ngg_images ...]` (an underscore follows) — no processing-order
-     * dependency on the two patterns above needed.
-     */
+    // Requires whitespace immediately after "ngg" so this never matches
+    // `[nggallery ...]` or `[ngg_images ...]`.
     private const PATTERN_NGG_SHORT = '/\[ngg(\s[^\]]*)?\]/i';
 
     private ?Database $database = null;
     private string $tablePrefix = '';
 
-    /**
-     * Optional and injected together for tests (a SQLite-fixture-backed
-     * ContentImportRegistry); the plugin's own bootstrap constructs this
-     * with no arguments, so registry() lazily opens a real connection
-     * only once a page's content actually contains one of these
-     * shortcodes.
-     */
+    // Optional, injected for tests (SQLite fixture); the plugin's bootstrap
+    // passes none, so registry() lazily opens a real connection on first use.
     public function __construct(
         private readonly ?ContentImportRegistry $injectedRegistry = null,
     ) {
@@ -136,14 +108,10 @@ final class NextGenGalleryShortcode
     }
 
     /**
-     * `[ngg_images ... container_ids="1,2"]` / `[ngg ... ids="1,2"
-     * ...]` — the `source`/`src` attribute (`"galleries"` vs
-     * `"albums"`) doesn't change resolution: both a NextGEN gallery id
-     * and a NextGEN album id were recorded under the same `'folder'`
-     * content type by `createOrUpdateFolder()`, so no branching on it
-     * is needed here. `display_type`/`display`/`thumbnail_crop`/every
-     * other NextGEN display attribute is ignored — this always renders
-     * Lumora Press's own single grid layout.
+     * `[ngg_images ... container_ids="1,2"]` / `[ngg ... ids="1,2" ...]` —
+     * the `source`/`src` attribute doesn't change resolution, since both
+     * gallery and album ids are recorded under the same `'folder'` type.
+     * Every other NextGEN display attribute is ignored.
      *
      * @param array<string, string> $attributes
      */

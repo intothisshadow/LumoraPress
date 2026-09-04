@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Referrer/browser/device/country breakdown recording and GeoLite2 CSV import for the Visitor & Post View Statistics plugin (LPP-014).
+ * Referrer/browser/device/country breakdown recording and GeoLite2 CSV import for the Visitor & Post View Statistics plugin.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -22,19 +22,12 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Four site-wide daily-aggregate breakdown tables (never per-post — a
- * per-post x per-dimension cross product would grow unbounded) plus the
- * geoip_ranges lookup table the country breakdown depends on. Every
- * recorder here is called, at most, once per guest post view — see
- * visitor-stats.php's single_post_viewed listener, the only caller.
- * Takes Database directly (like PostViewService) rather than reaching
- * into ActiveKernel internally, so it stays trivially unit-testable
- * against the PHP Test Suite's SQLite-backed fixtures.
+ * Four site-wide daily-aggregate breakdown tables (never per-post, which would grow
+ * unbounded) plus the geoip_ranges lookup table the country breakdown depends on. Takes
+ * Database directly so it stays unit-testable against SQLite fixtures.
  *
- * Privacy: this class never persists a raw IP address, a raw
- * User-Agent string, or a full referrer URL. The raw IP passed to
- * countryForIp() is used only for the in-memory range lookup below and
- * is never written anywhere by this class.
+ * Privacy: this class never persists a raw IP address, User-Agent string, or full referrer
+ * URL. The raw IP passed to countryForIp() is used only for the in-memory range lookup.
  */
 final class ViewStatsService
 {
@@ -144,18 +137,11 @@ final class ViewStatsService
     }
 
     /**
-     * Pulls the two CSV files this plugin needs straight out of MaxMind's
-     * own GeoLite2-Country **CSV-format** ZIP download — the same file
-     * `maxmind.com`'s download page offers, no local unzip step needed
-     * first. MaxMind nests the CSVs inside a dated subfolder
-     * (`GeoLite2-Country-CSV_YYYYMMDD/...`) that varies release to
-     * release, so entries are matched by basename rather than a fixed
-     * path; each matching entry is stream-copied straight to
-     * $blocksDestination/$locationsDestination without ever writing the
-     * ZIP's own folder structure to disk. Requires the PHP `zip`
-     * extension (bundled with PHP by default, but not universally
-     * enabled on every host) — throws a clear message if it's missing
-     * rather than a bare fatal error.
+     * Extracts the two CSVs this plugin needs from MaxMind's own
+     * GeoLite2-Country CSV-format ZIP download. MaxMind nests them inside
+     * a dated subfolder that varies release to release, so entries are
+     * matched by basename rather than a fixed path. Requires the PHP
+     * `zip` extension (not universally enabled on every host).
      */
     public function extractGeoZip(string $zipPath, string $blocksDestination, string $locationsDestination): void
     {
@@ -219,14 +205,9 @@ final class ViewStatsService
     }
 
     /**
-     * Parses MaxMind's own GeoLite2-Country CSV export (not the binary
-     * .mmdb format — see this plugin's README.md for why) in one call,
-     * looping importGeoCsvBatch() to completion. Fine for a small file
-     * or a CLI/test context with no request-lifetime limit; a real
-     * ~450k-row Blocks CSV import triggered from the browser should use
-     * importGeoCsvBatch() directly instead, across repeated requests —
-     * see that method's own docblock for why a single synchronous
-     * request isn't reliable for this at real GeoLite2 scale.
+     * Parses MaxMind's GeoLite2-Country CSV export in one call, looping importGeoCsvBatch()
+     * to completion. Fine for a small file or CLI/test context; a real ~450k-row browser
+     * import should use importGeoCsvBatch() directly across repeated requests instead.
      *
      * @return int Number of ranges imported.
      */
@@ -247,34 +228,11 @@ final class ViewStatsService
     }
 
     /**
-     * Processes one batch of rows from the Blocks CSV, starting at
-     * $byteOffset (an fseek() position — this method returns the exact
-     * position the *next* call should resume from, in `nextByteOffset`,
-     * the same "caller loops across requests, incrementing an offset
-     * each time" shape ThumbnailService::queueForBulkRegeneration()
-     * already uses). Exists because a real GeoLite2-Country-
-     * Blocks-IPv4.csv is routinely ~450k rows — importing all of it as
-     * one synchronous request/transaction can run past a shared host's
-     * own webserver/proxy timeout even with set_time_limit(0) lifting
-     * *PHP's* limit, found live (xenacentral.com: the import completed
-     * successfully server-side — confirmed by the resulting range
-     * count — but the response itself never made it back before the
-     * connection was cut).
-     *
-     * $isFirstBatch (not $byteOffset === 0, which is also where the
-     * very first *data* row after the header naturally starts) is the
-     * caller's explicit signal to truncate geoip_ranges once, up front
-     * — an entirely fresh call from a cold start, not "resume from the
-     * beginning of a file for some other reason."
-     *
-     * The country-name lookup (readLocationsCsv()) and the Blocks
-     * header/column-index resolution are both cheap and re-done on
-     * every batch rather than threaded through as extra state the
-     * caller would otherwise need to persist between requests
-     * (Locations is a small, fixed-size file — one row per country, not
-     * one per IP range) — only the byte offset itself needs to survive
-     * from one request to the next, kept in the admin view's own hidden
-     * form field, no server-side session/cache state required.
+     * Processes one batch of rows from the Blocks CSV, starting at $byteOffset (an fseek()
+     * position; the resume position is returned in `nextByteOffset`). Batching exists
+     * because a real Blocks CSV is routinely ~450k rows, which can run past a shared host's
+     * timeout in one request. $isFirstBatch (not $byteOffset === 0) is the caller's explicit
+     * signal to truncate geoip_ranges once, so a cold start isn't confused with resuming.
      *
      * @return array{importedInBatch: int, nextByteOffset: int, done: bool}
      */

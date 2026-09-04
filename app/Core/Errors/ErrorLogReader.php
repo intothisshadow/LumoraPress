@@ -18,14 +18,10 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Errors;
 
 /**
- * Reads ErrorHandler::log()'s own on-disk format
- * ("[timestamp] ExceptionClass: message in file:line\ntrace\n\n") back into
- * structured rows, newest first.
- *
- * Reads from the end of the file in fixed-size chunks rather than loading
- * it entirely into memory — an unrotated error.log has no size cap and can
- * grow large over a site's lifetime (see storage/sessions/'s own
- * unbounded-growth precedent noted in this project's housekeeping rules).
+ * Reads ErrorHandler::log()'s own on-disk format back into structured
+ * rows, newest first. Reads from the end of the file in fixed-size chunks
+ * rather than loading it entirely into memory, since an unrotated
+ * error.log has no size cap.
  */
 final class ErrorLogReader
 {

@@ -24,10 +24,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// This view is only ever reachable while the Contact Forms plugin is
-// active (see admin/index.php's $contactFormsActive-gated 'contact-forms'
-// $menu entry), so its classes are guaranteed to already be loaded by
-// PluginManager::loadActive() earlier this request.
+// Only reachable while the Contact Forms plugin is active, so its classes
+// are guaranteed to already be loaded.
 $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
 $forms = new ContactFormService($kernel->database, $tablePrefix);
 $submissions = new ContactSubmissionService($kernel->database, $tablePrefix);

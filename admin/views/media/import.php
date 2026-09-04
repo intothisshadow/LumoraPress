@@ -30,15 +30,9 @@ $allowedImportDirectories = (array) (json_decode((string) $kernel->config->optio
 $error = null;
 $scanResults = null;
 
-/**
- * A batch import's progress/tallies/pending path list live in a small
- * JSON file under storage/cache (never web-accessible, and already a
- * required-writable directory per RequirementsCheck) rather than a new
- * database table or a huge hidden-field path list threaded through every
- * "Continue" form — the same "no queue infra, batch-per-request" shape
- * LP-001's bulk thumbnail regeneration uses, just needing somewhere to
- * park state between one batch's redirect and the next.
- */
+// A batch import's progress/tallies/pending path list live in a small
+// JSON file under storage/cache rather than a new database table or a
+// huge hidden-field path list threaded through every "Continue" form.
 $importCachePath = static fn (string $importToken): string => rtrim(LUMORA_ROOT, '/') . '/storage/cache/media-import-' . $importToken . '.json';
 
 /**
@@ -159,16 +153,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('media/import') . '?import_token=' . $importToken);
         exit;
     } elseif ($form === 'media_import_settings' && $currentUser->can('manage_options') && Csrf::verify('media_import_settings', $token)) {
-        /*
-         * LP-061: this page (like the rest of Media Manager) only
-         * requires upload_files, which Author/Editor roles both hold —
-         * but which server directories can be scanned is site-wide
-         * configuration, previously gated by manage_options on
-         * Settings > Media. The $currentUser->can('manage_options')
-         * check above (mirrored by the section below not rendering at
-         * all for a non-manage_options viewer) keeps that restriction
-         * intact even though it now lives on a less-privileged page.
-         */
+        // This page only requires upload_files, but which server
+        // directories can be scanned is site-wide config gated by
+        // manage_options — checked here since the section it configures
+        // doesn't render at all for a non-manage_options viewer.
         $lines = preg_split('/\r\n|\r|\n/', (string) ($_POST['media_import_allowed_directories'] ?? '')) ?: [];
         $directories = array_values(array_unique(array_filter(array_map('trim', $lines), static fn (string $line): bool => $line !== '')));
         $kernel->config->setOption('media_import_allowed_directories', json_encode($directories));

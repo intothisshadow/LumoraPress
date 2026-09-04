@@ -18,20 +18,13 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Plugin;
 
 /**
- * Discovers installed plugins under content/plugins (LP-045), one
- * directory per plugin — same "directory = installable unit" shape
- * PluginManager::discover() already uses for loading, just with metadata
- * parsing on top since the Plugin Browser needs a details panel before
- * activation. Deliberately separate from PluginManager: that class only
- * cares about *loading* active plugins (require_once on the main file),
- * this one only cares about *describing* every installed plugin,
- * active or not — mirrors the ThemeRegistry/ThemeRenderer split (LP-034/
- * LP-044).
+ * Discovers installed plugins under content/plugins and parses their
+ * metadata for the Plugin Browser. Deliberately separate from
+ * PluginManager, which only *loads* active plugins — this class
+ * *describes* every installed plugin, active or not.
  *
  * A plugin with no parseable "Plugin Name:" header still gets listed
- * (with its slug title-cased as a fallback name) rather than silently
- * excluded — a missing/malformed header should never make an installed
- * plugin invisible or unselectable.
+ * (slug title-cased as a fallback name) rather than silently excluded.
  */
 final class PluginRegistry
 {
@@ -197,13 +190,10 @@ final class PluginRegistry
     }
 
     /**
-     * Finds every preview image in the plugin directory named
-     * preview.*, thumbnail.*, or screenshot.* (LP-045), plus numbered
-     * variants (screenshot-2.png, screenshot-3.jpg, ...) so a plugin can
-     * provide multiple screenshots for the details panel gallery. The
-     * first entry (by basename priority, then ascending number) is used
-     * as the card thumbnail. Mirrors ThemeRegistry::findScreenshots()
-     * exactly.
+     * Finds every preview image (preview.*, thumbnail.*, screenshot.*,
+     * plus numbered variants like screenshot-2.png) for the details panel
+     * gallery. The first entry, by basename priority then ascending
+     * number, is used as the card thumbnail.
      *
      * @return array<int, string>
      */

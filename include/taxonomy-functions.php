@@ -22,16 +22,13 @@ use LumoraPress\Models\Tag;
 
 /**
  * A post's own tags, and the posts related to it by shared tags — reads
- * TagService/PostService via the ActiveTags/ActivePosts static bridges,
- * mirroring include/permalink-functions.php's post_categories()/
- * the_post_categories() shape exactly.
+ * TagService/PostService via the ActiveTags/ActivePosts static bridges.
  */
 
 if (!function_exists('get_the_tags')) {
     /**
-     * The Tags $post is assigned to (alphabetical, via TagService::
-     * tagsForPost()). Empty array for a tagless post, never null, so a
-     * theme can loop it directly without an extra null check.
+     * The Tags $post is assigned to, alphabetical. Empty array for a
+     * tagless post, never null.
      *
      * @return array<int, Tag>
      */
@@ -51,9 +48,7 @@ if (!function_exists('post_has_tags')) {
 if (!function_exists('the_tags')) {
     /**
      * get_the_tags(), rendered as a $sep-joined list of links wrapped in
-     * $before/$after (WordPress-style template tag) — outputs nothing at
-     * all for a tagless post rather than an empty wrapper, so a theme can
-     * call this unconditionally.
+     * $before/$after. Outputs nothing for a tagless post.
      */
     function the_tags(Post $post, string $before = '', string $sep = ', ', string $after = ''): void
     {
@@ -73,9 +68,8 @@ if (!function_exists('the_tags')) {
 if (!function_exists('get_related_posts')) {
     /**
      * Up to $limit other publicly visible posts that share at least one
-     * tag with $post, most-shared-tags-first (PostService::
-     * relatedByTags()). Empty array for a tagless post — there is nothing
-     * to relate it by.
+     * tag with $post, most-shared-tags-first. Empty array for a tagless
+     * post.
      *
      * @return array<int, Post>
      */
@@ -90,9 +84,7 @@ if (!function_exists('get_related_posts')) {
 if (!function_exists('the_related_posts')) {
     /**
      * get_related_posts(), rendered as a titled `.lp-related-posts` list
-     * of linked titles — outputs nothing at all when there are no related
-     * posts to show, so a theme can call this unconditionally right after
-     * a post's own content.
+     * of linked titles. Outputs nothing when there are no related posts.
      */
     function the_related_posts(Post $post, int $limit = 5, string $title = 'Related Posts'): void
     {

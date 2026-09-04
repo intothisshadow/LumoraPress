@@ -22,16 +22,9 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * LP-049: named menus + per-location assignment are persisted as two JSON
- * options — "nav_menus" (every menu, id => {name, items}) and
- * "nav_menu_locations" (location slug => menu id) — the same "structured
- * value as JSON in the options table" approach LP-048's widgets_config
- * already established. Every form below mutates the in-memory
- * MenuManager (already loaded with the persisted state at bootstrap) and
- * then re-saves the whole relevant option, mirroring
- * admin/views/appearance/widgets.php's pattern closely.
- */
+// Menus + per-location assignment persist as two JSON options
+// ("nav_menus", "nav_menu_locations"). Each form mutates the in-memory
+// MenuManager, then re-saves the relevant option.
 $persistMenus = static function () use ($kernel): void {
     $kernel->config->setOption('nav_menus', json_encode($kernel->menus->menus()));
 };
@@ -102,14 +95,8 @@ $postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
 $postedPosition = (string) ($_POST['position'] ?? 'before');
 $postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-/*
- * Every menu's Rename/Duplicate/Delete form, every "Add ..." panel, every
- * item's Save/Move Up/Move Down/Remove form, and the one Locations form
- * all render on this same page load — many forms, same LP-012 CSRF
- * scoping lesson admin/views/appearance/widgets.php's docblock explains
- * in full. Each action name below is scoped to the specific menu/item/
- * direction id it acts on.
- */
+// Many forms render on this same page load, so each CSRF action name is
+// scoped to the specific menu/item/direction id it acts on.
 $csrfAction = match ($form) {
     'create_menu' => 'menu_create',
     'rename_menu' => 'menu_rename_' . $postedMenuId,
@@ -123,9 +110,8 @@ $csrfAction = match ($form) {
     'update_item' => 'menu_update_item_' . $postedItemId,
     'remove_item' => 'menu_remove_item_' . $postedItemId,
     'move_item' => 'menu_move_' . $postedDirection . '_' . $postedItemId,
-    // One reposition form per menu (see the rendering below), not per
-    // item — sortable.js fills in its dragged/target/position fields and
-    // submits it on drop.
+    // One reposition form per menu — sortable.js fills its
+    // dragged/target/position fields and submits on drop.
     'reposition_item' => 'menu_reposition_' . $postedMenuId,
     'save_locations' => 'menu_save_locations',
     default => 'menu_unknown_form',
@@ -251,10 +237,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                 $parentId = trim((string) ($_POST['parentId'] ?? ''));
                 $descendants = $descendantIds($items, $postedItemId);
 
-                // Reject a parent that is this item itself or one of its
-                // own descendants — the only cycle guard needed, since
-                // every other item is guaranteed to already sit outside
-                // this item's own subtree.
+                // Reject a parent that is this item or one of its own
+                // descendants — the only cycle guard needed.
                 if ($parentId === $postedItemId || in_array($parentId, $descendants, true)) {
                     $parentId = '';
                 }
@@ -304,10 +288,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         }
 
         if ($targetIndex !== null) {
-            // Reorders only among true siblings (same parentId), not raw
-            // array position — items with a different parent can sit
-            // between two siblings in storage order without that
-            // affecting what "up"/"down" means for this item.
+            // Reorders among true siblings (same parentId), not raw array
+            // position, since items with a different parent can sit between.
             $parentId = $items[$targetIndex]['parentId'];
             $siblingIndices = array_keys(array_filter(
                 $items,
@@ -327,16 +309,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
         header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
         exit;
     } elseif ($form === 'reposition_item') {
-        // Drag-and-drop reordering (LP-049): the same "splice out, splice
-        // back in" algorithm as widgets.php's reposition_widget, with one
-        // addition — the target must share the dragged item's parentId.
-        // sortable.js's own dragover guard already refuses to treat a
-        // different-parent row as a valid drop target, so this is a
-        // server-side backstop, not the primary defense; a request that
-        // fails it (a stale/tampered target_id) just silently does
-        // nothing, same as an out-of-range Move Up/Move Down already does
-        // above. Re-parenting an item stays the "Parent Item" dropdown's
-        // job — drag-and-drop never changes parentId.
+        // Splices the dragged item out and back in at the target position;
+        // target must share its parentId (server-side backstop for
+        // sortable.js's own guard). Re-parenting stays the dropdown's job.
         $menu = $kernel->menus->menu($postedMenuId);
         $items = $menu['items'];
         $draggedIndex = null;
@@ -486,11 +461,8 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
 
             <?php
             $addPanels = [
-                // Pages and Categories are hierarchical (LP-103) — items
-                // carry a 'depth' so the checkbox list below can indent a
-                // child under its parent, matching the admin "All Pages"
-                // tree view. Posts and Tags have no hierarchy in this app,
-                // so their items stay flat/alphabetical with no depth.
+                // Pages/Categories carry a 'depth' so the checkbox list can
+                // indent children; Posts/Tags have no hierarchy here.
                 'add_pages' => ['label' => 'Pages', 'items' => array_map(
                     static fn (array $page): array => ['id' => $page['id'], 'label' => $page['title'], 'depth' => $page['depth']],
                     $kernel->pages->listAllForMenuSelect(),

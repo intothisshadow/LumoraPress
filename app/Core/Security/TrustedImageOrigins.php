@@ -21,21 +21,14 @@ use DOMDocument;
 use LumoraPress\Core\PressConfig;
 
 /**
- * Shared by both the Settings > Security > Trusted Image Sources save
- * handler (so what's redisplayed on that screen always matches what's
- * actually allowed) and the `csp_directives` listener that builds the
- * real header from it (`include/bootstrap.php`) — one validation rule
- * kept in exactly one place, rather than the same regex duplicated at
- * both call sites and liable to drift apart.
+ * Shared by the Settings > Security > Trusted Image Sources save handler
+ * and the `csp_directives` listener that builds the real header from it —
+ * one validation rule in one place instead of a duplicated regex.
  *
- * Also owns the "trusted staff shouldn't have to type the domain in
- * themselves" auto-trust behavior (autoTrustFromContent()) — an
- * Administrator or Editor embedding an external image just works, the
- * same option a manual Settings entry would populate, just populated
- * automatically instead of by hand. A Contributor/Author's own posts,
- * and any content that isn't already staff-authored, are deliberately
- * never auto-trusted — see this method's own call sites for the
- * capability gate.
+ * Also owns the auto-trust behavior (autoTrustFromContent()): an
+ * Administrator or Editor embedding an external image gets it trusted
+ * automatically. Contributor/Author content is never auto-trusted — see
+ * call sites for the capability gate.
  */
 final class TrustedImageOrigins
 {
@@ -59,13 +52,8 @@ final class TrustedImageOrigins
 
     /**
      * Scans $html's `<img src>` attributes and returns the distinct
-     * external origins found (same "scheme://host[:port]" shape parse()
-     * validates) — $siteOrigin (see the site_origin() template tag) is
-     * excluded, since that's already covered by the CSP's own 'self' and
-     * has no business being added to this list. A malformed/unparseable
-     * `src`, a relative path, or a non-http(s) scheme (data:, etc.) is
-     * silently skipped — nothing here needs adding to an *external
-     * origin* allowlist.
+     * external origins found. $siteOrigin is excluded (already covered by
+     * CSP's own 'self'). Malformed/relative/non-http(s) src is skipped.
      *
      * @return array<int, string>
      */
@@ -123,16 +111,11 @@ final class TrustedImageOrigins
     }
 
     /**
-     * Adds any new external image origins found in $html to the
-     * site-wide trusted_image_origins option, if they aren't already
-     * there — the auto-trust behavior itself. A no-op (no option write
-     * at all) when nothing new is found, so saving ordinary content
-     * never touches this option. Callers gate this on the author
-     * actually being trusted staff (Administrator/Editor,
-     * `$currentUser->can('edit_others_posts')`) — this method itself
-     * has no way to know who authored $html, by design: it only knows
-     * how to merge origins, the same separation `parse()` already keeps
-     * from the settings save handler that calls it.
+     * Adds any new external image origins found in $html to the site-wide
+     * trusted_image_origins option. A no-op when nothing new is found.
+     * Callers must gate this on the author being trusted staff
+     * (`$currentUser->can('edit_others_posts')`) — this method has no way
+     * to know who authored $html, by design.
      */
     public static function autoTrustFromContent(PressConfig $config, string $html, string $siteOrigin): void
     {

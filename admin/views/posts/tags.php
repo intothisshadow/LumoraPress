@@ -238,13 +238,9 @@ if ($action === 'edit') {
             </form>
 
             <?php
-            /*
-             * Out-of-band target forms for each row's Delete button —
-             * standalone, empty <form>s the buttons point at via the HTML
-             * form="" attribute, since a <form> can't nest inside
-             * tags-bulk-form (same LP-068 nested-form fix
-             * admin/views/posts/categories.php uses).
-             */
+            // Out-of-band target forms — standalone <form>s the buttons
+            // point at via form="", since a <form> can't nest inside
+            // tags-bulk-form.
             if ($canDeleteTags):
                 foreach ($rows as $row):
                     $listedTag = $row['tag'];

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The read-only source contract WordPressImportService drives, implemented by both a direct database connection and a WXR export file (LPP-004).
+ * The read-only source contract WordPressImportService drives, implemented by both a direct database connection and a WXR export file.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -21,33 +21,19 @@ use DateTimeImmutable;
 use LumoraPress\Models\UserRole;
 
 /**
- * `WordPressSource` (a second, independent database connection to the
- * source site's own MySQL/MariaDB server) was this plugin's only source
- * until now. `WordPressXmlSource` (a WXR `.xml` export file, read
- * locally — never fetched remotely) implements this same contract so
- * `WordPressImportService` never has to know or care which one it's
- * actually driving; every stage (`importUsers()`, `importPosts()`,
- * `importMedia()`, etc.) is written once against this interface.
+ * Lets `WordPressImportService` drive a live database (`WordPressSource`)
+ * or a WXR export file (`WordPressXmlSource`) identically.
  *
- * A WXR export is WordPress's own *content* export format — it carries
- * posts/pages/attachments/comments/users/terms, but never site options,
- * widget configuration, or a plugin's own custom database tables (e.g.
- * Simple Download Monitor's per-visit download log). Implementations
- * are expected to return an honestly empty/default result for anything
- * their underlying source structurally cannot supply (`option()`/
- * `optionsLike()` returning nothing, `userRole()` falling back to
- * `UserRole::Subscriber`) rather than guessing — every caller in
- * `WordPressImportService` already treats "nothing found" as a normal,
- * gracefully-degrading case, the same way a real WordPress site with no
- * widgets or a plugin-free install already exercises today.
+ * A WXR export can't carry site options, widgets, or a plugin's custom
+ * tables — implementations should return an honest empty/default result
+ * for anything their source can't supply rather than guessing, since
+ * every caller already treats "nothing found" as a normal case.
  */
 interface WordPressSourceInterface
 {
     /**
-     * True only if the source is actually usable — a live, reachable
-     * database connection with the expected `posts` table for
-     * `WordPressSource`, or a well-formed, parseable WXR document with
-     * a `<channel>` for `WordPressXmlSource`.
+     * True only if the source is actually usable — a reachable database
+     * with a `posts` table, or a parseable WXR document with a `<channel>`.
      */
     public function testConnection(): bool;
 
@@ -113,8 +99,7 @@ interface WordPressSourceInterface
     public function sdmDownloadStats(int $postId): array;
 
     /**
-     * NextGEN Gallery's own `ngg_gallery` table — a flat list, no
-     * hierarchy of its own (unlike `sdm_categories`/`media_folder`).
+     * NextGEN Gallery's own `ngg_gallery` table — a flat list, no hierarchy.
      *
      * @return array<int, array{gid: int, name: string, slug: string, path: string, title: string, galdesc: string, author: int}>
      */
@@ -128,31 +113,23 @@ interface WordPressSourceInterface
     public function nextGenPictures(int $galleryId): array;
 
     /**
-     * NextGEN Gallery's own `ngg_album` table — groups a set of
-     * galleries together (unlike a gallery itself, which has no
-     * hierarchy of its own).
+     * NextGEN Gallery's own `ngg_album` table, grouping galleries together.
      *
      * @return array<int, array{id: int, name: string, slug: string, galleryIds: array<int, int>}>
      */
     public function nextGenAlbums(): array;
 
     /**
-     * Every `_wp_old_slug` value ever recorded for one post/page, oldest
-     * first — WordPress appends a new row each time a published post's
-     * slug changes, so unlike every other meta key this importer reads
-     * (postMeta()'s own single-value convenience), a post/page can
-     * genuinely carry more than one.
+     * Every `_wp_old_slug` ever recorded for a post, oldest first — unlike
+     * other meta keys, a post can carry more than one of these.
      *
      * @return array<int, string>
      */
     public function oldSlugs(int $postId): array;
 
     /**
-     * Every distinct `post_type` value present in the source, with its
-     * total row count — including a type this importer never explicitly
-     * queries (a custom post type from an unsupported plugin). Used only
-     * for Compatibility's "report unsupported plugins and custom post
-     * types" diagnostic; never drives what actually gets imported.
+     * Every distinct `post_type` present in the source with its row count,
+     * including unsupported types — used only for the compatibility report.
      *
      * @return array<string, int> post_type => count
      */

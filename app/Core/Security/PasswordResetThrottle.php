@@ -21,29 +21,17 @@ use LumoraPress\Core\Database\Database;
 use Throwable;
 
 /**
- * IP-based rate limiting for the "forgot password" request form (LP-058),
- * same shape as LoginThrottle but keyed to a distinct concern: bounding
- * the total number of reset requests an IP address can make in a window,
- * regardless of whether any individual request succeeds or fails.
+ * IP-based rate limiting for the "forgot password" form, same shape as
+ * LoginThrottle but bounding total reset requests per IP regardless of
+ * outcome — this blunts PasswordResetService's timing side-channel by
+ * making large-scale account enumeration impractical, without closing it.
+ * Every attempt is recorded post-CSRF, whether or not the email exists, so
+ * an attacker can't dodge the counter by only probing unregistered addresses.
  *
- * This exists specifically to blunt PasswordResetService's own documented
- * timing side-channel (a registered email does a DB insert + mail() call,
- * an unregistered one does neither, which an attacker could otherwise
- * measure at scale to enumerate accounts) — it doesn't close that
- * side-channel, but capping requests per IP makes large-scale measurement
- * impractical. Every attempt from an IP is recorded once it passes CSRF
- * verification (the same point LoginThrottle's own attempt-counting sits
- * at), whether or not the submitted email turns out to exist, so an
- * attacker can't avoid the counter by only ever probing unregistered
- * addresses.
+ * Unlike LoginThrottle there's no clear()-on-success: this bounds total
+ * request volume, not failures against one account.
  *
- * Unlike LoginThrottle, there is no clear()-on-success: this isn't
- * counting failures against one account, it's bounding total request
- * volume from one IP address, and a successful reset doesn't change that.
- *
- * Fails open on a database error, same reasoning as LoginThrottle: a
- * brief loss of this rate limit during an unrelated database problem is
- * preferable to locking every visitor out of "forgot password" entirely.
+ * Fails open on a database error, same reasoning as LoginThrottle.
  */
 final class PasswordResetThrottle
 {

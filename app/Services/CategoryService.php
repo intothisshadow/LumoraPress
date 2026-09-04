@@ -24,19 +24,13 @@ use LumoraPress\Models\Category;
 use RuntimeException;
 
 /**
- * Category CRUD, slug generation, hierarchy, and the many-to-many
- * relationship with posts via {prefix}post_categories. Categories have no
- * author/ownership concept, unlike Posts/Pages — any user with edit_posts
- * can edit any category, and delete_posts is required to delete one.
+ * Category CRUD, slug generation, hierarchy, and the post relationship via
+ * {prefix}post_categories. Categories have no author/ownership concept — any user with
+ * edit_posts can edit any category, and delete_posts is required to delete one.
  *
- * Every query here uses a distinct placeholder name per occurrence, even
- * when binding the same value twice: Database::connect() disables emulated
- * prepared statements, and MySQL's native prepare protocol throws
- * "SQLSTATE[HY093]: Invalid parameter number" if a named placeholder
- * repeats within one query — the exact bug fixed in PageService's
- * listAllForParentSelect() (see PHP-TEST-SUITE.md's "Known gaps").
- *
- * $hooks is optional (LP-037) — see PostService's docblock for why.
+ * Every query uses a distinct placeholder name per occurrence, even for a repeated value:
+ * MySQL's native prepare protocol (emulated prepares are disabled) throws
+ * "SQLSTATE[HY093]" if a named placeholder repeats within one query.
  */
 final class CategoryService
 {
@@ -129,17 +123,10 @@ final class CategoryService
     }
 
     /**
-     * Soft-deletes a category (LP-010 Trash) — mirrors PostService::trash()/
-     * PageService::trash()'s trashed_at pattern, minus the status flip
-     * neither of those need here since categories have no draft/published
-     * workflow to fall back to. A trashed category is excluded from
-     * listAll()/listAllWithPostCounts()/listAllForParentSelect()/
-     * findBySlug()/categoriesForPost() — everywhere a category would
-     * otherwise show up publicly or be offered for assignment — but stays
-     * reachable via findById() so the admin Trash tab can still show and
-     * restore it. There is no automatic purge; delete() (the admin UI's
-     * "Delete Permanently", only offered for already-trashed categories)
-     * is the only way to actually remove one.
+     * Soft-deletes a category — mirrors PostService/PageService's trashed_at pattern.
+     * A trashed category is excluded everywhere it would normally show up publicly or be
+     * offered for assignment, but stays reachable via findById() for the admin Trash tab.
+     * There is no automatic purge; delete() is the only way to actually remove one.
      */
     public function trash(int $id): bool
     {
@@ -207,21 +194,12 @@ final class CategoryService
     }
 
     /**
-     * Merges $sourceId into $targetId: every post assigned to $sourceId
-     * gains $targetId instead (via bulkAddToPosts(), so a post already in
-     * both categories doesn't hit post_categories' composite-key
-     * constraint twice), $sourceId's own post_categories rows are then
-     * dropped, its child categories are reparented to $targetId, and
-     * $sourceId itself is deleted. Mirrors delete()'s child-orphaning
-     * shape but reparents instead of orphaning, since the whole point of
-     * a merge is that $targetId inherits everything $sourceId had. If
-     * $targetId was itself a child of $sourceId, it's orphaned rather
-     * than reparented to itself — its old parent no longer exists after
-     * the merge, and a category can never be its own parent (same rule
-     * create()/update() already enforce).
-     *
-     * Returns false without changing anything if $sourceId and $targetId
-     * are the same, or either doesn't exist.
+     * Merges $sourceId into $targetId: every post gains $targetId (via bulkAddToPosts(), so
+     * no composite-key collision), $sourceId's rows are dropped, its children are
+     * reparented to $targetId, and $sourceId is deleted. If $targetId was itself a child of
+     * $sourceId, it's orphaned rather than reparented to itself, since a category can never
+     * be its own parent. Returns false without changing anything if $sourceId === $targetId
+     * or either doesn't exist.
      */
     public function merge(int $sourceId, int $targetId): bool
     {
@@ -293,8 +271,8 @@ final class CategoryService
      * Case-insensitive lookup, falling back to create() — mirrors
      * TagService::findOrCreateByName(), the same "don't let 'Sci-Fi' and
      * 'sci-fi' become two different terms" guard. Backs the post editor's
-     * "Create categories while editing" affordance (LP-008): typing a name
-     * that already exists reuses that category instead of creating a
+     * "Create categories while editing" affordance: typing a name that
+     * already exists reuses that category instead of creating a
      * near-duplicate with a numeric-suffixed slug.
      */
     public function findOrCreateByName(string $name, ?int $parentId = null): Category
@@ -421,11 +399,10 @@ final class CategoryService
     }
 
     /**
-     * A flat list of {id, name} suitable for a "Parent Category" <select>,
+     * A flat list of {id, name} suitable for a "Parent Category" select,
      * excluding $excludeId itself and its direct children (so a category
      * can't be made the parent of its own parent one level up — deeper
-     * cycles are an accepted gap for this basic, non-tree parent selector,
-     * matching PageService's identical trade-off).
+     * cycles are an accepted gap for this basic, non-tree parent selector).
      *
      * @return array<int, array{id: int, name: string}>
      */
@@ -449,17 +426,9 @@ final class CategoryService
     }
 
     /**
-     * A depth-tagged {id, name, depth} list for the admin's various
-     * "Parent Category"/category-filter pickers (LP-106) — combines
-     * listAllForTree()'s hierarchical document order with
-     * listAllForParentSelect()'s own cycle-prevention exclusion
-     * ($excludeId itself and its direct children; deeper cycles are the
-     * same accepted gap that method already documents) so a picker can
-     * render indented by depth while still ruling out choices that
-     * would make a category its own ancestor. Pass no $excludeId for a
-     * plain depth-tagged list with nothing excluded (category filters,
-     * bulk-action targets — anywhere a parent/child loop isn't a
-     * concern).
+     * A depth-tagged {id, name, depth} list for admin "Parent Category" pickers — combines
+     * listAllForTree()'s hierarchical order with listAllForParentSelect()'s cycle-prevention
+     * exclusion. Pass no $excludeId for a plain list with nothing excluded.
      *
      * @return array<int, array{id: int, name: string, depth: int}>
      */
@@ -490,7 +459,7 @@ final class CategoryService
      * Non-trashed categories as a flat, depth-tagged list in hierarchical
      * document order (a parent immediately followed by its own children,
      * alphabetical among siblings, then the next sibling) — backs the
-     * admin Menus screen's "Add Categories" panel (LP-103), mirroring
+     * admin Menus screen's "Add Categories" panel, mirroring
      * PageService::listAllForTree()'s shape so a subcategory renders
      * indented under its parent there instead of in the same flat,
      * alphabetized list listAll() produces.
@@ -579,21 +548,12 @@ final class CategoryService
     }
 
     /**
-     * Adds $categoryId to $postId's existing category assignments without
-     * touching any other category already assigned — unlike
-     * assignToPost() (which replaces the full set, used by the single-post
-     * edit form), this backs LP-008's bulk "Change category" action, where
-     * "change" means "add this category to every selected post", not
-     * "replace each post's entire category list with just this one".
-     * post_categories has a composite (post_id, category_id) primary key,
-     * so a duplicate INSERT would fail — check-then-insert rather than an
-     * `ON DUPLICATE KEY` upsert keeps this portable to the SQLite-backed
-     * unit tests, the same precedent MediaStatsService::recordDownload()
-     * already established.
+     * Adds $categoryId to each post's existing assignments without touching others already
+     * assigned — unlike assignToPost(), which replaces the full set. Uses check-then-insert
+     * rather than `ON DUPLICATE KEY` to stay portable to the SQLite-backed unit tests.
      *
      * @param array<int, int> $postIds
-     * @return int how many posts actually gained the assignment (already-
-     *     assigned posts are skipped, not counted)
+     * @return int how many posts actually gained the assignment
      */
     public function bulkAddToPosts(array $postIds, int $categoryId): int
     {

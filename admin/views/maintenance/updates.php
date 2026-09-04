@@ -24,22 +24,12 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-/*
- * Progress polling (LP-086): a separate, lightweight GET the page's own
- * JS hits every second or so while a download/install POST below is still
- * running on another connection. Handled first, before any session-write
- * work or view rendering below, and intentionally never checks CSRF —
- * this only ever reads UpdateProgress's on-disk state, so there is
- * nothing here for CSRF to protect. Still requires the same admin
- * session/manage_options capability every other branch of this page
- * does, since that gate already ran in admin/index.php before this file
- * was even required.
- */
+// Progress polling: a lightweight GET the page's own JS hits every second
+// while a download/install POST runs on another connection. No CSRF
+// check needed — it only reads UpdateProgress's on-disk state.
 if (($_GET['ajax'] ?? null) === 'progress') {
-    // See editor-layout-save.php's identical pattern: layout-header.php
-    // (required before this file, from admin/index.php) already opened
-    // an output buffer for its own HTML, which must be discarded before
-    // a JSON response or that buffered markup would flush alongside it.
+    // layout-header.php already opened an output buffer for its own
+    // HTML, which must be discarded before sending a JSON response.
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -53,35 +43,18 @@ $updates = $kernel->updates;
 $error = null;
 $checkResult = null;
 
-/*
- * Backups have no numeric id, and Csrf::token()/verify() key tokens by
- * action name alone — with a bare 'restore_backup'/'delete_backup'
- * action shared across every row, each row's Csrf::field() call
- * overwrites the previous row's session token, so only the last-rendered
- * row of each form type ever verifies. Suffixing the action with the
- * row's own filenames (the same values restoreBackup()/deleteBackup()
- * already key on) gives each row a distinct action name, matching the
- * '..._' . $id convention used for other per-row forms elsewhere in the
- * admin (e.g. media.php's 'delete_folder_' . $id).
- */
+// Backups have no numeric id, so a bare 'restore_backup'/'delete_backup'
+// action shared across rows would only let the last-rendered row verify.
+// Suffixing with the row's own filenames gives each a distinct action name.
 $backupCsrfAction = static function (string $action, ?string $filesFilename, ?string $databaseFilename): string {
     return $action . '_' . ($filesFilename ?? '') . '_' . ($databaseFilename ?? '');
 };
 
-/*
- * "Live progress, no full-page reload per batch" — admin/assets/js/
- * update-continue.js drives the backup_files/backup_database batch loop
- * (continue_install/continue_backup_now below) via repeated fetch()
- * calls instead of the plain redirect-per-batch a <form> submit would
- * do, so the panel updates in place instead of visibly reloading once
- * per batch (confusing on a large site needing dozens of batches — no
- * way to tell "still working" from "stuck"). That script marks its
- * request with this header; the two branches below respond with JSON
- * instead of a redirect only when it's present, so a plain form submit
- * (no JS, or update-continue.js failed to load) keeps working exactly
- * as before — the redirect-based flow is the real fallback, not a
- * legacy path being phased out.
- */
+// update-continue.js drives the batch loop via repeated fetch() calls
+// instead of a redirect-per-batch <form> submit, so the panel updates in
+// place. It marks its request with this header; the branches below
+// respond with JSON only when present, so a plain form submit (no JS)
+// still works via the redirect-based fallback.
 $isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 
 $updateStageLabels = [
@@ -147,14 +120,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ['key' => 'compatibility', 'label' => 'Checking compatibility'],
             ]);
 
-            // See this file's `?ajax=progress` branch above and
-            // UpdateProgress's own docblock: the byte upload itself is
-            // already finished by the time PHP even reaches this line
-            // (the whole $_FILES superglobal is only populated once the
-            // request body has fully arrived), so what's left —
-            // extracting and validating the archive — can take a real
-            // moment on a large package. Releasing the session lock here
-            // lets the page's polling request actually observe that.
+            // The byte upload is already finished by this line; what's
+            // left — extracting and validating — can take a moment on a
+            // large package, so this releases the session lock for the
+            // polling request above to observe it.
             session_write_close();
 
             try {
@@ -164,14 +133,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $kernel->updateProgress->complete(false, $error);
             }
 
-            // Every path below still needs to render the rest of the
-            // page (the Update Summary panel, or this same form again
-            // with an error banner), which calls Csrf::field() for
-            // several other forms — that throws once the session isn't
-            // PHP_SESSION_ACTIVE anymore, exactly what session_write_close()
-            // above just did. Reopening here is safe: whatever a
-            // concurrent poller needed from the session lock, it already
-            // had its window while checkUpload() was running.
+            // The rest of the page still calls Csrf::field(), which
+            // throws once the session isn't active — reopening here is
+            // safe, since a concurrent poller already had its window.
             session_start();
         }
     } elseif ($form === 'install' && Csrf::verify('update_install', $token)) {
@@ -186,11 +150,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ['key' => 'cleanup', 'label' => 'Finishing up'],
         ]);
 
-        // See the 'upload' branch above for why this releases the
-        // session lock before a long-running operation — beginInstall()
-        // itself is quick (it only sets up the pipeline state and takes
-        // the lock), but bundling this here matches every other
-        // long-running branch on this page.
+        // beginInstall() itself is quick, but this releases the session
+        // lock here to match every other long-running branch on this page.
         session_write_close();
 
         try {
@@ -201,24 +162,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = $exception->getMessage();
             $kernel->updateProgress->complete(false, $error);
 
-            // See the 'upload' branch above for why this is needed
-            // before the rest of the page renders — only reached on
-            // failure here, since success already exited via the
-            // redirect above.
+            // Only reached on failure — success already redirected.
             session_start();
         }
     } elseif ($form === 'continue_install' && Csrf::verify('update_continue_install', $token)) {
-        /*
-         * Advances exactly one stage of the pipeline beginInstall() above
-         * started — the database backup stage in particular can take
-         * several of these calls on a large site (see
-         * UpdateBackupService::backupDatabaseBatch()'s docblock), each
-         * one its own short request rather than one long-lived one that
-         * risks a webserver/proxy timeout. Redirects back to the same
-         * ?update_token= GET either way, so a page reload never
-         * resubmits this POST — the GET render below then shows the
-         * next auto-advancing "Continue" form, or the finished result.
-         */
+        // Advances exactly one stage of the pipeline beginInstall()
+        // started, each its own short request rather than one long-lived
+        // one that risks a timeout. Redirects back to ?update_token= so
+        // a page reload never resubmits this POST.
         $installToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
 
         try {
@@ -246,10 +197,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'stage' => $result['stage'],
                     'stage_label' => $updateStageLabels[$result['stage']] ?? $result['stage'],
                     'database_progress' => $result['database_progress'] ?? null,
-                    // Csrf::verify() above already consumed this
-                    // request's token (single-use) — a fresh one for the
-                    // JS's next fetch() call, since a plain JSON response
-                    // carries no embedded <form> to read one back out of.
+                    // A fresh token for the JS's next fetch() call, since
+                    // a plain JSON response has no <form> to read one from.
                     'csrf_token' => Csrf::token('update_continue_install'),
                 ]);
             }
@@ -289,13 +238,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $allowDowngrade = ($_POST['allow_downgrade'] ?? '') === '1';
         $downloadPath = null;
 
-        // Declared once, here in the view, covering this whole branch —
-        // including the two stages checkUpload() below reports itself —
-        // rather than by checkUpload()/UpdateService, which only ever
-        // call stage()/complete() and never reset(). See UpdateService's
-        // constructor docblock: a service resetting its own stage list
-        // would stomp whatever this branch already recorded for the
-        // "check"/"download" steps that ran before it.
+        // Declared once here, covering the whole branch including the
+        // stages checkUpload() reports itself — a service resetting its
+        // own stage list would stomp what this branch already recorded.
         $kernel->updateProgress->reset('github_download', [
             ['key' => 'check', 'label' => 'Checking GitHub for the release'],
             ['key' => 'download', 'label' => 'Downloading release package'],
@@ -303,9 +248,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ['key' => 'compatibility', 'label' => 'Checking compatibility'],
         ]);
 
-        // See the 'upload'/'install' branches above for why this
-        // releases the session lock before starting a potentially
-        // multi-minute network download.
+        // Releases the session lock before a potentially multi-minute
+        // network download.
         session_write_close();
 
         try {
@@ -337,8 +281,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        // See the 'upload' branch above for why this is needed before
-        // the rest of the page renders.
         session_start();
     } elseif ($form === 'github_settings' && Csrf::verify('github_settings', $token)) {
         $kernel->config->setOption('update_github_repo', trim((string) ($_POST['update_github_repo'] ?? '')));
@@ -462,7 +404,7 @@ $githubCheckInterval = (string) $kernel->config->option('update_check_interval',
 $updateStatus = $kernel->githubUpdates->cachedUpdateStatus($installedVersion);
 $releasesUrl = 'https://github.com/' . $githubRepo . '/releases';
 
-// LP-057: default to the Manual Update tab when the current request is the
+// Default to the Manual Update tab when the current request is the
 // result of a manual-upload error or a manual checkResult, so a validation
 // error on upload doesn't get hidden behind the GitHub tab.
 $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 'manual')

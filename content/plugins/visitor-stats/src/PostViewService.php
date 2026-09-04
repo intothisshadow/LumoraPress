@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Per-post daily view counting and totals for the Visitor & Post View Statistics plugin (LPP-014).
+ * Per-post daily view counting and totals for the Visitor & Post View Statistics plugin.
  *
  * @package LumoraPress
  * @subpackage Plugins

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Discussion Settings (LP-047) moderation policy: comment status decisions, comment-open eligibility, and field requirements.
+ * Discussion Settings moderation policy: comment status decisions, comment-open eligibility, and field requirements.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -26,8 +26,8 @@ use LumoraPress\Models\Post;
 /**
  * Centralizes the Settings > Discussion decision logic that
  * SiteController::submitComment() and ApiController::commentsStore() both
- * need, so the two entry points can't drift the way the pre-LP-047 status
- * calculation (duplicated inline in each controller) already had.
+ * need, so the two entry points can't drift the way a status calculation
+ * duplicated inline in each controller already had.
  *
  * Deliberately separate from CommentService: CommentService is CRUD/query
  * only (see its own docblock), this is policy that reads PressConfig.

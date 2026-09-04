@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The Emoji Picker plugin's main file (LPP-006): plugin metadata header and bootstrap.
+ * The Emoji Picker plugin's main file: plugin metadata header and bootstrap.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -37,16 +37,12 @@ $emojiPicker = EmojiPickerService::instance();
 
 add_filter('lp_emoji_picker_enabled', static fn (bool $enabled): bool => $emojiPicker->isEnabled());
 
-// Lets the editor-hosting admin views (posts/new.php, pages/new.php,
-// downloads/add-new.php) ask "should the picker button show for this
-// editor" without a direct EmojiPickerService reference — same
-// decoupling reason lp_fontawesome_enabled() exists as a filter instead
-// of a class check (see font-awesome.php's identical comment).
+// Lets editor-hosting admin views ask "should the picker button show for
+// this editor" without a direct EmojiPickerService reference.
 add_filter('lp_emoji_picker_editor_enabled', static fn (bool $enabled, string $editor): bool => $emojiPicker->editorEnabled($editor), 10);
 
-// Lets the editor-hosting admin views build their own data-emoji-* editor
-// container attributes without a direct EmojiPickerService reference —
-// same decoupling reason lp_fontawesome_css_urls exists in font-awesome.php.
+// Lets editor-hosting admin views build their own data-emoji-* editor
+// container attributes without a direct EmojiPickerService reference.
 add_filter('lp_emoji_picker_data', static function (array $data) use ($emojiPicker): array {
     return [
         'dataset' => $emojiPicker->dataset(),
@@ -56,12 +52,11 @@ add_filter('lp_emoji_picker_data', static function (array $data) use ($emojiPick
 });
 
 /*
- * Template tag facade (mirrors font-awesome.php's identical lp_icon()
- * pattern): lp_emoji_picker_button() in include/helpers.php calls
- * apply_filters('lp_emoji_picker_trigger_html', '', $args) unconditionally
- * — safe to call from theme/plugin markup (e.g. a comment form) even
- * when this plugin is inactive, since the filter just never runs and the
- * default '' passes straight through.
+ * Template tag facade: lp_emoji_picker_button() in include/helpers.php
+ * calls apply_filters('lp_emoji_picker_trigger_html', '', $args)
+ * unconditionally — safe to call from theme/plugin markup even when this
+ * plugin is inactive, since the filter just never runs and the default
+ * '' passes straight through.
  */
 add_filter('lp_emoji_picker_trigger_html', static function (string $html, array $args) use ($emojiPicker): string {
     if (!$emojiPicker->isEnabled()) {

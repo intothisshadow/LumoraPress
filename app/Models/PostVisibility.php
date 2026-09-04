@@ -19,10 +19,8 @@ namespace LumoraPress\Models;
 
 /**
  * Independent of PostStatus — a post can be Published and Private at the
- * same time (visible to logged-in staff, never to a guest or search
- * engine) — see Post::isPubliclyVisible()/PostService's public query
- * methods, which all AND a status check with a visibility check rather
- * than folding privacy into the status enum itself.
+ * same time (visible to logged-in staff, never a guest or search engine).
+ * See Post::isPubliclyVisible().
  */
 enum PostVisibility: string
 {

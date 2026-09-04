@@ -19,12 +19,8 @@ get_header();
 ?>
 <?php if ($page_title === null): ?>
     <?php
-    /*
-     * LP-022: WebSite structured data — only on the genuine homepage
-     * (this template is shared with LP-046's "Posts page" at its own
-     * URL, which always passes a non-null $page_title, so that check is
-     * what distinguishes the two here).
-     */
+    // WebSite structured data — only on the genuine homepage. The
+    // "Posts page" (own URL) always passes a non-null $page_title.
     $websiteJsonLd = [
         '@context' => 'https://schema.org',
         '@type' => 'WebSite',

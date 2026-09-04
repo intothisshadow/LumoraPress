@@ -1,7 +1,7 @@
 <?php
 
 /**
- * CRUD for the contact_forms table (LPP-003).
+ * CRUD for the contact_forms table.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -119,12 +119,8 @@ final class ContactFormService
     }
 
     /**
-     * Turns admin-submitted field label/type/required/options arrays into
-     * validated ContactFormField objects, deriving each one's stable `key`
-     * from its label (see slugifyKey()). A blank label means "unused
-     * trailing row" (the always-present blank row `add-new.php` renders
-     * for the no-JS fallback — see `custom-fields.js`'s identical
-     * "blank row" convention) and is silently skipped, not an error.
+     * A blank label means an unused trailing row (the no-JS fallback's
+     * always-present blank row) and is silently skipped, not an error.
      *
      * @param array<int, string> $labels
      * @param array<int, string> $types
@@ -160,10 +156,7 @@ final class ContactFormService
     }
 
     /**
-     * A slug unique within this one form's own field list — collisions
-     * (e.g. two fields both labeled "Name") get a numeric suffix, the same
-     * "append -2, -3, ..." approach MediaService::sanitizeFilename()'s
-     * callers use for duplicate filenames.
+     * Collisions (e.g. two fields both labeled "Name") get a numeric suffix.
      *
      * @param array<string, bool> $usedKeys
      */

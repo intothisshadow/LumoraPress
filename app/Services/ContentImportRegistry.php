@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Provenance tracking for bulk-created content (LPP-004/LPP-005 Phase 1): which posts/pages/users/media/comments came from which import or generation batch.
+ * Provenance tracking for bulk-created content: which posts/pages/users/media/comments came from which import or generation batch.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -21,27 +21,15 @@ use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
 
 /**
- * A plain bookkeeping table (`content_import_records`) recording which
- * content rows a bulk operation created, grouped by a `batch_id` and
- * tagged with a free-form `source` string (e.g. `'dummy_content'`,
- * `'wxr_import'`). Deliberately has no dependency on
- * PostService/PageService/UserService/MediaService/CommentService — it
- * only ever stores/queries ids, never deletes content itself. The caller
- * (e.g. a plugin's generator/importer class, which already holds
- * references to those services because it used them to create the
- * content in the first place) is responsible for actually deleting rows
- * via each service's own delete()/trash() method, then calling
- * clearBatch() to drop the now-stale bookkeeping rows — keeping deletion
- * on the same validated path every other deletion in this codebase
- * already uses, rather than this class reaching into content tables
- * directly.
+ * A plain bookkeeping table (`content_import_records`) recording which content rows a bulk
+ * operation created, grouped by `batch_id` and tagged with a free-form `source` string. Has
+ * no dependency on the content services — it only stores/queries ids; the caller deletes
+ * rows via each service's own delete()/trash() and then calls clearBatch(), keeping deletion
+ * on the same validated path every other deletion in this codebase uses.
  *
- * `external_id` is an optional free-form string (a WXR post's original
- * numeric WordPress id, for instance) so a future importer can look up
- * "what did WordPress post #123 become in this install" — every content
- * table here is plain AUTO_INCREMENT with no way to force-preserve an
- * original id, so this is the only place that mapping is recoverable
- * from.
+ * `external_id` is an optional free-form string (e.g. a WXR post's original WordPress id) so
+ * a future importer can look up what a source id became locally — content tables here are
+ * plain AUTO_INCREMENT, so this is the only place that mapping is recoverable from.
  */
 final class ContentImportRegistry
 {
@@ -62,16 +50,10 @@ final class ContentImportRegistry
     }
 
     /**
-     * $snapshotValue is for content that isn't a real, individually
-     * delete()-able row at all (LPP-004 Stage 8: WordPress-imported menus/
-     * widgets, which persist as JSON blobs in the options table via
-     * MenuManager/WidgetManager rather than a dedicated table — see
-     * WordPressImportService::importMenus()/importWidgets()). A caller
-     * recording one of these passes the *entire pre-import option value*
-     * here (with $contentId as an arbitrary placeholder, since nothing
-     * ever looks the row up by id) so rollback can restore it verbatim via
-     * snapshotForBatch() instead of trying to delete individual items by
-     * id the way every other content type does.
+     * $snapshotValue is for content with no individually delete()-able row (e.g.
+     * WordPress-imported menus/widgets, stored as JSON blobs rather than a dedicated table).
+     * A caller passes the entire pre-import option value here so rollback can restore it
+     * verbatim via snapshotForBatch(), instead of deleting individual items by id.
      */
     public function record(string $batchId, string $source, string $contentType, int $contentId, ?string $externalId = null, ?string $snapshotValue = null): void
     {
@@ -95,8 +77,8 @@ final class ContentImportRegistry
      * Like record() with a $snapshotValue, but updates an existing
      * snapshot row for $batchId/$contentType in place instead of always
      * inserting a new one — needed for state that's rewritten repeatedly
-     * within a single batch (LPP-004's stage-by-stage import progress,
-     * updated after every stage rather than once at the end) rather than
+     * within a single batch (stage-by-stage import progress, updated
+     * after every stage rather than once at the end) rather than
      * written once up front, the way nav_menus_snap/widgets_snap/
      * site_settings_snap are. record() alone would leave every prior
      * write behind as a separate row, and snapshotForBatch()'s query has
@@ -176,18 +158,10 @@ final class ContentImportRegistry
     }
 
     /**
-     * Like newIdForExternalId() above, but scoped to $source as a whole
-     * rather than one $batchId — resolves an external id back to the
-     * local id it became when imported by *any* previous batch of this
-     * source, not just the batch currently running. Backs Skip/Overwrite
-     * existing-content handling (LPP-004): before creating a new row, a
-     * caller checks whether this exact external id was already imported
-     * by an earlier run of the same source, so a deliberate re-import
-     * against previously-imported content doesn't always duplicate it.
-     * The oldest matching row wins when more than one somehow exists
-     * (shouldn't happen in practice — each external id is only ever
-     * recorded once per content type per source — but ASC keeps this
-     * deterministic rather than relying on undefined row order).
+     * Like newIdForExternalId(), but scoped to $source as a whole rather than one $batchId —
+     * resolves an external id against any previous batch of this source, backing
+     * Skip/Overwrite existing-content handling on re-import. The oldest matching row wins
+     * when more than one exists, for deterministic behavior.
      */
     public function existingLocalId(string $source, string $contentType, string $externalId): ?int
     {

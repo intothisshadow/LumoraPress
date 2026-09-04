@@ -20,16 +20,12 @@ namespace LumoraPress\Core\Security;
 /**
  * Builds and sends a Content-Security-Policy header.
  *
- * Ships with a strict, same-origin-only default: nothing in Lumora Press's
- * core (front end, admin, or installer) currently needs inline scripts,
- * inline styles, or any third-party origin, so there is no reason to allow
- * them by default. Themes and plugins that genuinely need to loosen a
- * directive (e.g. a widget embedding video from an external host) should
- * do so via the `csp_directives` filter applied at the call site
- * (`include/bootstrap.php`) rather than by editing this class — the class
- * itself stays a pure, unopinionated header builder with no knowledge of
- * the hook system, config, or database, so it stays trivially testable and
- * reusable from `install/index.php`, which runs before either exists.
+ * Ships with a strict, same-origin-only default since core needs no
+ * inline scripts/styles or third-party origins. A theme/plugin that
+ * needs to loosen a directive should use the `csp_directives` filter
+ * (applied in `include/bootstrap.php`) rather than editing this class —
+ * it stays a pure header builder with no hook/config/database
+ * dependency, so it's usable from `install/index.php` too.
  */
 final class ContentSecurityPolicy
 {

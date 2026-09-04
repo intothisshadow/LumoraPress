@@ -23,26 +23,17 @@ use LumoraPress\Models\Post;
 use LumoraPress\Models\SearchResult;
 
 /**
- * Featured Image theme API (LP-040) — has_post_thumbnail()/
- * post_thumbnail_url()/the_post_thumbnail()/post_thumbnail_caption(),
- * plus the_post_thumbnail_lightbox() (LP-031), available inside theme
- * template files, mirroring classic WordPress naming. Reads
- * MediaService/ThumbnailService/PressConfig via the FeaturedImages static
- * bridge (see its docblock for why a bridge rather than threading these
- * through every SiteController render() call).
- *
- * Post|Page|SearchResult: SearchResult (LP-031) gained its own
- * featuredImageId mirroring Post/Page's, so search results can show a
- * thumbnail too — all three expose the same featuredImageId/title shape
- * this file's functions need.
+ * Featured Image theme API, mirroring classic WordPress naming. Reads
+ * MediaService/ThumbnailService/PressConfig via the FeaturedImages
+ * static bridge. Post|Page|SearchResult: SearchResult exposes the same
+ * featuredImageId/title shape, so search results can show a thumbnail too.
  */
 
 if (!function_exists('post_thumbnail_media')) {
     /**
      * Resolves the raw media row for $item's featured image, if any —
      * falls back to the configured default featured image, then null.
-     * Internal building block for the rest of this API, but left public
-     * since a theme may want the raw row (e.g. file_size, mime_type).
+     * Left public since a theme may want the raw row.
      *
      * @return array<string, mixed>|null
      */
@@ -66,14 +57,10 @@ if (!function_exists('post_thumbnail_media')) {
 
 if (!function_exists('post_thumbnail_crop')) {
     /**
-     * $item's manual crop rectangle (LP-040), if one applies to $media —
-     * only ever the item's own featured image, never the site-wide
-     * default fallback image post_thumbnail_media() may have returned
-     * instead: the crop was drawn against that one specific image, so
-     * applying it to a different image (the default, or a stale value
-     * left over after the featured image was changed) could produce a
-     * nonsensical result. SearchResult (LP-031) has no crop of its own —
-     * only Post/Page do — so it always returns null here.
+     * $item's manual crop rectangle, if one applies to $media — only
+     * ever the item's own featured image, never a fallback default: the
+     * crop was drawn against that specific image and would be nonsensical
+     * applied elsewhere. SearchResult has no crop, so always returns null.
      *
      * @param array<string, mixed> $media
      * @return array{x: int, y: int, width: int, height: int}|null
@@ -101,19 +88,14 @@ if (!function_exists('has_post_thumbnail')) {
 
 if (!function_exists('post_thumbnail_url')) {
     /**
-     * The public URL for $item's featured image at $size, falling back to
-     * the original image if that size wasn't generated (e.g. the source
-     * was smaller than the target — LP-001's upscale prevention), then to
-     * the configured default featured image, then null. Root-relative by
-     * default (matches MediaService::url()'s convention); pass
-     * $absolute = true for contexts that need a fully-qualified URL (Open
-     * Graph tags, RSS/Atom enclosures — neither can be root-relative).
+     * The public URL for $item's featured image at $size, falling back
+     * to the original image (upscale prevention), then the configured
+     * default featured image, then null. Root-relative by default; pass
+     * $absolute = true for contexts needing a fully-qualified URL (Open
+     * Graph, RSS/Atom).
      *
-     * If $item has a manual crop (LP-040) for this exact image, that
-     * cropped image is returned instead of $size's named thumbnail — a
-     * manual crop always wins over the automatic centered one, regardless
-     * of which $size was requested, since there is only ever one manual
-     * crop per item (not one per named size).
+     * A manual crop, if $item has one for this exact image, always wins
+     * over $size's named thumbnail — there's only one crop per item.
      */
     function post_thumbnail_url(Post|Page|SearchResult $item, string $size = 'medium', bool $absolute = false): ?string
     {
@@ -158,18 +140,14 @@ if (!function_exists('the_post_thumbnail')) {
     /**
      * Echoes an <img> for $item's featured image at $size, with a real
      * srcset/sizes built from whichever thumbnail sizes were actually
-     * generated for that image (LP-001's ThumbnailService::thumbnailsFor()) —
-     * plus the original as the largest candidate. Does nothing if there is
-     * no featured image and no default configured.
+     * generated, plus the original as the largest candidate. Does
+     * nothing if there is no featured image and no default configured.
      *
-     * If $item has a manual crop (LP-040) for this exact image, a single
-     * fixed-size <img> for that crop is echoed instead — no srcset, since
-     * a manual crop has no responsive variants (see
-     * ThumbnailService::generateFeaturedCrop()'s docblock).
+     * A manual crop, if present, is echoed as a single fixed-size <img>
+     * instead — no srcset, since a crop has no responsive variants.
      *
      * @param array<string, string> $attrs Extra attributes (e.g. "class")
-     *     merged onto the <img> tag, the same "let the theme extend it"
-     *     idea as nav_menu()'s $menuClass param.
+     *     merged onto the <img> tag.
      */
     function the_post_thumbnail(Post|Page|SearchResult $item, string $size = 'medium', array $attrs = []): void
     {
@@ -288,26 +266,15 @@ if (!function_exists('the_post_thumbnail')) {
 if (!function_exists('the_post_thumbnail_lightbox')) {
     /**
      * Same as the_post_thumbnail(), wrapped in an <a> carrying the
-     * data-pswp-* attributes PhotoSwipe (LP-031) needs to open it in a
-     * lightbox — width/height/caption of whichever image the link
-     * actually points at ($largeSize's generated thumbnail if one
-     * exists, else the original), never guessed. Marks the page as
-     * needing the PhotoSwipe assets via MediaViewer::markUsed(), so
-     * footer.php only loads them when at least one of these is rendered.
-     * Does nothing if there is no image (mirrors the_post_thumbnail()'s
-     * own no-image case) — no dangling empty <a>.
+     * data-pswp-* attributes PhotoSwipe needs to open it in a lightbox,
+     * with width/height/caption of the actual linked image, never
+     * guessed. Marks the page via MediaViewer::markUsed() so footer.php
+     * only loads PhotoSwipe assets when needed. Does nothing if there is
+     * no image.
      *
      * $largeSize defaults to the site-wide "Lightbox image size" setting
-     * (Settings > Media, `lightbox_large_size` option, itself defaulting
-     * to `'large'`) when not passed explicitly — lets a template opt out
-     * of the site setting for a specific call without needing a PHP
-     * constant, while every call site that doesn't care picks up an
-     * admin's choice automatically. `'large'`/any other registered
-     * thumbnail size name loads that size; `'full'` loads the raw
-     * original upload — ThumbnailService::url() returning null for an
-     * unregistered size name (which `'full'` always is) already falls
-     * through to the original in post_thumbnail_url(), so no special
-     * casing is needed here for that value.
+     * (`lightbox_large_size`, default `'large'`) when omitted, letting a
+     * template opt out per call. `'full'` loads the raw original upload.
      *
      * @param array<string, string> $attrs Forwarded to the_post_thumbnail().
      */
@@ -329,11 +296,9 @@ if (!function_exists('the_post_thumbnail_lightbox')) {
 
         MediaViewer::markUsed();
 
-        // If a manual crop (LP-040) applies, $href above already points
-        // at the cropped image — its own dimensions must be used here
-        // too, not $largeSize's named-thumbnail row, or the data-pswp-*
-        // attributes would describe a different image than the one the
-        // link actually opens.
+        // If a manual crop applies, $href already points at the cropped
+        // image — its dimensions must be used here too, or data-pswp-*
+        // would describe a different image than the one the link opens.
         $crop = post_thumbnail_crop($item, $media);
         $cropped = $crop !== null ? FeaturedImages::thumbnails()->generateFeaturedCrop($media, $crop) : null;
 
@@ -357,11 +322,9 @@ if (!function_exists('the_post_thumbnail_lightbox')) {
         }
         $caption = post_thumbnail_caption($item) ?? (($media['alt_text'] ?? '') !== '' ? (string) $media['alt_text'] : '');
 
-        // data-pswp-id backs the deep-link feature (media-viewer.js) —
-        // it identifies which anchor a "#lp-media-{id}" URL hash should
-        // reopen. data-pswp-filename backs the "show filenames in
-        // lightbox" setting — always emitted here since the toggle is
-        // read client-side (window.lpMediaViewer), not per-image.
+        // data-pswp-id backs the deep-link feature (media-viewer.js).
+        // data-pswp-filename is always emitted since the "show
+        // filenames" toggle is read client-side, not per-image.
         echo '<a href="' . esc_url($href) . '"'
             . ' data-pswp-id="' . (int) $media['id'] . '"'
             . ($width > 0 ? ' data-pswp-width="' . $width . '"' : '')

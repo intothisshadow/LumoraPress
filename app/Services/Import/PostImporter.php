@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Creates, skips, or overwrites a Post from an ImportedPost DTO, wiring categories/tags/custom fields and recording provenance (LPP-004/LPP-005 Phase 1).
+ * Creates, skips, or overwrites a Post from an ImportedPost DTO, wiring categories/tags/custom fields and recording provenance.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -26,9 +26,9 @@ use RuntimeException;
 
 /**
  * A thin wrapper over PostService/CategoryService/TagService, built so
- * both a future WXR parser (LPP-004) and the Dummy Content generator
- * (LPP-005) can turn an ImportedPost into a real row through the same
- * path rather than duplicating PostService::create()'s call shape and
+ * both a WXR parser and the Dummy Content generator can turn an
+ * ImportedPost into a real row through the same path rather than
+ * duplicating PostService::create()'s call shape and
  * the category/tag/meta follow-up calls it doesn't accept inline.
  *
  * Ordering contract (see ImportedPost's own docblock too): the caller

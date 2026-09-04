@@ -21,28 +21,15 @@ use LumoraPress\Core\PressConfig;
 use Throwable;
 
 /**
- * When enabled (Settings > Privacy), sends install UUID, Lumora Press
- * version, and PHP version — nothing else — to a dedicated endpoint that
- * is completely separate from GitHubReleaseProvider's release-check
- * source, so enabling/disabling one never affects the other.
+ * When enabled (Settings > Privacy), sends install UUID, Lumora Press version, and PHP
+ * version — nothing else — to a dedicated endpoint, completely separate from
+ * GitHubReleaseProvider's release-check source. No domain, site title, admin email, content,
+ * or visitor data is ever sent, and the UUID cannot be correlated back to a specific site.
  *
- * Privacy: no domain, site title, admin email, content, or visitor data
- * is ever sent. The install UUID is a randomly generated identifier with
- * no relation to any other value this install stores; there is no way to
- * correlate it back to a specific site from the ping payload alone.
- *
- * Ping cadence: fires once immediately when the feature is enabled (see
- * admin/views/settings/privacy.php), then at most roughly monthly
- * thereafter. maybeSendPing() is called from every admin page load
- * (admin/index.php), but the network request itself is skipped unless
- * the feature is enabled AND the interval has actually elapsed — a cheap
- * option read plus a timestamp comparison on every other call.
- *
- * Failure handling: every failure mode (disabled, config write error,
- * network error) is swallowed silently by maybeSendPing() — this feature
- * must never produce a user-facing error or block any admin action. The
- * network transport is injectable so tests never make a real HTTP
- * request.
+ * Fires once immediately when enabled, then at most roughly monthly thereafter;
+ * maybeSendPing() runs on every admin page load but skips the network request unless the
+ * interval has elapsed. Every failure mode is swallowed silently — this feature must never
+ * produce a user-facing error. The network transport is injectable for tests.
  */
 final class InstallPingService
 {
@@ -150,20 +137,12 @@ final class InstallPingService
     }
 
     /**
-     * Performs the actual network request and records the attempt
-     * timestamp regardless of outcome, so a persistently unreachable
-     * endpoint is retried on the next monthly interval rather than on
-     * every subsequent page load.
+     * Performs the actual network request and records the attempt timestamp regardless of
+     * outcome, so an unreachable endpoint is retried monthly rather than every page load.
+     * Public so Settings > Privacy can trigger an immediate ping/test without waiting.
      *
-     * Public (rather than folded into maybeSendPing()) so the Settings >
-     * Privacy screen can trigger an immediate ping the moment the feature
-     * is switched on, and offer a "send a test ping now" action, without
-     * waiting for the next admin page load to notice the interval has
-     * elapsed.
-     *
-     * @throws Throwable on a transport-level failure or non-2xx response
-     *     — callers that only want the fire-and-forget behaviour should
-     *     go through maybeSendPing() instead, which already swallows this.
+     * @throws Throwable on a transport-level failure or non-2xx response — callers that want
+     *     fire-and-forget behavior should use maybeSendPing() instead.
      */
     public function sendPing(): void
     {
