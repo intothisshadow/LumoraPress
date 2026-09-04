@@ -41,6 +41,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Single post page (LP-147): a post's More tag marker leaked into its own full-content view instead of only cutting off listing/archive previews — a Markdown post showed the literal `<!--more-->` text, and a Visual/HTML post showed a visible "Read More" label, right in the middle of the published page. Every bundled theme's `single.php` now renders content through `the_content()`, which strips the marker, instead of calling the lower-level renderer directly on raw content.
 - Post/Page editor sidebar and Pages tree view (LP-139): neither screen
   had any keyboard-accessible way to reorder items — the shared
   drag-and-drop script behind both is mouse-only, and unlike Appearance

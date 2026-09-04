@@ -40,7 +40,7 @@ get_header(['post' => $post]);
                     <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
                 </div>
             <?php endif; ?>
-            <div class="lp-post__content"><?= render_content($post->content, $post->contentFormat) ?></div>
+            <div class="lp-post__content"><?php the_content($post); ?></div>
             <?php if (post_has_tags($post)): ?>
                 <ul class="lp-post__tags">
                     <?php foreach (get_the_tags($post) as $postTag): ?>
