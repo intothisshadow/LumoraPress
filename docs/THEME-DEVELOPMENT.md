@@ -321,11 +321,7 @@ is available if you need a conditional wrapper around surrounding markup
 
 ## Theme Options
 
-A theme (or plugin) registers its own Theme Options fields by hooking
-`register_theme_options` from `functions.php` — this hook fires *after*
-your theme's `functions.php` has already loaded and *after* core's own
-sixteen built-in fields (Colors, Typography, Layout, Post Display,
-Header, Welcome Message, Footer) are already registered:
+A theme (or plugin) registers its own Theme Options fields by hooking `register_theme_options` from `functions.php` — this hook fires *after* your theme's `functions.php` has already loaded and *after* core's own built-in fields (Colors, Typography, Layout, Post Display, Featured Image, Header, Welcome Message, Footer) are already registered:
 
 ```php
 add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOptions $options): void {
@@ -379,19 +375,7 @@ for the exact pattern to follow for your own rich-content field.
 
 ### Appearance > Customize screen sections
 
-The admin Appearance > Customize screen (LP-123, replacing the old flat
-Theme Options page) groups sections into six tabs: **Header**,
-**Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**. Menu
-and Widgets are link-outs to the existing Menus/Widgets screens, not
-option sections. **Body groups the pre-existing `colors`/`typography`/
-`layout`/`post_display` sections under one tab — it is not itself a
-registered `ThemeOptions` section** (`ThemeOptions::sections()` still
-returns those four section keys unchanged; the tab grouping is purely an
-admin-view concern). A custom section your theme/plugin registers (like
-`my_theme` above) is not one of the six built-in tabs and currently has
-no dedicated tab of its own on the Customize screen — see
-`admin/views/appearance/customize.php`'s `$tabSections` if you need to
-place a custom section somewhere specific.
+The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). A custom section your theme/plugin registers (like `my_theme` above) is not one of the six built-in tabs and currently has no dedicated tab of its own on the Customize screen — see `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
 
 Core's `header`/`welcome_message`/`footer` sections come with matching
 template tags a theme calls directly — no hook required for the common

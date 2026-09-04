@@ -260,6 +260,24 @@ final class ThemeOptions
             label: 'Read More text',
             default: 'Continue reading →',
         ));
+        // Its own section rather than folded into Post Display: this is a
+        // single visual choice with its own admin picker UI (customize.php
+        // renders featured_image_position as two clickable preview cards,
+        // not a plain <select>), not a list of unrelated toggles.
+        $this->registerSection('featured_image', 'Featured Image', 'Choose where the featured image appears relative to the title on a single post or page.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'featured_image_position',
+            section: 'featured_image',
+            type: ThemeOptionType::Select,
+            label: 'Featured image position',
+            default: 'above',
+            choices: [
+                'above' => 'Above title',
+                'beside' => 'Beside title',
+            ],
+            help: 'On the homepage, this also switches the Classic layout\'s listing between the two arrangements — the Magazine layout always shows the image above.',
+        ));
 
         // header_image itself is deliberately NOT a ThemeOptionField — a
         // file upload doesn't fit this class's string-in/string-out

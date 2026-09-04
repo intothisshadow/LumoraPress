@@ -3124,6 +3124,114 @@ select:focus {
     margin-bottom: 0.35rem;
 }
 
+/*
+ * Clickable visual radio picker (currently only Appearance > Customize's
+ * "Featured image position" field) — a small illustrated diagram per
+ * choice instead of a plain <select>, so the effect of each option is
+ * visible before picking it. The <input type="radio"> stays in the DOM
+ * (visually hidden, not display:none) so the whole card stays keyboard-
+ * focusable and screen-reader-labelled via its wrapping <label>.
+ */
+.lp-field--visual-choice {
+    border: none;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+.lp-field--visual-choice legend {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0;
+}
+
+.lp-visual-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+}
+
+.lp-visual-choice__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.lp-visual-choice__option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    width: 150px;
+    padding: 0.85rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lp-visual-choice__option:hover {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-visual-choice__option:has(.lp-visual-choice__input:checked) {
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
+.lp-visual-choice__option:has(.lp-visual-choice__input:focus-visible) {
+    outline: 2px solid var(--lp-admin-accent);
+    outline-offset: 2px;
+}
+
+.lp-visual-choice__diagram {
+    display: block;
+    width: 96px;
+    height: 68px;
+}
+
+.lp-visual-choice__image {
+    fill: var(--lp-admin-accent);
+    opacity: 0.35;
+}
+
+.lp-visual-choice__heading {
+    fill: var(--lp-admin-text);
+    opacity: 0.85;
+}
+
+.lp-visual-choice__line {
+    fill: var(--lp-admin-border);
+}
+
+.lp-visual-choice__caption {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--lp-admin-text);
+}
+
+.lp-visual-choice__badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--lp-admin-success-bg);
+    color: var(--lp-admin-success-text);
+}
+
 .lp-category-quick-add {
     margin-top: 0.5rem;
 }

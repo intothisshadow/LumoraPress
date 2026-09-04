@@ -58,7 +58,7 @@ $tabs = [
 $tabSections = [
     'header' => ['header'],
     'welcome_message' => ['welcome_message'],
-    'body' => ['colors', 'typography', 'layout', 'post_display'],
+    'body' => ['colors', 'typography', 'layout', 'post_display', 'featured_image'],
     'menu' => [],
     'widgets' => [],
     'footer' => ['footer'],
@@ -93,6 +93,66 @@ foreach ($kernel->themes->discover() as $themeInfo) {
 // Message/Footer field is typically short text, not full post content.
 $renderThemeOptionField = function (ThemeOptionField $field, string $currentValue, string $formatValue = 'html'): void {
     $fieldId = 'theme-option-' . str_replace('_', '-', $field->key);
+
+    // featured_image_position gets a bespoke clickable visual picker
+    // (two small layout diagrams) instead of the plain <select> every
+    // other Select field falls through to below — a purely presentational
+    // choice, not a new generic field type, since nothing else in this
+    // codebase needs an illustrated picker yet. The choice→diagram mapping
+    // is hardcoded to this field's two known values ('above'/'beside');
+    // the "Default" badge itself is data-driven off $field->default, not
+    // hardcoded to either value.
+    if ($field->key === 'featured_image_position') {
+        ?>
+        <fieldset class="lp-field lp-field--visual-choice">
+            <legend><?= esc_html($field->label) ?></legend>
+            <div class="lp-visual-choice">
+                <?php foreach ($field->choices as $choiceValue => $choiceLabel): ?>
+                    <?php $choiceId = $fieldId . '-' . $choiceValue; ?>
+                    <label class="lp-visual-choice__option" for="<?= esc_attr($choiceId) ?>">
+                        <input
+                            type="radio"
+                            id="<?= esc_attr($choiceId) ?>"
+                            name="opt_<?= esc_attr($field->key) ?>"
+                            value="<?= esc_attr($choiceValue) ?>"
+                            class="lp-visual-choice__input"
+                            <?= $currentValue === $choiceValue ? 'checked' : '' ?>
+                        >
+                        <span class="lp-visual-choice__preview">
+                            <?php if ($choiceValue === 'beside'): ?>
+                                <svg class="lp-visual-choice__diagram" viewBox="0 0 96 68" aria-hidden="true" focusable="false">
+                                    <rect class="lp-visual-choice__image" x="4" y="4" width="32" height="60" rx="3"/>
+                                    <rect class="lp-visual-choice__heading" x="44" y="8" width="48" height="7" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="44" y="21" width="48" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="44" y="28" width="48" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="44" y="35" width="30" height="4" rx="2"/>
+                                </svg>
+                            <?php else: ?>
+                                <svg class="lp-visual-choice__diagram" viewBox="0 0 96 68" aria-hidden="true" focusable="false">
+                                    <rect class="lp-visual-choice__image" x="4" y="4" width="88" height="30" rx="3"/>
+                                    <rect class="lp-visual-choice__heading" x="4" y="40" width="50" height="7" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="4" y="51" width="88" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="4" y="58" width="64" height="4" rx="2"/>
+                                </svg>
+                            <?php endif; ?>
+                        </span>
+                        <span class="lp-visual-choice__caption">
+                            <?= esc_html($choiceLabel) ?>
+                            <?php if ($choiceValue === $field->default): ?>
+                                <span class="lp-visual-choice__badge">Default</span>
+                            <?php endif; ?>
+                        </span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <?php if ($field->help !== ''): ?>
+                <span class="lp-field__hint"><?= esc_html($field->help) ?></span>
+            <?php endif; ?>
+        </fieldset>
+        <?php
+
+        return;
+    }
     ?>
     <p class="lp-field">
         <label for="<?= esc_attr($fieldId) ?>"><?= esc_html($field->label) ?></label>

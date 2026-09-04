@@ -22,9 +22,15 @@ get_header(['page' => $page]);
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <article class="lp-page">
+            <?php $lpThumbnailAboveTitle = theme_option('featured_image_position') !== 'beside' && has_post_thumbnail($page); ?>
+            <?php if ($lpThumbnailAboveTitle): ?>
+                <div class="lp-post__thumbnail lp-post__thumbnail--hero lp-gallery">
+                    <?php the_post_thumbnail_lightbox($page, size: 'large'); ?>
+                </div>
+            <?php endif; ?>
             <?php the_page_breadcrumbs($page, $page_ancestors ?? []); ?>
             <h1 class="lp-page-title"><?= esc_html($page->title) ?></h1>
-            <?php if (has_post_thumbnail($page)): ?>
+            <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($page)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($page, size: 'large'); ?>
                 </div>

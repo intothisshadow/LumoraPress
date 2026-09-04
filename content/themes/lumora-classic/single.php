@@ -21,6 +21,12 @@ get_header(['post' => $post]);
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <article class="lp-post">
+            <?php $lpThumbnailAboveTitle = theme_option('featured_image_position') !== 'beside' && has_post_thumbnail($post); ?>
+            <?php if ($lpThumbnailAboveTitle): ?>
+                <div class="lp-post__thumbnail lp-post__thumbnail--hero lp-gallery">
+                    <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
+                </div>
+            <?php endif; ?>
             <h1 class="lp-post__title"><?= esc_html($post->title) ?></h1>
             <p class="lp-post__meta">
                 <?php the_author_link($post); ?>
@@ -29,7 +35,7 @@ get_header(['post' => $post]);
                     <span class="lp-post__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
                 <?php endif; ?>
             </p>
-            <?php if (has_post_thumbnail($post)): ?>
+            <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($post)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
                 </div>

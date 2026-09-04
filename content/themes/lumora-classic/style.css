@@ -913,6 +913,26 @@ img {
     border-radius: 4px;
 }
 
+/* "Show featured image above title" Theme Option — same full-width
+   banner treatment as .lp-post-list__thumbnail's own hero-banner
+   image, applied to a single post/page instead of a listing card. */
+.lp-post__thumbnail--hero {
+    width: 100%;
+}
+
+.lp-post__thumbnail--hero img {
+    width: 100%;
+    height: 320px;
+    object-fit: cover;
+    border-radius: var(--lp-radius);
+}
+
+@media (max-width: 720px) {
+    .lp-post__thumbnail--hero img {
+        height: 200px;
+    }
+}
+
 /* =========================================================
    Post list (homepage & archives)
    ========================================================= */
@@ -2717,6 +2737,41 @@ body.lp-site {
     color: var(--lp-accent);
 }
 
+/* "Show featured image above title" Theme Option, applied to the
+   Classic homepage layout: overrides its own image-beside-text
+   arrangement back to the same full-width, above-the-title hero
+   banner Magazine and single posts/pages use, so the option has one
+   consistent effect across the whole site rather than stopping at
+   the homepage. Higher specificity (three classes) than the plain
+   .lp-content--home--classic rules above, so no !important needed. */
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) {
+    flex-direction: column;
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
+    flex: none;
+    width: 100%;
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
+    width: 100%;
+    height: 320px;
+    object-fit: cover;
+    border-radius: var(--lp-radius);
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__body,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__body,
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__body {
+    padding: 0;
+}
+
 @media (max-width: 720px) {
     .lp-content--home--classic .lp-post-list__item,
     .lp-content--home--classic .lp-post-list__item:first-child,
@@ -2735,6 +2790,16 @@ body.lp-site {
     .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail img,
     .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
         height: 210px;
+    }
+
+    /* Overrides the desktop .lp-content--thumbnail-above height (320px)
+       back down to the same 200px every other mobile hero image on this
+       site uses — its 3-class selector otherwise outranks the 210px rule
+       just above, which is scoped to plain .lp-content--home--classic. */
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
+        height: 200px;
     }
 
     .lp-content--home--classic .lp-post-list__body,

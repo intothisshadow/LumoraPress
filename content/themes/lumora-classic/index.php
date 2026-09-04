@@ -36,7 +36,8 @@ get_header();
     <script type="application/ld+json"><?= json_encode($websiteJsonLd) ?></script>
 <?php endif; ?>
 <?php $lpHomeLayout = theme_option('lumora_classic_home_layout') === 'classic' ? 'classic' : 'magazine'; ?>
-<div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?> lp-layout">
+<?php $lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? ' lp-content--thumbnail-above' : ''; ?>
+<div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?><?= esc_attr($lpThumbnailAboveClass) ?> lp-layout">
     <main class="lp-main">
         <?php if ($page_title === null && $posts !== []): ?>
             <header class="lp-main-header">
