@@ -42,6 +42,8 @@ $topDevices = $viewStats->topDevices(7, 5);
         <li><span>All Time</span><span><?= (int) $totals['all_time'] ?></span></li>
     </ul>
 
+    <p><a href="<?= esc_url(admin_url('visitor-stats/stats')) ?>">View full report &rsaquo;</a></p>
+
     <h3 class="lp-admin__widget-subheading">Most Viewed (7 Days)</h3>
     <?php if ($mostViewed === []): ?>
         <p class="lp-admin__widget-placeholder">No views recorded yet.</p>

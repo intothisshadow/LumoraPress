@@ -6,7 +6,8 @@ A local, privacy-respecting page-view counter for the Dashboard, with optional c
 
 - Counts a "view" once per guest (logged-out) request to a single post. An already-logged-in visitor — including you, previewing your own post — never counts.
 - Shows a "Site Visitors" panel on the Dashboard: today / this week / this month / all-time totals, plus a Most Viewed (7 days) list.
-- Optionally breaks those views down by country, referring domain, browser, and device type over the last 7 days.
+- Adds a full **Visitor Stats → Stats** report page: the same totals, a Views Over Time chart you can switch between 7/30/90-day ranges, and Top Posts/Top Referrers/Top Countries/Browser/Device breakdowns for whichever range is selected.
+- Optionally breaks those views down by country, referring domain, browser, and device type.
 - Off by default. Activating this plugin does not start collecting data on its own — turn on **Visitor Stats → Settings → Track post views** first.
 
 ## What it never does
@@ -17,6 +18,7 @@ A local, privacy-respecting page-view counter for the Dashboard, with optional c
 - No raw User-Agent string is ever stored — only two resolved buckets (browser family, device type).
 - No full referrer URL is ever stored — only the referring domain, and only for external referrers (this site's own domain doesn't count as a "referrer").
 - Every table this plugin creates stores day-level aggregate counts only. No row anywhere corresponds to one visitor or one request, so no query against this data can reconstruct what any individual visitor did.
+- No "who's online right now" view. That would require tracking individual visitor sessions, which this plugin deliberately never does.
 
 ## Country breakdown (optional)
 

@@ -383,8 +383,9 @@ $menu = [
             'label' => 'Visitor Stats',
             'icon' => '📈',
             'capability' => 'manage_options',
-            'default_child' => 'settings',
+            'default_child' => 'stats',
             'children' => [
+                'stats' => ['label' => 'Stats', 'icon' => '📈', 'capability' => 'manage_options'],
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
             ],
         ],

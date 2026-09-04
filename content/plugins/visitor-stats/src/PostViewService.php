@@ -129,6 +129,39 @@ final class PostViewService
         ], $rows);
     }
 
+    /**
+     * Site-wide daily totals for the last $days days, oldest first,
+     * zero-filled for any day with no rows at all — the Visitor Stats
+     * page's "Views Over Time" chart needs a gap-free date axis, not a
+     * sparse list of only the days that happened to record a view.
+     *
+     * @return array<int, array{date: string, views: int}>
+     */
+    public function dailyTotals(int $days): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT view_date, SUM(views) AS views FROM ' . $this->table() . '
+              WHERE view_date >= :since
+              GROUP BY view_date',
+            ['since' => $this->daysAgo($days - 1)],
+        );
+
+        $byDate = [];
+
+        foreach ($rows as $row) {
+            $byDate[(string) $row['view_date']] = (int) $row['views'];
+        }
+
+        $totals = [];
+
+        for ($offset = $days - 1; $offset >= 0; $offset--) {
+            $date = $this->daysAgo($offset);
+            $totals[] = ['date' => $date, 'views' => $byDate[$date] ?? 0];
+        }
+
+        return $totals;
+    }
+
     private function daysAgo(int $days): string
     {
         return date('Y-m-d', strtotime('-' . max(0, $days) . ' days'));

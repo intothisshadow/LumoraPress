@@ -774,6 +774,114 @@ body.lp-admin-login {
     gap: 1.25rem;
 }
 
+/*
+ * Visitor Stats (LPP-014) full-page report: stat tiles, a Views Over
+ * Time bar list, and the range toggle above it. Bar widths are set via
+ * data-style-width (admin.js dynamic-style.js), never inline style=,
+ * since the admin CSP's style-src has no 'unsafe-inline'.
+ */
+.lp-stats__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.lp-stats__card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: var(--lp-admin-panel-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-panel-radius);
+    box-shadow: var(--lp-admin-shadow);
+    padding: 1.25rem 1.5rem;
+}
+
+.lp-stats__card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--lp-admin-accent);
+}
+
+.lp-stats__card-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-stats__range-toggle {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
+}
+
+.lp-stats__range-toggle-option {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: var(--lp-admin-text);
+    text-decoration: none;
+    background: var(--lp-admin-panel-bg);
+}
+
+.lp-stats__range-toggle-option:hover,
+.lp-stats__range-toggle-option:focus-visible {
+    border-color: var(--lp-admin-accent);
+}
+
+.lp-stats__range-toggle-option.is-active {
+    background: var(--lp-admin-accent);
+    border-color: var(--lp-admin-accent);
+    color: #fff;
+    font-weight: 600;
+}
+
+.lp-stats__chart {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 32rem;
+    overflow-y: auto;
+}
+
+.lp-stats__bar-row {
+    display: grid;
+    grid-template-columns: 3.5rem 1fr 3.5rem;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.lp-stats__bar-label {
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
+.lp-stats__bar-track {
+    display: block;
+    height: 0.85rem;
+    background: var(--lp-admin-bg);
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    overflow: hidden;
+}
+
+.lp-stats__bar-fill {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    background: var(--lp-admin-accent);
+    transition: width 0.2s ease;
+}
+
+.lp-stats__bar-value {
+    text-align: right;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
 .lp-admin__widget h2 {
     margin-top: 0;
     font-size: 1rem;
