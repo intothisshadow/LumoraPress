@@ -1934,8 +1934,8 @@
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
                         + 'bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
-                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag table codesample | '
-                        + 'searchreplace fullscreen code help',
+                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag code codesample | '
+                        + 'searchreplace fullscreen table help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — this stylesheet
                     // only ever loads inside TinyMCE's own editing iframe,
@@ -2150,7 +2150,7 @@
                         // (matched, and discarded, as part of the whole
                         // marker element).
                         editor.ui.registry.addButton('lumoraMoreTag', {
-                            icon: 'horizontal-rule',
+                            icon: 'cut',
                             tooltip: 'Insert Read More Tag',
                             onAction: function () {
                                 editor.insertContent('<p><span class="lp-more-tag">Read More</span></p>');
