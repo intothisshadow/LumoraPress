@@ -38,6 +38,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Changed
 
 - Visual/HTML post editor toolbar (LP-146): the Insert Read More Tag button now uses a scissors icon, matching the Markdown editor's own More Tag button. Source Code moved from the toolbar's overflow row up next to Insert Read More Tag and Code Sample; Table moved down to the overflow row in its place.
+- Visual/HTML post editor toolbar (LP-149): Insert Read More Tag moved earlier in the toolbar, right before Bullet List. Insert Shortcode also gained its own distinct icon — it was accidentally sharing Source Code's icon.
 
 ### Fixed
 

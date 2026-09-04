@@ -1948,8 +1948,8 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
-                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'lumoraMoreTag code codesample | '
+                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
+                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
                         + 'searchreplace fullscreen table help',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — never on the public
@@ -2132,7 +2132,7 @@
 
                         if (shortcodesEnabled) {
                             editor.ui.registry.addButton('lumoraShortcode', {
-                                icon: 'sourcecode',
+                                icon: 'addtag',
                                 tooltip: 'Insert Shortcode',
                                 onAction: function () {
                                     openShortcodePicker(container, function (text) {
