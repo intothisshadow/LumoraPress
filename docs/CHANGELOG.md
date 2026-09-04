@@ -7,6 +7,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - Backup downloads (LP-144): each backup on Maintenance &rsaquo; Updates now has a "Download files"/"Download database" link alongside Restore and Delete, letting you save a copy of the archive or SQL dump off-server.
+- Widgets improvements (LP-048): active widgets now have a "Delete" action alongside "Deactivate", so a widget no longer wanted can be removed in one step instead of deactivating it first. Widgets assigned to a sidebar a theme switch removes are now moved into Inactive Widgets instead of becoming unreachable, so they're never lost. Two new core widget types: Custom JavaScript (runs the entered script in every visitor's browser) and PHP Code (runs the entered code on the server, restricted to Administrators, the same trust level the Theme Editor already requires).
 
 ## [0.10.0] — 2026-09-04
 

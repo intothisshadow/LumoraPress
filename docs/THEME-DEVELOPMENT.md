@@ -491,11 +491,10 @@ Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`)
 This ordering matters: the script runs synchronously and sets
 `data-theme` on `<html>` from `localStorage` (key `lp-theme`) before the
 stylesheet is even requested, so there's no flash of the wrong theme on
-reload. It must be an external file, not an inline `<script>` — this
-project's Content-Security-Policy `script-src` has no
-`'unsafe-inline'`/nonce allowance (only `style-src` does, via
-`csp_style_nonce()`), so an inline script here would be silently
-blocked by every browser. A click on any `[data-lp-theme-toggle]`
+reload. Load it as shown above, as a plain external `<script src>` — an
+inline `<script>` here would need `nonce="<?= csp_script_nonce() ?>"` (see
+below) to run at all under this project's Content-Security-Policy. A
+click on any `[data-lp-theme-toggle]`
 button only ever switches between an explicit Light and Dark — never
 back to "follow the system" — mirroring the admin sidebar's own quick
 theme toggle. See the default theme's `header.php`/`style.css` for a

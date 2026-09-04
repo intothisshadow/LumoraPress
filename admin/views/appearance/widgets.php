@@ -43,7 +43,7 @@ $saveWidgetsConfig = static function (array $widgetsConfig) use ($kernel): void 
  * Field definitions per widget type, shared by the render form and the
  * save handler so they can't drift out of sync.
  *
- * @return array<int, array{key: string, label: string, type: string, options?: array<string, string>}>
+ * @return array<int, array{key: string, label: string, type: string, options?: array<string, string>, hint?: string}>
  */
 $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     $titleField = ['key' => 'title', 'label' => 'Title', 'type' => 'text'];
@@ -51,6 +51,18 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     return match ($widgetType) {
         'text' => [$titleField, ['key' => 'text', 'label' => 'Content', 'type' => 'wysiwyg']],
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
+        'custom_js' => [$titleField, [
+            'key' => 'code',
+            'label' => 'JavaScript',
+            'type' => 'code',
+            'hint' => 'Runs in every visitor\'s browser exactly as typed here — no sandboxing. Enter the script body only, without surrounding <script> tags.',
+        ]],
+        'custom_php' => [$titleField, [
+            'key' => 'code',
+            'label' => 'PHP Code',
+            'type' => 'code',
+            'hint' => 'Runs on the server with the same trust as editing a theme file directly — anyone who can add this widget already has that level of access. Enter the code body only, without a leading <?php tag.',
+        ]],
         'search' => [$titleField],
         'nav_menu' => [$titleField, ['key' => 'location', 'label' => 'Menu', 'type' => 'select', 'options' => $kernel->menus->locations()]],
         // No "number to show" limit — a hard cut on a tree is ambiguous
@@ -82,7 +94,7 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
  * and the Inactive Widgets list below.
  *
  * @param array{id: string, type: string, settings: array<string, mixed>} $widget
- * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>}> $fields
+ * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>, hint?: string}> $fields
  */
 $renderWidgetSettingsFields = static function (array $widget, array $fields): void {
     foreach ($fields as $field) {
@@ -118,6 +130,10 @@ $renderWidgetSettingsFields = static function (array $widget, array $fields): vo
                 </select>
             <?php else: ?>
                 <input type="text" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="<?= esc_attr((string) $value) ?>">
+            <?php endif; ?>
+
+            <?php if (($field['hint'] ?? '') !== ''): ?>
+                <span class="lp-field__hint"><?= esc_html($field['hint']) ?></span>
             <?php endif; ?>
         </p>
         <?php
@@ -445,6 +461,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction
                                     <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
                                     <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
                                     <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Deactivate</button>
+                                </form>
+                                <form method="post" action="<?= esc_url(admin_url('appearance/widgets')) ?>" class="lp-admin__inline-form" data-lp-confirm="Permanently delete this widget? This cannot be undone.">
+                                    <?= Csrf::field('widget_delete_' . $widget['id']) ?>
+                                    <input type="hidden" name="form" value="delete_widget">
+                                    <input type="hidden" name="sidebar_id" value="<?= esc_attr($sidebarId) ?>">
+                                    <input type="hidden" name="widget_id" value="<?= esc_attr($widget['id']) ?>">
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>
                                 </form>
                             </div>
                         </details>

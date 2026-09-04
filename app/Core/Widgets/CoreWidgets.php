@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Widgets;
 
+use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
@@ -92,6 +93,54 @@ final class CoreWidgets
             // custom_css()) — not escaped, by design.
             echo '<div class="lp-widget__content">' . $html . '</div>';
             echo '</section>';
+        });
+
+        $widgets->registerWidget('custom_js', 'Custom JavaScript', static function (array $settings): void {
+            $title = (string) ($settings['title'] ?? '');
+            $code = (string) ($settings['code'] ?? '');
+
+            if ($code === '') {
+                return;
+            }
+
+            echo '<section class="lp-widget lp-widget--custom-js">';
+            self::renderTitle($title);
+            // Same trust level as the Custom HTML widget above (admin-
+            // authored, requires manage_themes) — wrapped in <script> with
+            // this request's CSP nonce, since script-src has no
+            // 'unsafe-inline' allowance and a bare <script> here would
+            // otherwise be silently dropped by the browser.
+            echo '<script nonce="' . esc_attr(CspNonce::value()) . '">' . $code . '</script>';
+            echo '</section>';
+        });
+
+        $widgets->registerWidget('custom_php', 'PHP Code', static function (array $settings): void {
+            $title = (string) ($settings['title'] ?? '');
+            $code = (string) ($settings['code'] ?? '');
+
+            if ($code === '') {
+                return;
+            }
+
+            echo '<section class="lp-widget lp-widget--custom-php">';
+            self::renderTitle($title);
+            echo '<div class="lp-widget__content">';
+
+            // Only reachable by an Administrator (manage_themes), the same
+            // capability the Theme Editor already requires to hand-edit
+            // functions.php — this grants no privilege that role couldn't
+            // already exercise. A leading <?php tag is stripped since the
+            // field is meant to hold a code body, not a full file; eval()
+            // rejects one as a parse error otherwise.
+            $body = preg_replace('/^\s*<\?php\s*/i', '', $code) ?? $code;
+
+            try {
+                eval($body);
+            } catch (\Throwable $exception) {
+                error_log('Custom PHP widget error: ' . $exception->getMessage());
+            }
+
+            echo '</div></section>';
         });
 
         $widgets->registerWidget('search', 'Search', static function (array $settings): void {

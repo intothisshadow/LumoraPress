@@ -596,6 +596,19 @@ if (!function_exists('csp_style_nonce')) {
     }
 }
 
+if (!function_exists('csp_script_nonce')) {
+    /**
+     * Same nonce as csp_style_nonce(), also added to script-src — every
+     * inline <script> a theme or the Custom JavaScript widget emits must
+     * carry `nonce="<?= csp_script_nonce() ?>"` or `script-src 'self'`
+     * silently drops it.
+     */
+    function csp_script_nonce(): string
+    {
+        return CspNonce::value();
+    }
+}
+
 if (!function_exists('home_url')) {
     /**
      * Like site_url(), but returns an absolute URL (scheme + host +

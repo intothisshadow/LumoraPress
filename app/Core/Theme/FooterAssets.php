@@ -34,11 +34,9 @@ final class FooterAssets
             /*
              * The "Show filenames in lightbox" setting reaches
              * media-viewer.js via a data-* attribute on this same
-             * <script> tag, not an inline <script> — this project's
-             * Content-Security-Policy script-src has no
-             * 'unsafe-inline'/nonce allowance (only style-src does, via
-             * csp_style_nonce()), so an inline script here would be
-             * silently blocked by every browser with no server-side
+             * <script> tag, not an inline <script> — an inline script here
+             * would need `nonce="<?= csp_script_nonce() ?>"` or
+             * script-src would silently block it with no server-side
              * error to catch it. A data-* attribute on an
              * externally-src'd <script> isn't inline script execution,
              * so CSP has no opinion on it.

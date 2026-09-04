@@ -198,15 +198,19 @@ ActiveContentRenderer::set($content);
 // ContentSecurityPolicy ships same-origin-only by design; any need to
 // loosen a directive belongs in a filter here, not in that class.
 // jsDelivr serves EasyMDE/TinyMCE/PhotoSwipe and Font Awesome's glyphs
-// (script-src, style-src, font-src). style-src also carries a per-request
-// nonce for the theme's inline <style> blocks (see CspNonce). Google
-// Fonts and Gravatar are added unconditionally since both are always
+// (script-src, style-src, font-src). Both script-src and style-src also
+// carry the same per-request nonce (see CspNonce) — script-src's for the
+// Custom JavaScript/PHP widgets' inline <script> output (csp_script_nonce()),
+// style-src's for the theme's inline <style> blocks (csp_style_nonce()).
+// Reusing one value across both directives is fine — nonce reuse only
+// matters across requests, not across directives within the same response.
+// Google Fonts and Gravatar are added unconditionally since both are always
 // used regardless of settings.
 $cspNonce = bin2hex(random_bytes(16));
 CspNonce::set($cspNonce);
 
 add_filter('csp_directives', static function (array $directives) use ($cspNonce): array {
-    $directives['script-src'] .= ' https://cdn.jsdelivr.net';
+    $directives['script-src'] .= " https://cdn.jsdelivr.net 'nonce-{$cspNonce}'";
     $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
     $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
     $directives['img-src'] .= ' https://www.gravatar.com';
@@ -400,15 +404,30 @@ add_action('page_saved', static function (\LumoraPress\Models\Page $page) use ($
 CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users, $content);
 
 // Persisted widget assignments — one JSON option keyed by sidebar id.
-// Loaded only for sidebars the active theme registered, so a sidebar
-// removed by switching themes doesn't resurrect stale widgets.
 $widgetsConfig = json_decode((string) $config->option('widgets_config', '{}'), true);
 $widgetsConfig = is_array($widgetsConfig) ? $widgetsConfig : [];
-$widgetsConfigNeedsBackfill = false;
+$widgetsConfigDirty = false;
+
+$registeredSidebarIds = [...array_keys($widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_ID];
+
+// A sidebar id saved from a previous theme that the active theme no
+// longer registers (switched themes, or a theme dropped a sidebar) has
+// its widgets moved into the Inactive Widgets bucket rather than
+// silently going unloaded and unreachable — the classic-WordPress
+// "widgets survive a theme switch, waiting to be reassigned" behavior.
+foreach (array_diff(array_keys($widgetsConfig), $registeredSidebarIds) as $orphanedSidebarId) {
+    if (is_array($widgetsConfig[$orphanedSidebarId] ?? null)) {
+        $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] ??= [];
+        array_push($widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID], ...$widgetsConfig[$orphanedSidebarId]);
+    }
+
+    unset($widgetsConfig[$orphanedSidebarId]);
+    $widgetsConfigDirty = true;
+}
 
 // INACTIVE_SIDEBAR_ID is a reserved bucket, not a theme-registered
 // sidebar, so it's loaded explicitly alongside the real ones.
-foreach ([...array_keys($widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_ID] as $sidebarId) {
+foreach ($registeredSidebarIds as $sidebarId) {
     if (isset($widgetsConfig[$sidebarId]) && is_array($widgetsConfig[$sidebarId])) {
         $widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
 
@@ -417,7 +436,7 @@ foreach ([...array_keys($widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_I
         // would no longer match on the next request.
         foreach ($widgetsConfig[$sidebarId] as $widget) {
             if (!isset($widget['id'])) {
-                $widgetsConfigNeedsBackfill = true;
+                $widgetsConfigDirty = true;
 
                 break;
             }
@@ -427,7 +446,7 @@ foreach ([...array_keys($widgets->sidebars()), WidgetManager::INACTIVE_SIDEBAR_I
     }
 }
 
-if ($widgetsConfigNeedsBackfill) {
+if ($widgetsConfigDirty) {
     $config->setOption('widgets_config', json_encode($widgetsConfig));
 }
 
