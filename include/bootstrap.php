@@ -198,19 +198,15 @@ ActiveContentRenderer::set($content);
 // ContentSecurityPolicy ships same-origin-only by design; any need to
 // loosen a directive belongs in a filter here, not in that class.
 // jsDelivr serves EasyMDE/TinyMCE/PhotoSwipe and Font Awesome's glyphs
-// (script-src, style-src, font-src). Both script-src and style-src also
-// carry the same per-request nonce (see CspNonce) — script-src's for the
-// Custom JavaScript/PHP widgets' inline <script> output (csp_script_nonce()),
-// style-src's for the theme's inline <style> blocks (csp_style_nonce()).
-// Reusing one value across both directives is fine — nonce reuse only
-// matters across requests, not across directives within the same response.
-// Google Fonts and Gravatar are added unconditionally since both are always
+// (script-src, style-src, font-src). style-src also carries a per-request
+// nonce for the theme's inline <style> blocks (see CspNonce). Google
+// Fonts and Gravatar are added unconditionally since both are always
 // used regardless of settings.
 $cspNonce = bin2hex(random_bytes(16));
 CspNonce::set($cspNonce);
 
 add_filter('csp_directives', static function (array $directives) use ($cspNonce): array {
-    $directives['script-src'] .= " https://cdn.jsdelivr.net 'nonce-{$cspNonce}'";
+    $directives['script-src'] .= ' https://cdn.jsdelivr.net';
     $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
     $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
     $directives['img-src'] .= ' https://www.gravatar.com';

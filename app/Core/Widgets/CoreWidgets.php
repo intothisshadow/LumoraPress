@@ -17,7 +17,6 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Widgets;
 
-use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
@@ -92,25 +91,6 @@ final class CoreWidgets
             // Trusted admin-authored markup (same trust level as
             // custom_css()) — not escaped, by design.
             echo '<div class="lp-widget__content">' . $html . '</div>';
-            echo '</section>';
-        });
-
-        $widgets->registerWidget('custom_js', 'Custom JavaScript', static function (array $settings): void {
-            $title = (string) ($settings['title'] ?? '');
-            $code = (string) ($settings['code'] ?? '');
-
-            if ($code === '') {
-                return;
-            }
-
-            echo '<section class="lp-widget lp-widget--custom-js">';
-            self::renderTitle($title);
-            // Same trust level as the Custom HTML widget above (admin-
-            // authored, requires manage_themes) — wrapped in <script> with
-            // this request's CSP nonce, since script-src has no
-            // 'unsafe-inline' allowance and a bare <script> here would
-            // otherwise be silently dropped by the browser.
-            echo '<script nonce="' . esc_attr(CspNonce::value()) . '">' . $code . '</script>';
             echo '</section>';
         });
 

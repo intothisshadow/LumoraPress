@@ -51,12 +51,6 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     return match ($widgetType) {
         'text' => [$titleField, ['key' => 'text', 'label' => 'Content', 'type' => 'wysiwyg']],
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
-        'custom_js' => [$titleField, [
-            'key' => 'code',
-            'label' => 'JavaScript',
-            'type' => 'code',
-            'hint' => 'Runs in every visitor\'s browser exactly as typed here — no sandboxing. Enter the script body only, without surrounding <script> tags.',
-        ]],
         'custom_php' => [$titleField, [
             'key' => 'code',
             'label' => 'PHP Code',
