@@ -591,9 +591,11 @@ final class PageService
      * explicitly to view the Trash tab itself.
      *
      * @param array{term?: string, authorId?: int, parentId?: int, dateFrom?: string, dateTo?: string} $filters
+     * @param string $orderBy one of 'title', 'created', 'published' — anything else keeps the
+     *     original COALESCE(published_at, created_at) default, since not every page has a publish date yet
      * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
      */
-    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PageStatus $statusFilter = null, array $filters = []): array
+    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?PageStatus $statusFilter = null, array $filters = [], string $orderBy = 'date', string $orderDir = 'desc'): array
     {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
@@ -638,6 +640,15 @@ final class PageService
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
 
+        // Column name can never come from user input directly into SQL —
+        // whitelist against the only sortable columns the admin list offers.
+        $column = match ($orderBy) {
+            'title' => 'title',
+            'created' => 'created_at',
+            default => 'COALESCE(published_at, created_at)',
+        };
+        $direction = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
+
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . " {$where}",
             $params,
@@ -647,7 +658,7 @@ final class PageService
 
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . " {$where}"
-                . " ORDER BY COALESCE(published_at, created_at) DESC LIMIT {$perPage} OFFSET {$offset}",
+                . " ORDER BY {$column} {$direction} LIMIT {$perPage} OFFSET {$offset}",
             $params,
         );
 

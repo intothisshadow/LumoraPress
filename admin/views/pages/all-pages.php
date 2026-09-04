@@ -336,6 +336,9 @@ $listFilters = [
     'dateTo' => $dateToFilter,
 ];
 
+$orderBy = (string) ($_GET['orderby'] ?? 'date');
+$orderDir = (string) ($_GET['order'] ?? 'desc');
+
 // Tree view (with drag-and-drop ordering) only applies to the
 // unfiltered "All" tab — filtering by status (or by any search/filter
 // field below) breaks hierarchical grouping (a child could be
@@ -367,9 +370,42 @@ if ($isTreeView) {
     $treeRows = $pageService->listAllForTree();
     $listedPages = array_map(static fn (array $row): Page => $row['page'], $treeRows);
 } else {
-    $pagination = $pageService->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters);
+    $pagination = $pageService->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
     $listedPages = $pagination['pages'];
 }
+
+// Sortable column headers — mirrors the Downloads admin list's identical
+// $sortLink pattern (admin/views/downloads/all-downloads.php).
+$sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFilter, $termFilter, $authorFilter, $parentFilter, $dateFromFilter, $dateToFilter): string {
+    $nextDir = $orderBy === $column && $orderDir === 'asc' ? 'desc' : 'asc';
+    $query = ['orderby' => $column, 'order' => $nextDir];
+
+    if ($statusFilter !== null) {
+        $query['status'] = $statusFilter->value;
+    }
+
+    if ($termFilter !== '') {
+        $query['q'] = $termFilter;
+    }
+
+    if ($authorFilter > 0) {
+        $query['author'] = $authorFilter;
+    }
+
+    if ($parentFilter > 0) {
+        $query['parent'] = $parentFilter;
+    }
+
+    if ($dateFromFilter !== '') {
+        $query['date_from'] = $dateFromFilter;
+    }
+
+    if ($dateToFilter !== '') {
+        $query['date_to'] = $dateToFilter;
+    }
+
+    return admin_url('pages/all-pages') . '?' . http_build_query($query);
+};
 ?>
 
 <p class="lp-admin__filters">
@@ -496,9 +532,10 @@ if ($isTreeView) {
                                 <label class="lp-visually-hidden" for="pages-select-all">Select all</label>
                                 <input type="checkbox" id="pages-select-all" data-lp-select-all="page_ids[]" data-lp-select-all-scope="table">
                             </th>
-                            <th scope="col">Title</th>
+                            <th scope="col"><a href="<?= esc_url($sortLink('title')) ?>">Title</a></th>
                             <th scope="col">Status</th>
-                            <th scope="col">Date</th>
+                            <th scope="col"><a href="<?= esc_url($sortLink('created')) ?>">Created</a></th>
+                            <th scope="col"><a href="<?= esc_url($sortLink('date')) ?>">Published</a></th>
                             <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
@@ -523,7 +560,8 @@ if ($isTreeView) {
                                         <?= esc_html($listedPage->status->label()) ?>
                                     </span>
                                 </td>
-                                <td><?= esc_html(($listedPage->publishedAt ?? $listedPage->updatedAt)->format('M j, Y')) ?></td>
+                                <td><?= esc_html($listedPage->createdAt->format('M j, Y')) ?></td>
+                                <td><?= $listedPage->publishedAt !== null ? esc_html($listedPage->publishedAt->format('M j, Y')) : '&mdash;' ?></td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($canEditPage($listedPage)): ?>
                                         <?php if ($isTrashView): ?>
@@ -571,7 +609,7 @@ if ($isTreeView) {
                             <?php if (!$isTrashView && $canEditPage($listedPage)): ?>
                                 <?php $quickEditFormId = 'page-quick-edit-form-' . $listedPage->id; ?>
                                 <tr id="page-quick-edit-<?= (int) $listedPage->id ?>" class="lp-quick-edit-row" hidden>
-                                    <td colspan="5">
+                                    <td colspan="6">
                                         <input type="hidden" name="id" value="<?= (int) $listedPage->id ?>" form="<?= esc_attr($quickEditFormId) ?>">
                                         <div class="lp-quick-edit-fields">
                                             <p class="lp-field">
