@@ -1004,6 +1004,15 @@ final class UpdateService
     }
 
     /**
+     * Resolves a backup filename to its on-disk path for download. Same
+     * filename-only safety as restoreBackup()/deleteBackup().
+     */
+    public function backupFilePath(string $filename): string
+    {
+        return $this->backups->backupFilePath($filename);
+    }
+
+    /**
      * On-demand backup, independent of the update pipeline. Takes the
      * same lock install()/restoreBackup() do, since a database dump
      * mid-migration would be inconsistent.

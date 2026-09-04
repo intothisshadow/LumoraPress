@@ -222,6 +222,26 @@ final class UpdateBackupService
     }
 
     /**
+     * Resolves a backup filename (files- or db- half of a pair) to its
+     * on-disk path for download, with the same filename-only safety as
+     * the restore-by-filename methods.
+     */
+    public function backupFilePath(string $filename): string
+    {
+        $basename = basename($filename);
+
+        if (str_starts_with($basename, 'files-')) {
+            return $this->validatedBackupPath($filename, 'files-', '.zip');
+        }
+
+        if (str_starts_with($basename, 'db-')) {
+            return $this->validatedBackupPath($filename, 'db-', '.sql');
+        }
+
+        throw new RuntimeException('Invalid backup filename.');
+    }
+
+    /**
      * Same filename-only safety as restoreFilesByFilename(), for the
      * database backup half of a pair.
      */

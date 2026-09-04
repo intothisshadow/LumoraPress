@@ -65,7 +65,8 @@ Press's own core paths, never anything else on the server.
 Every backup pair is also listed in a **Backups** panel on the Updates
 page — "Back up now" creates one on demand, independent of running an
 actual update — with one-click "Restore" and "Delete" per backup (both
-behind a confirmation prompt). The Updates page also shows the database
+behind a confirmation prompt), plus "Download files"/"Download database"
+links for saving a copy off-server. The Updates page also shows the database
 schema's migration status and a System status panel (PHP version, ZIP/cURL
 availability, file permissions, disk space, and the update staging
 directory), reflecting this server's current environment.

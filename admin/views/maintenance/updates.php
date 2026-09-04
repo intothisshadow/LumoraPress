@@ -43,6 +43,27 @@ $updates = $kernel->updates;
 $error = null;
 $checkResult = null;
 
+// A plain GET with no state change needs no CSRF check, but it does need
+// to clear admin/index.php's output buffer before sending a raw file body.
+if (is_string($_GET['download_backup'] ?? null) && $_GET['download_backup'] !== '') {
+    try {
+        $downloadPath = $updates->backupFilePath($_GET['download_backup']);
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($downloadPath) . '"');
+        header('Content-Length: ' . (string) filesize($downloadPath));
+        readfile($downloadPath);
+        exit;
+    } catch (\Throwable $exception) {
+        http_response_code(404);
+        exit('Backup not found.');
+    }
+}
+
 // Backups have no numeric id, so a bare 'restore_backup'/'delete_backup'
 // action shared across rows would only let the last-rendered row verify.
 // Suffixing with the row's own filenames gives each a distinct action name.
@@ -709,6 +730,10 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
                                         <?php endif; ?>
                                         <button type="submit" class="lp-button">Restore</button>
                                     </form>
+                                    <a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates') . '?download_backup=' . urlencode($backup['files_filename']) . '#backups') ?>">Download files</a>
+                                <?php endif; ?>
+                                <?php if ($backup['database_filename'] !== null): ?>
+                                    <a class="lp-button" href="<?= esc_url(admin_url('maintenance/updates') . '?download_backup=' . urlencode($backup['database_filename']) . '#backups') ?>">Download database</a>
                                 <?php endif; ?>
                                 <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this backup permanently?">
                                     <?= Csrf::field($backupCsrfAction('delete_backup', $backup['files_filename'], $backup['database_filename'])) ?>

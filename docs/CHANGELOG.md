@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Backup downloads (LP-144): each backup on Maintenance &rsaquo; Updates now has a "Download files"/"Download database" link alongside Restore and Delete, letting you save a copy of the archive or SQL dump off-server.
+
 ## [0.10.0] — 2026-09-04
 
 ### Added
