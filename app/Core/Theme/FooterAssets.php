@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Emits the conditional PhotoSwipe/Twitter/Bluesky <link>/<script> tags a theme's footer.php needs, via the 'footer_assets' hook.
+ * Emits the conditional PhotoSwipe/Plyr/Twitter/Bluesky <link>/<script> tags a theme's footer.php needs, via the 'footer_assets' hook.
  *
  * @package LumoraPress
  * @subpackage Themes
@@ -18,9 +18,9 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Theme;
 
 /**
- * Emits PhotoSwipe and Auto-Embed provider assets only on pages that need
- * them, so themes call `do_action('footer_assets')` once instead of
- * hand-copying conditional markup into footer.php.
+ * Emits PhotoSwipe, Plyr, and Auto-Embed provider assets only on pages
+ * that need them, so themes call `do_action('footer_assets')` once
+ * instead of hand-copying conditional markup into footer.php.
  */
 final class FooterAssets
 {
@@ -45,6 +45,21 @@ final class FooterAssets
              */
             ?>
             <script type="module" data-lp-media-viewer data-show-filenames="<?= $showFilenames ? '1' : '0' ?>" src="<?= esc_url(core_asset_url('js/media-viewer.js')) ?>"></script>
+            <?php
+        }
+
+        if (ScriptEmbeds::isUsed('plyr')) {
+            /*
+             * Plyr has no ESM build (unlike PhotoSwipe above), so it
+             * loads as a plain classic <script> defining window.Plyr —
+             * still CSP-safe since only inline script execution is
+             * blocked, not an externally-src'd file. media-player.js
+             * runs after it and just calls `new Plyr(...)`.
+             */
+            ?>
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css">
+            <script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js"></script>
+            <script src="<?= esc_url(core_asset_url('js/media-player.js')) ?>"></script>
             <?php
         }
 

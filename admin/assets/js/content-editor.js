@@ -608,6 +608,82 @@
         dialog.showModal();
     }
 
+    /**
+     * LP-150: "Insert Audio"/"Insert Video" — the same lightweight,
+     * preloaded-list shape as openFolderGalleryPicker() above (an
+     * audio/video library is typically small enough that a paginated
+     * grid query, like Insert Image's, isn't worth the extra request).
+     * $type is 'audio' or 'video', selecting which of
+     * data-media-audio/data-media-video to list. onInsert receives
+     * {id}.
+     */
+    function openMediaPlayerPicker(container, type, onInsert) {
+        var items = JSON.parse(container.dataset['media' + (type === 'audio' ? 'Audio' : 'Video')] || '[]');
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog';
+
+        var heading = document.createElement('h2');
+        heading.textContent = type === 'audio' ? 'Insert Audio' : 'Insert Video';
+        heading.className = 'lp-editor-media-dialog__heading';
+
+        var fileField = document.createElement('p');
+        fileField.className = 'lp-field';
+        var fileLabelEl = document.createElement('label');
+        fileLabelEl.textContent = type === 'audio' ? 'Audio File' : 'Video File';
+        var fileSelect = document.createElement('select');
+
+        items.forEach(function (item) {
+            var option = document.createElement('option');
+            option.value = String(item.id);
+            option.textContent = item.name;
+            fileSelect.appendChild(option);
+        });
+
+        fileField.appendChild(fileLabelEl);
+        fileField.appendChild(fileSelect);
+
+        var actions = document.createElement('div');
+        actions.className = 'lp-editor-media-dialog__settings-actions';
+
+        var insertButton = document.createElement('button');
+        insertButton.type = 'button';
+        insertButton.className = 'lp-button lp-button--primary';
+        insertButton.textContent = 'Insert';
+        insertButton.disabled = items.length === 0;
+        insertButton.addEventListener('click', function () {
+            onInsert({ id: parseInt(fileSelect.value, 10) || 0 });
+            dialog.close();
+        });
+
+        var cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'lp-button';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.addEventListener('click', function () { dialog.close(); });
+
+        actions.appendChild(insertButton);
+        actions.appendChild(cancelButton);
+
+        dialog.appendChild(heading);
+
+        if (items.length === 0) {
+            var status = document.createElement('p');
+            status.className = 'lp-editor-media-dialog__status';
+            status.textContent = type === 'audio'
+                ? 'No audio files in the Media Manager yet.'
+                : 'No video files in the Media Manager yet.';
+            dialog.appendChild(status);
+        } else {
+            dialog.appendChild(fileField);
+        }
+
+        dialog.appendChild(actions);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
     // ------------------------------------------------------------------
     // Link picker (LP-130) — the WYSIWYG editor's own "Insert/Edit Link"
     // dialog, replacing TinyMCE's native link plugin dialog entirely (see
@@ -1782,6 +1858,26 @@
                     className: 'fa fa-th',
                     title: 'Insert Folder',
                 },
+                {
+                    name: 'insert-audio',
+                    action: function () {
+                        openMediaPlayerPicker(container, 'audio', function (payload) {
+                            editor.codemirror.replaceSelection('[lumora_audio id="' + payload.id + '"]');
+                        });
+                    },
+                    className: 'fa fa-file-audio-o',
+                    title: 'Insert Audio',
+                },
+                {
+                    name: 'insert-video',
+                    action: function () {
+                        openMediaPlayerPicker(container, 'video', function (payload) {
+                            editor.codemirror.replaceSelection('[lumora_video id="' + payload.id + '"]');
+                        });
+                    },
+                    className: 'fa fa-file-video-o',
+                    title: 'Insert Video',
+                },
             ];
 
             if (iconPickerEnabled) {
@@ -1948,7 +2044,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery '
+                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery lumoraAudio lumoraVideo '
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
                         + 'searchreplace fullscreen table help',
                     // LP-079: visually distinguishes the More tag marker
@@ -2113,6 +2209,26 @@
                                 openFolderGalleryPicker(container, function (payload) {
                                     var link = payload.link === 'file' ? 'full' : 'none';
                                     editor.insertContent('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
+                                });
+                            },
+                        });
+
+                        editor.ui.registry.addButton('lumoraAudio', {
+                            icon: 'audio',
+                            tooltip: 'Insert Audio',
+                            onAction: function () {
+                                openMediaPlayerPicker(container, 'audio', function (payload) {
+                                    editor.insertContent('[lumora_audio id="' + payload.id + '"]');
+                                });
+                            },
+                        });
+
+                        editor.ui.registry.addButton('lumoraVideo', {
+                            icon: 'video',
+                            tooltip: 'Insert Video',
+                            onAction: function () {
+                                openMediaPlayerPicker(container, 'video', function (payload) {
+                                    editor.insertContent('[lumora_video id="' + payload.id + '"]');
                                 });
                             },
                         });

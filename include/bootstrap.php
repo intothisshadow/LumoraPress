@@ -100,6 +100,7 @@ use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\InstallPingService;
 use LumoraPress\Services\MediaImportService;
+use LumoraPress\Services\MediaPlayerShortcode;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
@@ -210,6 +211,10 @@ add_filter('csp_directives', static function (array $directives) use ($cspNonce)
     $directives['style-src'] .= " https://cdn.jsdelivr.net https://fonts.googleapis.com 'nonce-{$cspNonce}'";
     $directives['font-src'] .= ' https://cdn.jsdelivr.net https://fonts.gstatic.com';
     $directives['img-src'] .= ' https://www.gravatar.com';
+    // Plyr fetches its icon sprite at runtime (an XHR, not a <script>/<link>
+    // load), so it needs connect-src too — media-player.js points it at
+    // this same jsdelivr copy instead of Plyr's own cdn.plyr.io default.
+    $directives['connect-src'] = ($directives['connect-src'] ?? "'self'") . ' https://cdn.jsdelivr.net';
 
     return $directives;
 });
@@ -498,6 +503,11 @@ $thumbnails = new ThumbnailService(
 // Folder" button, alongside Insert Image.
 $folderGallery = new FolderGalleryShortcode($folders, $media, $thumbnails);
 add_filter('content_html', [$folderGallery, 'render']);
+
+// [lumora_audio]/[lumora_video] — inserted via the content editor's
+// "Insert Audio"/"Insert Video" buttons, alongside Insert Folder.
+$mediaPlayer = new MediaPlayerShortcode($media);
+add_filter('content_html', [$mediaPlayer, 'render']);
 
 $feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content);
 $mediaImport = new MediaImportService(

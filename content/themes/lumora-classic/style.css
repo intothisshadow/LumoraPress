@@ -1983,6 +1983,48 @@ img.lp-folder-gallery__thumb {
 }
 
 /* =========================================================
+   Media Player (LP-150)
+   ========================================================= */
+/*
+ * Rendered by MediaPlayerShortcode for the [lumora_audio]/[lumora_video]
+ * shortcodes — inserted via the content editor's "Insert Audio"/"Insert
+ * Video" buttons. Plyr (loaded conditionally, see FooterAssets) replaces
+ * each <audio>/<video>'s native controls with its own ".plyr" wrapper;
+ * --plyr-color-main ties its accent color to this theme's own rather than
+ * Plyr's default blue. Without JavaScript, or before Plyr loads, the
+ * plain native controls on .lp-audio-player__audio/.lp-video-player__video
+ * still work.
+ */
+.lp-audio-player,
+.lp-video-player {
+    margin: 1.5em 0;
+}
+
+.lp-audio-player .plyr,
+.lp-video-player .plyr {
+    --plyr-color-main: var(--lp-accent);
+}
+
+.lp-audio-player__audio {
+    width: 100%;
+}
+
+.lp-video-player__video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--lp-radius);
+}
+
+.lp-audio-player__caption,
+.lp-video-player__caption {
+    margin-top: 0.5em;
+    font-size: 0.9rem;
+    color: var(--lp-text-muted);
+    text-align: center;
+}
+
+/* =========================================================
    Contact Forms (LPP-003)
    ========================================================= */
 /*

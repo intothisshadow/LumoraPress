@@ -578,6 +578,17 @@ $editorFolderTree = array_map(
     static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
     $kernel->folders->listAllForTree(),
 );
+// Insert Audio/Insert Video preload the whole list, same as the Folder
+// tree above — an audio/video library is typically far smaller than an
+// image library, so a paginated grid query isn't needed.
+$editorAudioMedia = array_map(
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']],
+    $kernel->media->query(['type' => 'audio'], 500)['items'],
+);
+$editorVideoMedia = array_map(
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']],
+    $kernel->media->query(['type' => 'video'], 500)['items'],
+);
 ?>
 <?php
 $screenType = 'page';
@@ -659,6 +670,8 @@ if ($savedLayout['order'] === []) {
                     data-link-picker-csrf="<?= esc_attr(Csrf::token('link_picker_query')) ?>"
                     data-shortcodes="<?= esc_attr((string) json_encode($kernel->shortcodes->toArray())) ?>"
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                    data-media-audio="<?= esc_attr((string) json_encode($editorAudioMedia)) ?>"
+                    data-media-video="<?= esc_attr((string) json_encode($editorVideoMedia)) ?>"
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
                         data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"

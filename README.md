@@ -45,6 +45,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Multi-file uploads with per-file progress
 - FTP media import
 - Image lightbox viewer
+- Audio and video player, embeddable in post/page content
 - Download statistics for documents, archives, audio, and video
 
 ### Appearance
