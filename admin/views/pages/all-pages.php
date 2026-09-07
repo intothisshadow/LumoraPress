@@ -15,11 +15,10 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\PagesController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\PageStatus;
-use LumoraPress\Models\PageVisibility;
-use LumoraPress\Models\RevisionableType;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -36,256 +35,53 @@ $error = null;
 /**
  * An author/contributor may only touch their own pages unless they hold
  * edit_others_posts (Administrator/Editor) — Pages reuse the Posts
- * capabilities, since no dedicated page capabilities exist yet.
+ * capabilities, since no dedicated page capabilities exist yet. Kept
+ * here for the display-only checks below; PagesController has its own
+ * copy backing every POST action.
  */
 $canEditPage = static fn (Page $page): bool => $canEditOthersPages || $page->authorId === $currentUser->id;
 
-// Quick Edit — a JSON sub-action: the row stays on the list screen and
-// updates in place via JS. Handled before the redirect-based dispatch
-// below since it never redirects.
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'quick_edit') {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    header('Content-Type: application/json');
-
-    $id = (int) ($_POST['id'] ?? 0);
-    $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-    if (!Csrf::verify('page_quick_edit_' . $id, $token)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
-        exit;
-    }
-
-    $existing = $id > 0 ? $pageService->findById($id) : null;
-
-    if ($existing === null || !$canEditPage($existing)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Not permitted.']);
-        exit;
-    }
-
-    $title = trim((string) ($_POST['title'] ?? ''));
-
-    if ($title === '') {
-        http_response_code(422);
-        echo json_encode(['error' => 'A title is required.']);
-        exit;
-    }
-
-    $slug = trim((string) ($_POST['slug'] ?? ''));
-    $parentId = (int) ($_POST['parent_id'] ?? 0);
-    $requestedStatus = PageStatus::tryFrom((string) ($_POST['status'] ?? ''));
-    // Quick Edit only ever offers Draft/Published (see PageService::
-    // quickUpdate()'s docblock) — anything else submitted keeps the
-    // page's current status, same as a contributor without
-    // publish_posts always being forced to Draft in the full editor.
-    $status = ($canPublish && in_array($requestedStatus, [PageStatus::Draft, PageStatus::Published], true))
-        ? $requestedStatus
-        : $existing->status;
-
-    $updated = $pageService->quickUpdate($id, $title, $status, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null);
-
-    if ($updated === null) {
-        http_response_code(422);
-        echo json_encode(['error' => 'Could not save that page.']);
-        exit;
-    }
-
-    echo json_encode([
-        'data' => [
-            'id' => $updated->id,
-            'title' => $updated->title,
-            'slug' => $updated->slug,
-            'status' => $updated->status->value,
-            'statusLabel' => $updated->status->label(),
-        ],
-    ]);
-    exit;
-}
-
+// POST handling lives in PagesController; this view dispatches to it and
+// turns the AdminActionResult into a redirect or $error string.
+// Quick Edit is a JSON sub-action handled separately since it never
+// redirects — the row stays on the list screen and updates in place via JS.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'trash') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('page_trash_' . $id, $token)) {
-            header('Location: ' . admin_url('pages/all-pages'));
-            exit;
+    if ($form === 'quick_edit') {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
         }
 
-        $existing = $id > 0 ? $pageService->findById($id) : null;
+        header('Content-Type: application/json');
 
-        if ($existing !== null && $canDeletePages && $canEditPage($existing)) {
-            $pageService->trash($id);
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . '?trashed=1');
+        (new PagesController($kernel->pages, $kernel->revisions, $kernel->media, $kernel->thumbnails))
+            ->quickEdit($_POST, $currentUser->id, $canPublish, $canEditOthersPages, $csrfToken);
         exit;
-    } elseif ($form === 'restore_page') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+    }
 
-        if (!Csrf::verify('page_restore_page_' . $id, $token)) {
-            header('Location: ' . admin_url('pages/all-pages'));
-            exit;
-        }
+    if ($form !== '') {
+        $controller = new PagesController($kernel->pages, $kernel->revisions, $kernel->media, $kernel->thumbnails);
 
-        $existing = $id > 0 ? $pageService->findById($id) : null;
+        $result = match ($form) {
+            'trash' => $controller->trash($_POST, $currentUser->id, $canDeletePages, $canEditOthersPages, $csrfToken),
+            'restore_page' => $controller->restorePage($_POST, $currentUser->id, $canDeletePages, $canEditOthersPages, $csrfToken),
+            'delete_permanently' => $controller->deletePermanently($_POST, $currentUser->id, $canDeletePages, $canEditOthersPages, $csrfToken),
+            'empty_trash' => $controller->emptyTrash($currentUser->id, $canDeletePages, $canEditOthersPages, $csrfToken),
+            'duplicate' => $controller->duplicate($_POST, $currentUser->id, $canEditOthersPages, $csrfToken),
+            'reposition_page' => $controller->repositionPage($_POST, $currentUser->id, $canEditOthersPages, $csrfToken),
+            'bulk_action' => $controller->bulkAction($_POST, $currentUser->id, $canPublish, $canDeletePages, $canEditOthersPages, $csrfToken),
+            default => null,
+        };
 
-        if ($existing !== null && $canDeletePages && $canEditPage($existing)) {
-            $pageService->restore($id);
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . '?status=' . PageStatus::Trashed->value . '&page_restored=1');
-        exit;
-    } elseif ($form === 'delete_permanently') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('page_delete_permanently_' . $id, $token)) {
-            header('Location: ' . admin_url('pages/all-pages'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $pageService->findById($id) : null;
-
-        // Permanent delete is only offered for pages already in the
-        // Trash — Move to Trash is the only reachable path to removing a
-        // page from every other status.
-        if ($existing !== null && $existing->status === PageStatus::Trashed && $canDeletePages && $canEditPage($existing)) {
-            // Revisions live outside PageService, so cleaned up here
-            // before the page itself is gone.
-            $kernel->revisions->deleteAllFor(RevisionableType::Page, $id);
-            $pageService->delete($id);
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . '?status=' . PageStatus::Trashed->value . '&page_deleted=1');
-        exit;
-    } elseif ($form === 'empty_trash' && Csrf::verify('pages_empty_trash', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        if ($canDeletePages) {
-            $trashedCount = $pageService->countByStatus(PageStatus::Trashed);
-            $trashedPages = $trashedCount > 0
-                ? $pageService->paginateForAdmin(1, $trashedCount, PageStatus::Trashed)['pages']
-                : [];
-
-            foreach ($trashedPages as $trashedPage) {
-                if (!$canEditPage($trashedPage)) {
-                    continue;
-                }
-
-                $kernel->revisions->deleteAllFor(RevisionableType::Page, $trashedPage->id);
-                $pageService->delete($trashedPage->id);
-            }
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . '?status=' . PageStatus::Trashed->value . '&trash_emptied=1');
-        exit;
-    } elseif ($form === 'duplicate') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('page_duplicate_' . $id, $token)) {
-            header('Location: ' . admin_url('pages/all-pages'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $pageService->findById($id) : null;
-
-        if ($existing !== null && $canEditPage($existing)) {
-            $duplicate = $pageService->duplicate($id, $currentUser->id);
-
-            if ($duplicate !== null) {
-                header('Location: ' . admin_url('pages/new') . '?id=' . $duplicate->id . '&duplicated=1');
-                exit;
-            }
-        }
-
-        header('Location: ' . admin_url('pages/all-pages'));
-        exit;
-    } elseif ($form === 'reposition_page') {
-        // Drag-and-drop reordering, tree view only — sortable.js fills
-        // these fields and submits this one shared form on drop.
-        $draggedId = (int) ($_POST['dragged_id'] ?? 0);
-        $targetId = (int) ($_POST['target_id'] ?? 0);
-        $positionValue = (string) ($_POST['position'] ?? 'before');
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (Csrf::verify('page_reposition', $token) && $draggedId > 0 && $targetId > 0) {
-            $existing = $pageService->findById($draggedId);
-
-            if ($existing !== null && $canEditPage($existing)) {
-                $pageService->reorder($draggedId, $targetId, $positionValue === 'after' ? 'after' : 'before');
-            }
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . '?saved=1');
-        exit;
-    } elseif ($form === 'bulk_action' && Csrf::verify('pages_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $bulkAction = (string) ($_POST['bulk_action'] ?? '');
-        $ids = array_values(array_filter(array_map('intval', is_array($_POST['page_ids'] ?? null) ? $_POST['page_ids'] : [])));
-        $editableIds = array_values(array_filter($ids, static function (int $id) use ($pageService, $canEditPage): bool {
-            $existing = $pageService->findById($id);
-
-            return $existing !== null && $canEditPage($existing);
-        }));
-
-        if ($bulkAction === 'change_parent' && $canEditOthersPages) {
-            $targetParentId = (int) ($_POST['target_parent_id'] ?? 0);
-
-            foreach ($editableIds as $id) {
-                $pageService->setParent($id, $targetParentId > 0 ? $targetParentId : null);
+        if ($result !== null) {
+            if ($result->redirectUrl !== null) {
+                redirect($result->redirectUrl);
             }
 
-            header('Location: ' . admin_url('pages/all-pages') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
+            $error = $result->errorMessage;
         }
-
-        if ($bulkAction === 'change_author' && $canEditOthersPages) {
-            $targetAuthorId = (int) ($_POST['target_author_id'] ?? 0);
-
-            if ($targetAuthorId > 0) {
-                $pageService->bulkReassignAuthor($editableIds, $targetAuthorId);
-            }
-
-            header('Location: ' . admin_url('pages/all-pages') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
-        }
-
-        if (($bulkAction === 'set_public' || $bulkAction === 'set_private') && $canPublish) {
-            $pageService->bulkSetVisibility($editableIds, $bulkAction === 'set_private' ? PageVisibility::Private : PageVisibility::Public);
-
-            header('Location: ' . admin_url('pages/all-pages') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-            exit;
-        }
-
-        foreach ($editableIds as $id) {
-            $existing = $pageService->findById($id);
-
-            if ($existing === null) {
-                continue;
-            }
-
-            if ($bulkAction === 'trash' && $canDeletePages) {
-                $pageService->trash($id);
-            } elseif ($bulkAction === 'restore' && $canDeletePages) {
-                $pageService->restore($id);
-            } elseif ($bulkAction === 'delete_permanently' && $canDeletePages && $existing->status === PageStatus::Trashed) {
-                $kernel->revisions->deleteAllFor(RevisionableType::Page, $id);
-                $pageService->delete($id);
-            } elseif ($bulkAction === 'draft' && $canPublish) {
-                $pageService->setStatus($id, PageStatus::Draft);
-            } elseif ($bulkAction === 'publish' && $canPublish) {
-                $pageService->setStatus($id, PageStatus::Published);
-            }
-        }
-
-        header('Location: ' . admin_url('pages/all-pages') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-        exit;
     }
 }
 ?>

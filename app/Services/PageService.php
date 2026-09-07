@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use DateTimeImmutable;
+use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
@@ -35,6 +36,14 @@ use RuntimeException;
 final class PageService
 {
     private const DEFAULT_PER_PAGE = 20;
+
+    /**
+     * Matches the `title` column's VARCHAR(191) width (install/migrations/
+     * 0006_create_pages_table.sql) — validated here so an overlong title
+     * fails with a clear message instead of a raw truncation/DB error.
+     * Mirrors PostService::MAX_TITLE_LENGTH exactly.
+     */
+    public const MAX_TITLE_LENGTH = 191;
 
     /**
      * Request-scoped memoization of listAllForTree()'s result. A single
@@ -57,6 +66,7 @@ final class PageService
 
     /**
      * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     * @throws \InvalidArgumentException if $title is empty or exceeds MAX_TITLE_LENGTH
      */
     public function create(
         string $title,
@@ -73,6 +83,8 @@ final class PageService
         PageVisibility $visibility = PageVisibility::Public,
         bool $commentsOpen = true,
     ): Page {
+        $this->validateTitle($title);
+        $content = $this->sanitizeStoredContent($content, $contentFormat);
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title);
         $now = new DateTimeImmutable();
         $menuOrder = $this->nextMenuOrder($parentId);
@@ -123,6 +135,7 @@ final class PageService
 
     /**
      * @param array{x: int, y: int, width: int, height: int}|null $featuredImageCrop
+     * @throws \InvalidArgumentException if $title is empty or exceeds MAX_TITLE_LENGTH
      */
     public function update(
         int $id,
@@ -150,6 +163,9 @@ final class PageService
             $parentId = null;
         }
 
+        $this->validateTitle($title);
+        $resolvedContentFormat = $contentFormat ?? $existing->contentFormat;
+        $content = $this->sanitizeStoredContent($content, $resolvedContentFormat);
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $title, ignoreId: $id);
         $now = new DateTimeImmutable();
 
@@ -163,7 +179,7 @@ final class PageService
                 'title' => $title,
                 'slug' => $slug,
                 'content' => $content,
-                'content_format' => ($contentFormat ?? $existing->contentFormat)->value,
+                'content_format' => $resolvedContentFormat->value,
                 'excerpt' => $excerpt,
                 'status' => $status->value,
                 'visibility' => ($visibility ?? $existing->visibility)->value,
@@ -946,6 +962,33 @@ final class PageService
             PageStatus::Published => $publishedAt ?? $existingPublishedAt ?? $now,
             PageStatus::Scheduled => $publishedAt ?? $existingPublishedAt,
         };
+    }
+
+    /**
+     * @throws \InvalidArgumentException if $title is empty or too long
+     */
+    private function validateTitle(string $title): void
+    {
+        if (trim($title) === '') {
+            throw new \InvalidArgumentException('A title is required.');
+        }
+
+        if (mb_strlen($title) > self::MAX_TITLE_LENGTH) {
+            throw new \InvalidArgumentException('The title cannot be longer than ' . self::MAX_TITLE_LENGTH . ' characters.');
+        }
+    }
+
+    /**
+     * Runs Html-format content through HtmlSanitizer before it's ever
+     * stored — defense in depth on top of ContentRenderer's render-time
+     * sanitizing, since the REST API exposes the raw `content` column
+     * directly, not just rendered HTML. Markdown/Plain content isn't
+     * executable HTML in stored form, so both pass through untouched.
+     * Mirrors PostService::sanitizeStoredContent() exactly.
+     */
+    private function sanitizeStoredContent(string $content, ContentFormat $format): string
+    {
+        return $format === ContentFormat::Html ? (new HtmlSanitizer())->clean($content) : $content;
     }
 
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string

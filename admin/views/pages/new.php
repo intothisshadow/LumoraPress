@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\PagesController;
 use LumoraPress\Core\Content\TextDiff;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\TrustedImageOrigins;
@@ -350,190 +351,36 @@ $error = null;
  */
 $canEditPage = static fn (Page $page): bool => $canEditOthersPages || $page->authorId === $currentUser->id;
 
+$controller = new PagesController($kernel->pages, $kernel->revisions, $kernel->media, $kernel->thumbnails);
+
+// POST handling for 'save'/'restore_revision' lives in PagesController;
+// this view dispatches to it and turns the result into a redirect or
+// $error string. The JSON sub-actions are dispatched separately above.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'save' && Csrf::verify('page_save', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $id = (int) ($_POST['id'] ?? 0);
-        $existing = $id > 0 ? $pageService->findById($id) : null;
+    if ($form === 'save' || $form === 'restore_revision') {
+        $result = $form === 'save'
+            ? $controller->save($_POST, $_FILES, $currentUser->id, $canPublish, $canEditOthersPages, $csrfToken)
+            : $controller->restoreRevision($_POST, $currentUser->id, $canEditOthersPages, $csrfToken);
 
-        if ($id > 0 && ($existing === null || !$canEditPage($existing))) {
-            header('Location: ' . admin_url('pages/all-pages') . '?error=forbidden');
-            exit;
-        }
-
-        $title = trim((string) ($_POST['title'] ?? ''));
-        $content = (string) ($_POST['content'] ?? '');
-        $excerpt = trim((string) ($_POST['excerpt'] ?? ''));
-        $metaTitle = trim((string) ($_POST['meta_title'] ?? ''));
-        $metaDescription = trim((string) ($_POST['meta_description'] ?? ''));
-        $slug = trim((string) ($_POST['slug'] ?? ''));
-        $requestedStatus = PageStatus::tryFrom((string) ($_POST['status'] ?? '')) ?? PageStatus::Draft;
-        $parentId = (int) ($_POST['parent_id'] ?? 0);
-        $contentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
-        $commentsOpen = ($_POST['comments_open'] ?? null) !== null;
-
-        // Contributors and anyone else without publish_posts can save as a
-        // Draft or submit for review (Pending Review), but never set
-        // Published/Scheduled/Trashed themselves — mirrors
-        // admin/views/posts/new.php's identical gate exactly.
-        $status = $canPublish
-            ? $requestedStatus
-            : ($requestedStatus === PageStatus::PendingReview ? PageStatus::PendingReview : PageStatus::Draft);
-
-        $publishedAt = null;
-
-        if ($status === PageStatus::Scheduled) {
-            $rawPublishedAt = trim((string) ($_POST['published_at'] ?? ''));
-
-            try {
-                $publishedAt = $rawPublishedAt !== '' ? new DateTimeImmutable($rawPublishedAt) : null;
-            } catch (\Exception) {
-                $publishedAt = null;
-            }
-        }
-
-        // Visibility is a publish-time decision, same gate as Status
-        // above — mirrors admin/views/posts/new.php exactly.
-        $visibility = $canPublish
-            ? (PageVisibility::tryFrom((string) ($_POST['visibility'] ?? '')) ?? PageVisibility::Public)
-            : ($existing?->visibility ?? PageVisibility::Public);
-
-        // Featured image resolution: upload wins over the existing-image
-        // select, which wins over "remove", which wins over the current value.
-        $featuredImageId = $existing?->featuredImageId;
-
-        if (($_POST['remove_featured_image'] ?? '') === '1') {
-            $featuredImageId = null;
-        }
-
-        $selectedFeaturedImageId = (int) ($_POST['featured_image_id'] ?? 0);
-
-        if ($selectedFeaturedImageId > 0) {
-            $featuredImageId = $selectedFeaturedImageId;
-        }
-
-        if (isset($_FILES['featured_image_upload']) && $_FILES['featured_image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploadedFeaturedImage = $kernel->media->upload($_FILES['featured_image_upload'], $currentUser->id);
-                $kernel->thumbnails->generate($uploadedFeaturedImage);
-                $featuredImageId = (int) $uploadedFeaturedImage['id'];
-            } catch (\Throwable $exception) {
-                $error = 'Featured image upload failed: ' . $exception->getMessage();
-            }
-        }
-
-        // Manual crop — see the identical block in
-        // admin/views/posts/new.php for the full rationale.
-        $featuredImageCrop = null;
-        $cropForId = (int) ($_POST['featured_image_crop_for_id'] ?? 0);
-
-        if ($cropForId > 0 && $cropForId === $featuredImageId) {
-            $cropX = $_POST['featured_image_crop_x'] ?? '';
-            $cropY = $_POST['featured_image_crop_y'] ?? '';
-            $cropWidth = $_POST['featured_image_crop_width'] ?? '';
-            $cropHeight = $_POST['featured_image_crop_height'] ?? '';
-
-            if (
-                is_numeric($cropX) && is_numeric($cropY) && is_numeric($cropWidth) && is_numeric($cropHeight)
-                && (int) $cropWidth > 0 && (int) $cropHeight > 0
-            ) {
-                $featuredImageCrop = [
-                    'x' => max(0, (int) $cropX),
-                    'y' => max(0, (int) $cropY),
-                    'width' => (int) $cropWidth,
-                    'height' => (int) $cropHeight,
-                ];
-            }
-        }
-
-        if ($title === '') {
-            $error = 'A title is required.';
-        } elseif ($error === null) {
-            // Snapshot the pre-update content as a revision before
-            // it's overwritten — see the identical block in
-            // admin/views/posts/new.php for the full rationale.
-            if ($existing !== null) {
-                $kernel->revisions->save(
-                    RevisionableType::Page,
-                    $existing->id,
-                    $existing->title,
-                    $existing->content,
-                    $existing->excerpt,
-                    $existing->contentFormat,
-                    $currentUser->id,
-                );
-            }
-
-            $page = $existing === null
-                ? $pageService->create($title, $content, $excerpt, $currentUser->id, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, commentsOpen: $commentsOpen)
-                : $pageService->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, commentsOpen: $commentsOpen);
-
-            $pageService->updateSeo($page->id, $metaTitle, $metaDescription);
-
+        if ($result->redirectUrl !== null) {
             // Trusted staff shouldn't have to add a domain in Settings
-            // just to embed an image. Scans the *rendered* HTML rather
-            // than raw $content, since a Markdown page stores
-            // `![alt](url)`, not a literal <img> tag.
-            if ($canEditOthersPages) {
-                $renderedForAutoTrust = $kernel->content->render($content, $contentFormat);
+            // just to embed an image. Gated on edit_others_posts, never
+            // the plain "can save" check, and never for restore_revision.
+            // Scans the *rendered* HTML, not raw $content, since a
+            // Markdown page stores `![alt](url)`, not a literal <img> tag.
+            if ($form === 'save' && $canEditOthersPages) {
+                $savedContentFormat = ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? get_active_editor($currentUser->id);
+                $renderedForAutoTrust = $kernel->content->render((string) ($_POST['content'] ?? ''), $savedContentFormat);
                 TrustedImageOrigins::autoTrustFromContent($kernel->config, $renderedForAutoTrust, site_origin());
             }
 
-            header('Location: ' . admin_url('pages/new') . '?id=' . $page->id . '&saved=1');
-            exit;
-        }
-    } elseif ($form === 'restore_revision') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $revisionId = (int) ($_POST['revision_id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('page_restore_revision_' . $id, $token)) {
-            header('Location: ' . admin_url('pages/new') . '?id=' . $id);
-            exit;
+            redirect($result->redirectUrl);
         }
 
-        $existing = $id > 0 ? $pageService->findById($id) : null;
-        $revision = $revisionId > 0 ? $kernel->revisions->find($revisionId) : null;
-
-        if (
-            $existing !== null
-            && $canEditPage($existing)
-            && $revision !== null
-            && $revision->contentType === RevisionableType::Page
-            && $revision->contentId === $existing->id
-        ) {
-            // Snapshot the current (pre-restore) state too, so restoring is
-            // itself undoable.
-            $kernel->revisions->save(
-                RevisionableType::Page,
-                $existing->id,
-                $existing->title,
-                $existing->content,
-                $existing->excerpt,
-                $existing->contentFormat,
-                $currentUser->id,
-            );
-
-            $pageService->update(
-                $existing->id,
-                $revision->title,
-                $revision->content,
-                $revision->excerpt,
-                $existing->status,
-                $existing->publishedAt,
-                $existing->parentId,
-                $existing->featuredImageId,
-                $existing->slug,
-                $revision->contentFormat,
-                featuredImageCrop: $existing->featuredImageCrop,
-                visibility: $existing->visibility,
-                commentsOpen: $existing->commentsOpen,
-            );
-        }
-
-        header('Location: ' . admin_url('pages/new') . '?id=' . $id . '&restored=1');
-        exit;
+        $error = $result->errorMessage;
     }
 }
 
