@@ -22,6 +22,7 @@ use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Comment;
+use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\Tag;
 use LumoraPress\Models\User;
@@ -50,6 +51,7 @@ final class FeedService
         private readonly ThumbnailService $thumbnails,
         private readonly ContentRenderer $content,
         private readonly CommentService $comments,
+        private readonly PageService $pages,
     ) {
     }
 
@@ -193,6 +195,41 @@ final class FeedService
     /**
      * @return array{title: string, description: string}
      */
+    public function pagesChannel(): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » Pages',
+            'description' => (string) $this->config->option('feed_description', ''),
+        ];
+
+        return $this->hooks->applyFilters('feed_pages_channel', $channel);
+    }
+
+    /**
+     * Published pages visible to public site visitors, most-recently
+     * published first — via PageService::paginatePublishedByDate(), not
+     * paginatePublished() itself, since the latter orders alphabetically
+     * for its own callers (the public API listing, the sitemap) rather
+     * than by date, which is what a feed reader expects.
+     *
+     * @return array<int, array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     */
+    public function pagesItems(): array
+    {
+        $limit = $this->itemLimit();
+        $fullContent = $this->config->option('feed_full_content', '1') !== '0';
+        $pages = $this->pages->paginatePublishedByDate(1, $limit)['pages'];
+
+        return array_map(
+            fn (Page $page): array => $this->buildPageItem($page, $fullContent),
+            $pages,
+        );
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
     public function commentsChannel(): array
     {
         $siteName = (string) $this->config->option('site_name', 'Lumora Press');
@@ -275,6 +312,42 @@ final class FeedService
         ];
 
         return $this->hooks->applyFilters('feed_comment_item', $item, $comment);
+    }
+
+    /**
+     * @return array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}
+     */
+    private function buildPageItem(Page $page, bool $fullContent): array
+    {
+        $author = $this->users->findById($page->authorId);
+        $thumbnailUrl = null;
+        $thumbnailType = null;
+        $thumbnailLength = null;
+
+        if ($this->config->option('feed_featured_images', '1') !== '0' && $page->featuredImageId !== null) {
+            $media = $this->media->find($page->featuredImageId);
+
+            if ($media !== null) {
+                $thumbnailUrl = $this->thumbnails->url($media, 'medium') ?? $this->media->url($media);
+                $thumbnailUrl = str_starts_with($thumbnailUrl, 'http://') || str_starts_with($thumbnailUrl, 'https://')
+                    ? $thumbnailUrl
+                    : SiteUrl::get() . '/' . ltrim($thumbnailUrl, '/');
+                $thumbnailType = (string) $media['mime_type'];
+                $thumbnailLength = (int) $media['file_size'];
+            }
+        }
+
+        $item = [
+            'page' => $page,
+            'authorName' => $author?->displayName,
+            'description' => $page->excerpt !== '' ? $page->excerpt : make_excerpt($this->content->toPlainText($page->content, $page->contentFormat)),
+            'content' => $fullContent ? $this->content->render($page->content, $page->contentFormat) : null,
+            'thumbnailUrl' => $thumbnailUrl,
+            'thumbnailType' => $thumbnailType,
+            'thumbnailLength' => $thumbnailLength,
+        ];
+
+        return $this->hooks->applyFilters('feed_page_item', $item, $page);
     }
 
     /**

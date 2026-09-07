@@ -1060,6 +1060,36 @@ final class SiteController
     }
 
     /**
+     * Site-wide feed of published Pages, most-recently-published first.
+     * Pages are not chronological content the way Posts are, so this
+     * reuses its own emitPagesFeed()/renderPagesRss2()/renderPagesAtom()
+     * plumbing (page-shaped items) rather than feed()'s post-shaped
+     * emitFeed() — the same reason comment feeds needed their own
+     * emitCommentsFeed().
+     *
+     * @param array<string, string> $params
+     */
+    public function pagesFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+
+        $this->emitPagesFeed(
+            $format,
+            $this->feeds->pagesChannel(),
+            $this->feeds->pagesItems(),
+            home_url(),
+            home_url('pages/feed/atom'),
+            'pages|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
      * Category-scoped counterpart of feed(), reusing the same
      * FeedService/emitFeed() plumbing — only the channel, item source,
      * and links differ. 404s on an unknown category rather than falling
@@ -1547,6 +1577,165 @@ final class SiteController
 
             if ($post->publishedAt !== null) {
                 $xml .= '<published>' . $post->publishedAt->format('c') . '</published>' . "\n";
+            }
+
+            if ($item['authorName'] !== null) {
+                $xml .= '<author><name>' . esc_html($item['authorName']) . '</name></author>' . "\n";
+            }
+
+            $xml .= '<summary>' . esc_html($item['description']) . '</summary>' . "\n";
+
+            if ($item['content'] !== null) {
+                $xml .= '<content type="html">' . esc_html($item['content']) . '</content>' . "\n";
+            }
+
+            if (($item['thumbnailUrl'] ?? null) !== null) {
+                $xml .= '<link rel="enclosure" href="' . esc_url($item['thumbnailUrl'])
+                    . '" type="' . esc_attr((string) ($item['thumbnailType'] ?? 'image/jpeg')) . '"/>' . "\n";
+            }
+
+            $xml .= '</entry>' . "\n";
+        }
+
+        $xml .= '</feed>' . "\n";
+
+        return $xml;
+    }
+
+    /**
+     * Page-shaped counterpart of emitFeed() — same caching/conditional-GET
+     * shape, but keyed on Page rather than Post, so it renders through its
+     * own renderPagesRss2()/renderPagesAtom() rather than emitFeed()'s
+     * renderRss2()/renderAtom().
+     *
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     */
+    private function emitPagesFeed(string $format, array $channel, array $items, string $channelLink, string $selfLink, string $etagSeed): void
+    {
+        $lastModified = null;
+
+        foreach ($items as $item) {
+            $page = $item['page'];
+            $candidate = $page->updatedAt > ($page->publishedAt ?? $page->updatedAt) ? $page->updatedAt : $page->publishedAt;
+
+            if ($candidate !== null && ($lastModified === null || $candidate > $lastModified)) {
+                $lastModified = $candidate;
+            }
+        }
+
+        $etag = '"' . md5($format . '|' . $etagSeed . '|' . ($lastModified?->format('c') ?? '')) . '"';
+
+        $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? trim($_SERVER['HTTP_IF_NONE_MATCH']) : null;
+
+        if ($ifNoneMatch === $etag) {
+            http_response_code(304);
+            header('ETag: ' . $etag);
+
+            return;
+        }
+
+        $cacheLifetime = max(0, (int) $this->config->option('feed_cache_lifetime', '900'));
+
+        header('Content-Type: ' . ($format === 'atom' ? 'application/atom+xml' : 'application/rss+xml') . '; charset=UTF-8');
+        header('ETag: ' . $etag);
+        header('Cache-Control: public, max-age=' . $cacheLifetime);
+
+        if ($lastModified !== null) {
+            header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
+        }
+
+        echo $format === 'atom'
+            ? $this->renderPagesAtom($channel, $items, $channelLink, $selfLink)
+            : $this->renderPagesRss2($channel, $items, $channelLink);
+
+        do_action('feed_generated', $format);
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     */
+    private function renderPagesRss2(array $channel, array $items, string $channelLink): string
+    {
+        $now = new DateTimeImmutable();
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">' . "\n";
+        $xml .= '<channel>' . "\n";
+        $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
+        $xml .= '<link>' . esc_url($channelLink) . '</link>' . "\n";
+        $xml .= '<description>' . esc_html($channel['description']) . '</description>' . "\n";
+        $xml .= '<language>en</language>' . "\n";
+        $xml .= '<lastBuildDate>' . $now->format('r') . '</lastBuildDate>' . "\n";
+
+        foreach ($items as $item) {
+            $page = $item['page'];
+            $link = page_permalink($page);
+
+            $xml .= '<item>' . "\n";
+            $xml .= '<title>' . esc_html($page->title) . '</title>' . "\n";
+            $xml .= '<link>' . esc_url($link) . '</link>' . "\n";
+            $xml .= '<guid isPermaLink="true">' . esc_url($link) . '</guid>' . "\n";
+            $xml .= '<description>' . esc_html($item['description']) . '</description>' . "\n";
+
+            if ($item['content'] !== null) {
+                $xml .= '<content:encoded>' . esc_html($item['content']) . '</content:encoded>' . "\n";
+            }
+
+            if ($item['authorName'] !== null) {
+                $xml .= '<dc:creator>' . esc_html($item['authorName']) . '</dc:creator>' . "\n";
+            }
+
+            if ($page->publishedAt !== null) {
+                $xml .= '<pubDate>' . $page->publishedAt->format('r') . '</pubDate>' . "\n";
+            }
+
+            if (($item['thumbnailUrl'] ?? null) !== null) {
+                $xml .= '<enclosure url="' . esc_url($item['thumbnailUrl'])
+                    . '" length="' . (int) ($item['thumbnailLength'] ?? 0)
+                    . '" type="' . esc_attr((string) ($item['thumbnailType'] ?? 'image/jpeg')) . '"/>' . "\n";
+            }
+
+            $xml .= '</item>' . "\n";
+        }
+
+        $xml .= '</channel>' . "\n";
+        $xml .= '</rss>' . "\n";
+
+        return $xml;
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     */
+    private function renderPagesAtom(array $channel, array $items, string $channelLink, string $selfLink): string
+    {
+        $now = new DateTimeImmutable();
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<feed xmlns="http://www.w3.org/2005/Atom">' . "\n";
+        $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
+        $xml .= '<subtitle>' . esc_html($channel['description']) . '</subtitle>' . "\n";
+        $xml .= '<id>' . esc_url($channelLink) . '</id>' . "\n";
+        $xml .= '<link rel="self" href="' . esc_url($selfLink) . '"/>' . "\n";
+        $xml .= '<link rel="alternate" href="' . esc_url($channelLink) . '"/>' . "\n";
+        $xml .= '<updated>' . $now->format('c') . '</updated>' . "\n";
+
+        foreach ($items as $item) {
+            $page = $item['page'];
+            $link = page_permalink($page);
+            $updated = $page->updatedAt > $page->createdAt ? $page->updatedAt : ($page->publishedAt ?? $page->createdAt);
+
+            $xml .= '<entry>' . "\n";
+            $xml .= '<title>' . esc_html($page->title) . '</title>' . "\n";
+            $xml .= '<link rel="alternate" href="' . esc_url($link) . '"/>' . "\n";
+            $xml .= '<id>' . esc_url($link) . '</id>' . "\n";
+            $xml .= '<updated>' . $updated->format('c') . '</updated>' . "\n";
+
+            if ($page->publishedAt !== null) {
+                $xml .= '<published>' . $page->publishedAt->format('c') . '</published>' . "\n";
             }
 
             if ($item['authorName'] !== null) {

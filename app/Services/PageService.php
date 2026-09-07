@@ -630,6 +630,46 @@ final class PageService
     }
 
     /**
+     * Same visibility rules as paginatePublished() (published-or-due,
+     * public only), but newest-first by COALESCE(published_at, created_at)
+     * rather than alphabetical — for the Pages feed, where a reader
+     * expects recently-published pages first, not a title-sorted listing.
+     * paginatePublished() itself stays alphabetical since its own callers
+     * (the public API listing, the sitemap) have no such expectation.
+     *
+     * @return array{pages: array<int, Page>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginatePublishedByDate(int $page = 1, int $perPage = self::DEFAULT_PER_PAGE): array
+    {
+        $page = max(1, $page);
+        $perPage = max(1, $perPage);
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now)) AND visibility = 'public'";
+
+        $total = (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}",
+            ['now' => $now],
+        );
+
+        $offset = ($page - 1) * $perPage;
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE {$where}"
+                . " ORDER BY COALESCE(published_at, created_at) DESC LIMIT {$perPage} OFFSET {$offset}",
+            ['now' => $now],
+        );
+
+        return [
+            'pages' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => (int) max(1, ceil($total / $perPage)),
+        ];
+    }
+
+    /**
      * Every page for the admin page list, excluding Trash from the
      * default "All" view — mirrors PostService::paginateForAdmin()'s
      * identical trash-exclusion default; pass PageStatus::Trashed

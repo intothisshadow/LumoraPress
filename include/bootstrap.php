@@ -509,7 +509,7 @@ add_filter('content_html', [$folderGallery, 'render']);
 $mediaPlayer = new MediaPlayerShortcode($media);
 add_filter('content_html', [$mediaPlayer, 'render']);
 
-$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content, $comments);
+$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content, $comments, $pages);
 $mediaImport = new MediaImportService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -784,6 +784,8 @@ $router->get('/page/{slug}', fn (array $params) => $site->legacyPageRedirect($pa
 $router->post('/page/{slug}/comment', fn (array $params) => $site->submitPageComment($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));
 $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
+$router->get('/pages/feed', fn (array $params) => $site->pagesFeed($params));
+$router->get('/pages/feed/{format}', fn (array $params) => $site->pagesFeed($params));
 $router->get('/comments/feed', fn (array $params) => $site->commentsFeed($params));
 $router->get('/comments/feed/{format}', fn (array $params) => $site->commentsFeed($params));
 $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
