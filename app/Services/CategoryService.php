@@ -34,6 +34,12 @@ use RuntimeException;
  */
 final class CategoryService
 {
+    /**
+     * Mirrors PostService::MAX_TITLE_LENGTH/PageService::MAX_TITLE_LENGTH — matches the
+     * categories table's own `name VARCHAR(191)` column.
+     */
+    public const MAX_NAME_LENGTH = 191;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -41,8 +47,12 @@ final class CategoryService
     ) {
     }
 
+    /**
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
+     */
     public function create(string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null, ?string $archiveDisplayMode = null): Category
     {
+        $this->validateName($name);
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $name);
         $now = new DateTimeImmutable();
 
@@ -89,9 +99,12 @@ final class CategoryService
      * (upload wins over an existing-media pick, which wins over "remove", which wins over
      * keeping the current image) before calling update(), the same resolution order
      * PostsController::save() already uses for featured images.
+     *
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
      */
     public function update(int $id, string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null, ?string $archiveDisplayMode = null): Category
     {
+        $this->validateName($name);
         $existing = $this->findById($id);
 
         if ($existing === null) {
@@ -841,6 +854,20 @@ final class CategoryService
             : $this->database->fetchColumn('SELECT MAX(menu_order) FROM ' . $this->table() . ' WHERE parent_id = :parent_id', ['parent_id' => $parentId]);
 
         return $max === null ? 0 : ((int) $max) + 1;
+    }
+
+    /**
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
+     */
+    private function validateName(string $name): void
+    {
+        if (trim($name) === '') {
+            throw new \InvalidArgumentException('A name is required.');
+        }
+
+        if (mb_strlen($name) > self::MAX_NAME_LENGTH) {
+            throw new \InvalidArgumentException('The name cannot be longer than ' . self::MAX_NAME_LENGTH . ' characters.');
+        }
     }
 
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string

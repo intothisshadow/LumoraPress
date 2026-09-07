@@ -759,14 +759,20 @@ final class ApiController
             return;
         }
 
-        $category = $this->categories->create(
-            name: $name,
-            description: (string) ($body['description'] ?? ''),
-            parentId: isset($body['parent_id']) ? (int) $body['parent_id'] : null,
-            slug: isset($body['slug']) ? (string) $body['slug'] : null,
-            imageId: isset($body['image_id']) ? (int) $body['image_id'] : null,
-            archiveDisplayMode: isset($body['archive_display_mode']) ? (string) $body['archive_display_mode'] : null,
-        );
+        try {
+            $category = $this->categories->create(
+                name: $name,
+                description: (string) ($body['description'] ?? ''),
+                parentId: isset($body['parent_id']) ? (int) $body['parent_id'] : null,
+                slug: isset($body['slug']) ? (string) $body['slug'] : null,
+                imageId: isset($body['image_id']) ? (int) $body['image_id'] : null,
+                archiveDisplayMode: isset($body['archive_display_mode']) ? (string) $body['archive_display_mode'] : null,
+            );
+        } catch (\InvalidArgumentException $exception) {
+            ApiResponse::error($exception->getMessage(), 422);
+
+            return;
+        }
 
         ApiResponse::json($this->categoryToArray($category), 201);
     }
@@ -796,15 +802,21 @@ final class ApiController
 
         $body = $this->requestBody();
 
-        $category = $this->categories->update(
-            id: $existing->id,
-            name: isset($body['name']) ? (string) $body['name'] : $existing->name,
-            description: isset($body['description']) ? (string) $body['description'] : $existing->description,
-            parentId: array_key_exists('parent_id', $body) ? ($body['parent_id'] !== null ? (int) $body['parent_id'] : null) : $existing->parentId,
-            slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
-            imageId: array_key_exists('image_id', $body) ? ($body['image_id'] !== null ? (int) $body['image_id'] : null) : $existing->imageId,
-            archiveDisplayMode: array_key_exists('archive_display_mode', $body) ? ($body['archive_display_mode'] !== null ? (string) $body['archive_display_mode'] : null) : $existing->archiveDisplayMode,
-        );
+        try {
+            $category = $this->categories->update(
+                id: $existing->id,
+                name: isset($body['name']) ? (string) $body['name'] : $existing->name,
+                description: isset($body['description']) ? (string) $body['description'] : $existing->description,
+                parentId: array_key_exists('parent_id', $body) ? ($body['parent_id'] !== null ? (int) $body['parent_id'] : null) : $existing->parentId,
+                slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
+                imageId: array_key_exists('image_id', $body) ? ($body['image_id'] !== null ? (int) $body['image_id'] : null) : $existing->imageId,
+                archiveDisplayMode: array_key_exists('archive_display_mode', $body) ? ($body['archive_display_mode'] !== null ? (string) $body['archive_display_mode'] : null) : $existing->archiveDisplayMode,
+            );
+        } catch (\InvalidArgumentException $exception) {
+            ApiResponse::error($exception->getMessage(), 422);
+
+            return;
+        }
 
         ApiResponse::json($this->categoryToArray($category));
     }

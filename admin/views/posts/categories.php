@@ -136,17 +136,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        if ($name === '') {
-            $error = 'A name is required.';
-        }
-
         if ($error === null) {
-            $category = $existing === null
-                ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode)
-                : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode);
+            try {
+                $category = $existing === null
+                    ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode)
+                    : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode);
 
-            header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
-            exit;
+                header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
+                exit;
+            } catch (InvalidArgumentException $exception) {
+                $error = $exception->getMessage();
+            }
         }
     } elseif ($form === 'trash') {
         $id = (int) ($_POST['id'] ?? 0);

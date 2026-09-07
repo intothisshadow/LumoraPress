@@ -717,7 +717,14 @@ final class PostsController
             return;
         }
 
-        $category = $this->categories->findOrCreateByName($name);
+        try {
+            $category = $this->categories->findOrCreateByName($name);
+        } catch (\InvalidArgumentException $exception) {
+            http_response_code(422);
+            echo json_encode(['error' => $exception->getMessage()]);
+
+            return;
+        }
 
         echo json_encode(['data' => ['id' => $category->id, 'name' => $category->name]]);
     }
