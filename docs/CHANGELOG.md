@@ -10,6 +10,14 @@ All notable changes to Lumora Press are documented in this file.
 - Comment feeds (LP-013): `/comments/feed`/`/comments/feed/atom` lists the site's most recent approved comments (across both posts and pages), and every post also gets its own comment-thread feed at `{post-url}/comments/feed`/`{post-url}/comments/feed/atom` — the same RSS 2.0/Atom 1.0 formats and HTTP caching the post/category/tag/author feeds already have. A comment awaiting moderation, marked spam, or on a trashed/private post never appears.
 - Pages feed (LP-013): `/pages/feed`/`/pages/feed/atom` lists published Pages, most-recently-published first — the same RSS 2.0/Atom 1.0 formats, full-content/excerpt, featured-image, and HTTP caching settings the Posts feeds already have.
 
+### Changed
+
+- Lumora Classic theme: removed the "Subscribe via RSS" link from the site footer.
+
+### Fixed
+
+- Lumora Classic theme: footer widget titles were unreadable — `.lp-widget__title` had no color of its own, so on the footer's dark background it inherited the footer's light text color even though the widget card itself keeps its normal light background. Footer widget titles now use the same text color as the rest of the widget card.
+
 ## [0.11.0] — 2026-09-07
 
 ### Added

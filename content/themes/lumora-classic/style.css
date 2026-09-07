@@ -1693,6 +1693,13 @@ a.lp-post-list__comments:focus {
     flex: 1 1 220px;
 }
 
+/* .lp-widget__title has no color of its own, so on the dark footer
+   background it would otherwise inherit .lp-site-footer's light text
+   color even though the widget card itself stays light. */
+.lp-site-footer__widgets .lp-widget__title {
+    color: var(--lp-text);
+}
+
 .lp-site-footer__powered-by {
     color: var(--lp-text-muted);
     font-size: 0.85rem;
@@ -1701,18 +1708,6 @@ a.lp-post-list__comments:focus {
 
 .lp-site-footer__powered-by a {
     color: inherit;
-}
-
-.lp-site-footer__feed-link {
-    color: var(--lp-accent);
-    font-size: 0.85rem;
-    text-decoration: none;
-}
-
-.lp-site-footer__feed-link:hover,
-.lp-site-footer__feed-link:focus {
-    color: var(--lp-accent-hover);
-    text-decoration: underline;
 }
 
 /* LP-132: shown only when Settings > Privacy has a Privacy Policy Page
@@ -2640,7 +2635,6 @@ body.lp-site {
     color: rgba(237, 243, 241, 0.68);
 }
 
-.lp-site-footer__feed-link,
 .lp-site-footer__privacy-link {
     color: #8be1d5;
 }
