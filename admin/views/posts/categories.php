@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\CategoriesController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Category;
 
@@ -100,166 +101,47 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
 $error = null;
 
+// POST handling lives in CategoriesController; this view dispatches to it and
+// turns the AdminActionResult into a redirect or $error string. The
+// "Category Image" picker's grid query above is the one JSON sub-action left
+// inline — see CategoriesController's own docblock for why.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-    if ($form === 'save' && Csrf::verify('category_save', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $id = (int) ($_POST['id'] ?? 0);
-        $existing = $id > 0 ? $categoryService->findById($id) : null;
+    if ($form !== '') {
+        $controller = new CategoriesController($categoryService, $kernel->media, $kernel->thumbnails);
 
-        if ($id > 0 && $existing === null) {
-            header('Location: ' . admin_url('posts/categories') . '?error=forbidden');
-            exit;
-        }
+        $result = match ($form) {
+            'save' => $controller->save($_POST, $_FILES, $currentUser->id, $csrfToken),
+            'trash' => $controller->trash($_POST, $canDeleteCategories, $csrfToken),
+            'restore_category' => $controller->restoreCategory($_POST, $canDeleteCategories, $csrfToken),
+            'delete_permanently' => $controller->deletePermanently($_POST, $canDeleteCategories, $csrfToken),
+            'reposition_category' => $controller->repositionCategory($_POST, $csrfToken),
+            'empty_trash' => $controller->emptyTrash($canDeleteCategories, $csrfToken),
+            'bulk_action' => $controller->bulkAction($_POST, $canDeleteCategories, $csrfToken),
+            default => null,
+        };
 
-        $name = trim((string) ($_POST['name'] ?? ''));
-        $slug = trim((string) ($_POST['slug'] ?? ''));
-        $description = trim((string) ($_POST['description'] ?? ''));
-        $parentId = (int) ($_POST['parent_id'] ?? 0);
+        if ($result !== null) {
+            if ($result->redirectUrl !== null) {
+                redirect($result->redirectUrl);
+            }
 
-        // Resolution order: an uploaded file wins over the picker's own
-        // selected/cleared value, mirroring PostsController::save()'s
-        // featured-image resolution (minus crop — see category_image_url()'s
-        // docblock for why categories don't need one).
-        $imageId = (int) ($_POST['image_id'] ?? 0) > 0 ? (int) $_POST['image_id'] : null;
+            $error = $result->errorMessage;
 
-        $archiveDisplayMode = is_string($_POST['archive_display_mode'] ?? null) ? $_POST['archive_display_mode'] : '';
-        $archiveDisplayMode = in_array($archiveDisplayMode, ['excerpt', 'full'], true) ? $archiveDisplayMode : null;
-
-        if (isset($_FILES['image_upload']) && $_FILES['image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploadedImage = $kernel->media->upload($_FILES['image_upload'], $currentUser->id);
-                $kernel->thumbnails->generate($uploadedImage);
-                $imageId = (int) $uploadedImage['id'];
-            } catch (Throwable $exception) {
-                $error = 'Category image upload failed: ' . $exception->getMessage();
+            // The form posts to a plain URL with no ?action= query string, so without this,
+            // a 'save' error (image upload failure or a validation InvalidArgumentException)
+            // would fall through to the list view below instead of redisplaying the form the
+            // error banner is actually about. The controller already redirected to
+            // ?error=forbidden for a nonexistent id, so reaching here with $form === 'save'
+            // always means the category being edited does exist.
+            if ($form === 'save') {
+                $postedId = (int) ($_POST['id'] ?? 0);
+                $action = $postedId > 0 ? 'edit' : 'new';
+                $editingId = $postedId > 0 ? $postedId : null;
             }
         }
-
-        if ($error === null) {
-            try {
-                $category = $existing === null
-                    ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode)
-                    : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode);
-
-                header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
-                exit;
-            } catch (InvalidArgumentException $exception) {
-                $error = $exception->getMessage();
-            }
-        }
-
-        // The form posts to a plain URL with no ?action= query string, so without this,
-        // any error above (image upload failure or a validation InvalidArgumentException)
-        // would fall through to the list view below instead of redisplaying the form the
-        // error banner is actually about.
-        if ($error !== null) {
-            $action = $existing === null ? 'new' : 'edit';
-            $editingId = $existing?->id;
-        }
-    } elseif ($form === 'trash') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('category_trash_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/categories'));
-            exit;
-        }
-
-        if ($canDeleteCategories && $id > 0) {
-            $categoryService->trash($id);
-        }
-
-        header('Location: ' . admin_url('posts/categories') . '?trashed=1');
-        exit;
-    } elseif ($form === 'restore_category') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('category_restore_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/categories'));
-            exit;
-        }
-
-        if ($canDeleteCategories && $id > 0) {
-            $categoryService->restore($id);
-        }
-
-        header('Location: ' . admin_url('posts/categories') . '?status=trash&category_restored=1');
-        exit;
-    } elseif ($form === 'delete_permanently') {
-        $id = (int) ($_POST['id'] ?? 0);
-        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-
-        if (!Csrf::verify('category_delete_permanently_' . $id, $token)) {
-            header('Location: ' . admin_url('posts/categories'));
-            exit;
-        }
-
-        $existing = $id > 0 ? $categoryService->findById($id) : null;
-
-        // Permanent delete is only offered for categories already in the
-        // Trash — Move to Trash is the only reachable path to removing
-        // one from the "All" view.
-        if ($existing !== null && $existing->isTrashed() && $canDeleteCategories) {
-            $categoryService->delete($id);
-        }
-
-        header('Location: ' . admin_url('posts/categories') . '?status=trash&category_deleted=1');
-        exit;
-    } elseif ($form === 'reposition_category') {
-        $draggedId = (int) ($_POST['dragged_id'] ?? 0);
-        $targetId = (int) ($_POST['target_id'] ?? 0);
-        $positionValue = (string) ($_POST['position'] ?? 'before');
-
-        if (Csrf::verify('category_reposition', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null) && $draggedId > 0 && $targetId > 0) {
-            $categoryService->reorder($draggedId, $targetId, $positionValue === 'after' ? 'after' : 'before');
-        }
-
-        header('Location: ' . admin_url('posts/categories'));
-        exit;
-    } elseif ($form === 'empty_trash' && Csrf::verify('categories_empty_trash', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        if ($canDeleteCategories) {
-            $categoryService->emptyTrash();
-        }
-
-        header('Location: ' . admin_url('posts/categories') . '?status=trash&trash_emptied=1');
-        exit;
-    } elseif ($form === 'bulk_action' && Csrf::verify('categories_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $bulkAction = (string) ($_POST['bulk_action'] ?? '');
-        $ids = array_values(array_filter(array_map('intval', is_array($_POST['category_ids'] ?? null) ? $_POST['category_ids'] : [])));
-        $mergeTargetId = (int) ($_POST['merge_target_id'] ?? 0);
-
-        if ($canDeleteCategories) {
-            if ($bulkAction === 'change_parent') {
-                // -1 means "no target chosen" (the placeholder option) — a no-op, distinct
-                // from 0, which explicitly means "make top-level" (clear parent_id).
-                $changeParentTargetId = (int) ($_POST['change_parent_target_id'] ?? -1);
-
-                if ($changeParentTargetId >= 0) {
-                    $categoryService->bulkChangeParent($ids, $changeParentTargetId > 0 ? $changeParentTargetId : null);
-                }
-            } else {
-                foreach ($ids as $id) {
-                    if ($bulkAction === 'trash') {
-                        $categoryService->trash($id);
-                    } elseif ($bulkAction === 'restore') {
-                        $categoryService->restore($id);
-                    } elseif ($bulkAction === 'delete_permanently') {
-                        $existing = $categoryService->findById($id);
-
-                        if ($existing !== null && $existing->isTrashed()) {
-                            $categoryService->delete($id);
-                        }
-                    } elseif ($bulkAction === 'merge' && $mergeTargetId > 0 && $id !== $mergeTargetId) {
-                        $categoryService->merge($id, $mergeTargetId);
-                    }
-                }
-            }
-        }
-
-        header('Location: ' . admin_url('posts/categories') . (isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : ''));
-        exit;
     }
 }
 
