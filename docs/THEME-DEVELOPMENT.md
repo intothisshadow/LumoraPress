@@ -193,6 +193,7 @@ return.
 | `the_post_categories(Post $post, string $separator = ', ')` | `post_categories()`, echoed as a `$separator`-joined list of links. Outputs nothing at all for an uncategorized post, so it's safe to call unconditionally. |
 | `has_category_image(Category $category): bool` | Whether `$category` has an image assigned (Categories admin's "Category Image" field). |
 | `category_image_url(Category $category, string $size = 'medium'): ?string` | The image's URL at `$size`, falling back to the original if no thumbnail of that size was generated, or `null` if `$category` has no image. No manual-crop support, unlike a post/page featured image. |
+| `category_archive_display_mode(Category $category): string` | The effective `'excerpt'`/`'full'` display mode for `$category`'s own archive page — its "Archive display" field if the admin set one, otherwise the site-wide "Post display" Theme Option. `archive.php` calls this instead of `theme_option('post_display_mode')` directly whenever `$archive_category` is set. |
 | `get_the_tags(Post $post): array` | The Tags `$post` is assigned to (alphabetical). Empty array for a tagless post, never `null`. |
 | `post_has_tags(Post $post): bool` | Whether `$post` has any tags at all. |
 | `the_tags(Post $post, string $before = '', string $sep = ', ', string $after = '')` | `get_the_tags()`, echoed as a `$sep`-joined list of links wrapped in `$before`/`$after`. Outputs nothing at all for a tagless post, so it's safe to call unconditionally. |

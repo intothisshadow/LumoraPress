@@ -1692,10 +1692,11 @@ final class WordPressImportService
 
         if ($existingId !== null) {
             if ($existingContentMode === ExistingContentMode::Overwrite) {
-                // Re-importing must never wipe an image the admin assigned locally after the
-                // last import — WordPress category terms have no image of their own to overwrite it with.
-                $existingImageId = $this->categories->findById($existingId)?->imageId;
-                $this->categories->update($existingId, $term['name'], '', $parentId, imageId: $existingImageId);
+                // Re-importing must never wipe an image or archive-display override the admin
+                // assigned locally after the last import — WordPress category terms have
+                // neither concept of their own to overwrite them with.
+                $existingCategory = $this->categories->findById($existingId);
+                $this->categories->update($existingId, $term['name'], '', $parentId, imageId: $existingCategory?->imageId, archiveDisplayMode: $existingCategory?->archiveDisplayMode);
             }
 
             return $existingId;

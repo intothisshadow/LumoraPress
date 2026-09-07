@@ -111,6 +111,18 @@ if (!function_exists('category_image_url')) {
     }
 }
 
+if (!function_exists('category_archive_display_mode')) {
+    /**
+     * The effective post-display mode ('excerpt'/'full') for $category's own archive page —
+     * its own "Archive display" override if the admin set one, falling back to the site-wide
+     * "Post display" Theme Option otherwise.
+     */
+    function category_archive_display_mode(Category $category): string
+    {
+        return $category->archiveDisplayMode ?? theme_option('post_display_mode');
+    }
+}
+
 if (!function_exists('privacy_policy_url')) {
     /**
      * The site's configured Privacy Policy Page's URL (Settings >

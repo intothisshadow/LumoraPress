@@ -71,7 +71,7 @@ $comment_counts ??= [];
                             <?php if ($moreTagContent !== null): ?>
                                 <div class="lp-post-list__content lp-post__content"><?= $moreTagContent ?></div>
                                 <a class="lp-post-list__more" href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html(theme_option('read_more_text')) ?></a>
-                            <?php elseif (theme_option('post_display_mode') === 'full'): ?>
+                            <?php elseif (($archive_category !== null ? category_archive_display_mode($archive_category) : theme_option('post_display_mode')) === 'full'): ?>
                                 <div class="lp-post-list__content lp-post__content"><?php the_content($post); ?></div>
                             <?php else: ?>
                                 <?php $postListingExcerpt = get_the_excerpt($post); ?>

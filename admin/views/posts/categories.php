@@ -123,6 +123,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         // docblock for why categories don't need one).
         $imageId = (int) ($_POST['image_id'] ?? 0) > 0 ? (int) $_POST['image_id'] : null;
 
+        $archiveDisplayMode = is_string($_POST['archive_display_mode'] ?? null) ? $_POST['archive_display_mode'] : '';
+        $archiveDisplayMode = in_array($archiveDisplayMode, ['excerpt', 'full'], true) ? $archiveDisplayMode : null;
+
         if (isset($_FILES['image_upload']) && $_FILES['image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
             try {
                 $uploadedImage = $kernel->media->upload($_FILES['image_upload'], $currentUser->id);
@@ -139,8 +142,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($error === null) {
             $category = $existing === null
-                ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId)
-                : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId);
+                ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode)
+                : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode);
 
             header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
             exit;
@@ -358,6 +361,16 @@ if ($action === 'edit') {
                 <input type="file" id="category-image-upload" name="image_upload" accept="image/*">
                 <span class="lp-field__hint">Shown on this category's archive page, if the active theme supports it.</span>
             </fieldset>
+
+            <p class="lp-field">
+                <label for="category-archive-display-mode">Archive display</label>
+                <select id="category-archive-display-mode" name="archive_display_mode">
+                    <option value="" <?= ($category?->archiveDisplayMode ?? '') === '' ? 'selected' : '' ?>>Use theme default</option>
+                    <option value="excerpt" <?= ($category?->archiveDisplayMode ?? '') === 'excerpt' ? 'selected' : '' ?>>Excerpt</option>
+                    <option value="full" <?= ($category?->archiveDisplayMode ?? '') === 'full' ? 'selected' : '' ?>>Full Content</option>
+                </select>
+                <span class="lp-field__hint">Overrides the theme's site-wide "Post display" setting for this category's own archive page only.</span>
+            </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Category</button>
             <a class="lp-button" href="<?= esc_url(admin_url('posts/categories')) ?>">Cancel</a>

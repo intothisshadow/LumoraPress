@@ -41,15 +41,15 @@ final class CategoryService
     ) {
     }
 
-    public function create(string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null): Category
+    public function create(string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null, ?string $archiveDisplayMode = null): Category
     {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $name);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (name, slug, description, parent_id, menu_order, image_id, created_at, updated_at)
-             VALUES (:name, :slug, :description, :parent_id, :menu_order, :image_id, :created_at, :updated_at)',
+                (name, slug, description, parent_id, menu_order, image_id, archive_display_mode, created_at, updated_at)
+             VALUES (:name, :slug, :description, :parent_id, :menu_order, :image_id, :archive_display_mode, :created_at, :updated_at)',
             [
                 'name' => $name,
                 'slug' => $slug,
@@ -57,6 +57,7 @@ final class CategoryService
                 'parent_id' => $parentId,
                 'menu_order' => $this->nextMenuOrder($parentId),
                 'image_id' => $imageId,
+                'archive_display_mode' => $archiveDisplayMode,
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
             ],
@@ -89,7 +90,7 @@ final class CategoryService
      * keeping the current image) before calling update(), the same resolution order
      * PostsController::save() already uses for featured images.
      */
-    public function update(int $id, string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null): Category
+    public function update(int $id, string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null, ?string $archiveDisplayMode = null): Category
     {
         $existing = $this->findById($id);
 
@@ -108,7 +109,8 @@ final class CategoryService
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET name = :name, slug = :slug, description = :description,
-                    parent_id = :parent_id, image_id = :image_id, updated_at = :updated_at
+                    parent_id = :parent_id, image_id = :image_id, archive_display_mode = :archive_display_mode,
+                    updated_at = :updated_at
               WHERE id = :id',
             [
                 'name' => $name,
@@ -116,6 +118,7 @@ final class CategoryService
                 'description' => $description,
                 'parent_id' => $parentId,
                 'image_id' => $imageId,
+                'archive_display_mode' => $archiveDisplayMode,
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
             ],
@@ -834,6 +837,7 @@ final class CategoryService
             trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
             imageId: isset($row['image_id']) && $row['image_id'] !== null ? (int) $row['image_id'] : null,
             menuOrder: isset($row['menu_order']) ? (int) $row['menu_order'] : 0,
+            archiveDisplayMode: isset($row['archive_display_mode']) && $row['archive_display_mode'] !== null ? (string) $row['archive_display_mode'] : null,
         );
     }
 
