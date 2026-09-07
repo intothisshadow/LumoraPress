@@ -1322,6 +1322,59 @@ final class SiteController
     }
 
     /**
+     * A plugin-registered feed type, added via `add_filter('feed_types',
+     * fn (array $types) => $types + ['my-type' => [...]])`. Each entry is
+     * `['channel' => callable(): array{title: string, description: string},
+     * 'items' => callable(): array, 'shape' => 'posts'|'pages'|'comments',
+     * 'link' => string (optional, defaults to home_url())]` — 'items' must
+     * return the array shape FeedService's own items()/pagesItems()/
+     * commentsItems() return for that 'shape', since it's handed straight
+     * to the matching emit*Feed() family below with no reshaping. 404s on
+     * an unregistered type, the same as an unknown category/tag.
+     *
+     * @param array<string, string> $params
+     */
+    public function customTypeFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $slug = $params['type'] ?? '';
+        $type = $slug !== '' ? (self::registeredFeedTypes()[$slug] ?? null) : null;
+
+        if ($type === null || !isset($type['channel'], $type['items']) || !is_callable($type['channel']) || !is_callable($type['items'])) {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = self::resolveFeedFormat($params['format'] ?? '');
+        $channel = (array) ($type['channel'])();
+        $items = (array) ($type['items'])();
+        $family = (string) ($type['shape'] ?? 'posts');
+        $channelLink = (string) ($type['link'] ?? home_url());
+        $selfLink = home_url('feed/x/' . $slug . PermalinkService::feedFormatSuffix($format));
+        $etagSeed = 'custom_' . $slug . '|' . $this->feeds->itemLimit();
+
+        match ($family) {
+            'pages' => $this->emitPagesFeed($format, $channel, $items, $channelLink, $selfLink, $etagSeed),
+            'comments' => $this->emitCommentsFeed($format, $channel, $items, $channelLink, $selfLink, $etagSeed),
+            default => $this->emitFeed($format, $channel, $items, $channelLink, $selfLink, $etagSeed),
+        };
+    }
+
+    /**
+     * @return array<string, array{channel: callable, items: callable, shape?: string, link?: string}>
+     */
+    private static function registeredFeedTypes(): array
+    {
+        return (array) apply_filters('feed_types', []);
+    }
+
+    /**
      * Comment-feed counterpart of emitFeed() — same caching/conditional-GET
      * shape, but built around comment-shaped items (comment/link/title/
      * description/content) rather than post-shaped ones, so it renders
@@ -1368,7 +1421,8 @@ final class SiteController
         echo match ($format) {
             'atom' => $this->renderCommentsAtom($channel, $items, $channelLink, $selfLink),
             'json' => $this->renderCommentsJson($channel, $items, $channelLink, $selfLink),
-            default => $this->renderCommentsRss2($channel, $items, $channelLink),
+            'rss' => $this->renderCommentsRss2($channel, $items, $channelLink),
+            default => $this->renderCustomFormat($format, $channel, $items, $channelLink, $selfLink, 'comments', fn () => $this->renderCommentsRss2($channel, $items, $channelLink)),
         };
 
         do_action('feed_generated', $format);
@@ -1522,24 +1576,35 @@ final class SiteController
         echo match ($format) {
             'atom' => $this->renderAtom($channel, $items, $channelLink, $selfLink),
             'json' => $this->renderJson($channel, $items, $channelLink, $selfLink),
-            default => $this->renderRss2($channel, $items, $channelLink),
+            'rss' => $this->renderRss2($channel, $items, $channelLink),
+            default => $this->renderCustomFormat($format, $channel, $items, $channelLink, $selfLink, 'posts', fn () => $this->renderRss2($channel, $items, $channelLink)),
         };
 
         do_action('feed_generated', $format);
     }
 
     /**
-     * Normalizes the `{format}` route param into one of 'rss'/'atom'/'json'
-     * — the same three-way switch every feed handler needs, kept in one
-     * place rather than repeated as an inline ternary per handler.
+     * Normalizes the `{format}` route param into 'rss'/'atom'/'json', or a
+     * plugin-registered custom format — the same switch every feed
+     * handler needs, kept in one place rather than repeated per handler.
+     * A plugin adds `add_filter('feed_formats', fn (array $formats) =>
+     * $formats + ['podcast' => $renderer])`, where $renderer is a
+     * `callable(string $format, array $channel, array $items, string
+     * $channelLink, string $selfLink, string $family): string` — $family
+     * is 'posts'/'pages'/'comments', telling the renderer which item
+     * shape it received (see FeedService's own item-shape docblocks).
+     * Anything not recognized as atom/json/a registered custom format
+     * falls back to 'rss', the same as an empty/missing format always has.
      */
     private static function resolveFeedFormat(string $requested): string
     {
-        return match ($requested) {
-            'atom' => 'atom',
-            'json' => 'json',
-            default => 'rss',
-        };
+        if ($requested === 'atom' || $requested === 'json') {
+            return $requested;
+        }
+
+        return $requested !== '' && array_key_exists($requested, self::customFeedFormats())
+            ? $requested
+            : 'rss';
     }
 
     private static function feedContentType(string $format): string
@@ -1547,8 +1612,41 @@ final class SiteController
         return match ($format) {
             'atom' => 'application/atom+xml',
             'json' => 'application/feed+json',
-            default => 'application/rss+xml',
+            'rss' => 'application/rss+xml',
+            // A custom format's own content type — 'feed_content_type' lets a plugin
+            // supply one; falls back to RSS's if it doesn't (harmless, since the
+            // actual body only ever comes from that format's own registered renderer).
+            default => (string) apply_filters('feed_content_type', 'application/rss+xml', $format),
         };
+    }
+
+    /**
+     * @return array<string, callable(string, array<string, mixed>, array<int, mixed>, string, string, string): string>
+     */
+    private static function customFeedFormats(): array
+    {
+        return (array) apply_filters('feed_formats', []);
+    }
+
+    /**
+     * Renders a plugin-registered custom format via its own callback, or
+     * falls back to $fallback (that family's own renderRss2()-equivalent)
+     * when $format isn't actually registered — reachable only from the
+     * match `default` arm below, after resolveFeedFormat() has already
+     * validated $format, so this only truly falls back for an admin who
+     * disabled the plugin that registered $format between page load and
+     * this request.
+     *
+     * @param array<string, mixed> $channel
+     * @param array<int, mixed> $items
+     */
+    private function renderCustomFormat(string $format, array $channel, array $items, string $channelLink, string $selfLink, string $family, callable $fallback): string
+    {
+        $renderer = self::customFeedFormats()[$format] ?? null;
+
+        return $renderer !== null
+            ? (string) $renderer($format, $channel, $items, $channelLink, $selfLink, $family)
+            : (string) $fallback();
     }
 
     /**
@@ -1785,7 +1883,8 @@ final class SiteController
         echo match ($format) {
             'atom' => $this->renderPagesAtom($channel, $items, $channelLink, $selfLink),
             'json' => $this->renderPagesJson($channel, $items, $channelLink, $selfLink),
-            default => $this->renderPagesRss2($channel, $items, $channelLink),
+            'rss' => $this->renderPagesRss2($channel, $items, $channelLink),
+            default => $this->renderCustomFormat($format, $channel, $items, $channelLink, $selfLink, 'pages', fn () => $this->renderPagesRss2($channel, $items, $channelLink)),
         };
 
         do_action('feed_generated', $format);

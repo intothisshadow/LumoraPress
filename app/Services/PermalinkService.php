@@ -265,17 +265,16 @@ final class PermalinkService
 
     /**
      * The URL suffix for a feed format — '' for 'rss' (the bare "/feed"
-     * URL), '/atom' or '/json' otherwise. Shared by every *FeedUrl()
+     * URL), '/{format}' for anything else. Shared by every *FeedUrl()
      * method here so a feed's self-link always matches the format that
-     * was actually requested, not a hardcoded assumption.
+     * was actually requested, not a hardcoded assumption. Generalized
+     * rather than a fixed atom/json match so a plugin-registered custom
+     * format (see SiteController::resolveFeedFormat()'s 'feed_formats'
+     * filter) gets a working self-link with no changes needed here.
      */
     public static function feedFormatSuffix(string $format): string
     {
-        return match ($format) {
-            'atom' => '/atom',
-            'json' => '/json',
-            default => '',
-        };
+        return $format === 'rss' || $format === '' ? '' : '/' . $format;
     }
 
     /**

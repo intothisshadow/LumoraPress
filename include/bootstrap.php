@@ -788,6 +788,10 @@ $router->get('/pages/feed', fn (array $params) => $site->pagesFeed($params));
 $router->get('/pages/feed/{format}', fn (array $params) => $site->pagesFeed($params));
 $router->get('/comments/feed', fn (array $params) => $site->commentsFeed($params));
 $router->get('/comments/feed/{format}', fn (array $params) => $site->commentsFeed($params));
+// Plugin-registered feed types ('feed_types' filter) — see
+// SiteController::customTypeFeed()'s own docblock for the registration shape.
+$router->get('/feed/x/{type}', fn (array $params) => $site->customTypeFeed($params));
+$router->get('/feed/x/{type}/{format}', fn (array $params) => $site->customTypeFeed($params));
 $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
 $router->get('/sitemap.xml', fn (array $params) => $site->sitemap($params));
 $router->get('/media/{id}/download', fn (array $params) => $site->mediaDownload($params));
