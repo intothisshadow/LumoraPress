@@ -238,7 +238,7 @@ final class PermalinkService
 
     public function tagFeedUrl(Tag $tag, string $format = 'rss'): string
     {
-        return $this->tagUrl($tag) . '/feed' . ($format === 'atom' ? '/atom' : '');
+        return $this->tagUrl($tag) . '/feed' . self::feedFormatSuffix($format);
     }
 
     /**
@@ -260,7 +260,22 @@ final class PermalinkService
 
     public function categoryFeedUrl(Category $category, string $format = 'rss'): string
     {
-        return $this->categoryUrl($category) . '/feed' . ($format === 'atom' ? '/atom' : '');
+        return $this->categoryUrl($category) . '/feed' . self::feedFormatSuffix($format);
+    }
+
+    /**
+     * The URL suffix for a feed format — '' for 'rss' (the bare "/feed"
+     * URL), '/atom' or '/json' otherwise. Shared by every *FeedUrl()
+     * method here so a feed's self-link always matches the format that
+     * was actually requested, not a hardcoded assumption.
+     */
+    public static function feedFormatSuffix(string $format): string
+    {
+        return match ($format) {
+            'atom' => '/atom',
+            'json' => '/json',
+            default => '',
+        };
     }
 
     /**

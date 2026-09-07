@@ -1047,14 +1047,14 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         $this->emitFeed(
             $format,
             $this->feeds->channel(),
             $this->feeds->items(),
             home_url(),
-            home_url('feed/atom'),
+            home_url('feed' . PermalinkService::feedFormatSuffix($format)),
             'site|' . $this->feeds->itemLimit(),
         );
     }
@@ -1077,14 +1077,14 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         $this->emitPagesFeed(
             $format,
             $this->feeds->pagesChannel(),
             $this->feeds->pagesItems(),
             home_url(),
-            home_url('pages/feed/atom'),
+            home_url('pages/feed' . PermalinkService::feedFormatSuffix($format)),
             'pages|' . $this->feeds->itemLimit(),
         );
     }
@@ -1118,14 +1118,14 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         $this->emitFeed(
             $format,
             $this->feeds->categoryChannel($category),
             $this->feeds->categoryItems($category),
             $this->permalinks->categoryUrl($category),
-            $this->permalinks->categoryFeedUrl($category, 'atom'),
+            $this->permalinks->categoryFeedUrl($category, $format),
             'category_' . $category->id . '|' . $this->feeds->itemLimit(),
         );
     }
@@ -1154,14 +1154,14 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         $this->emitFeed(
             $format,
             $this->feeds->tagChannel($tag),
             $this->feeds->tagItems($tag),
             $this->permalinks->tagUrl($tag),
-            $this->permalinks->tagFeedUrl($tag, 'atom'),
+            $this->permalinks->tagFeedUrl($tag, $format),
             'tag_' . $tag->id . '|' . $this->feeds->itemLimit(),
         );
     }
@@ -1212,14 +1212,14 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         $this->emitFeed(
             $format,
             $this->feeds->authorChannel($author),
             $this->feeds->authorItems($author),
             home_url('author/' . $slug),
-            home_url('author/' . $slug . '/feed/atom'),
+            home_url('author/' . $slug . '/feed' . PermalinkService::feedFormatSuffix($format)),
             'author_' . $author->id . '|' . $this->feeds->itemLimit(),
         );
     }
@@ -1239,7 +1239,7 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
 
         // FeedService::commentsItems() hands back contentTitle/contentSlug/contentType
         // rather than a resolved link, the same division of labor buildItem()/renderRss2()
@@ -1269,7 +1269,7 @@ final class SiteController
             $this->feeds->commentsChannel(),
             $items,
             home_url(),
-            home_url('comments/feed/atom'),
+            home_url('comments/feed' . PermalinkService::feedFormatSuffix($format)),
             'comments|' . $this->feeds->itemLimit(),
         );
     }
@@ -1298,7 +1298,7 @@ final class SiteController
             return;
         }
 
-        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $format = self::resolveFeedFormat($params['format'] ?? '');
         $link = post_permalink($post);
 
         $items = array_map(
@@ -1316,7 +1316,7 @@ final class SiteController
             $this->feeds->postCommentsChannel($post),
             $items,
             $link,
-            $link . '/comments/feed/atom',
+            $link . '/comments/feed' . PermalinkService::feedFormatSuffix($format),
             'post_comments_' . $post->id . '|' . $this->feeds->itemLimit(),
         );
     }
@@ -1357,7 +1357,7 @@ final class SiteController
 
         $cacheLifetime = max(0, (int) $this->config->option('feed_cache_lifetime', '900'));
 
-        header('Content-Type: ' . ($format === 'atom' ? 'application/atom+xml' : 'application/rss+xml') . '; charset=UTF-8');
+        header('Content-Type: ' . self::feedContentType($format) . '; charset=UTF-8');
         header('ETag: ' . $etag);
         header('Cache-Control: public, max-age=' . $cacheLifetime);
 
@@ -1365,11 +1365,44 @@ final class SiteController
             header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
         }
 
-        echo $format === 'atom'
-            ? $this->renderCommentsAtom($channel, $items, $channelLink, $selfLink)
-            : $this->renderCommentsRss2($channel, $items, $channelLink);
+        echo match ($format) {
+            'atom' => $this->renderCommentsAtom($channel, $items, $channelLink, $selfLink),
+            'json' => $this->renderCommentsJson($channel, $items, $channelLink, $selfLink),
+            default => $this->renderCommentsRss2($channel, $items, $channelLink),
+        };
 
         do_action('feed_generated', $format);
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{comment: Comment, link: string, title: string, description: string, content: string}> $items
+     */
+    private function renderCommentsJson(array $channel, array $items, string $channelLink, string $selfLink): string
+    {
+        $feed = [
+            'version' => 'https://jsonfeed.org/version/1.1',
+            'title' => $channel['title'],
+            'home_page_url' => $channelLink,
+            'feed_url' => $selfLink,
+            'description' => $channel['description'],
+            'items' => array_map(static function (array $item) use ($channelLink): array {
+                $comment = $item['comment'];
+
+                return [
+                    'id' => 'comment-' . $comment->id . '@' . $channelLink,
+                    'url' => $item['link'],
+                    'title' => $item['title'],
+                    'summary' => $item['description'],
+                    'content_html' => $item['content'],
+                    'date_published' => $comment->createdAt->format(DATE_ATOM),
+                    'date_modified' => $comment->updatedAt->format(DATE_ATOM),
+                    'authors' => [['name' => $comment->guestName]],
+                ];
+            }, $items),
+        ];
+
+        return (string) json_encode($feed, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -1450,7 +1483,7 @@ final class SiteController
      * Shared caching/conditional-GET/rendering plumbing for feed() and categoryFeed().
      *
      * @param array{title: string, description: string} $channel
-     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}> $items
      */
     private function emitFeed(string $format, array $channel, array $items, string $channelLink, string $selfLink, string $etagSeed): void
     {
@@ -1478,7 +1511,7 @@ final class SiteController
 
         $cacheLifetime = max(0, (int) $this->config->option('feed_cache_lifetime', '900'));
 
-        header('Content-Type: ' . ($format === 'atom' ? 'application/atom+xml' : 'application/rss+xml') . '; charset=UTF-8');
+        header('Content-Type: ' . self::feedContentType($format) . '; charset=UTF-8');
         header('ETag: ' . $etag);
         header('Cache-Control: public, max-age=' . $cacheLifetime);
 
@@ -1486,16 +1519,108 @@ final class SiteController
             header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
         }
 
-        echo $format === 'atom'
-            ? $this->renderAtom($channel, $items, $channelLink, $selfLink)
-            : $this->renderRss2($channel, $items, $channelLink);
+        echo match ($format) {
+            'atom' => $this->renderAtom($channel, $items, $channelLink, $selfLink),
+            'json' => $this->renderJson($channel, $items, $channelLink, $selfLink),
+            default => $this->renderRss2($channel, $items, $channelLink),
+        };
 
         do_action('feed_generated', $format);
     }
 
     /**
+     * Normalizes the `{format}` route param into one of 'rss'/'atom'/'json'
+     * — the same three-way switch every feed handler needs, kept in one
+     * place rather than repeated as an inline ternary per handler.
+     */
+    private static function resolveFeedFormat(string $requested): string
+    {
+        return match ($requested) {
+            'atom' => 'atom',
+            'json' => 'json',
+            default => 'rss',
+        };
+    }
+
+    private static function feedContentType(string $format): string
+    {
+        return match ($format) {
+            'atom' => 'application/atom+xml',
+            'json' => 'application/feed+json',
+            default => 'application/rss+xml',
+        };
+    }
+
+    /**
      * @param array{title: string, description: string} $channel
-     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}> $items
+     */
+    private function renderJson(array $channel, array $items, string $channelLink, string $selfLink): string
+    {
+        $feed = [
+            'version' => 'https://jsonfeed.org/version/1.1',
+            'title' => $channel['title'],
+            'home_page_url' => $channelLink,
+            'feed_url' => $selfLink,
+            'description' => $channel['description'],
+            'items' => array_map(function (array $item): array {
+                $post = $item['post'];
+                $link = post_permalink($post);
+                $updated = $post->updatedAt > ($post->publishedAt ?? $post->updatedAt) ? $post->updatedAt : $post->publishedAt;
+
+                $entry = [
+                    'id' => $link,
+                    'url' => $link,
+                    'title' => $post->title,
+                    'summary' => $item['description'],
+                ];
+
+                if ($item['content'] !== null) {
+                    $entry['content_html'] = $item['content'];
+                } else {
+                    $entry['content_text'] = $item['description'];
+                }
+
+                if ($post->publishedAt !== null) {
+                    $entry['date_published'] = $post->publishedAt->format(DATE_ATOM);
+                }
+
+                if ($updated !== null) {
+                    $entry['date_modified'] = $updated->format(DATE_ATOM);
+                }
+
+                if ($item['authorName'] !== null) {
+                    $entry['authors'] = [['name' => $item['authorName']]];
+                }
+
+                $terms = [...$item['categoryNames'], ...$item['tagNames']];
+
+                if ($terms !== []) {
+                    $entry['tags'] = $terms;
+                }
+
+                if (($item['thumbnailUrl'] ?? null) !== null) {
+                    $entry['attachments'] = [[
+                        'url' => $item['thumbnailUrl'],
+                        'mime_type' => (string) ($item['thumbnailType'] ?? 'image/jpeg'),
+                        'size_in_bytes' => (int) ($item['thumbnailLength'] ?? 0),
+                    ]];
+                }
+
+                // Not part of the JSON Feed spec — an underscore-prefixed key is the
+                // spec's own documented convention for a proprietary extension field.
+                $entry['_comments_url'] = $link . '#comments';
+
+                return $entry;
+            }, $items),
+        ];
+
+        return (string) json_encode($feed, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}> $items
      */
     private function renderRss2(array $channel, array $items, string $channelLink): string
     {
@@ -1528,9 +1653,15 @@ final class SiteController
                 $xml .= '<dc:creator>' . esc_html($item['authorName']) . '</dc:creator>' . "\n";
             }
 
+            foreach ([...$item['categoryNames'], ...$item['tagNames']] as $term) {
+                $xml .= '<category>' . esc_html($term) . '</category>' . "\n";
+            }
+
             if ($post->publishedAt !== null) {
                 $xml .= '<pubDate>' . $post->publishedAt->format('r') . '</pubDate>' . "\n";
             }
+
+            $xml .= '<comments>' . esc_url($link . '#comments') . '</comments>' . "\n";
 
             if (($item['thumbnailUrl'] ?? null) !== null) {
                 $xml .= '<enclosure url="' . esc_url($item['thumbnailUrl'])
@@ -1549,7 +1680,7 @@ final class SiteController
 
     /**
      * @param array{title: string, description: string} $channel
-     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     * @param array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}> $items
      */
     private function renderAtom(array $channel, array $items, string $channelLink, string $selfLink): string
     {
@@ -1582,6 +1713,12 @@ final class SiteController
             if ($item['authorName'] !== null) {
                 $xml .= '<author><name>' . esc_html($item['authorName']) . '</name></author>' . "\n";
             }
+
+            foreach ([...$item['categoryNames'], ...$item['tagNames']] as $term) {
+                $xml .= '<category term="' . esc_attr($term) . '"/>' . "\n";
+            }
+
+            $xml .= '<link rel="replies" href="' . esc_url($link . '#comments') . '" type="text/html"/>' . "\n";
 
             $xml .= '<summary>' . esc_html($item['description']) . '</summary>' . "\n";
 
@@ -1637,7 +1774,7 @@ final class SiteController
 
         $cacheLifetime = max(0, (int) $this->config->option('feed_cache_lifetime', '900'));
 
-        header('Content-Type: ' . ($format === 'atom' ? 'application/atom+xml' : 'application/rss+xml') . '; charset=UTF-8');
+        header('Content-Type: ' . self::feedContentType($format) . '; charset=UTF-8');
         header('ETag: ' . $etag);
         header('Cache-Control: public, max-age=' . $cacheLifetime);
 
@@ -1645,11 +1782,68 @@ final class SiteController
             header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
         }
 
-        echo $format === 'atom'
-            ? $this->renderPagesAtom($channel, $items, $channelLink, $selfLink)
-            : $this->renderPagesRss2($channel, $items, $channelLink);
+        echo match ($format) {
+            'atom' => $this->renderPagesAtom($channel, $items, $channelLink, $selfLink),
+            'json' => $this->renderPagesJson($channel, $items, $channelLink, $selfLink),
+            default => $this->renderPagesRss2($channel, $items, $channelLink),
+        };
 
         do_action('feed_generated', $format);
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{page: Page, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}> $items
+     */
+    private function renderPagesJson(array $channel, array $items, string $channelLink, string $selfLink): string
+    {
+        $feed = [
+            'version' => 'https://jsonfeed.org/version/1.1',
+            'title' => $channel['title'],
+            'home_page_url' => $channelLink,
+            'feed_url' => $selfLink,
+            'description' => $channel['description'],
+            'items' => array_map(function (array $item): array {
+                $page = $item['page'];
+                $link = page_permalink($page);
+                $updated = $page->updatedAt > $page->createdAt ? $page->updatedAt : ($page->publishedAt ?? $page->createdAt);
+
+                $entry = [
+                    'id' => $link,
+                    'url' => $link,
+                    'title' => $page->title,
+                    'summary' => $item['description'],
+                ];
+
+                if ($item['content'] !== null) {
+                    $entry['content_html'] = $item['content'];
+                } else {
+                    $entry['content_text'] = $item['description'];
+                }
+
+                if ($page->publishedAt !== null) {
+                    $entry['date_published'] = $page->publishedAt->format(DATE_ATOM);
+                }
+
+                $entry['date_modified'] = $updated->format(DATE_ATOM);
+
+                if ($item['authorName'] !== null) {
+                    $entry['authors'] = [['name' => $item['authorName']]];
+                }
+
+                if (($item['thumbnailUrl'] ?? null) !== null) {
+                    $entry['attachments'] = [[
+                        'url' => $item['thumbnailUrl'],
+                        'mime_type' => (string) ($item['thumbnailType'] ?? 'image/jpeg'),
+                        'size_in_bytes' => (int) ($item['thumbnailLength'] ?? 0),
+                    ]];
+                }
+
+                return $entry;
+            }, $items),
+        ];
+
+        return (string) json_encode($feed, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     /**

@@ -52,6 +52,8 @@ final class FeedService
         private readonly ContentRenderer $content,
         private readonly CommentService $comments,
         private readonly PageService $pages,
+        private readonly CategoryService $categories,
+        private readonly TagService $tags,
     ) {
     }
 
@@ -73,7 +75,7 @@ final class FeedService
      * PostService::paginatePublished(), which already excludes drafts and
      * not-yet-due scheduled posts.
      *
-     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}>
      */
     public function items(): array
     {
@@ -114,7 +116,7 @@ final class FeedService
      * already excludes drafts/not-yet-due scheduled posts, same as
      * paginatePublished() does for the site-wide feed).
      *
-     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}>
      */
     public function categoryItems(Category $category): array
     {
@@ -146,7 +148,7 @@ final class FeedService
      * Items for a single tag's feed, newest first — same shape as items(),
      * scoped through PostService::paginateByTag().
      *
-     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}>
      */
     public function tagItems(Tag $tag): array
     {
@@ -178,7 +180,7 @@ final class FeedService
      * Items for a single author's feed, newest first — same shape as
      * items(), scoped through PostService::paginateByAuthor().
      *
-     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}>
      */
     public function authorItems(User $author): array
     {
@@ -351,7 +353,7 @@ final class FeedService
     }
 
     /**
-     * @return array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}
+     * @return array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int, categoryNames: array<int, string>, tagNames: array<int, string>}
      */
     private function buildItem(Post $post, bool $fullContent): array
     {
@@ -382,6 +384,8 @@ final class FeedService
             'thumbnailUrl' => $thumbnailUrl,
             'thumbnailType' => $thumbnailType,
             'thumbnailLength' => $thumbnailLength,
+            'categoryNames' => array_map(static fn (Category $category): string => $category->name, $this->categories->categoriesForPost($post->id)),
+            'tagNames' => array_map(static fn (Tag $tag): string => $tag->name, $this->tags->tagsForPost($post->id)),
         ];
 
         return $this->hooks->applyFilters('feed_item', $item, $post);

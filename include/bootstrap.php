@@ -509,7 +509,7 @@ add_filter('content_html', [$folderGallery, 'render']);
 $mediaPlayer = new MediaPlayerShortcode($media);
 add_filter('content_html', [$mediaPlayer, 'render']);
 
-$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content, $comments, $pages);
+$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content, $comments, $pages, $categories, $tags);
 $mediaImport = new MediaImportService(
     database: $database,
     tablePrefix: $tablePrefix,
