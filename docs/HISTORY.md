@@ -12151,3 +12151,1463 @@ HTML `src`/`href`, no redirect hop needed to see it.
       page rendered the Download button as `/media/52517/download` and
       the Description thumbnail link as `/media/52460/view` — no
       `content/uploads/...` path anywhere in the rendered HTML.
+
+## 0.11.0 (2026-09-07)
+
+### LP-006. Built-in Media Statistics & Usage Tracking
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (17/17 checklist items)
+
+**Implemented (2026-08-01), scoped down from the ticket's full wishlist
+after a deliberate architecture call (confirmed with Ariane before
+building).** The crux: there is no PHP-mediated route for media at all in
+this app — `MediaService::url()` returns a direct static URL under
+`content/uploads/`, and every `<img>`/`<audio>`/`<video>` embed points
+straight at that static file. Routing every image render through PHP to
+count a "view" would add a database write to the hot path of every page
+load, a real cost for a project whose stated Performance goal is fast
+shared-hosting page generation — so **image views and audio/video "plays"
+are not tracked**, and are the main gap versus the ticket's original
+scope. What ships instead: a `downloads` counter for document/archive/
+audio/video media, recorded only on an explicit, low-volume action (a
+click on a new `/media/{id}/download` link) rather than on ordinary page
+rendering — see `MediaStatsService`'s class docblock for the full
+reasoning. "Usage Tracking" and "Safe Deletion" were already mostly
+built before this ticket (`MediaUsageChecker`, pre-existing) — this
+session extended it with a `default_og_image_media_id` check it was
+missing, plus a new bulk `usedMediaIds()`/`isUnused()` pair (backed by
+new `PostService::featuredImageIdsInUse()`/`PageService::
+featuredImageIdsInUse()`) for the new "Unused Media" admin view — none
+of it scans post/page *body content* for inline embeds, only structured
+references (featured image, site logo, favicon, default OG image), same
+limitation `describeUsage()` already had.
+
+New: `install/migrations/0021_add_media_stats.sql` (`media_stats` table);
+`MediaStatsService` (`recordDownload()`/`get()`/`mostDownloaded()`/
+`recentlyDownloaded()`/`neverDownloaded()`); `SiteController::
+mediaDownload()` behind `/media/{id}/download`, gated by a new
+`media_track_downloads` option (Settings &rsaquo; Media &rsaquo;
+Statistics); a "Views" panel on the Media Manager (All Files / Unused
+Media / Most Downloaded / Recently Downloaded / Never Downloaded, each an
+unpaginated capped list — same "quick, capped listing" precedent already
+used for picker dropdowns elsewhere, e.g. `settings/general.php`'s OG
+image select); a downloads/last-downloaded stats block plus the
+`/media/{id}/download` link on the Media Manager's per-item details panel
+for non-image types; and a "Popular Downloads" Dashboard widget.
+`MediaStatsService::recordDownload()` deliberately uses a portable
+check-then-insert/update instead of a MySQL-only `ON DUPLICATE KEY
+UPDATE` (unlike `PressConfig::setOption()`'s use of that idiom), so it's
+exercisable by the PHP Test Suite's SQLite-backed unit tests rather than
+only the MySQL/MariaDB integration suite this session had no Docker
+access to run.
+
+### Philosophy
+
+Statistics should help site owners understand how their assets are used without becoming a full analytics platform.
+
+### Track File Statistics
+
+#### Downloadable Files
+
+- [x] Total downloads
+- [x] Last downloaded
+
+#### Audio
+
+- [x] Total downloads
+
+#### Video
+
+- [x] Total downloads
+
+### Media Details Panel
+
+- [x] Display statistics appropriate for each media type — downloads/last-downloaded for document/archive/audio/video; nothing shown for images, since none are tracked
+
+### Usage Tracking
+
+- [x] Track where media is referenced throughout Lumora Press — structured references only (featured image, site logo, favicon, default OG image); does not scan post/page body content for inline embeds
+
+### Safe Deletion
+
+- [x] Warn before deleting referenced media — pre-existing (`MediaUsageChecker`, wired into `admin/views/media.php`'s single/bulk delete), confirmed still correct and extended with the default-OG-image check above
+
+### Unused Media
+
+- [x] Provide an **Unused Media** view
+
+### Built-in Views
+
+Examples:
+
+- [x] Most Downloaded Files
+- [x] Recently Downloaded
+- [x] Unused Media
+- [x] Never Downloaded
+
+### Sorting
+
+- [x] Allow sorting by popularity and recent activity — via the built-in Views above (dedicated saved views, not a generic sortable column on the main grid)
+
+### Dashboard Widgets
+
+- [x] Provide optional widgets highlighting popular media — "Popular Downloads" panel, gated behind the `upload_files` capability, hidden entirely once there's no download data yet
+
+### Configuration
+
+Support options for:
+
+- [x] Track downloads — `media_track_downloads` (Settings &rsaquo; Media &rsaquo; Statistics), default on
+
+### Performance
+
+- [x] Keep statistics lightweight and efficient — no per-image-view DB write (the scoping decision this whole session turned on); "Unused Media" and usage checks use a handful of bounded queries (`featuredImageIdsInUse()`) rather than a per-media-item lookup
+
+### Privacy
+
+- [x] Keep all statistics local — everything lives in the `media_stats` table; no outbound requests
+
+### Success Criteria
+
+- Every media item displays useful statistics.
+- Popular resources are easy to identify.
+- Unused media can be safely cleaned up.
+- Performance remains excellent.
+
+------
+
+### LP-009. Pages
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (123/123 checklist items)
+
+**Implemented (2026-07-21), first pass.** Mirrors Posts closely (create/
+edit/delete, slug generation, draft/published/scheduled status) plus a
+basic flat parent selector. Trash, bulk actions, custom templates,
+password protection, drag-and-drop ordering, hierarchical URLs, and
+navigation-menu/search integration are intentionally left for a future
+pass — see unchecked items below.
+
+**Fixed (2026-07-21):** saving/editing a page threw "An unexpected error
+occurred" on the live site (reported with screenshots in `errors/`).
+`PageService::listAllForParentSelect()` reused the named placeholder
+`:id` twice in one query, which real (non-emulated) MySQL prepared
+statements reject — see `docs/CHANGELOG.md`'s "Fixed" entry and
+`PHP-TEST-SUITE.md`'s "Known gaps" for why the SQLite-backed unit tests
+never caught it. Now covered by
+`Integration/PageServiceIntegrationTest.php` (real MySQL/MariaDB only).
+
+**Implemented (2026-08-11), second pass — Trash & Bulk Actions +
+Hierarchy UI.** `PageService` gained `trash()`/`restore()`/`setStatus()`/
+`setParent()`/`reorder()`/`listAllForTree()`/`ancestors()`, mirroring
+`PostService`'s existing Trash mechanism (soft-delete via a new
+`trashed_at` column + `PageStatus::Trashed`, migration `0033`) plus a new
+`menu_order` column for sibling ordering. `admin/views/pages.php`'s
+listing screen now has status-tab counts, checkbox selection, a
+bulk-actions bar (Trash/Restore/Delete Permanently/Publish/Mark as
+Draft/Change parent to&hellip;), and — on the unfiltered "All" tab only
+— a flat, depth-indented, drag-and-drop-reorderable tree view (reusing
+`sortable.js` and `dynamic-style.js` as-is, same mechanism
+Appearance &rsaquo; Menus already uses). `delete()` now reparents direct
+children to top-level first (no FK constraint existed on `parent_id`, so
+a permanent delete used to leave dangling references). New
+`page_permalink()`/`get_page_breadcrumbs()`/`the_page_breadcrumbs()`
+theme API renders a breadcrumb trail on the public page template
+(default theme + Duskline) for any page with at least one ancestor.
+**Deliberately not built this pass**: Quick Edit/Bulk Edit (inline
+per-row field editing — a materially different UI from simple bulk
+actions), tree expand/collapse, and Custom Fields (intentionally left
+for LP-083's new sidebar layout instead of the current flat editor).
+**Hierarchical URLs were investigated and split out** to their own
+ticket (LP-084) — `Router::match()` only supports single-segment
+`{param}` placeholders today, with no multi-segment/catch-all matching
+at all, so `/parent/child`-style URLs need a real Router capability, not
+just a route-string change.
+
+**Implemented (2026-08-11), third pass — Permalink row.** The Page
+editor now shows a Permalink row (the live URL + a "View Page" link,
+opening in a new tab) once a page is Published, exactly mirroring the
+Post editor's existing `.lp-permalink` row — reuses `page_permalink()`
+(added this session for breadcrumbs) and the same `.lp-permalink`/
+`__label`/`__url`/`__view` admin CSS classes as-is, no new styling
+needed. Also recorded here: `PHP Test Suite/`'s Docker
+PHP 8.2/8.3/8.4 matrix has now actually been run several times against
+this ticket's 2026-08-11 changes (Trash/Bulk/Hierarchy UI, then this
+Permalink row) with zero PHP-version-specific failures each time — the
+Testing checklist's PHP 8.2/8.3 compatibility items below were still
+unchecked from before that verification existed and are corrected now,
+not new work.
+
+**Correction (2026-08-11):** the "Featured image" line under Page Editor
+and the entire "Featured Images" section below were stale unchecked
+items — Pages have fully supported Featured Image (upload, select
+existing media, remove, automatic thumbnail generation via
+`$kernel->thumbnails->generate()`, and theme integration via
+`has_post_thumbnail()`/`the_post_thumbnail_lightbox()`) since before this
+session; the checkboxes were simply never updated when that landed.
+Checked off now, not new work.
+
+**Implemented (2026-08-13), fourth pass — Pages admin menu structure.**
+`admin/views/pages.php` (one file handling both the list and the
+create/edit editor via an `?action=` query param) is now split into
+`admin/views/pages/all-pages.php` and `admin/views/pages/new.php`,
+exactly mirroring the split Posts already went through — see
+`admin/views/posts/all-posts.php`/`new.php`. `admin/index.php`'s `$menu`
+entry for `pages` gained `children` (`all-pages`/`new`, `default_child`
+=> `all-pages`), so Pages now has the same **All Pages**/**New Page**
+sidebar submenu Posts has, instead of one flat "Pages" entry. A bare
+`/admin/pages` (no subpage) needs no `$legacyRedirects` entry — the
+router's existing generic children-redirect already sends it to
+`default_child`, the same as a bare `/admin/posts` always has. No other
+file referenced `admin_url('pages')` (searched the whole codebase), so
+the blast radius was contained to those three files. Manually verified
+end-to-end on a throwaway install (real MySQL via Docker, never the live
+source tree — see this file's own warning) built by copying
+`LumoraPress/` to a temp directory, plus a small router script forcing
+PHP's built-in dev server through the front controller for every route:
+install → login → `/admin/pages` redirects to `/admin/pages/all-pages` →
+sidebar shows the new All Pages/New Page submenu → created and published
+a page (permalink row rendered correctly) → list screen shows it with
+working status-tab filters, bulk-action select, and an edit link to
+`/admin/pages/new?id=…`. No PHP errors in the dev-server log.
+
+**Implemented (2026-08-13), fifth pass — Duplicate pages.**
+`PageService::duplicate()` mirrors `PostService::duplicate()`: clones
+title (suffixed " (Copy)"), content, excerpt, featured image (+ crop),
+and content format as a new Draft owned by the requesting user, plus
+copies the SEO title/description via `updateSeo()` (Posts has no SEO
+fields to copy, Pages do). The parent is deliberately **not** copied —
+an unparented draft is safer than silently doubling a subtree, and the
+tree view's own drag-and-drop lets the admin reparent it afterward.
+`admin/views/pages/all-pages.php` gained a `duplicate` form handler and
+a "Duplicate" row action in both the flat table and the tree view,
+alongside Trash — mirroring `all-posts.php`'s Duplicate exactly, using
+the same out-of-band-form pattern (LP-068) since a `<form>` can't nest
+inside the bulk-action form. `admin/views/pages/new.php` shows a
+"Page duplicated as a new draft" success message on `?duplicated=1`,
+matching the Post editor's equivalent message. New unit tests in
+`PageServiceTest.php` cover the clone (including SEO fields), that the
+parent is dropped, and the unknown-id case. Full Unit suite (1287
+tests) still green. Manually verified end-to-end on a throwaway
+Docker-MySQL install: create a page → Duplicate from the All Pages tree
+view → redirected to the new draft's editor with the copy's title,
+content format, and status all correct; confirmed directly in the
+database. **Dev-server routing note, not an application bug:**
+verifying this required fixing this session's own router script for
+PHP's built-in dev server — it was forcing every request through the
+front controller, including `/install/`, which only ever redirects when
+no config exists yet and so self-looped. Real Apache (`.htaccess`)
+serves `/install/` and `/content/` directly via their own `index.php`,
+`/admin/` always through the front controller; the fixed router now
+mirrors that distinction. Worth remembering for the next from-scratch
+throwaway install in this project — the router used in earlier LP-009
+passes would hit the same loop if reused verbatim.
+
+**Implemented (2026-08-13), sixth pass — Search & Filtering.**
+`PageService::paginateForAdmin()` gained a `$filters` array parameter,
+mirroring `PostService::paginateForAdmin()`'s shape: a single `term`
+field matches title OR content (Pages have no categories/tags to filter
+by, so no `categoryId`/`tagId` equivalent), plus `authorId`, a new
+`parentId` (Posts has no parent concept to mirror, so this one is
+page-specific), and `dateFrom`/`dateTo` against `created_at`. The
+`term` condition binds two distinct placeholders (`:term_title`,
+`:term_content`) to the same value rather than reusing one placeholder
+twice — see this file's Fixed entry from 2026-07-21 and
+`PHP-TEST-SUITE.md`'s "Known gaps" for why real (non-emulated) MySQL
+rejects a repeated named placeholder in one query; this would have been
+the second time that exact mistake landed in `PageService` if not
+caught here. `admin/views/pages/all-pages.php` gained a collapsible
+"Search & Filter" panel (open automatically when any filter is active)
+with a search box, an author `<select>`, a parent-page `<select>`
+(reusing the tree's own `listAllForParentSelect()`), and a date range —
+mirroring `all-posts.php`'s filter form almost verbatim. Filtering
+(or a non-"All" status tab) now forces the flat/paginated table instead
+of the tree view, since a filtered set breaks the tree's hierarchical
+grouping the same way status-filtering already did. New unit tests
+cover term/author/parent/date-range filtering; full Unit suite (1291
+tests) still green. Manually verified end-to-end on a throwaway
+Docker-MySQL install: created three pages, searched "vacation" and
+confirmed it matched both a title hit and a content-only hit while
+excluding the unrelated page, confirmed the panel stays open and a
+"Clear" link appears once a filter is active, and confirmed the parent
+filter correctly returns zero rows when no page has that parent. No PHP
+errors in the dev-server log.
+
+**Implemented (2026-08-13), seventh pass — Quick Edit.** Added
+`PageService::quickUpdate()` (updates only title/slug/status/parent via
+the same `update()` the full editor uses, every other field passed
+through unchanged) plus a `quick_edit` JSON sub-action in
+`admin/views/pages/all-pages.php` (same pattern as `pages/new.php`'s
+`editor_upload`/`convert_content`). A new "Quick Edit" row action
+toggles the row into an inline form (Title, Slug, Parent, Status —
+Scheduled is intentionally not offered, since there's no publish-date
+field in this compact form) and saves via `fetch()` without navigating
+away, backed by a new `admin/assets/js/quick-edit.js`. **Real bug hit
+and fixed while building this**: the first version put the Quick Edit
+`<form>` directly inside the row's `<tr>`, which itself sits inside the
+Pages list's own bulk-action `<form>` — a `<form>` nested inside
+another `<form>` is invalid HTML, and the browser's parse-error
+recovery silently mangled the *entire* bulk-action form (every row's
+checkboxes, Duplicate/Trash buttons — not just Quick Edit) the same way
+this file's own LP-068 comments already warned about for the
+Duplicate/Trash out-of-band forms. Fixed the same way: the visible
+Quick Edit fields live in the `<tr>` but each one carries the HTML5
+`form=""` attribute pointing at a real, empty `<form>` rendered outside
+the table in the existing out-of-band-forms section. **Scope decision:
+Quick Edit only applies to the flat/paginated list view** (any status
+tab other than "All", or the "All" tab with a search/filter active) —
+the drag-and-drop tree view (the default "All" tab) does not get it
+this pass, since a parent or status change there could move where a
+page belongs in the tree in a way the row's own DOM can't reproduce
+without a full reload, and that felt like a worse experience than just
+not offering it there yet. New unit tests cover `quickUpdate()`
+(title/status/parent change with content preserved, clearing the
+parent, unknown id); full Unit suite (1294 tests) still green. Manually
+verified end-to-end on a throwaway Docker-MySQL install, including
+catching the nested-form bug live in the browser (the click submitted
+a real full-page POST instead of staying on the page) before the fix:
+Quick Edit toggled the row correctly, Update saved via AJAX with the
+title/status badge updating in place and no navigation, Cancel
+discarded changes, and the database reflected the new title/status/
+parent afterward. No PHP errors in the dev-server log.
+
+**Implemented (2026-08-13/14), eighth pass — Change author bulk
+action; "Bulk Edit support" scope decision.** Added
+`PageService::reassignAuthor()`/`bulkReassignAuthor()` (mirroring
+`PostService`'s identical pair exactly) and wired a new
+"Change author to&hellip;" option into the Pages list's existing
+bulk-actions bar, `edit_others_posts`-gated the same as "Change parent
+to&hellip;". This was the one real functional gap left once Trash/
+Restore/Publish/Draft/Change parent already existed as bulk actions.
+**Scope decision on "Bulk Edit support" itself:** classic WordPress's
+Bulk Edit is a single inline panel covering several fields (status,
+parent, author, etc.) applied together across every selected item.
+That panel would be pure UI redundancy for this app specifically —
+every field it would expose (status, parent, and now author) already
+has its own dedicated bulk-action entry in the same dropdown, doing
+the identical database work through the identical service methods.
+Building a second, parallel interaction shape for capability that
+already exists didn't seem like a good use of this pass. Checked off
+as satisfied 2026-09-04, on review — worth revisiting only if a future
+field genuinely needs "change several things about several pages in
+one submit" (e.g. once Pages gain custom fields or templates) rather
+than one dropdown option per field. Neither Posts (LP-008) nor any
+other admin list in this codebase has a unified Bulk Edit panel
+either, so this isn't a Pages-specific gap. New unit tests cover
+`reassignAuthor()`/`bulkReassignAuthor()`; full Unit suite (1296 tests)
+still green. Manually verified end-to-end on a throwaway Docker-MySQL
+install: created a second user, selected two pages, applied
+"Change author to&hellip;" targeting that user, confirmed both pages'
+`author_id` changed in the database and the list screen reloaded
+without error.
+
+**Implemented (2026-08-14), ninth pass — Pending Review + Private
+pages.** Both features are direct ports of Posts' (LP-008) existing
+implementation, confirmed via research first rather than re-deriving
+the design: `PageStatus` gained a `PendingReview = 'pending_review'`
+case (no schema change needed — `status` was already `VARCHAR(20)`);
+a new `PageVisibility` enum (`Public`/`Private`) plus a `visibility`
+column (migration `0036_add_visibility_to_pages.sql`, `VARCHAR(20) NOT
+NULL DEFAULT 'public'`, mirroring migration `0026`'s identical column
+for posts). `PageService::create()`/`update()` gained a `visibility`
+parameter (`resolvePublishedAt()` now also forces `PendingReview` to a
+null publish date, alongside the existing Draft/Trashed handling);
+`resolvePublishedAt`'s "Draft" arm intentionally stays different from
+Posts' (Pages never got LP-018's "Draft scheduling," so Draft still
+forces null here — not an oversight). New `setVisibility()`/
+`bulkSetVisibility()` mirror Posts' pair exactly. `Page` gained a
+`visibility` property and an `isVisibleToViewer(bool $canViewPrivate)`
+method alongside the existing `isPubliclyVisible()` (now also checks
+visibility, backward-compatible since the default is Public).
+`SiteController::page()` now calls `isVisibleToViewer($this->
+canViewPrivatePage($page))` instead of the plain public check, with a
+new `canViewPrivatePage()` mirroring `canViewPrivatePost()` (logged-in
++ `edit_posts` capability, or the page's own author) — `paginatePublished()`
+(used by the REST API, XML sitemap, and the Pages widget) now also
+excludes Private pages via a `visibility = 'public'` AND, and
+`admin/views/pages/new.php`'s editor gained a Visibility `<select>`
+(gated by `$canPublish`, same as Posts) plus the same Draft/"Submit for
+Review" two-option status `<select>` for non-publishers. The Pages
+list gained "Set Public"/"Set Private" bulk actions
+(`bulkSetVisibility()`) and its "All"/status-tab counts now include
+Pending Review. New unit tests: a `PageTest.php` model test (didn't
+exist before this pass) covering `isPubliclyVisible()`/
+`isVisibleToViewer()` parity with `PostTest.php`, plus `PageServiceTest`
+coverage for visibility create/update/set/bulk-set and
+`paginatePublished()` excluding Private. Ran the full Docker PHP
+8.2/8.3/8.4 + MariaDB matrix specifically because this pass added a
+migration and changed two public-facing WHERE clauses — real output
+logged in `PHP-TEST-SUITE.md`'s `TEST_LOG.md` (1389 tests, only the
+same pre-existing unrelated `ThumbnailServiceTest` failure on all three
+versions). Manually verified end-to-end on a throwaway Docker-MySQL
+install: created a Published+Private page — confirmed a guest gets a
+404 on its public URL while the logged-in author/admin can still view
+it directly, confirmed it's excluded from `sitemap.xml`; created a
+Contributor-role user and confirmed their attempt to save a page as
+Published+Private was silently forced to Draft+Public server-side
+(mirroring the Posts gate), then confirmed submitting with
+`status=pending_review` correctly landed the page in Pending Review and
+that status showed up as its own count on the admin list's status
+tabs. No PHP errors in the dev-server log throughout.
+
+**Deferred: Password-protected pages (2026-08-14, moved 2026-09-04).**
+Investigated first rather than assumed — this feature does **not**
+exist for Posts either (confirmed by searching the whole codebase for
+any post-content password column, service method, or public "enter
+password" template/migration; found none — `TODO.md`'s own LP-008
+section also listed it unchecked). It is therefore a net-new feature
+for both content types, not a port with an existing implementation to
+mirror the way Pending Review/Private were. Moved to `ideas for
+later.md` — see its "Pages & Posts: Password Protection" entry for
+what a real design pass would need.
+
+**Implemented (2026-08-14), tenth pass — Preview button.**
+`SiteController::previewPage()` mirrors `previewPost()` exactly:
+bypasses `isVisibleToViewer()` entirely and renders `page.php` directly
+for any logged-in user with `edit_others_posts` or who authored the
+page, so an author/editor can see a Draft/Pending Review/Scheduled/
+Private page exactly as it will render publicly without publishing it
+and without any other visitor ever reaching it. Registered as its own
+`/preview-page/{id}` route (`include/bootstrap.php`) rather than
+reusing Posts' `/preview/{id}` — post and page ids each start from 1 in
+their own tables, so a shared route would show the wrong content for
+whichever id collided. The Page editor's Publish box gained a
+"Preview" link (opens in a new tab) next to Save/Cancel, shown only
+once a page exists (`$page !== null`), matching the Post editor's
+identical placement. No unit test added — `SiteController` has no test
+file at all in this suite (confirmed by checking for one), so there
+was no existing coverage pattern for `previewPost()` either to extend
+here. Full Unit suite (1311 tests) still green — one unrelated,
+non-reproducing `MediaServiceTest` failure appeared on a single run
+during this pass and vanished on immediate re-run in isolation and in
+the full suite, consistent with a flaky/tmp-file race rather than
+anything this change touched. Manually verified end-to-end on a
+throwaway Docker-MySQL install: created a Draft page, confirmed a
+guest gets a 404 on both its normal URL and its `/preview-page/{id}`
+URL, confirmed the logged-in author gets a 200 with the actual draft
+content at the preview URL, and confirmed the Preview link renders
+correctly in the editor UI once the page has been saved. No PHP errors
+in the dev-server log.
+
+**Implemented (2026-08-14), eleventh pass — Discussion settings
+(comments on Pages).** The largest LP-009 pass so far — unlike every
+other item ported from Posts this session (Pending Review, Private,
+Preview), comments were never generic: LP-012 built the whole stack
+(schema, `CommentService`, `SiteController`, admin moderation screen)
+hardcoded to Posts, with no `RevisionableType`-style polymorphic
+pattern the way revisions already had. Investigated first (confirmed
+via a full read of `CommentService`/`CommentModerationService`/
+`CommentNotificationService`/`admin/views/comments.php`/the theme
+comment templates) rather than assumed, then confirmed the schema
+approach with Ariane: a nullable `page_id` column added alongside the
+existing `post_id` (now also nullable) — migrations `0037`/`0038` —
+rather than generalizing to `content_id`/`content_type`, to avoid
+migrating existing comment data and keep this pass's blast radius
+smaller. Changed, file by file:
+- `Comment` model gained `pageId` (exactly one of `postId`/`pageId` is
+  ever set).
+- `CommentService::create()` gained a `pageId` param;
+  `countForPage()`/`publicTreeForPage()`/`paginateForPage()` mirror
+  their Post equivalents exactly; `paginateForAdmin()`/
+  `recentForAdmin()`/`recentApproved()` changed from an INNER JOIN
+  against posts to a LEFT JOIN against both posts and pages
+  (`hydrateWithContent()` replacing `hydrateWithPost()`, `postTitle`/
+  `postSlug` keys renamed to `contentTitle`/`contentSlug`/
+  `contentType`).
+- `PageStatus`... already had `visibility`/comment_status added this
+  session; `Page` gained `commentsOpen`, `PageService::create()`/
+  `update()`/`hydrate()` handle the new `comment_status` column the
+  same way `PostService` does. **Real bug caught while wiring this
+  up**: `quickUpdate()`/the restore-revision handler/the main save
+  handler in `admin/views/pages/new.php` all call `update()` — since
+  `update()`'s `$commentsOpen` param defaults to `true` (not "preserve
+  existing," unlike `$visibility`'s null-means-preserve default), every
+  one of those callers would have silently reset comments to open on
+  every quick-edit, revision-restore, or unrelated save unless
+  explicitly passing the existing value through. Fixed all three call
+  sites before it could ship.
+- `CommentModerationService::commentsOpenForPage()` and
+  `CommentNotificationService::notifyNewCommentOnPage()` mirror their
+  Post equivalents exactly (no shared interface between `Post`/`Page`
+  to dispatch through generically, so parallel methods rather than a
+  union-typed one).
+- `SiteController` gained `commentTemplateDataForPage()`/
+  `commentThreadViewDataForPage()` (wired into `home()`'s static-
+  homepage-page path, `page()`, and `previewPage()` — three call sites,
+  all now passing `comment_data`) and `submitPageComment()` (a new
+  `/page/{slug}/comment` route). **Deliberately uses a distinct CSRF
+  action prefix** (`comment_submit_page_` vs. Posts' unprefixed
+  `comment_submit_`) — a post and a page can share the same numeric id
+  (each table starts from 1), and `Csrf::verify()` keys tokens by
+  action name alone, so without the prefix a page-5 comment form's
+  token could collide with a post-5 comment form's token in the same
+  session — the exact "same action name, different form" mistake this
+  project has already shipped and fixed once (LP-012's own docblocks).
+- `include/comment-functions.php`'s `comment_form()`/`comment_list()`
+  generalized to a `Post|Page` union parameter (this pair genuinely was
+  reusable as-is, unlike the controller-level submit logic — both
+  functions only ever touched `$content->id` and a permalink call).
+- `content/themes/default/page.php` gained a `comments_template()`
+  call (mirroring `single.php`); `comments.php` generalized from
+  assuming `$post` to `$content = $post ?? $page` — extracted via
+  `EXTR_SKIP` from whichever `comment_data` bundle was passed in, so
+  the unused one is never even a defined variable, not just null (`??`
+  handles that safely without a warning). Propagated identically to
+  the `duskline` custom theme's `page.php`/`comments.php` (byte-
+  identical to the default theme's originals before this change) per
+  this project's Custom Theme Rules — re-read both afterward to
+  confirm.
+- `admin/views/comments.php`'s Akismet-feedback closure and its list
+  table's post-lookup both now branch on `contentType` to resolve
+  either a Post or a Page permalink; the column header changed from
+  "Post" to "Post / Page". `admin/views/dashboard.php` and the Recent
+  Comments widget (`CoreWidgets.php`) updated for the renamed keys —
+  the widget also gained a `contentType` branch to resolve a Page
+  permalink via `PageService` instead of always assuming Posts.
+- `ApiController`'s `pageToArray()`/`pagesStore()`/`pagesUpdate()`
+  gained `comments_open`, mirroring the Posts REST resource exactly
+  (confirmed Posts' REST API doesn't expose `visibility` either, so
+  Pages staying silent on that front is parity, not a gap).
+
+New tests: `Unit/Services/CommentServiceTest.php` (page-comment
+create/count/tree/admin-listing), `Unit/Services/
+CommentModerationServiceTest.php` (`commentsOpenForPage()`),
+`Unit/Services/PageServiceTest.php` (`commentsOpen` create/update/
+quick-update preservation), plus a new `Integration/
+CommentServiceIntegrationTest` case exercising the new `page_id`
+column and LEFT JOIN against real MariaDB — the exact kind of
+non-emulated-prepared-statement/`MODIFY COLUMN`-on-a-populated-table
+change this Integration/ class exists to catch. Two existing
+Integration assertions still referencing the old `postTitle` key were
+caught and fixed by that same Docker matrix run, not by the faster
+SQLite-backed Unit suite. Full Docker PHP 8.2/8.3/8.4 + MariaDB matrix:
+1400 tests, only the same pre-existing unrelated `ThumbnailServiceTest`
+failure on all three versions — see `PHP Test Suite/TEST_LOG.md`'s
+"Discussion settings" entry. Manually verified end-to-end on a
+throwaway Docker-MySQL install: created a page with comments open,
+confirmed the comment section/form renders publicly, submitted a guest
+comment (landed Pending, `page_id` set correctly, `post_id` NULL),
+confirmed the admin Comments screen links it to `/page/about#comment-1`
+correctly, approved it, confirmed it then displays publicly with a
+working Reply form, submitted a threaded reply, and confirmed the
+Discussion checkbox in the Page editor reflects the page's actual
+saved state. No PHP errors throughout.
+
+**Correction (2026-09-04):** the three "Hierarchical URLs" checklist
+items below were still unchecked and one still read "split out to
+LP-084" even though LP-084 shipped on 2026-08-28 (commit `845a86b`) —
+checked off now, not new work. See `DECISIONS.md`'s 2026-08-27 LP-084
+entry for the implementation itself.
+
+**Implemented (2026-09-04), twelfth pass — Sortable list columns.**
+`PageService::paginateForAdmin()` gained `$orderBy`/`$orderDir`
+parameters (`title` / `created` / anything else falling back to the
+existing `COALESCE(published_at, created_at)` default), whitelisted
+against a `match()` before reaching SQL — mirrors the Downloads admin
+list's identical `orderby`/`order` query-param pattern
+(`content/plugins/downloads/src/DownloadService.php`). The flat/
+paginated Pages list (`admin/views/pages/all-pages.php`) gained
+clickable "Title"/"Created"/"Published" column headers via the same
+`$sortLink` closure Downloads uses, replacing the single "Date" column
+(which only ever showed the publish date or, confusingly, the last-
+updated time) with two distinct columns. The unfiltered tree view is
+unaffected — it has its own drag-and-drop custom order and was never in
+scope here. New unit tests cover title/created/published sorting,
+including the publication-date sort's fallback to created_at for a
+still-unpublished draft. Full Unit suite (2086 tests) still green.
+
+**Implemented (2026-09-04), thirteenth pass — Performance.**
+`PageService::listAllForTree()` now memoizes its result on the service
+instance for the lifetime of the request, invalidated by every method
+that can change which pages exist in the tree or their parent/order
+(`create()`, `update()`, `trash()`, `restore()`, `setStatus()`,
+`setParent()`, `delete()`, `reorder()`). This closes a real duplicate
+query: the admin "All Pages" screen already called `listAllForTree()`
+twice per request — once directly for the tree rows, once indirectly
+through `listAllForParentPicker()` for the bulk-action/Quick-Edit parent
+dropdown — and now only queries once. Investigated "Optimize routing"
+separately and found it already covered: `SiteController::pageByPath()`
+(LP-084's hierarchical route) calls the same `markCacheableForGuests()`
+HTTP-caching path every other public route uses, so a cache hit skips
+`PageService::findByPath()`'s segment-by-segment lookup entirely; no
+further work was needed there. New unit tests cover the memoization
+(a page inserted directly via SQL, bypassing the service, doesn't show
+up in a second `listAllForTree()` call within the same instance) and
+its invalidation via `create()` and `setParent()`. Full Unit suite
+(2089 tests) still green.
+
+**Review (2026-09-04):** swept every remaining unchecked item in this
+ticket. "Navigation menu integration" and its Success Criteria echo
+were already fully built (Appearance &rsaquo; Menus' "Add Pages") and
+simply never checked off — closed with no code change. "Bulk Edit
+support"/"Add Bulk Edit" were checked off as satisfied via the
+individual bulk actions, per the existing scope-decision note above.
+"Password-protected pages"/"Password protected" were moved to `ideas
+for later.md` per the note already on that line. "Implement
+validation" (no service-layer title-length/required check, unlike
+Posts' `MAX_TITLE_LENGTH`/`InvalidArgumentException`) and "Permission
+testing" (no test coverage for the admin list's `canEditPage`/
+`canPublish`/`canDeletePages`/`canEditOthersPages` gating) were
+investigated and found genuinely still open — left unchecked.
+
+**Implemented (2026-09-07), fourteenth pass — closed the ticket's last
+two gaps.** "Implement validation": `PageService::create()`/`update()`
+gained `validateTitle()`/`sanitizeStoredContent()`, mirroring
+`PostService` exactly (`MAX_TITLE_LENGTH` = 191, matching the `title`
+column's `VARCHAR(191)` width; Html-format content runs through
+`HtmlSanitizer` at save time). `admin/views/pages/new.php`'s save
+handler now catches the resulting `InvalidArgumentException` and shows
+it as an inline error, the same as `PostsController::save()` already
+does. "Permission testing": following LP-082's precedent, extracted
+`admin/views/pages/all-pages.php`/`new.php`'s POST-handling logic
+(quick edit, trash, restore, delete permanently, empty trash,
+duplicate, reposition, bulk actions, save, revision restore) into a
+new `PagesController`, leaving both views as thin dispatch wrappers
+turning an `AdminActionResult` into a redirect or `$error` string. The
+JSON-only editor sub-actions (image upload, format conversion, media
+picker queries) deliberately stayed inline — they gate on generic
+capabilities only, never a specific page's ownership, so none of the
+untested logic this pass closes lived there. New `PagesControllerTest.php`
+(35 tests) exercises every action directly: ownership/capability denial
+(an author/contributor can't touch another author's page;
+capability-gated bulk actions and Change Parent/Change Author refuse
+without the matching permission), CSRF failure, and the title
+validation added above. Full Unit suite (2133 tests) green aside from
+one pre-existing, unrelated WordPress-importer `<br>`-tag assertion
+failure. Manually verified end-to-end on the dev install once its
+webserver stack came back up: list view and sortable columns, Quick
+Edit, Save (with a revision snapshot), the 191-character title-length
+rejection surfacing as an inline error, bulk Trash/Restore/Delete
+Permanently, and the forbidden-page redirect for an id owned by
+another author. No PHP errors in the dev install's error log
+throughout.
+
+### Goal
+
+Implement a comprehensive Pages system for creating and managing static website content. Unlike Posts, Pages are intended for evergreen content such as About, Contact, Privacy Policy, FAQ, Terms of Service, and other standalone pages that are not part of the blog chronology.
+
+The Pages system should provide a clean editing experience while supporting hierarchical site structures, custom templates, and future extensibility.
+
+### Features
+
+#### Core Content
+
+- [x] Create pages
+- [x] Edit existing pages
+- [x] Delete pages
+- [x] Duplicate existing pages
+- [x] Quick Edit support — flat/paginated list view only; the drag-and-drop tree view (unfiltered "All" tab) doesn't offer it this pass, see the ticket note below
+- [x] Bulk Edit support — not built as a classic single multi-field inline panel; satisfied instead by the Bulk Actions section's individual actions (Publish/Draft, Change parent, Change author), which do the identical database work through the identical service methods — see the ticket note below
+- [x] Bulk delete
+- [x] Trash with restore functionality
+- [x] Permanent delete
+
+#### Page Hierarchy
+
+- [x] Parent pages
+
+- [x] Child pages
+
+- [x] Unlimited nesting — schema allows arbitrary depth via self-referencing `parent_id`; flat depth-indented tree view exists (`PageService::listAllForTree()`), not a collapsible tree component
+
+- [x] Automatic hierarchy management — orphan-on-delete (children reparent to top-level) + self/direct-child cycle guard
+
+- [x] Hierarchical URL generation — shipped in LP-084 (`Router::match()` gained a `{name*}` greedy placeholder)
+
+- [x] Easy parent selection — flat `<select>` dropdown, excludes the page itself and its direct children
+
+- [x] Page tree navigation — flat, depth-indented, drag-and-drop-reorderable list on the admin "All" tab; not an expand/collapse tree widget
+
+  
+
+#### Publishing Workflow
+
+- [x] Drafts
+- [x] Published pages
+- [x] Scheduled publication
+- [x] Pending review — `PageStatus::PendingReview`, mirrors `PostStatus::PendingReview` exactly
+- [x] Private pages — new `PageVisibility` enum + `visibility` column (migration `0036`), mirrors `PostVisibility`/Posts' "Private posts" exactly
+- [x] Publish immediately
+- [x] Schedule publication
+
+#### Page Editor
+
+- [x] Title field
+- [x] Slug editor
+- [x] Content editor
+- [x] Featured image
+- [x] Excerpt (optional)
+- [x] Parent page selector
+- [x] Discussion settings — a per-page "Allow comments" toggle, mirroring Posts' Discussion box exactly; see the ticket note below for the new `page_id` column/CommentService generalization this needed
+- [x] Preview button — `SiteController::previewPage()` + `/preview-page/{id}` route, mirrors Posts' `previewPost()`/`/preview/{id}` exactly (a distinct route since post and page ids each start from 1 in their own tables)
+- [x] Save Draft
+- [x] Publish
+- [x] Update
+
+#### Templates
+
+- [x] Default template — `content/themes/default/page.php` renders every page; no per-page template selection exists yet. Every other Templates checklist item (theme-defined templates, full-width/landing templates, a template selector, filtering/bulk-changing by template, the backend service support, template-loading performance, and test coverage) was moved to `ideas for later.md` — a self-contained future feature, not scattered LP-009 follow-up work.
+
+#### URLs & Permalinks
+
+- [x] Automatic slug generation
+- [x] Manual slug editing
+- [x] Duplicate slug detection
+- [x] Hierarchical URLs — shipped in LP-084; a Page's URL now reflects its parent/child position (e.g. `/about/team`) with the old flat `/page/{slug}` permanently redirecting. See `DECISIONS.md`'s 2026-08-27 LP-084 entry.
+- [x] URL preview — a Permalink row (URL + "View Page" link) now shows on the edit screen once a page is Published, mirroring the Post editor's identical row
+
+#### Featured Images
+
+- [x] Upload featured image
+- [x] Select existing media
+- [x] Remove featured image
+- [x] Automatic thumbnail generation
+- [x] Theme integration
+
+#### Visibility
+
+- [x] Public
+- [x] Private — visible only to the page's author or a user with `edit_posts` (same capability check as Posts' equivalent, see Publishing Workflow above)
+
+#### Ordering
+
+- [x] Manual page ordering
+- [x] Drag-and-drop ordering
+- [x] Sort by title — clickable "Title" column header on the flat/paginated list view
+- [x] Sort by creation date — clickable "Created" column header
+- [x] Sort by publication date — clickable "Published" column header, falls back to creation date for pages with no publish date yet
+- [x] Sort by custom order — `menu_order` + `PageService::reorder()`
+
+#### Search & Filtering
+
+- [x] Search by title — one search box matching title OR content (`PageService::paginateForAdmin()`'s `term` filter), same single-field approach classic WordPress's Pages list uses rather than separate title/content fields
+- [x] Search by content — same `term` filter as above
+- [x] Filter by status
+- [x] Filter by parent page — `paginateForAdmin()`'s `parentId` filter
+- [x] Filter by author — `paginateForAdmin()`'s `authorId` filter
+- [x] Filter by date — `paginateForAdmin()`'s `dateFrom`/`dateTo` filters against `created_at`
+
+#### Bulk Actions
+
+- [x] Delete — Trash (bulk) and Delete Permanently (bulk, Trash tab only)
+- [x] Restore
+- [x] Change parent
+- [x] Change author — "Change author to&hellip;" bulk action, `edit_others_posts`-gated, `PageService::bulkReassignAuthor()`
+- [x] Change visibility — "Set Public" / "Set Private" bulk actions, `PageService::bulkSetVisibility()`
+- [x] Change status — Publish / Mark as Draft
+
+---
+
+### Task List
+
+#### Database
+
+- [x] Design pages database schema
+- [x] Create migration scripts — `0006_create_pages_table.sql`
+- [x] Support hierarchical relationships — nullable self-referencing `parent_id`
+- [x] Create indexes for performance
+- [x] Allow future extensibility
+
+#### Backend
+
+- [x] Create Page model
+- [x] Create Page repository — `PageService`'s data-access methods; this codebase has no separate repository layer for any content type (Posts included)
+- [x] Create Page service layer
+- [x] Implement CRUD operations
+- [x] Implement hierarchy management — basic parent assignment + self/direct-child cycle guard
+- [x] Implement slug generation
+- [x] Implement ordering — `menu_order` + `PageService::reorder()`
+- [x] Implement validation — `PageService` now enforces title-required/title-length-cap validation (`MAX_TITLE_LENGTH`, throwing `InvalidArgumentException`) and Html-content sanitization at save time, mirroring `PostService` exactly
+- [x] Implement permissions
+- [x] Implement search — `PageService::paginateForAdmin()`'s `term` filter
+- [x] Implement filtering
+- [x] Implement pagination
+
+#### Admin Interface
+
+- [x] Build Pages listing page
+- [x] Build Create Page page
+- [x] Build Edit Page page
+- [x] Build hierarchy selector
+- [x] Add page tree view
+- [x] Add drag-and-drop ordering
+- [x] Add Quick Edit — flat/paginated list view only, see the ticket note
+- [x] Add Bulk Edit — see "Bulk Edit support" above; satisfied via individual bulk actions rather than a single panel
+- [x] Add bulk actions
+- [x] Add confirmation dialogs — JS `confirm()` on delete, same as Posts
+- [x] Add **All Pages** to Pages Menu
+- [x] Add **New Page** to Pages Menu
+
+#### Frontend
+
+- [x] Render pages using selected templates — only one template exists, so nothing to select yet
+- [x] Support hierarchical URLs — shipped in LP-084
+- [x] Generate breadcrumbs
+- [x] Theme integration
+- [x] Navigation menu integration — Appearance &rsaquo; Menus' "Add Pages" checkbox list (`PageService::listAllForMenuSelect()`), mirroring Posts' "Add Posts" exactly; was already built, just never checked off here
+
+#### Performance
+
+- [x] Optimize hierarchy queries — `PageService::listAllForTree()` memoizes its result for the lifetime of the request, so the admin "All Pages" tree view (which built the same tree twice in one request — once for its own tree rows, once via `listAllForParentPicker()` for the parent-select dropdown) no longer runs the query twice
+- [x] Cache page trees — same request-scoped memoization; invalidated by every method that can change tree membership, parent, or order (`create()`, `update()`, `trash()`, `restore()`, `setStatus()`, `setParent()`, `delete()`, `reorder()`)
+- [x] Optimize routing — the hierarchical page route (`SiteController::pageByPath()`) already calls the same `markCacheableForGuests()` HTTP-caching path every other public route uses, so a repeat request for a published page never re-runs `PageService::findByPath()`'s segment-by-segment lookup at all once cached; the bounded per-segment query cost on a cache miss is the same shape `ancestors()` already accepts for the same reason
+
+#### Security
+
+- [x] CSRF protection
+- [x] Permission checks
+- [x] Input validation
+- [x] Output escaping
+- [x] XSS protection
+
+#### Testing
+
+- [x] Unit tests — `Unit/Services/PageServiceTest.php`
+- [x] Integration tests — `Integration/PageServiceIntegrationTest.php` (real MySQL only; catches the repeated-placeholder bug SQLite can't)
+- [x] Hierarchy testing — parent-selector cycle-guard tests
+- [x] Permission testing — ownership/capability logic now lives in `PagesController` (mirrors LP-082's `PostsController` extraction) and is directly unit-tested there (`PagesControllerTest.php`, 35 tests), no longer only reachable by hand-testing the admin views
+- [x] Slug generation testing
+- [x] PHP 8.2 compatibility — verified via the Docker PHP 8.2/8.3/8.4 matrix, run repeatedly across this ticket's 2026-08-11 work
+- [x] PHP 8.3 compatibility — same Docker matrix run
+- [x] PHP 8.4 compatibility
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Update CHANGELOG.md
+- [x] Document template system — `docs/THEME-DEVELOPMENT.md` (new): the template hierarchy (including `page.php`), directory structure, and template-tag API
+- [x] Document developer APIs — `docs/DEVELOPER-APIS.md` (new): the Page lifecycle hooks (`page_saved`/`page_deleted`) alongside every other content type's
+
+**Implemented (2026-08-18).** Both new docs cover every content type
+together, not just Posts — see LP-008's own Documentation implementation
+note for the full write-up.
+
+#### Success Criteria
+
+- [x] Users can easily create and organize static website pages.
+- [x] Parent/child relationships work reliably.
+- [x] Pages integrate seamlessly with navigation menus, search, and themes.
+- [x] The implementation remains lightweight, performant, and extensible.
+
+------
+
+### LP-010. Categories
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (106/106 checklist items)
+
+**Implemented (2026-07-21), first pass.** Mirrors the Pages hierarchy
+approach (basic flat parent selector, no tree/drag-and-drop) plus a real
+many-to-many Post↔Category relationship. Merge, bulk actions, trash,
+images, SEO fields, RSS integration, and breadcrumbs are intentionally
+left for a future pass — see unchecked items below.
+
+**Extended (2026-08-14).** Category RSS/Atom feeds (see the RSS &amp;
+Atom Feeds section below), plus Trash with restore and Bulk management:
+a new `trashed_at` column (migration `0039_add_trashed_at_to_categories.sql`),
+`CategoryService::trash()`/`restore()`/`listTrashedWithPostCounts()`/
+`trashedCount()`, and a Trash tab + checkbox bulk actions (Move to
+Trash/Restore/Delete Permanently) on the admin Categories list, mirroring
+Pages' Trash pattern minus the status-workflow flip Categories don't
+have (`restore()` just clears `trashed_at`, there's no draft/published
+state to fall back to). Trashed categories are excluded from every
+public-facing and assignment-facing listing (`listAll()`,
+`listAllWithPostCounts()`, `listAllForParentSelect()`, `findBySlug()`,
+`categoriesForPost()`) but stay reachable via `findById()` so the Trash
+tab can still show and restore them. Merge categories: a new
+`CategoryService::merge()` reassigns the source's posts to the target
+category (via the existing `bulkAddToPosts()`, so a post already in
+both categories doesn't hit `post_categories`' composite-key
+constraint), reparents the source's children to the target, and
+deletes the source — offered as a "Merge into…" bulk action alongside
+Trash on the admin Categories list's "All" view. Change parent,
+Export, and Reorder bulk actions remain unimplemented.
+
+**Extended (2026-09-07).** The admin Categories list's post-count
+column now links to the admin Posts list pre-filtered to that category
+(`posts/all-posts?category={id}`), mirroring the existing `tag={id}`
+link on the admin Tags list — no new filtering logic needed since
+`PostService::paginateForAdmin()`'s `categoryId` filter and
+`all-posts.php`'s `?category=` query param already existed.
+
+Also (2026-09-07), Search & Filtering: a collapsible "Search & Filter"
+panel on the admin Categories list's "All" view, mirroring the admin
+Posts list's own panel — search by name/slug, filter by parent
+category, minimum post count, and a created-date range, all combinable.
+Backed by a new `array $filters` parameter on
+`CategoryService::listAllWithPostCounts()`. One SQLite-specific gotcha:
+a bound parameter compared against the `HAVING post_count >= :param`
+alias always evaluated false under the test suite's SQLite backend —
+neither the bound parameter nor the `COUNT()` alias carries a column
+type affinity for SQLite to coerce, so the two sides compare by raw
+storage class (TEXT never `>=` INTEGER) instead of by value. Fixed by
+interpolating the already-int-cast `$minPosts` directly into the SQL,
+the same pattern `CommentService`'s `LIMIT`/`OFFSET` clauses already
+use for the same reason. The Trash tab's listing is unfiltered — the
+panel only appears on "All", matching that trashed categories are
+typically few enough not to need it.
+
+Also (2026-09-07), Category Images: a new "Category Image" field on
+the Create/Edit Category form — a "Choose from Media Manager…" grid
+picker (the same `featured-image-picker.js` component the Post/Page
+Featured Image box and Media Manager's "Default featured image"
+setting already use) plus a direct file upload, either of which sets
+the new `image_id` column (migration `0059_add_image_id_to_categories.sql`).
+No manual-crop support, unlike post/page featured images — a category
+image has no placement choice to make cropping worth the added
+complexity. Reuses the existing `ThumbnailService::generate()` pipeline
+on upload, so "Automatic thumbnail generation" needed no new code.
+Theme-facing: `category_image_url()`/`has_category_image()` in
+`permalink-functions.php`, rendered above the description on both
+bundled themes' `archive.php` for a category archive that has one. A
+real correctness bug surfaced and was fixed while wiring this up:
+`CategoryService::update()` now always sets `image_id` from its new
+param (no "keep existing" sentinel, matching how every other field on
+that method already works — callers resolve the final value
+themselves, same as `PostsController::save()`'s featured-image
+resolution), which meant every existing caller that doesn't pass an
+`imageId` needed checking. The REST API's `categoriesUpdate()` was
+fixed to preserve the existing image unless `image_id` is present in
+the request body (mirroring how it already treats `parent_id`), and
+`WordPressImportService::createOrUpdateCategory()`'s Overwrite-mode
+re-import path was fixed to look up and re-pass the existing image
+rather than silently wiping it on every re-import — covered by a new
+regression test
+(`testReimportWithOverwriteExistingContentPreservesALocallyAssignedCategoryImage`).
+
+**Also (2026-09-07), Hierarchical URLs.** A category's URL now reflects
+its parent/child position — e.g. `/category/tv-movies/star-trek` for
+"Star Trek" under "TV & Movies" — mirroring LP-084's Page hierarchical
+URLs. New `CategoryService::findByPath()`/`ancestors()`/
+`findBySlugAndParent()` (same shape as `PageService`'s own trio) back
+`PermalinkService::categoryUrl()`'s ancestor-chain construction and the
+route's segment-by-segment resolution. Unlike Pages, category slugs
+stay globally unique regardless of nesting depth, so
+`SiteController::category()` falls back to a plain `findBySlug()` on
+the URL's final segment when the full path doesn't resolve, permanently
+redirecting an old bookmarked/indexed flat link (or one with a stale
+ancestor prefix, e.g. after a category is moved to a different parent)
+to the correct nested URL instead of 404ing — a category's feed route
+(`categoryFeed()`) just 404s on a bad path instead, since a feed URL
+has no SEO indexing to preserve. `PermalinkService::categoryRoutePattern()`
+switched from a single-segment `{slug}` placeholder to a greedy
+`{path*}` one (mirroring the Page route's own `{path*}`), which meant
+`bootstrap.php` had to reorder route registration — the category feed
+routes (both requiring a trailing `/feed` or `/feed/{format}` segment)
+now register before the bare category route, or the greedy pattern
+would swallow a feed URL itself. `search_result_permalink()`'s
+`'category'` branch was fixed to look up the real `Category` and use
+`category_permalink()` (mirroring how the `'page'` branch already
+worked), rather than building a flat URL straight from the search
+result's bare slug — a category search result would otherwise have
+linked to the wrong (flat, pre-hierarchy) URL for any nested category.
+
+**Also (2026-09-07), Tree view UI.** The admin Categories list's
+unfiltered "All" view (no search/filter active, not the Trash tab) now
+renders a real depth-indented tree instead of the flat alphabetized
+table, with native HTML5 drag-and-drop reordering plus keyboard-
+accessible Move Up/Move Down buttons — the same `sortable.js` shared
+component Pages/Widgets/Menus already use, and directly mirroring
+LP-009's own Pages tree view (`admin/views/pages/all-pages.php`) down
+to the markup shape. Backed by a new `menu_order` column (migration
+`0060_add_menu_order_to_categories.sql`) and `CategoryService::reorder()`/
+`nextMenuOrder()` (both copied from `PageService`'s identical methods),
+plus a query-level change to `listAllForTree()`, which now orders
+siblings by `menu_order` instead of always alphabetically — since that
+method also backs the admin Menus screen's "Add Categories" panel, the
+Post editor's category tree picker, and the Categories widget's nested
+output, an admin's manual drag-and-drop order now flows through to all
+three, matching how Pages' own `menu_order` already does. A search/
+filter still forces the existing flat/filtered table view, since
+hierarchical grouping breaks once a matching child's parent might not
+itself match. Expand/collapse was **not** implemented at first, matching
+Pages' own tree view, which has the same gap — every level always
+renders expanded. Verified via new `CategoryServiceTest` tests for
+`reorder()`/`nextMenuOrder()`/menu_order-based sibling ordering, and
+live in the browser against the real dev-install data (110 categories,
+several genuinely nested): the tree renders correctly indented,
+drag-and-drop and the Move Up/Down buttons both persist a real reorder,
+and the flat/filtered/trash views are unaffected.
+
+**Also (2026-09-07), Expand/collapse tree.** A new per-row toggle
+button (`▸`, rotating to `▾` when expanded) on any category with at
+least one child; a childless row gets a same-width blank spacer instead
+so every row's title column still lines up. New
+`admin/assets/js/category-tree-toggle.js`, enqueued globally alongside
+`sortable.js`. Since the tree is a flat `<ul><li>` list with depth
+expressed only via indentation (not real nested `<ul>`s — unlike Media
+Manager's own folder tree, which gets expand/collapse for free from
+native `<details>`), collapsing a node walks the flat list by
+`data-lp-sortable-parent` to find its full descendant subtree; a child
+collapsed on its own correctly stays collapsed when a more distant
+ancestor is re-expanded (each child's own toggle state is checked
+before recursing into its children). Deliberately client-side only,
+not persisted server-side across page loads — unlike the Media Manager
+folder tree's own persisted collapse state (`0051_add_folder_tree_state_to_users.sql`),
+which needed a real per-user preference since that tree stays open
+across many separate page navigations; the Categories tree already
+reloads the full page on every drag/reorder/Trash action on this same
+screen, so a much lighter, unpersisted toggle was the right scope here.
+Verified live in the browser: collapsing a node hides every descendant
+(including a grandchild reached via a nested `AO3` → `otwsoftware`
+chain), re-expanding restores everything, and independently collapsing
+a child before collapsing/re-expanding its own parent correctly leaves
+that child collapsed.
+
+**Also (2026-09-07), Breadcrumb support.** A public-facing breadcrumb
+trail (e.g. "TV & Movies / Star Trek") on a category's own archive
+page, via new `get_category_breadcrumbs()`/`the_category_breadcrumbs()`
+in `include/content-display-functions.php` — a direct copy of
+`get_page_breadcrumbs()`/`the_page_breadcrumbs()`'s exact shape,
+reusing the same `.lp-breadcrumbs` CSS classes (already styled by
+every theme from the Page breadcrumb feature), so no new CSS was
+needed anywhere. `SiteController::category()` now passes
+`archive_category`/`archive_category_ancestors` (the root-first chain
+from `CategoryService::ancestors()`) to `archive.php`, which renders
+the trail above the page title only when `$archive_category` is set —
+tag/date/author archives, which have no hierarchy, stay unaffected.
+Propagated additively to both `custom themes/` (duskline, xena-central)
+per the standing working agreement. Outputs nothing for a top-level
+category, matching how `the_page_breadcrumbs()` outputs nothing for a
+top-level page. Verified live in the browser against the real
+dev-install data: a two-level category shows one linked ancestor crumb
+plus the current (unlinked) name, a three-level-deep category
+(`Fan Works & Other Downloads / Screencaps / 4K/UHD`) shows the full
+chain, and a top-level category shows no breadcrumb at all.
+
+**Also (2026-09-07), Archive display mode.** A new "Archive display"
+field on the Create/Edit Category form (Use theme default/Excerpt/Full
+Content), stored in a new `archive_display_mode` column (migration
+`0061_add_archive_display_mode_to_categories.sql`), lets a single
+category override the site-wide "Post display" Theme Option for its own
+archive page only — closing the "Theme customization" checklist item.
+Defaults to `NULL` ("Use theme default"), matching the "a theme's own
+explicit design choice takes precedence over a generic core default"
+convention every other inheritable field in this project follows
+(unset unless the admin picks a specific value). Backed by a new
+`category_archive_display_mode(Category $category): string` template
+tag (`include/permalink-functions.php`) that resolves the override with
+a `theme_option('post_display_mode')` fallback; both bundled themes'
+`archive.php` call it instead of `theme_option()` directly whenever
+`$archive_category` is set, propagated additively to both `custom
+themes/` (duskline, xena-central). Same "always replaces, no
+keep-existing sentinel" semantics as `image_id` on
+`CategoryService::update()` — the REST API's `categoriesUpdate()` and
+`WordPressImportService`'s Overwrite-mode re-import path were both
+updated to preserve the existing value unless the request/import
+explicitly changes it, mirroring how each already treats `image_id`
+(covered by a new regression test,
+`testReimportWithOverwriteExistingContentPreservesALocallyAssignedArchiveDisplayMode`).
+The "Child category listing" checklist item was formally declined this
+session — see `DECISIONS.md`'s 2026-09-07 entry — and removed from the
+checklist below rather than left as a dangling "by design" note with no
+actual decision record behind it. Verified via new `CategoryServiceTest`/
+`PermalinkFunctionsTest` unit tests and live in the browser against the
+real dev-install data: a category with the override set to "Full
+Content" renders full post bodies on its own archive page while every
+other category's archive still respects the site-wide "Post display"
+setting, and switching the override back to "Use theme default"
+restores that inheritance.
+
+**Also (2026-09-07), Change parent bulk action.** A new "Change parent
+to…" bulk action on the admin Categories list's "All" view, alongside
+the existing "Merge into…" one — reassigns every selected category's
+parent in one step, via a new `CategoryService::bulkChangeParent(array
+$categoryIds, ?int $parentId): int`. The target picker offers "(No
+parent / Top level)" (clears `parent_id`) alongside every real
+category, depth-indented via the same `listAllForParentPicker()` the
+single Create/Edit form's own picker already uses. Cycle-safe: a
+category whose move would make it its own parent, or move it under one
+of its own descendants, is silently skipped rather than aborting the
+whole batch — checked via a new private `isAncestorOf()` walking the
+full ancestor chain (`ancestors()`), a more thorough guard than the
+single-edit form's own parent selector, which only excludes a
+category's *direct* children (an accepted, narrower gap documented on
+`listAllForParentSelect()`). The previously `*-rejected*`-tagged
+"Export" bulk action was formally declined this session — see
+`DECISIONS.md`'s 2026-09-07 entry — and removed from the checklist,
+the same "dangling tag with no actual decision recorded" cleanup the
+"Child category listing" item got last session. Verified via new
+`CategoryServiceTest` tests (successful reassignment, top-level via
+`null`, both cycle cases, and a mixed batch where one id cycles but the
+other still moves) and live in the browser against the real dev-install
+data: selecting several categories and choosing a new parent reparents
+all of them and the admin Categories tree reflects the new nesting
+immediately, and choosing an invalid target (a category's own
+descendant) leaves that one category untouched while the rest of the
+batch still moves.
+
+**Also (2026-09-07), Backend validation + Frontend navigation.** Closed
+out both the Backend and Frontend sections' last remaining items.
+`CategoryService::create()`/`update()` now enforce a required, &le;191-
+character name via a new `validateName()` (throwing
+`\InvalidArgumentException`) and `MAX_NAME_LENGTH` constant, mirroring
+`PostService`/`PageService`'s own `MAX_TITLE_LENGTH` pattern exactly —
+previously the only validation was an inline empty-check in the admin
+view, with nothing stopping an over-length name from reaching the
+database. Every write path that reaches `create()`/`update()` from live
+user input now catches the exception and surfaces it properly instead
+of letting it go uncaught: the admin Create/Edit Category form (a new
+try/catch around the save call, replacing the old inline empty-name
+check the service now covers itself), the REST API's `categoriesStore()`/
+`categoriesUpdate()` (422 JSON error), and the Post editor's quick-add-
+category endpoint (`PostsController::quickAddCategory()`, 422 JSON
+error). The WordPress importer's category-creation path was
+deliberately left alone — an oversized category name from a WXR import
+is an extreme edge case, and wrapping that batch/resume pipeline's error
+handling was out of scope for this pass. Separately, "Category
+navigation" turned out to already be fully covered — the bundled
+Categories widget (`CoreWidgets.php`, nested links with an optional
+post-count) and the admin Menus screen's "Add Categories" panel both
+already let a theme's navigation include categories — so it was simply
+checked off, the same "already done, just never checked off" pattern
+"Add bulk actions" hit earlier in this same ticket. Verified via new
+`CategoryServiceTest`/`ApiControllerTest`/`PostsControllerTest` tests
+(blank name, over-length name, and exactly-191-characters as the
+boundary) and live in the browser: submitting a 300-character category
+name on the Create/Edit form shows "The name cannot be longer than 191
+characters." without saving, and a normal-length name still saves
+correctly.
+
+**Also (2026-09-07), bug fix: form redisplay on validation error.**
+Browser-verifying the name-length validation above surfaced a real,
+pre-existing bug: the Create/Edit Category form posts to a plain URL
+with no `?action=` query string, so when a save failed (an over-length
+name, a blank name, or a category-image upload error) and the handler
+didn't `exit`, `$action` fell back to its GET-derived default of
+`'list'` — the error banner rendered, but the form itself vanished,
+replaced by the categories list. Fixed by having the error path set
+`$action`/`$editingId` explicitly (`'new'`/`'edit'` matching whichever
+was being saved) before the GET-derived defaults below use `??=`
+instead of unconditionally overwriting them. Matches the existing
+"revert to the last-saved value, not what was just typed" convention
+`admin/views/pages/new.php` already has for the same situation (no new
+UX pattern introduced). Verified live in the browser: an over-length
+name, a blank name, and a simulated image-upload failure all now
+correctly redisplay the form (New or Edit, as appropriate) alongside
+the error banner, and a normal successful save is unaffected. The
+admin Tags screen (`admin/views/posts/tags.php`) has the identical
+structural bug — same combined list-and-form file, same missing
+`?action=` on its own form's POST target — but is out of scope here
+(a different ticket, LP-011); flagged for a future pass rather than
+fixed opportunistically in this one.
+
+**Extended further (2026-09-07), Performance (98/108 &rarr; 102/108
+total):** closed out the ticket's Performance section — see the
+Performance subsection above for the full write-up. In short:
+`CategoryService` gained three request-scoped caches (`findById()`
+memoization, `listAllForTree()`'s existing tree cache, and a
+lazily-loaded post-count map for `postCount()`), all invalidated by
+every method that changes a category's stored fields, hierarchy
+position, or post assignments. The concrete win: the admin Categories
+tree view no longer runs one `COUNT()` query per row (110 extra
+queries against the real dev-install data), and every repeated
+`ancestors()`/`category_permalink()` lookup for the same category
+within one request — breadcrumbs, post-listing category badges, and
+`sitemap.xml`'s full category loop — now hits the database once
+instead of once per occurrence. Verified via four new
+`CategoryServiceTest` regression tests and the full existing test
+suite (2275 tests, 0 failures). Only Category Information's two
+already-declined items (Custom icon, Custom color) and Testing's
+Permission testing/PHP 8.2/PHP 8.3 compatibility odds and ends remain
+open.
+
+**Extended further (2026-09-07), declined "Custom icon"/"Custom
+color"/"URL preview" (102/108 &rarr; 103/106 total):** formally
+declined all three long-stale `*-rejected*`-tagged items — see
+`DECISIONS.md`'s 2026-09-07 entry — and removed them from the
+checklist below. A "URL preview" Permalink row for the Create/Edit
+Category form (mirroring Pages' own row) was drafted and then reverted
+at the user's explicit direction; unlike Custom icon/Custom color it
+isn't a poor fit for the project's own conventions, it's simply not
+wanted here. Also checked off the Success Criteria section's
+"Administrators can efficiently manage large category trees" line,
+which had been left unchecked pending exactly the two things now
+done: per-row expand/collapse (shipped in an earlier pass this same
+session) and the post-count caching from the Performance pass above.
+Only Testing's Permission testing/PHP 8.2/PHP 8.3 compatibility remain
+open.
+
+**Extended further (2026-09-07), PHP 8.2/8.3 compatibility confirmed
+(103/106 &rarr; 105/106 total):** ran the full test suite against the
+Docker PHP 8.2/8.3/8.4 matrix (`./run-tests-all-php.sh`) — 2275 tests,
+0 failures on every version — and checked off both compatibility
+items. Permission testing remains the ticket's one open item: unlike
+Pages/Posts, Categories' capability checks
+(`$canDeleteCategories = $currentUser->can('delete_posts')`) still
+live inline in `admin/views/posts/categories.php` rather than in a
+dedicated controller, so they're not directly unit-testable the way
+`PagesControllerTest`/`PostsControllerTest` cover Pages/Posts — closing
+this out would mean the same `CategoriesController` extraction LP-009
+did for Pages (LP-082's precedent), a real refactor rather than
+something "run the tests" covers on its own.
+
+**Extended further (2026-09-07), Permission testing (105/106 &rarr;
+106/106 total — LP-010 complete):** did that refactor. A new
+`CategoriesController` (`app/Controllers/Admin/CategoriesController.php`)
+now owns every POST action the admin Categories screen handles — save,
+trash, restore, delete permanently, empty trash, reposition, and bulk
+actions — following `PagesController`'s exact shape: each method
+returns an `AdminActionResult` (a redirect or an inline error) instead
+of calling `header()`/`exit` itself, so the `delete_posts` capability
+gate every destructive action is built around is directly
+unit-testable. `admin/views/posts/categories.php` now dispatches to it
+the same way `admin/views/pages/all-pages.php` dispatches to
+`PagesController`, and stays responsible only for rendering — the
+"Category Image" picker's grid query is the one JSON sub-action left
+inline, mirroring `PagesController`'s own docblock rationale (it checks
+only a generic capability, never a specific category). Categories have
+no author/ownership concept, so the extraction is simpler than Pages'
+own — every method takes a flat `bool $canDeleteCategories` rather
+than an ownership-checking helper. One deliberate behavior change,
+the same one LP-009's own extraction produced for Pages: `save` and
+`bulk_action` previously fell through silently to the list view on a
+CSRF failure (an expired session token); they now show "Your session
+expired or the request could not be verified. Please try again."
+instead, matching how the trash/restore/delete-permanently/reposition/
+empty-trash actions already behaved. The earlier-this-session
+form-redisplay-on-validation-error fix was preserved through the
+extraction (verified live, see below) by keeping that
+`$action`/`$editingId` reset in the view rather than moving it into
+`AdminActionResult`, since it's about which template state to
+redisplay, not the controller's own decision. Verified via 21 new
+`CategoriesControllerTest` tests (save/trash/restore/delete permanently/
+reposition/bulk actions, each covering both the capability gate and a
+CSRF failure) and live in the browser against the real dev-install
+data: create, the blank-name validation error correctly redisplaying
+the Edit form, trash, and delete permanently all round-tripped
+correctly end to end. Full `vendor/bin/phpunit` run: 2296 tests, 0
+failures (one `MediaServiceTest` test flaked on an unrelated,
+pre-existing full-suite-only ordering issue and passed cleanly on a
+second run — confirmed unrelated to this change by reproducing it
+without `CategoriesControllerTest` in the run at all).
+
+### Goal
+
+Implement a robust hierarchical Categories system for organizing Posts into logical sections. Categories should help visitors browse related content while providing administrators with powerful organization and management tools.
+
+The system should support unlimited nesting, SEO-friendly URLs, rich metadata, and seamless integration with posts, themes, search, RSS feeds, and future plugins.
+
+### Features
+
+#### Category Management
+
+- [x] Create categories
+
+- [x] Edit existing categories
+
+- [x] Delete categories
+
+- [x] Merge categories — `CategoryService::merge()`: reassigns the source category's posts to the target (no duplicates), reparents its children to the target, and deletes the source. Offered as a "Merge into…" bulk action on the admin Categories list.
+
+  
+
+- [x] Bulk management — checkbox selection + Move to Trash/Restore/Delete Permanently/Merge bulk actions on the admin Categories list
+
+- [x] Trash with restore functionality — `trashed_at` column (migration `0039_add_trashed_at_to_categories.sql`), `CategoryService::trash()`/`restore()`, a Trash tab on the admin Categories list
+
+- [x] Permanent delete
+
+#### Hierarchy
+
+- [x] Unlimited nesting — schema allows arbitrary depth via self-referencing `parent_id`, now with a real tree-view UI too
+- [x] Parent categories
+- [x] Child categories
+- [x] Automatic hierarchy management — orphan-on-delete + self/direct-child cycle guard
+- [x] Tree view — the admin Categories list's unfiltered "All" view now renders a real depth-indented tree (`CategoryService::listAllForTree()`), replacing the flat alphabetized table there
+- [x] Expand/collapse tree — a per-row toggle (`category-tree-toggle.js`) collapsing/expanding a category's full descendant subtree; client-side only, not persisted across page loads
+- [x] Drag-and-drop reordering — new `menu_order` column + `CategoryService::reorder()`, native HTML5 drag-and-drop with Move Up/Move Down keyboard-accessible buttons (`sortable.js`, the same shared component Pages/Widgets/Menus already use)
+- [x] Breadcrumb support — `the_category_breadcrumbs()`/`get_category_breadcrumbs()`, rendered on a category archive page (`archive.php`, both bundled themes), mirroring `the_page_breadcrumbs()` exactly, including the shared `.lp-breadcrumbs` CSS classes
+
+#### Category Information
+
+- [x] Name
+
+- [x] Description
+
+- [x] Slug
+
+- [x] Featured image — a "Category Image" field on the Create/Edit Category form, see the Images section below
+
+#### URLs & Permalinks
+
+- [x] Automatic slug generation
+- [x] Manual slug editing
+- [x] Duplicate slug detection
+- [x] Hierarchical URLs — a category's URL now reflects its parent/child position (e.g. `/category/tv-movies/star-trek`), mirroring LP-084's Page hierarchical URLs; the old flat `/category/{slug}` permanently redirects to the canonical nested URL
+- Configurable permalink structure — built and done; not a token structure (categories have no per-item date/author to build tokens from), see LP-078's "Category base" field, which renames the `/category/` prefix
+
+#### Images
+
+- [x] Upload category image
+- [x] Select existing media
+- [x] Remove category image
+- [x] Theme integration — `category_image_url()`/`has_category_image()` template tags, rendered on both bundled themes' `archive.php` for a category archive
+- [x] Automatic thumbnail generation — reuses the existing `ThumbnailService::generate()` pipeline every other upload already goes through
+
+#### Posts Integration
+
+- [x] Assign categories to posts — checklist in the Post editor
+
+- [x] Multiple categories per post — real many-to-many via `{prefix}post_categories`
+
+  
+
+- [x] Display category counts
+
+- [x] Link post count to filtered post list — the admin Categories list's post-count column links to the admin Posts list pre-filtered to that category (`posts/all-posts?category={id}`), same as clicking a WordPress category count does
+
+- [x] Automatically update post totals — `postCount()`/`listAllWithPostCounts()` query live, not a cached counter column
+
+#### Category Archives
+
+- [x] Category archive pages
+
+- [x] Pagination
+
+  
+
+- [x] Category description
+
+- [x] RSS feed — `/category/{slug}/feed` (RSS 2.0) and `/category/{slug}/feed/atom` (Atom 1.0), `FeedService::categoryChannel()`/`categoryItems()` + `SiteController::categoryFeed()`
+
+- [x] Theme customization — an "Archive display" field on the Create/Edit Category form (Use theme default/Excerpt/Full Content) lets a category override the site-wide "Post display" Theme Option for its own archive page only
+
+#### Search & Filtering
+
+- [x] Search by name — the admin Categories list's "Search & Filter" panel's "Search name or slug" field, matching Posts' own Search & Filter panel
+- [x] Search by slug — same field as name search, `CategoryService::listAllWithPostCounts()`'s `term` filter matches either column
+- [x] Filter by parent category
+- [x] Filter by number of posts — a "Minimum posts" field (`minPosts`, a `HAVING post_count >=` threshold)
+- [x] Filter by date created — "Created from"/"Created to" date-range fields
+
+#### Bulk Actions
+
+- [x] Delete — Move to Trash / Restore / Delete Permanently, matching the Posts/Pages bulk actions pattern
+- [x] Merge — "Merge into…" bulk action, `CategoryService::merge()`
+- [x] Change parent — "Change parent to…" bulk action, `CategoryService::bulkChangeParent()`
+- [x] Reorder — drag-and-drop (plus keyboard-accessible Move Up/Move Down) on the admin Categories list's tree view; not a bulk-action dropdown entry, since reordering is inherently per-row rather than something a multi-select applies at once
+
+---
+
+### Task List
+
+#### Database
+
+- [x] Design categories database schema
+- [x] Create migration scripts — `0007_create_categories_tables.sql` (categories + post_categories)
+- [x] Support hierarchical relationships — nullable self-referencing `parent_id`
+- [x] Add indexes for performance
+- [x] Allow future extensibility
+
+#### Backend
+
+- [x] Create Category model
+- [x] Create Category repository — `CategoryService`'s data-access methods, same "no separate repository layer" convention as Post/Page
+- [x] Create Category service layer
+- [x] Implement CRUD operations
+- [x] Implement hierarchy management
+- [x] Implement slug generation
+- [x] Implement category tree builder — `CategoryService::listAllForTree()`, a recursive depth-tagged flattener ordered by each level's `menu_order`, backing the admin Categories list's tree view
+- [x] Implement category counts
+- [x] Implement validation — `CategoryService::create()`/`update()` now enforce a required, &le;191-character name (`MAX_NAME_LENGTH`, `validateName()`), matching `PostService`/`PageService`'s own `MAX_TITLE_LENGTH` pattern; every caller (admin Create/Edit form, REST API, the Post editor's quick-add-category) surfaces the resulting `InvalidArgumentException` as a proper error instead of an uncaught exception
+- [x] Implement permissions
+- [x] Implement search — `CategoryService::listAllWithPostCounts()`'s `term` filter (name/slug LIKE match)
+- [x] Implement filtering — status-equivalent filtering doesn't apply to categories; "filtering" here means the parent-exclusion query
+
+#### Admin Interface
+
+- [x] Build Categories listing page
+- [x] Build Create Category page
+- [x] Build Edit Category page
+- [x] Build hierarchy tree — a real depth-indented tree view on the admin Categories list's unfiltered "All" view
+- [x] Add drag-and-drop ordering — native HTML5 drag-and-drop plus keyboard-accessible Move Up/Move Down buttons, tree view only
+- [x] Add bulk actions — was already done (Move to Trash/Restore/Delete Permanently/Merge into…, checked off under the "Bulk Actions" section above); this line was just never checked off
+- [x] Add confirmation dialogs
+- [x] Display post counts
+- [x] Display total category count — new `CategoryService::count()` (non-trashed count, a single `COUNT()` query) feeds a "All (N)" status link on the admin Categories list (`admin/views/posts/categories.php`), matching Posts'/Pages' own status-count tabs convention exactly
+
+#### Frontend
+
+- [x] Category archive pages
+- [x] Breadcrumb generation — see the Hierarchy section above
+- [x] Category navigation — was already done via the bundled Categories widget (`CoreWidgets.php`, nested links with optional post counts) and the admin Menus screen's "Add Categories" panel (`admin/views/appearance/menus.php`); this line was just never checked off
+- [x] RSS integration — per-category feed link (`PermalinkService::categoryFeedUrl()`), no `<link rel="alternate">` autodiscovery tag on archive.php yet
+- [x] Theme integration
+- [x] Display category images — `archive.php`'s `.lp-archive__image`, shown above the description when a category has one
+
+#### Performance
+
+- [x] Optimize hierarchy queries — `CategoryService::findById()` now memoizes for the lifetime of the request, so a category id looked up more than once (`ancestors()` walking a shared ancestor prefix, the admin Categories list's flat/filtered view resolving each row's parent name) hits the database once instead of once per call
+- [x] Cache category trees — `listAllForTree()` memoizes its result, mirroring `PageService::listAllForTree()` exactly, so building the tree twice in one request (the admin Categories tree view plus a "Parent Category" picker built from the same tree via `listAllForParentPicker()`) no longer runs the query twice
+- [x] Cache post counts — `postCount()` now loads every category's count via a single `GROUP BY` query on first call instead of running one `COUNT()` per call; the admin Categories tree view was calling it once per row (110 extra queries against the real dev-install data)
+- [x] Optimize archive generation — `findById()`'s memoization above collapses the repeated `ancestors()` lookups `category_permalink()`/`categoryUrl()` triggers whenever the same category is linked more than once per request, which happens on every category archive page's breadcrumb, every post listing's category badges, and `sitemap.xml`'s full category loop
+
+All four backed by request-scoped caches on `CategoryService` (an `array<int, Category|null>` findById() cache, the existing tree-shaped cache, and a lazily-loaded post-count map), invalidated by every method that changes a category's stored fields, hierarchy position, or post assignments (`create()`, `update()`, `trash()`, `restore()`, `delete()`, `merge()`, `bulkChangeParent()`, `reorder()`, `assignToPost()`, `bulkAddToPosts()`). `bulkChangeParent()`'s loop invalidates after each individual reparent rather than once at the end, since a later id's cycle check (`isAncestorOf()` → `ancestors()` → `findById()`) must see an earlier move within the same batch. Verified via four new `CategoryServiceTest` regression tests (an update reflected by a subsequent `findById()`, a post assignment reflected by a subsequent `postCount()` via both `assignToPost()` and `bulkAddToPosts()`, and a reorder reflected by a subsequent `listAllForTree()`) plus the full existing `CategoryServiceTest` suite, which already covered `bulkChangeParent()`'s mixed-batch cycle case and exercised the `trash()` → `emptyTrash()` → `findById()` cache-invalidation path incidentally. Full `vendor/bin/phpunit` run: 2275 tests, 0 failures, 96 skipped (Integration/, needs a real MySQL server).
+
+#### Security
+
+- [x] CSRF protection
+- [x] Permission checks
+- [x] Input validation
+- [x] Output escaping
+- [x] XSS protection
+
+#### Testing
+
+- [x] Unit tests — `Unit/Services/CategoryServiceTest.php`
+- [x] Integration tests — `Integration/CategoryServiceIntegrationTest.php` (real MySQL only, specifically exercising the parent-exclusion query the way `PageServiceIntegrationTest` does)
+- [x] Hierarchy testing — parent-selector cycle guard + orphan-on-delete
+- [x] Archive testing — `paginateByCategory` covered in `Unit/Services/PostServiceTest.php`
+- [x] Slug generation testing
+- [x] Permission testing — the admin Categories screen's POST-handling logic (save, trash, restore, delete permanently, empty trash, reposition, bulk actions) now lives in a dedicated `CategoriesController` class, mirroring `PagesController`/`PostsController`'s extraction (LP-009/LP-082), making the `delete_posts` capability gate every destructive action is built around directly unit-testable (`CategoriesControllerTest.php`, 21 tests) instead of only reachable by hand-testing the admin view
+- [x] PHP 8.2 compatibility — verified via the Docker PHP 8.2/8.3/8.4 matrix (`./run-tests-all-php.sh`), 2275 tests, 0 failures
+- [x] PHP 8.3 compatibility — same Docker matrix run, 2275 tests, 0 failures
+- [x] PHP 8.4 compatibility
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Update CHANGELOG.md
+- [x] Document category APIs — `docs/DEVELOPER-APIS.md` (new): the Category lifecycle hooks (`category_saved`/`category_trashed`/`category_restored`/`category_deleted`/`category_merged`)
+- [x] Document theme integration — `docs/THEME-DEVELOPMENT.md` (new): `category_permalink()`, `archive.php`'s handling of category archives, and the full template-tag API
+
+**Implemented (2026-08-18).** Both new docs cover every content type
+together, not just Posts — see LP-008's own Documentation implementation
+note for the full write-up.
+
+#### Success Criteria
+
+- [x] Categories provide a flexible, scalable content organization system.
+- [x] Unlimited nesting works reliably.
+- [x] Category archives integrate seamlessly with themes.
+- [x] Administrators can efficiently manage large category trees. — a tree view exists (with drag-and-drop reordering and per-row expand/collapse for any node with children), and `CategoryService`'s request-scoped caching means the tree view no longer runs one post-count query per row; verified against 110 real categories, several genuinely nested
+- [x] The implementation remains lightweight, performant, and extensible.
+
+------
+
+### LP-144. Backups Download
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (3/3 checklist items)
+
+Add ability/button to download generated backups to Updates page, grouped with Restore and Delete buttons.
+
+- [x] Add `UpdateBackupService::backupFilePath()` resolving a files- or db- backup filename to its validated on-disk path (same basename-only, path-traversal-rejecting safety as `restoreFilesByFilename()`/`deleteBackup()`), and a delegating `UpdateService::backupFilePath()`.
+- [x] Add a "Download files"/"Download database" link per backup row on Maintenance > Updates, grouped with the existing Restore/Delete buttons, backed by a plain-GET download handler (no CSRF needed, same pattern as the Theme Editor's file download and Settings export) that streams the file with `Content-Disposition: attachment`.
+- [x] Add Unit tests for `backupFilePath()` covering a files backup, a database backup, a path traversal attempt, an unrecognized filename prefix, and a missing backup file; browser-verified both downloads and the traversal rejection on the dev install.
+
+------
+
+### LP-150. Audio/Video Player for Post Content
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (7/7 checklist items)
+
+Uploading audio/video to the Media Library (LP-006's `audio`/`video` mime-type categories) had no way to actually play in content — `MediaService::url()` is a direct static file URL, and neither editor's Insert Media flow, nor `HtmlSanitizer::ALLOWED_TAGS`, ever offered `<audio>`/`<video>`, so only a bare `/media/{id}/download` link was possible. A video's `poster_media_id`/`caption_track_media_id` (migration 0032) already existed for the admin edit-screen preview but had no public consumer either. Requested: a TODO ticket plus a real fix — a lightweight, Plyr-skinned player, the audio/video equivalent of PhotoSwipe's role for images.
+
+- [x] New core `[lumora_audio id="123"]`/`[lumora_video id="123"]` shortcodes (`MediaPlayerShortcode`, modeled directly on `FolderGalleryShortcode`'s pattern — a real service constructed with injected dependencies, registered on `content_html` in `include/bootstrap.php`). Renders a native `<audio>`/`<video controls>`; a video's existing `poster_media_id`/`caption_track_media_id` render automatically as the `poster` attribute/a `<track>` child. A missing/unresolvable id or a mime-type mismatch (e.g. `[lumora_video]` pointed at an MP3) renders nothing. Runs on `content_html`, after `HtmlSanitizer`, so no sanitizer allowlist change was needed — the shortcode itself is the only path to a rendered `<audio>`/`<video>`.
+- [x] New "Insert Audio"/"Insert Video" toolbar buttons (both Markdown and WYSIWYG editors, `admin/assets/js/content-editor.js`) — a lightweight preloaded-select dialog mirroring "Insert Folder" exactly, not the generic shortcode picker (an audio/video library is typically far smaller than an image library, so no paginated grid query was worth adding). `PostsController`/`admin/views/posts/new.php` and the Pages equivalent preload the full audio/video list the same way the Folder tree is already preloaded.
+- [x] Plyr (MIT, jsdelivr-hosted at a pinned version, same "not vendored locally" precedent as PhotoSwipe) re-skins the native controls, conditionally loaded via `ScriptEmbeds::isUsed('plyr')` in `FooterAssets` — never loaded on a page with no player. New `assets/js/media-player.js` calls `new Plyr(...)`, pointed at Plyr's own jsdelivr-hosted icon sprite (`iconUrl`) rather than its `cdn.plyr.io` default, since only jsdelivr is CSP-allowlisted — found via a real CSP `connect-src` violation during browser verification (Plyr fetches its icon sprite via XHR, not a `<script>`/`<link>` load) and fixed by widening `connect-src` for jsdelivr alongside the existing script-src/style-src/font-src widening in `include/bootstrap.php`, rather than allowlisting a second CDN.
+- [x] `.lp-audio-player`/`.lp-video-player` wrapper classes (figure + optional figcaption caption) styled in `content/themes/lumora-classic/style.css` per the Public-Facing CSS Rule — `--plyr-color-main: var(--lp-accent)` ties Plyr's own skin to the theme's accent instead of its default blue. Propagated additively to both custom themes (`duskline`, `xena-central`), which already carry the same `--lp-*` tokens.
+- [x] Unit tests (`MediaPlayerShortcodeTest`, 12 tests): valid audio/video render, caption/figcaption presence, poster/caption-track rendering and their absence, mime-type-mismatch rejection in both directions, missing/nonexistent id, multiple shortcodes in one content string, and caption XSS-escaping. Full suite (2083 tests) still green.
+- [x] Browser-verified end-to-end on the dev install (2026-09-04): imported a real generated MP3/MP4 via Media Manager's Import from Server, used both new toolbar buttons on a real post, published it, and confirmed on the public page that Plyr actually initializes (`.plyr` wrapper present, `--plyr-color-main` resolves to the theme's teal accent, both files report `readyState 4`/correct duration) — this is what surfaced and got fixed the `connect-src`/icon-sprite issue above. Test post/media/import-directory setting were all removed afterward; two orphaned uploaded test files under the dev install's `content/uploads/2026/09/` could not be deleted (ACL mask denies `piia` write on that directory — see `MEMORY.md`'s "Local install www-data ACLs" note) but are harmless orphans with no surviving database reference.
+- [x] Documented in `docs/DEVELOPER-APIS.md` (new Shortcodes table row, `content_html`/`footer_assets` mentions) and `README.md`'s feature list.
+
+Deliberately out of scope, consistent with "lightweight": no play/view-count tracking (LP-006's existing image-view deferral reasoning applies identically — no PHP-mediated request to count without a JS beacon, a separate architecture piece not otherwise needed here), no `register_shortcode()` picker-form entry (dedicated buttons only, matching Folder Gallery's own precedent), and no waveform/advanced-audio-features UI.

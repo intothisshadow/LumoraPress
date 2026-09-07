@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-09-07
+
 ### Added
 
 - Sortable Pages list columns (LP-009): the admin Pages list's Title, Created, and Published column headers are now clickable to sort the list by that column, ascending or descending — the same clickable-header pattern the Downloads admin list already uses.
