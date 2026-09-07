@@ -33,7 +33,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 ### Publishing
 - Posts and Pages, with hierarchical page URLs
 - Drafts, scheduling, revisions, previews, and trash
-- Categories and tags, with archive pages, merge, and bulk actions
+- Categories and tags, with hierarchical category URLs, archive pages, merge, and bulk actions
 - Sticky and private posts
 - Threaded comments and moderation
 - RSS and Atom feeds (site-wide and per-category)

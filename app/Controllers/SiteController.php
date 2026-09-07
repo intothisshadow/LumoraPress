@@ -819,12 +819,35 @@ final class SiteController
     }
 
     /**
+     * The hierarchical category route — "/category/{path*}".
+     * $params['path'] is resolved segment by segment via
+     * CategoryService::findByPath(), the same ancestor-chain-validated
+     * shape pageByPath() uses for Pages, so a URL with a missing or wrong
+     * ancestor prefix doesn't silently resolve by its final slug alone.
+     *
+     * Unlike Pages, category slugs stay globally unique regardless of
+     * nesting depth, so a failed hierarchical match still falls back to a
+     * plain findBySlug() on the final segment — an old bookmarked/indexed
+     * flat link to a category that has since gained a parent 301-redirects
+     * to the correct nested URL instead of 404ing.
+     *
      * @param array<string, string> $params
      */
     public function category(array $params): void
     {
-        $slug = $params['slug'] ?? '';
-        $category = $slug !== '' ? $this->categories->findBySlug($slug) : null;
+        $path = trim((string) ($params['path'] ?? ''), '/');
+        $segments = $path === '' ? [] : explode('/', $path);
+        $category = $segments !== [] ? $this->categories->findByPath($segments) : null;
+
+        if ($category === null && $segments !== []) {
+            $bySlug = $this->categories->findBySlug($segments[array_key_last($segments)]);
+
+            if ($bySlug !== null) {
+                header('Location: ' . category_permalink($bySlug), true, 301);
+
+                return;
+            }
+        }
 
         if ($category === null) {
             $this->notFound();
@@ -1034,7 +1057,10 @@ final class SiteController
      * Category-scoped counterpart of feed(), reusing the same
      * FeedService/emitFeed() plumbing — only the channel, item source,
      * and links differ. 404s on an unknown category rather than falling
-     * back to the site-wide feed.
+     * back to the site-wide feed. Unlike category() itself, a
+     * missing/wrong ancestor prefix here just 404s rather than
+     * redirecting — a feed URL has no SEO indexing to preserve the way
+     * the archive page does.
      *
      * @param array<string, string> $params
      */
@@ -1046,8 +1072,9 @@ final class SiteController
             return;
         }
 
-        $slug = $params['slug'] ?? '';
-        $category = $slug !== '' ? $this->categories->findBySlug($slug) : null;
+        $path = trim((string) ($params['path'] ?? ''), '/');
+        $segments = $path === '' ? [] : explode('/', $path);
+        $category = $segments !== [] ? $this->categories->findByPath($segments) : null;
 
         if ($category === null) {
             $this->notFound();

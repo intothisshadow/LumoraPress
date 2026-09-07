@@ -756,9 +756,14 @@ $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submi
 $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
 $router->get('/preview-page/{id}', fn (array $params) => $site->previewPage($params));
 $router->get('/author/{slug}', fn (array $params) => $site->author($params));
-$router->get($permalinks->categoryRoutePattern(), fn (array $params) => $site->category($params));
-$router->get($permalinks->categoryFeedRoutePattern(), fn (array $params) => $site->categoryFeed($params));
+// categoryRoutePattern() is a greedy "{path*}" match (hierarchical category
+// URLs) — the two feed routes below are more specific (both require a
+// trailing "/feed" or "/feed/{format}" segment) and so must be registered
+// first, or the bare category route would swallow a feed URL itself. See
+// PermalinkService::categoryRoutePattern()'s own docblock.
 $router->get($permalinks->categoryFeedFormatRoutePattern(), fn (array $params) => $site->categoryFeed($params));
+$router->get($permalinks->categoryFeedRoutePattern(), fn (array $params) => $site->categoryFeed($params));
+$router->get($permalinks->categoryRoutePattern(), fn (array $params) => $site->category($params));
 $router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($params));
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));

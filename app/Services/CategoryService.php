@@ -277,6 +277,80 @@ final class CategoryService
     }
 
     /**
+     * Excludes trashed categories, matching findBySlug()'s exclusion —
+     * backs findByPath()'s segment-by-segment hierarchical URL resolution.
+     */
+    public function findBySlugAndParent(string $slug, ?int $parentId): ?Category
+    {
+        $row = $parentId === null
+            ? $this->database->fetchOne(
+                'SELECT * FROM ' . $this->table() . ' WHERE slug = :slug AND parent_id IS NULL AND trashed_at IS NULL',
+                ['slug' => $slug],
+            )
+            : $this->database->fetchOne(
+                'SELECT * FROM ' . $this->table() . ' WHERE slug = :slug AND parent_id = :parent_id AND trashed_at IS NULL',
+                ['slug' => $slug, 'parent_id' => $parentId],
+            );
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    /**
+     * Resolves a hierarchical URL's segments (root-first) to the leaf category, requiring each
+     * segment to match the previous segment's actual child — a URL with a missing or wrong
+     * ancestor prefix returns null rather than resolving by its final slug alone, mirroring
+     * PageService::findByPath(). Category slugs are globally unique regardless of nesting, so
+     * SiteController::category() still offers a legacy-redirect fallback via findBySlug() for
+     * old bookmarked/indexed flat links to a category that has since gained a parent.
+     *
+     * @param array<int, string> $segments
+     */
+    public function findByPath(array $segments): ?Category
+    {
+        $parentId = null;
+        $category = null;
+
+        foreach ($segments as $segment) {
+            $category = $this->findBySlugAndParent($segment, $parentId);
+
+            if ($category === null) {
+                return null;
+            }
+
+            $parentId = $category->id;
+        }
+
+        return $category;
+    }
+
+    /**
+     * Root-first ancestor chain, empty for a top-level category — mirrors
+     * PageService::ancestors() exactly, including its cycle-safety cap.
+     *
+     * @return array<int, Category>
+     */
+    public function ancestors(int $categoryId): array
+    {
+        $chain = [];
+        $current = $this->findById($categoryId);
+        $hops = 0;
+
+        while ($current !== null && $current->parentId !== null && $hops < 50) {
+            $parent = $this->findById($current->parentId);
+
+            if ($parent === null) {
+                break;
+            }
+
+            $chain[] = $parent;
+            $current = $parent;
+            $hops++;
+        }
+
+        return array_reverse($chain);
+    }
+
+    /**
      * Case-insensitive lookup, falling back to create() — mirrors
      * TagService::findOrCreateByName(), the same "don't let 'Sci-Fi' and
      * 'sci-fi' become two different terms" guard. Backs the post editor's

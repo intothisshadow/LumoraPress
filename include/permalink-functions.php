@@ -216,9 +216,10 @@ if (!function_exists('search_result_permalink')) {
      * A SearchResult row's public URL. SearchResult is data-only and
      * doesn't carry a post's category/author, so those tokens fall back
      * the same way PermalinkService does for an uncategorized post. A
-     * 'page' result is handled before the match: the real hierarchical
-     * URL needs the actual Page (for page_permalink()'s ancestor chain),
-     * falling back to a flat URL only if the page was since deleted.
+     * 'page' and 'category' results are handled before the match: their
+     * real hierarchical URL needs the actual Page/Category (for
+     * page_permalink()'s/category_permalink()'s ancestor chain), falling
+     * back to a flat URL only if the row was since deleted.
      */
     function search_result_permalink(SearchResult $result): string
     {
@@ -231,11 +232,18 @@ if (!function_exists('search_result_permalink')) {
             return $page !== null ? page_permalink($page) : preview_theme_link(site_url($result->slug));
         }
 
+        if ($result->type === 'category') {
+            $category = ActiveCategories::categories()->findBySlug($result->slug);
+
+            return $category !== null
+                ? category_permalink($category)
+                : preview_theme_link(Permalinks::service()->categoryUrlFromSlug($result->slug));
+        }
+
         $permalinks = Permalinks::service();
 
         return preview_theme_link(match ($result->type) {
             'post' => $permalinks->postUrlForSlugAndDate($result->slug, $result->publishedAt),
-            'category' => $permalinks->categoryUrlFromSlug($result->slug),
             'tag' => $permalinks->tagUrlFromSlug($result->slug),
             'author' => site_url('author/' . $result->slug),
             default => $permalinks->postUrlForSlugAndDate($result->slug, $result->publishedAt),

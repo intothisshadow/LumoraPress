@@ -96,11 +96,32 @@ final class PermalinkService
         return $this->buildPostUrl($slug, $publishedAt ?? new DateTimeImmutable(), null, null);
     }
 
+    /**
+     * $category's full public URL, reflecting its parent/child hierarchy
+     * (e.g. "/category/tv-movies/star-trek" for "Star Trek" under
+     * "TV & Movies") — mirrors page_permalink()'s ancestor-chain
+     * construction. A top-level category's URL is unaffected: a single
+     * segment, exactly as before hierarchical URLs existed.
+     */
     public function categoryUrl(Category $category): string
     {
-        return $this->categoryUrlFromSlug($category->slug);
+        $segments = array_map(
+            static fn (Category $ancestor): string => $ancestor->slug,
+            $this->categories->ancestors($category->id),
+        );
+        $segments[] = $category->slug;
+
+        return home_url($this->categoryBase() . '/' . implode('/', $segments));
     }
 
+    /**
+     * A flat, degraded category URL built from just a slug, ignoring any
+     * parent hierarchy — only correct for a top-level category. Used
+     * exclusively as search_result_permalink()'s last-resort fallback,
+     * for the rare case a category matching a stale search-index slug can
+     * no longer be looked up by object. Prefer categoryUrl() everywhere
+     * else — it always resolves the real nested path.
+     */
     public function categoryUrlFromSlug(string $slug): string
     {
         return home_url($this->categoryBase() . '/' . $slug);
@@ -175,9 +196,21 @@ final class PermalinkService
         return '/' . trim($pattern, '/');
     }
 
+    /**
+     * A greedy "{path*}" placeholder rather than a single-segment
+     * "{slug}", so a nested category's full ancestor-chain URL routes —
+     * SiteController::category() resolves $params['path'] segment by
+     * segment via CategoryService::findByPath(), the same shape
+     * PageService::findByPath() already uses for the hierarchical Page
+     * route. Because this pattern is greedy, bootstrap.php must register
+     * categoryFeedFormatRoutePattern()/categoryFeedRoutePattern() (both
+     * more specific — they require a trailing "/feed" or "/feed/{format}"
+     * segment) before this one, or a feed URL would incorrectly match
+     * here first with "feed" (or "feed/atom") swallowed into $path.
+     */
     public function categoryRoutePattern(): string
     {
-        return '/' . $this->categoryBase() . '/{slug}';
+        return '/' . $this->categoryBase() . '/{path*}';
     }
 
     public function tagRoutePattern(): string
@@ -186,11 +219,11 @@ final class PermalinkService
     }
 
     /**
-     * '/category/{slug}/feed' and '/category/{slug}/feed/{format}' — the
+     * '/category/{path*}/feed' and '/category/{path*}/feed/{format}' — the
      * category-scoped counterparts of SiteController::feed()'s '/feed' and
-     * '/feed/{format}'. A trailing '/feed' segment never collides with
-     * categoryRoutePattern() itself, since Router's {slug} placeholder
-     * matches a single path segment ([^/]+), not '/feed' too.
+     * '/feed/{format}'. See categoryRoutePattern()'s docblock for why
+     * bootstrap.php must register these two before the bare
+     * categoryRoutePattern() itself.
      */
     public function categoryFeedRoutePattern(): string
     {
