@@ -11,6 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 - Pages feed (LP-013): `/pages/feed`/`/pages/feed/atom` lists published Pages, most-recently-published first — the same RSS 2.0/Atom 1.0 formats, full-content/excerpt, featured-image, and HTTP caching settings the Posts feeds already have.
 - JSON Feed (LP-013): every feed (site-wide/category/tag/author posts, Pages, and comments) now also serves a `.../feed/json` variant (JSON Feed 1.1), alongside the existing RSS 2.0/Atom 1.0 formats.
 - Categories/tags and a comments link on every post feed item (LP-013): a post's assigned categories and tags now appear on every post-shaped feed item (RSS2 `<category>`, Atom `<category term>`, JSON Feed's `tags`), and every item now links to its comments section (RSS2 `<comments>`, Atom `<link rel="replies">`, JSON Feed's `_comments_url`).
+- Per-feed-type toggles and in-item comments (LP-013): a new "Enable specific feed types" section on Settings &rsaquo; General lets the site-wide posts feed, per-category feeds, per-tag feeds, per-author feeds, the Pages feed, and comment feeds each be disabled independently, alongside the existing "Enable RSS/Atom feeds" master switch. A new "Include each post's approved comments in its feed item" option (off by default) appends a post's or page's approved comments to its own feed item content, for feed readers that don't fetch the separate comment-thread feed.
 
 ### Changed
 

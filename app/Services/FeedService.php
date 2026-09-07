@@ -339,11 +339,17 @@ final class FeedService
             }
         }
 
+        $content = $fullContent ? $this->content->render($page->content, $page->contentFormat) : null;
+
+        if ($content !== null && $this->config->option('feed_include_comments', '0') === '1') {
+            $content .= $this->renderCommentsHtml($this->comments->publicTreeForPage($page->id));
+        }
+
         $item = [
             'page' => $page,
             'authorName' => $author?->displayName,
             'description' => $page->excerpt !== '' ? $page->excerpt : make_excerpt($this->content->toPlainText($page->content, $page->contentFormat)),
-            'content' => $fullContent ? $this->content->render($page->content, $page->contentFormat) : null,
+            'content' => $content,
             'thumbnailUrl' => $thumbnailUrl,
             'thumbnailType' => $thumbnailType,
             'thumbnailLength' => $thumbnailLength,
@@ -376,11 +382,17 @@ final class FeedService
             }
         }
 
+        $content = $fullContent ? $this->content->render($post->content, $post->contentFormat) : null;
+
+        if ($content !== null && $this->config->option('feed_include_comments', '0') === '1') {
+            $content .= $this->renderCommentsHtml($this->comments->publicTreeForPost($post->id));
+        }
+
         $item = [
             'post' => $post,
             'authorName' => $author?->displayName,
             'description' => $post->excerpt !== '' ? $post->excerpt : make_excerpt($this->content->toPlainText($post->content, $post->contentFormat)),
-            'content' => $fullContent ? $this->content->render($post->content, $post->contentFormat) : null,
+            'content' => $content,
             'thumbnailUrl' => $thumbnailUrl,
             'thumbnailType' => $thumbnailType,
             'thumbnailLength' => $thumbnailLength,
@@ -389,5 +401,43 @@ final class FeedService
         ];
 
         return $this->hooks->applyFilters('feed_item', $item, $post);
+    }
+
+    /**
+     * Renders a post's/page's approved comment tree as a nested HTML
+     * fragment, appended to a feed item's content when feed_include_comments
+     * is on — for feed readers that don't fetch the separate comment-thread
+     * feed. Empty string (no-op) when there are no approved comments.
+     *
+     * @param array<int, array{comment: Comment, children: array<mixed>}> $tree
+     */
+    private function renderCommentsHtml(array $tree): string
+    {
+        if ($tree === []) {
+            return '';
+        }
+
+        return '<h4>Comments</h4>' . $this->renderCommentTreeHtml($tree);
+    }
+
+    /**
+     * @param array<int, array{comment: Comment, children: array<mixed>}> $entries
+     */
+    private function renderCommentTreeHtml(array $entries): string
+    {
+        $html = '<ul class="feed-comments">';
+
+        foreach ($entries as $entry) {
+            $comment = $entry['comment'];
+            $html .= '<li><strong>' . esc_html($comment->guestName) . ':</strong> ' . format_comment_content($comment->content);
+
+            if ($entry['children'] !== []) {
+                $html .= $this->renderCommentTreeHtml($entry['children']);
+            }
+
+            $html .= '</li>';
+        }
+
+        return $html . '</ul>';
     }
 }

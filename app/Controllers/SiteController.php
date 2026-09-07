@@ -1041,7 +1041,7 @@ final class SiteController
      */
     public function feed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_posts_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1071,7 +1071,7 @@ final class SiteController
      */
     public function pagesFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_pages_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1102,7 +1102,7 @@ final class SiteController
      */
     public function categoryFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_categories_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1139,7 +1139,7 @@ final class SiteController
      */
     public function tagFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_tags_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1179,7 +1179,7 @@ final class SiteController
      */
     public function authorFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_authors_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1233,7 +1233,7 @@ final class SiteController
      */
     public function commentsFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_comments_enabled', '1') === '0') {
             $this->notFound();
 
             return;
@@ -1283,7 +1283,7 @@ final class SiteController
      */
     public function postCommentsFeed(array $params): void
     {
-        if ($this->config->option('feeds_enabled', '1') === '0') {
+        if ($this->config->option('feeds_enabled', '1') === '0' || $this->config->option('feed_type_comments_enabled', '1') === '0') {
             $this->notFound();
 
             return;

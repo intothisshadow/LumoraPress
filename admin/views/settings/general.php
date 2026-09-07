@@ -106,6 +106,13 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
     $kernel->config->setOption('feed_cache_lifetime', (string) max(0, (int) ($_POST['feed_cache_lifetime'] ?? 900)));
     $kernel->config->setOption('feed_description', trim((string) ($_POST['feed_description'] ?? '')));
     $kernel->config->setOption('feed_featured_images', ($_POST['feed_featured_images'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_include_comments', ($_POST['feed_include_comments'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_posts_enabled', ($_POST['feed_type_posts_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_categories_enabled', ($_POST['feed_type_categories_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_tags_enabled', ($_POST['feed_type_tags_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_authors_enabled', ($_POST['feed_type_authors_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_pages_enabled', ($_POST['feed_type_pages_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('feed_type_comments_enabled', ($_POST['feed_type_comments_enabled'] ?? '') === '1' ? '1' : '0');
 
     header('Location: ' . admin_url('settings/general') . '?saved=1');
     exit;
@@ -299,6 +306,45 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <input type="checkbox" name="feed_featured_images" value="1" <?= $kernel->config->option('feed_featured_images', '1') !== '0' ? 'checked' : '' ?>>
             Include featured images in feed items (as an enclosure)
         </label>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="feed_include_comments" value="1" <?= $kernel->config->option('feed_include_comments', '0') === '1' ? 'checked' : '' ?>>
+            Include each post's approved comments in its feed item (appended after the post content)
+        </label>
+
+        <fieldset class="lp-field">
+            <legend>Enable specific feed types</legend>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_posts_enabled" value="1" <?= $kernel->config->option('feed_type_posts_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Site-wide posts feed (<code>/feed</code>)
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_categories_enabled" value="1" <?= $kernel->config->option('feed_type_categories_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Per-category feeds
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_tags_enabled" value="1" <?= $kernel->config->option('feed_type_tags_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Per-tag feeds
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_authors_enabled" value="1" <?= $kernel->config->option('feed_type_authors_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Per-author feeds
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_pages_enabled" value="1" <?= $kernel->config->option('feed_type_pages_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Pages feed (<code>/pages/feed</code>)
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="feed_type_comments_enabled" value="1" <?= $kernel->config->option('feed_type_comments_enabled', '1') !== '0' ? 'checked' : '' ?>>
+                Comment feeds (site-wide and per-post)
+            </label>
+        </fieldset>
 
         <p class="lp-field">
             <label for="feed-item-limit">Number of items per feed</label>
