@@ -48,13 +48,14 @@ final class CategoryService
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (name, slug, description, parent_id, image_id, created_at, updated_at)
-             VALUES (:name, :slug, :description, :parent_id, :image_id, :created_at, :updated_at)',
+                (name, slug, description, parent_id, menu_order, image_id, created_at, updated_at)
+             VALUES (:name, :slug, :description, :parent_id, :menu_order, :image_id, :created_at, :updated_at)',
             [
                 'name' => $name,
                 'slug' => $slug,
                 'description' => $description,
                 'parent_id' => $parentId,
+                'menu_order' => $this->nextMenuOrder($parentId),
                 'image_id' => $imageId,
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
@@ -588,17 +589,28 @@ final class CategoryService
     /**
      * Non-trashed categories as a flat, depth-tagged list in hierarchical
      * document order (a parent immediately followed by its own children,
-     * alphabetical among siblings, then the next sibling) — backs the
+     * siblings in their manually-set menu_order, then the next sibling) —
+     * backs the admin Categories list's own tree view as well as the
      * admin Menus screen's "Add Categories" panel, mirroring
      * PageService::listAllForTree()'s shape so a subcategory renders
      * indented under its parent there instead of in the same flat,
-     * alphabetized list listAll() produces.
+     * alphabetized list listAll() produces. Sibling order here reflects
+     * CategoryService::reorder()'s manual drag-and-drop ordering, not
+     * listAll()'s alphabetical order — every other caller of this method
+     * (Menus, the Post editor's category tree, the Categories widget)
+     * inherits that same manual order, matching how Pages' own
+     * hand-ordered menu_order already flows through everywhere Pages are
+     * listed hierarchically.
      *
      * @return array<int, array{category: Category, depth: int}>
      */
     public function listAllForTree(): array
     {
-        return $this->flattenForTree($this->listAll(), null, 0);
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY parent_id, menu_order, id',
+        );
+
+        return $this->flattenForTree(array_map($this->hydrate(...), $rows), null, 0);
     }
 
     /**
@@ -710,6 +722,66 @@ final class CategoryService
         return $added;
     }
 
+    /**
+     * Moves $draggedId to a position immediately before/after $targetId
+     * among their shared siblings (admin Categories tree view's
+     * drag-and-drop) — mirrors PageService::reorder() exactly. $targetId
+     * must share $draggedId's parentId; a request that fails this check
+     * is a silent no-op. This method never changes parent_id.
+     */
+    public function reorder(int $draggedId, int $targetId, string $position): bool
+    {
+        $dragged = $this->findById($draggedId);
+
+        if ($dragged === null) {
+            return false;
+        }
+
+        $siblings = $this->database->fetchAll(
+            $dragged->parentId === null
+                ? 'SELECT id FROM ' . $this->table() . ' WHERE parent_id IS NULL ORDER BY menu_order, id'
+                : 'SELECT id FROM ' . $this->table() . ' WHERE parent_id = :parent_id ORDER BY menu_order, id',
+            $dragged->parentId === null ? [] : ['parent_id' => $dragged->parentId],
+        );
+
+        $ids = array_map(static fn (array $row): int => (int) $row['id'], $siblings);
+        $remaining = array_values(array_filter($ids, static fn (int $id): bool => $id !== $draggedId));
+
+        $targetIndex = array_search($targetId, $remaining, true);
+
+        if ($targetIndex === false) {
+            return false;
+        }
+
+        $insertAt = $position === 'after' ? $targetIndex + 1 : $targetIndex;
+        array_splice($remaining, $insertAt, 0, [$draggedId]);
+
+        $this->database->transaction(function () use ($remaining): void {
+            foreach ($remaining as $order => $id) {
+                $this->database->execute(
+                    'UPDATE ' . $this->table() . ' SET menu_order = :menu_order WHERE id = :id',
+                    ['menu_order' => $order, 'id' => $id],
+                );
+            }
+        });
+
+        return true;
+    }
+
+    /**
+     * The next menu_order value for a new sibling under $parentId, so a
+     * new category lands at the end of its sibling group — mirrors
+     * PageService's own private helper of the same name.
+     */
+    private function nextMenuOrder(?int $parentId): int
+    {
+        $max = $parentId === null
+            ? $this->database->fetchColumn('SELECT MAX(menu_order) FROM ' . $this->table() . ' WHERE parent_id IS NULL')
+            : $this->database->fetchColumn('SELECT MAX(menu_order) FROM ' . $this->table() . ' WHERE parent_id = :parent_id', ['parent_id' => $parentId]);
+
+        return $max === null ? 0 : ((int) $max) + 1;
+    }
+
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string
     {
         $base = $this->slugify($source);
@@ -761,6 +833,7 @@ final class CategoryService
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
             imageId: isset($row['image_id']) && $row['image_id'] !== null ? (int) $row['image_id'] : null,
+            menuOrder: isset($row['menu_order']) ? (int) $row['menu_order'] : 0,
         );
     }
 

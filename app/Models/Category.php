@@ -31,6 +31,7 @@ final class Category
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?DateTimeImmutable $trashedAt = null,
         public readonly ?int $imageId = null,
+        public readonly int $menuOrder = 0,
     ) {
     }
 

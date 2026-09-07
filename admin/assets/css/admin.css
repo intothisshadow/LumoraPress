@@ -4924,6 +4924,77 @@ a.lp-button--link.lp-button--link--view:hover {
     font-size: 0.85rem;
 }
 
+/* LP-010 Categories tree view — same shape as the Pages tree view above
+   (listAllForTree()-backed, indentation via data-style-margin-left +
+   dynamic-style.js), with its own class family since a category row
+   shows a slug/post-count rather than a status badge/date. */
+
+.lp-categories-tree {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.lp-categories-tree__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-categories-tree__title {
+    flex: 1 1 auto;
+}
+
+.lp-categories-tree__title a,
+.lp-categories-tree__title a:visited {
+    color: var(--lp-admin-accent);
+    text-decoration: none;
+}
+
+.lp-categories-tree__title a:hover,
+.lp-categories-tree__title a:focus-visible {
+    text-decoration: underline;
+}
+
+.lp-categories-tree__slug,
+.lp-categories-tree__count {
+    color: var(--lp-admin-text);
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+/* Keyboard-accessible alternative to dragging (LP-139's pattern),
+   reusing sortable.js's shared data-lp-sortable-move click handler. */
+.lp-categories-tree__move {
+    display: inline-flex;
+    gap: 0.1rem;
+    flex: 0 0 auto;
+}
+
+.lp-categories-tree__move button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lp-admin-text);
+    opacity: 0.55;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.65rem;
+    line-height: 1;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-categories-tree__move button:hover,
+.lp-categories-tree__move button:focus-visible {
+    opacity: 1;
+    background: var(--lp-admin-panel-bg);
+}
+
 /* Quick Edit (LP-009) — the Pages list's inline per-row edit form,
    swapped in for the normal row via quick-edit.js. */
 
