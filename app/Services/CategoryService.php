@@ -40,6 +40,37 @@ final class CategoryService
      */
     public const MAX_NAME_LENGTH = 191;
 
+    /**
+     * Request-scoped findById() memoization. A single request routinely resolves the same
+     * category id many times over — ancestors() walking a shared prefix for several sibling
+     * URLs, sitemap.xml generation looping every category, an archive page's post listing
+     * repeating the same category badge — so this collapses those into one query per id.
+     * Holds null for a confirmed miss too, so a repeated lookup for a nonexistent id doesn't
+     * keep re-querying. Cleared by any method that can change a category's stored fields.
+     *
+     * @var array<int, Category|null>
+     */
+    private array $byIdCache = [];
+
+    /**
+     * Request-scoped memoization of listAllForTree()'s result, mirroring
+     * PageService::$treeCache exactly — the admin Categories tree view, the Menus screen's
+     * "Add Categories" panel, and the Post editor's category picker all build from the same
+     * tree within one request.
+     *
+     * @var array<int, array{category: Category, depth: int}>|null
+     */
+    private ?array $treeCache = null;
+
+    /**
+     * Request-scoped memoization of postCount()'s per-category totals, keyed by category id.
+     * The admin Categories tree view previously ran one COUNT() query per row; this loads
+     * every category's count in a single query on first access instead.
+     *
+     * @var array<int, int>|null
+     */
+    private ?array $postCountCache = null;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -82,6 +113,7 @@ final class CategoryService
             );
         }
 
+        $this->invalidateCaches();
         $category = $this->findById((int) $id);
 
         if ($category === null) {
@@ -137,6 +169,7 @@ final class CategoryService
             ],
         );
 
+        $this->invalidateCaches();
         $category = $this->findById($id);
 
         if ($category === null) {
@@ -162,6 +195,7 @@ final class CategoryService
         ) > 0;
 
         if ($trashed) {
+            $this->invalidateCaches();
             $this->hooks?->doAction('category_trashed', $id);
         }
 
@@ -182,6 +216,7 @@ final class CategoryService
         ) > 0;
 
         if ($restored) {
+            $this->invalidateCaches();
             $this->hooks?->doAction('category_restored', $id);
         }
 
@@ -213,6 +248,7 @@ final class CategoryService
         });
 
         if ($deleted) {
+            $this->invalidateCaches();
             $this->hooks?->doAction('category_deleted', $id);
         }
 
@@ -267,6 +303,7 @@ final class CategoryService
             );
         });
 
+        $this->invalidateCaches();
         $this->hooks?->doAction('category_merged', $sourceId, $targetId);
 
         return true;
@@ -308,6 +345,10 @@ final class CategoryService
                 ],
             );
 
+            // Invalidated per-iteration, not once after the loop: a later id's
+            // isAncestorOf() cycle check must see this reparent's effect, since it walks
+            // ancestors() -> findById() to detect cycles across the whole batch.
+            $this->invalidateCaches();
             $moved++;
         }
 
@@ -332,9 +373,13 @@ final class CategoryService
 
     public function findById(int $id): ?Category
     {
+        if (array_key_exists($id, $this->byIdCache)) {
+            return $this->byIdCache[$id];
+        }
+
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
 
-        return $row === null ? null : $this->hydrate($row);
+        return $this->byIdCache[$id] = ($row === null ? null : $this->hydrate($row));
     }
 
     /**
@@ -680,11 +725,15 @@ final class CategoryService
      */
     public function listAllForTree(): array
     {
+        if ($this->treeCache !== null) {
+            return $this->treeCache;
+        }
+
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY parent_id, menu_order, id',
         );
 
-        return $this->flattenForTree(array_map($this->hydrate(...), $rows), null, 0);
+        return $this->treeCache = $this->flattenForTree(array_map($this->hydrate(...), $rows), null, 0);
     }
 
     /**
@@ -728,12 +777,26 @@ final class CategoryService
         return array_map($this->hydrate(...), $rows);
     }
 
+    /**
+     * Backed by a single request-scoped GROUP BY query rather than one COUNT() per call — the
+     * admin Categories tree view calls this once per row, which used to mean one query per
+     * category on that screen alone.
+     */
     public function postCount(int $categoryId): int
     {
-        return (int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->postCategoriesTable() . ' WHERE category_id = :category_id',
-            ['category_id' => $categoryId],
-        );
+        if ($this->postCountCache === null) {
+            $rows = $this->database->fetchAll(
+                'SELECT category_id, COUNT(*) AS post_count FROM ' . $this->postCategoriesTable() . ' GROUP BY category_id',
+            );
+
+            $this->postCountCache = [];
+
+            foreach ($rows as $row) {
+                $this->postCountCache[(int) $row['category_id']] = (int) $row['post_count'];
+            }
+        }
+
+        return $this->postCountCache[$categoryId] ?? 0;
     }
 
     /**
@@ -761,6 +824,8 @@ final class CategoryService
                 );
             }
         });
+
+        $this->postCountCache = null;
     }
 
     /**
@@ -791,6 +856,10 @@ final class CategoryService
             );
 
             $added++;
+        }
+
+        if ($added > 0) {
+            $this->postCountCache = null;
         }
 
         return $added;
@@ -839,7 +908,22 @@ final class CategoryService
             }
         });
 
+        $this->invalidateCaches();
+
         return true;
+    }
+
+    /**
+     * Clears every request-scoped cache — called by any method that changes a category's
+     * stored fields, its position in the hierarchy, or its post assignments, so the next
+     * findById()/listAllForTree()/postCount() call reflects the change instead of serving a
+     * stale memoized value.
+     */
+    private function invalidateCaches(): void
+    {
+        $this->byIdCache = [];
+        $this->treeCache = null;
+        $this->postCountCache = null;
     }
 
     /**
