@@ -864,6 +864,11 @@ final class SiteController
             'archive_type' => 'category',
             'archive_description' => $category->description,
             'archive_image_url' => category_image_url($category, 'large'),
+            // Root-first ancestor chain, empty for a top-level category — mirrors
+            // SiteController::pageByPath()'s own 'page_ancestors', computed here since theme
+            // templates only ever receive curated $vars.
+            'archive_category' => $category,
+            'archive_category_ancestors' => $this->categories->ancestors($category->id),
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
             'comment_counts' => $this->commentCountsFor($pagination['posts']),

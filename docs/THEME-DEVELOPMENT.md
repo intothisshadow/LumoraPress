@@ -171,12 +171,14 @@ return.
 | `author_url(Post $post): ?string` | Author's public archive URL, or `null` if the account no longer exists. |
 | `the_author_link(Post $post): void` | Echoes the author's name linked to their archive, falling back to plain text. |
 
-### Pages / breadcrumbs
+### Pages, Categories / breadcrumbs
 
 | Function | Purpose |
 |---|---|
 | `get_page_breadcrumbs(array $ancestors): array` | Maps a root-first `Page[]` ancestor chain (not including the current page) to `{title, url}` pairs. |
 | `the_page_breadcrumbs(Page $page, array $ancestors): void` | Echoes a `<nav>`/`<ol>` breadcrumb trail. Outputs nothing for a top-level page. |
+| `get_category_breadcrumbs(array $ancestors): array` | Same shape as `get_page_breadcrumbs()`, for a root-first `Category[]` ancestor chain. |
+| `the_category_breadcrumbs(Category $category, array $ancestors): void` | Same shape as `the_page_breadcrumbs()`, reusing the identical `.lp-breadcrumbs` markup/CSS classes. Outputs nothing for a top-level category. `archive.php` calls this when `$archive_category` is set (a category archive only — tag/date/author archives have no hierarchy). |
 
 ### URLs & permalinks
 

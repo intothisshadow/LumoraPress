@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Models\Category;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 
@@ -161,6 +162,59 @@ if (!function_exists('the_page_breadcrumbs')) {
         }
 
         echo '<li class="lp-breadcrumbs__item lp-breadcrumbs__item--current" aria-current="page">' . esc_html($page->title) . '</li>';
+        echo '</ol></nav>';
+    }
+}
+
+if (!function_exists('get_category_breadcrumbs')) {
+    /**
+     * $category's breadcrumb trail as {title, url} pairs, root-first, not
+     * including $category itself — mirrors get_page_breadcrumbs()
+     * exactly. $ancestors is the root-first chain
+     * SiteController::category() already computed (via
+     * CategoryService::ancestors()) and passed in as
+     * 'archive_category_ancestors'.
+     *
+     * @param array<int, Category> $ancestors
+     * @return array<int, array{title: string, url: string}>
+     */
+    function get_category_breadcrumbs(array $ancestors): array
+    {
+        return array_map(
+            static fn (Category $ancestor): array => ['title' => $ancestor->name, 'url' => category_permalink($ancestor)],
+            $ancestors,
+        );
+    }
+}
+
+if (!function_exists('the_category_breadcrumbs')) {
+    /**
+     * Renders $ancestors as an escaped <nav>/<ol> breadcrumb trail,
+     * ending in $category's own (unlinked) name — mirrors
+     * the_page_breadcrumbs() exactly. Outputs nothing for a top-level
+     * category. Styling belongs to the theme's stylesheet
+     * (.lp-breadcrumbs), per the Public-Facing CSS Rule — the same class
+     * names the Page breadcrumb trail already uses, so a theme only ever
+     * needs one set of breadcrumb rules.
+     *
+     * @param array<int, Category> $ancestors
+     */
+    function the_category_breadcrumbs(Category $category, array $ancestors): void
+    {
+        if ($ancestors === []) {
+            return;
+        }
+
+        echo '<nav class="lp-breadcrumbs" aria-label="Breadcrumb"><ol class="lp-breadcrumbs__list">';
+
+        foreach (get_category_breadcrumbs($ancestors) as $crumb) {
+            echo '<li class="lp-breadcrumbs__item">'
+                . '<a class="lp-breadcrumbs__link" href="' . esc_url($crumb['url']) . '">' . esc_html($crumb['title']) . '</a>'
+                . '<span class="lp-breadcrumbs__separator" aria-hidden="true">/</span>'
+                . '</li>';
+        }
+
+        echo '<li class="lp-breadcrumbs__item lp-breadcrumbs__item--current" aria-current="page">' . esc_html($category->name) . '</li>';
         echo '</ol></nav>';
     }
 }

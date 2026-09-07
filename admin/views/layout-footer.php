@@ -46,6 +46,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/folder-drag-drop.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/folder-tree-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/sortable.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/category-tree-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/quick-edit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/update-upload.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/update-progress.js')) ?>" defer></script>

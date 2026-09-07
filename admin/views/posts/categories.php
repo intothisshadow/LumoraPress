@@ -392,6 +392,17 @@ if ($action === 'edit') {
     if ($isTreeView) {
         $treeRows = $categoryService->listAllForTree();
         $listedCategories = array_map(static fn (array $row): Category => $row['category'], $treeRows);
+
+        // Which categories have at least one child — only those rows get an
+        // expand/collapse toggle; a childless row gets a blank spacer instead,
+        // to keep every row's title column aligned.
+        $categoryIdsWithChildren = [];
+
+        foreach ($treeRows as $treeRow) {
+            if ($treeRow['category']->parentId !== null) {
+                $categoryIdsWithChildren[$treeRow['category']->parentId] = true;
+            }
+        }
     } else {
         $rows = $isTrashView ? $categoryService->listTrashedWithPostCounts() : $categoryService->listAllWithPostCounts($categoryFilters);
         $listedCategories = array_map(static fn (array $row): Category => $row['category'], $rows);
@@ -579,7 +590,7 @@ if ($action === 'edit') {
 
             <?php if ($isTreeView): ?>
                 <div data-lp-sortable-group="categories">
-                <ul class="lp-categories-tree">
+                <ul class="lp-categories-tree" data-lp-tree>
                     <?php foreach ($treeRows as $treeRow): ?>
                         <?php $listedCategory = $treeRow['category']; ?>
                         <li
@@ -589,6 +600,11 @@ if ($action === 'edit') {
                             data-lp-sortable-id="<?= (int) $listedCategory->id ?>"
                             data-lp-sortable-parent="<?= esc_attr($listedCategory->parentId !== null ? (string) $listedCategory->parentId : '') ?>"
                         >
+                            <?php if (isset($categoryIdsWithChildren[$listedCategory->id])): ?>
+                                <button type="button" class="lp-categories-tree__toggle" data-lp-tree-toggle aria-expanded="true" aria-label="Collapse &ldquo;<?= esc_attr($listedCategory->name) ?>&rdquo;">&#9656;</button>
+                            <?php else: ?>
+                                <span class="lp-categories-tree__toggle-spacer" aria-hidden="true"></span>
+                            <?php endif; ?>
                             <?php if ($canDeleteCategories): ?>
                                 <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true">&#10021;</span>
                                 <span class="lp-categories-tree__move">

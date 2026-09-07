@@ -17,15 +17,23 @@
 /** @var array{page: int, totalPages: int}|null $pagination */
 /** @var string|null $archive_description */
 /** @var string|null $archive_image_url */
+/** @var \LumoraPress\Models\Category|null $archive_category */
+/** @var array<int, \LumoraPress\Models\Category> $archive_category_ancestors */
 /** @var array<int, int> $comment_counts */
 get_header();
 $posts ??= [];
 $archive_description ??= null;
 $archive_image_url ??= null;
+$archive_category ??= null;
+$archive_category_ancestors ??= [];
 $comment_counts ??= [];
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
+        <?php if ($archive_category !== null): ?>
+            <?php the_category_breadcrumbs($archive_category, $archive_category_ancestors); ?>
+        <?php endif; ?>
+
         <h1 class="lp-page-title"><?= esc_html($page_title ?? 'Archive') ?></h1>
 
         <?php if ($archive_image_url !== null): ?>
