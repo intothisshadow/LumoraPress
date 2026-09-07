@@ -22,6 +22,10 @@ use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Models\PageStatus;
+use LumoraPress\Models\PageVisibility;
+use LumoraPress\Models\PostStatus;
+use LumoraPress\Models\PostVisibility;
 use RuntimeException;
 
 /**
@@ -341,9 +345,15 @@ final class CommentService
 
     /**
      * The most recent approved comments site-wide (for the Recent
-     * Comments widget) — unlike recentForAdmin(), which intentionally
-     * includes every status for moderators, this must never surface a
-     * pending/spam/trashed comment to public site visitors.
+     * Comments widget and the site-wide comments feed) — unlike
+     * recentForAdmin(), which intentionally includes every status for
+     * moderators, this must never surface a pending/spam/trashed comment
+     * to public site visitors. Also excludes a comment whose post/page is
+     * itself not publicly visible (trashed, draft, scheduled-not-yet-due,
+     * or Private) — trashing a post doesn't delete its comments (only a
+     * permanent delete does, see PostService::delete()), so without this
+     * a private or trashed post's approved comments would otherwise still
+     * leak here even though the post itself is correctly gated elsewhere.
      *
      * @return array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}>
      */
@@ -355,9 +365,19 @@ final class CommentService
                LEFT JOIN ' . $this->postsTable() . ' p ON p.id = c.post_id
                LEFT JOIN ' . $this->pagesTable() . ' pg ON pg.id = c.page_id
               WHERE c.status = :status
+                AND (
+                    (c.post_id IS NOT NULL AND p.status = :post_status AND p.visibility = :post_visibility)
+                    OR (c.page_id IS NOT NULL AND pg.status = :page_status AND pg.visibility = :page_visibility)
+                )
               ORDER BY c.created_at DESC, c.id DESC
               LIMIT ' . (int) $limit,
-            ['status' => CommentStatus::Approved->value],
+            [
+                'status' => CommentStatus::Approved->value,
+                'post_status' => PostStatus::Published->value,
+                'post_visibility' => PostVisibility::Public->value,
+                'page_status' => PageStatus::Published->value,
+                'page_visibility' => PageVisibility::Public->value,
+            ],
         );
 
         return array_map($this->hydrateWithContent(...), $rows);

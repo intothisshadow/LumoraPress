@@ -12,6 +12,7 @@ All notable changes to Lumora Press are documented in this file.
 - JSON Feed (LP-013): every feed (site-wide/category/tag/author posts, Pages, and comments) now also serves a `.../feed/json` variant (JSON Feed 1.1), alongside the existing RSS 2.0/Atom 1.0 formats.
 - Categories/tags and a comments link on every post feed item (LP-013): a post's assigned categories and tags now appear on every post-shaped feed item (RSS2 `<category>`, Atom `<category term>`, JSON Feed's `tags`), and every item now links to its comments section (RSS2 `<comments>`, Atom `<link rel="replies">`, JSON Feed's `_comments_url`).
 - Per-feed-type toggles and in-item comments (LP-013): a new "Enable specific feed types" section on Settings &rsaquo; General lets the site-wide posts feed, per-category feeds, per-tag feeds, per-author feeds, the Pages feed, and comment feeds each be disabled independently, alongside the existing "Enable RSS/Atom feeds" master switch. A new "Include each post's approved comments in its feed item" option (off by default) appends a post's or page's approved comments to its own feed item content, for feed readers that don't fetch the separate comment-thread feed.
+- Feeds during Maintenance Mode (LP-013/LP-033): confirmed every feed URL is already covered by Maintenance Mode's site-wide request gate — an anonymous visitor gets the same 503 maintenance page as any other public route while it's active, with no separate feed-specific handling needed.
 
 ### Changed
 
@@ -19,6 +20,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Comments feed/widget content leak (LP-013): `CommentService::recentApproved()` (the site-wide `/comments/feed` and the Recent Comments widget) only checked a comment's own status, never whether its post/page was actually publicly visible — trashing a post doesn't delete its comments, so a trashed post's approved comments kept surfacing there, and a Private-visibility post's approved comments leaked the same way even though the post itself is correctly gated everywhere else. Fixed by requiring the joined post/page be published and public, the same condition every other public post/page listing already enforces.
 - Lumora Classic theme: footer widget titles were unreadable — `.lp-widget__title` had no color of its own, so on the footer's dark background it inherited the footer's light text color even though the widget card itself keeps its normal light background. Footer widget titles now use the same text color as the rest of the widget card.
 
 ## [0.11.0] — 2026-09-07
