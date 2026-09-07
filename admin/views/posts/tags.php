@@ -45,6 +45,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($name === '') {
             $error = 'A name is required.';
+
+            // The form posts to a plain URL with no ?action= query string, so without this,
+            // a validation error here would fall through to the list view below instead of
+            // redisplaying the form the error banner is actually about.
+            $action = $existing === null ? 'new' : 'edit';
+            $editingId = $existing?->id;
         } else {
             $tag = $existing === null
                 ? $tagService->create($name, $description, $slug !== '' ? $slug : null)
@@ -94,8 +100,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-$action = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
-$editingId = isset($_GET['id']) ? (int) $_GET['id'] : null;
+$action ??= is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
+$editingId ??= isset($_GET['id']) ? (int) $_GET['id'] : null;
 $editingTag = null;
 
 if ($action === 'edit') {
