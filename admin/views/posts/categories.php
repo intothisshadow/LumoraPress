@@ -148,6 +148,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $error = $exception->getMessage();
             }
         }
+
+        // The form posts to a plain URL with no ?action= query string, so without this,
+        // any error above (image upload failure or a validation InvalidArgumentException)
+        // would fall through to the list view below instead of redisplaying the form the
+        // error banner is actually about.
+        if ($error !== null) {
+            $action = $existing === null ? 'new' : 'edit';
+            $editingId = $existing?->id;
+        }
     } elseif ($form === 'trash') {
         $id = (int) ($_POST['id'] ?? 0);
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -257,8 +266,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $statusFilter = (string) ($_GET['status'] ?? '');
 $isTrashView = $statusFilter === 'trash';
 
-$action = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
-$editingId = isset($_GET['id']) ? (int) $_GET['id'] : null;
+$action ??= is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
+$editingId ??= isset($_GET['id']) ? (int) $_GET['id'] : null;
 $editingCategory = null;
 
 if ($action === 'edit') {
