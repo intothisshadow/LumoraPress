@@ -30,6 +30,7 @@ final class Category
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?DateTimeImmutable $trashedAt = null,
+        public readonly ?int $imageId = null,
     ) {
     }
 

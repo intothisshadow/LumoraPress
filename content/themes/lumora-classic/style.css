@@ -455,6 +455,15 @@ img {
     font-style: italic;
 }
 
+.lp-archive__image {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    border-radius: var(--lp-radius);
+    margin: -0.5rem 0 1.5rem;
+}
+
 .lp-archive__description {
     color: var(--lp-text-muted);
     max-width: 68ch;

@@ -241,6 +241,7 @@ final class ApiController
             'slug' => $category->slug,
             'description' => $category->description,
             'parent_id' => $category->parentId,
+            'image_id' => $category->imageId,
         ];
     }
 
@@ -762,6 +763,7 @@ final class ApiController
             description: (string) ($body['description'] ?? ''),
             parentId: isset($body['parent_id']) ? (int) $body['parent_id'] : null,
             slug: isset($body['slug']) ? (string) $body['slug'] : null,
+            imageId: isset($body['image_id']) ? (int) $body['image_id'] : null,
         );
 
         ApiResponse::json($this->categoryToArray($category), 201);
@@ -798,6 +800,7 @@ final class ApiController
             description: isset($body['description']) ? (string) $body['description'] : $existing->description,
             parentId: array_key_exists('parent_id', $body) ? ($body['parent_id'] !== null ? (int) $body['parent_id'] : null) : $existing->parentId,
             slug: isset($body['slug']) ? (string) $body['slug'] : $existing->slug,
+            imageId: array_key_exists('image_id', $body) ? ($body['image_id'] !== null ? (int) $body['image_id'] : null) : $existing->imageId,
         );
 
         ApiResponse::json($this->categoryToArray($category));

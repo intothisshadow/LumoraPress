@@ -25,6 +25,78 @@ if (!isset($kernel)) {
 $categoryService = $kernel->categories;
 $canDeleteCategories = $currentUser->can('delete_posts');
 
+// "Category Image" picker's grid query (featured-image-picker.js). This page has no
+// controller of its own, so the query stays inline here, matching media/thumbnails.php's
+// own "Default featured image" picker, which has the same no-controller shape.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'featured_image_picker_query') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('edit_posts') || !Csrf::verify('featured_image_picker_query', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $term = trim((string) ($_POST['term'] ?? ''));
+    $folderId = (int) ($_POST['folder_id'] ?? 0);
+    $page = max(1, (int) ($_POST['page'] ?? 1));
+    $perPage = 40;
+
+    $filters = ['type' => 'image'];
+
+    if ($term !== '') {
+        $filters['term'] = $term;
+    }
+
+    if ($folderId > 0) {
+        $filters['folderIds'] = [$folderId];
+    }
+
+    $result = $kernel->media->query($filters, $perPage, ($page - 1) * $perPage);
+    $thumbnailsByMediaId = $kernel->thumbnails->thumbnailsForMany(
+        array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
+    );
+
+    echo json_encode([
+        'items' => array_map(
+            static function (array $item) use ($kernel, $thumbnailsByMediaId): array {
+                $sizes = [
+                    'full' => [
+                        'url' => $kernel->media->url($item),
+                        'width' => (int) ($item['width'] ?? 0),
+                        'height' => (int) ($item['height'] ?? 0),
+                    ],
+                ];
+
+                foreach ($thumbnailsByMediaId[(int) $item['id']] ?? [] as $thumbnail) {
+                    $sizes[(string) $thumbnail['size_name']] = [
+                        'url' => $kernel->thumbnails->url($item, (string) $thumbnail['size_name']),
+                        'width' => (int) $thumbnail['width'],
+                        'height' => (int) $thumbnail['height'],
+                    ];
+                }
+
+                return [
+                    'id' => (int) $item['id'],
+                    'url' => $kernel->media->url($item),
+                    'name' => (string) $item['file_name'],
+                    'alt' => (string) ($item['alt_text'] ?? ''),
+                    'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
+                    'sizes' => $sizes,
+                ];
+            },
+            $result['items'],
+        ),
+        'total' => $result['total'],
+        'csrfToken' => Csrf::token('featured_image_picker_query'),
+    ]);
+    exit;
+}
+
 $error = null;
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -44,12 +116,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $description = trim((string) ($_POST['description'] ?? ''));
         $parentId = (int) ($_POST['parent_id'] ?? 0);
 
+        // Resolution order: an uploaded file wins over the picker's own
+        // selected/cleared value, mirroring PostsController::save()'s
+        // featured-image resolution (minus crop — see category_image_url()'s
+        // docblock for why categories don't need one).
+        $imageId = (int) ($_POST['image_id'] ?? 0) > 0 ? (int) $_POST['image_id'] : null;
+
+        if (isset($_FILES['image_upload']) && $_FILES['image_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $uploadedImage = $kernel->media->upload($_FILES['image_upload'], $currentUser->id);
+                $kernel->thumbnails->generate($uploadedImage);
+                $imageId = (int) $uploadedImage['id'];
+            } catch (Throwable $exception) {
+                $error = 'Category image upload failed: ' . $exception->getMessage();
+            }
+        }
+
         if ($name === '') {
             $error = 'A name is required.';
-        } else {
+        }
+
+        if ($error === null) {
             $category = $existing === null
-                ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null)
-                : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null);
+                ? $categoryService->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId)
+                : $categoryService->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId);
 
             header('Location: ' . admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
             exit;
@@ -191,7 +281,7 @@ if ($action === 'edit') {
     $parentOptions = $categoryService->listAllForParentPicker($category?->id);
     ?>
     <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('posts/categories')) ?>" enctype="multipart/form-data">
             <?= Csrf::field('category_save') ?>
             <input type="hidden" name="form" value="save">
             <?php if ($category !== null): ?>
@@ -226,6 +316,37 @@ if ($action === 'edit') {
                 </select>
             </p>
 
+            <?php
+            $currentCategoryImage = $category?->imageId !== null ? $kernel->media->find($category->imageId) : null;
+            $categoryImageFolderTree = array_map(
+                static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
+                $kernel->folders->listAllForTree(),
+            );
+            ?>
+            <fieldset class="lp-field">
+                <legend>Category Image</legend>
+                <div
+                    class="lp-featured-image-picker"
+                    data-lp-featured-image-picker
+                    data-picker-url="<?= esc_url(admin_url('posts/categories')) ?>"
+                    data-picker-csrf="<?= esc_attr(Csrf::token('featured_image_picker_query')) ?>"
+                    data-media-folders="<?= esc_attr((string) json_encode($categoryImageFolderTree)) ?>"
+                >
+                    <input type="hidden" name="image_id" data-picker-value value="<?= (int) ($category?->imageId ?? 0) ?>">
+                    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Media Manager&hellip;</button>
+                    <button type="button" class="lp-button lp-button--link" data-picker-remove <?= $currentCategoryImage === null ? 'hidden' : '' ?>>Remove</button>
+                    <span class="lp-featured-image-picker__chosen" data-picker-chosen>
+                        <?php if ($currentCategoryImage !== null): ?>
+                            <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url($kernel->media->url($currentCategoryImage)) ?>" alt="">
+                            <?= esc_html((string) $currentCategoryImage['file_name']) ?>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                <label for="category-image-upload">Or upload a new image</label>
+                <input type="file" id="category-image-upload" name="image_upload" accept="image/*">
+                <span class="lp-field__hint">Shown on this category's archive page, if the active theme supports it.</span>
+            </fieldset>
+
             <button type="submit" class="lp-button lp-button--primary">Save Category</button>
             <a class="lp-button" href="<?= esc_url(admin_url('posts/categories')) ?>">Cancel</a>
         </form>
@@ -236,7 +357,21 @@ if ($action === 'edit') {
     <?php
     $trashedCount = $categoryService->trashedCount();
     $statusLinks = ['' => 'All (' . $categoryService->count() . ')', 'trash' => 'Trash (' . $trashedCount . ')'];
-    $rows = $isTrashView ? $categoryService->listTrashedWithPostCounts() : $categoryService->listAllWithPostCounts();
+
+    $termFilter = trim((string) ($_GET['q'] ?? ''));
+    $parentFilter = (int) ($_GET['parent'] ?? 0);
+    $minPostsFilter = (int) ($_GET['min_posts'] ?? 0);
+    $dateFromFilter = (string) ($_GET['date_from'] ?? '');
+    $dateToFilter = (string) ($_GET['date_to'] ?? '');
+    $categoryFilters = [
+        'term' => $termFilter,
+        'parentId' => $parentFilter,
+        'minPosts' => $minPostsFilter,
+        'dateFrom' => $dateFromFilter,
+        'dateTo' => $dateToFilter,
+    ];
+
+    $rows = $isTrashView ? $categoryService->listTrashedWithPostCounts() : $categoryService->listAllWithPostCounts($categoryFilters);
     ?>
 
     <p class="lp-admin__filters">
@@ -247,6 +382,44 @@ if ($action === 'edit') {
             ><?= esc_html($label) ?></a>
         <?php endforeach; ?>
     </p>
+
+    <?php if (!$isTrashView): ?>
+        <section class="lp-admin__panel">
+            <details class="lp-admin__collapsible" <?= $termFilter !== '' || $parentFilter > 0 || $minPostsFilter > 0 || $dateFromFilter !== '' || $dateToFilter !== '' ? 'open' : '' ?>>
+                <summary>Search &amp; Filter</summary>
+                <div class="lp-admin__collapsible__body">
+                    <form method="get" action="<?= esc_url(admin_url('posts/categories')) ?>" class="lp-admin__filter-form">
+                        <p class="lp-field">
+                            <label for="categories-q">Search name or slug</label>
+                            <input type="text" id="categories-q" name="q" value="<?= esc_attr($termFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="categories-parent-filter">Parent category</label>
+                            <select id="categories-parent-filter" name="parent">
+                                <option value="0">All categories</option>
+                                <?php foreach ($categoryService->listAllForParentPicker() as $filterCategory): ?>
+                                    <option value="<?= (int) $filterCategory['id'] ?>" <?= $parentFilter === $filterCategory['id'] ? 'selected' : '' ?>><?= str_repeat('&nbsp;&nbsp;&nbsp;', $filterCategory['depth']) . esc_html($filterCategory['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </p>
+                        <p class="lp-field">
+                            <label for="categories-min-posts">Minimum posts</label>
+                            <input type="number" id="categories-min-posts" name="min_posts" min="0" value="<?= $minPostsFilter > 0 ? (int) $minPostsFilter : '' ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="categories-date-from">Created from</label>
+                            <input type="date" id="categories-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="categories-date-to">Created to</label>
+                            <input type="date" id="categories-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                        </p>
+                        <button type="submit" class="lp-button">Filter</button>
+                    </form>
+                </div>
+            </details>
+        </section>
+    <?php endif; ?>
 
     <section class="lp-admin__panel">
         <?php if ($isTrashView && $rows !== []): ?>
@@ -331,7 +504,13 @@ if ($action === 'edit') {
                                 </td>
                                 <td><?= esc_html($listedCategory->slug) ?></td>
                                 <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
-                                <td><?= (int) $row['postCount'] ?></td>
+                                <td>
+                                    <?php if ($row['postCount'] > 0): ?>
+                                        <a href="<?= esc_url(admin_url('posts/all-posts')) ?>?category=<?= (int) $listedCategory->id ?>"><?= (int) $row['postCount'] ?></a>
+                                    <?php else: ?>
+                                        <?= (int) $row['postCount'] ?>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($canDeleteCategories): ?>
                                         <?php if ($isTrashView): ?>

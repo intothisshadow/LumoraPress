@@ -41,20 +41,21 @@ final class CategoryService
     ) {
     }
 
-    public function create(string $name, string $description, ?int $parentId = null, ?string $slug = null): Category
+    public function create(string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null): Category
     {
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $name);
         $now = new DateTimeImmutable();
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (name, slug, description, parent_id, created_at, updated_at)
-             VALUES (:name, :slug, :description, :parent_id, :created_at, :updated_at)',
+                (name, slug, description, parent_id, image_id, created_at, updated_at)
+             VALUES (:name, :slug, :description, :parent_id, :image_id, :created_at, :updated_at)',
             [
                 'name' => $name,
                 'slug' => $slug,
                 'description' => $description,
                 'parent_id' => $parentId,
+                'image_id' => $imageId,
                 'created_at' => $now->format('Y-m-d H:i:s'),
                 'updated_at' => $now->format('Y-m-d H:i:s'),
             ],
@@ -80,7 +81,14 @@ final class CategoryService
         return $category;
     }
 
-    public function update(int $id, string $name, string $description, ?int $parentId = null, ?string $slug = null): Category
+    /**
+     * $imageId always replaces the stored image outright (null clears it) — unlike $parentId,
+     * there is no "keep whatever was there" sentinel, so callers resolve the final value
+     * (upload wins over an existing-media pick, which wins over "remove", which wins over
+     * keeping the current image) before calling update(), the same resolution order
+     * PostsController::save() already uses for featured images.
+     */
+    public function update(int $id, string $name, string $description, ?int $parentId = null, ?string $slug = null, ?int $imageId = null): Category
     {
         $existing = $this->findById($id);
 
@@ -99,13 +107,14 @@ final class CategoryService
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET name = :name, slug = :slug, description = :description,
-                    parent_id = :parent_id, updated_at = :updated_at
+                    parent_id = :parent_id, image_id = :image_id, updated_at = :updated_at
               WHERE id = :id',
             [
                 'name' => $name,
                 'slug' => $slug,
                 'description' => $description,
                 'parent_id' => $parentId,
+                'image_id' => $imageId,
                 'updated_at' => $now->format('Y-m-d H:i:s'),
                 'id' => $id,
             ],
@@ -305,20 +314,67 @@ final class CategoryService
     /**
      * Non-trashed categories with their assigned post count, for the
      * admin list's default ("All") view — one query rather than one
-     * COUNT() per category.
+     * COUNT() per category. $filters backs the admin list's Search &
+     * Filter panel; an empty array behaves identically to the old
+     * no-argument form.
      *
+     * @param array{term?: string, parentId?: int, minPosts?: int, dateFrom?: string, dateTo?: string} $filters
+     *     term: matches name or slug (LIKE). parentId: exact match on parent_id.
+     *     minPosts: category must have at least this many assigned posts.
+     *     dateFrom/dateTo: created_at date range, inclusive, as Y-m-d strings.
      * @return array<int, array{category: Category, postCount: int}>
      */
-    public function listAllWithPostCounts(): array
+    public function listAllWithPostCounts(array $filters = []): array
     {
-        $rows = $this->database->fetchAll(
-            'SELECT c.*, COUNT(pc.post_id) AS post_count
-               FROM ' . $this->table() . ' c
-               LEFT JOIN ' . $this->postCategoriesTable() . ' pc ON pc.category_id = c.id
-              WHERE c.trashed_at IS NULL
-              GROUP BY c.id
-              ORDER BY c.name ASC',
-        );
+        $sql = 'SELECT c.*, COUNT(pc.post_id) AS post_count
+                  FROM ' . $this->table() . ' c
+                  LEFT JOIN ' . $this->postCategoriesTable() . ' pc ON pc.category_id = c.id
+                 WHERE c.trashed_at IS NULL';
+        $params = [];
+
+        $term = trim((string) ($filters['term'] ?? ''));
+
+        if ($term !== '') {
+            $sql .= ' AND (c.name LIKE :term_name OR c.slug LIKE :term_slug)';
+            $params['term_name'] = '%' . $term . '%';
+            $params['term_slug'] = '%' . $term . '%';
+        }
+
+        $parentId = (int) ($filters['parentId'] ?? 0);
+
+        if ($parentId > 0) {
+            $sql .= ' AND c.parent_id = :parent_id';
+            $params['parent_id'] = $parentId;
+        }
+
+        $dateFrom = (string) ($filters['dateFrom'] ?? '');
+
+        if ($dateFrom !== '') {
+            $sql .= ' AND c.created_at >= :date_from';
+            $params['date_from'] = $dateFrom . ' 00:00:00';
+        }
+
+        $dateTo = (string) ($filters['dateTo'] ?? '');
+
+        if ($dateTo !== '') {
+            $sql .= ' AND c.created_at <= :date_to';
+            $params['date_to'] = $dateTo . ' 23:59:59';
+        }
+
+        $sql .= ' GROUP BY c.id';
+
+        $minPosts = (int) ($filters['minPosts'] ?? 0);
+
+        // A bound parameter here compares as SQLite's TEXT storage class against post_count's
+        // INTEGER class (neither side has column affinity to trigger numeric coercion), which
+        // always evaluates false — interpolated directly since $minPosts is already int-cast.
+        if ($minPosts > 0) {
+            $sql .= ' HAVING post_count >= ' . $minPosts;
+        }
+
+        $sql .= ' ORDER BY c.name ASC';
+
+        $rows = $this->database->fetchAll($sql, $params);
 
         return array_map(
             fn (array $row): array => ['category' => $this->hydrate($row), 'postCount' => (int) $row['post_count']],
@@ -630,6 +686,7 @@ final class CategoryService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
+            imageId: isset($row['image_id']) && $row['image_id'] !== null ? (int) $row['image_id'] : null,
         );
     }
 

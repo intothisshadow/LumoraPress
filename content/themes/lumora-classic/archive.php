@@ -16,15 +16,21 @@
 /** @var array<int, \LumoraPress\Models\Post> $posts */
 /** @var array{page: int, totalPages: int}|null $pagination */
 /** @var string|null $archive_description */
+/** @var string|null $archive_image_url */
 /** @var array<int, int> $comment_counts */
 get_header();
 $posts ??= [];
 $archive_description ??= null;
+$archive_image_url ??= null;
 $comment_counts ??= [];
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <h1 class="lp-page-title"><?= esc_html($page_title ?? 'Archive') ?></h1>
+
+        <?php if ($archive_image_url !== null): ?>
+            <img class="lp-archive__image" src="<?= esc_url($archive_image_url) ?>" alt="">
+        <?php endif; ?>
 
         <?php if ($archive_description !== null && $archive_description !== ''): ?>
             <p class="lp-archive__description"><?= esc_html($archive_description) ?></p>

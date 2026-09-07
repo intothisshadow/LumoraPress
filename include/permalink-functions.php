@@ -19,6 +19,7 @@ use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\Theme\ActiveAuth;
 use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
+use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Page;
@@ -76,6 +77,37 @@ if (!function_exists('tag_permalink')) {
     function tag_permalink(Tag $tag): string
     {
         return preview_theme_link(Permalinks::service()->tagUrl($tag));
+    }
+}
+
+if (!function_exists('has_category_image')) {
+    function has_category_image(Category $category): bool
+    {
+        return $category->imageId !== null && FeaturedImages::media()->find($category->imageId) !== null;
+    }
+}
+
+if (!function_exists('category_image_url')) {
+    /**
+     * The public URL for $category's image at $size, falling back to the
+     * original image if no thumbnail of that size was generated. No
+     * manual-crop support — unlike a post/page featured image, a
+     * category image has no placement choice to make cropping worth the
+     * added complexity.
+     */
+    function category_image_url(Category $category, string $size = 'medium'): ?string
+    {
+        if ($category->imageId === null) {
+            return null;
+        }
+
+        $media = FeaturedImages::media()->find($category->imageId);
+
+        if ($media === null) {
+            return null;
+        }
+
+        return FeaturedImages::thumbnails()->url($media, $size) ?? FeaturedImages::media()->url($media);
     }
 }
 

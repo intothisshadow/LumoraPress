@@ -840,6 +840,7 @@ final class SiteController
             'page_title' => $category->name,
             'archive_type' => 'category',
             'archive_description' => $category->description,
+            'archive_image_url' => category_image_url($category, 'large'),
             'posts' => $pagination['posts'],
             'pagination' => $pagination,
             'comment_counts' => $this->commentCountsFor($pagination['posts']),

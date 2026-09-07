@@ -1692,7 +1692,10 @@ final class WordPressImportService
 
         if ($existingId !== null) {
             if ($existingContentMode === ExistingContentMode::Overwrite) {
-                $this->categories->update($existingId, $term['name'], '', $parentId);
+                // Re-importing must never wipe an image the admin assigned locally after the
+                // last import — WordPress category terms have no image of their own to overwrite it with.
+                $existingImageId = $this->categories->findById($existingId)?->imageId;
+                $this->categories->update($existingId, $term['name'], '', $parentId, imageId: $existingImageId);
             }
 
             return $existingId;

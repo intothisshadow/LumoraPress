@@ -189,6 +189,8 @@ return.
 | `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it is up to the theme — the default theme's `footer.php` calls this and renders a "Privacy Policy" link (`.lp-site-footer__privacy-link`) only when it returns non-`null`, but nothing forces a theme to do the same. |
 | `post_categories(Post $post): array` | The Categories `$post` belongs to (alphabetical). Empty array for an uncategorized post, never `null`. |
 | `the_post_categories(Post $post, string $separator = ', ')` | `post_categories()`, echoed as a `$separator`-joined list of links. Outputs nothing at all for an uncategorized post, so it's safe to call unconditionally. |
+| `has_category_image(Category $category): bool` | Whether `$category` has an image assigned (Categories admin's "Category Image" field). |
+| `category_image_url(Category $category, string $size = 'medium'): ?string` | The image's URL at `$size`, falling back to the original if no thumbnail of that size was generated, or `null` if `$category` has no image. No manual-crop support, unlike a post/page featured image. |
 | `get_the_tags(Post $post): array` | The Tags `$post` is assigned to (alphabetical). Empty array for a tagless post, never `null`. |
 | `post_has_tags(Post $post): bool` | Whether `$post` has any tags at all. |
 | `the_tags(Post $post, string $before = '', string $sep = ', ', string $after = '')` | `get_the_tags()`, echoed as a `$sep`-joined list of links wrapped in `$before`/`$after`. Outputs nothing at all for a tagless post, so it's safe to call unconditionally. |
