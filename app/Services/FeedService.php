@@ -21,6 +21,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\Category;
+use LumoraPress\Models\Comment;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\Tag;
 use LumoraPress\Models\User;
@@ -48,6 +49,7 @@ final class FeedService
         private readonly MediaService $media,
         private readonly ThumbnailService $thumbnails,
         private readonly ContentRenderer $content,
+        private readonly CommentService $comments,
     ) {
     }
 
@@ -186,6 +188,93 @@ final class FeedService
             fn (Post $post): array => $this->buildItem($post, $fullContent),
             $posts,
         );
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
+    public function commentsChannel(): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » Comments',
+            'description' => (string) $this->config->option('feed_description', ''),
+        ];
+
+        return $this->hooks->applyFilters('feed_comments_channel', $channel);
+    }
+
+    /**
+     * The most recent approved comments site-wide, newest first, via
+     * CommentService::recentApproved() — the same query the Recent
+     * Comments widget uses, so a comment awaiting moderation or on a
+     * trashed/private post never surfaces here. contentTitle/contentSlug/
+     * contentType pass straight through from recentApproved() rather than
+     * being resolved into a link here — SiteController::commentsFeed()
+     * does that, the same way it (not FeedService) resolves a Post into a
+     * permalink for the site-wide post feed.
+     *
+     * @return array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string, description: string, content: string}>
+     */
+    public function commentsItems(): array
+    {
+        $entries = $this->comments->recentApproved($this->itemLimit());
+
+        return array_map(
+            fn (array $entry): array => [...$this->buildCommentItem($entry['comment']), ...[
+                'contentTitle' => $entry['contentTitle'],
+                'contentSlug' => $entry['contentSlug'],
+                'contentType' => $entry['contentType'],
+            ]],
+            $entries,
+        );
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
+    public function postCommentsChannel(Post $post): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » Comments on ' . $post->title,
+            'description' => '',
+        ];
+
+        return $this->hooks->applyFilters('feed_post_comments_channel', $channel, $post);
+    }
+
+    /**
+     * The individual comment thread for a single post — every approved
+     * comment (parent and reply alike, flattened rather than nested,
+     * since a feed item has no concept of nesting), oldest first,
+     * matching the thread's own on-page display order.
+     *
+     * @return array<int, array{comment: Comment, description: string, content: string}>
+     */
+    public function postCommentsItems(Post $post): array
+    {
+        $limit = $this->itemLimit();
+        $pagination = $this->comments->paginateForPost($post->id, 1, $limit, 'asc', false);
+
+        return array_map(
+            fn (array $entry): array => $this->buildCommentItem($entry['comment']),
+            $pagination['comments'],
+        );
+    }
+
+    /**
+     * @return array{comment: Comment, description: string, content: string}
+     */
+    private function buildCommentItem(Comment $comment): array
+    {
+        $item = [
+            'comment' => $comment,
+            'description' => $comment->content,
+            'content' => format_comment_content($comment->content),
+        ];
+
+        return $this->hooks->applyFilters('feed_comment_item', $item, $comment);
     }
 
     /**

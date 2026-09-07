@@ -26,6 +26,7 @@ use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Theme\ThemeRenderer;
+use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
@@ -1191,6 +1192,228 @@ final class SiteController
             home_url('author/' . $slug . '/feed/atom'),
             'author_' . $author->id . '|' . $this->feeds->itemLimit(),
         );
+    }
+
+    /**
+     * Site-wide feed of the most recent approved comments, across every
+     * post and page — reuses FeedService/emitCommentsFeed()'s own
+     * plumbing, parallel to feed()'s post-shaped counterpart.
+     *
+     * @param array<string, string> $params
+     */
+    public function commentsFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+
+        // FeedService::commentsItems() hands back contentTitle/contentSlug/contentType
+        // rather than a resolved link, the same division of labor buildItem()/renderRss2()
+        // already have for post-shaped items: FeedService supplies data, SiteController
+        // resolves permalinks — mirrors the Recent Comments widget's own link-building
+        // (CoreWidgets::register()).
+        $items = array_map(
+            function (array $item): array {
+                if ($item['contentType'] === 'page') {
+                    $page = $this->pages->findBySlug($item['contentSlug']);
+                    $link = ($page !== null ? page_permalink($page) : home_url('page/' . $item['contentSlug']));
+                } else {
+                    $post = $this->posts->findBySlug($item['contentSlug']);
+                    $link = ($post !== null ? post_permalink($post) : home_url('post/' . $item['contentSlug']));
+                }
+
+                $item['link'] = $link . '#comment-' . $item['comment']->id;
+                $item['title'] = 'Comment on ' . $item['contentTitle'];
+
+                return $item;
+            },
+            $this->feeds->commentsItems(),
+        );
+
+        $this->emitCommentsFeed(
+            $format,
+            $this->feeds->commentsChannel(),
+            $items,
+            home_url(),
+            home_url('comments/feed/atom'),
+            'comments|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
+     * The individual comment thread for a single post — every approved
+     * comment on that post, flattened. 404s on an unknown or
+     * not-viewable-to-this-visitor post, same as singlePost().
+     *
+     * @param array<string, string> $params
+     */
+    public function postCommentsFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $slug = $params['slug'] ?? '';
+        $post = $slug !== '' ? $this->posts->findBySlug($slug) : null;
+
+        if ($post === null || !$post->isVisibleToViewer($this->canViewPrivatePost($post))) {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+        $link = post_permalink($post);
+
+        $items = array_map(
+            static function (array $item) use ($link, $post): array {
+                $item['link'] = $link . '#comment-' . $item['comment']->id;
+                $item['title'] = 'Comment on ' . $post->title;
+
+                return $item;
+            },
+            $this->feeds->postCommentsItems($post),
+        );
+
+        $this->emitCommentsFeed(
+            $format,
+            $this->feeds->postCommentsChannel($post),
+            $items,
+            $link,
+            $link . '/comments/feed/atom',
+            'post_comments_' . $post->id . '|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
+     * Comment-feed counterpart of emitFeed() — same caching/conditional-GET
+     * shape, but built around comment-shaped items (comment/link/title/
+     * description/content) rather than post-shaped ones, so it renders
+     * through its own renderCommentsRss2()/renderCommentsAtom() rather than
+     * emitFeed()'s renderRss2()/renderAtom().
+     *
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{comment: Comment, link: string, title: string, description: string, content: string}> $items
+     */
+    private function emitCommentsFeed(string $format, array $channel, array $items, string $channelLink, string $selfLink, string $etagSeed): void
+    {
+        $lastModified = null;
+
+        foreach ($items as $item) {
+            $comment = $item['comment'];
+            $candidate = $comment->updatedAt > $comment->createdAt ? $comment->updatedAt : $comment->createdAt;
+
+            if ($lastModified === null || $candidate > $lastModified) {
+                $lastModified = $candidate;
+            }
+        }
+
+        $etag = '"' . md5($format . '|' . $etagSeed . '|' . ($lastModified?->format('c') ?? '')) . '"';
+
+        $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? trim($_SERVER['HTTP_IF_NONE_MATCH']) : null;
+
+        if ($ifNoneMatch === $etag) {
+            http_response_code(304);
+            header('ETag: ' . $etag);
+
+            return;
+        }
+
+        $cacheLifetime = max(0, (int) $this->config->option('feed_cache_lifetime', '900'));
+
+        header('Content-Type: ' . ($format === 'atom' ? 'application/atom+xml' : 'application/rss+xml') . '; charset=UTF-8');
+        header('ETag: ' . $etag);
+        header('Cache-Control: public, max-age=' . $cacheLifetime);
+
+        if ($lastModified !== null) {
+            header('Last-Modified: ' . $lastModified->setTimezone(new DateTimeZone('UTC'))->format('D, d M Y H:i:s') . ' GMT');
+        }
+
+        echo $format === 'atom'
+            ? $this->renderCommentsAtom($channel, $items, $channelLink, $selfLink)
+            : $this->renderCommentsRss2($channel, $items, $channelLink);
+
+        do_action('feed_generated', $format);
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{comment: Comment, link: string, title: string, description: string, content: string}> $items
+     */
+    private function renderCommentsRss2(array $channel, array $items, string $channelLink): string
+    {
+        $now = new DateTimeImmutable();
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">' . "\n";
+        $xml .= '<channel>' . "\n";
+        $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
+        $xml .= '<link>' . esc_url($channelLink) . '</link>' . "\n";
+        $xml .= '<description>' . esc_html($channel['description']) . '</description>' . "\n";
+        $xml .= '<language>en</language>' . "\n";
+        $xml .= '<lastBuildDate>' . $now->format('r') . '</lastBuildDate>' . "\n";
+
+        foreach ($items as $item) {
+            $comment = $item['comment'];
+
+            $xml .= '<item>' . "\n";
+            $xml .= '<title>' . esc_html($item['title']) . '</title>' . "\n";
+            $xml .= '<link>' . esc_url($item['link']) . '</link>' . "\n";
+            $xml .= '<guid isPermaLink="false">' . esc_html('comment-' . $comment->id . '@' . $channelLink) . '</guid>' . "\n";
+            $xml .= '<description>' . esc_html($item['description']) . '</description>' . "\n";
+            $xml .= '<content:encoded>' . esc_html($item['content']) . '</content:encoded>' . "\n";
+            $xml .= '<dc:creator>' . esc_html($comment->guestName) . '</dc:creator>' . "\n";
+            $xml .= '<pubDate>' . $comment->createdAt->format('r') . '</pubDate>' . "\n";
+            $xml .= '</item>' . "\n";
+        }
+
+        $xml .= '</channel>' . "\n";
+        $xml .= '</rss>' . "\n";
+
+        return $xml;
+    }
+
+    /**
+     * @param array{title: string, description: string} $channel
+     * @param array<int, array{comment: Comment, link: string, title: string, description: string, content: string}> $items
+     */
+    private function renderCommentsAtom(array $channel, array $items, string $channelLink, string $selfLink): string
+    {
+        $now = new DateTimeImmutable();
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<feed xmlns="http://www.w3.org/2005/Atom">' . "\n";
+        $xml .= '<title>' . esc_html($channel['title']) . '</title>' . "\n";
+        $xml .= '<subtitle>' . esc_html($channel['description']) . '</subtitle>' . "\n";
+        $xml .= '<id>' . esc_url($channelLink) . '</id>' . "\n";
+        $xml .= '<link rel="self" href="' . esc_url($selfLink) . '"/>' . "\n";
+        $xml .= '<link rel="alternate" href="' . esc_url($channelLink) . '"/>' . "\n";
+        $xml .= '<updated>' . $now->format('c') . '</updated>' . "\n";
+
+        foreach ($items as $item) {
+            $comment = $item['comment'];
+
+            $xml .= '<entry>' . "\n";
+            $xml .= '<title>' . esc_html($item['title']) . '</title>' . "\n";
+            $xml .= '<link rel="alternate" href="' . esc_url($item['link']) . '"/>' . "\n";
+            $xml .= '<id>' . esc_html('comment-' . $comment->id . '@' . $channelLink) . '</id>' . "\n";
+            $xml .= '<updated>' . $comment->updatedAt->format('c') . '</updated>' . "\n";
+            $xml .= '<published>' . $comment->createdAt->format('c') . '</published>' . "\n";
+            $xml .= '<author><name>' . esc_html($comment->guestName) . '</name></author>' . "\n";
+            $xml .= '<summary>' . esc_html($item['description']) . '</summary>' . "\n";
+            $xml .= '<content type="html">' . esc_html($item['content']) . '</content>' . "\n";
+            $xml .= '</entry>' . "\n";
+        }
+
+        $xml .= '</feed>' . "\n";
+
+        return $xml;
     }
 
     /**

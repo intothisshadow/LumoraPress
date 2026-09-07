@@ -509,7 +509,7 @@ add_filter('content_html', [$folderGallery, 'render']);
 $mediaPlayer = new MediaPlayerShortcode($media);
 add_filter('content_html', [$mediaPlayer, 'render']);
 
-$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content);
+$feeds = new FeedService($posts, $users, $config, $hooks, $media, $thumbnails, $content, $comments);
 $mediaImport = new MediaImportService(
     database: $database,
     tablePrefix: $tablePrefix,
@@ -753,6 +753,8 @@ $postRoutePattern = $permalinks->postRoutePattern();
 $router->get('/', fn (array $params) => $site->home($params));
 $router->get($postRoutePattern, fn (array $params) => $site->singlePost($params));
 $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
+$router->get($postRoutePattern . '/comments/feed/{format}', fn (array $params) => $site->postCommentsFeed($params));
+$router->get($postRoutePattern . '/comments/feed', fn (array $params) => $site->postCommentsFeed($params));
 $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
 $router->get('/preview-page/{id}', fn (array $params) => $site->previewPage($params));
 $router->get('/author/{slug}/feed/{format}', fn (array $params) => $site->authorFeed($params));
@@ -782,6 +784,8 @@ $router->get('/page/{slug}', fn (array $params) => $site->legacyPageRedirect($pa
 $router->post('/page/{slug}/comment', fn (array $params) => $site->submitPageComment($params));
 $router->get('/feed', fn (array $params) => $site->feed($params));
 $router->get('/feed/{format}', fn (array $params) => $site->feed($params));
+$router->get('/comments/feed', fn (array $params) => $site->commentsFeed($params));
+$router->get('/comments/feed/{format}', fn (array $params) => $site->commentsFeed($params));
 $router->get('/robots.txt', fn (array $params) => $site->robotsTxt($params));
 $router->get('/sitemap.xml', fn (array $params) => $site->sitemap($params));
 $router->get('/media/{id}/download', fn (array $params) => $site->mediaDownload($params));
