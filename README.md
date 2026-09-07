@@ -36,7 +36,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Categories and tags, with hierarchical category URLs, archive pages, merge, and bulk actions
 - Sticky and private posts
 - Threaded comments and moderation
-- RSS and Atom feeds (site-wide and per-category)
+- RSS and Atom feeds (site-wide, per-category, per-tag, and per-author)
 - Full-text search across posts and pages
 
 ### Media

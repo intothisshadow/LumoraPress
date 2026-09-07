@@ -22,6 +22,8 @@ use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Post;
+use LumoraPress\Models\Tag;
+use LumoraPress\Models\User;
 
 /**
  * Builds the data behind the site-wide RSS/Atom feed — channel metadata plus feed items.
@@ -115,6 +117,70 @@ final class FeedService
         $limit = $this->itemLimit();
         $fullContent = $this->config->option('feed_full_content', '1') !== '0';
         $posts = $this->posts->paginateByCategory($category->id, 1, $limit)['posts'];
+
+        return array_map(
+            fn (Post $post): array => $this->buildItem($post, $fullContent),
+            $posts,
+        );
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
+    public function tagChannel(Tag $tag): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » ' . $tag->name,
+            'description' => $tag->description,
+        ];
+
+        return $this->hooks->applyFilters('feed_tag_channel', $channel, $tag);
+    }
+
+    /**
+     * Items for a single tag's feed, newest first — same shape as items(),
+     * scoped through PostService::paginateByTag().
+     *
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     */
+    public function tagItems(Tag $tag): array
+    {
+        $limit = $this->itemLimit();
+        $fullContent = $this->config->option('feed_full_content', '1') !== '0';
+        $posts = $this->posts->paginateByTag($tag->id, 1, $limit)['posts'];
+
+        return array_map(
+            fn (Post $post): array => $this->buildItem($post, $fullContent),
+            $posts,
+        );
+    }
+
+    /**
+     * @return array{title: string, description: string}
+     */
+    public function authorChannel(User $author): array
+    {
+        $siteName = (string) $this->config->option('site_name', 'Lumora Press');
+        $channel = [
+            'title' => $siteName . ' » ' . $author->displayName,
+            'description' => '',
+        ];
+
+        return $this->hooks->applyFilters('feed_author_channel', $channel, $author);
+    }
+
+    /**
+     * Items for a single author's feed, newest first — same shape as
+     * items(), scoped through PostService::paginateByAuthor().
+     *
+     * @return array<int, array{post: Post, authorName: ?string, description: string, content: ?string, thumbnailUrl: ?string, thumbnailType: ?string, thumbnailLength: ?int}>
+     */
+    public function authorItems(User $author): array
+    {
+        $limit = $this->itemLimit();
+        $fullContent = $this->config->option('feed_full_content', '1') !== '0';
+        $posts = $this->posts->paginateByAuthor($author->id, 1, $limit)['posts'];
 
         return array_map(
             fn (Post $post): array => $this->buildItem($post, $fullContent),

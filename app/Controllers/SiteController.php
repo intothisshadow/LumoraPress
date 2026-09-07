@@ -1100,6 +1100,100 @@ final class SiteController
     }
 
     /**
+     * Tag-scoped counterpart of feed(), reusing the same FeedService/
+     * emitFeed() plumbing as categoryFeed() — only the channel, item
+     * source, and links differ. 404s on an unknown tag.
+     *
+     * @param array<string, string> $params
+     */
+    public function tagFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $slug = $params['slug'] ?? '';
+        $tag = $slug !== '' ? $this->tags->findBySlug($slug) : null;
+
+        if ($tag === null) {
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+
+        $this->emitFeed(
+            $format,
+            $this->feeds->tagChannel($tag),
+            $this->feeds->tagItems($tag),
+            $this->permalinks->tagUrl($tag),
+            $this->permalinks->tagFeedUrl($tag, 'atom'),
+            'tag_' . $tag->id . '|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
+     * Author-scoped counterpart of feed(), reusing the same FeedService/
+     * emitFeed() plumbing as categoryFeed()/tagFeed(). Mirrors author()'s
+     * own enumeration-hardening: an unknown slug or a real author with zero
+     * published posts both 404 via the same 'lumora_shield_enumeration_blocked'
+     * action and 'lumora_shield_author_archive_visible' filter author()
+     * uses, so this route can't be used to enumerate usernames a plugin
+     * has otherwise closed off on the archive page itself.
+     *
+     * @param array<string, string> $params
+     */
+    public function authorFeed(array $params): void
+    {
+        if ($this->config->option('feeds_enabled', '1') === '0') {
+            $this->notFound();
+
+            return;
+        }
+
+        $slug = $params['slug'] ?? '';
+        $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        $author = $slug !== '' ? $this->users->findByAuthorSlug($slug) : null;
+
+        if ($author === null) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'unknown_user', $ipAddress);
+            $this->notFound();
+
+            return;
+        }
+
+        $totalPublished = $this->posts->paginateByAuthor($author->id, 1, 1)['total'];
+
+        if ($totalPublished === 0) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'zero_posts', $ipAddress);
+            $this->notFound();
+
+            return;
+        }
+
+        if (!apply_filters('lumora_shield_author_archive_visible', true, $author, $totalPublished)) {
+            do_action('lumora_shield_enumeration_blocked', $slug, 'hidden_by_setting', $ipAddress);
+            $this->notFound();
+
+            return;
+        }
+
+        $format = ($params['format'] ?? '') === 'atom' ? 'atom' : 'rss';
+
+        $this->emitFeed(
+            $format,
+            $this->feeds->authorChannel($author),
+            $this->feeds->authorItems($author),
+            home_url('author/' . $slug),
+            home_url('author/' . $slug . '/feed/atom'),
+            'author_' . $author->id . '|' . $this->feeds->itemLimit(),
+        );
+    }
+
+    /**
      * Shared caching/conditional-GET/rendering plumbing for feed() and categoryFeed().
      *
      * @param array{title: string, description: string} $channel

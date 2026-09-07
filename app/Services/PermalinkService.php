@@ -219,6 +219,29 @@ final class PermalinkService
     }
 
     /**
+     * '/tag/{slug}/feed' and '/tag/{slug}/feed/{format}' — the tag-scoped
+     * counterparts of SiteController::feed()'s '/feed' and '/feed/{format}'.
+     * Registered before the bare tagRoutePattern() for the same ordering
+     * reason categoryFeedRoutePattern() is (see its docblock), even though
+     * {slug} here only matches a single segment so the two can't actually
+     * collide.
+     */
+    public function tagFeedRoutePattern(): string
+    {
+        return $this->tagRoutePattern() . '/feed';
+    }
+
+    public function tagFeedFormatRoutePattern(): string
+    {
+        return $this->tagRoutePattern() . '/feed/{format}';
+    }
+
+    public function tagFeedUrl(Tag $tag, string $format = 'rss'): string
+    {
+        return $this->tagUrl($tag) . '/feed' . ($format === 'atom' ? '/atom' : '');
+    }
+
+    /**
      * '/category/{path*}/feed' and '/category/{path*}/feed/{format}' — the
      * category-scoped counterparts of SiteController::feed()'s '/feed' and
      * '/feed/{format}'. See categoryRoutePattern()'s docblock for why
