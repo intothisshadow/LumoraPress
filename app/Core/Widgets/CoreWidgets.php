@@ -305,6 +305,7 @@ final class CoreWidgets
             echo '<ul class="lp-widget__list">'
                 . '<li><a href="' . esc_url(admin_url('login')) . '">Log in</a></li>'
                 . '<li><a href="' . esc_url(home_url('feed')) . '">Entries RSS</a></li>'
+                . '<li><a href="' . esc_url(home_url('comments/feed')) . '">Comments RSS</a></li>'
                 . '</ul></section>';
         });
 
