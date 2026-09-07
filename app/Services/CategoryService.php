@@ -259,6 +259,64 @@ final class CategoryService
         return true;
     }
 
+    /**
+     * Reassigns each of $categoryIds' parent_id to $parentId (null makes them top-level) —
+     * the admin Categories list's "Change parent to…" bulk action. A category whose move
+     * would create a cycle (becoming its own parent, or being moved under one of its own
+     * descendants) is left untouched rather than aborting the whole batch; every other id
+     * still moves. More thorough than the single-edit form's own parent selector, which only
+     * excludes a category's direct children (an accepted, narrower gap there — see
+     * listAllForParentSelect()'s docblock) rather than checking the full ancestor chain.
+     *
+     * @param array<int, int> $categoryIds
+     * @return int how many categories were actually reparented
+     */
+    public function bulkChangeParent(array $categoryIds, ?int $parentId): int
+    {
+        $moved = 0;
+
+        foreach (array_unique(array_map('intval', $categoryIds)) as $categoryId) {
+            if ($parentId !== null && ($parentId === $categoryId || $this->isAncestorOf($categoryId, $parentId))) {
+                continue;
+            }
+
+            $category = $this->findById($categoryId);
+
+            if ($category === null || $category->parentId === $parentId) {
+                continue;
+            }
+
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET parent_id = :parent_id, updated_at = :updated_at WHERE id = :id',
+                [
+                    'parent_id' => $parentId,
+                    'updated_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
+                    'id' => $categoryId,
+                ],
+            );
+
+            $moved++;
+        }
+
+        return $moved;
+    }
+
+    /**
+     * Whether $ancestorId appears in $descendantId's own ancestor chain — the cycle check
+     * bulkChangeParent() needs: moving $ancestorId under something in its own descendant
+     * tree would otherwise create a loop.
+     */
+    private function isAncestorOf(int $ancestorId, int $descendantId): bool
+    {
+        foreach ($this->ancestors($descendantId) as $ancestor) {
+            if ($ancestor->id === $ancestorId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function findById(int $id): ?Category
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);

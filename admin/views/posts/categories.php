@@ -222,19 +222,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $mergeTargetId = (int) ($_POST['merge_target_id'] ?? 0);
 
         if ($canDeleteCategories) {
-            foreach ($ids as $id) {
-                if ($bulkAction === 'trash') {
-                    $categoryService->trash($id);
-                } elseif ($bulkAction === 'restore') {
-                    $categoryService->restore($id);
-                } elseif ($bulkAction === 'delete_permanently') {
-                    $existing = $categoryService->findById($id);
+            if ($bulkAction === 'change_parent') {
+                // -1 means "no target chosen" (the placeholder option) — a no-op, distinct
+                // from 0, which explicitly means "make top-level" (clear parent_id).
+                $changeParentTargetId = (int) ($_POST['change_parent_target_id'] ?? -1);
 
-                    if ($existing !== null && $existing->isTrashed()) {
-                        $categoryService->delete($id);
+                if ($changeParentTargetId >= 0) {
+                    $categoryService->bulkChangeParent($ids, $changeParentTargetId > 0 ? $changeParentTargetId : null);
+                }
+            } else {
+                foreach ($ids as $id) {
+                    if ($bulkAction === 'trash') {
+                        $categoryService->trash($id);
+                    } elseif ($bulkAction === 'restore') {
+                        $categoryService->restore($id);
+                    } elseif ($bulkAction === 'delete_permanently') {
+                        $existing = $categoryService->findById($id);
+
+                        if ($existing !== null && $existing->isTrashed()) {
+                            $categoryService->delete($id);
+                        }
+                    } elseif ($bulkAction === 'merge' && $mergeTargetId > 0 && $id !== $mergeTargetId) {
+                        $categoryService->merge($id, $mergeTargetId);
                     }
-                } elseif ($bulkAction === 'merge' && $mergeTargetId > 0 && $id !== $mergeTargetId) {
-                    $categoryService->merge($id, $mergeTargetId);
                 }
             }
         }
@@ -505,6 +515,7 @@ if ($action === 'edit') {
                             <?php else: ?>
                                 <option value="trash">Move to Trash</option>
                                 <option value="merge">Merge into&hellip;</option>
+                                <option value="change_parent">Change parent to&hellip;</option>
                             <?php endif; ?>
                         </select>
                         <?php if (!$isTrashView): ?>
@@ -513,6 +524,14 @@ if ($action === 'edit') {
                                 <option value="0">(select a category to merge into)</option>
                                 <?php foreach ($categoryService->listAll() as $mergeTargetOption): ?>
                                     <option value="<?= (int) $mergeTargetOption->id ?>"><?= esc_html($mergeTargetOption->name) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label class="lp-visually-hidden" for="categories-change-parent-target">New parent</label>
+                            <select id="categories-change-parent-target" name="change_parent_target_id">
+                                <option value="-1">(select a new parent)</option>
+                                <option value="0">(No parent / Top level)</option>
+                                <?php foreach ($categoryService->listAllForParentPicker() as $changeParentTargetOption): ?>
+                                    <option value="<?= (int) $changeParentTargetOption['id'] ?>"><?= str_repeat('&nbsp;&nbsp;&nbsp;', $changeParentTargetOption['depth']) . esc_html($changeParentTargetOption['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         <?php endif; ?>
