@@ -143,6 +143,8 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 ### Shortcodes
 
+See [`SHORTCODES.md`](SHORTCODES.md) for the user-facing reference (every currently-registered shortcode's attributes and copy-paste examples). This section covers building your own.
+
 A shortcode's actual *rendering* is still just a plugin or core class
 that hooks the `content_html` filter above and does its own
 `preg_replace_callback()` over a fixed pattern — see
