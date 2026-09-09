@@ -36,6 +36,10 @@ get_header(['page' => $page]);
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($page->content, $page->contentFormat) ?></div>
+            <?php $pageEditUrl = edit_page_link($page); ?>
+            <?php if ($pageEditUrl !== null): ?>
+                <p class="lp-post__edit-link"><a href="<?= esc_url($pageEditUrl) ?>">Edit this page</a></p>
+            <?php endif; ?>
         </article>
         <?php comments_template($comment_data); ?>
     </main>

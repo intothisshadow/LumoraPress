@@ -170,6 +170,7 @@ implementation-level detail on each area.
   explicit choice has been made.
 - **Post categories & edit link** — single posts and post listings show
   each post's assigned categories, and a signed-in author/editor with
-  permission sees a quick "Edit this post" link on the single post view.
+  permission sees a quick "Edit this post" link on the single post view,
+  and an "Edit this page" counterpart on a single Page.
 
 See `TODO.md` for planned work and known gaps.

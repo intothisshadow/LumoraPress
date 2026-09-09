@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Page edit link: a single Page now shows the same "Edit this page" link a single post already gets, for a signed-in author/editor with permission to edit it — reuses the existing `edit_page_link()` template tag, which core already provided but no bundled theme called from `page.php` yet.
+
 ### Fixed
 
 - Appearance &rsaquo; Themes card button alignment: a theme card's Activate/Delete buttons sat right after its description instead of at the card's bottom, so cards with a shorter description or screenshot left their buttons higher than neighboring cards in the same row — theme cards and their body now lay out as a column with the actions row pushed to the bottom. Also fixed the Delete button itself sitting lower than Activate within the same card: a generic `.lp-admin__panel form + form` spacing rule (for the Updates page's stacked forms) won a specificity tie against the theme card's own margin reset, re-adding an 8px top margin to the second adjacent form. Also fixed every card in a row stretching to match its tallest neighbor's screenshot (e.g. a theme with a tall banner screenshot inflating every shorter card beside it): a theme's screenshot now renders at a fixed 4:3 aspect ratio (cropped, not stretched), so card height no longer depends on the uploaded screenshot's own dimensions.
