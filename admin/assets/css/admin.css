@@ -193,6 +193,23 @@ body.lp-admin-login {
     top: 0;
     height: 100vh;
     overflow-y: auto;
+    /*
+     * LP-151: without an explicit (non-auto) z-index here, this sticky
+     * element never actually becomes a stacking context of its own (that
+     * requires position != static AND z-index != auto) — it just paints
+     * in normal document order as a plain box. That let ordinary page
+     * content painted after it in the DOM (e.g. the Themes screen's own
+     * .lp-theme-card__select checkbox, itself z-index: 1) paint over the
+     * collapsed sidebar's `position: fixed` flyout submenus, since a
+     * `position: fixed` descendant's z-index only ranks it within its
+     * own nearest ancestor stacking context — with no such context here,
+     * it had none. See .lp-admin__content's own comment for the other
+     * half of this fix (containing that z-index so it can't tie with
+     * this one at the root stacking context). Overridden to 200 for the
+     * mobile off-canvas drawer below, which already needs to sit above
+     * the page for a different reason.
+     */
+    z-index: 1;
 }
 
 .lp-admin__brand {
@@ -286,13 +303,21 @@ body.lp-admin-login {
  * Top-level nav rows (LP-056) drop their icon and go uppercase to read as
  * section headings; only sub-nav rows (.lp-admin__nav-submenu) keep icons
  * and normal casing, so this is scoped to direct children of .lp-admin__nav
- * only, not the submenu list.
+ * only, not the submenu list. Each top-level row's icon/label are still
+ * rendered in the markup either way (see layout-header.php) — LP-151's
+ * collapsed/icon sidebar below re-enables the icon and visually hides the
+ * label instead of removing either from the DOM.
  */
 .lp-admin__nav > ul > li > a,
 .lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a {
     text-transform: uppercase;
     letter-spacing: 0.03em;
     font-size: 0.85rem;
+}
+
+.lp-admin__nav > ul > li > a > .lp-admin__nav-icon,
+.lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a > .lp-admin__nav-icon {
+    display: none;
 }
 
 /*
@@ -503,10 +528,60 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
+/*
+ * LP-151: switches between the default collapsed/icon sidebar (below) and
+ * the classic full-width sidebar — kept visible in both modes, unlike the
+ * LP-092 expand/collapse-all controls above, which only do anything once
+ * the sidebar is expanded.
+ */
+.lp-admin__sidebar-mode {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lp-admin__sidebar-mode-toggle {
+    padding: 0.15rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--lp-admin-radius);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lp-admin__sidebar-mode-toggle:hover,
+.lp-admin__sidebar-mode-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.lp-admin__sidebar-mode-toggle:focus-visible {
+    outline: 2px solid var(--lp-admin-accent);
+    outline-offset: 1px;
+}
+
 .lp-admin__content {
     flex: 1;
     padding: 2rem;
     min-width: 0;
+    /*
+     * LP-151: contains every descendant's own z-index (e.g. the Themes
+     * screen's .lp-theme-card__select checkbox, z-index: 1) inside this
+     * element's own stacking context, rather than letting it float all
+     * the way up to compete with .lp-admin__sidebar's z-index: 1 (see
+     * that rule's own comment) at the root stacking context. Without
+     * this, a descendant here with ANY non-auto z-index — nothing to do
+     * with the sidebar — could still end up tied with, and by document
+     * order win against, the sidebar's stacking context, since neither
+     * .lp-admin__content nor .lp-admin__shell was otherwise a real
+     * stacking context for it to be scoped inside.
+     */
+    position: relative;
+    z-index: 0;
 }
 
 .lp-admin__title {
@@ -602,6 +677,113 @@ body.lp-admin-login {
 
     .lp-admin__content {
         padding: 1.25rem;
+    }
+
+    /*
+     * LP-151's collapsed/icon sidebar + flyout submenus are a desktop-only
+     * mode (gated to min-width: 783px below) — hover-driven flyouts have
+     * no touch equivalent, and LP-096's off-canvas drawer already shows
+     * the full classic sidebar here regardless of the desktop toggle. The
+     * toggle itself would do nothing on this breakpoint, so it's hidden
+     * rather than shown disabled.
+     */
+    .lp-admin__sidebar-mode {
+        display: none;
+    }
+}
+
+/*
+ * LP-151: classic WordPress-style collapsed/icon sidebar with flyout
+ * submenus, the default desktop layout (a user opts back into the full
+ * sidebar above via .lp-admin__sidebar-mode-toggle, remembered per-browser
+ * in localStorage — see admin/assets/js/sidebar-mode.js — so this is
+ * everything that applies when that choice is absent or "collapsed").
+ * Scoped to min-width: 783px so it never fights LP-096's mobile drawer.
+ *
+ * The flyout submenu itself is `position: fixed` rather than absolutely
+ * positioned within its <li> — .lp-admin__sidebar/.lp-admin__nav are
+ * independently scrollable (see .lp-admin__nav's own comment above), and
+ * a scrolling ancestor clips anything absolutely positioned outside its
+ * box on the cross axis, which would otherwise cut the flyout off at the
+ * sidebar's right edge. Fixed positioning escapes that; its `top` is set
+ * to match the trigger row by admin/assets/js/flyout-nav.js on
+ * hover/focus, since CSS alone has no way to read an element's position.
+ */
+@media (min-width: 783px) {
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__sidebar {
+        width: 64px;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__brand {
+        padding: 1.25rem 0.5rem;
+        text-align: center;
+        position: relative;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__brand::before {
+        content: "LP";
+        font-weight: 700;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__brand-label,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__version,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__site-link,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-toggle-all,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-toggle,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__user-name {
+        display: none;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__user-row {
+        justify-content: center;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > a,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a {
+        justify-content: center;
+        padding: 0.65rem 0.25rem;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > a > .lp-admin__nav-icon,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a > .lp-admin__nav-icon {
+        display: inline-block;
+        margin-right: 0;
+        font-size: 1.1rem;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent {
+        position: relative;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent > .lp-admin__nav-submenu {
+        display: none;
+        position: fixed;
+        left: 64px;
+        top: 0;
+        min-width: 200px;
+        padding: 0.5rem 0;
+        background: var(--lp-admin-sidebar-bg);
+        border-radius: 0 var(--lp-admin-radius) var(--lp-admin-radius) 0;
+        box-shadow: var(--lp-admin-shadow-hover);
+        z-index: 300;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent:hover > .lp-admin__nav-submenu,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent:focus-within > .lp-admin__nav-submenu {
+        display: block;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-submenu .lp-admin__nav-item a {
+        padding-left: 1rem;
     }
 }
 

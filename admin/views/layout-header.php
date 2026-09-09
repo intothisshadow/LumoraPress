@@ -59,7 +59,7 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
 <div class="lp-admin__shell">
     <aside class="lp-admin__sidebar" id="lp-admin-mobile-sidebar">
         <div class="lp-admin__brand">
-            Lumora Press
+            <span class="lp-admin__brand-label">Lumora Press</span>
             <span class="lp-admin__version"><?= esc_html((string) $version['version']) ?></span>
         </div>
         <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
@@ -76,7 +76,7 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
                     <?php if (isset($item['children'])): ?>
                         <li class="lp-admin__nav-item lp-admin__nav-item--parent<?= $isParentActive ? ' is-active is-open' : '' ?>" data-menu-slug="<?= esc_attr($slug) ?>">
                             <span class="lp-admin__nav-parent-row">
-                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>"><?= esc_html($item['label']) ?></a>
+                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span></a>
                                 <button
                                     type="button"
                                     class="lp-admin__nav-toggle"
@@ -100,12 +100,16 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
                         </li>
                     <?php else: ?>
                         <li class="lp-admin__nav-item<?= $isParentActive ? ' is-active' : '' ?>">
-                            <a href="<?= esc_url(admin_url($slug)) ?>"><?= esc_html($item['label']) ?></a>
+                            <a href="<?= esc_url(admin_url($slug)) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span></a>
                         </li>
                     <?php endif; ?>
                 <?php endforeach; ?>
             </ul>
         </nav>
+        <?php /* LP-151: switches between the default collapsed/icon sidebar with flyout submenus and the classic full-width sidebar (LP-092's in-place expand/collapse) — see admin.css's `html:not(.lp-admin-sidebar-expanded)` rules and admin/assets/js/sidebar-mode.js. Always visible in both modes, unlike the LP-092 controls below which only make sense in the expanded layout. */ ?>
+        <div class="lp-admin__sidebar-mode">
+            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle aria-pressed="false" aria-label="Expand sidebar">&raquo;</button>
+        </div>
         <div class="lp-admin__user">
             <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
             <div class="lp-admin__user-row">
