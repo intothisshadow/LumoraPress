@@ -408,10 +408,10 @@ if ($wordPressImporterActive) {
         header('Content-Disposition: attachment; filename="redirect-mapping-' . date('Y-m-d') . '.csv"');
 
         $output = fopen('php://output', 'wb');
-        fputcsv($output, ['Old URL', 'New URL']);
+        fputcsv($output, ['Old URL', 'New URL'], ',', '"', '\\');
 
         foreach ($redirectMappingReport as $row) {
-            fputcsv($output, [$row['sourcePath'], $row['targetUrl']]);
+            fputcsv($output, [$row['sourcePath'], $row['targetUrl']], ',', '"', '\\');
         }
 
         fclose($output);
