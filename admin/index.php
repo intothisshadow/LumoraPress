@@ -290,12 +290,13 @@ $dummyContentActive = in_array('dummy-content', $activePlugins, true);
 // WordPress Importer gates only the content of maintenance/import.php; the
 // menu entry stays so an admin can find it to activate the plugin.
 $wordPressImporterActive = in_array('wordpress-importer', $activePlugins, true);
-// Downloads/Contact Forms/Lumora Shield/Visitor Stats/Gallery Shortcodes
-// each get a real top-level menu entry — their admin screens are their
-// entire reason to exist, so the whole entry hides while inactive.
+// Downloads/Contact Forms/Visitor Stats/Gallery Shortcodes each get a real
+// top-level menu entry — their admin screens are their entire reason to
+// exist, so the whole entry hides while inactive. Lumora Shield has no
+// top-level entry of its own (LP-153): its Settings/Logs screens live
+// under Settings > Security and Maintenance > Logs instead.
 $downloadsActive = in_array('downloads', $activePlugins, true);
 $contactFormsActive = in_array('contact-forms', $activePlugins, true);
-$lumoraShieldActive = in_array('lumora-shield', $activePlugins, true);
 $visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
 $galleryShortcodesActive = in_array('lumora-gallery-shortcodes', $activePlugins, true);
 // Emoji Picker's settings screen is gated as a nested child (like Font
@@ -363,18 +364,6 @@ $menu = [
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'manage_options'],
                 'submissions' => ['label' => 'Submissions', 'icon' => '📬', 'capability' => 'manage_options'],
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
-            ],
-        ],
-    ] : []),
-    ...($lumoraShieldActive ? [
-        'lumora-shield' => [
-            'label' => 'Lumora Shield',
-            'icon' => '🛡️',
-            'capability' => 'manage_options',
-            'default_child' => 'settings',
-            'children' => [
-                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
-                'logs' => ['label' => 'Logs', 'icon' => '📋', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),
@@ -475,6 +464,20 @@ $legacyRedirects = [
 
 if ($subpage === null && isset($legacyRedirects[$page])) {
     header('Location: ' . admin_url($legacyRedirects[$page]));
+    exit;
+}
+
+// Preserves bookmarked/linked URLs from before Lumora Shield's own
+// top-level menu entry was folded into Settings > Security and
+// Maintenance > Logs (LP-153) — unlike $legacyRedirects above, these are
+// full page/subpage pairs rather than a bare top-level page rename.
+$legacyRouteRedirects = [
+    'lumora-shield/settings' => 'settings/security?tab=lumora-shield',
+    'lumora-shield/logs' => 'maintenance/logs#enumeration-attempts',
+];
+
+if (isset($legacyRouteRedirects["{$page}/{$subpage}"])) {
+    header('Location: ' . admin_url($legacyRouteRedirects["{$page}/{$subpage}"]));
     exit;
 }
 

@@ -22,11 +22,13 @@ All notable changes to Lumora Press are documented in this file.
 ### Changed
 
 - Lumora Classic theme: removed the "Subscribe via RSS" link from the site footer.
+- Lumora Shield admin location (LP-153): the plugin no longer has its own top-level sidebar menu item — its Settings screen is now a "Lumora Shield" tab on Settings &rsaquo; Security (alongside a "General" tab holding the existing login lockout/spam protection/trusted image sources/user enumeration content), and its Logs screen is now a "Blocked Enumeration Attempts" section on Maintenance &rsaquo; Logs, alongside the existing Application Errors and Login Attempts sections. The old `/admin/lumora-shield/settings` and `/admin/lumora-shield/logs` URLs redirect to their new locations.
 
 ### Fixed
 
 - Comments feed/widget content leak (LP-013): `CommentService::recentApproved()` (the site-wide `/comments/feed` and the Recent Comments widget) only checked a comment's own status, never whether its post/page was actually publicly visible — trashing a post doesn't delete its comments, so a trashed post's approved comments kept surfacing there, and a Private-visibility post's approved comments leaked the same way even though the post itself is correctly gated everywhere else. Fixed by requiring the joined post/page be published and public, the same condition every other public post/page listing already enforces.
 - Lumora Classic theme: footer widget titles were unreadable — `.lp-widget__title` had no color of its own, so on the footer's dark background it inherited the footer's light text color even though the widget card itself keeps its normal light background. Footer widget titles now use the same text color as the rest of the widget card.
+- Lumora Shield settings save (LP-153): its four settings forms (Stop User Enumeration/Monitoring/Comment Analysis/Contact Form Protection) shared one CSRF action name, so only the last-rendered form's Save button actually took effect — saving any of the first three silently reverted on reload. Each form now verifies against its own CSRF action.
 
 ## [0.11.0] — 2026-09-07
 

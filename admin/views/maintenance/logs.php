@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Maintenance > Logs screen: the application error log and recorded login attempts (LP-114).
+ * The admin Maintenance > Logs screen: the application error log, recorded login attempts, and (while Lumora Shield is active) blocked enumeration attempts (LP-114/LP-153).
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -16,11 +16,17 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Plugins\LumoraShield\LumoraShieldService;
 
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
 }
+
+// The class is only loaded while the plugin is active, so this doubles as
+// the "is Lumora Shield active" check, matching settings/security.php's
+// own use of this same technique.
+$lumoraShieldActive = class_exists(LumoraShieldService::class, false);
 
 $error = null;
 
@@ -69,6 +75,27 @@ $formatBytes = static function (int $bytes): string {
 $lockoutStatusByIp = [];
 $lockoutStatus = static function (string $ip) use ($kernel, &$lockoutStatusByIp): int {
     return $lockoutStatusByIp[$ip] ??= $kernel->loginThrottle->secondsUntilUnlocked($ip);
+};
+
+$shieldLimit = max(25, min(500, (int) ($_GET['shield_limit'] ?? 25)));
+$shieldAttempts = $lumoraShieldActive ? LumoraShieldService::instance()->recentEnumerationAttempts($shieldLimit) : [];
+
+$shieldReasonLabels = [
+    'unknown_user' => 'Unknown username',
+    'zero_posts' => 'No published posts',
+    'hidden_by_setting' => 'Hidden (setting)',
+];
+
+// requested_slug repeats across rows for a single brute-force run — same
+// per-IP-memoized idiom this file's own $lockoutStatus already uses,
+// applied here to the attempt count instead.
+$shieldCountByIp = [];
+$shieldAttemptCountForIp = static function (string $ip) use ($lumoraShieldActive, &$shieldCountByIp): int {
+    if (!$lumoraShieldActive) {
+        return 0;
+    }
+
+    return $shieldCountByIp[$ip] ??= LumoraShieldService::instance()->countEnumerationAttemptsForIp($ip, 3600);
 };
 ?>
 <h1 class="lp-admin__title">Logs</h1>
@@ -144,7 +171,7 @@ $lockoutStatus = static function (string $ip) use ($kernel, &$lockoutStatusByIp)
 
             <?php if ($errorTotal > count($errorEntries)): ?>
                 <p>
-                    <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . ($errorLimit + 25) . '&login_limit=' . $loginLimit . '#application-errors') ?>">
+                    <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . ($errorLimit + 25) . '&login_limit=' . $loginLimit . '&shield_limit=' . $shieldLimit . '#application-errors') ?>">
                         Show 25 more
                     </a>
                 </p>
@@ -195,10 +222,58 @@ $lockoutStatus = static function (string $ip) use ($kernel, &$lockoutStatusByIp)
 
         <?php if (count($loginAttempts) >= $loginLimit): ?>
             <p>
-                <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . ($loginLimit + 25) . '#login-attempts') ?>">
+                <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . ($loginLimit + 25) . '&shield_limit=' . $shieldLimit . '#login-attempts') ?>">
                     Show 25 more
                 </a>
             </p>
         <?php endif; ?>
     <?php endif; ?>
 </section>
+
+<?php if ($lumoraShieldActive): ?>
+<section class="lp-admin__panel" id="enumeration-attempts">
+    <h2>Blocked Enumeration Attempts</h2>
+    <p class="lp-field__hint">
+        Every blocked <code>/author/{slug}</code> request, newest first —
+        an unknown username, a real author with no published posts, or an
+        archive hidden by the setting on
+        <a href="<?= esc_url(admin_url('settings/security') . '?tab=lumora-shield#monitoring') ?>">Settings &rsaquo; Security &rsaquo; Lumora Shield</a>.
+        Logging, retention, and email alerts are also configured there.
+    </p>
+
+    <?php if ($shieldAttempts === []): ?>
+        <p class="lp-admin__widget-placeholder">No blocked enumeration attempts have been recorded.</p>
+    <?php else: ?>
+        <table class="lp-table">
+            <thead>
+                <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">IP Address</th>
+                    <th scope="col">Requested Slug</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Attempts (past hour)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($shieldAttempts as $attempt): ?>
+                    <tr>
+                        <td><?= esc_html($attempt['attemptedAt']) ?></td>
+                        <td><code><?= esc_html($attempt['ipAddress']) ?></code></td>
+                        <td><code><?= esc_html($attempt['requestedSlug']) ?></code></td>
+                        <td><?= esc_html($shieldReasonLabels[$attempt['reason']] ?? $attempt['reason']) ?></td>
+                        <td><?= esc_html((string) $shieldAttemptCountForIp($attempt['ipAddress'])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <?php if (count($shieldAttempts) >= $shieldLimit): ?>
+            <p>
+                <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . $loginLimit . '&shield_limit=' . ($shieldLimit + 25) . '#enumeration-attempts') ?>">
+                    Show 25 more
+                </a>
+            </p>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
+<?php endif; ?>

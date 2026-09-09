@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Settings > Security screen: login throttling and related security options.
+ * The admin Settings > Security screen: login throttling, spam protection, and (while active) Lumora Shield's own settings tab.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -22,6 +22,11 @@ if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
 }
+
+// The class is only loaded while the plugin is active, so this doubles as
+// the "is Lumora Shield active" check the same way settings.php/logs.php
+// used before their move here.
+$lumoraShieldActive = class_exists(LumoraShieldService::class, false);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -65,6 +70,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('settings/security') . '?trusted_image_origins_saved=1');
         exit;
     }
+
+    // Four separate forms share this one handler — each needs its own CSRF
+    // action name (csrf_action tells verify() which one to check against),
+    // since Csrf::field() overwrites the session's token per action name
+    // and all four forms rendering on one page would otherwise leave only
+    // the last-rendered form's token actually valid.
+    $shieldCsrfActions = [
+        'lumora_shield_settings_enumeration',
+        'lumora_shield_settings_monitoring',
+        'lumora_shield_settings_comment_analysis',
+        'lumora_shield_settings_contact_form',
+    ];
+    $shieldCsrfAction = is_string($_POST['csrf_action'] ?? null) ? $_POST['csrf_action'] : '';
+
+    if ($lumoraShieldActive && $form === 'lumora_shield_settings' && in_array($shieldCsrfAction, $shieldCsrfActions, true) && Csrf::verify($shieldCsrfAction, $token)) {
+        LumoraShieldService::instance()->saveSettings([
+            'hide_author_archives' => isset($_POST['hide_author_archives']),
+            'enable_logging' => isset($_POST['enable_logging']),
+            'log_retention_days' => max(1, (int) ($_POST['log_retention_days'] ?? 30)),
+            'notify_on_repeated_attempts' => isset($_POST['notify_on_repeated_attempts']),
+            'notify_threshold' => max(1, (int) ($_POST['notify_threshold'] ?? 10)),
+            'enable_comment_analysis' => isset($_POST['enable_comment_analysis']),
+            'enable_contact_form_analysis' => isset($_POST['enable_contact_form_analysis']),
+        ]);
+
+        header('Location: ' . admin_url('settings/security') . '?tab=lumora-shield&shield_saved=1');
+        exit;
+    }
 }
 
 $maxAttempts = (int) $kernel->config->option('login_max_attempts', '5');
@@ -73,6 +106,15 @@ $lockoutMinutes = (int) round(((int) $kernel->config->option('login_lockout_seco
 $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) === '1';
 $akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key', '')) !== '';
 $trustedImageOrigins = (string) $kernel->config->option('trusted_image_origins', '');
+$shieldSettings = $lumoraShieldActive ? LumoraShieldService::instance()->settings() : null;
+
+$tabs = ['general' => 'General'];
+
+if ($lumoraShieldActive) {
+    $tabs['lumora-shield'] = 'Lumora Shield';
+}
+
+$activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'] : 'general';
 ?>
 <h1 class="lp-admin__title">Security</h1>
 
@@ -94,124 +136,303 @@ $trustedImageOrigins = (string) $kernel->config->option('trusted_image_origins',
     <div class="lp-alert lp-alert--error">Akismet API key is invalid, or Akismet could not be reached.</div>
 <?php endif; ?>
 
-<section class="lp-admin__panel">
-    <h2>Login Lockout</h2>
-    <p class="lp-field__hint">Brute-force protection, keyed by IP address — a failed login always shows a generic "Invalid username or password" message, never revealing whether the username exists.</p>
-    <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
-        <?= Csrf::field('security_settings') ?>
-        <input type="hidden" name="form" value="security_settings">
+<?php if (isset($_GET['shield_saved'])): ?>
+    <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
 
-        <p class="lp-field">
-            <label for="login-max-attempts">Failed attempts before lockout</label>
-            <input type="number" id="login-max-attempts" name="login_max_attempts" min="1" value="<?= esc_attr((string) $maxAttempts) ?>">
-        </p>
+<div class="lp-tabs">
+    <div class="lp-tabs__list" role="tablist" aria-label="Security section">
+        <?php foreach ($tabs as $tabKey => $tabLabel): ?>
+            <button type="button" class="lp-tabs__tab" id="lp-tab-<?= esc_attr($tabKey) ?>" role="tab" aria-selected="<?= $activeTab === $tabKey ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-<?= esc_attr($tabKey) ?>" tabindex="<?= $activeTab === $tabKey ? '0' : '-1' ?>"><?= esc_html($tabLabel) ?></button>
+        <?php endforeach; ?>
+    </div>
 
-        <p class="lp-field">
-            <label for="login-window-minutes">Attempt window (minutes)</label>
-            <input type="number" id="login-window-minutes" name="login_window_minutes" min="1" value="<?= esc_attr((string) $windowMinutes) ?>">
-            <span class="lp-field__hint">Failed attempts older than this are no longer counted toward the threshold above.</span>
-        </p>
+    <div class="lp-tabs__panel" id="lp-tabpanel-general" role="tabpanel" aria-labelledby="lp-tab-general"<?= $activeTab === 'general' ? '' : ' hidden' ?>>
+        <section class="lp-admin__panel">
+            <h2>Login Lockout</h2>
+            <p class="lp-field__hint">Brute-force protection, keyed by IP address — a failed login always shows a generic "Invalid username or password" message, never revealing whether the username exists.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('security_settings') ?>
+                <input type="hidden" name="form" value="security_settings">
 
-        <p class="lp-field">
-            <label for="login-lockout-minutes">Lockout duration (minutes)</label>
-            <input type="number" id="login-lockout-minutes" name="login_lockout_minutes" min="1" value="<?= esc_attr((string) $lockoutMinutes) ?>">
-            <span class="lp-field__hint">How long an IP address is blocked from attempting another login once locked out.</span>
-        </p>
+                <p class="lp-field">
+                    <label for="login-max-attempts">Failed attempts before lockout</label>
+                    <input type="number" id="login-max-attempts" name="login_max_attempts" min="1" value="<?= esc_attr((string) $maxAttempts) ?>">
+                </p>
 
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
+                <p class="lp-field">
+                    <label for="login-window-minutes">Attempt window (minutes)</label>
+                    <input type="number" id="login-window-minutes" name="login_window_minutes" min="1" value="<?= esc_attr((string) $windowMinutes) ?>">
+                    <span class="lp-field__hint">Failed attempts older than this are no longer counted toward the threshold above.</span>
+                </p>
 
-<section class="lp-admin__panel">
-    <h2>Spam Protection (Akismet)</h2>
-    <p class="lp-field__hint">Optional. Comments work exactly as before if this is left off — no Akismet account is ever required.</p>
-    <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
-        <?= Csrf::field('akismet_settings') ?>
-        <input type="hidden" name="form" value="akismet_settings">
+                <p class="lp-field">
+                    <label for="login-lockout-minutes">Lockout duration (minutes)</label>
+                    <input type="number" id="login-lockout-minutes" name="login_lockout_minutes" min="1" value="<?= esc_attr((string) $lockoutMinutes) ?>">
+                    <span class="lp-field__hint">How long an IP address is blocked from attempting another login once locked out.</span>
+                </p>
 
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="akismet_enabled" value="1" <?= $akismetEnabled ? 'checked' : '' ?>>
-            Check new comments with Akismet
-        </label>
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
 
-        <p class="lp-field">
-            <label for="akismet-api-key">API key</label>
-            <input type="password" id="akismet-api-key" name="akismet_api_key" placeholder="Not set" autocomplete="off">
-            <span class="lp-field__hint">
-                <?php if ($akismetKeyConfigured): ?>
-                    A key is currently configured — this field always shows blank for security, not because the key is missing. Leave it blank to keep that key unchanged, or type a new one to replace it.
-                <?php else: ?>
-                    No key is currently configured. Leave blank to save without one, or type your Akismet API key.
-                <?php endif; ?>
-            </span>
-        </p>
+        <section class="lp-admin__panel">
+            <h2>Spam Protection (Akismet)</h2>
+            <p class="lp-field__hint">Optional. Comments work exactly as before if this is left off — no Akismet account is ever required.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('akismet_settings') ?>
+                <input type="hidden" name="form" value="akismet_settings">
 
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-    <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>" class="lp-admin__inline-form">
-        <?= Csrf::field('akismet_verify') ?>
-        <input type="hidden" name="form" value="akismet_verify">
-        <button type="submit" class="lp-button">Verify Key</button>
-    </form>
-</section>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="akismet_enabled" value="1" <?= $akismetEnabled ? 'checked' : '' ?>>
+                    Check new comments with Akismet
+                </label>
 
-<section class="lp-admin__panel">
-    <h2>Trusted Image Sources</h2>
-    <p class="lp-field__hint">
-        Optional. Content that embeds an <code>&lt;img&gt;</code> pointing
-        at an external host — a personal gallery or CDN you run yourself,
-        for example — won't display by default: the site's Content
-        Security Policy only allows images from this site's own domain,
-        and a blocked image fails silently in the visitor's browser with
-        nothing in any server log to explain why. List any external
-        origins you trust below, one per line
-        (<code>https://gallery.example.com</code>), to allow images from
-        them through.
-    </p>
-    <p class="lp-field__hint">
-        An Administrator or Editor saving a post or page never needs to
-        do this by hand for their own content — any external image
-        origin their saved content actually uses is added here
-        automatically. This list is where those origins land, and you
-        can remove one at any time.
-    </p>
-    <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
-        <?= Csrf::field('trusted_image_origins') ?>
-        <input type="hidden" name="form" value="trusted_image_origins">
+                <p class="lp-field">
+                    <label for="akismet-api-key">API key</label>
+                    <input type="password" id="akismet-api-key" name="akismet_api_key" placeholder="Not set" autocomplete="off">
+                    <span class="lp-field__hint">
+                        <?php if ($akismetKeyConfigured): ?>
+                            A key is currently configured — this field always shows blank for security, not because the key is missing. Leave it blank to keep that key unchanged, or type a new one to replace it.
+                        <?php else: ?>
+                            No key is currently configured. Leave blank to save without one, or type your Akismet API key.
+                        <?php endif; ?>
+                    </span>
+                </p>
 
-        <p class="lp-field">
-            <label for="trusted-image-origins">Trusted origins</label>
-            <textarea id="trusted-image-origins" name="trusted_image_origins" rows="4" placeholder="https://gallery.example.com"><?= esc_html($trustedImageOrigins) ?></textarea>
-            <span class="lp-field__hint">One per line. Scheme and host only — no path (<code>https://gallery.example.com</code>, not <code>https://gallery.example.com/albums/</code>). A line that doesn't match this is dropped when saved.</span>
-        </p>
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>" class="lp-admin__inline-form">
+                <?= Csrf::field('akismet_verify') ?>
+                <input type="hidden" name="form" value="akismet_verify">
+                <button type="submit" class="lp-button">Verify Key</button>
+            </form>
+        </section>
 
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
+        <section class="lp-admin__panel">
+            <h2>Trusted Image Sources</h2>
+            <p class="lp-field__hint">
+                Optional. Content that embeds an <code>&lt;img&gt;</code> pointing
+                at an external host — a personal gallery or CDN you run yourself,
+                for example — won't display by default: the site's Content
+                Security Policy only allows images from this site's own domain,
+                and a blocked image fails silently in the visitor's browser with
+                nothing in any server log to explain why. List any external
+                origins you trust below, one per line
+                (<code>https://gallery.example.com</code>), to allow images from
+                them through.
+            </p>
+            <p class="lp-field__hint">
+                An Administrator or Editor saving a post or page never needs to
+                do this by hand for their own content — any external image
+                origin their saved content actually uses is added here
+                automatically. This list is where those origins land, and you
+                can remove one at any time.
+            </p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('trusted_image_origins') ?>
+                <input type="hidden" name="form" value="trusted_image_origins">
 
-<?php $lumoraShieldActive = class_exists(LumoraShieldService::class, false); ?>
-<section class="lp-admin__panel">
-    <h2>User Enumeration</h2>
-    <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
-        <li>No XML-RPC endpoint.</li>
-        <li>The "Forgot password?" flow always shows the same "if that address is registered, we sent a link" response, whether or not the email exists, and is itself IP-rate-limited to blunt large-scale probing.</li>
-        <li>No REST API endpoint that lists or exposes user accounts.</li>
-        <li>The login form already gives a single generic error for both a wrong username and a wrong password.</li>
-        <li>The public author archive (<code>/author/{slug}</code>) 404s an author with zero published posts exactly like a nonexistent username.</li>
-    </ul>
+                <p class="lp-field">
+                    <label for="trusted-image-origins">Trusted origins</label>
+                    <textarea id="trusted-image-origins" name="trusted_image_origins" rows="4" placeholder="https://gallery.example.com"><?= esc_html($trustedImageOrigins) ?></textarea>
+                    <span class="lp-field__hint">One per line. Scheme and host only — no path (<code>https://gallery.example.com</code>, not <code>https://gallery.example.com/albums/</code>). A line that doesn't match this is dropped when saved.</span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>User Enumeration</h2>
+            <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
+                <li>No XML-RPC endpoint.</li>
+                <li>The "Forgot password?" flow always shows the same "if that address is registered, we sent a link" response, whether or not the email exists, and is itself IP-rate-limited to blunt large-scale probing.</li>
+                <li>No REST API endpoint that lists or exposes user accounts.</li>
+                <li>The login form already gives a single generic error for both a wrong username and a wrong password.</li>
+                <li>The public author archive (<code>/author/{slug}</code>) 404s an author with zero published posts exactly like a nonexistent username.</li>
+            </ul>
+            <?php if ($lumoraShieldActive): ?>
+                <p class="lp-field__hint">
+                    The Lumora Shield plugin adds an optional stronger setting —
+                    see the <a href="<?= esc_url(admin_url('settings/security') . '?tab=lumora-shield#stop-user-enumeration') ?>">Lumora Shield tab</a> above.
+                </p>
+            <?php endif; ?>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Always On</h2>
+            <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
+                <li>CSRF protection on every administrative form.</li>
+                <li>Secure, HttpOnly session cookies.</li>
+                <li>Submission timing and honeypot checks on the public comment form, plus optional Akismet spam-checking (Spam Protection panel above).</li>
+            </ul>
+        </section>
+    </div>
+
     <?php if ($lumoraShieldActive): ?>
-        <p class="lp-field__hint">
-            The Lumora Shield plugin adds an optional stronger setting —
-            see <a href="<?= esc_url(admin_url('lumora-shield/settings')) ?>">Lumora Shield &rsaquo; Settings</a>.
-        </p>
-    <?php endif; ?>
-</section>
+    <div class="lp-tabs__panel" id="lp-tabpanel-lumora-shield" role="tabpanel" aria-labelledby="lp-tab-lumora-shield"<?= $activeTab === 'lumora-shield' ? '' : ' hidden' ?>>
+        <section class="lp-admin__panel" id="stop-user-enumeration">
+            <h2>Stop User Enumeration</h2>
+            <p class="lp-field__hint">
+                The public author archive (<code>/author/{slug}</code>) already
+                404s an author with zero published posts exactly like a
+                nonexistent username — that fix has no downside, so it's always
+                on, no setting needed. The one real choice left is below.
+            </p>
 
-<section class="lp-admin__panel">
-    <h2>Always On</h2>
-    <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
-        <li>CSRF protection on every administrative form.</li>
-        <li>Secure, HttpOnly session cookies.</li>
-        <li>Submission timing and honeypot checks on the public comment form, plus optional Akismet spam-checking (Spam Protection panel above).</li>
-    </ul>
-</section>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">
+                <?= Csrf::field('lumora_shield_settings_enumeration') ?>
+                <input type="hidden" name="form" value="lumora_shield_settings">
+                <input type="hidden" name="csrf_action" value="lumora_shield_settings_enumeration">
+                <input type="hidden" name="enable_logging" value="<?= $shieldSettings['enable_logging'] ? '1' : '' ?>">
+                <input type="hidden" name="log_retention_days" value="<?= (int) $shieldSettings['log_retention_days'] ?>">
+                <input type="hidden" name="notify_on_repeated_attempts" value="<?= $shieldSettings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+                <input type="hidden" name="notify_threshold" value="<?= (int) $shieldSettings['notify_threshold'] ?>">
+                <input type="hidden" name="enable_comment_analysis" value="<?= $shieldSettings['enable_comment_analysis'] ? '1' : '' ?>">
+                <input type="hidden" name="enable_contact_form_analysis" value="<?= $shieldSettings['enable_contact_form_analysis'] ? '1' : '' ?>">
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="hide_author_archives" value="1" <?= $shieldSettings['hide_author_archives'] ? 'checked' : '' ?>>
+                        Hide author archives entirely
+                    </label>
+                    <span class="lp-field__hint">
+                        Every <code>/author/{slug}</code> URL 404s, regardless of
+                        how many posts that person has published — including
+                        real authors who have actually published something. This
+                        removes a public feature (visitors can no longer browse
+                        "everything by this author"), so it's off by default;
+                        most sites don't need it.
+                    </span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel" id="monitoring">
+            <h2>Monitoring</h2>
+            <p class="lp-field__hint">
+                Records every blocked author-archive request (unknown username,
+                zero-post author, or hidden by the setting above) — see
+                <a href="<?= esc_url(admin_url('maintenance/logs') . '#enumeration-attempts') ?>">Maintenance &rsaquo; Logs</a>.
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">
+                <?= Csrf::field('lumora_shield_settings_monitoring') ?>
+                <input type="hidden" name="form" value="lumora_shield_settings">
+                <input type="hidden" name="csrf_action" value="lumora_shield_settings_monitoring">
+                <input type="hidden" name="hide_author_archives" value="<?= $shieldSettings['hide_author_archives'] ? '1' : '' ?>">
+                <input type="hidden" name="enable_comment_analysis" value="<?= $shieldSettings['enable_comment_analysis'] ? '1' : '' ?>">
+                <input type="hidden" name="enable_contact_form_analysis" value="<?= $shieldSettings['enable_contact_form_analysis'] ? '1' : '' ?>">
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="enable_logging" value="1" <?= $shieldSettings['enable_logging'] ? 'checked' : '' ?>>
+                        Log blocked enumeration attempts
+                    </label>
+                </p>
+
+                <p class="lp-field">
+                    <label for="log-retention-days">Log retention (days)</label>
+                    <input type="number" id="log-retention-days" name="log_retention_days" min="1" value="<?= esc_attr((string) $shieldSettings['log_retention_days']) ?>">
+                    <span class="lp-field__hint">Attempts older than this are removed automatically.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="notify_on_repeated_attempts" value="1" <?= $shieldSettings['notify_on_repeated_attempts'] ? 'checked' : '' ?>>
+                        Email the site admin on repeated attempts from one IP
+                    </label>
+                    <span class="lp-field__hint">
+                        Sent to the address in Settings &rsaquo; General, at most
+                        once per hour per IP, once that IP crosses the attempt
+                        threshold below.
+                    </span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="notify-threshold">Attempt threshold</label>
+                    <input type="number" id="notify-threshold" name="notify_threshold" min="1" value="<?= esc_attr((string) $shieldSettings['notify_threshold']) ?>">
+                    <span class="lp-field__hint">Number of blocked attempts from one IP within an hour before the email above fires.</span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Comment Analysis</h2>
+            <p class="lp-field__hint">
+                Independent content and behavioral checks (excessive links,
+                excessive uppercase/punctuation, hidden Unicode characters,
+                repeated phrases, extremely short/long comments, prior spam
+                history, posting frequency, duplicate content) that push a
+                comment toward Spam via the same <code>comment_is_spam</code>
+                filter Akismet already uses. Any one check tripping is enough to
+                flag Spam — this can only push a comment <em>toward</em> Spam,
+                never un-spam one another check already flagged.
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">
+                <?= Csrf::field('lumora_shield_settings_comment_analysis') ?>
+                <input type="hidden" name="form" value="lumora_shield_settings">
+                <input type="hidden" name="csrf_action" value="lumora_shield_settings_comment_analysis">
+                <input type="hidden" name="hide_author_archives" value="<?= $shieldSettings['hide_author_archives'] ? '1' : '' ?>">
+                <input type="hidden" name="enable_logging" value="<?= $shieldSettings['enable_logging'] ? '1' : '' ?>">
+                <input type="hidden" name="log_retention_days" value="<?= (int) $shieldSettings['log_retention_days'] ?>">
+                <input type="hidden" name="notify_on_repeated_attempts" value="<?= $shieldSettings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+                <input type="hidden" name="notify_threshold" value="<?= (int) $shieldSettings['notify_threshold'] ?>">
+                <input type="hidden" name="enable_contact_form_analysis" value="<?= $shieldSettings['enable_contact_form_analysis'] ? '1' : '' ?>">
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="enable_comment_analysis" value="1" <?= $shieldSettings['enable_comment_analysis'] ? 'checked' : '' ?>>
+                        Enable Comment Analysis
+                    </label>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Contact Form Protection</h2>
+            <p class="lp-field__hint">
+                The Contact Forms plugin already has its own CSRF, honeypot,
+                submission-timing, per-IP rate limiting, optional CAPTCHA
+                (reCAPTCHA/Turnstile), and optional Akismet checks — the one gap
+                left is a content check for excessive links, uppercase,
+                punctuation, hidden Unicode characters, or unusually short/long
+                submissions. This reuses the exact same content checks Comment
+                Analysis applies to comments, run instead against every
+                submitted field value joined together, via the Contact Forms
+                plugin's own <code>contact_form_is_spam</code> filter. Only
+                applies while the Contact Forms plugin is active.
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">
+                <?= Csrf::field('lumora_shield_settings_contact_form') ?>
+                <input type="hidden" name="form" value="lumora_shield_settings">
+                <input type="hidden" name="csrf_action" value="lumora_shield_settings_contact_form">
+                <input type="hidden" name="hide_author_archives" value="<?= $shieldSettings['hide_author_archives'] ? '1' : '' ?>">
+                <input type="hidden" name="enable_logging" value="<?= $shieldSettings['enable_logging'] ? '1' : '' ?>">
+                <input type="hidden" name="log_retention_days" value="<?= (int) $shieldSettings['log_retention_days'] ?>">
+                <input type="hidden" name="notify_on_repeated_attempts" value="<?= $shieldSettings['notify_on_repeated_attempts'] ? '1' : '' ?>">
+                <input type="hidden" name="notify_threshold" value="<?= (int) $shieldSettings['notify_threshold'] ?>">
+                <input type="hidden" name="enable_comment_analysis" value="<?= $shieldSettings['enable_comment_analysis'] ? '1' : '' ?>">
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="enable_contact_form_analysis" value="1" <?= $shieldSettings['enable_contact_form_analysis'] ? 'checked' : '' ?>>
+                        Enable Contact Form Protection
+                    </label>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+            </form>
+        </section>
+    </div>
+    <?php endif; ?>
+</div>
