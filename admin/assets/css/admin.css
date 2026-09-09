@@ -778,7 +778,17 @@ body.lp-admin-login {
     }
 
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent:hover > .lp-admin__nav-submenu,
-    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent:focus-within > .lp-admin__nav-submenu {
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent:focus-within > .lp-admin__nav-submenu,
+    /*
+     * `.lp-flyout-open` (admin/assets/js/flyout-nav.js) keeps the flyout
+     * visible for a short delay after the pointer leaves the trigger row,
+     * since the flyout is `position: fixed` and physically disjoint from
+     * that row — without it, plain `:hover` closes the flyout the instant
+     * the pointer leaves the row, before it can ever reach the flyout
+     * itself. Without JS this class is never added, so `:hover` above is
+     * still what shows the flyout at all (just with the gap problem).
+     */
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent.lp-flyout-open > .lp-admin__nav-submenu {
         display: block;
     }
 
