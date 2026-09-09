@@ -53,6 +53,13 @@ final class UpdateBackupService
         private readonly array $corePaths,
         private readonly UpdateManifest $manifest,
         private readonly ?UpdateChecksumManifest $checksums = null,
+        /**
+         * Overrides gzip auto-detection. Null (the only value real
+         * callers pass) auto-detects via function_exists('gzopen'); tests
+         * pass an explicit bool to exercise the plain-.sql fallback path
+         * deterministically regardless of the host's zlib extension.
+         */
+        private readonly ?bool $useGzip = null,
     ) {
     }
 
@@ -126,25 +133,60 @@ final class UpdateBackupService
      */
     private function verifyDatabaseBackup(string $path): void
     {
-        $size = @filesize($path);
-
-        if ($size === false || $size === 0) {
-            return;
-        }
-
         $markerLength = strlen(self::STATEMENT_MARKER);
-        $handle = fopen($path, 'rb');
 
-        if ($handle === false) {
-            throw new RuntimeException('The database backup file could not be reopened for verification.');
+        // gzseek() can't seek from SEEK_END on a compressed stream, so a gzip
+        // dump is decompressed in full to check its tail rather than seeked.
+        if (str_ends_with($path, '.gz')) {
+            // An empty dump's gzip container still carries header/trailer
+            // overhead, so "empty" is judged by decompressed length here,
+            // not the raw file size the plain-.sql branch below uses.
+            $contents = $this->readGzipContents($path);
+
+            if ($contents === '') {
+                return;
+            }
+
+            $tail = substr($contents, -$markerLength);
+        } else {
+            $size = @filesize($path);
+
+            if ($size === false || $size === 0) {
+                return;
+            }
+
+            $handle = fopen($path, 'rb');
+
+            if ($handle === false) {
+                throw new RuntimeException('The database backup file could not be reopened for verification.');
+            }
+
+            $tail = fseek($handle, -$markerLength, SEEK_END) === 0 ? fread($handle, $markerLength) : false;
+            fclose($handle);
         }
-
-        $tail = fseek($handle, -$markerLength, SEEK_END) === 0 ? fread($handle, $markerLength) : false;
-        fclose($handle);
 
         if ($tail !== self::STATEMENT_MARKER) {
             throw new RuntimeException('The database backup file appears to be truncated or corrupted.');
         }
+    }
+
+    private function readGzipContents(string $path): string
+    {
+        $handle = gzopen($path, 'rb');
+
+        if ($handle === false) {
+            throw new RuntimeException('Unable to read the compressed database backup file.');
+        }
+
+        $contents = '';
+
+        while (!gzeof($handle)) {
+            $contents .= gzread($handle, 8192);
+        }
+
+        gzclose($handle);
+
+        return $contents;
     }
 
     /**
@@ -179,8 +221,8 @@ final class UpdateBackupService
             $entries[$key]['files_size'] = filesize($path) ?: 0;
         }
 
-        foreach (glob(rtrim($this->backupsPath, '/') . '/db-*.sql') ?: [] as $path) {
-            $key = $this->backupKey($path, 'db-', '.sql');
+        foreach (glob(rtrim($this->backupsPath, '/') . '/db-*.sql.gz') ?: [] as $path) {
+            $key = $this->backupKey($path, 'db-', '.sql.gz');
 
             if ($key === null) {
                 continue;
@@ -190,6 +232,21 @@ final class UpdateBackupService
             $entries[$key]['created_at'] ??= filemtime($path) ?: 0;
             $entries[$key]['database_filename'] = basename($path);
             $entries[$key]['database_size'] = filesize($path) ?: 0;
+        }
+
+        // glob('*.sql') only matches names literally ending ".sql", so a
+        // "*.sql.gz" file from the loop above is never double-counted here.
+        foreach (glob(rtrim($this->backupsPath, '/') . '/db-*.sql') ?: [] as $path) {
+            $key = $this->backupKey($path, 'db-', '.sql');
+
+            if ($key === null) {
+                continue;
+            }
+
+            $entries[$key]['version'] ??= $this->versionFromKey($key);
+            $entries[$key]['created_at'] ??= filemtime($path) ?: 0;
+            $entries[$key]['database_filename'] ??= basename($path);
+            $entries[$key]['database_size'] ??= filesize($path) ?: 0;
         }
 
         $result = [];
@@ -218,7 +275,7 @@ final class UpdateBackupService
      */
     public function restoreFilesByFilename(string $filename): void
     {
-        $this->restoreFiles($this->validatedBackupPath($filename, 'files-', '.zip'));
+        $this->restoreFiles($this->validatedBackupPath($filename, 'files-', ['.zip']));
     }
 
     /**
@@ -231,11 +288,11 @@ final class UpdateBackupService
         $basename = basename($filename);
 
         if (str_starts_with($basename, 'files-')) {
-            return $this->validatedBackupPath($filename, 'files-', '.zip');
+            return $this->validatedBackupPath($filename, 'files-', ['.zip']);
         }
 
         if (str_starts_with($basename, 'db-')) {
-            return $this->validatedBackupPath($filename, 'db-', '.sql');
+            return $this->validatedBackupPath($filename, 'db-', ['.sql.gz', '.sql']);
         }
 
         throw new RuntimeException('Invalid backup filename.');
@@ -247,7 +304,7 @@ final class UpdateBackupService
      */
     public function restoreDatabaseByFilename(string $filename): void
     {
-        $this->restoreDatabase($this->validatedBackupPath($filename, 'db-', '.sql'));
+        $this->restoreDatabase($this->validatedBackupPath($filename, 'db-', ['.sql.gz', '.sql']));
     }
 
     /**
@@ -258,11 +315,11 @@ final class UpdateBackupService
     public function deleteBackup(?string $filesFilename, ?string $databaseFilename): void
     {
         if ($filesFilename !== null) {
-            unlink($this->validatedBackupPath($filesFilename, 'files-', '.zip'));
+            unlink($this->validatedBackupPath($filesFilename, 'files-', ['.zip']));
         }
 
         if ($databaseFilename !== null) {
-            unlink($this->validatedBackupPath($databaseFilename, 'db-', '.sql'));
+            unlink($this->validatedBackupPath($databaseFilename, 'db-', ['.sql.gz', '.sql']));
         }
     }
 
@@ -336,13 +393,22 @@ final class UpdateBackupService
 
         $isFirstCall = $path === null;
 
+        // A dump's extension (and so its compression) is fixed by its first
+        // call; every later call reopens the same path, so it reads the
+        // extension back rather than re-deciding.
+        $useGzip = $isFirstCall
+            ? ($this->useGzip ?? function_exists('gzopen'))
+            : str_ends_with($path, '.gz');
+
         if ($isFirstCall) {
             $this->ensureBackupsDirectory();
-            $path = rtrim($this->backupsPath, '/') . '/db-' . $this->safeVersion($version) . '-' . date('Ymd-His') . '.sql';
+            $extension = $useGzip ? '.sql.gz' : '.sql';
+            $path = rtrim($this->backupsPath, '/') . '/db-' . $this->safeVersion($version) . '-' . date('Ymd-His') . $extension;
         }
 
         $tables = $this->prefixedTables();
-        $handle = fopen($path, $isFirstCall ? 'wb' : 'ab');
+        $mode = $isFirstCall ? 'wb' : 'ab';
+        $handle = $useGzip ? gzopen($path, $mode) : fopen($path, $mode);
 
         if ($handle === false) {
             throw new RuntimeException('Unable to create the database backup file.');
@@ -378,7 +444,7 @@ final class UpdateBackupService
 
         if ($done) {
             $this->verifyDatabaseBackup($path);
-            $this->pruneOldBackups('db-*.sql');
+            $this->pruneOldBackups($useGzip ? 'db-*.sql.gz' : 'db-*.sql');
         }
 
         return [
@@ -395,7 +461,9 @@ final class UpdateBackupService
             throw new RuntimeException('Backup file not found for database restore.');
         }
 
-        $contents = file_get_contents($backupSqlPath);
+        $contents = str_ends_with($backupSqlPath, '.gz')
+            ? $this->readGzipContents($backupSqlPath)
+            : file_get_contents($backupSqlPath);
 
         if ($contents === false) {
             throw new RuntimeException('Unable to read the database backup file.');
@@ -597,18 +665,32 @@ final class UpdateBackupService
     /**
      * Resolves a backup filename (never a full path) against
      * $backupsPath, rejecting anything that isn't a plain basename
-     * matching the expected files-/db- naming convention or that doesn't
-     * actually exist there.
+     * matching the expected files-/db- naming convention (any one of
+     * $suffixes — the db- half accepts both .sql.gz and .sql, since a
+     * host without zlib produces the latter) or that doesn't actually
+     * exist there.
+     *
+     * @param array<int, string> $suffixes
      */
-    private function validatedBackupPath(string $filename, string $prefix, string $suffix): string
+    private function validatedBackupPath(string $filename, string $prefix, array $suffixes): string
     {
         $basename = basename($filename);
 
-        if (
-            $basename !== $filename
-            || !str_starts_with($basename, $prefix)
-            || !str_ends_with($basename, $suffix)
-        ) {
+        if ($basename !== $filename || !str_starts_with($basename, $prefix)) {
+            throw new RuntimeException('Invalid backup filename.');
+        }
+
+        $matchesSuffix = false;
+
+        foreach ($suffixes as $suffix) {
+            if (str_ends_with($basename, $suffix)) {
+                $matchesSuffix = true;
+
+                break;
+            }
+        }
+
+        if (!$matchesSuffix) {
             throw new RuntimeException('Invalid backup filename.');
         }
 

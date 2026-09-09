@@ -83,7 +83,10 @@ click.
 
 If the admin panel itself becomes unreachable after a failed update,
 restore manually: unzip the most recent `storage/backups/files-*.zip` over
-the installation directory, and re-import the most recent
-`storage/backups/db-*.sql` into the database (both files are plain,
-human-readable formats — `storage/` is never web-accessible, so retrieve
-them via FTP/SFTP or your hosting file manager).
+the installation directory, and re-import the most recent database backup
+into the database — `storage/backups/db-*.sql.gz` on a server with the
+zlib extension (the default), or plain `storage/backups/db-*.sql` on one
+without it. A `.sql.gz` file needs decompressing first (`gunzip` or your
+hosting file manager's equivalent); both formats are otherwise plain,
+human-readable SQL — `storage/` is never web-accessible, so retrieve them
+via FTP/SFTP or your hosting file manager.
