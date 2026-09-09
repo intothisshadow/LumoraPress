@@ -36,8 +36,8 @@ final class ContactSubmissionService
     {
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (form_id, data, ip_address, page_url, is_read, is_spam, created_at)
-             VALUES (:form_id, :data, :ip_address, :page_url, 0, :is_spam, :created_at)',
+                (form_id, data, ip_address, page_url, is_read, is_spam, is_archived, created_at)
+             VALUES (:form_id, :data, :ip_address, :page_url, 0, :is_spam, 0, :created_at)',
             [
                 'form_id' => $formId,
                 'data' => json_encode($data) ?: '{}',
@@ -65,9 +65,12 @@ final class ContactSubmissionService
     }
 
     /**
+     * @param array{formId?: int, spamOnly?: bool, archivedOnly?: bool, search?: string, dateFrom?: string, dateTo?: string} $filters
+     *     search matches against the submission's stored field data and its
+     *     IP address. dateFrom/dateTo are 'Y-m-d' strings against created_at.
      * @return array<int, ContactSubmission>
      */
-    public function listAll(?int $formId = null, ?bool $spamOnly = null, int $limit = 100): array
+    public function listAll(?int $formId = null, ?bool $spamOnly = null, int $limit = 100, array $filters = []): array
     {
         $where = [];
         $params = [];
@@ -80,6 +83,27 @@ final class ContactSubmissionService
         if ($spamOnly !== null) {
             $where[] = 'is_spam = :is_spam';
             $params['is_spam'] = $spamOnly ? 1 : 0;
+        }
+
+        if (($filters['archivedOnly'] ?? null) !== null) {
+            $where[] = 'is_archived = :is_archived';
+            $params['is_archived'] = $filters['archivedOnly'] ? 1 : 0;
+        }
+
+        if (($filters['search'] ?? '') !== '') {
+            $where[] = '(data LIKE :search_data OR ip_address LIKE :search_ip)';
+            $params['search_data'] = '%' . $filters['search'] . '%';
+            $params['search_ip'] = '%' . $filters['search'] . '%';
+        }
+
+        if (($filters['dateFrom'] ?? '') !== '') {
+            $where[] = 'created_at >= :date_from';
+            $params['date_from'] = $filters['dateFrom'] . ' 00:00:00';
+        }
+
+        if (($filters['dateTo'] ?? '') !== '') {
+            $where[] = 'created_at <= :date_to';
+            $params['date_to'] = $filters['dateTo'] . ' 23:59:59';
         }
 
         $whereSql = $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
@@ -103,6 +127,21 @@ final class ContactSubmissionService
     public function markRead(int $id): void
     {
         $this->database->execute('UPDATE ' . $this->table() . ' SET is_read = 1 WHERE id = :id', ['id' => $id]);
+    }
+
+    public function markUnread(int $id): void
+    {
+        $this->database->execute('UPDATE ' . $this->table() . ' SET is_read = 0 WHERE id = :id', ['id' => $id]);
+    }
+
+    public function archive(int $id): void
+    {
+        $this->database->execute('UPDATE ' . $this->table() . ' SET is_archived = 1 WHERE id = :id', ['id' => $id]);
+    }
+
+    public function unarchive(int $id): void
+    {
+        $this->database->execute('UPDATE ' . $this->table() . ' SET is_archived = 0 WHERE id = :id', ['id' => $id]);
     }
 
     public function delete(int $id): bool
@@ -150,6 +189,7 @@ final class ContactSubmissionService
             pageUrl: $row['page_url'] !== null ? (string) $row['page_url'] : null,
             isRead: ((int) $row['is_read']) === 1,
             isSpam: ((int) $row['is_spam']) === 1,
+            isArchived: ((int) $row['is_archived']) === 1,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
         );
     }

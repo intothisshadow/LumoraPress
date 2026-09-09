@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\ContactForms\ContactFormService;
+use LumoraPress\Plugins\ContactForms\ContactSubmission;
 use LumoraPress\Plugins\ContactForms\ContactSubmissionService;
 
 if (!isset($kernel)) {
@@ -33,15 +34,42 @@ $submissions = new ContactSubmissionService($kernel->database, $tablePrefix);
 
 $formIdFilter = (int) ($_GET['form_id'] ?? 0);
 $statusTab = (string) ($_GET['status'] ?? '');
+$searchFilter = trim((string) ($_GET['q'] ?? ''));
+$dateFromFilter = (string) ($_GET['date_from'] ?? '');
+$dateToFilter = (string) ($_GET['date_to'] ?? '');
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $formAction = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $id = (int) ($_POST['id'] ?? 0);
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
-    $backTo = admin_url('contact-forms/submissions') . '?' . http_build_query(array_filter(['form_id' => $formIdFilter ?: null, 'status' => $statusTab ?: null]));
+    $backTo = admin_url('contact-forms/submissions') . '?' . http_build_query(array_filter([
+        'form_id' => $formIdFilter ?: null,
+        'status' => $statusTab ?: null,
+        'q' => $searchFilter ?: null,
+        'date_from' => $dateFromFilter ?: null,
+        'date_to' => $dateToFilter ?: null,
+    ]));
 
     if ($formAction === 'mark_read' && Csrf::verify('contact_submission_mark_read_' . $id, $token)) {
         $submissions->markRead($id);
+        header('Location: ' . $backTo);
+        exit;
+    }
+
+    if ($formAction === 'mark_unread' && Csrf::verify('contact_submission_mark_unread_' . $id, $token)) {
+        $submissions->markUnread($id);
+        header('Location: ' . $backTo);
+        exit;
+    }
+
+    if ($formAction === 'archive_submission' && Csrf::verify('contact_submission_archive_' . $id, $token)) {
+        $submissions->archive($id);
+        header('Location: ' . $backTo);
+        exit;
+    }
+
+    if ($formAction === 'unarchive_submission' && Csrf::verify('contact_submission_unarchive_' . $id, $token)) {
+        $submissions->unarchive($id);
         header('Location: ' . $backTo);
         exit;
     }
@@ -61,7 +89,89 @@ foreach ($allForms as $listedForm) {
 }
 
 $spamOnly = $statusTab === 'spam' ? true : ($statusTab === 'inbox' ? false : null);
-$items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOnly);
+// Archived submissions are hidden from every tab except "Archived" itself,
+// the same way archiving a message in an inbox client removes it from view
+// without deleting it.
+$archivedOnly = $statusTab === 'archived' ? true : false;
+$listFilters = [
+    'archivedOnly' => $archivedOnly,
+    'search' => $searchFilter,
+    'dateFrom' => $dateFromFilter,
+    'dateTo' => $dateToFilter,
+];
+
+// A CSV/JSON export applies the same filters as the current view but with
+// no row cap, streamed directly rather than saved to disk — the data
+// already lives in the database (see maintenance/import.php's identical
+// redirect-mapping export for the same pattern).
+$exportFormat = (string) ($_GET['export'] ?? '');
+
+if ($exportFormat === 'csv' || $exportFormat === 'json') {
+    $exportItems = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOnly, 100000, $listFilters);
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    if ($exportFormat === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="contact-form-submissions-' . date('Y-m-d') . '.csv"');
+
+        $output = fopen('php://output', 'wb');
+        $fieldKeys = [];
+
+        foreach ($exportItems as $exportItem) {
+            foreach (array_keys($exportItem->data) as $exportKey) {
+                if (!in_array($exportKey, $fieldKeys, true)) {
+                    $fieldKeys[] = $exportKey;
+                }
+            }
+        }
+
+        // PHP 8.4 deprecates fputcsv()'s implicit default $escape value
+        // (LumoraPress's error handler turns that deprecation into a fatal
+        // exception), so the escape character must be passed explicitly.
+        fputcsv($output, ['Form', 'Status', 'IP Address', 'Date', ...$fieldKeys], ',', '"', '\\');
+
+        foreach ($exportItems as $exportItem) {
+            $exportForm = $formsById[$exportItem->formId] ?? null;
+            $status = $exportItem->isSpam ? 'Spam' : ($exportItem->isArchived ? 'Archived' : ($exportItem->isRead ? 'Read' : 'Unread'));
+            $row = [
+                $exportForm?->title ?? 'Deleted form',
+                $status,
+                $exportItem->ipAddress ?? '',
+                $exportItem->createdAt->format('Y-m-d H:i:s'),
+            ];
+
+            foreach ($fieldKeys as $fieldKey) {
+                $row[] = $exportItem->data[$fieldKey] ?? '';
+            }
+
+            fputcsv($output, $row, ',', '"', '\\');
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="contact-form-submissions-' . date('Y-m-d') . '.json"');
+
+    echo json_encode(array_map(static function (ContactSubmission $exportItem) use ($formsById): array {
+        $exportForm = $formsById[$exportItem->formId] ?? null;
+
+        return [
+            'form' => $exportForm?->title ?? 'Deleted form',
+            'status' => $exportItem->isSpam ? 'spam' : ($exportItem->isArchived ? 'archived' : ($exportItem->isRead ? 'read' : 'unread')),
+            'ip_address' => $exportItem->ipAddress,
+            'date' => $exportItem->createdAt->format(DATE_ATOM),
+            'data' => $exportItem->data,
+        ];
+    }, $exportItems), JSON_PRETTY_PRINT);
+    exit;
+}
+
+$items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOnly, 100, $listFilters);
 ?>
 <h1 class="lp-admin__title">Submissions</h1>
 
@@ -71,29 +181,71 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
 
 <p class="lp-admin__filters">
     <?php
-    $tabQuery = static fn (string $tab): string => admin_url('contact-forms/submissions') . '?' . http_build_query(array_filter(['form_id' => $formIdFilter ?: null, 'status' => $tab ?: null]));
+    $tabQuery = static fn (string $tab): string => admin_url('contact-forms/submissions') . '?' . http_build_query(array_filter([
+        'form_id' => $formIdFilter ?: null,
+        'status' => $tab ?: null,
+        'q' => $searchFilter ?: null,
+        'date_from' => $dateFromFilter ?: null,
+        'date_to' => $dateToFilter ?: null,
+    ]));
     ?>
     <a href="<?= esc_url($tabQuery('')) ?>" class="<?= $statusTab === '' ? 'is-active' : '' ?>">All</a>
     <a href="<?= esc_url($tabQuery('inbox')) ?>" class="<?= $statusTab === 'inbox' ? 'is-active' : '' ?>">Inbox</a>
     <a href="<?= esc_url($tabQuery('spam')) ?>" class="<?= $statusTab === 'spam' ? 'is-active' : '' ?>">Spam</a>
+    <a href="<?= esc_url($tabQuery('archived')) ?>" class="<?= $statusTab === 'archived' ? 'is-active' : '' ?>">Archived</a>
 </p>
 
-<?php if ($allForms !== []): ?>
-    <form method="get" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__inline-form">
-        <?php if ($statusTab !== ''): ?>
-            <input type="hidden" name="status" value="<?= esc_attr($statusTab) ?>">
-        <?php endif; ?>
-        <p class="lp-field">
-            <label for="submissions-form-filter">Form</label>
-            <select id="submissions-form-filter" name="form_id" onchange="this.form.requestSubmit()">
-                <option value="0">All forms</option>
-                <?php foreach ($allForms as $filterForm): ?>
-                    <option value="<?= (int) $filterForm->id ?>" <?= $formIdFilter === $filterForm->id ? 'selected' : '' ?>><?= esc_html($filterForm->title) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </p>
-    </form>
-<?php endif; ?>
+<section class="lp-admin__panel">
+    <details class="lp-admin__collapsible" <?= ($searchFilter !== '' || $dateFromFilter !== '' || $dateToFilter !== '') ? 'open' : '' ?>>
+        <summary>Search &amp; Filter</summary>
+        <div class="lp-admin__collapsible__body">
+            <form method="get" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__filter-form">
+                <?php if ($statusTab !== ''): ?>
+                    <input type="hidden" name="status" value="<?= esc_attr($statusTab) ?>">
+                <?php endif; ?>
+                <p class="lp-field">
+                    <label for="submissions-q">Search</label>
+                    <input type="text" id="submissions-q" name="q" value="<?= esc_attr($searchFilter) ?>" placeholder="Name, email, message&hellip;">
+                </p>
+                <?php if ($allForms !== []): ?>
+                    <p class="lp-field">
+                        <label for="submissions-form-filter">Form</label>
+                        <select id="submissions-form-filter" name="form_id">
+                            <option value="0">All forms</option>
+                            <?php foreach ($allForms as $filterForm): ?>
+                                <option value="<?= (int) $filterForm->id ?>" <?= $formIdFilter === $filterForm->id ? 'selected' : '' ?>><?= esc_html($filterForm->title) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </p>
+                <?php endif; ?>
+                <p class="lp-field">
+                    <label for="submissions-date-from">Date from</label>
+                    <input type="date" id="submissions-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                </p>
+                <p class="lp-field">
+                    <label for="submissions-date-to">Date to</label>
+                    <input type="date" id="submissions-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                </p>
+                <button type="submit" class="lp-button">Filter</button>
+            </form>
+        </div>
+    </details>
+</section>
+
+<p class="lp-admin__filters">
+    <?php
+    $exportQuery = static fn (string $format): string => admin_url('contact-forms/submissions') . '?' . http_build_query(array_filter([
+        'form_id' => $formIdFilter ?: null,
+        'status' => $statusTab ?: null,
+        'q' => $searchFilter ?: null,
+        'date_from' => $dateFromFilter ?: null,
+        'date_to' => $dateToFilter ?: null,
+        'export' => $format,
+    ]));
+    ?>
+    <a href="<?= esc_url($exportQuery('csv')) ?>" class="lp-button lp-button--secondary">Export CSV</a>
+    <a href="<?= esc_url($exportQuery('json')) ?>" class="lp-button lp-button--secondary">Export JSON</a>
+</p>
 
 <section class="lp-admin__panel">
     <?php if ($items === []): ?>
@@ -124,6 +276,8 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
                         <td>
                             <?php if ($submission->isSpam): ?>
                                 <span class="lp-status-badge lp-status-badge--failed">Spam</span>
+                            <?php elseif ($submission->isArchived): ?>
+                                <span class="lp-status-badge">Archived</span>
                             <?php elseif (!$submission->isRead): ?>
                                 <span class="lp-status-badge lp-status-badge--pending">Unread</span>
                             <?php else: ?>
@@ -139,6 +293,28 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
                                     <input type="hidden" name="form" value="mark_read">
                                     <input type="hidden" name="id" value="<?= (int) $submission->id ?>">
                                     <button type="submit" class="lp-button lp-button--link">Mark Read</button>
+                                </form>
+                            <?php else: ?>
+                                <form method="post" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('contact_submission_mark_unread_' . $submission->id) ?>
+                                    <input type="hidden" name="form" value="mark_unread">
+                                    <input type="hidden" name="id" value="<?= (int) $submission->id ?>">
+                                    <button type="submit" class="lp-button lp-button--link">Mark Unread</button>
+                                </form>
+                            <?php endif; ?>
+                            <?php if ($submission->isArchived): ?>
+                                <form method="post" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('contact_submission_unarchive_' . $submission->id) ?>
+                                    <input type="hidden" name="form" value="unarchive_submission">
+                                    <input type="hidden" name="id" value="<?= (int) $submission->id ?>">
+                                    <button type="submit" class="lp-button lp-button--link">Unarchive</button>
+                                </form>
+                            <?php else: ?>
+                                <form method="post" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('contact_submission_archive_' . $submission->id) ?>
+                                    <input type="hidden" name="form" value="archive_submission">
+                                    <input type="hidden" name="id" value="<?= (int) $submission->id ?>">
+                                    <button type="submit" class="lp-button lp-button--link">Archive</button>
                                 </form>
                             <?php endif; ?>
                             <form method="post" action="<?= esc_url(admin_url('contact-forms/submissions')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this submission?">

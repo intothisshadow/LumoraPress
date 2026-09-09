@@ -37,6 +37,7 @@ final class ContactSubmission
         public readonly ?string $pageUrl,
         public readonly bool $isRead,
         public readonly bool $isSpam,
+        public readonly bool $isArchived,
         public readonly DateTimeImmutable $createdAt,
     ) {
     }
