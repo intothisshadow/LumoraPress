@@ -408,10 +408,25 @@ $menu = [
             ...($fontAwesomeActive ? ['font-awesome' => ['label' => 'Font Awesome', 'icon' => '🅰️', 'capability' => 'manage_themes']] : []),
         ],
     ],
-    'plugins' => ['label' => 'Plugins', 'icon' => '🔌', 'capability' => 'manage_plugins'],
+    // LP-154: 🔌 read as small/washed-out next to colorful neighbors like
+    // Appearance's 🎨 or Comments' 💬 in the collapsed/icon sidebar (the
+    // only place a top-level item's icon is actually shown — see LP-056's
+    // note on .lp-admin__nav-icon in admin.css) — 📦 is more visually
+    // distinct there and still isn't reused by any other top-level or
+    // child entry in this array.
+    'plugins' => ['label' => 'Plugins', 'icon' => '📦', 'capability' => 'manage_plugins'],
     'settings' => [
         'label' => 'Settings',
-        'icon' => '⚙️',
+        // LP-154: no U+FE0F variation selector, unlike every other ⚙️ in
+        // this array (still used verbatim for child "Settings" pages
+        // elsewhere — this change is this one top-level entry only).
+        // U+2699 GEAR defaults to plain-text presentation without it, so
+        // it inherits .lp-admin__nav-icon's ordinary text `color` instead
+        // of rendering as a fixed-tone color-emoji bitmap immune to CSS —
+        // admin.css's collapsed-sidebar override lightens that color for
+        // this one icon specifically, since the default muted grey every
+        // other icon uses still read as too easy to miss here.
+        'icon' => '⚙',
         'capability' => 'manage_options',
         'default_child' => 'general',
         'children' => [

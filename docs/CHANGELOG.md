@@ -24,6 +24,7 @@ All notable changes to Lumora Press are documented in this file.
 
 - Lumora Classic theme: removed the "Subscribe via RSS" link from the site footer.
 - Lumora Shield admin location (LP-153): the plugin no longer has its own top-level sidebar menu item — its Settings screen is now a "Lumora Shield" tab on Settings &rsaquo; Security (alongside a "General" tab holding the existing login lockout/spam protection/trusted image sources/user enumeration content), and its Logs screen is now a "Blocked Enumeration Attempts" section on Maintenance &rsaquo; Logs, alongside the existing Application Errors and Login Attempts sections. The old `/admin/lumora-shield/settings` and `/admin/lumora-shield/logs` URLs redirect to their new locations.
+- Collapsed admin sidebar polish (LP-154): the expand/collapse-all toggle (LP-092) and the collapsed/expanded sidebar-mode switch (LP-151) now share one row, centered, at both the top and bottom of the sidebar, instead of each getting its own — and both are now solid accent-colored buttons rather than the previous subtle on-dark treatment, which read as too easy to miss. The Plugins and top-level Settings icons in the collapsed/icon sidebar are also more visually distinct next to their colorful neighbors (Plugins swapped to 📦; Settings' gear now renders in a lighter grey against the dark sidebar background).
 
 ### Fixed
 

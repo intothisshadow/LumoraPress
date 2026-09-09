@@ -234,31 +234,35 @@ body.lp-admin-login {
 
 /*
  * LP-092: expand/collapse-all controls, one above the nav and one below
- * it (inside .lp-admin__user) — both share this class and stay in sync
- * via admin/assets/js/nav-toggle.js. Symbol-only by design (no visible
- * text), so sized as a small icon button rather than a full-width row;
- * .lp-admin__sidebar and .lp-admin__user are both flex columns, so
- * align-self keeps it from stretching to the sidebar's full width like
- * a stray no-content flex child otherwise would.
+ * it — both share this class and stay in sync via
+ * admin/assets/js/nav-toggle.js. Symbol-only by design (no visible
+ * text). LP-154 moved both instances into a shared
+ * .lp-admin__sidebar-controls row alongside .lp-admin__sidebar-mode-toggle
+ * (that wrapper handles the centering/spacing) and restyled this as a
+ * solid color button — Ariane's term for the accent-filled
+ * .lp-button--primary look — to match, since the previous subtle
+ * on-dark treatment read as too easy to miss.
  */
 .lp-admin__nav-toggle-all {
-    align-self: flex-start;
-    margin: 0.5rem 1rem;
-    padding: 0.15rem 0.55rem;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--lp-admin-accent);
     border-radius: var(--lp-admin-radius);
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--lp-admin-sidebar-fg-muted);
+    background: var(--lp-admin-accent);
+    color: #fff;
     font-size: 0.9rem;
     line-height: 1.5;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.lp-admin__nav-toggle-all:hover,
+.lp-admin__nav-toggle-all:hover {
+    background: var(--lp-admin-accent-hover);
+    border-color: var(--lp-admin-accent-hover);
+}
+
 .lp-admin__nav-toggle-all:focus-visible {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+    outline: 2px solid #fff;
+    outline-offset: 1px;
 }
 
 /* LP-089: every link-color rule below gets a matching :visited variant
@@ -529,38 +533,42 @@ body.lp-admin-login {
 }
 
 /*
- * LP-151: switches between the default collapsed/icon sidebar (below) and
- * the classic full-width sidebar — kept visible in both modes, unlike the
- * LP-092 expand/collapse-all controls above, which only do anything once
- * the sidebar is expanded.
+ * LP-151/LP-154: one shared row for .lp-admin__nav-toggle-all (LP-092's
+ * expand/collapse-all, hidden by the collapsed-sidebar override further
+ * below since it only does anything once the sidebar is expanded) and
+ * .lp-admin__sidebar-mode-toggle (switches between the default
+ * collapsed/icon sidebar and the classic full-width one, kept visible in
+ * both modes) — appears both above the nav and again above
+ * .lp-admin__user, centering whichever of the two buttons is actually
+ * visible rather than each getting its own row.
  */
-.lp-admin__sidebar-mode {
+.lp-admin__sidebar-controls {
     display: flex;
     justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.4rem 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .lp-admin__sidebar-mode-toggle {
-    padding: 0.15rem 0.6rem;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--lp-admin-accent);
     border-radius: var(--lp-admin-radius);
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--lp-admin-sidebar-fg-muted);
+    background: var(--lp-admin-accent);
+    color: #fff;
     font-size: 0.95rem;
     line-height: 1.5;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.lp-admin__sidebar-mode-toggle:hover,
-.lp-admin__sidebar-mode-toggle:focus-visible {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+.lp-admin__sidebar-mode-toggle:hover {
+    background: var(--lp-admin-accent-hover);
+    border-color: var(--lp-admin-accent-hover);
 }
 
 .lp-admin__sidebar-mode-toggle:focus-visible {
-    outline: 2px solid var(--lp-admin-accent);
+    outline: 2px solid #fff;
     outline-offset: 1px;
 }
 
@@ -684,10 +692,13 @@ body.lp-admin-login {
      * mode (gated to min-width: 783px below) — hover-driven flyouts have
      * no touch equivalent, and LP-096's off-canvas drawer already shows
      * the full classic sidebar here regardless of the desktop toggle. The
-     * toggle itself would do nothing on this breakpoint, so it's hidden
-     * rather than shown disabled.
+     * mode toggle itself would do nothing on this breakpoint, so it's
+     * hidden rather than shown disabled — but LP-092's expand/collapse-all
+     * button (the other occupant of .lp-admin__sidebar-controls, LP-154)
+     * is still meaningful here, so only this one button is hidden, not
+     * the whole shared row.
      */
-    .lp-admin__sidebar-mode {
+    .lp-admin__sidebar-mode-toggle {
         display: none;
     }
 }
@@ -758,6 +769,19 @@ body.lp-admin-login {
         display: inline-block;
         margin-right: 0;
         font-size: 1.1rem;
+    }
+
+    /*
+     * LP-154: Settings' top-level icon is U+2699 GEAR with no U+FE0F
+     * variation selector (admin/index.php), which renders as plain text
+     * rather than a fixed-tone color-emoji bitmap — so unlike every other
+     * icon here, its color actually follows ordinary CSS. Left to
+     * inherit .lp-admin__nav-item a's own muted color like the rest of
+     * the label text, it still read as too easy to miss against the dark
+     * sidebar; lightened specifically for this one icon.
+     */
+    html:not(.lp-admin-sidebar-expanded) [data-menu-slug="settings"] > .lp-admin__nav-parent-row > a > .lp-admin__nav-icon {
+        color: #e8eaed;
     }
 
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-item--parent {

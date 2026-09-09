@@ -62,7 +62,11 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
             <span class="lp-admin__brand-label">Lumora Press</span>
             <span class="lp-admin__version"><?= esc_html((string) $version['version']) ?></span>
         </div>
-        <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
+        <?php /* LP-154: same shared control row as the one right above .lp-admin__user below — see that one's comment. */ ?>
+        <div class="lp-admin__sidebar-controls">
+            <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
+            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle aria-pressed="false" aria-label="Expand sidebar">&raquo;</button>
+        </div>
         <div class="lp-admin__site-link">
             <a href="<?= esc_url(site_url()) ?>" target="_blank" rel="noopener">&larr; View Site</a>
         </div>
@@ -106,12 +110,12 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
                 <?php endforeach; ?>
             </ul>
         </nav>
-        <?php /* LP-151: switches between the default collapsed/icon sidebar with flyout submenus and the classic full-width sidebar (LP-092's in-place expand/collapse) — see admin.css's `html:not(.lp-admin-sidebar-expanded)` rules and admin/assets/js/sidebar-mode.js. Always visible in both modes, unlike the LP-092 controls below which only make sense in the expanded layout. */ ?>
-        <div class="lp-admin__sidebar-mode">
+        <?php /* LP-151/LP-154: one shared row for LP-092's expand/collapse-all toggle (hidden in collapsed-sidebar mode; only makes sense in the expanded layout) and the sidebar-mode switch between collapsed/icon and classic full-width (always visible in both modes) — see admin.css's `.lp-admin__sidebar-controls`/`html:not(.lp-admin-sidebar-expanded)` rules and admin/assets/js/sidebar-mode.js. */ ?>
+        <div class="lp-admin__sidebar-controls">
+            <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
             <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle aria-pressed="false" aria-label="Expand sidebar">&raquo;</button>
         </div>
         <div class="lp-admin__user">
-            <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
             <div class="lp-admin__user-row">
                 <span class="lp-admin__user-name"><?= esc_html($currentUser->displayName) ?></span>
                 <form method="post" action="" class="lp-admin__theme-toggle-form">
