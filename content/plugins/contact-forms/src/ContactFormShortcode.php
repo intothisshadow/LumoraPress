@@ -78,7 +78,10 @@ final class ContactFormShortcode
             return '';
         }
 
-        $html = '<form class="lp-contact-form" method="post" action="' . esc_url(home_url('contact-form/' . $id . '/submit')) . '">';
+        $hasFileUpload = $this->firstFieldOfType($form, ContactFieldType::FileUpload) !== null;
+        $enctypeAttr = $hasFileUpload ? ' enctype="multipart/form-data"' : '';
+
+        $html = '<form class="lp-contact-form" method="post" action="' . esc_url(home_url('contact-form/' . $id . '/submit')) . '"' . $enctypeAttr . '>';
         $html .= $this->renderFlashMessage($id, $form);
         $html .= Csrf::field('contact_form_submit_' . $id);
         $html .= FormTiming::field();
@@ -115,6 +118,17 @@ final class ContactFormShortcode
         return $html;
     }
 
+    private function firstFieldOfType(ContactForm $form, ContactFieldType $type): ?ContactFormField
+    {
+        foreach ($form->fields as $field) {
+            if ($field->type === $type) {
+                return $field;
+            }
+        }
+
+        return null;
+    }
+
     private function renderField(int $formId, ContactFormField $field): string
     {
         $inputName = 'field_' . $field->key;
@@ -142,6 +156,8 @@ final class ContactFormShortcode
             }
 
             $html .= '</select>';
+        } elseif ($field->type === ContactFieldType::FileUpload) {
+            $html .= '<input type="file" id="' . esc_attr($inputId) . '" name="' . esc_attr($inputName) . '"' . $requiredAttr . '>';
         } else {
             $html .= '<input type="' . esc_attr($field->type->inputType()) . '" id="' . esc_attr($inputId) . '" name="' . esc_attr($inputName) . '"' . $requiredAttr . '>';
         }

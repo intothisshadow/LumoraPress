@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\ContactForms\ContactFormService;
+use LumoraPress\Plugins\ContactForms\ContactFormUploadService;
 use LumoraPress\Plugins\ContactForms\ContactSubmissionService;
 
 if (!isset($kernel)) {
@@ -38,6 +39,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if ($formAction === 'delete_form' && Csrf::verify('contact_form_delete_' . $id, $token)) {
         $submissions->deleteByFormId($id);
         $forms->delete($id);
+        (new ContactFormUploadService(LUMORA_ROOT . '/storage/contact-form-uploads'))->deleteAllForForm($id);
         header('Location: ' . admin_url('contact-forms/all-forms') . '?deleted=1');
         exit;
     }

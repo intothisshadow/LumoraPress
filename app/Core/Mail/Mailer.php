@@ -28,9 +28,12 @@ namespace LumoraPress\Core\Mail;
 interface Mailer
 {
     /**
+     * @param ?string $replyTo Set when a reply should go somewhere other
+     *     than $to's own inbox (e.g. a contact form's Reply-To pointing at
+     *     the submitter rather than the site's notification address).
      * @return bool True if the mail transport accepted the message for
      *     delivery. This is not a delivery guarantee — `mail()` itself
      *     offers none — only confirmation the message was handed off.
      */
-    public function send(string $to, string $subject, string $body): bool;
+    public function send(string $to, string $subject, string $body, ?string $replyTo = null): bool;
 }

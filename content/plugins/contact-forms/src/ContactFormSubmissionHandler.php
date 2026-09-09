@@ -23,6 +23,7 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Services\AkismetClient;
+use RuntimeException;
 
 /**
  * Validation order: CSRF -> honeypot -> FormTiming -> IP flood guard ->
@@ -85,7 +86,8 @@ final class ContactFormSubmissionHandler
             $this->redirectWithError($redirectTarget, $id, 'rate_limited');
         }
 
-        $data = $this->collectAndValidateFields($form, $redirectTarget, $id);
+        $uploads = new ContactFormUploadService(LUMORA_ROOT . '/storage/contact-form-uploads');
+        $data = $this->collectAndValidateFields($form, $redirectTarget, $id, $uploads);
 
         $recaptcha = new ReCaptchaClient($this->config);
 
@@ -124,11 +126,18 @@ final class ContactFormSubmissionHandler
     /**
      * @return array<string, string>
      */
-    private function collectAndValidateFields(ContactForm $form, string $redirectTarget, int $formId): array
+    private function collectAndValidateFields(ContactForm $form, string $redirectTarget, int $formId, ContactFormUploadService $uploads): array
     {
         $data = [];
+        $storedUploads = [];
 
         foreach ($form->fields as $field) {
+            if ($field->type === ContactFieldType::FileUpload) {
+                $data[$field->key] = $this->collectUploadField($field, $formId, $redirectTarget, $uploads, $storedUploads);
+
+                continue;
+            }
+
             $raw = trim((string) ($_POST['field_' . $field->key] ?? ''));
 
             if ($field->type === ContactFieldType::Checkbox) {
@@ -138,10 +147,12 @@ final class ContactFormSubmissionHandler
             $isBlank = $raw === '' || ($field->type === ContactFieldType::Checkbox && $raw === 'No');
 
             if ($field->required && $isBlank) {
+                $this->cleanupUploads($uploads, $formId, $storedUploads);
                 $this->redirectWithError($redirectTarget, $formId, 'validation');
             }
 
             if ($field->type === ContactFieldType::Email && $raw !== '' && filter_var($raw, FILTER_VALIDATE_EMAIL) === false) {
+                $this->cleanupUploads($uploads, $formId, $storedUploads);
                 $this->redirectWithError($redirectTarget, $formId, 'validation');
             }
 
@@ -149,6 +160,49 @@ final class ContactFormSubmissionHandler
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<int, string> $storedUploads Accumulates every filename
+     *     stored so far this request, by reference, so a later field's
+     *     validation failure can clean up an earlier field's already-stored
+     *     file instead of leaking it on disk with no submission to point to.
+     */
+    private function collectUploadField(ContactFormField $field, int $formId, string $redirectTarget, ContactFormUploadService $uploads, array &$storedUploads): string
+    {
+        $file = $_FILES['field_' . $field->key] ?? null;
+        $hasFile = is_array($file) && (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+        if (!$hasFile) {
+            if ($field->required) {
+                $this->cleanupUploads($uploads, $formId, $storedUploads);
+                $this->redirectWithError($redirectTarget, $formId, 'validation');
+            }
+
+            return '';
+        }
+
+        try {
+            /** @var array{name: string, type: string, tmp_name: string, error: int, size: int} $file */
+            $storedName = $uploads->store($formId, $file);
+        } catch (RuntimeException) {
+            $this->cleanupUploads($uploads, $formId, $storedUploads);
+            $this->redirectWithError($redirectTarget, $formId, 'validation');
+        }
+
+        $storedUploads[] = $storedName;
+
+        return $storedName;
+    }
+
+    /**
+     * @param array<int, string> $storedNames
+     */
+    private function cleanupUploads(ContactFormUploadService $uploads, int $formId, array $storedNames): void
+    {
+        foreach ($storedNames as $storedName) {
+            $uploads->delete($formId, $storedName);
+        }
     }
 
     /**
@@ -203,7 +257,15 @@ final class ContactFormSubmissionHandler
             $lines[] = $field->label . ': ' . ($data[$field->key] ?? '');
         }
 
-        $this->mailer->send($form->recipientEmail, $subject, implode("\n", $lines));
+        // Lets the recipient hit "Reply" and land in the submitter's inbox
+        // directly, rather than replying to the site's own From address.
+        // NativeMailer re-validates this before adding the header, so an
+        // absent or malformed Email field just means no Reply-To, not a
+        // rejected notification.
+        $emailField = $this->firstFieldOfType($form, ContactFieldType::Email);
+        $replyTo = $emailField !== null ? ($data[$emailField->key] ?? null) : null;
+
+        $this->mailer->send($form->recipientEmail, $subject, implode("\n", $lines), $replyTo !== '' ? $replyTo : null);
     }
 
     /**

@@ -29,16 +29,26 @@ final class NativeMailer implements Mailer
     {
     }
 
-    public function send(string $to, string $subject, string $body): bool
+    public function send(string $to, string $subject, string $body, ?string $replyTo = null): bool
     {
         // Defense-in-depth against header injection via a stray CRLF in an
         // address or subject line, even though both are expected to already
         // be well-formed (an account's own stored email, a static subject
-        // string this codebase controls).
+        // string this codebase controls). $replyTo can come from a public
+        // contact form submission, so it gets the same treatment plus a
+        // valid-email check rather than being trusted outright.
         $to = str_replace(["\r", "\n"], '', $to);
         $subject = str_replace(["\r", "\n"], '', $subject);
 
         $headers = "From: {$this->fromAddress}\r\nContent-Type: text/plain; charset=UTF-8\r\n";
+
+        if ($replyTo !== null) {
+            $replyTo = str_replace(["\r", "\n"], '', $replyTo);
+
+            if (filter_var($replyTo, FILTER_VALIDATE_EMAIL) !== false) {
+                $headers .= "Reply-To: {$replyTo}\r\n";
+            }
+        }
 
         return @mail($to, $subject, $body, $headers);
     }

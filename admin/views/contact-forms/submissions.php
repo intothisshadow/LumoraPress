@@ -16,7 +16,9 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Plugins\ContactForms\ContactFieldType;
 use LumoraPress\Plugins\ContactForms\ContactFormService;
+use LumoraPress\Plugins\ContactForms\ContactFormUploadService;
 use LumoraPress\Plugins\ContactForms\ContactSubmission;
 use LumoraPress\Plugins\ContactForms\ContactSubmissionService;
 
@@ -31,6 +33,39 @@ if (!isset($kernel)) {
 $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
 $forms = new ContactFormService($kernel->database, $tablePrefix);
 $submissions = new ContactSubmissionService($kernel->database, $tablePrefix);
+$uploads = new ContactFormUploadService(LUMORA_ROOT . '/storage/contact-form-uploads');
+
+// A plain authenticated GET, gated by this whole page's own manage_options
+// requirement (see admin/index.php's menu config) — storage/ itself is
+// already denied to direct web access, so this is the only path a stored
+// upload is ever reachable through.
+if (($_GET['download_field'] ?? null) !== null) {
+    $downloadSubmissionId = (int) ($_GET['submission_id'] ?? 0);
+    $downloadFieldKey = (string) $_GET['download_field'];
+    $downloadSubmission = $submissions->findById($downloadSubmissionId);
+    $downloadForm = $downloadSubmission !== null ? $forms->findById($downloadSubmission->formId) : null;
+    $downloadField = $downloadForm?->fieldByKey($downloadFieldKey);
+    $storedName = $downloadSubmission?->data[$downloadFieldKey] ?? null;
+
+    if ($downloadSubmission !== null && $downloadField?->type === ContactFieldType::FileUpload && is_string($storedName) && $storedName !== '') {
+        $path = $uploads->resolvePath($downloadSubmission->formId, $storedName);
+
+        if ($path !== null) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="' . basename($storedName) . '"');
+            header('Content-Length: ' . (string) filesize($path));
+            readfile($path);
+            exit;
+        }
+    }
+
+    http_response_code(404);
+    exit('File not found.');
+}
 
 $formIdFilter = (int) ($_GET['form_id'] ?? 0);
 $statusTab = (string) ($_GET['status'] ?? '');
@@ -75,6 +110,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 
     if ($formAction === 'delete_submission' && Csrf::verify('contact_submission_delete_' . $id, $token)) {
+        $deletingSubmission = $submissions->findById($id);
+        $deletingForm = $deletingSubmission !== null ? $forms->findById($deletingSubmission->formId) : null;
+
+        if ($deletingSubmission !== null && $deletingForm !== null) {
+            foreach ($deletingForm->fields as $deletingField) {
+                if ($deletingField->type === ContactFieldType::FileUpload) {
+                    $storedName = $deletingSubmission->data[$deletingField->key] ?? '';
+
+                    if ($storedName !== '') {
+                        $uploads->delete($deletingForm->id, $storedName);
+                    }
+                }
+            }
+        }
+
         $submissions->delete($id);
         header('Location: ' . $backTo . (str_contains($backTo, '?') ? '&' : '?') . 'deleted=1');
         exit;
@@ -270,7 +320,14 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
                         <td>
                             <?php foreach ($submission->data as $key => $value): ?>
                                 <?php $field = $submissionForm?->fieldByKey((string) $key); ?>
-                                <div><strong><?= esc_html($field?->label ?? (string) $key) ?>:</strong> <?= esc_html((string) $value) ?></div>
+                                <div>
+                                    <strong><?= esc_html($field?->label ?? (string) $key) ?>:</strong>
+                                    <?php if ($field?->type === ContactFieldType::FileUpload && $value !== ''): ?>
+                                        <a href="<?= esc_url(admin_url('contact-forms/submissions') . '?' . http_build_query(['submission_id' => $submission->id, 'download_field' => $key])) ?>"><?= esc_html((string) $value) ?></a>
+                                    <?php else: ?>
+                                        <?= esc_html((string) $value) ?>
+                                    <?php endif; ?>
+                                </div>
                             <?php endforeach; ?>
                         </td>
                         <td>

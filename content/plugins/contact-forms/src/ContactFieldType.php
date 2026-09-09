@@ -21,8 +21,9 @@ namespace LumoraPress\Plugins\ContactForms;
  * Deliberately a fixed, small list rather than an extensible
  * custom-field-type registry — Name/Subject/Text/Email/Message/Textarea all
  * render as a plain text input or textarea with different labels/
- * validation, which covers what most contact forms actually need without
- * the complexity of a plugin-extensible field-type API.
+ * validation, Select/Checkbox cover choice-based input, and FileUpload adds
+ * a single attachment, which covers what most contact forms actually need
+ * without the complexity of a plugin-extensible field-type API.
  */
 enum ContactFieldType: string
 {
@@ -34,6 +35,7 @@ enum ContactFieldType: string
     case Textarea = 'textarea';
     case Checkbox = 'checkbox';
     case Select = 'select';
+    case FileUpload = 'file_upload';
 
     /**
      * Whether this field renders as a `<textarea>` rather than an
@@ -65,6 +67,7 @@ enum ContactFieldType: string
             self::Textarea => 'Textarea',
             self::Checkbox => 'Checkbox',
             self::Select => 'Select',
+            self::FileUpload => 'File Upload',
         };
     }
 }

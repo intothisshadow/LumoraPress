@@ -16,6 +16,7 @@ All notable changes to Lumora Press are documented in this file.
 - Comments RSS link on the Meta widget (LP-013): the Meta widget's link list now also includes "Comments RSS" (`/comments/feed`), alongside the existing "Log in"/"Entries RSS" links.
 - Feed developer API (LP-013): plugins can now register an entirely new feed at `/feed/x/{type}` via the `feed_types` filter (with its own channel/items and item shape), and register a custom feed format (e.g. a podcast format) beyond the built-in RSS/Atom/JSON via the `feed_formats`/`feed_content_type` filters — a custom format works across every existing feed as well as a plugin's own registered type. See `docs/DEVELOPER-APIS.md`.
 - Contact Forms submissions management (LPP-003): Contact Forms &rsaquo; Submissions gained a search box, a date range filter, and a new Archived tab (alongside the existing All/Inbox/Spam tabs) with archive/unarchive actions, a Mark Unread action to complement the existing Mark Read, and CSV/JSON export of the current filtered view.
+- Contact Forms File Upload field and Reply-To (LPP-003): a form's field editor gained a File Upload type — a single attachment up to 5MB, restricted to a small set of common file types — which appears in the admin Submissions screen as a download link streamed through an authenticated route (never web-accessible directly). A new submission's notification email now sets its Reply-To to the submitter's own address, so replying from your inbox goes straight back to them.
 
 ### Changed
 

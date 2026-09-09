@@ -18,7 +18,7 @@ declare(strict_types=1);
 /*
  * Plugin Name: Contact Forms
  * Plugin URI: https://lumorapress.org/plugins/contact-forms
- * Description: Build simple contact forms from a fixed set of field types (Name, Email, Subject, Message, Text, Textarea, Checkbox, Select), embed them anywhere with the [contact_form id="1"] shortcode, and read submissions from a dedicated admin screen. Optional Akismet/reCAPTCHA/Turnstile spam protection, off by default.
+ * Description: Build simple contact forms from a fixed set of field types (Name, Email, Subject, Message, Text, Textarea, Checkbox, Select, File Upload), embed them anywhere with the [contact_form id="1"] shortcode, and read submissions from a dedicated admin screen. Optional Akismet/reCAPTCHA/Turnstile spam protection, off by default.
  * Version: 0.1.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
@@ -41,6 +41,7 @@ require_once __DIR__ . '/src/ContactForm.php';
 require_once __DIR__ . '/src/ContactFormService.php';
 require_once __DIR__ . '/src/ContactSubmission.php';
 require_once __DIR__ . '/src/ContactSubmissionService.php';
+require_once __DIR__ . '/src/ContactFormUploadService.php';
 require_once __DIR__ . '/src/ReCaptchaClient.php';
 require_once __DIR__ . '/src/TurnstileClient.php';
 require_once __DIR__ . '/src/ContactFormShortcode.php';
