@@ -13611,3 +13611,716 @@ Uploading audio/video to the Media Library (LP-006's `audio`/`video` mime-type c
 - [x] Documented in `docs/DEVELOPER-APIS.md` (new Shortcodes table row, `content_html`/`footer_assets` mentions) and `README.md`'s feature list.
 
 Deliberately out of scope, consistent with "lightweight": no play/view-count tracking (LP-006's existing image-view deferral reasoning applies identically — no PHP-mediated request to count without a JS beacon, a separate architecture piece not otherwise needed here), no `register_shortcode()` picker-form entry (dedicated buttons only, matching Folder Gallery's own precedent), and no waveform/advanced-audio-features UI.
+
+## 0.12.0 (2026-09-09)
+
+### LP-013. RSS & Atom Feeds
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (40/40 checklist items)
+
+#### Goal
+
+Provide standards-compliant RSS and Atom feeds for all public content, allowing users and feed readers to subscribe to site updates.
+
+First pass implemented this session: a single site-wide feed of published
+posts (`/feed`, `/feed/rss`, `/feed/atom`), in both RSS 2.0 and Atom 1.0 —
+see `docs/CHANGELOG.md`'s entry for this date and `FeedService`/
+`SiteController::feed()` in the source. Category/tag/author/comment feeds,
+JSON Feed, page feeds, enclosures, and per-item taxonomies are explicitly
+deferred (not attempted this session), not merely unimplemented.
+
+**Extended (LP-010, 2026-08-14).** Category feeds: `/category/{slug}/feed`
+and `/category/{slug}/feed/atom`, via `FeedService::categoryChannel()`/
+`categoryItems()` and `SiteController::categoryFeed()` — same item shape
+and settings (item limit/full content/cache lifetime/featured images) as
+the site-wide feed, reusing its `emitFeed()` caching/rendering plumbing.
+Tag/author/comment feeds remain deferred.
+
+**Extended further (undated, before this session).** Featured-image
+enclosures were added to every existing feed type (RSS2 `<enclosure>` /
+Atom `<link rel="enclosure">`, gated by `feed_featured_images`, default on)
+but the "Featured image"/"Enclosures"/"Include featured images" checklist
+items below were never checked off at the time — corrected this session
+after finding the working code in `FeedService::buildItem()`/
+`SiteController::renderRss2()`/`renderAtom()`.
+
+**Extended (2026-09-07).** Tag feeds (`/tag/{slug}/feed`, `/tag/{slug}/feed/atom`)
+and author feeds (`/author/{slug}/feed`, `/author/{slug}/feed/atom`), via
+new `FeedService::tagChannel()`/`tagItems()`/`authorChannel()`/`authorItems()`
+methods and new `SiteController::tagFeed()`/`authorFeed()` handlers — same
+item shape, settings, and `emitFeed()` caching/rendering plumbing as the
+site-wide and category feeds. An unknown tag/author slug 404s, same as an
+unknown category. The author feed also reuses `author()`'s own Lumora
+Shield enumeration-hardening (`lumora_shield_enumeration_blocked`/
+`lumora_shield_author_archive_visible`) rather than opening a second,
+unprotected path to the same username-enumeration surface the archive page
+already closes off. Comment feeds remain deferred.
+
+**Extended further (2026-09-07, same day).** Comment feeds: `/comments/feed`/
+`/comments/feed/atom` lists the most recent approved comments site-wide
+(across posts and pages), via `FeedService::commentsChannel()`/
+`commentsItems()`, reusing `CommentService::recentApproved()` — the same
+query the Recent Comments widget already uses, so nothing pending
+moderation or on a trashed/private post surfaces here. Every post also
+gets its own comment-thread feed at `{post-url}/comments/feed`/
+`{post-url}/comments/feed/atom` via `FeedService::postCommentsChannel()`/
+`postCommentsItems()` (flattened, not nested, since a feed item has no
+concept of a reply tree) and new `SiteController::commentsFeed()`/
+`postCommentsFeed()` handlers, with their own `emitCommentsFeed()`/
+`renderCommentsRss2()`/`renderCommentsAtom()` plumbing (comment-shaped
+items don't fit the post-shaped `emitFeed()`/`renderRss2()`/`renderAtom()`
+methods the other feed types share). Permalink resolution (which needs
+`post_permalink()`/`page_permalink()`, unavailable outside a bootstrapped
+request) stays in `SiteController`, not `FeedService` — `FeedService`
+hands back the comment plus its post/page's title/slug/type, matching the
+existing division of labor the post-shaped feeds already have. An unknown
+page comments feed remains out of scope (`page_permalink()` handles pages
+that exist; a comments-per-page feed route was not added this session,
+only the site-wide comments feed already covers page comments).
+
+**Extended further (2026-09-07, same day).** Pages feed: `/pages/feed`/
+`/pages/feed/atom` lists published Pages, most-recently-published first,
+via new `FeedService::pagesChannel()`/`pagesItems()`/`buildPageItem()` and
+`SiteController::pagesFeed()`, with its own `emitPagesFeed()`/
+`renderPagesRss2()`/`renderPagesAtom()` plumbing (Page-shaped items,
+mirroring the post-shaped `emitFeed()`/`renderRss2()`/`renderAtom()` and
+comment-shaped `emitCommentsFeed()` families). Ordered by
+`COALESCE(published_at, created_at)` via a new
+`PageService::paginatePublishedByDate()`, not the existing
+`paginatePublished()` — that method stays alphabetical for its own callers
+(the public API listing, `sitemap.xml`), which have no chronological
+expectation the way a feed reader does.
+
+Also declined this session (see `DECISIONS.md`): Search results, Custom
+content types, and Custom taxonomies feeds, removed from the Feed Types
+checklist below; also Custom feed copyright notice, removed from the
+Configuration checklist below.
+
+**Extended further (2026-09-07, same day).** JSON Feed: every feed family
+(site-wide/category/tag/author posts, Pages, comments) now also serves
+`.../feed/json` (`application/feed+json`, JSON Feed 1.1), via new
+`SiteController::renderJson()`/`renderPagesJson()`/`renderCommentsJson()`
+alongside each family's existing `renderRss2()`/`renderAtom()` pair, and a
+shared `resolveFeedFormat()`/`feedContentType()` pair replacing every
+handler's inline `'atom' ? ... : ...` ternary. Fixed in the same pass: every
+feed's Atom `<link rel="self">`/JSON `feed_url` was previously hardcoded to
+the `/atom` URL regardless of which format was actually requested — a new
+`PermalinkService::feedFormatSuffix()` (`''`/`'/atom'`/`'/json'`) is now used
+everywhere a feed builds its own self-link, so `/feed/json`'s `feed_url`
+correctly reads `/feed/json`, not `/feed/atom`.
+
+**Extended further (2026-09-07, same day).** Feed Content closeout:
+every post-shaped feed item (site-wide/category/tag/author) now lists its
+assigned categories and tags — RSS2 `<category>Name</category>` (one per
+term), Atom `<category term="Name"/>`, and JSON Feed's `tags` array — via
+new `FeedService::buildItem()` fields `categoryNames`/`tagNames`
+(`CategoryService::categoriesForPost()`/`TagService::tagsForPost()`,
+newly injected into `FeedService`). Every post-shaped item also now links
+to its comments section: RSS2 `<comments>`, Atom `<link rel="replies">`,
+and JSON Feed's `_comments_url` (an underscore-prefixed extension field,
+per the spec's own convention for non-standard fields) — all pointing at
+`{post-url}#comments`.
+
+**Extended further (2026-09-07, same day).** Configuration closeout: a new
+"Enable specific feed types" fieldset on Settings &rsaquo; General lets an
+admin independently disable the site-wide posts feed, per-category feeds,
+per-tag feeds, per-author feeds, the Pages feed, or comment feeds (site-wide
+and per-post together) — six new `feed_type_*_enabled` options (default on),
+checked in `SiteController::feed()`/`categoryFeed()`/`tagFeed()`/
+`authorFeed()`/`pagesFeed()`/`commentsFeed()`/`postCommentsFeed()` alongside
+the existing global `feeds_enabled` switch (either one being off 404s that
+route). Also a new "Include each post's approved comments in its feed item"
+checkbox (`feed_include_comments`, default off) — when on, a rendered,
+nested `<ul>` of a post's/page's approved comments is appended to its
+feed item's `content`/`content:encoded` field (only when full content is
+already enabled; excerpts-only mode has nowhere sensible to put it), via
+new `FeedService::renderCommentsHtml()`/`renderCommentTreeHtml()` reusing
+`CommentService::publicTreeForPost()`/`publicTreeForPage()`.
+
+**Extended further (2026-09-07, same day).** Security closeout, now that
+LP-033 (Maintenance Mode) exists:
+
+- **Disable feeds during maintenance mode** was already true with no new
+  code needed — `MaintenanceGate` (LP-033) intercepts every non-`/admin`
+  route in `index.php`, before `Router::dispatch()` ever runs, so a feed
+  URL requested by an anonymous visitor while maintenance mode is active
+  already gets the same 503 + themed maintenance page every other public
+  route gets. Verified directly: `curl` to `/feed` returned `503` with
+  `maintenance_mode_enabled` on, `200` with it off. A signed-in
+  Administrator (or an Editor if `maintenance_bypass_capability` is
+  loosened) still sees the real feed while maintenance mode is active,
+  matching how every other route already bypasses for staff.
+- **Respect user permissions** turned up a real, pre-existing content
+  leak while auditing this: `CommentService::recentApproved()` (used by
+  both the Recent Comments widget and the new site-wide `/comments/feed`)
+  joined the comment's post/page only for its title/slug — it never
+  checked whether that post/page was actually publicly visible. Trashing
+  a post doesn't delete its comments (only a permanent delete does — see
+  `PostService::delete()`), so a trashed post's still-approved comments
+  kept surfacing in the site-wide comments feed/widget; worse, a
+  **Private**-visibility post's approved comments leaked there too, even
+  though the post itself is correctly gated behind `canViewPrivatePost()`
+  everywhere else. Fixed by adding the same published-and-public
+  condition `PostService::publicWhereClause()`/`PageService`'s own
+  public-visibility queries already enforce, directly into
+  `recentApproved()`'s `WHERE` clause. 6 new regression tests in
+  `CommentServiceTest` (trashed post, Private post, Private page, plus
+  the already-passing published/public and unapproved-status cases).
+  Browser-verified on the dev install: marking a post with a known
+  approved comment Private made that comment vanish from
+  `/comments/feed`; reverting brought it back.
+
+**Extended further (2026-09-07, same day).** Developer API closeout:
+"Register feed types" and "Register feed formats" were the two items left
+half-done under Developer API (only "Modify feed items" was actually
+checked, even though the ticket's own goal names all three) — implemented
+both as real, working extension points rather than leaving them aspirational:
+
+- `add_filter('feed_types', fn (array $types) => $types + ['my-type' => [
+  'channel' => fn () => [...], 'items' => fn () => [...], 'shape' =>
+  'posts']])` registers an entirely new feed at `/feed/x/my-type` (and
+  `/feed/x/my-type/{format}`), not scoped to any existing category/tag/
+  author/post — new `SiteController::customTypeFeed()`, a new
+  `registeredFeedTypes()` reading the filter, and two new routes in
+  `bootstrap.php`. `shape` (`'posts'`/`'pages'`/`'comments'`, default
+  `'posts'`) picks which existing `emit*Feed()` family renders the
+  registered `channel`/`items` callables' output — a plugin gets the same
+  caching/conditional-GET/RSS2/Atom/JSON rendering every built-in feed
+  already has, for free.
+- `add_filter('feed_formats', fn (array $formats) => $formats + ['podcast'
+  => $renderer])` registers a custom format beyond the built-in `rss`/
+  `atom`/`json`, where `$renderer` is `callable(string $format, array
+  $channel, array $items, string $channelLink, string $selfLink, string
+  $family): string`. `feed_content_type` supplies the format's
+  `Content-Type` header. Works across *every* feed family at once
+  (site-wide/category/tag/author/Pages/comments, and a plugin's own
+  `feed_types`-registered type) — `{any-feed-url}/podcast` renders it,
+  same as `/atom` or `/json` already do. `resolveFeedFormat()` was
+  generalized from a fixed atom/json match to consult this filter;
+  `PermalinkService::feedFormatSuffix()` was generalized the same way
+  (any non-`rss` format gets `/{format}`), so a custom format's self-link
+  works automatically with no format-specific code needed there.
+
+New `SiteControllerReadingSettingsIntegrationTest` coverage (chosen over a
+new file, since duplicating that file's 11-dependency `SiteController`
+construction a second time is exactly the kind of drift that already
+broke it once this session — see the file's own updated docblock):
+`resolveFeedFormat()`/`feedContentType()`'s known-format behavior, both
+filters' custom-format/custom-type registration and lookup, and the
+"nothing registered" empty-default case. Browser-verified: existing
+feeds unaffected (`/feed`, `/pages/feed/json` both still 200), and
+`/feed/x/nonexistent-type` 404s correctly.
+
+#### Feed Types
+
+- [x] Entire site
+- [x] Posts
+- [x] Pages
+- [x] Categories
+- [x] Tags
+- [x] Authors
+- [x] Comments
+- [x] Individual comment threads
+
+#### Feed Formats
+
+- [x] RSS 2.0
+- [x] Atom 1.0
+- [x] JSON Feed
+
+#### Feed Content
+
+- [x] Full content
+- [x] Excerpts only
+- [x] Featured image
+- [x] Author
+- [x] Categories
+- [x] Tags
+- [x] Publication date
+- [x] Updated date
+- [x] Permalink
+- [x] Comments link
+- [x] Enclosures (media attachments)
+
+#### Configuration
+
+- [x] Enable/disable feeds globally
+- [x] Enable individual feed types
+- [x] Feed item limit
+- [x] Feed cache lifetime
+- [x] Full content vs excerpts
+- [x] Include featured images
+- [x] Include comments
+
+#### Performance
+
+- [x] Feed caching
+- [x] Proper HTTP cache headers
+- [x] Conditional GET support
+- [x] Efficient feed generation
+
+#### Security
+
+- [x] Respect private/unpublished content
+- [x] Respect user permissions
+- [x] Disable feeds during maintenance mode
+
+#### Developer API
+
+Provide a standardized Feed API.
+
+Extensions should be able to:
+
+- [x] Register feed types — `add_filter('feed_types', ...)` registers an entirely new feed at `/feed/x/{type}` (`/feed/x/{type}/{format}`), with its own channel/items callables and item shape (`posts`/`pages`/`comments`), reusing whichever `emit*Feed()` family matches. See `SiteController::customTypeFeed()`/`registeredFeedTypes()`.
+- [x] Register feed formats — `add_filter('feed_formats', ...)` registers a custom format (e.g. `podcast`) beyond the built-in `rss`/`atom`/`json`, with its own renderer callable; `feed_content_type` supplies its `Content-Type` header. Works on every existing feed family *and* a plugin's own `feed_types`-registered type, not just the site-wide feed. See `SiteController::resolveFeedFormat()`/`feedContentType()`/`renderCustomFormat()`.
+- [x] Modify feed items — `apply_filters('feed_channel', $channel)` and `apply_filters('feed_item', $item, $post)`, via `FeedService`
+
+#### Widget Integration
+
+- [x] Add a Comments feed link to the Meta widget (`CoreWidgets.php`'s
+      `meta` widget) — a "Comments RSS" link to `home_url('comments/feed')`
+      now sits alongside the existing "Log in"/"Entries RSS" links.
+      Browser-verified on the dev install's Primary Sidebar. The
+      Category-feed half of this item is declined — see `DECISIONS.md`.
+
+---
+
+------
+
+### LPP-003. Contact Forms
+
+**Status:** Complete — pending migration to `HISTORY.md` at next Release
+
+31 remaining checklist items across Form Builder/Supported Fields/Form Options/Email/Frontend/Editor Integration/Accessibility were declined 2026-09-09, bringing the ticket to 36/36 — see `DECISIONS.md` for the full rationale.
+
+##### Goal
+
+Provide a lightweight, modern contact form plugin for Lumora Press focused on classic themes and TinyMCE and Easy MDE. It should cover the needs of most personal sites, blogs, and fansites without requiring third-party services.
+
+##### Features
+
+###### Form Builder
+
+* [x] Create unlimited forms
+
+* [x] Form templates
+
+  * [x] Contact
+
+###### Supported Fields
+
+* [x] Name
+* [x] Email
+* [x] Subject
+* [x] Message
+* [x] Text
+* [x] Textarea
+* [x] Select
+* [x] Checkboxes
+* [x] File upload
+
+###### Form Options
+
+* [x] Required field validation
+
+###### Email
+
+* [x] Reply-To support
+
+###### Spam Protection
+
+* [x] Honeypot field
+* [x] Rate limiting
+* [x] CSRF protection
+* [x] Optional CAPTCHA
+* [x] Optional Google reCAPTCHA
+* [x] Optional Cloudflare Turnstile
+* [x] Optional Akismet
+
+###### Entries
+
+* [x] Save submissions to database
+* [x] Search submissions
+* [x] Filter by form
+* [x] Filter by date
+* [x] Export CSV
+* [x] Export JSON
+* [x] Mark as read/unread
+* [x] Archive entries
+* [x] Delete entries
+
+###### Frontend
+
+* [x] Non-JavaScript fallback
+* [x] Custom success message
+* [x] Redirect after submission
+* [x] Responsive layout
+* [x] Theme styling support
+
+###### Accessibility
+
+* [x] Proper labels
+
+##### Shortcodes
+
+```text
+[contact-form id="1"]
+
+[contact-form title="Contact Us"]
+```
+
+##### Developer API
+
+Provide hooks and helper functions for developers:
+
+* Register custom field types
+* Validate fields
+* Modify email before sending
+* Process submissions
+* Trigger custom actions after successful submission
+* Customize templates
+
+##### Settings
+
+**Settings → Contact Forms**
+
+* Default recipient
+* Email sender
+* Email format
+* Save submissions
+* Auto-delete old entries
+* Spam protection
+* CAPTCHA settings
+* Upload settings
+* Rate limiting
+
+##### Performance
+
+* Load frontend assets only when a contact form exists on the page.
+* Use prepared statements throughout.
+* Store submissions efficiently with indexed database tables.
+* Support caching without breaking form submissions.
+* Ensure full PHP 8.2–8.4 compatibility.
+
+##### Notes
+
+This should be a lightweight alternative to plugins like Contact Form 7 and WPForms Lite, while keeping Lumora Press' philosophy of classic themes, TinyMCE, and minimal overhead. Core functionality should include a visual form builder, database-backed submissions, AJAX support, email notifications, spam protection, and shortcode-based embedding. Advanced integrations (payments, CRM, marketing platforms) should be left to future extensions rather than the core plugin. ([wordpress.org][1])
+
+[1]: https://wordpress.org/plugins/contact-form-to-email/?utm_source=chatgpt.com "Contact Form Email – WordPress plugin | WordPress.org"
+
+**v1 implemented 2026-08-28** (see `DECISIONS.md` for the full
+core-vs-plugin/scope discussion): the original spec above was a
+Contact-Form-7/WPForms-scale rewrite; v1 deliberately re-scoped down to a
+fixed field list, admin-only field editor (plain Move Up/Move Down
+buttons, no drag-and-drop), plain full-page-reload submission (no AJAX),
+and database-backed submissions with no export/search/archive — while
+keeping every spam-protection layer including the optional
+reCAPTCHA/Turnstile/Akismet integrations, since those are a one-time
+toggle rather than ongoing complexity. Still open for a future ticket:
+drag-and-drop field ordering, form templates/duplicate, a file upload
+field, Phone/URL/Number/Radio/Hidden/Consent field types, per-field
+placeholder/help text/default value/character limits/custom validation
+messages, multiple recipients/custom subject/HTML email/Reply-To/
+auto-response/email templates/SMTP settings, submission search/date
+filter/CSV-JSON export/mark-unread/archive, AJAX submission, and
+TinyMCE/EasyMDE toolbar buttons/shortcode generator/widget support/a
+developer API for custom field types.
+
+**2026-08-31:** "Form templates > Contact" implemented — a "Use Contact
+Form Template" button on Contact Forms &rsaquo; Add New (hidden while
+editing an existing form, so it can never overwrite a real form's own
+fields) replaces the field-row editor's contents with a ready-made
+Subject/Name/Email/Message set, all marked Required, and fills the
+Title field with "Contact Form" if left blank. Client-side only
+(`contact-form-fields.js`), matching the rest of that editor's own
+progressive-enhancement contract — no server round-trip, and (unlike
+every other affordance in that file) no non-JS fallback needed since
+the button itself is only ever rendered on the blank "Add New" screen.
+Verified live on the dev install: clicking the button produced exactly
+Subject/Name/Email/Message, all Required, saving created a real form
+(`[contact_form id="2"]`) with those four fields.
+
+**2026-09-09:** Entries closed out — search, date filtering, CSV/JSON
+export, mark-unread, and archiving. `ContactSubmissionService::listAll()`
+gained a `$filters` array (`archivedOnly`/`search`/`dateFrom`/`dateTo`)
+alongside its existing `formId`/`spamOnly` params; search is a plain
+`LIKE` match against the stored field data and IP address, sufficient at
+this plugin's scale. A new `is_archived` column
+(migration `0062_add_is_archived_to_contact_form_submissions.sql`) backs
+an "Archived" tab on Submissions, sitting alongside All/Inbox/Spam —
+archiving removes an entry from every other tab's view without deleting
+it, the same as an inbox client's own Archive action; unarchiving
+restores it. `markUnread()`/`archive()`/`unarchive()` round out the
+existing `markRead()`/`delete()` pair. Export CSV/JSON stream the
+current view's filtered results with no row cap
+(`?export=csv`/`?export=json`), reusing the same
+`Content-Disposition: attachment` streaming pattern the Redirect Mapping
+report on Maintenance &rsaquo; Import already used — CSV columns are
+Form/Status/IP Address/Date plus every field key seen across the
+exported rows; JSON exports one object per submission with its full
+field data intact. Caught and fixed in the same pass: PHP 8.4 deprecates
+`fputcsv()`'s implicit default `$escape` value, and this codebase's error
+handler turns that deprecation into a fatal exception — the escape
+character is now passed explicitly. Search & Filter was built as a
+collapsible panel matching the Posts admin list's own convention rather
+than inventing a new one. 6 new tests added to
+`ContactSubmissionServiceTest` (mark unread, archive/unarchive round trip,
+filter by archived, filter by search, filter by date range); full
+`composer test` (2246 tests) verified clean. Browser-verified live on the
+dev install: archived an entry (vanished from All, appeared under
+Archived), unarchived it back, searched by name and by IP, and fetched
+both exports directly — CSV and JSON both returned the expected rows
+with the fix in place.
+
+**2026-09-09:** Reply-To support and the File Upload field type closed
+out. `Mailer::send()` gained an optional trailing `$replyTo` parameter
+(default `null`, so the two existing call sites in
+`CommentNotificationService` needed no changes); `NativeMailer` adds a
+`Reply-To:` header only when given a value that passes
+`FILTER_VALIDATE_EMAIL` after CRLF-stripping, so a malformed or absent
+submitter email just means no header rather than a broken notification.
+`ContactFormSubmissionHandler::sendNotification()` passes the
+submission's own Email-type field value as `$replyTo`, so clicking Reply
+on a notification lands in the submitter's inbox instead of the site's
+own From address.
+
+File Upload is a new `ContactFieldType::FileUpload` case — free of any
+admin-view changes, since the field-type `<select>` already iterates
+`ContactFieldType::cases()`. A new `ContactFormUploadService` validates
+(5MB cap; a small, fixed allow-list of
+jpg/jpeg/png/gif/pdf/doc/docx/txt/zip by both extension and sniffed MIME
+type — deliberately narrower than `MediaService`'s own, since these
+arrive from anonymous, unauthenticated visitors) and stores uploads under
+`storage/contact-form-uploads/{formId}/` with a random-prefixed filename
+— never under `content/uploads/`, since an anonymous, un-moderated
+submission has no business appearing in the Media Library. `storage/` is
+already denied to direct web access by its own `.htaccess`, so a stored
+file is only ever reachable through a new authenticated
+`?download_field=`/`?submission_id=` route added to
+`admin/views/contact-forms/submissions.php`, gated by that whole screen's
+existing `manage_options` requirement. `ContactFormShortcode` renders a
+`<input type="file">` for the field and switches the form's own
+`enctype` to `multipart/form-data` whenever any field is FileUpload.
+Deleting a submission now also deletes any file(s) its FileUpload fields
+reference; deleting a form now also removes its entire upload directory
+(`ContactFormUploadService::deleteAllForForm()`, called alongside the
+existing `ContactSubmissionService::deleteByFormId()` in
+`all-forms.php`). A later field's validation failure now cleans up any
+file an earlier field in the same submission already stored, rather than
+leaking it on disk with no submission to ever point back to it.
+
+15 new tests: `ContactFormUploadServiceTest` (accepts an allowed type,
+rejects a disallowed extension/oversized file/failed upload, path-
+traversal confinement, delete/deleteAllForForm, per-form isolation) using
+the same injectable `move_uploaded_file()` closure `MediaServiceTest`
+already established for exactly this reason; two new
+`ContactFormShortcodeTest` cases for the file input/enctype switch; and a
+new `NativeMailerTest` using a namespace-scoped `mail()` function
+override (PHP resolves an unqualified call inside a namespace to a
+same-named function declared in that namespace before falling back to
+the global one) to capture and assert on the headers `NativeMailer`
+actually builds, including a header-injection-defense case — the first
+test coverage this class has ever had. Full `composer test` (2261 tests)
+clean. Browser/curl-verified live on the dev install end to end: added a
+File Upload field to a real form (visible in the field-type dropdown
+immediately, no admin-view changes needed), confirmed the rendered
+`<form>` carries `enctype="multipart/form-data"`, submitted a real
+multipart POST with an attached `.txt` file (the in-app Browser pane
+can't drive a native OS file-picker, so the actual HTTP submission was
+exercised directly with `curl` against the live route/CSRF/FormTiming
+tokens), confirmed the file landed on disk and its filename in the
+stored submission data, confirmed the admin Submissions screen renders
+it as a working download link that streams back the exact original
+content, confirmed a disallowed extension (`.exe`) is rejected with no
+file or submission ever created, confirmed cross-submission/non-file-
+field download attempts 404, and confirmed deleting the submission
+removed its file from disk. All test data (the scratch page, the demo
+Attachment field, the uploaded file, the submission row) was cleaned up
+afterward, leaving the real "Contact Us" form exactly as it was found.
+
+------
+
+### LP-151. Admin Sidebar Flyout Submenus (Classic WordPress-Style)
+
+**Status:** Complete (4/4 checklist items done)
+
+#### Goal
+
+Requested (2026-09-07, with a classic WordPress admin dashboard
+screenshot as reference — saved as `References/Dashboard-‹-So-Obsessed-—-WordPress.jpg`
+if needed later): make the admin sidebar's top-level items with
+children (Posts, Media, Appearance, etc.) behave like classic WordPress's
+collapsed/icon sidebar — hovering a top-level item flies out a submenu
+panel next to it (e.g. hovering "Posts" pops out All Posts / Add Post /
+Categories / Tags), rather than today's in-place expand/collapse
+(`admin/assets/js/nav-toggle.js`, LP-092) where a parent item's children
+push everything below it further down the page.
+
+#### Approach
+
+The collapsed/icon sidebar with flyout submenus is the new default;
+LP-092's full-width in-place expand/collapse sidebar coexists as an
+opt-in a user switches to via a new persistent toggle in the sidebar
+footer (`.lp-admin__sidebar-mode-toggle`), remembered per-browser in
+localStorage (`admin/assets/js/sidebar-mode.js`) rather than as a
+per-user database column — this is viewport-driven UI state, not an
+account preference like `ThemePreference`. `admin/views/layout-header.php`'s
+existing per-item submenu markup is reused as-is; only its top-level
+`<a>` rows gained an icon span (site menu icons already existed per
+item, just weren't rendered there) and a label span, so CSS alone can
+switch between the two modes via an `html:not(.lp-admin-sidebar-expanded)`
+selector in `admin/assets/css/admin.css`. The flyout panel is
+`position: fixed` rather than absolutely positioned in-flow, since
+`.lp-admin__sidebar`'s own `overflow-y: auto` (LP-092/scroll-position
+fix) would otherwise clip anything poking out past its right edge;
+`admin/assets/js/flyout-nav.js` sets the panel's `top` to match its
+trigger row on hover/focus, since CSS has no way to read an element's
+position. Both new scripts are additions alongside the existing
+`nav-toggle.js`/`sidebar-scroll.js`, not replacements.
+
+#### Checklist
+
+- [x] Decide whether flyout replaces or coexists with LP-092's in-place
+      expand/collapse, and whether the collapsed/icon sidebar is the
+      default or an opt-in toggle. (Coexists; collapsed/icon is the
+      default, full-width is the opt-in toggle.)
+- [x] Implement the collapsed/icon sidebar width + flyout submenu panel
+      (CSS + `admin/assets/css/admin.css`), matching the existing
+      `--lp-admin-*` custom properties so light/dark mode both work
+      with no separate dark-mode rules needed.
+- [x] Keyboard/screen-reader operable: a flyout must open on keyboard
+      focus of the parent item, not just mouse hover, and be reachable/
+      dismissible without a mouse. (`:focus-within` opens it; Escape
+      returns focus to the trigger link, closing it.)
+- [x] Verify no regression to LP-096's mobile off-canvas drawer, which
+      shares the same sidebar markup at the `782px` breakpoint. (All
+      LP-151 CSS is scoped to `min-width: 783px`; browser-verified the
+      mobile drawer still renders the full expanded layout regardless
+      of the desktop toggle's state.)
+
+Fixed after initial browser verification: on any admin screen with real
+page content below the fold (e.g. Appearance &rsaquo; Themes' card
+grid), the flyout rendered *behind* that content instead of on top of
+it. First attempt (giving `.lp-admin__sidebar` an explicit `z-index: 1`
+so it forms a real stacking context — position != static and z-index
+!= auto both being required for one) fixed the general case but turned
+out incomplete: a descendant deep inside `.lp-admin__content` with its
+own non-auto z-index (the Themes screen's `.lp-theme-card__select`
+bulk-select checkbox, itself `z-index: 1`) could still tie with the
+sidebar's own `z-index: 1` — because neither `.lp-admin__content` nor
+`.lp-admin__shell` was itself a stacking context, that checkbox's
+locally-scoped z-index had nothing containing it, so it bubbled all the
+way up to the *root* stacking context to compete directly against the
+sidebar, and won on document order (later in the DOM). Real fix: also
+give `.lp-admin__content` its own `position: relative; z-index: 0;` —
+now every descendant's z-index is contained inside content's own
+stacking context, unable to escape and tie with the sidebar's,
+regardless of what value a future admin screen's markup might use.
+Browser-verified via `elementFromPoint()` at the checkbox's own
+coordinates resolving to the flyout link rather than the checkbox,
+reproducing and then confirming the fix for the exact scenario Ariane
+reported (hovering Lumora Shield on the Themes screen).
+
+------
+
+### LP-153. Move Lumora Shield Under Settings &rsaquo; Security (Tabbed) and Maintenance &rsaquo; Logs
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (7/7 checklist items done)
+
+#### Goal
+
+Requested (2026-09-09): Lumora Shield currently gets its own top-level admin sidebar menu item (with Settings/Logs children) even though it's a security-hardening plugin, not day-to-day content work. Split it across the two existing screens its two children actually belong with: Settings moves under Settings &rsaquo; Security as its own tab (the same pattern Appearance &rsaquo; Customize already uses for its Header/Welcome Message/Body/Menu/Widgets/Footer tabs — one `.lp-tabs` component, a `?tab=` query param, panels rendered server-side with the `hidden` attribute so the page works before JS enhances it), and Logs moves under Maintenance &rsaquo; Logs as a new stacked section — Ariane's own instinct was "I'd look for it there," and `admin/views/maintenance/logs.php` already shows the application error log and recorded login attempts side by side on one page with no tabs, which is exactly the shape a third log source (blocked enumeration attempts) fits into.
+
+#### Approach
+
+**Settings half:** `admin/views/settings/security.php` is currently one flat page (Login Lockout / Spam Protection / Trusted Image Sources / User Enumeration / Always On sections, no tabs at all) — introduce the same `.lp-tabs`/`.lp-tabs__panel` structure Customize uses (`admin/views/appearance/customize.php`, `admin/assets/js/admin-tabs.js`), with two tabs: "General" (today's existing content, unchanged) and "Lumora Shield" (new, listed only when the plugin is active — mirrors the `$lumoraShieldActive` check this file already has for its own "User Enumeration" cross-link). Move `admin/views/lumora-shield/settings.php`'s form-handling and markup into that new tab panel, redirecting to `admin_url('settings/security') . '?tab=lumora-shield'` instead of `admin_url('lumora-shield/settings')`, matching Customize's own tab-preserving redirect convention; CSRF form names/actions stay exactly as they are, only relocated.
+
+**Logs half:** `admin/views/lumora-shield/logs.php`'s docblock and inline comments already say it was deliberately written to mirror `admin/views/maintenance/logs.php`'s own pagination (`$limit`/"Show N more") and per-IP-memoized lookup idioms — moving it there is completing a design the code already pointed at, not inventing a new one. Add a third `<section class="lp-admin__panel" id="enumeration-attempts">` to `admin/views/maintenance/logs.php`, after the existing Application Errors/Login Attempts sections, using its own query param (e.g. `shield_limit`, since `error_limit`/`login_limit` are already taken) so its "Show more" pagination doesn't collide with the other two sections'.
+
+**Both halves:** `admin/index.php`'s routing is driven entirely by its `$menu` array (confirmed: an unrecognized `$page` falls back to Dashboard), so removing the top-level `lumora-shield` entry from `$menu` is enough to stop `/admin/lumora-shield/*` resolving — there's no separate route table to touch, and no plugin-side change needed (`content/plugins/lumora-shield/lumora-shield.php` only registers hooks/filters, never a menu entry).
+
+#### Checklist
+
+- [x] Add a "General"/"Lumora Shield" tabbed structure to `admin/views/settings/security.php`, matching Customize's `.lp-tabs` component and `?tab=` convention; the "Lumora Shield" tab is only listed/rendered when the plugin is active.
+- [x] Move `admin/views/lumora-shield/settings.php`'s form-handling and markup into the new "Lumora Shield" tab panel; update its redirect target to `settings/security?tab=lumora-shield`.
+- [x] Move `admin/views/lumora-shield/logs.php`'s content into a new section on `admin/views/maintenance/logs.php`, with its own `shield_limit` query param and `#enumeration-attempts` anchor, matching the existing Application Errors/Login Attempts sections' structure.
+- [x] Remove the top-level `lumora-shield` entry from `admin/index.php`'s `$menu` array; delete `admin/views/lumora-shield/` once both files' content is fully merged.
+- [x] Decide whether `/admin/lumora-shield/settings`/`/admin/lumora-shield/logs` get an explicit legacy redirect (to `settings/security?tab=lumora-shield` and `maintenance/logs#enumeration-attempts` respectively — mirroring the existing `$legacyRedirects` pattern in `admin/index.php` for `updates`/`tools`/`categories`/`tags`) or are left to fall back to Dashboard like any other removed page.
+- [x] Fold the "User Enumeration" section's existing cross-link to Lumora Shield's Settings page (on `admin/views/settings/security.php` itself) into a single combined section, or an in-page anchor to the new tab, now that both live on the same screen; update `lumora-shield/logs.php`'s own cross-link to Settings similarly before it's merged away.
+- [x] No existing PHP Test Suite coverage references the `lumora-shield/settings`/`lumora-shield/logs` admin routes or view files directly (only `LumoraShieldServiceTest`/`CommentAnalyzerTest`, both service-level), so no test updates are expected from the move itself; browser-verify both destinations (settings save/tab, logs display/pagination/anchor, redirects, capability gating) on the dev install.
+
+#### Implementation Notes
+
+Went with an explicit legacy redirect for item 5: a new `$legacyRouteRedirects` array in `admin/index.php`, keyed by full `"page/subpage"` pairs (`lumora-shield/settings` &rarr; `settings/security?tab=lumora-shield`, `lumora-shield/logs` &rarr; `maintenance/logs#enumeration-attempts`) and checked unconditionally before the existing `$legacyRedirects` array — that older array only fires when `$subpage === null`, which doesn't fit a full old route with its own subpage. Item 6's cross-links became in-page anchors (`#stop-user-enumeration`, `#monitoring`) once both screens' content shared one page.
+
+While wiring the moved Lumora Shield tab up for browser verification, found and fixed a real pre-existing CSRF bug (present in the original `lumora-shield/settings.php` too, not introduced by this move): all four of its forms (Stop User Enumeration / Monitoring / Comment Analysis / Contact Form Protection) shared one `Csrf::field('lumora_shield_settings')` action name, and since `Csrf::field()` overwrites the session's per-action token on every call, only the last-rendered form's token was ever actually valid — the first three silently failed CSRF verification and their Save buttons did nothing. Fixed by giving each of the four forms its own action name (`lumora_shield_settings_enumeration`/`_monitoring`/`_comment_analysis`/`_contact_form`) plus a `csrf_action` hidden field so the shared POST handler knows which one to verify against. Browser-verified directly: before the fix, saving "Hide author archives entirely" silently reverted on redirect; after, it persisted correctly.
+
+------
+
+### LP-152. Compress Database Backups (gzip)
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items done)
+
+Requested (2026-09-07): `UpdateBackupService::backupDatabaseBatch()` writes
+a plain, uncompressed `.sql` file — file backups already zip via
+`ZipArchive` (`backupFiles()`), but the database dump has no compression
+at all, so it's needlessly large for a big site. gzip fits better than
+zipping the `.sql` afterward: the dump is built incrementally (batches of
+`INSERT` statements appended across potentially many HTTP requests, via
+plain `fopen(..., 'a')`), and `gzopen($path, 'ab')` is a drop-in
+replacement for that append pattern with no separate compress-after-the-fact
+step. Guard with `function_exists('gzopen')` the same way `backupFiles()`
+already guards `class_exists('ZipArchive')`, falling back to plain `.sql`
+on a host without zlib.
+
+#### Checklist
+
+- [x] Switch `backupDatabaseBatch()`'s file handle from `fopen()` to
+      `gzopen()` (mode `'ab'`) when `function_exists('gzopen')`, writing
+      `db-{version}-{timestamp}.sql.gz` instead of `.sql`; fall back to
+      the current plain-`.sql` path otherwise.
+- [x] Update `restoreDatabase()` to detect and transparently read a
+      `.gz` backup (`gzopen()`/`gzread()`/`gzeof()`) alongside the
+      existing plain-`.sql` read path — a backup taken before this
+      ticket ships must still restore.
+- [x] Update the Maintenance &rsaquo; Updates admin screen's "Download
+      database" link/filename and `UpdateBackupService::backupFilePath()`'s
+      recognized-filename check to accept the `.sql.gz` extension
+      alongside `.sql`.
+- [x] Add/update Unit tests for `backupDatabaseBatch()`/`restoreDatabase()`
+      covering both the gzip and plain-fallback paths, and for
+      `backupFilePath()` recognizing a `.sql.gz` filename; browser-verify
+      a real download and restore round-trip on the dev install.
+
+------
+
+### LP-154. Sidebar Toggle Buttons as Color Buttons, Flyout Toggle at Top Too
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (5/5 checklist items done)
+
+#### Goal
+
+Requested (2026-09-09), following up on LP-151's collapsed/icon sidebar, refined in a follow-up message the same day: four related polish items on `admin/views/layout-header.php`'s sidebar chrome.
+
+1. `.lp-admin__sidebar-mode-toggle` (the collapsed/expanded flyout-mode switch) currently only appears once, at the sidebar's bottom (`.lp-admin__sidebar-mode`, right before `.lp-admin__user`) — add it to the top too, mirroring how `.lp-admin__nav-toggle-all` (LP-092's expand-all/collapse-all) already appears both above the nav (line 65) and below it (inside `.lp-admin__user`, line 114).
+2. At each position, put both buttons on one shared row, centered as a pair, rather than each getting its own separate row — the top currently has `.lp-admin__nav-toggle-all` alone with no wrapper, and the bottom has `.lp-admin__sidebar-mode` (a `display: flex; justify-content: center;` row) holding only the mode toggle above `.lp-admin__user`'s own separate `.lp-admin__nav-toggle-all` row; both pairs should look like the mode toggle's current single-button centered row does now, just with two buttons in it.
+3. Restyle both buttons as solid "color buttons" — Ariane's term for the existing `.lp-button--primary` treatment (solid `--lp-admin-accent` background, white icon, `--lp-admin-accent-hover` on hover) — replacing their current subtle `rgba(255, 255, 255, 0.06)`-on-dark treatment, which reads as too easy to miss. Confirmed: both buttons get the **same** color, not distinct colors per button — Ariane's framing is that they're "different aspects of the same feature" (sidebar-wide navigation display), so one shared accent is correct, not two.
+4. Two nav *icons* are separately reported as easy to miss in the collapsed/icon sidebar, for a different reason than (3) — not because they're styled subtly like the toggle buttons, but because Plugins' 🔌 and the top-level Settings ⚙️ glyphs themselves render small/grey/washed-out next to genuinely colorful neighbors like Appearance's 🎨 or Comments' 💬. Ariane's ask is for Plugins to be "distinct... more, like Appearance/Comments" (i.e. as visually prominent as those already are — not necessarily via a colored circle/badge, unlike the toggle buttons in (3)) and for Settings specifically to move to "a lighter grey" so it stands out against the dark sidebar background and matches the other icons/buttons/svg better.
+
+#### Approach
+
+Item (4) needs a technical explainer before implementation, since it's not simply a CSS color change: 🔌 and ⚙️ are Unicode characters that most platforms render as full-color *emoji presentation* glyphs (bitmap-style, not affected by the CSS `color` property at all) rather than *text presentation* — that's very likely why Settings already looks "grey" (its bitmap glyph happens to be drawn mostly silver/grey) and unchangeable by ordinary CSS. Two realistic paths, to be decided during implementation rather than guessed at here:
+
+- Swap to a different, more colorful emoji for Plugins (Widgets already has 🧩, so pick something else distinct — e.g. 🧷, 🔧, or similar) rather than trying to recolor 🔌 itself.
+- For Settings specifically, since "lighter grey" was explicitly requested rather than "more colorful": try the plain dingbat codepoint without the `️` variation selector (`⚙` alone can render as a monochrome glyph in some fonts/platforms, which *would* respond to a CSS `color` override) — verify this actually renders as text-presentation in the target browsers before relying on it; if it doesn't, fall back to a CSS `filter: brightness()`/`opacity` adjustment on `.lp-admin__nav-icon` scoped to that one item, or pick a different, lighter-toned symbol altogether.
+- Any icon substitution must stay a plain Unicode character/emoji like every other item in `admin/index.php`'s `$menu` array (LP-053's existing convention: "plain emoji, not an icon font/SVG sprite") — no new asset, no icon font.
+
+Items (1)–(3) are otherwise straightforward, reusing `.lp-admin__sidebar-mode`'s existing centered-row pattern for both positions and `.lp-button--primary`'s existing accent-fill look for both buttons' new shared color — no open design questions remain there.
+
+#### Checklist
+
+- [x] Add `.lp-admin__sidebar-mode-toggle` to the sidebar's top row alongside the existing top `.lp-admin__nav-toggle-all`, sharing one centered flex row (mirroring `.lp-admin__sidebar-mode`'s existing single-button row) instead of each button having its own row, at both the top and bottom position.
+- [x] Restyle both `.lp-admin__nav-toggle-all` and `.lp-admin__sidebar-mode-toggle` with the same solid color-button treatment (one shared `--lp-admin-accent` fill, matching `.lp-button--primary`), replacing their current subtle/transparent look.
+- [x] Make the Plugins nav icon as visually distinct as Appearance/Comments already are in the collapsed/icon sidebar — most likely by swapping 🔌 for a more colorful glyph (see Approach), not by giving it a colored-badge treatment like the toggle buttons. (Swapped to 📦.)
+- [x] Make the top-level Settings nav icon a lighter grey so it stands out against the sidebar background and matches the other icons/buttons better (see Approach's dingbat-vs-emoji-presentation and CSS-filter fallback options) — applies to the Settings *top-level* item specifically, not the `⚙️` glyph reused elsewhere as a generic "Settings" child-page icon under other sections. (Dropped the variation selector — `⚙` alone does render as text-presentation, so a plain CSS `color` override on `.lp-admin__nav-icon` for that one item works.)
+- [x] Browser-verify all of the above (top pair, bottom pair, Plugins icon, Settings icon) in both collapsed and expanded sidebar modes, and in both light and dark admin color schemes, on the dev install.

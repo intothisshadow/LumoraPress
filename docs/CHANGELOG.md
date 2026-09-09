@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-09
+
 ### Added
 
 - Tag and author feeds (LP-013): `/tag/{slug}/feed` and `/tag/{slug}/feed/atom` join the existing site-wide and per-category feeds, and `/author/{slug}/feed`/`/author/{slug}/feed/atom` do the same for a single author's posts — same RSS 2.0/Atom 1.0 formats, item limit/full-content/cache-lifetime/featured-image settings, and HTTP caching (ETag/Last-Modified/conditional GET) the existing feeds already have. An unknown tag or author 404s, the same as an unknown category; the author feed also respects the same username-enumeration protections (Lumora Shield's hooks) the `/author/{slug}` archive page already does.
