@@ -1252,6 +1252,8 @@ body.lp-admin-login {
 }
 
 .lp-theme-card {
+    display: flex;
+    flex-direction: column;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-panel-radius);
     overflow: hidden;
@@ -1271,12 +1273,15 @@ body.lp-admin-login {
 
 .lp-theme-card__screenshot-wrap {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    /* Fixed aspect ratio (cropped via object-fit: cover below) keeps
+       every card's screenshot the same height regardless of the
+       source image's own dimensions — a theme with a tall banner
+       screenshot previously stretched its whole card, and every
+       shorter card in the same grid row along with it. */
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
     background: var(--lp-admin-bg);
     border-bottom: 1px solid var(--lp-admin-border);
-    padding: 0.75rem;
 }
 
 /*
@@ -1304,15 +1309,14 @@ body.lp-admin-login {
 
 .lp-theme-card__screenshot {
     display: block;
-    max-width: 250px;
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
 }
 
 .lp-theme-card__screenshot--placeholder {
     width: 100%;
-    max-width: 250px;
-    aspect-ratio: 4 / 3;
+    height: 100%;
     background: repeating-linear-gradient(
         45deg,
         var(--lp-admin-sidebar-bg),
@@ -1323,6 +1327,9 @@ body.lp-admin-login {
 }
 
 .lp-theme-card__body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
     padding: 1rem;
 }
 
@@ -1363,6 +1370,10 @@ body.lp-admin-login {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    /* Keeps Activate/Delete aligned along the bottom of every card in a
+     * row, regardless of how much taller a neighbor's description or
+     * screenshot makes it. */
+    margin-top: auto;
 }
 
 .lp-theme-card__actions form {
@@ -4538,6 +4549,15 @@ select:focus {
 
 .lp-admin__panel form + form {
     margin-top: 0.5rem;
+}
+
+/* .lp-admin__panel form + form above (for stacked forms like Updates'
+   backup actions) otherwise wins the specificity tie against
+   .lp-theme-card__actions form's margin reset, since a theme card's
+   Activate/Delete forms are adjacent siblings inside a .lp-admin__panel
+   too — reset it back to 0 so they stay aligned in the flex row. */
+.lp-theme-card__actions form + form {
+    margin-top: 0;
 }
 
 /*
