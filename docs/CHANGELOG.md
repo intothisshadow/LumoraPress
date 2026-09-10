@@ -10,6 +10,10 @@ All notable changes to Lumora Press are documented in this file.
 - Tags Search & Filtering (LP-011): the admin Tags list gained a "Search & Filter" panel, mirroring Categories' own — search by name or slug, filter by minimum post count, or a created-date range. It also gained a new "Last Used" column, filterable by a last-used date range, derived from the most recent post carrying that tag rather than a tracked column of its own.
 - Tags Usage Statistics (LP-011): the admin Tags list gained a "Usage Statistics" panel — Most Used, Least Used, an unused-tags count, Recently Created, and Recently Used.
 
+### Performance
+
+- Tags (LP-011): `TagService` now memoizes `findById()` lookups and per-tag post counts for the life of a request, the same request-scoped caching LP-010 added to Categories. The Post editor's tag-input autocomplete suggestions now query only tag names instead of full rows.
+
 ### Removed
 
 - REST API and API Tokens (LP-155): the token-authenticated JSON REST API under `/api/v1/...` and the Settings &rsaquo; API Tokens screen that issued its bearer tokens are both gone entirely, along with Settings &rsaquo; General's "REST API" section. An update run drops the now-orphaned `api_tokens` database table.

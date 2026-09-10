@@ -233,7 +233,7 @@ $categoryTree = $kernel->categories->listAllForTree();
 $assignedCategoryIds = $post !== null
     ? array_map(static fn ($category) => $category->id, $kernel->categories->categoriesForPost($post->id))
     : [];
-$allTagNames = array_map(static fn ($tag) => $tag->name, $kernel->tags->listAll());
+$allTagNames = $kernel->tags->allNames();
 $assignedTagNames = $post !== null
     ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
     : [];

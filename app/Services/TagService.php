@@ -31,6 +31,27 @@ use RuntimeException;
  */
 final class TagService
 {
+    /**
+     * Request-scoped findById() memoization, mirroring CategoryService::$byIdCache — a single
+     * request routinely resolves the same tag id more than once (the Post editor's tag bridge,
+     * a tag archive page's own findById() during breadcrumb/related-content rendering). Holds
+     * null for a confirmed miss too, so a repeated lookup for a nonexistent id doesn't
+     * re-query. Cleared by any method that can change a tag's stored fields or post
+     * assignments.
+     *
+     * @var array<int, Tag|null>
+     */
+    private array $byIdCache = [];
+
+    /**
+     * Request-scoped memoization of postCount()'s per-tag totals, keyed by tag id — mirrors
+     * CategoryService::$postCountCache exactly. Loads every tag's count in a single GROUP BY
+     * query on first access instead of one COUNT() per call.
+     *
+     * @var array<int, int>|null
+     */
+    private ?array $postCountCache = null;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
@@ -56,6 +77,7 @@ final class TagService
             ],
         );
 
+        $this->invalidateCaches();
         $tag = $this->findById((int) $id);
 
         if ($tag === null) {
@@ -91,6 +113,10 @@ final class TagService
             ],
         );
 
+        // Invalidated before the re-fetch below, not after — findById() at the top of this
+        // method already primed the cache with the pre-update row, and a stale byIdCache hit
+        // here would hand the caller back the value it just asked to change.
+        $this->invalidateCaches();
         $tag = $this->findById($id);
 
         if ($tag === null) {
@@ -115,6 +141,8 @@ final class TagService
                 ['id' => $id],
             );
         });
+
+        $this->invalidateCaches();
 
         if ($deleted) {
             $this->hooks?->doAction('tag_deleted', $id);
@@ -169,6 +197,7 @@ final class TagService
             );
         });
 
+        $this->invalidateCaches();
         $this->hooks?->doAction('tag_merged', $sourceId, $targetId);
 
         return true;
@@ -201,9 +230,13 @@ final class TagService
 
     public function findById(int $id): ?Tag
     {
+        if (array_key_exists($id, $this->byIdCache)) {
+            return $this->byIdCache[$id];
+        }
+
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
 
-        return $row === null ? null : $this->hydrate($row);
+        return $this->byIdCache[$id] = ($row === null ? null : $this->hydrate($row));
     }
 
     public function findBySlug(string $slug): ?Tag
@@ -240,6 +273,24 @@ final class TagService
         $rows = $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' ORDER BY name ASC');
 
         return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
+     * Every tag's name only, for the Post editor's tag-input autocomplete
+     * widget (`admin/views/posts/new.php`'s `data-suggestions`), which
+     * needs nothing else — selecting just `name` instead of `SELECT *`
+     * and skipping full Tag hydration avoids the slug/description/
+     * timestamp columns and object-construction cost listAll() pays for
+     * every tag on every Post editor page load, mattering most for a
+     * site with a large tag collection.
+     *
+     * @return array<int, string>
+     */
+    public function allNames(): array
+    {
+        $rows = $this->database->fetchAll('SELECT name FROM ' . $this->table() . ' ORDER BY name ASC');
+
+        return array_map(static fn (array $row): string => (string) $row['name'], $rows);
     }
 
     /**
@@ -466,12 +517,27 @@ final class TagService
         return array_map($this->hydrate(...), $rows);
     }
 
+    /**
+     * Backed by a single request-scoped GROUP BY query rather than one COUNT() per call,
+     * mirroring CategoryService::postCount() — anywhere this is called once per tag in a loop
+     * (a tag cloud, a list of a post's tags each showing its own count) now costs one query
+     * total instead of one per tag.
+     */
     public function postCount(int $tagId): int
     {
-        return (int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->postTagsTable() . ' WHERE tag_id = :tag_id',
-            ['tag_id' => $tagId],
-        );
+        if ($this->postCountCache === null) {
+            $rows = $this->database->fetchAll(
+                'SELECT tag_id, COUNT(*) AS post_count FROM ' . $this->postTagsTable() . ' GROUP BY tag_id',
+            );
+
+            $this->postCountCache = [];
+
+            foreach ($rows as $row) {
+                $this->postCountCache[(int) $row['tag_id']] = (int) $row['post_count'];
+            }
+        }
+
+        return $this->postCountCache[$tagId] ?? 0;
     }
 
     /**
@@ -517,6 +583,20 @@ final class TagService
                 );
             }
         });
+
+        $this->postCountCache = null;
+    }
+
+    /**
+     * Clears every request-scoped cache — called by any method that changes a tag's stored
+     * fields or its post assignments, so the next findById()/postCount() call reflects the
+     * change instead of serving a stale memoized value. Mirrors
+     * CategoryService::invalidateCaches().
+     */
+    private function invalidateCaches(): void
+    {
+        $this->byIdCache = [];
+        $this->postCountCache = null;
     }
 
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string
