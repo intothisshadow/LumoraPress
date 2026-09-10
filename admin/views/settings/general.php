@@ -127,17 +127,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 
     header('Location: ' . admin_url('settings/general') . '?saved=1');
     exit;
-} elseif ($form === 'rest_api_settings' && Csrf::verify('rest_api_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $kernel->config->setOption('rest_api_enabled', ($_POST['rest_api_enabled'] ?? '') === '1' ? '1' : '0');
-
-    foreach (['posts', 'pages', 'categories', 'tags', 'comments', 'search'] as $resource) {
-        $kernel->config->setOption("rest_api_resource_{$resource}_enabled", ($_POST["rest_api_resource_{$resource}_enabled"] ?? '') === '1' ? '1' : '0');
-    }
-
-    $kernel->config->setOption('rest_api_comments_public_submission_enabled', ($_POST['rest_api_comments_public_submission_enabled'] ?? '') === '1' ? '1' : '0');
-
-    header('Location: ' . admin_url('settings/general') . '?saved=1');
-    exit;
 } elseif ($form === 'editor_settings' && Csrf::verify('editor_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $defaultEditorInput = ContentFormat::tryFrom((string) ($_POST['default_editor'] ?? '')) ?? ContentFormat::Markdown;
     $lockToDefaultInput = ($_POST['lock_editor_to_default'] ?? '') === '1';
@@ -396,39 +385,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <input type="number" id="revision-retention" name="revision_retention" min="0" value="<?= esc_attr((string) $kernel->config->option('revision_retention', '25')) ?>">
             <span class="lp-field__hint">A new revision is saved automatically each time a post or page is updated. Set to 0 to keep every revision (unlimited).</span>
         </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
-
-<section class="lp-admin__panel">
-    <h2>REST API</h2>
-    <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>">
-        <?= Csrf::field('rest_api_settings') ?>
-        <input type="hidden" name="form" value="rest_api_settings">
-
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="rest_api_enabled" value="1" <?= $kernel->config->option('rest_api_enabled', '1') !== '0' ? 'checked' : '' ?>>
-            Enable the REST API (<code>/api/v1/...</code>)
-        </label>
-
-        <fieldset class="lp-field">
-            <legend>Enabled resources</legend>
-            <?php foreach (['posts' => 'Posts', 'pages' => 'Pages', 'categories' => 'Categories', 'tags' => 'Tags', 'comments' => 'Comments', 'search' => 'Search'] as $resource => $label): ?>
-                <label class="lp-field--checkbox">
-                    <input type="checkbox" name="rest_api_resource_<?= esc_attr($resource) ?>_enabled" value="1" <?= $kernel->config->option("rest_api_resource_{$resource}_enabled", '1') !== '0' ? 'checked' : '' ?>>
-                    <?= esc_html($label) ?>
-                </label>
-            <?php endforeach; ?>
-        </fieldset>
-
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="rest_api_comments_public_submission_enabled" value="1" <?= $kernel->config->option('rest_api_comments_public_submission_enabled', '1') !== '0' ? 'checked' : '' ?>>
-            Allow public (no API token) comment submission via the API
-        </label>
-        <span class="lp-field__hint">Reading and moderating comments via the API is controlled by the "Comments" resource toggle above; this only affects anonymous submissions.</span>
-
-        <p class="lp-field__hint">Manage your own API tokens on the <a href="<?= esc_url(admin_url('api-tokens')) ?>">API Tokens</a> page.</p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>

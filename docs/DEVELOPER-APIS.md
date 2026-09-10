@@ -83,10 +83,10 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
-| `comment_posted` | action | `Comment $comment` | [`SiteController`](../app/Controllers/SiteController.php)`::submitComment()` and `::submitPageComment()` — the two front-end comment-form handlers, after the comment is saved, before notification dispatch. **Not fired by the REST API's comment-creation endpoint** — a listener relying on this alone will miss comments created via the API. |
+| `comment_posted` | action | `Comment $comment` | [`SiteController`](../app/Controllers/SiteController.php)`::submitComment()` and `::submitPageComment()` — the two front-end comment-form handlers, after the comment is saved, before notification dispatch. |
 | `comment_status_changed` | action | `Comment $comment` (reloaded, new status) | `CommentService::updateStatus()`. |
 | `comment_deleted` | action | `int $id` | `CommentService::delete()`. |
-| `comment_is_spam` | filter | `bool $isSpam, string $guestName, ?string $guestEmail, ?string $guestUrl, string $content, ?string $ipAddress` | Applied identically in three places: `SiteController::submitComment()`, `::submitPageComment()`, and `ApiController`'s comment-creation handler — the intended extension point for a spam-detection plugin. (Core's own Akismet integration is called inline at each of those same call sites, *not* through this filter.) The Lumora Shield plugin's Comment Analysis module is this filter's first real listener, pushing toward Spam based on content/behavioral heuristics (see `LumoraShieldService::commentIsSpam()`). Can only push a comment *toward* Spam — returning `true` sets Spam status; you cannot un-spam a comment another listener already flagged. |
+| `comment_is_spam` | filter | `bool $isSpam, string $guestName, ?string $guestEmail, ?string $guestUrl, string $content, ?string $ipAddress` | Applied identically in two places: `SiteController::submitComment()` and `::submitPageComment()` — the intended extension point for a spam-detection plugin. (Core's own Akismet integration is called inline at each of those same call sites, *not* through this filter.) The Lumora Shield plugin's Comment Analysis module is this filter's first real listener, pushing toward Spam based on content/behavioral heuristics (see `LumoraShieldService::commentIsSpam()`). Can only push a comment *toward* Spam — returning `true` sets Spam status; you cannot un-spam a comment another listener already flagged. |
 | `contact_form_is_spam` | filter | `bool $isSpam, array<string, string> $data, string $ipAddress` | `ContactFormSubmissionHandler::handle()` (Contact Forms plugin, LPP-003) — applied after that plugin's own CSRF/honeypot/FormTiming/rate-limit/CAPTCHA/Akismet checks, right before persisting the submission. `$data` is every submitted field, keyed by field key (an arbitrary, per-form set — Name/Email/Subject/Message/etc.). Same can-only-push-toward-Spam contract as `comment_is_spam`. The Lumora Shield plugin's Contact Form Protection module is this filter's first listener, reusing `CommentAnalyzer::contentReasons()` against every field value joined together (see `LumoraShieldService::contactFormIsSpam()`). |
 
 ### Category lifecycle
@@ -213,7 +213,7 @@ Kernel exists (see "Discovery & loading" below). Hook the
 |---|---|---|---|
 | `register_theme_options` | action | `ThemeOptions $themeOptions` | Fired once at bootstrap, after the active theme's `functions.php` has loaded and after core's own sixteen built-in fields are registered. Values are scoped per active theme (LP-123) — see [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md)'s Theme Options section for the registration pattern and the Appearance &rsaquo; Customize screen's template tags. |
 | `option_changed` | action | `string $key, string\|null $serialized` | [`PressConfig`](../app/Core/PressConfig.php)`::setOption()` — fires on **every** option write anywhere in the app, including in-memory-only config with no database bound. The single most universal "something in settings changed" hook. |
-| `general_settings_saved` | action | `string $section` (`'site_settings'` \| `'date_time_settings'` \| `'footer_settings'` \| `'seo_settings'`) | `admin/views/settings/general.php`, once per successfully-saved sub-form. **Not fired** by that same screen's Feed, Search, Revision, REST API, or Editor sub-forms — those save silently. Don't treat this as a complete "any setting changed" event; use `option_changed` for that instead. |
+| `general_settings_saved` | action | `string $section` (`'site_settings'` \| `'date_time_settings'` \| `'footer_settings'` \| `'seo_settings'`) | `admin/views/settings/general.php`, once per successfully-saved sub-form. **Not fired** by that same screen's Feed, Search, Revision, or Editor sub-forms — those save silently. Don't treat this as a complete "any setting changed" event; use `option_changed` for that instead. |
 | `maintenance_mode_toggled` | action | `bool $enabled` | `admin/views/settings/maintenance-mode.php` — both the full settings form and the quick Dashboard toggle fire this. |
 | `maintenance_mode_bypass` | filter | `bool $bypasses, ?User $user` | [`MaintenanceGate`](../app/Core/Http/MaintenanceGate.php)`::bypassesFor()` — add bypass rules beyond the built-in capability check. Guests (`$user === null`) still pass through with `$bypasses = false`. |
 
@@ -301,22 +301,6 @@ route-registration hook exists.
 | `lumora_press_loaded` | action | none | The very last line of [`include/bootstrap.php`](../include/bootstrap.php), after routes are registered and the CSP header is set — the closest equivalent to WordPress's `init`/`wp_loaded`. The natural place for a plugin's own late setup that needs everything else already in place. |
 | `lumora_press_before_update` | action | `string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::install()`, right after the maintenance lock is acquired, before backups start. |
 | `lumora_press_after_update` | action | `string $fromVersion, string $toVersion, UpdateStatus $status` | Same method, fired on **both** the success path and the failure/rollback path — check `$status` to tell them apart. |
-
-### REST API
-
-| Name | Type | Args | Fires in |
-|---|---|---|---|
-| `rest_api_request` | action | `string $method, string $path, ?User $user` | The first line of every public [`ApiController`](../app/Controllers/ApiController.php) action — fires for **every** request regardless of whether it's ultimately allowed, so a plugin can observe real traffic. |
-| `rest_api_enabled` | filter | `bool $enabled` | Same gate method, the global REST API on/off toggle. |
-| `rest_api_resource_enabled` | filter | `bool $resourceEnabled, string $resource` | Same gate method, per-resource toggle. |
-
-**The REST API's routes are fixed** — registered directly against the
-router in `include/bootstrap.php`, with no hook or `PluginManager`
-facility for a plugin to add a *new* endpoint. The three hooks above
-(plus the shared `comment_is_spam` filter, for the comment-creation
-endpoint) are the only plugin-facing extension surface on the REST
-layer. If you need a genuinely custom endpoint, there's currently no
-supported way to add one.
 
 ## Plugin structure & lifecycle
 

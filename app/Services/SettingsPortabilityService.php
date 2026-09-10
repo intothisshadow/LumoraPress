@@ -28,9 +28,9 @@ use RuntimeException;
  * another install; and anything under Security, Privacy, Redirects, Maintenance Mode, Cache,
  * and Embeds, which is install-specific by nature.
  *
- * Thumbnail sizes and REST API resource toggles are per-name option keys rather than one
- * fixed key each — THUMBNAIL_SIZE_NAMES/REST_API_RESOURCES list the core-registered names,
- * and allFields() expands them. A plugin-registered thumbnail size is deliberately excluded,
+ * Thumbnail sizes are per-name option keys rather than one fixed key each —
+ * THUMBNAIL_SIZE_NAMES lists the core-registered names, and allFields()
+ * expands them. A plugin-registered thumbnail size is deliberately excluded,
  * since it may not be option-backed at all.
  *
  * sanitize() only coerces to the right scalar type, not each field's bespoke validation (e.g.
@@ -49,11 +49,6 @@ final class SettingsPortabilityService
      * @var list<string>
      */
     private const THUMBNAIL_SIZE_NAMES = ['small', 'medium', 'large'];
-
-    /**
-     * @var list<string>
-     */
-    private const REST_API_RESOURCES = ['posts', 'pages', 'categories', 'tags', 'comments', 'search'];
 
     /**
      * @var array<string, string> option key => type ('bool'|'int'|'string')
@@ -118,8 +113,6 @@ final class SettingsPortabilityService
         'search_min_length' => 'int',
         'search_max_results' => 'int',
         'revision_retention' => 'int',
-        'rest_api_enabled' => 'bool',
-        'rest_api_comments_public_submission_enabled' => 'bool',
         'default_editor' => 'string',
         'lock_editor_to_default' => 'bool',
     ];
@@ -271,8 +264,8 @@ final class SettingsPortabilityService
 
     /**
      * @return array<string, string> the full portable field map, with
-     *     thumbnail per-size and REST API per-resource keys expanded in
-     *     alongside the fixed PORTABLE_FIELDS entries.
+     *     thumbnail per-size keys expanded in alongside the fixed
+     *     PORTABLE_FIELDS entries.
      */
     private function allFields(): array
     {
@@ -283,10 +276,6 @@ final class SettingsPortabilityService
             $fields["thumbnail_size_{$name}_height"] = 'int';
             $fields["thumbnail_size_{$name}_mode"] = 'string';
             $fields["thumbnail_size_{$name}_enabled"] = 'bool';
-        }
-
-        foreach (self::REST_API_RESOURCES as $resource) {
-            $fields["rest_api_resource_{$resource}_enabled"] = 'bool';
         }
 
         return $fields;

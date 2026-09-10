@@ -459,12 +459,8 @@ $menu = [
         ],
     ],
     'users' => ['label' => 'Users', 'icon' => '👥', 'capability' => 'manage_users'],
-    // No capability requirement: every authenticated role, including
-    // Subscriber, manages their own API tokens — the page only ever
-    // operates on $currentUser->id, never another user's tokens.
-    'api-tokens' => ['label' => 'API Tokens', 'icon' => '🔑', 'capability' => null],
     // No capability requirement: every authenticated role manages their
-    // own editor preference here, the same reasoning as api-tokens above.
+    // own editor preference here.
     'profile' => ['label' => 'My Profile', 'icon' => '🙍', 'capability' => null],
 ];
 

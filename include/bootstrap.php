@@ -15,7 +15,6 @@
 
 declare(strict_types=1);
 
-use LumoraPress\Controllers\ApiController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
@@ -44,7 +43,6 @@ use LumoraPress\Core\Menus\Menus;
 use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\PluginManager;
 use LumoraPress\Core\PressConfig;
-use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
 use LumoraPress\Core\Security\CspNonce;
@@ -299,7 +297,6 @@ $loginThrottle = new LoginThrottle(
     lockoutSeconds: max(60, (int) $config->option('login_lockout_seconds', '900')),
 );
 $rememberMe = new RememberMeService($database, $users, $tablePrefix, $secureCookies);
-$apiTokens = new ApiTokenService($database, $users, $tablePrefix);
 
 $passwordResets = new PasswordResetService($database, $tablePrefix);
 $passwordResetThrottle = new PasswordResetThrottle($database, $tablePrefix);
@@ -478,13 +475,8 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
 
 $search = new SearchService($database, $tablePrefix, $config, $content, $users);
 $akismet = new AkismetClient($config, home_url());
-// Shared moderation policy + notifications for both the public comment
-// form (SiteController) and the REST API (ApiController) — see
-// CommentModerationService's own docblock for why this sits between them
-// rather than living in either controller.
 $commentModeration = new CommentModerationService($config, $comments);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
-$api = new ApiController($posts, $pages, $categories, $tags, $comments, $search, $apiTokens, $config, $hooks, akismet: $akismet, commentModeration: $commentModeration, commentNotifications: $commentNotifications);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
 $mediaStats = new MediaStatsService($database, $tablePrefix);
@@ -703,7 +695,6 @@ $kernel = new Kernel(
     mediaUsage: $mediaUsage,
     thumbnails: $thumbnails,
     mediaImport: $mediaImport,
-    apiTokens: $apiTokens,
     content: $content,
     pluginRegistry: $pluginRegistry,
     pluginInstaller: $pluginInstaller,
@@ -833,38 +824,6 @@ $router->get('/admin/{page}/{subpage}', $adminHandler);
 $router->post('/admin', $adminHandler);
 $router->post('/admin/{page}', $adminHandler);
 $router->post('/admin/{page}/{subpage}', $adminHandler);
-
-// REST API, versioned under /api/v1.
-$router->get('/api/v1/posts', fn (array $params) => $api->postsIndex($params));
-$router->get('/api/v1/posts/{slug}', fn (array $params) => $api->postsShow($params));
-$router->post('/api/v1/posts', fn (array $params) => $api->postsStore($params));
-$router->patch('/api/v1/posts/{id}', fn (array $params) => $api->postsUpdate($params));
-$router->delete('/api/v1/posts/{id}', fn (array $params) => $api->postsDestroy($params));
-
-$router->get('/api/v1/pages', fn (array $params) => $api->pagesIndex($params));
-$router->get('/api/v1/pages/{slug}', fn (array $params) => $api->pagesShow($params));
-$router->post('/api/v1/pages', fn (array $params) => $api->pagesStore($params));
-$router->patch('/api/v1/pages/{id}', fn (array $params) => $api->pagesUpdate($params));
-$router->delete('/api/v1/pages/{id}', fn (array $params) => $api->pagesDestroy($params));
-
-$router->get('/api/v1/categories', fn (array $params) => $api->categoriesIndex($params));
-$router->get('/api/v1/categories/{slug}', fn (array $params) => $api->categoriesShow($params));
-$router->post('/api/v1/categories', fn (array $params) => $api->categoriesStore($params));
-$router->patch('/api/v1/categories/{id}', fn (array $params) => $api->categoriesUpdate($params));
-$router->delete('/api/v1/categories/{id}', fn (array $params) => $api->categoriesDestroy($params));
-
-$router->get('/api/v1/tags', fn (array $params) => $api->tagsIndex($params));
-$router->get('/api/v1/tags/{slug}', fn (array $params) => $api->tagsShow($params));
-$router->post('/api/v1/tags', fn (array $params) => $api->tagsStore($params));
-$router->patch('/api/v1/tags/{id}', fn (array $params) => $api->tagsUpdate($params));
-$router->delete('/api/v1/tags/{id}', fn (array $params) => $api->tagsDestroy($params));
-
-$router->get('/api/v1/comments', fn (array $params) => $api->commentsIndex($params));
-$router->post('/api/v1/comments', fn (array $params) => $api->commentsStore($params));
-$router->patch('/api/v1/comments/{id}', fn (array $params) => $api->commentsUpdate($params));
-$router->delete('/api/v1/comments/{id}', fn (array $params) => $api->commentsDestroy($params));
-
-$router->get('/api/v1/search', fn (array $params) => $api->searchIndex($params));
 
 // "/{path*}" greedily matches any remaining path, so it must be the
 // very last route registered or it would shadow every route above it.

@@ -2645,19 +2645,6 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
-.lp-api-token__value {
-    display: block;
-    padding: 0.5rem 0.75rem;
-    margin: 0.5rem 0;
-    background: var(--lp-admin-sidebar-bg);
-    color: var(--lp-admin-sidebar-fg);
-    border-radius: var(--lp-admin-radius);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.85rem;
-    overflow-wrap: break-word;
-    word-break: break-all;
-}
-
 /* Media Manager */
 
 .lp-media-manager {

@@ -130,8 +130,6 @@ implementation-level detail on each area.
   the same choice.
 - **FTP media import** — bring in files already on the server without a
   browser upload.
-- **REST API** — a versioned, token-authenticated API for posts, pages,
-  categories, tags, comments, and search.
 - **Settings** — site info, date/time formatting, SEO/social sharing
   defaults, and more.
 - **Reading settings** — choose a "latest posts" or static-page homepage

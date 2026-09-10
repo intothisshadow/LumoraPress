@@ -63,7 +63,6 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Automatic, downloadable backups and one-click rollback
 - Updates via GitHub Releases or a manual ZIP upload
 - Portable settings export/import between installs
-- Token-authenticated REST API
 
 ### SEO & Privacy
 - SEO titles and meta descriptions

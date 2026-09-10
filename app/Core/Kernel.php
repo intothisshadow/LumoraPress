@@ -27,7 +27,6 @@ use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Mail\Mailer;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\Plugin\PluginRegistry;
-use LumoraPress\Core\Security\ApiTokenService;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
@@ -121,7 +120,6 @@ final class Kernel
         public readonly MediaUsageChecker $mediaUsage,
         public readonly ThumbnailService $thumbnails,
         public readonly MediaImportService $mediaImport,
-        public readonly ApiTokenService $apiTokens,
         public readonly ContentRenderer $content,
         public readonly PluginRegistry $pluginRegistry,
         public readonly PluginInstaller $pluginInstaller,

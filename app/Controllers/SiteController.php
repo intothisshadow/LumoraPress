@@ -667,8 +667,7 @@ final class SiteController
     /**
      * A post accepts comments only if the post and the site both allow
      * it, and the post isn't past the auto-close window. Delegates to
-     * CommentModerationService so SiteController and ApiController share
-     * one answer.
+     * CommentModerationService so both entry points share one answer.
      */
     private function commentsOpenFor(Post $post): bool
     {

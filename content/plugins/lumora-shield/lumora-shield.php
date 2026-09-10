@@ -65,8 +65,7 @@ add_action(
 
 /*
  * Comment Analysis: the same 'comment_is_spam' filter Akismet already
- * uses (SiteController::submitComment()/::submitPageComment(),
- * ApiController's comment-creation handler) — see
+ * uses (SiteController::submitComment()/::submitPageComment()) — see
  * LumoraShieldService::commentIsSpam()'s own docblock.
  */
 add_filter(

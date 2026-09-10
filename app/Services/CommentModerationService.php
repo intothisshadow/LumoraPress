@@ -25,8 +25,8 @@ use LumoraPress\Models\Post;
 
 /**
  * Centralizes the Settings > Discussion decision logic that
- * SiteController::submitComment() and ApiController::commentsStore() both
- * need, so the two entry points can't drift the way a status calculation
+ * SiteController::submitComment() and ::submitPageComment() both need,
+ * so the two entry points can't drift the way a status calculation
  * duplicated inline in each controller already had.
  *
  * Deliberately separate from CommentService: CommentService is CRUD/query

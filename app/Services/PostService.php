@@ -34,9 +34,8 @@ use RuntimeException;
  * — nothing needs to run a background job to flip their status.
  *
  * Firing 'post_saved'/'post_deleted' here rather than from the admin
- * views is deliberate: posts are also written by ApiController's REST
- * endpoints and the Dashboard's Quick Draft form, so this is the one
- * choke point every caller actually shares.
+ * views is deliberate: posts are also written by the Dashboard's Quick
+ * Draft form, so this is the one choke point every caller actually shares.
  */
 final class PostService
 {

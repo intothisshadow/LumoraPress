@@ -523,8 +523,8 @@ final class PostsController
 
     /**
      * Echoes a JSON body directly (never `exit`s) so PHPUnit can capture
-     * it via output buffering. Matches content-editor.js's pre-existing
-     * JSON contract rather than ApiResponse's REST envelope.
+     * it via output buffering. Matches content-editor.js's own
+     * pre-existing JSON contract.
      *
      * @param array<string, mixed> $files
      */
