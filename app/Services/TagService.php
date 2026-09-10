@@ -254,20 +254,96 @@ final class TagService
     }
 
     /**
-     * @return array<int, array{tag: Tag, postCount: int}>
+     * $filters backs the admin list's Search & Filter panel; an empty array
+     * behaves identically to the old no-argument form. "Last used" has no
+     * dedicated column — it's derived as the newest created_at among a
+     * tag's assigned posts, since that's what "used" actually means and
+     * avoids a schema change to track it separately.
+     *
+     * @param array{term?: string, minPosts?: int, dateFrom?: string, dateTo?: string, lastUsedFrom?: string, lastUsedTo?: string} $filters
+     *     term: matches name or slug (LIKE). minPosts: tag must have at least this many
+     *     assigned posts. dateFrom/dateTo: created_at date range, inclusive, as Y-m-d
+     *     strings. lastUsedFrom/lastUsedTo: same, but against the derived last-used date.
+     * @return array<int, array{tag: Tag, postCount: int, lastUsedAt: ?DateTimeImmutable}>
      */
-    public function listAllWithPostCounts(): array
+    public function listAllWithPostCounts(array $filters = []): array
     {
-        $rows = $this->database->fetchAll(
-            'SELECT t.*, COUNT(pt.post_id) AS post_count
-               FROM ' . $this->table() . ' t
-               LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
-              GROUP BY t.id
-              ORDER BY t.name ASC',
-        );
+        $conditions = [];
+        $params = [];
+
+        $term = trim((string) ($filters['term'] ?? ''));
+
+        if ($term !== '') {
+            $conditions[] = '(t.name LIKE :term_name OR t.slug LIKE :term_slug)';
+            $params['term_name'] = '%' . $term . '%';
+            $params['term_slug'] = '%' . $term . '%';
+        }
+
+        $dateFrom = (string) ($filters['dateFrom'] ?? '');
+
+        if ($dateFrom !== '') {
+            $conditions[] = 't.created_at >= :date_from';
+            $params['date_from'] = $dateFrom . ' 00:00:00';
+        }
+
+        $dateTo = (string) ($filters['dateTo'] ?? '');
+
+        if ($dateTo !== '') {
+            $conditions[] = 't.created_at <= :date_to';
+            $params['date_to'] = $dateTo . ' 23:59:59';
+        }
+
+        $sql = 'SELECT t.*, COUNT(pt.post_id) AS post_count, MAX(p.created_at) AS last_used_at
+                  FROM ' . $this->table() . ' t
+                  LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+                  LEFT JOIN ' . $this->postsTable() . ' p ON p.id = pt.post_id';
+
+        if ($conditions !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $conditions);
+        }
+
+        $sql .= ' GROUP BY t.id';
+
+        $having = [];
+
+        // Interpolated directly (already int/string-cast above), matching
+        // CategoryService::listAllWithPostCounts()'s own minPosts handling —
+        // a bound parameter compares as SQLite's TEXT storage class against
+        // post_count's INTEGER class and never matches.
+        $minPosts = (int) ($filters['minPosts'] ?? 0);
+
+        if ($minPosts > 0) {
+            $having[] = 'post_count >= ' . $minPosts;
+        }
+
+        $lastUsedFrom = (string) ($filters['lastUsedFrom'] ?? '');
+
+        if ($lastUsedFrom !== '') {
+            $having[] = 'last_used_at >= :last_used_from';
+            $params['last_used_from'] = $lastUsedFrom . ' 00:00:00';
+        }
+
+        $lastUsedTo = (string) ($filters['lastUsedTo'] ?? '');
+
+        if ($lastUsedTo !== '') {
+            $having[] = 'last_used_at <= :last_used_to';
+            $params['last_used_to'] = $lastUsedTo . ' 23:59:59';
+        }
+
+        if ($having !== []) {
+            $sql .= ' HAVING ' . implode(' AND ', $having);
+        }
+
+        $sql .= ' ORDER BY t.name ASC';
+
+        $rows = $this->database->fetchAll($sql, $params);
 
         return array_map(
-            fn (array $row): array => ['tag' => $this->hydrate($row), 'postCount' => (int) $row['post_count']],
+            fn (array $row): array => [
+                'tag' => $this->hydrate($row),
+                'postCount' => (int) $row['post_count'],
+                'lastUsedAt' => $row['last_used_at'] !== null ? new DateTimeImmutable((string) $row['last_used_at']) : null,
+            ],
             $rows,
         );
     }
@@ -400,5 +476,10 @@ final class TagService
     private function postTagsTable(): string
     {
         return $this->tablePrefix . 'post_tags';
+    }
+
+    private function postsTable(): string
+    {
+        return $this->tablePrefix . 'posts';
     }
 }

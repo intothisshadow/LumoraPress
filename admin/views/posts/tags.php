@@ -160,11 +160,64 @@ if ($action === 'edit') {
 <?php else: ?>
     <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('posts/tags')) ?>?action=new">Add New Tag</a></p>
 
-    <?php $rows = $tagService->listAllWithPostCounts(); ?>
+    <?php
+    $termFilter = trim((string) ($_GET['q'] ?? ''));
+    $minPostsFilter = (int) ($_GET['min_posts'] ?? 0);
+    $dateFromFilter = (string) ($_GET['date_from'] ?? '');
+    $dateToFilter = (string) ($_GET['date_to'] ?? '');
+    $lastUsedFromFilter = (string) ($_GET['last_used_from'] ?? '');
+    $lastUsedToFilter = (string) ($_GET['last_used_to'] ?? '');
+    $tagFilters = [
+        'term' => $termFilter,
+        'minPosts' => $minPostsFilter,
+        'dateFrom' => $dateFromFilter,
+        'dateTo' => $dateToFilter,
+        'lastUsedFrom' => $lastUsedFromFilter,
+        'lastUsedTo' => $lastUsedToFilter,
+    ];
+    $hasActiveFilter = $termFilter !== '' || $minPostsFilter > 0 || $dateFromFilter !== '' || $dateToFilter !== '' || $lastUsedFromFilter !== '' || $lastUsedToFilter !== '';
+
+    $rows = $tagService->listAllWithPostCounts($tagFilters);
+    ?>
+
+    <section class="lp-admin__panel">
+        <details class="lp-admin__collapsible" <?= $hasActiveFilter ? 'open' : '' ?>>
+            <summary>Search &amp; Filter</summary>
+            <div class="lp-admin__collapsible__body">
+                <form method="get" action="<?= esc_url(admin_url('posts/tags')) ?>" class="lp-admin__filter-form">
+                    <p class="lp-field">
+                        <label for="tags-q">Search name or slug</label>
+                        <input type="text" id="tags-q" name="q" value="<?= esc_attr($termFilter) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="tags-min-posts">Minimum posts</label>
+                        <input type="number" id="tags-min-posts" name="min_posts" min="0" value="<?= $minPostsFilter > 0 ? (int) $minPostsFilter : '' ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="tags-date-from">Created from</label>
+                        <input type="date" id="tags-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="tags-date-to">Created to</label>
+                        <input type="date" id="tags-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="tags-last-used-from">Last used from</label>
+                        <input type="date" id="tags-last-used-from" name="last_used_from" value="<?= esc_attr($lastUsedFromFilter) ?>">
+                    </p>
+                    <p class="lp-field">
+                        <label for="tags-last-used-to">Last used to</label>
+                        <input type="date" id="tags-last-used-to" name="last_used_to" value="<?= esc_attr($lastUsedToFilter) ?>">
+                    </p>
+                    <button type="submit" class="lp-button">Filter</button>
+                </form>
+            </div>
+        </details>
+    </section>
 
     <section class="lp-admin__panel">
         <?php if ($rows === []): ?>
-            <p class="lp-admin__widget-placeholder">No tags yet.</p>
+            <p class="lp-admin__widget-placeholder"><?= $hasActiveFilter ? 'No tags match these filters.' : 'No tags yet.' ?></p>
         <?php else: ?>
             <form id="tags-bulk-form" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" data-lp-bulk-form>
                 <?= Csrf::field('tags_bulk_action') ?>
@@ -202,6 +255,7 @@ if ($action === 'edit') {
                             <th scope="col">Name</th>
                             <th scope="col">Slug</th>
                             <th scope="col">Posts</th>
+                            <th scope="col">Last Used</th>
                             <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
@@ -226,6 +280,7 @@ if ($action === 'edit') {
                                         0
                                     <?php endif; ?>
                                 </td>
+                                <td><?= $row['lastUsedAt'] !== null ? esc_html($row['lastUsedAt']->format('M j, Y')) : '—' ?></td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($canDeleteTags): ?>
                                         <?php $deleteFormId = 'tag-delete-form-' . $listedTag->id; ?>

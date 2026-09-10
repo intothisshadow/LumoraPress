@@ -7,6 +7,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - Page edit link: a single Page now shows the same "Edit this page" link a single post already gets, for a signed-in author/editor with permission to edit it — reuses the existing `edit_page_link()` template tag, which core already provided but no bundled theme called from `page.php` yet.
+- Tags Search & Filtering (LP-011): the admin Tags list gained a "Search & Filter" panel, mirroring Categories' own — search by name or slug, filter by minimum post count, or a created-date range. It also gained a new "Last Used" column, filterable by a last-used date range, derived from the most recent post carrying that tag rather than a tracked column of its own.
 
 ### Removed
 
