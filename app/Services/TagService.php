@@ -349,6 +349,108 @@ final class TagService
     }
 
     /**
+     * The admin Tags list's Usage Statistics panel's "Most Used" section —
+     * the $limit tags with the highest post count, ties broken
+     * alphabetically. Excludes unused tags (see unusedCount()/deleteUnused()
+     * for that separate concern), so a young site with few tagged posts
+     * doesn't pad this list out with zero-count rows.
+     *
+     * @return array<int, array{tag: Tag, postCount: int}>
+     */
+    public function mostUsed(int $limit = 5): array
+    {
+        return $this->orderedByPostCount('DESC', $limit);
+    }
+
+    /**
+     * The Usage Statistics panel's "Least Used" section — the inverse of
+     * mostUsed(), still excluding unused (0-post) tags, which get their
+     * own "Unused" count instead.
+     *
+     * @return array<int, array{tag: Tag, postCount: int}>
+     */
+    public function leastUsed(int $limit = 5): array
+    {
+        return $this->orderedByPostCount('ASC', $limit);
+    }
+
+    /**
+     * @return array<int, array{tag: Tag, postCount: int}>
+     */
+    private function orderedByPostCount(string $direction, int $limit): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT t.*, COUNT(pt.post_id) AS post_count
+               FROM ' . $this->table() . ' t
+               INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+              GROUP BY t.id
+              ORDER BY post_count ' . $direction . ', t.name ASC
+              LIMIT ' . max(0, $limit),
+        );
+
+        return array_map(
+            fn (array $row): array => ['tag' => $this->hydrate($row), 'postCount' => (int) $row['post_count']],
+            $rows,
+        );
+    }
+
+    /**
+     * The Usage Statistics panel's "Unused" count — tags with zero
+     * assigned posts, the same set deleteUnused() removes. A single
+     * COUNT() rather than count(deleteUnused()'s id list), since this is
+     * a read-only tally, not a deletion.
+     */
+    public function unusedCount(): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' t
+                LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+             WHERE pt.tag_id IS NULL',
+        );
+    }
+
+    /**
+     * The Usage Statistics panel's "Recently Created" section.
+     *
+     * @return array<int, Tag>
+     */
+    public function recentlyCreated(int $limit = 5): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' ORDER BY created_at DESC, id DESC LIMIT ' . max(0, $limit),
+        );
+
+        return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
+     * The Usage Statistics panel's "Recently Used" section — tags ordered
+     * by the same derived last-used date listAllWithPostCounts() computes
+     * (the newest created_at among a tag's assigned posts), newest first.
+     * Unused tags have no last-used date and are excluded, same as
+     * mostUsed()/leastUsed().
+     *
+     * @return array<int, array{tag: Tag, lastUsedAt: DateTimeImmutable}>
+     */
+    public function recentlyUsed(int $limit = 5): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT t.*, MAX(p.created_at) AS last_used_at
+               FROM ' . $this->table() . ' t
+               INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+               INNER JOIN ' . $this->postsTable() . ' p ON p.id = pt.post_id
+              GROUP BY t.id
+              ORDER BY last_used_at DESC, t.id DESC
+              LIMIT ' . max(0, $limit),
+        );
+
+        return array_map(
+            fn (array $row): array => ['tag' => $this->hydrate($row), 'lastUsedAt' => new DateTimeImmutable((string) $row['last_used_at'])],
+            $rows,
+        );
+    }
+
+    /**
      * @return array<int, Tag>
      */
     public function tagsForPost(int $postId): array

@@ -178,6 +178,12 @@ if ($action === 'edit') {
     $hasActiveFilter = $termFilter !== '' || $minPostsFilter > 0 || $dateFromFilter !== '' || $dateToFilter !== '' || $lastUsedFromFilter !== '' || $lastUsedToFilter !== '';
 
     $rows = $tagService->listAllWithPostCounts($tagFilters);
+
+    $mostUsedTags = $tagService->mostUsed(5);
+    $leastUsedTags = $tagService->leastUsed(5);
+    $unusedTagsCount = $tagService->unusedCount();
+    $recentlyCreatedTags = $tagService->recentlyCreated(5);
+    $recentlyUsedTags = $tagService->recentlyUsed(5);
     ?>
 
     <section class="lp-admin__panel">
@@ -211,6 +217,81 @@ if ($action === 'edit') {
                     </p>
                     <button type="submit" class="lp-button">Filter</button>
                 </form>
+            </div>
+        </details>
+    </section>
+
+    <section class="lp-admin__panel">
+        <details class="lp-admin__collapsible">
+            <summary>Usage Statistics</summary>
+            <div class="lp-admin__collapsible__body">
+                <p><?= (int) $unusedTagsCount ?> unused <?= $unusedTagsCount === 1 ? 'tag has' : 'tags have' ?> no assigned posts — see "Remove unused tags" under Bulk actions above.</p>
+
+                <div class="lp-admin__grid">
+                    <section class="lp-admin__panel">
+                        <h2>Most Used</h2>
+                        <?php if ($mostUsedTags === []): ?>
+                            <p class="lp-admin__widget-placeholder">No tagged posts yet.</p>
+                        <?php else: ?>
+                            <ul class="lp-admin__meta-list">
+                                <?php foreach ($mostUsedTags as $statRow): ?>
+                                    <li>
+                                        <span><a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $statRow['tag']->id ?>"><?= esc_html($statRow['tag']->name) ?></a></span>
+                                        <span><?= (int) $statRow['postCount'] ?></span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </section>
+
+                    <section class="lp-admin__panel">
+                        <h2>Least Used</h2>
+                        <?php if ($leastUsedTags === []): ?>
+                            <p class="lp-admin__widget-placeholder">No tagged posts yet.</p>
+                        <?php else: ?>
+                            <ul class="lp-admin__meta-list">
+                                <?php foreach ($leastUsedTags as $statRow): ?>
+                                    <li>
+                                        <span><a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $statRow['tag']->id ?>"><?= esc_html($statRow['tag']->name) ?></a></span>
+                                        <span><?= (int) $statRow['postCount'] ?></span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </section>
+
+                    <section class="lp-admin__panel">
+                        <h2>Recently Created</h2>
+                        <?php if ($recentlyCreatedTags === []): ?>
+                            <p class="lp-admin__widget-placeholder">No tags yet.</p>
+                        <?php else: ?>
+                            <ul class="lp-admin__meta-list">
+                                <?php foreach ($recentlyCreatedTags as $recentTag): ?>
+                                    <li>
+                                        <span><a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $recentTag->id ?>"><?= esc_html($recentTag->name) ?></a></span>
+                                        <span><?= esc_html($recentTag->createdAt->format('M j, Y')) ?></span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </section>
+
+                    <section class="lp-admin__panel">
+                        <h2>Recently Used</h2>
+                        <?php if ($recentlyUsedTags === []): ?>
+                            <p class="lp-admin__widget-placeholder">No tagged posts yet.</p>
+                        <?php else: ?>
+                            <ul class="lp-admin__meta-list">
+                                <?php foreach ($recentlyUsedTags as $statRow): ?>
+                                    <li>
+                                        <span><a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $statRow['tag']->id ?>"><?= esc_html($statRow['tag']->name) ?></a></span>
+                                        <span><?= esc_html($statRow['lastUsedAt']->format('M j, Y')) ?></span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </section>
+                </div>
             </div>
         </details>
     </section>
