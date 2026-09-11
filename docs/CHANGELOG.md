@@ -12,6 +12,10 @@ All notable changes to Lumora Press are documented in this file.
 
 - "Fix Double-Encoded Text" and "Migrate Download Categories" Maintenance › Tools utilities (LP-164): both were one-time historical data-repair tools (a pre-fix WordPress Importer double-encoding repair, and a Folder-to-download-category backfill from before Downloads had its own taxonomy) with no ongoing purpose once already run.
 
+### Fixed
+
+- Shortcode "Attributes" reference lists (Downloads and Lumora Gallery Shortcodes' own Shortcodes screens) had ragged, unaligned columns — each row sized its attribute-name column independently, so the description text started at a different position on every row, and a longer attribute name like `no_album_info` could wrap mid-word onto two lines. The list now lays out as a real aligned table (one shared column width across every row) and each attribute name renders as a small accent-colored pill instead of bare unstyled text.
+
 ## [0.13.0] — 2026-09-11
 
 ### Added

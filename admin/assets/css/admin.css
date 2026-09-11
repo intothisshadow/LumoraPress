@@ -1199,6 +1199,74 @@ body.lp-admin-login {
     overflow-wrap: break-word;
 }
 
+/*
+ * An attribute-reference list (a shortcode's own "Attributes"
+ * documentation, e.g. Downloads/Lumora Gallery Shortcodes' Shortcodes
+ * screens) needs real table-like column alignment — the description
+ * column starting at the same x position on every row — which a
+ * per-row flexbox can't give: each <li> above is its own independent
+ * flex container, so its first <span> sizes to that row's own content
+ * only ("category" vs. "category_id" vs. "download_id"), leaving the
+ * description column start ragged from row to row.
+ *
+ * CSS Grid fixes this because the <ul> itself becomes the single layout
+ * container spanning every row: with `display: contents` on each <li>
+ * (removing the <li>'s own box so its two <span> children become direct
+ * grid items), one shared `max-content` column tracks the *widest*
+ * attribute name across the whole list, so every row's description
+ * starts at that same column boundary. `display: contents` also drops
+ * the <li>'s own padding/border, so those move onto the <span>s instead
+ * — same visual row divider, just declared one level down.
+ */
+.lp-admin__meta-list--attributes {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 1.5rem;
+}
+
+.lp-admin__meta-list--attributes li {
+    display: contents;
+}
+
+.lp-admin__meta-list--attributes li > span {
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-admin__meta-list--attributes li:last-child > span {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.lp-admin__meta-list--attributes li:first-child > span {
+    padding-top: 0;
+}
+
+.lp-admin__meta-list--attributes li > span:first-child {
+    white-space: nowrap;
+}
+
+/*
+ * The attribute name itself is the thing being looked up in this list,
+ * so it gets its own small accent-tinted pill rather than rendering as
+ * bare browser-default <code> text — the same chip color pairing
+ * .lp-admin__panel's own header tint already uses, just applied at
+ * inline-pill scale here instead of a full-width bar.
+ */
+.lp-admin__meta-list--attributes li > span:first-child code {
+    display: inline-block;
+    background: var(--lp-admin-chip-bg);
+    border: 1px solid var(--lp-admin-chip-border);
+    border-radius: 4px;
+    padding: 0.15rem 0.45rem;
+    color: var(--lp-admin-accent);
+    font-size: 0.85rem;
+}
+
+.lp-admin__meta-list--attributes li > span:last-child {
+    overflow-wrap: break-word;
+}
+
 .lp-admin__meta-list li:last-child {
     border-bottom: none;
     padding-bottom: 0;

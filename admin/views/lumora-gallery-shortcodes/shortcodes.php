@@ -49,7 +49,7 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
     </p>
 
     <h3>Attributes</h3>
-    <ul class="lp-admin__meta-list">
+    <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
         <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug (see Lumora Gallery Shortcodes &rsaquo; Settings). Omit it to use whichever connection is marked Default — only needed when more than one Gallery site is configured.</span></li>
         <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database. Give more than one, comma-separated (e.g. <code>"12,7,15"</code>), to combine images from several albums into one block — always from the same <code>gallery</code> connection.</span></li>
         <li><span><code>folder</code></span><span>An album's folder path instead of its ID (e.g. <code>"xena/season-1"</code>). Ignored when <code>album_id</code> is also given.</span></li>
@@ -95,7 +95,7 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
     </p>
 
     <h3>Attributes</h3>
-    <ul class="lp-admin__meta-list">
+    <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
         <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug. Omit it to use whichever connection is marked Default.</span></li>
         <li><span><code>count</code></span><span>How many images to show, newest first. Defaults to 10 if omitted.</span></li>
         <li><span><code>no_album_info</code></span><span>Set to <code>"1"</code> to drop the "View gallery" link, leaving just the bare thumbnails.</span></li>

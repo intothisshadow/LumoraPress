@@ -42,7 +42,7 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
     </p>
 
     <h3>Attributes</h3>
-    <ul class="lp-admin__meta-list">
+    <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
         <li><span><code>category</code></span><span>A category name, matched case-insensitively.</span></li>
         <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
         <li><span><code>download_id</code></span><span>Show a single download by its exact numeric ID. Wins over every other attribute.</span></li>
