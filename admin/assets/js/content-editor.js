@@ -2047,6 +2047,14 @@
                         + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery lumoraAudio lumoraVideo '
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
                         + 'searchreplace fullscreen table help',
+                    // Default 'floating' collapses whatever doesn't fit
+                    // the editor's width behind a "..." overflow button —
+                    // this toolbar's full button set never fits, so most
+                    // buttons (including Insert/Edit Link) sat hidden
+                    // there. 'wrap' lays overflowing groups onto
+                    // additional rows instead, every button visible at
+                    // a glance.
+                    toolbar_mode: 'wrap',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — never on the public
                     // site (the marker itself is always stripped before
