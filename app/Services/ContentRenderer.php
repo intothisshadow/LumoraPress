@@ -268,19 +268,34 @@ final class ContentRenderer
      * confirmed is relative/root-relative. dirname(__DIR__, 2) rather
      * than LUMORA_ROOT, since the test suite's bootstrap never defines that constant.
      *
+     * HtmlSanitizer::isSafeUrl() allows any relative href through,
+     * "../" segments included, so the resolved path is re-checked with
+     * realpath() against the project root before ever touching disk —
+     * a post body linking to e.g. "../../config/config.php" must fail
+     * closed exactly like a genuinely missing file, not read outside
+     * the tree.
+     *
      * @return array{0: int, 1: int}|null
      */
     private function resolveImageDimensions(string $url): ?array
     {
         $path = (string) parse_url($url, PHP_URL_PATH);
         $path = BasePath::stripFrom($path);
-        $absolutePath = rtrim(dirname(__DIR__, 2), '/') . '/' . ltrim($path, '/');
+        $root = rtrim(dirname(__DIR__, 2), '/');
+        $absolutePath = $root . '/' . ltrim($path, '/');
 
-        if (!is_file($absolutePath)) {
+        $realRoot = realpath($root);
+        $realPath = realpath($absolutePath);
+
+        if ($realRoot === false || $realPath === false || !is_file($realPath)) {
             return null;
         }
 
-        $dimensions = @getimagesize($absolutePath);
+        if ($realPath !== $realRoot && !str_starts_with($realPath, $realRoot . '/')) {
+            return null;
+        }
+
+        $dimensions = @getimagesize($realPath);
 
         return is_array($dimensions) ? [(int) $dimensions[0], (int) $dimensions[1]] : null;
     }
