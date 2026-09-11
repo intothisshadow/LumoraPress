@@ -471,7 +471,7 @@ foreach ($pluginList as $info) {
                                     <input type="hidden" name="form" value="deactivate_plugin" form="<?= esc_attr($rowDeactivateFormId) ?>">
                                     <input type="hidden" name="origin" value="row" form="<?= esc_attr($rowDeactivateFormId) ?>">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>" form="<?= esc_attr($rowDeactivateFormId) ?>">
-                                    <button type="submit" class="lp-button--link" form="<?= esc_attr($rowDeactivateFormId) ?>">Deactivate</button>
+                                    <button type="submit" class="lp-button--link lp-button--link--danger" form="<?= esc_attr($rowDeactivateFormId) ?>">Deactivate</button>
                                 </span>
                             <?php else: ?>
                                 <?php if (!$info->isDisabled): ?>
@@ -564,7 +564,7 @@ foreach ($pluginList as $info) {
                                     <input type="hidden" name="form" value="deactivate_plugin">
                                     <input type="hidden" name="origin" value="card">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                    <button type="submit" class="lp-button lp-button--secondary">Deactivate</button>
+                                    <button type="submit" class="lp-button lp-button--danger">Deactivate</button>
                                 </form>
                             <?php else: ?>
                                 <?php if (!$info->isDisabled): ?>
@@ -669,7 +669,7 @@ foreach ($pluginList as $info) {
                                     <input type="hidden" name="form" value="deactivate_plugin">
                                     <input type="hidden" name="origin" value="details">
                                     <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                    <button type="submit" class="lp-button lp-button--secondary">Deactivate</button>
+                                    <button type="submit" class="lp-button lp-button--danger">Deactivate</button>
                                 </form>
                             <?php else: ?>
                                 <?php if (!$info->isDisabled): ?>

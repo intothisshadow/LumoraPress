@@ -4624,7 +4624,10 @@ select:focus {
  * as an irreversible "Delete". Now small bordered pill chips: neutral
  * accent color by default, with .lp-button--link--danger added in the
  * view for the subset of actions that are genuinely destructive
- * (Delete/Delete Permanently/Remove/Revoke/Trash).
+ * (Delete/Delete Permanently/Remove/Revoke/Trash) or that disable a
+ * currently-running feature (Deactivate, e.g. plugins/widgets) — the
+ * same danger treatment .lp-button--danger gives the equivalent
+ * full-sized buttons on cards/detail panels.
  */
 .lp-button--link,
 .lp-button--link:visited {
