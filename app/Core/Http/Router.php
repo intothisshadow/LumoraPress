@@ -114,10 +114,24 @@ final class Router
     private function normalizePath(string $path): string
     {
         $decoded = rawurldecode($path);
+        $trimmed = trim($decoded, '/');
+
+        // A request for the front controller file itself — e.g. a
+        // visitor hitting /index.php directly, bypassing the pretty-URL
+        // rewrite entirely — carries no route information of its own.
+        // Stripping this leading segment treats it exactly like the
+        // equivalent request without it (bare /index.php as the site
+        // root, /index.php/{rest} as {rest}), matching what any
+        // registered rewrite rule would have produced instead.
+        if ($trimmed === 'index.php') {
+            $trimmed = '';
+        } elseif (str_starts_with($trimmed, 'index.php/')) {
+            $trimmed = substr($trimmed, strlen('index.php/'));
+        }
 
         // Always starts with '/', so it can never be empty — even for the
         // root path, trim('/') on '/' yields '', and '/' . '' is '/'.
-        return '/' . trim($decoded, '/');
+        return '/' . trim($trimmed, '/');
     }
 
     /**
