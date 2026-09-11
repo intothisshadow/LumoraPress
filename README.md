@@ -92,6 +92,8 @@ The installer checks all of the above before doing anything else and shows a cle
 4. The `install/` directory is removed automatically once installation succeeds (permissions allowing — if it can't be removed, the success page tells you to delete it by hand, and the admin Dashboard keeps showing a reminder until it's gone — including if a manual update ever restores it).
 5. Log in at `/admin/` (or `/blog/admin/` etc. for a subdirectory install).
 
+Want to keep a "coming soon" page up at the site's URL while you install and configure things? Drop a static `index.html` in the same directory as `index.php` before you start — it takes over the site root instead of the app (or the installer) for as long as it's there. Delete it whenever you're ready to go live; every other URL, including the installer and `/admin/`, is unaffected the whole time.
+
 ## Updating
 
 Administrators can update Lumora Press entirely from within the admin panel — no FTP or SSH required — under **Maintenance &rsaquo; Updates**. You can either check GitHub Releases directly or upload an official release ZIP by hand.

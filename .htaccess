@@ -1,10 +1,29 @@
-DirectoryIndex index.php
+DirectoryIndex index.html index.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     RewriteCond %{REQUEST_FILENAME} -f
     RewriteRule ^ - [L]
+
+    # Coming-soon / under-construction gate: an index.html file dropped in
+    # this directory takes over the site root ("/") ahead of the app — a
+    # static holding page can stay live while Lumora Press is installed or
+    # configured behind the scenes. Without this, the catch-all rewrite
+    # below would route "/" straight into index.php (and, pre-install,
+    # into the installer redirect) regardless of index.html's presence,
+    # since DirectoryIndex alone never gets a say once mod_rewrite has
+    # already claimed the request. %{REQUEST_FILENAME} (not a bare
+    # relative name or %{DOCUMENT_ROOT}) is deliberate: for a directory
+    # request it already resolves to this directory's own absolute path
+    # with a trailing slash, so appending "index.html" keeps the gate
+    # correct on a subdirectory install too — confirmed against a live
+    # Apache instance, since relative -f tests resolve unpredictably in
+    # .htaccess context. Delete index.html when ready to launch — every
+    # other path (the installer, /admin/, direct asset requests) is
+    # unaffected.
+    RewriteCond %{REQUEST_FILENAME}index.html -f
+    RewriteRule ^$ index.html [L]
 
     # %{REQUEST_URI} is always the full URL path sent by the browser (e.g.
     # "/lumorapress/install/" for a subdirectory install), so a
