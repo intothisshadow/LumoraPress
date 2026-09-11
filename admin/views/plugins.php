@@ -117,14 +117,56 @@ if ($form === 'activate_plugin' && Csrf::verify('activate_plugin_' . $origin . '
             $error = $exception->getMessage();
         }
     }
-} elseif ($form === 'bulk_delete_plugins' && Csrf::verify('bulk_delete_plugins', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+} elseif ($form === 'bulk_plugin_action' && Csrf::verify('bulk_plugin_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $bulkAction = is_string($_POST['bulk_action'] ?? null) ? $_POST['bulk_action'] : '';
     $requestedSlugs = array_values(array_unique(array_map('strval', (array) ($_POST['plugin_slugs'] ?? []))));
 
-    if ($bulkAction !== 'delete') {
+    if (!in_array($bulkAction, ['activate', 'deactivate', 'delete'], true)) {
         $error = 'Choose a bulk action to apply.';
     } elseif ($requestedSlugs === []) {
         $error = 'Select at least one plugin.';
+    } elseif ($bulkAction === 'activate') {
+        $active = $readActivePlugins();
+        $activatedCount = 0;
+        $skippedCount = 0;
+
+        foreach ($requestedSlugs as $requestedSlug) {
+            $target = $kernel->pluginRegistry->infoFor($requestedSlug);
+
+            if ($target === null || $target->isDisabled || in_array($requestedSlug, $active, true)) {
+                $skippedCount++;
+
+                continue;
+            }
+
+            $active[] = $requestedSlug;
+            $activatedCount++;
+        }
+
+        $writeActivePlugins($active);
+
+        header('Location: ' . admin_url('plugins') . '?bulk_activated=' . $activatedCount . '&bulk_activate_skipped=' . $skippedCount);
+        exit;
+    } elseif ($bulkAction === 'deactivate') {
+        $active = $readActivePlugins();
+        $deactivatedCount = 0;
+        $skippedCount = 0;
+
+        foreach ($requestedSlugs as $requestedSlug) {
+            if (!in_array($requestedSlug, $active, true)) {
+                $skippedCount++;
+
+                continue;
+            }
+
+            $active = array_values(array_filter($active, static fn (string $s): bool => $s !== $requestedSlug));
+            $deactivatedCount++;
+        }
+
+        $writeActivePlugins($active);
+
+        header('Location: ' . admin_url('plugins') . '?bulk_deactivated=' . $deactivatedCount . '&bulk_deactivate_skipped=' . $skippedCount);
+        exit;
     } else {
         $deletedCount = 0;
         $skippedCount = 0;
@@ -207,7 +249,6 @@ if ($pendingToken !== null) {
 
 $pluginList = $kernel->pluginRegistry->discover();
 $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
-$hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Plugin\PluginInfo $info): bool => !$info->isActive) !== [];
 
 // LP-166: each plugin's own bootstrap registers its functional/settings
 // links via add_filter("plugin_action_links_{$slug}", ...), mirroring
@@ -237,6 +278,28 @@ foreach ($pluginList as $info) {
 
 <?php if (isset($_GET['deleted'])): ?>
     <div class="lp-alert lp-alert--success">Plugin deleted.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['bulk_activated'])): ?>
+    <?php $bulkActivatedCount = (int) $_GET['bulk_activated']; ?>
+    <?php $bulkActivateSkippedCount = (int) ($_GET['bulk_activate_skipped'] ?? 0); ?>
+    <div class="lp-alert lp-alert--success">
+        <?= $bulkActivatedCount ?> plugin<?= $bulkActivatedCount === 1 ? '' : 's' ?> activated.
+        <?php if ($bulkActivateSkippedCount > 0): ?>
+            <?= $bulkActivateSkippedCount ?> skipped (already active, or requires a newer PHP version).
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_GET['bulk_deactivated'])): ?>
+    <?php $bulkDeactivatedCount = (int) $_GET['bulk_deactivated']; ?>
+    <?php $bulkDeactivateSkippedCount = (int) ($_GET['bulk_deactivate_skipped'] ?? 0); ?>
+    <div class="lp-alert lp-alert--success">
+        <?= $bulkDeactivatedCount ?> plugin<?= $bulkDeactivatedCount === 1 ? '' : 's' ?> deactivated.
+        <?php if ($bulkDeactivateSkippedCount > 0): ?>
+            <?= $bulkDeactivateSkippedCount ?> skipped (already inactive).
+        <?php endif; ?>
+    </div>
 <?php endif; ?>
 
 <?php if (isset($_GET['bulk_deleted'])): ?>
@@ -338,27 +401,25 @@ foreach ($pluginList as $info) {
         <p class="lp-admin__widget-placeholder">No plugins are installed yet. Upload one below to get started.</p>
     <?php else: ?>
         <div class="lp-plugin-view-wrapper" data-lp-plugin-view-wrapper data-view="<?= esc_attr($listView) ?>">
-        <?php if ($hasDeletablePlugins): ?>
             <form id="plugins-bulk-form" method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__bulk-actions" data-lp-bulk-form>
-                <?= Csrf::field('bulk_delete_plugins') ?>
-                <input type="hidden" name="form" value="bulk_delete_plugins">
+                <?= Csrf::field('bulk_plugin_action') ?>
+                <input type="hidden" name="form" value="bulk_plugin_action">
                 <label class="lp-visually-hidden" for="plugins-bulk-action">Bulk action</label>
-                <select id="plugins-bulk-action" name="bulk_action">
+                <select id="plugins-bulk-action" name="bulk_action" data-lp-bulk-confirm-select>
                     <option value="">Bulk actions</option>
-                    <option value="delete">Delete</option>
+                    <option value="activate">Activate</option>
+                    <option value="deactivate">Deactivate</option>
+                    <option value="delete" data-lp-confirm="Delete the selected plugins permanently? This cannot be undone.">Delete</option>
                 </select>
-                <button type="submit" class="lp-button lp-button--secondary" data-lp-confirm="Delete the selected plugins permanently? This cannot be undone.">Apply</button>
+                <button type="submit" class="lp-button lp-button--secondary" data-lp-bulk-confirm-apply>Apply</button>
             </form>
-        <?php endif; ?>
         <table class="lp-table lp-plugin-table" data-lp-plugin-table>
             <thead>
                 <tr>
-                    <?php if ($hasDeletablePlugins): ?>
-                        <th scope="col">
-                            <label class="lp-visually-hidden" for="plugins-select-all">Select all</label>
-                            <input type="checkbox" id="plugins-select-all" data-lp-select-all="plugin_slugs[]" data-lp-select-all-scope="table">
-                        </th>
-                    <?php endif; ?>
+                    <th scope="col">
+                        <label class="lp-visually-hidden" for="plugins-select-all">Select all</label>
+                        <input type="checkbox" id="plugins-select-all" data-lp-select-all="plugin_slugs[]" data-lp-select-all-scope="table">
+                    </th>
                     <th scope="col">Plugin</th>
                     <th scope="col">Status</th>
                     <th scope="col">Version</th>
@@ -382,14 +443,10 @@ foreach ($pluginList as $info) {
                         data-plugin-search="<?= esc_attr($rowSearchHaystack) ?>"
                         data-plugin-status="<?= esc_attr($rowStatusValue) ?>"
                     >
-                        <?php if ($hasDeletablePlugins): ?>
-                            <td>
-                                <?php if (!$info->isActive): ?>
-                                    <label class="lp-visually-hidden" for="plugin-select-<?= esc_attr($info->slug) ?>">Select "<?= esc_html($info->name) ?>"</label>
-                                    <input type="checkbox" id="plugin-select-<?= esc_attr($info->slug) ?>" name="plugin_slugs[]" value="<?= esc_attr($info->slug) ?>" form="plugins-bulk-form">
-                                <?php endif; ?>
-                            </td>
-                        <?php endif; ?>
+                        <td>
+                            <label class="lp-visually-hidden" for="plugin-select-<?= esc_attr($info->slug) ?>">Select "<?= esc_html($info->name) ?>"</label>
+                            <input type="checkbox" id="plugin-select-<?= esc_attr($info->slug) ?>" name="plugin_slugs[]" value="<?= esc_attr($info->slug) ?>" form="plugins-bulk-form">
+                        </td>
                         <td><?= esc_html($info->name) ?></td>
                         <td>
                             <?php if ($info->isActive): ?>
