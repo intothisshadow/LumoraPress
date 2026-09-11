@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-09-11
+
 ### Added
 
 - Bare thumbnails option for the Gallery shortcodes (LPP-020): `[lumora_gallery_album]` and `[lumora_gallery_newest]` gained a `no_album_info="1"` attribute that drops the title and "View album"/"View gallery" link, leaving just the bare thumbnails — each still links to its own full-size image and opens the PhotoSwipe lightbox as usual.

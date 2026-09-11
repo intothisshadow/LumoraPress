@@ -14324,3 +14324,167 @@ Items (1)–(3) are otherwise straightforward, reusing `.lp-admin__sidebar-mode`
 - [x] Make the Plugins nav icon as visually distinct as Appearance/Comments already are in the collapsed/icon sidebar — most likely by swapping 🔌 for a more colorful glyph (see Approach), not by giving it a colored-badge treatment like the toggle buttons. (Swapped to 📦.)
 - [x] Make the top-level Settings nav icon a lighter grey so it stands out against the sidebar background and matches the other icons/buttons better (see Approach's dingbat-vs-emoji-presentation and CSS-filter fallback options) — applies to the Settings *top-level* item specifically, not the `⚙️` glyph reused elsewhere as a generic "Settings" child-page icon under other sections. (Dropped the variation selector — `⚙` alone does render as text-presentation, so a plain CSS `color` override on `.lp-admin__nav-icon` for that one item works.)
 - [x] Browser-verify all of the above (top pair, bottom pair, Plugins icon, Settings icon) in both collapsed and expanded sidebar modes, and in both light and dark admin color schemes, on the dev install.
+
+## 0.13.0 (2026-09-11)
+
+### LP-155. Remove the REST API and Personal Access Tokens Entirely
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (8/8 checklist items done)
+
+#### Goal
+
+Requested (2026-09-09): Ariane doesn't see a need for the token-authenticated REST API (`/api/v1/...`) or the Settings &rsaquo; API Tokens screen that issues credentials for it, and wants both removed entirely — not disabled, not hidden behind a setting, gone — including cleaning up the now-orphaned `{prefix}api_tokens` database table on existing installs via a migration, not just on fresh ones.
+
+#### Approach
+
+Confirmed via a full repo grep before scoping this: nothing else in core has an actual functional dependency on the REST API or its tokens — every other hit is a docblock comment cross-referencing `ApiController`/`ApiResponse` for context, not a real call. This is a clean, self-contained vertical slice. Full inventory of what goes:
+
+- `app/Controllers/ApiController.php` and `app/Core/Http/ApiResponse.php` (the REST JSON envelope helper — used only by `ApiController`, confirmed by grep; the one hit in `PostsController.php` is a comment contrasting its own different JSON contract, not a real dependency).
+- `app/Core/Security/ApiTokenService.php` and `admin/views/api-tokens.php`.
+- The `api-tokens` entry in `admin/index.php`'s `$menu` array.
+- `include/bootstrap.php`: the `$api = new ApiController(...)` instantiation and all 18 `/api/v1/...` routes (posts/pages/categories/tags/comments/search — lines 837–867 as of this writing).
+- `app/Core/Kernel.php`'s `ApiTokenService $apiTokens` constructor property/injection.
+- Settings &rsaquo; General's "REST API" section (`admin/views/settings/general.php`): the `rest_api_settings` form handler and its fields (`rest_api_enabled`, `rest_api_resource_{resource}_enabled` per resource, `rest_api_comments_public_submission_enabled`) — the whole section, not just the toggle, since there's nothing left to toggle.
+- `docs/DEVELOPER-APIS.md`'s "REST API" hooks section (`rest_api_request`, `rest_api_enabled`, `rest_api_resource_enabled`) and its note about `comment_is_spam` applying at "three places" — that becomes two once `ApiController`'s comment-creation handler is gone.
+- `README.md`'s "Token-authenticated REST API" bullet (line 66 as of this writing).
+- Doc-comment mentions that will read as stale once `ApiController` no longer exists: `app/Services/PostService.php` ("posts are also written by ApiController's REST..."), `app/Services/CommentModerationService.php` ("ApiController::commentsStore()..."), `app/Controllers/SiteController.php` (a comment near line 670), and `content/plugins/lumora-shield/lumora-shield.php`'s comment on its `comment_is_spam` listener (still correct in substance — that filter still applies at `SiteController`'s two remaining call sites — just needs its wording updated to drop the now-gone third one).
+- `PHP Test Suite/Unit/Controllers/ApiControllerTest.php` and `PHP Test Suite/Unit/Core/Security/ApiTokenServiceTest.php` — delete both.
+- **Database cleanup, the part that must ship in the same release as the code removal, not before or separately:** a new migration `install/migrations/0063_drop_api_tokens_table.sql` (next free migration number as of this writing) containing `DROP TABLE IF EXISTS {prefix}api_tokens;`. This project's `Migrator` (`app/Core/Database/Migrator.php`) already runs every pending `install/migrations/*.sql` file automatically on update via `UpdateService` — no new "updater function" is needed, just this one file. Per this project's own migration convention, `0015_create_api_tokens_table.sql` itself is never edited or deleted (migrations are historical/immutable) — a fresh install still runs 0015 then immediately 0063, a harmless no-op sequence, while an existing site's update run drops the now-orphaned table. Sequencing matters: if this migration shipped *before* the code removal, the next update would drop a table the still-active `ApiTokenService`/`admin/views/api-tokens.php` expect to exist, breaking that screen and every `/api/v1/*` route instead of cleanly retiring them — it must land in the exact same commit/release as everything else on this list.
+
+#### Checklist
+
+- [x] Delete `app/Controllers/ApiController.php`, `app/Core/Http/ApiResponse.php`, and `app/Core/Security/ApiTokenService.php`; remove `admin/views/api-tokens.php` and the `api-tokens` menu entry in `admin/index.php`.
+- [x] Remove the `$api`/`ApiController` instantiation and all `/api/v1/...` routes from `include/bootstrap.php`; remove `ApiTokenService`'s constructor injection from `app/Core/Kernel.php` and its wiring in `bootstrap.php`.
+- [x] Remove Settings &rsaquo; General's entire "REST API" section from `admin/views/settings/general.php` (form handler + fields), and its three `rest_api_*` config options (no longer read anywhere once this lands, so no migration needed for the options themselves — `config` values for a removed setting simply go unused).
+- [x] Add `install/migrations/0063_drop_api_tokens_table.sql` (`DROP TABLE IF EXISTS {prefix}api_tokens;`), landing in the same commit as the code removal above — see Approach for why the ordering matters.
+- [x] Update `docs/DEVELOPER-APIS.md` (remove the REST API hooks section, fix the `comment_is_spam` "three places" note to two) and `README.md` (remove the REST API bullet). Also found and fixed during implementation: a stale `comment_posted` REST-API caveat in `docs/DEVELOPER-APIS.md`, a REST API bullet in `docs/FEATURES.md`, a stale `ApiResponse` comment in `app/Controllers/Admin/PostsController.php`, the dead `.lp-api-token__value` CSS rule in `admin/assets/css/admin.css`, and the `rest_api_*`/per-resource fields in `app/Services/SettingsPortabilityService.php`'s settings export/import allowlist (a real functional dependency the initial repo grep missed, since it only reads/writes `PressConfig` option keys rather than referencing the deleted classes by name).
+- [x] Update the now-stale `ApiController`-referencing comments in `app/Services/PostService.php`, `app/Services/CommentModerationService.php`, `app/Controllers/SiteController.php`, and `content/plugins/lumora-shield/lumora-shield.php`.
+- [x] Delete `PHP Test Suite/Unit/Controllers/ApiControllerTest.php` and `PHP Test Suite/Unit/Core/Security/ApiTokenServiceTest.php`; run the full suite to confirm nothing else referenced them (a `Kernel` construction helper in another test's setup, for instance). Full `./run-tests-all-php.sh` matrix (PHP 8.2/8.3/8.4) passed clean — see `PHP Test Suite/TEST_LOG.md`'s 2026-09-10 entry. `SettingsPortabilityServiceTest.php`'s REST-API-key assertions were trimmed to match the allowlist change above.
+- [x] Browser-verified on the dev install (2026-09-10): Settings &rsaquo; General no longer shows a REST API section, `/admin/api-tokens` falls back to Dashboard with no "API Tokens" text anywhere in the admin, `/api/v1/posts` 404s, and the real `Migrator` class was run against a throwaway `mysqldump` copy of the dev install's existing database (`api_tokens` table present beforehand) — `0063_drop_api_tokens_table.sql` applied cleanly and the table was confirmed gone afterward; the copy database was then dropped.
+
+------
+
+### LP-156. Coming-Soon Holding Page Gate in `.htaccess`
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items done)
+
+Dropping a static `index.html` next to `index.php` didn't work as a "coming soon" page: the app's own `.htaccess` rewrote every request for `/` straight into `index.php` (and, before install, into the installer redirect) regardless of `index.html`'s presence, since `mod_rewrite`'s catch-all rule ran before Apache's own `DirectoryIndex` file-picking logic ever got a say.
+
+#### Checklist
+
+- [x] `DirectoryIndex index.php` changed to `DirectoryIndex index.html index.php` in the root `.htaccess`, covering the (rare) case where `mod_rewrite` isn't available.
+- [x] Added a `RewriteCond`/`RewriteRule` pair ahead of the catch-all: if `index.html` exists in the app's own directory, a request for exactly `/` (empty path after the per-directory prefix strip) is served that file directly and stops rewriting — every other path (the installer, `/admin/`, direct asset requests, an explicit `/index.html` request) is untouched. Deleting `index.html` restores normal routing with no other change needed.
+- [x] Used `%{REQUEST_FILENAME}index.html` for the `-f` test rather than a bare relative filename or `%{DOCUMENT_ROOT}` — confirmed against a live Apache instance that a bare relative name resolves unpredictably in `.htaccess` context (the gate silently never matched), while `%{REQUEST_FILENAME}` correctly reflects this directory's own path even on a subdirectory install, matching the technique already used by the file's existing `/install/`+`/content/` passthrough rule.
+- [x] Verified live against the dev install (`lumorapress-preview/`): dropping in a test `index.html` served it at `/` and at an explicit `/index.html` request (with a query string too), while `/admin/` and a real static asset request still reached the app; removing the test file restored normal `index.php` serving. No test file was left behind.
+
+------
+
+### LP-157. Imported/Absolute-URL Content Images Never Got Lightboxed
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (4/4 checklist items done)
+
+`ContentRenderer::addLightboxAttributes()`'s `looksLikeImageUrl()` rejected any URL carrying a host outright ("An absolute external URL is treated as 'not an image link', the safe default"), so a post whose image links were full `https://...` URLs — imported content, or a hand-typed link to a companion site's own media (e.g. a separately-installed Lumora Gallery) — never got PhotoSwipe lightbox attributes at all, regardless of the linked file's extension. Reported: a real post embedding `<a href="https://.../albums/.../photo.jpg"><img src="https://.../thumb_photo.jpg" width="250" height="125"></a>` markup rendered as plain, non-clickable images. Fixing this took three iterations, each exposing the next real constraint, folded into this one ticket rather than tracked as three separate ones:
+
+1. **Recognize the link at all.** `looksLikeImageUrl()` now decides purely by file extension, dropping the host check entirely — a relative and an absolute URL are treated identically.
+2. **Don't guess wrong dimensions.** The first pass fell back to the inline `<img>`'s own (thumbnail) width/height whenever the linked *different* file couldn't be read off local disk — which, for a cross-host link, is the common case rather than a rare edge case. Those dimensions describe the thumbnail, not the differently-shaped full-size file the link opens, so PhotoSwipe sized the lightbox slide to the thumbnail's aspect ratio and the real image visibly distorted once it loaded in. Reported: "the photoswipe fix links to thumbnail." Fixed by only trusting the `<img>`'s own width/height as a fallback for a self-link (href *is* the `<img>`'s src — same file, size is accurate); an author-provided link to a genuinely different, unresolvable file gets no dimension fallback at all.
+3. **PhotoSwipe needs *some* dimension to do anything.** Omitting dimensions entirely (step 2's fix) turned out not to be the graceful degradation it looked like on paper — verified live against the dev install that PhotoSwipe doesn't size a dimensionless slide on its own; without `data-pswp-width`/`data-pswp-height` it never even fetches the linked file, just displays the inline thumbnail frozen in place. Resolving the real dimensions server-side would need a network call from `ContentRenderer::render()`, which runs on every page view — an architecture rule this codebase already holds firm on (see `BlueskyResolverService`'s docblock: its own network call "runs once ... from the `post_saved`/`page_saved` hooks, never from a page render"). Fixed client-side instead: `assets/js/media-viewer.js` (and its `admin/assets/js/` copy, kept in sync per that file's own docblock instruction) intercepts a click on `a[data-pswp-lightbox]:not([data-pswp-width])` in the gallery's capture phase, preloads the linked file via `new Image()` in the visitor's own browser, and only then opens PhotoSwipe (`lightbox.loadAndOpen()`) — `stopPropagation()` keeps PhotoSwipeLightbox's own click handler from also firing on the same click. A `lightbox.addFilter('domItemData', ...)` reads the resolved width/height from a `WeakMap` (keyed by the link element) since PhotoSwipe builds item data through that filter, not by re-querying the DOM on every open. Fails open on a load error (opens without a size hint) rather than leaving the click dead.
+
+#### Checklist
+
+- [x] `looksLikeImageUrl()` decides purely by file extension; `resolveImageDimensions()` needed no change to the extension-recognition step — it already only reads a URL's *path* portion.
+- [x] Dimension fallback only applies to a self-link (same file as the inline `<img>`); a different, unresolvable linked file gets no fallback rather than a wrong one.
+- [x] Client-side resolution in both `media-viewer.js` copies: capture-phase click interception, `new Image()` preload, `domItemData` filter reading a `WeakMap`, fail-open on error. `CHILDREN_SELECTOR` extracted as a shared constant in both files, replacing three copies of the same selector string.
+- [x] 3 `ContentRendererTest` cases covering the extension/self-link/different-file paths. No PHP Test Suite coverage for the JS half — this project has no JS test harness (see CLAUDE.md's "no Node.js dependencies" philosophy); verified manually against the dev install. Full unit suite green (2255 tests).
+
+------
+
+### LP-158. Path Traversal Hardening in Content Image Dimension Resolution
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (2/2 checklist items done)
+
+`ContentRenderer::resolveImageDimensions()` took a content image/link URL's path (`parse_url()` + `BasePath::stripFrom()`), concatenated it directly onto the project root, and called `is_file()`/`getimagesize()` with no check that the resolved path actually stayed inside that root. `HtmlSanitizer::isSafeUrl()` allows any relative href through — `../` segments included — with no traversal filtering anywhere else in the chain, so a post/page body containing an href like `/../../config/config.php` could make the renderer read a file outside `content/uploads` purely to report its pixel dimensions on a PhotoSwipe `data-pswp-width`/`data-pswp-height` attribute. Not tied to a reported incident — found during a hardening review of the sanitizer/renderer boundary.
+
+#### Checklist
+
+- [x] `resolveImageDimensions()` now resolves both the project root and the candidate path with `realpath()` and rejects (returns `null`, the same fallback a genuinely missing file already took) any path whose real location falls outside the root, before ever calling `getimagesize()`.
+- [x] New `ContentRendererTest` regression case: an `<img>` href containing a `../` traversal segment that resolves to a real image file just outside the project root no longer leaks that file's real dimensions — the `<img>`'s own (stale) `width`/`height` attributes are kept instead. Full unit suite green (2252 tests).
+
+------
+
+### LP-159. Wrap the HTML Editor Toolbar Onto Multiple Rows Instead of Overflowing
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (5/5 checklist items done)
+
+The Post/Page HTML editor's TinyMCE toolbar (`content-editor.js`'s `tinymce.init()` call) overflowed into a single-row "..." menu once every button group no longer fit the editor's width — visible on a normal-width admin screen, not just a narrow one, since the full button set (undo/redo, blocks, bold/italic/underline/strikethrough/color, align, more-tag, lists, blockquote/hr, link/media/folder-gallery/audio/video, icon/emoji/shortcode, code/codesample, search/fullscreen/table/help) is wide. Reported with a screenshot: the "Insert/Edit Link" button only reachable by opening the "..." overflow popover.
+
+#### Checklist
+
+- [x] Set `toolbar_mode: 'wrap'` in the `tinymce.init()` config (`admin/assets/js/content-editor.js`) — TinyMCE 7's default `toolbar_mode` ('floating') collapses overflow behind "..."; `'wrap'` lays it onto additional rows instead. The default wrapping landed cleanly on two rows with no further adjustment to the toolbar string's `|` group breaks needed.
+- [x] There is only one `tinymce.init()` call site in the codebase, so this fixes every Visual/HTML editor instance (Posts, Pages) in one place — no separate Media Manager caption/description editor exists using a different config.
+- [x] Verified live on the dev install (Edit Post, an HTML-format post): every toolbar button visible across two rows at the admin layout's normal content width, no overflow menu, "Insert/Edit Link" directly reachable.
+- [x] Checked the Markdown editor (EasyMDE, `markdownToolbar` in the same file) — its own toolbar CSS already wraps via flexbox by default, unaffected by this bug; left unchanged.
+- [x] Checked `admin/assets/css/admin.css` — `.tox-tinymce`'s only override is `border-color`/`border-radius`, no fixed toolbar height that would clip a second row.
+
+------
+
+### LP-160. Bare `/index.php` Request 404'd Instead of Showing the Homepage
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (3/3 checklist items done)
+
+Reported as "posts don't load" via `https://www.seven-kingdoms.net/index.php` returning "Page Not Found." Investigated directly against the live site (`curl`) rather than guessing: real post permalinks (tested 4, from the RSS feed) all returned `200 OK` with correct content — posts themselves were never broken. The actual cause: `/index.php` matches no specific route (home, post permalinks, category/tag archives), so `Router::dispatch()` fell through to the last-registered catch-all — `/{path*}` in `SiteController::pageByPath()` (LP-084's hierarchical Page route) — which looked for a Page whose path is literally `index.php`, found none, and correctly rendered its own "Page Not Found." Unrelated to LP-156's coming-soon `.htaccess` gate or `index.html`'s presence, despite the initial suspicion — confirmed by testing with and without `index.html` present.
+
+#### Checklist
+
+- [x] `Router::normalizePath()` now strips a leading `index.php` path segment before matching — a bare `/index.php` request normalizes to `/` (the site root), and `/index.php/{rest}` normalizes to `/{rest}`, exactly as if the pretty-URL rewrite had produced that path directly. A visitor hitting the front controller file directly now reaches the real homepage instead of a false "Page Not Found."
+- [x] 2 new `RouterTest` cases: bare `/index.php` dispatches to the `/` route; `/index.php/post/hello-world` still extracts `{slug}` correctly. Full unit suite green (2257 tests).
+- [x] Verified live on the dev install: `/index.php` and `/` both return `200` with the real homepage `<title>`, not "Page Not Found."
+
+------
+
+### LP-161. Excerpts Ran Paragraphs Together and Leaked Literal HTML Entities
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (3/3 checklist items done)
+
+Reported via a screenshot: an auto-generated excerpt showed a literal `&gt;` instead of `>`, and two source paragraphs were fused into one run-on line with no space between them (e.g. "...gallery!Home > Season 1..."). Root cause was in `ContentRenderer::toPlainText()` (used by `get_the_excerpt()`, search snippets, and OG/meta description tags): it called `strip_tags()` directly on the rendered HTML, which (a) concatenates adjacent elements with no separator at all — `<p>A</p><p>B</p>` becomes `AB` — and (b) doesn't decode HTML entities, so a literal `&gt;`/`&amp;` surviving from the rendered HTML got double-escaped once the caller re-escaped the "plain text" for display. The specific `&gt;` in the reported post came from content copy/pasted from Lumora Gallery, but the bug was generic to any HTML/Markdown content with adjacent block elements or literal entity text — not theme-specific, so fixed in Lumora Press core rather than in a theme.
+
+#### Checklist
+
+- [x] `ContentRenderer::toPlainText()` now inserts a space after every closing tag (and `<br>`) before stripping tags, guaranteeing a real word boundary survives between adjacent elements, then `html_entity_decode()`s the result so no literal entity text leaks through, then collapses whitespace and strips any space introduced immediately before trailing punctuation.
+- [x] 2 new `ContentRendererTest` regression cases: adjacent paragraphs no longer fuse into one word; a literal `&gt;` in rendered HTML decodes to `>` instead of leaking as entity text. Full unit suite green (2259 tests).
+- [x] Verified live on the dev install with a test post reproducing the exact reported content: OG/meta description tag showed `gallery! Home > Season 1 > Photos` — space preserved between paragraphs, `>` a real character (only re-escaped to `&gt;` in the HTML attribute itself, not doubled).
+
+### LPP-019. Multi-Album Gallery Shortcode
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (7/7 checklist items done)
+
+#### Goal
+
+`[lumora_gallery_album]` only ever accepted one album (`album_id` or `folder`) at a time. Let a single shortcode combine images from more than one album, without touching the already-working single-album variants.
+
+#### Checklist
+
+- [x] `GalleryQueryService::imagesForAlbums(array $albumIds)` — every approved image across multiple public albums, grouped by album title then each album's own `pos` ordering; non-public/unknown ids among the given ones are silently skipped.
+- [x] `GalleryQueryService::newestInAlbums(array $albumIds, int $count)` — the newest N images across multiple public albums, newest first.
+- [x] `GalleryShortcode::renderAlbum()` parses `album_id` as a comma-separated list (reusing the same `parseIntList()` already used for `image_id`) and, when more than one id is given, renders the combined multi-album gallery instead of resolving a single album — `folder` is ignored in that case, and the block links to the Gallery site itself rather than one album's page, the same as `[lumora_gallery_newest]` already does when there's no single album to point at.
+- [x] Single-album `album_id`/`folder`, `count`, and `image_id` variants behave exactly as before — verified by the existing test suite staying green.
+- [x] Unit tests: `imagesForAlbums()`/`newestInAlbums()` grouping, visibility/approval filtering, and empty-list handling in `GalleryQueryServiceTest`; the shortcode's multi-album rendering, its `count` combination, and the no-albums-resolve case in `GalleryShortcodeTest`.
+- [x] Docs updated: plugin `README.md`'s shortcode list, the admin Lumora Gallery Shortcodes &rsaquo; Shortcodes reference page, and the Insert Shortcode picker's registration comment (the `album_id` Select field still only produces one id — multi-album stays typeable by hand, like `image_id` already was).
+- [x] Plugin version bumped 0.1.0 &rarr; 0.2.0 (`lumora-gallery-shortcodes.php` header).
+
+------
+
+### LPP-020. Bare Thumbnails Option for the Gallery Shortcodes
+
+**Status:** Complete — pending migration to HISTORY.md at next Release (5/5 checklist items done)
+
+#### Goal
+
+`[lumora_gallery_album]`/`[lumora_gallery_newest]` always rendered a title (album variant) and a "View album"/"View gallery" link below the thumbnails. Let an author drop both and get just a bare row of thumbnails, each still linking to its own full-size image and lightbox — useful for embedding a compact set of photos inline without extra chrome pointing back at the Gallery site.
+
+#### Checklist
+
+- [x] New `no_album_info="1"` attribute on both shortcodes — `GalleryShortcode::renderGallery()` gained a `$showAlbumInfo` parameter gating the `<h3>` title and the "View album"/"View gallery" `<a>`; every existing caller (`renderAlbum()`'s three variants, `renderNewest()`) threads the attribute through.
+- [x] Every existing variant (single album, multi-album, `count`, `image_id`, newest-across-gallery) supports the flag identically — no separate shortcode needed.
+- [x] Unit tests: single-album, multi-album, and `[lumora_gallery_newest]` cases in `GalleryShortcodeTest`, each confirming the thumbnails/lightbox links survive while the title and view-link disappear.
+- [x] Docs updated: plugin `README.md`'s shortcode list and the admin Lumora Gallery Shortcodes &rsaquo; Shortcodes reference page (new attribute row + example for both shortcodes).
+- [x] Plugin version bumped 0.2.0 &rarr; 0.3.0 (`lumora-gallery-shortcodes.php` header).
