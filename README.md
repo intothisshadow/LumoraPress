@@ -76,7 +76,7 @@ For the complete feature list and implementation details, see [`docs/FEATURES.md
 
 ## Requirements
 
-- PHP 8.2, 8.3, or 8.4
+- PHP 8.2, 8.3, 8.4, or 8.5
 - MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search)
 - The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip` is required only for the manual core-update and theme-install features)
 - Apache with `mod_rewrite` (the shipped `.htaccess` files assume Apache)
