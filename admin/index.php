@@ -353,6 +353,18 @@ $menu = [
             ],
         ],
     ] : []),
+    ...($galleryShortcodesActive ? [
+        'lumora-gallery-shortcodes' => [
+            'label' => 'Lumora Gallery',
+            'icon' => '🖼️',
+            'capability' => 'manage_options',
+            'default_child' => 'settings',
+            'children' => [
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'manage_options'],
+            ],
+        ],
+    ] : []),
     ...($contactFormsActive ? [
         'contact-forms' => [
             'label' => 'Contact Forms',
@@ -376,18 +388,6 @@ $menu = [
             'children' => [
                 'stats' => ['label' => 'Stats', 'icon' => '📈', 'capability' => 'manage_options'],
                 'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
-            ],
-        ],
-    ] : []),
-    ...($galleryShortcodesActive ? [
-        'lumora-gallery-shortcodes' => [
-            'label' => 'Lumora Gallery',
-            'icon' => '🖼️',
-            'capability' => 'manage_options',
-            'default_child' => 'settings',
-            'children' => [
-                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
-                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),
