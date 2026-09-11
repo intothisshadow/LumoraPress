@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Maintenance > Tools screen — a home for small admin utilities: the double-encoded-text repair (LP-113), Export/Import Settings (LP-140), and, when active, the Dummy Content plugin's generator (LPP-005).
+ * The admin Maintenance > Tools screen — a home for small admin utilities: Export/Import Settings (LP-140), and, when active, the Dummy Content plugin's generator (LPP-005).
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -15,7 +15,6 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 /** @var bool $dummyContentActive */
-/** @var bool $downloadsActive */
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\DummyContent\DummyContentGenerator;
@@ -170,75 +169,8 @@ if ($dummyContentActive) {
     $dummyContentSummary = $generator->lastGeneratedSummary();
 }
 
-// Repairs plain-text fields double-encoded by a pre-fix WordPress
-// Importer run, bypassing the normal content services entirely.
-$entityDecodeResults = null;
-$entityDecodeError = null;
-
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'repair_double_encoded_text') {
-    if (!Csrf::verify('repair_double_encoded_text', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $entityDecodeError = 'Your session expired. Reload the page and try again.';
-    } else {
-        $entityDecodeResults = $kernel->entityDecodeRepair->repair();
-    }
-}
-
-// Backfills downloads.category_id for every Download still categorized
-// the old way (via folder_id) from before Downloads gained its own
-// category taxonomy. Only shown while the plugin is active.
-$downloadCategoryMigrationResults = null;
-$downloadCategoryMigrationError = null;
-
-if ($downloadsActive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'migrate_download_categories') {
-    if (!Csrf::verify('migrate_download_categories', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $downloadCategoryMigrationError = 'Your session expired. Reload the page and try again.';
-    } else {
-        $downloadCategoryMigrationResults = $kernel->downloadCategoryMigration->migrate();
-    }
-}
 ?>
 <h1 class="lp-admin__title">Tools</h1>
-
-<?php if ($entityDecodeError !== null): ?>
-    <div class="lp-alert lp-alert--error"><?= esc_html($entityDecodeError) ?></div>
-<?php endif; ?>
-
-<?php if ($entityDecodeResults !== null): ?>
-    <?php $entityDecodeFixedTotal = array_sum($entityDecodeResults); ?>
-    <div class="lp-alert lp-alert--success">
-        <?php if ($entityDecodeFixedTotal === 0): ?>
-            No double-encoded text found — nothing needed fixing.
-        <?php else: ?>
-            Fixed <?= (int) $entityDecodeFixedTotal ?> row<?= $entityDecodeFixedTotal === 1 ? '' : 's' ?>:
-            <?= esc_html(implode(', ', array_filter(array_map(
-                static fn (string $table, int $count): string => $count > 0 ? "{$count} {$table}" : '',
-                array_keys($entityDecodeResults),
-                array_values($entityDecodeResults),
-            )))) ?>.
-        <?php endif; ?>
-    </div>
-<?php endif; ?>
-
-<section class="lp-admin__panel">
-    <h2>Fix Double-Encoded Text</h2>
-
-    <p class="lp-field__hint">
-        Content imported from WordPress before this version could end up
-        with its plain-text fields (category/tag names, post/page titles
-        and excerpts, comment author names and content, user display
-        names, media alt text/captions) encoded twice — showing up on the
-        site as literal text like "TV &amp;amp; Movies" instead of
-        "TV &amp; Movies". This scans every one of those fields and fixes
-        any that are affected; it's safe to run more than once, and does
-        nothing if nothing is affected.
-    </p>
-
-    <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>">
-        <?= Csrf::field('repair_double_encoded_text') ?>
-        <input type="hidden" name="form" value="repair_double_encoded_text">
-        <button type="submit" class="lp-button lp-button--primary">Scan &amp; Fix</button>
-    </form>
-</section>
 
 <section class="lp-admin__panel">
     <h2>Export Settings</h2>
@@ -365,44 +297,6 @@ if ($downloadsActive && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_P
         </form>
     <?php endif; ?>
 </section>
-
-<?php if ($downloadsActive): ?>
-    <?php if ($downloadCategoryMigrationError !== null): ?>
-        <div class="lp-alert lp-alert--error"><?= esc_html($downloadCategoryMigrationError) ?></div>
-    <?php endif; ?>
-
-    <?php if ($downloadCategoryMigrationResults !== null): ?>
-        <div class="lp-alert lp-alert--success">
-            <?php if ($downloadCategoryMigrationResults['categoriesCreated'] === 0 && $downloadCategoryMigrationResults['downloadsBackfilled'] === 0): ?>
-                No downloads needed migrating — everything is already using the new category taxonomy.
-            <?php else: ?>
-                Created <?= (int) $downloadCategoryMigrationResults['categoriesCreated'] ?> categor<?= $downloadCategoryMigrationResults['categoriesCreated'] === 1 ? 'y' : 'ies' ?>
-                and backfilled <?= (int) $downloadCategoryMigrationResults['downloadsBackfilled'] ?> download<?= $downloadCategoryMigrationResults['downloadsBackfilled'] === 1 ? '' : 's' ?>.
-            <?php endif; ?>
-        </div>
-    <?php endif; ?>
-
-    <section class="lp-admin__panel">
-        <h2>Migrate Download Categories</h2>
-
-        <p class="lp-field__hint">
-            Downloads used to be categorized via the shared Media Manager
-            Folder tree. Downloads now has its own dedicated category
-            taxonomy (see <a href="<?= esc_url(admin_url('downloads/categories')) ?>">Downloads &rsaquo; Categories</a>) —
-            this turns every Folder a Download is still categorized by
-            into a matching download category (preserving its name and
-            parent hierarchy) and moves the download over to it. Safe to
-            run more than once; does nothing once every download has
-            already been migrated.
-        </p>
-
-        <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>">
-            <?= Csrf::field('migrate_download_categories') ?>
-            <input type="hidden" name="form" value="migrate_download_categories">
-            <button type="submit" class="lp-button lp-button--primary">Migrate</button>
-        </form>
-    </section>
-<?php endif; ?>
 
 <?php if ($dummyContentActive): ?>
     <?php if ($dummyContentGenerated): ?>

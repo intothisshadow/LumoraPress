@@ -8,6 +8,10 @@ All notable changes to Lumora Press are documented in this file.
 
 - Multiple Lumora Gallery installations (LPP-021): the Lumora Gallery Shortcodes plugin can now connect to more than one separately-installed Lumora Gallery site at once. Lumora Gallery Shortcodes › Settings lists every configured connection with Edit/Delete/"Make Default" actions and an "Add Connection" form; both `[lumora_gallery_album]` and `[lumora_gallery_newest]` gained a `gallery="{slug}"` attribute to pick which connection to read from, defaulting to whichever connection is marked Default when omitted. An install with one Gallery connection already configured needs no action — its existing settings migrate automatically the first time this version runs, and every already-published shortcode (none of which could name an installation before now) keeps resolving to the same site it always has.
 
+### Removed
+
+- "Fix Double-Encoded Text" and "Migrate Download Categories" Maintenance › Tools utilities (LP-164): both were one-time historical data-repair tools (a pre-fix WordPress Importer double-encoding repair, and a Folder-to-download-category backfill from before Downloads had its own taxonomy) with no ongoing purpose once already run.
+
 ## [0.13.0] — 2026-09-11
 
 ### Added

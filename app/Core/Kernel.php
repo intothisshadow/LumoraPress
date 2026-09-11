@@ -44,10 +44,8 @@ use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
-use LumoraPress\Services\DownloadCategoryMigrationService;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
-use LumoraPress\Services\EntityDecodeRepairService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\GitHubReleaseProvider;
@@ -145,8 +143,6 @@ final class Kernel
         public readonly CommentImporter $commentImporter,
         public readonly MenuImporter $menuImporter,
         public readonly WidgetImporter $widgetImporter,
-        public readonly EntityDecodeRepairService $entityDecodeRepair,
-        public readonly DownloadCategoryMigrationService $downloadCategoryMigration,
         public readonly InstallPingService $installPing,
         public readonly ShortcodeManager $shortcodes,
         public readonly SettingsPortabilityService $settingsPortability,

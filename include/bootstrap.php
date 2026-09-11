@@ -81,10 +81,8 @@ use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
-use LumoraPress\Services\DownloadCategoryMigrationService;
 use LumoraPress\Services\EditorPreferenceService;
 use LumoraPress\Services\EmbedService;
-use LumoraPress\Services\EntityDecodeRepairService;
 use LumoraPress\Services\FeedService;
 use LumoraPress\Services\FolderGalleryShortcode;
 use LumoraPress\Services\FolderService;
@@ -368,9 +366,6 @@ $mediaImporter = new MediaImporter($media, LUMORA_ROOT . '/content/uploads', $co
 $commentImporter = new CommentImporter($comments, $contentImportRegistry);
 $menuImporter = new MenuImporter($menus, $contentImportRegistry);
 $widgetImporter = new WidgetImporter($widgets, $contentImportRegistry);
-
-$entityDecodeRepair = new EntityDecodeRepairService($database, $tablePrefix);
-$downloadCategoryMigration = new DownloadCategoryMigrationService($database, $tablePrefix);
 
 $redirects = new RedirectService($database, $tablePrefix);
 $permalinks = new PermalinkService($config, $categories, $users);
@@ -720,8 +715,6 @@ $kernel = new Kernel(
     commentImporter: $commentImporter,
     menuImporter: $menuImporter,
     widgetImporter: $widgetImporter,
-    entityDecodeRepair: $entityDecodeRepair,
-    downloadCategoryMigration: $downloadCategoryMigration,
     installPing: $installPing,
     shortcodes: $shortcodes,
     settingsPortability: $settingsPortability,
