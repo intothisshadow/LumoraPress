@@ -381,7 +381,7 @@ $menu = [
     ] : []),
     ...($galleryShortcodesActive ? [
         'lumora-gallery-shortcodes' => [
-            'label' => 'Gallery Shortcodes',
+            'label' => 'Lumora Gallery',
             'icon' => '🖼️',
             'capability' => 'manage_options',
             'default_child' => 'settings',

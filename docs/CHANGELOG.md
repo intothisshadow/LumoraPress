@@ -12,6 +12,10 @@ All notable changes to Lumora Press are documented in this file.
 - Tags Usage Statistics (LP-011): the admin Tags list gained a "Usage Statistics" panel — Most Used, Least Used, an unused-tags count, Recently Created, and Recently Used.
 - Coming-soon holding page (LP-156): dropping a static `index.html` next to `index.php` in the site root now takes over `/` ahead of the app, so a holding page can stay live while installing or configuring the site — before, the app's own rewrite rules always routed `/` into `index.php` (or the installer) regardless of `index.html`. Delete `index.html` when ready to launch; every other path is unaffected.
 
+### Changed
+
+- Lumora Gallery Shortcodes: the admin sidebar entry is now labeled "Lumora Gallery" instead of "Gallery Shortcodes" (its Settings/Shortcodes sub-pages are unchanged).
+
 ### Performance
 
 - Tags (LP-011): `TagService` now memoizes `findById()` lookups and per-tag post counts for the life of a request, the same request-scoped caching LP-010 added to Categories. The Post editor's tag-input autocomplete suggestions now query only tag names instead of full rows.

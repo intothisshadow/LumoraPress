@@ -2,7 +2,7 @@
 
 Embed albums and images from a separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) site into Lumora Press posts and pages.
 
-This is an **optional integration plugin**. Lumora Press remains fully functional with it deactivated, and Lumora Gallery is never required or assumed installed. Lumora Gallery has no API of its own, so this plugin reads its database directly, read-only, via a separately-configured connection entered on its own Settings screen (Lumora Gallery Shortcodes &rsaquo; Settings). No changes to a Lumora Gallery installation are required for this half of the integration.
+This is an **optional integration plugin**. Lumora Press remains fully functional with it deactivated, and Lumora Gallery is never required or assumed installed. Lumora Gallery has no API of its own, so this plugin reads its database directly, read-only, via a separately-configured connection entered on its own Settings screen (Lumora Gallery &rsaquo; Settings). No changes to a Lumora Gallery installation are required for this half of the integration.
 
 ## Shortcodes
 
@@ -18,11 +18,11 @@ Only public albums and approved images are ever shown — this plugin has no con
 
 Available to whoever can already edit the post/page a shortcode is typed into — no separate role/capability gate, the same as every other shortcode in Lumora Press.
 
-**Lumora Gallery Shortcodes &rsaquo; Shortcodes** in the admin has the full attribute reference and copy-paste examples for both shortcodes.
+**Lumora Gallery &rsaquo; Shortcodes** in the admin has the full attribute reference and copy-paste examples for both shortcodes.
 
 ## Settings
 
-Lumora Gallery Shortcodes &rsaquo; Settings needs:
+Lumora Gallery &rsaquo; Settings needs:
 
 - The Gallery database's host, port, name, username, password, and table prefix.
 - The Gallery site's public base URL — used to build "View album" links and thumbnail/full-image URLs, since this plugin has no access to the Gallery site's own PHP URL-building code.
