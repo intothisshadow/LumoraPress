@@ -169,6 +169,7 @@ final class ContentRenderer
 
             $parent = $img->parentNode;
             $existingLink = $parent instanceof DOMElement && strtolower($parent->tagName) === 'a' ? $parent : null;
+            $isSelfLink = $existingLink === null;
 
             if ($existingLink !== null) {
                 if ($this->hasNoLightboxClass($existingLink) || !$this->looksLikeImageUrl($existingLink->getAttribute('href'))) {
@@ -197,8 +198,6 @@ final class ContentRenderer
             // A stable marker regardless of whether width/height are known — Markdown images never carry those attributes, so data-pswp-width alone can't be the gallery signal.
             $link->setAttribute('data-pswp-lightbox', '1');
 
-            $width = (int) $img->getAttribute('width');
-            $height = (int) $img->getAttribute('height');
             $linkHref = $link->getAttribute('href');
 
             // The <img>'s own width/height are only trusted as a last
@@ -211,6 +210,22 @@ final class ContentRenderer
 
             if ($resolved !== null) {
                 [$width, $height] = $resolved;
+            } elseif ($isSelfLink) {
+                // The link IS the <img>'s own src (same file) — its
+                // width/height describe that exact file even when
+                // resolveImageDimensions() can't read it off disk.
+                $width = (int) $img->getAttribute('width');
+                $height = (int) $img->getAttribute('height');
+            } else {
+                // Linked to a different file (e.g. a full-size original
+                // on a companion site's own domain) we have no way to
+                // verify — the <img>'s own (thumbnail) width/height
+                // describe a different file's size, not this one.
+                // Presenting them as this link's dimensions distorts the
+                // lightbox slide's aspect ratio; omitting them instead
+                // lets PhotoSwipe size the slide from the loaded image.
+                $width = 0;
+                $height = 0;
             }
 
             if ($width > 0) {
@@ -246,9 +261,10 @@ final class ContentRenderer
      * An absolute URL (e.g. imported content, or a hand-typed link to a
      * companion site's own media) qualifies exactly like a relative one —
      * only the extension decides. resolveImageDimensions() already fails
-     * closed for a host it can't read from local disk, falling back to the
-     * <img>'s own width/height, so widening this to absolute URLs needs no
-     * change there.
+     * closed for a host it can't read from local disk, and
+     * addLightboxAttributes() omits dimensions entirely rather than
+     * guessing wrong when that happens, so widening this to absolute URLs
+     * needs no change to either.
      */
     private function looksLikeImageUrl(string $url): bool
     {

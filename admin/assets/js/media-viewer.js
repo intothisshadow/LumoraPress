@@ -25,6 +25,7 @@
     var CORE_URL = 'https://cdn.jsdelivr.net/npm/photoswipe@' + PHOTOSWIPE_VERSION + '/dist/photoswipe.esm.min.js';
     var SLIDESHOW_INTERVAL_MS = 4000;
     var DEEP_LINK_PREFIX = '#lp-media-';
+    var CHILDREN_SELECTOR = 'a[data-pswp-width], a[data-pswp-lightbox]';
 
     function currentSlideElement(pswp) {
         return pswp.currSlide && pswp.currSlide.data && pswp.currSlide.data.element;
@@ -53,11 +54,80 @@
             galleries.forEach(function (gallery) {
                 var lightbox = new PhotoSwipeLightbox({
                     gallery: gallery,
-                    children: 'a[data-pswp-width], a[data-pswp-lightbox]',
+                    children: CHILDREN_SELECTOR,
                     pswpModule: function () {
                         return import(CORE_URL);
                     },
                 });
+
+                /*
+                 * A link with data-pswp-lightbox but no data-pswp-width/
+                 * height (a linked file the server couldn't measure —
+                 * e.g. one hosted on a different site — see
+                 * ContentRenderer::addLightboxAttributes()) would
+                 * otherwise open PhotoSwipe with no known slide size,
+                 * which never progresses past the inline thumbnail: no
+                 * server-side network fetch is allowed at render time,
+                 * so the only place left to measure the real file is
+                 * here, in the visitor's own browser, right as they
+                 * click. Resolved dimensions are kept in this map (rather
+                 * than trusted from the data-* attributes alone) because
+                 * PhotoSwipe reads item data through its own domItemData
+                 * filter below, not by re-querying the DOM on every open.
+                 */
+                var resolvedDimensions = new WeakMap();
+
+                lightbox.addFilter('domItemData', function (itemData, element) {
+                    var known = resolvedDimensions.get(element);
+
+                    if (known) {
+                        itemData.width = known.width;
+                        itemData.height = known.height;
+                    }
+
+                    return itemData;
+                });
+
+                // Captured (not bubbled) so it runs and can
+                // stopPropagation() before PhotoSwipeLightbox's own
+                // bubble-phase click handler (registered by init() below)
+                // ever sees the event.
+                gallery.addEventListener('click', function (event) {
+                    var link = event.target.closest('a[data-pswp-lightbox]:not([data-pswp-width])');
+
+                    if (!link || !gallery.contains(link)) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    var index = Array.prototype.indexOf.call(gallery.querySelectorAll(CHILDREN_SELECTOR), link);
+
+                    if (index === -1) {
+                        return;
+                    }
+
+                    var probe = new Image();
+
+                    var open = function () {
+                        lightbox.loadAndOpen(index, { gallery: gallery });
+                    };
+
+                    probe.onload = function () {
+                        resolvedDimensions.set(link, { width: probe.naturalWidth, height: probe.naturalHeight });
+                        link.setAttribute('data-pswp-width', String(probe.naturalWidth));
+                        link.setAttribute('data-pswp-height', String(probe.naturalHeight));
+                        open();
+                    };
+
+                    // Fails open — opens without a size hint (today's
+                    // behavior) rather than leaving the click dead if the
+                    // linked file can't actually be loaded.
+                    probe.onerror = open;
+
+                    probe.src = link.getAttribute('href');
+                }, true);
 
                 var slideshowTimer = null;
 
@@ -206,7 +276,7 @@
 
                 if (deepLinkHash.indexOf(DEEP_LINK_PREFIX) === 0) {
                     var targetId = deepLinkHash.slice(DEEP_LINK_PREFIX.length);
-                    var items = gallery.querySelectorAll('a[data-pswp-width], a[data-pswp-lightbox]');
+                    var items = gallery.querySelectorAll(CHILDREN_SELECTOR);
 
                     for (var i = 0; i < items.length; i++) {
                         if (items[i].dataset.pswpId === targetId) {
