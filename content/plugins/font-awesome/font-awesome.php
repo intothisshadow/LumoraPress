@@ -84,3 +84,11 @@ add_action('head_assets', static function () use ($fontAwesome): void {
 });
 
 add_filter('csp_directives', static fn (array $directives): array => $fontAwesome->filterCsp($directives));
+
+// LP-166: no top-level menu of its own — its settings live as a nested
+// tab under Appearance, the Plugins screen is otherwise the only place
+// an administrator would naturally look to find it.
+add_filter('plugin_action_links_font-awesome', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('appearance/font-awesome')],
+]);

@@ -75,3 +75,12 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);
 });
+
+// LP-166: its entire admin surface is the Maintenance > Import screen —
+// the menu entry stays visible even while inactive (see admin/index.php)
+// but this link only exists while the plugin is active, same as every
+// other bundled plugin's own action link.
+add_filter('plugin_action_links_wordpress-importer', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('maintenance/import')],
+]);

@@ -68,3 +68,11 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
         new ShortcodeField('id', 'Form', ShortcodeFieldType::Select, required: true, choices: $formChoices),
     ]);
 });
+
+// LP-166: one-click access to this plugin's own Settings child — worth
+// having even though it already appears in the sidebar, same as WordPress
+// plugins with their own menu still commonly show a Settings link.
+add_filter('plugin_action_links_contact-forms', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('contact-forms/settings')],
+]);

@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Plugin action links (LP-166): a bundled plugin's row, grid card, and Details panel on the Plugins screen now show a "Settings" link (and, for plugins with more than one relevant screen, additional links) pointing straight at that plugin's real admin page — the same discoverability WordPress's own Plugins screen offers. This closes a real gap for plugins with no top-level sidebar menu of their own (Lumora Shield, Font Awesome, Emoji Picker, Dummy Content), where the Plugins screen used to give no hint at all that a settings page existed somewhere else in the admin.
 - Multiple Lumora Gallery installations (LPP-021): the Lumora Gallery Shortcodes plugin can now connect to more than one separately-installed Lumora Gallery site at once. Lumora Gallery Shortcodes › Settings lists every configured connection with Edit/Delete/"Make Default" actions and an "Add Connection" form; both `[lumora_gallery_album]` and `[lumora_gallery_newest]` gained a `gallery="{slug}"` attribute to pick which connection to read from, defaulting to whichever connection is marked Default when omitted. An install with one Gallery connection already configured needs no action — its existing settings migrate automatically the first time this version runs, and every already-published shortcode (none of which could name an installation before now) keeps resolving to the same site it always has.
 
 ### Removed

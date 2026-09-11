@@ -115,3 +115,11 @@ add_filter('dashboard_widget_ids', static function (array $ids, User $currentUse
 
     return $ids;
 });
+
+// LP-166: one-click access to this plugin's own Settings child — worth
+// having even though it already appears in the sidebar, same as WordPress
+// plugins with their own menu still commonly show a Settings link.
+add_filter('plugin_action_links_visitor-stats', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('visitor-stats/settings')],
+]);

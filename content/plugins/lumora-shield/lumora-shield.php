@@ -88,3 +88,12 @@ add_filter(
     static fn (bool $default, array $data, string $ipAddress): bool
         => $lumoraShield->contactFormIsSpam($default, $data, $ipAddress),
 );
+
+// LP-166: no top-level menu of its own (LP-153 folded it into Settings >
+// Security and Maintenance > Logs) — the Plugins screen is otherwise the
+// only place an administrator would naturally look to find these.
+add_filter('plugin_action_links_lumora-shield', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('settings/security') . '?tab=lumora-shield'],
+    ['label' => 'Logs', 'url' => admin_url('maintenance/logs') . '#enumeration-attempts'],
+]);

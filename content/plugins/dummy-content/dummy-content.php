@@ -33,5 +33,13 @@ namespace LumoraPress\Plugins\DummyContent;
 
 require_once __DIR__ . '/src/DummyContentGenerator.php';
 
-// Nothing to hook at load time — its whole surface is a gated Maintenance > Tools
-// section, which constructs DummyContentGenerator from $kernel directly.
+// Nothing else to hook at load time — its whole surface is a gated Maintenance >
+// Tools section, which constructs DummyContentGenerator from $kernel directly.
+
+// LP-166: no top-level menu of its own — its whole surface is a gated
+// section of Maintenance > Tools, the Plugins screen is otherwise the
+// only place an administrator would naturally look to find it.
+add_filter('plugin_action_links_dummy-content', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('maintenance/tools')],
+]);

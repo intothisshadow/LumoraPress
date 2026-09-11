@@ -65,3 +65,11 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);
 });
+
+// LP-166: one-click access to this plugin's own top-level menu — worth
+// having even though it already appears in the sidebar, same as WordPress
+// plugins with their own menu still commonly show a Settings link.
+add_filter('plugin_action_links_downloads', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('downloads')],
+]);

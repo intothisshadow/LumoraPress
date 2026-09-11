@@ -208,6 +208,18 @@ if ($pendingToken !== null) {
 $pluginList = $kernel->pluginRegistry->discover();
 $listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
 $hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Plugin\PluginInfo $info): bool => !$info->isActive) !== [];
+
+// LP-166: each plugin's own bootstrap registers its functional/settings
+// links via add_filter("plugin_action_links_{$slug}", ...), mirroring
+// WordPress's own Plugins screen mechanism. Computed once per slug here
+// (rather than inside each of the three render loops below) since the
+// list-table, grid card, and Details panel markup all render the same
+// plugin's links.
+$pluginActionLinksBySlug = [];
+
+foreach ($pluginList as $info) {
+    $pluginActionLinksBySlug[$info->slug] = apply_filters("plugin_action_links_{$info->slug}", []);
+}
 ?>
 <h1 class="lp-admin__title">Plugins</h1>
 
@@ -392,6 +404,9 @@ $hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Pl
                         <td><?= esc_html($info->author) ?></td>
                         <td><?= esc_html($info->description) ?></td>
                         <td class="lp-admin__row-actions">
+                            <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
+                                <a class="lp-button--link" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
+                            <?php endforeach; ?>
                             <button type="button" class="lp-button--link" data-lp-plugin-details-trigger data-plugin-template="<?= esc_attr($rowTemplateId) ?>">Details</button>
                             <?php if ($info->isActive): ?>
                                 <span class="lp-admin__inline-form">
@@ -482,6 +497,9 @@ $hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Pl
                             <?php if ($info->author !== ''): ?><span>By <?= esc_html($info->author) ?></span><?php endif; ?>
                         </p>
                         <div class="lp-plugin-card__actions">
+                            <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
+                            <?php endforeach; ?>
                             <button type="button" class="lp-button lp-button--secondary" data-lp-plugin-details-trigger data-plugin-template="<?= esc_attr($templateId) ?>">Details</button>
                             <?php if ($info->isActive): ?>
                                 <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
@@ -585,6 +603,9 @@ $hasDeletablePlugins = array_filter($pluginList, static fn (\LumoraPress\Core\Pl
                         <?php do_action('lp_plugin_details_panel', $info); ?>
 
                         <div class="lp-plugin-details__actions">
+                            <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
+                            <?php endforeach; ?>
                             <?php if ($info->isActive): ?>
                                 <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
                                     <?= Csrf::field('deactivate_plugin_details_' . $info->slug) ?>

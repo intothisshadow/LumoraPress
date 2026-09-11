@@ -72,3 +72,11 @@ add_filter('lp_emoji_picker_trigger_html', static function (string $html, array 
         . ($target !== '' ? ' data-emoji-target="' . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . '"' : '')
         . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</button>';
 });
+
+// LP-166: no top-level menu of its own — its settings live as a nested
+// tab under Settings > Writing, the Plugins screen is otherwise the only
+// place an administrator would naturally look to find it.
+add_filter('plugin_action_links_emoji-picker', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('settings/writing')],
+]);

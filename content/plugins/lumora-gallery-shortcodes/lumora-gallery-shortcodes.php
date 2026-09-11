@@ -105,3 +105,12 @@ add_action('register_shortcodes', static function () use ($gallerySettings): voi
         new ShortcodeField('count', 'Number of images', ShortcodeFieldType::Number, default: '10'),
     ]);
 });
+
+// LP-166: this plugin's own top-level menu (Settings + Shortcodes) is the
+// only place its functionality lives, so both children are worth a
+// one-click link from the Plugins screen.
+add_filter('plugin_action_links_lumora-gallery-shortcodes', static fn (array $links): array => [
+    ...$links,
+    ['label' => 'Settings', 'url' => admin_url('lumora-gallery-shortcodes/settings')],
+    ['label' => 'Shortcodes', 'url' => admin_url('lumora-gallery-shortcodes/shortcodes')],
+]);
