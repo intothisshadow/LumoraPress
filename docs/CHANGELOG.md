@@ -12,7 +12,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
-- PHP 8.5 added to the supported version range (previously 8.2–8.4).
+- PHP 8.5 added to the supported version range (previously 8.2–8.4); the full unit suite runs clean with no deprecation warnings on all four versions.
 
 ### Removed
 
@@ -21,6 +21,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - Shortcode "Attributes" reference lists (Downloads and Lumora Gallery Shortcodes' own Shortcodes screens) had ragged, unaligned columns — each row sized its attribute-name column independently, so the description text started at a different position on every row, and a longer attribute name like `no_album_info` could wrap mid-word onto two lines. The list now lays out as a real aligned table (one shared column width across every row) and each attribute name renders as a small accent-colored pill instead of bare unstyled text.
+- Thumbnail generation and optimization triggered a `Function imagedestroy() is deprecated` warning on PHP 8.5 — the call has had no effect since PHP 8.0 made GD images garbage-collected objects, so it was removed rather than suppressed.
 
 ## [0.13.0] — 2026-09-11
 

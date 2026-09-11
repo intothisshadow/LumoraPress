@@ -352,7 +352,6 @@ final class DummyContentGenerator
         imagestring($canvas, 5, max(0, (int) ($width / 2) - 40), max(0, (int) ($height / 2) - 8), $label, $textColor);
 
         imagepng($canvas, $path);
-        imagedestroy($canvas);
     }
 
     /**

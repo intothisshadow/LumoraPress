@@ -482,10 +482,8 @@ final class ThumbnailService
         $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
         $this->preserveTransparency($canvas);
         imagecopyresampled($canvas, $source, 0, 0, $x, $y, $outputWidth, $outputHeight, $width, $height);
-        imagedestroy($source);
 
         $this->encode($canvas, $destination, $mimeType);
-        imagedestroy($canvas);
 
         return ['width' => $outputWidth, 'height' => $outputHeight];
     }
@@ -515,14 +513,11 @@ final class ThumbnailService
         try {
             $this->encode($canvas, $temporaryPath, $mimeType);
         } catch (Throwable $exception) {
-            imagedestroy($canvas);
             @unlink($temporaryPath);
             $this->log("Failed to optimize \"{$path}\": {$exception->getMessage()}");
 
             return false;
         }
-
-        imagedestroy($canvas);
 
         $optimizedSize = is_file($temporaryPath) ? filesize($temporaryPath) : false;
 
@@ -631,8 +626,6 @@ final class ThumbnailService
             $canvas = $this->resizeFit($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight);
         }
 
-        imagedestroy($source);
-
         if ($this->config->option('thumbnail_sharpen', '0') === '1') {
             $this->sharpen($canvas);
         }
@@ -644,7 +637,6 @@ final class ThumbnailService
         $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
 
         $this->encode($canvas, $destination, $mimeType);
-        imagedestroy($canvas);
 
         // Delete-then-insert rather than an upsert: a previous row may point at a differently-named file, and an UPDATE-only upsert would orphan it on disk. Also keeps this portable to SQLite.
         $existing = $this->database->fetchOne(
@@ -798,10 +790,6 @@ final class ThumbnailService
 
         if ($rotated === false) {
             return $image;
-        }
-
-        if ($rotated !== $image) {
-            imagedestroy($image);
         }
 
         return $rotated;
