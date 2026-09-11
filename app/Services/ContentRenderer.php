@@ -242,10 +242,17 @@ final class ContentRenderer
         return in_array('no-lightbox', preg_split('/\s+/', trim($element->getAttribute('class'))) ?: [], true);
     }
 
+    /**
+     * An absolute URL (e.g. imported content, or a hand-typed link to a
+     * companion site's own media) qualifies exactly like a relative one —
+     * only the extension decides. resolveImageDimensions() already fails
+     * closed for a host it can't read from local disk, falling back to the
+     * <img>'s own width/height, so widening this to absolute URLs needs no
+     * change there.
+     */
     private function looksLikeImageUrl(string $url): bool
     {
-        if ($url === '' || parse_url($url, PHP_URL_HOST) !== null) {
-            // No host means relative/root-relative, same-site by construction. An absolute external URL is treated as "not an image link", the safe default.
+        if ($url === '') {
             return false;
         }
 
