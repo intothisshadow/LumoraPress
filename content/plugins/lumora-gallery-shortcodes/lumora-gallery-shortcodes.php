@@ -18,8 +18,8 @@ declare(strict_types=1);
 /*
  * Plugin Name: Lumora Gallery Shortcodes
  * Plugin URI: https://lumorapress.org/plugins/lumora-gallery-shortcodes
- * Description: Embed albums/images from a separately-installed Lumora Gallery site into Lumora Press posts and pages — whole albums, the newest N images from an album, specific images, or the newest N images across the entire gallery. Thumbnails open the real full-size image in the same PhotoSwipe lightbox every other gallery in Lumora Press uses. Entirely optional: Lumora Gallery is never required for Lumora Press to work.
- * Version: 0.3.0
+ * Description: Embed albums/images from one or more separately-installed Lumora Gallery sites into Lumora Press posts and pages — whole albums, the newest N images from an album, specific images, or the newest N images across an entire gallery. Thumbnails open the real full-size image in the same PhotoSwipe lightbox every other gallery in Lumora Press uses. Entirely optional: Lumora Gallery is never required for Lumora Press to work.
+ * Version: 0.4.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
@@ -68,25 +68,40 @@ add_filter('content_html', static fn (string $html): string => $galleryShortcode
  * shortcode's `count` (newest N within one album), `image_id` (specific
  * images), and multi-album (`album_id` with more than one comma-separated
  * id) variants are left typeable by hand; the Select field here only ever
- * produces a single id.
+ * produces a single id. `ShortcodeField` has no cascading/dependent-choices
+ * support, so `album_id`'s choices are drawn from the default Gallery
+ * connection only — an admin picking an album from a non-default
+ * connection types both `gallery` and `album_id` by hand, the same
+ * "typeable by hand" carve-out as the variants above.
  */
 add_action('register_shortcodes', static function () use ($gallerySettings): void {
     $albumChoices = [];
-    $database = $gallerySettings->connect();
+    $defaultSlug = $gallerySettings->defaultConnection();
+    $database = $defaultSlug !== null ? $gallerySettings->connect($defaultSlug) : null;
 
     if ($database !== null) {
-        $query = new GalleryQueryService($database, $gallerySettings->settings()['table_prefix']);
+        $query = new GalleryQueryService($database, $gallerySettings->connection($defaultSlug)['table_prefix']);
 
         foreach ($query->listAlbums() as $album) {
             $albumChoices[(string) $album['id']] = $album['title'] !== '' ? $album['title'] : $album['folder'];
         }
     }
 
+    $galleryChoices = [];
+
+    foreach ($gallerySettings->connections() as $slug => $connection) {
+        $galleryChoices[$slug] = $connection['label'] !== '' ? $connection['label'] : $slug;
+    }
+
+    $galleryField = new ShortcodeField('gallery', 'Gallery', ShortcodeFieldType::Select, default: $defaultSlug ?? '', choices: $galleryChoices);
+
     register_shortcode('lumora_gallery_album', 'Gallery Album', [
+        $galleryField,
         new ShortcodeField('album_id', 'Album', ShortcodeFieldType::Select, required: true, choices: $albumChoices),
     ]);
 
     register_shortcode('lumora_gallery_newest', 'Gallery — Newest Images', [
+        $galleryField,
         new ShortcodeField('count', 'Number of images', ShortcodeFieldType::Number, default: '10'),
     ]);
 });

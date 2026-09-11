@@ -25,7 +25,7 @@ if (!isset($kernel)) {
 // Only reachable while the plugin is active. Unlike Downloads' Shortcodes
 // page, this plugin has no local album data, so every example below uses
 // an obviously-a-placeholder id/name.
-$configured = (new GallerySettingsService())->isConfigured();
+$configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
 ?>
 <h1 class="lp-admin__title">Lumora Gallery Shortcodes &mdash; Shortcodes</h1>
 
@@ -50,7 +50,8 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list">
-        <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database. Give more than one, comma-separated (e.g. <code>"12,7,15"</code>), to combine images from several albums into one block.</span></li>
+        <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug (see Lumora Gallery Shortcodes &rsaquo; Settings). Omit it to use whichever connection is marked Default — only needed when more than one Gallery site is configured.</span></li>
+        <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database. Give more than one, comma-separated (e.g. <code>"12,7,15"</code>), to combine images from several albums into one block — always from the same <code>gallery</code> connection.</span></li>
         <li><span><code>folder</code></span><span>An album's folder path instead of its ID (e.g. <code>"xena/season-1"</code>). Ignored when <code>album_id</code> is also given.</span></li>
         <li><span><code>count</code></span><span>Show the newest <em>N</em> images instead of every image — newest first. With a single <code>album_id</code>/<code>folder</code>, the newest N in that album; with multiple <code>album_id</code>s, the newest N across all of them combined.</span></li>
         <li><span><code>image_id</code></span><span>One or more specific images by id, comma-separated (e.g. <code>"4,9,12"</code>). An image id is already globally unique in the Gallery's own schema, so <code>album_id</code>/<code>folder</code> is optional here — given anyway, it only decides which album the "View album" link points at.</span></li>
@@ -60,6 +61,9 @@ $configured = (new GallerySettingsService())->isConfigured();
     <h3>Examples</h3>
     <p class="lp-field__hint">Every image in an album, by ID:</p>
     <pre><code>[lumora_gallery_album album_id="12"]</code></pre>
+
+    <p class="lp-field__hint">Every image in an album on a specific (non-default) Gallery connection:</p>
+    <pre><code>[lumora_gallery_album gallery="xena-archive" album_id="12"]</code></pre>
 
     <p class="lp-field__hint">Every image in an album, by folder path:</p>
     <pre><code>[lumora_gallery_album folder="some-album"]</code></pre>
@@ -92,6 +96,7 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list">
+        <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug. Omit it to use whichever connection is marked Default.</span></li>
         <li><span><code>count</code></span><span>How many images to show, newest first. Defaults to 10 if omitted.</span></li>
         <li><span><code>no_album_info</code></span><span>Set to <code>"1"</code> to drop the "View gallery" link, leaving just the bare thumbnails.</span></li>
     </ul>

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Renders the `[lumora_gallery_album]`/`[lumora_gallery_newest]` shortcodes against a separately-installed Lumora Gallery site.
+ * Renders the `[lumora_gallery_album]`/`[lumora_gallery_newest]` shortcodes against one or more separately-installed Lumora Gallery sites.
  *
  * @package LumoraPress
  * @subpackage Plugins
@@ -33,16 +33,28 @@ final class GalleryShortcode
     private const PATTERN_NEWEST = '/\[lumora_gallery_newest([^\]]*)\]/i';
 
     /**
+     * @var array<string, GalleryQueryService|null>
+     */
+    private array $queryCache = [];
+
+    /**
      * $injectedQuery lets tests exercise rendering against a
      * SQLite-fixture-backed `GalleryQueryService` without a real MySQL
      * connection or persisted plugin settings — mirrors
-     * `DownloadsShortcode`'s identical constructor-injection shape. The
-     * plugin's own bootstrap constructs this with no second argument, so
-     * `query()` lazily connects via `$settings` on first actual use.
+     * `DownloadsShortcode`'s identical constructor-injection shape, used
+     * as the query for every connection slug a test's content
+     * references. `$injectedQueriesBySlug` lets a multi-connection test
+     * inject a distinct `GalleryQueryService` per slug instead — checked
+     * first, ahead of the single `$injectedQuery` fallback. The plugin's
+     * own bootstrap constructs this with neither argument, so `query()`
+     * lazily connects via `$settings` on first actual use of each slug.
+     *
+     * @param array<string, GalleryQueryService> $injectedQueriesBySlug
      */
     public function __construct(
         private readonly GallerySettingsService $settings,
         private readonly ?GalleryQueryService $injectedQuery = null,
+        private readonly array $injectedQueriesBySlug = [],
     ) {
     }
 
@@ -92,11 +104,26 @@ final class GalleryShortcode
      * "View album"/"View gallery" link are dropped, leaving just the bare
      * thumbnails, each still linking to its own full-size image.
      *
+     * `gallery="{slug}"` picks which configured Gallery connection this
+     * instance reads from — omitted, it resolves to whichever connection
+     * is marked default, so a single-Gallery site never needs it. An
+     * unknown slug renders nothing, the same as any other unresolvable
+     * shortcode. Every `album_id`/`image_id` in one shortcode instance is
+     * always resolved against that one connection — combining ids from
+     * more than one Gallery installation in a single shortcode isn't
+     * supported; use separate shortcode instances instead.
+     *
      * @param array<string, string> $attributes
      */
     private function renderAlbum(array $attributes): string
     {
-        $query = $this->query();
+        $gallerySlug = $this->resolveGallerySlug($attributes);
+
+        if ($gallerySlug === null) {
+            return '';
+        }
+
+        $query = $this->query($gallerySlug);
 
         if ($query === null) {
             return '';
@@ -105,6 +132,7 @@ final class GalleryShortcode
         $albumIds = $this->parseIntList($attributes['album_id'] ?? '');
         $folder = trim($attributes['folder'] ?? '');
         $showAlbumInfo = ($attributes['no_album_info'] ?? '') !== '1';
+        $baseUrl = rtrim($this->settings->connection($gallerySlug)['base_url'], '/');
 
         if (($attributes['image_id'] ?? '') !== '') {
             $imageIds = $this->parseIntList($attributes['image_id']);
@@ -120,7 +148,7 @@ final class GalleryShortcode
                 $album = $query->findAlbumForImage($images[0]['id']);
             }
 
-            return $this->renderGallery($images, $album, $showAlbumInfo);
+            return $this->renderGallery($images, $album, $showAlbumInfo, $baseUrl);
         }
 
         if (count($albumIds) > 1) {
@@ -132,7 +160,7 @@ final class GalleryShortcode
                 return '';
             }
 
-            return $this->renderGallery($images, null, $showAlbumInfo);
+            return $this->renderGallery($images, null, $showAlbumInfo, $baseUrl);
         }
 
         $album = ($albumIds !== [] || $folder !== '') ? $query->findAlbum($albumIds[0] ?? null, $folder !== '' ? $folder : null) : null;
@@ -151,19 +179,26 @@ final class GalleryShortcode
             return '';
         }
 
-        return $this->renderGallery($images, $album, $showAlbumInfo);
+        return $this->renderGallery($images, $album, $showAlbumInfo, $baseUrl);
     }
 
     /**
      * `no_album_info="1"` drops the "View gallery" link below the
      * thumbnails, the same as it drops `[lumora_gallery_album]`'s own
-     * title/"View album" link — see renderAlbum()'s docblock.
+     * title/"View album" link — see renderAlbum()'s docblock. `gallery`
+     * picks the connection the same way renderAlbum() does.
      *
      * @param array<string, string> $attributes
      */
     private function renderNewest(array $attributes): string
     {
-        $query = $this->query();
+        $gallerySlug = $this->resolveGallerySlug($attributes);
+
+        if ($gallerySlug === null) {
+            return '';
+        }
+
+        $query = $this->query($gallerySlug);
 
         if ($query === null) {
             return '';
@@ -176,20 +211,21 @@ final class GalleryShortcode
             return '';
         }
 
+        $baseUrl = rtrim($this->settings->connection($gallerySlug)['base_url'], '/');
+
         // No single album to link to — every image here can belong to a
         // different one — so the "View" link below points at the
         // Gallery site's own base URL instead of one album's page.
-        return $this->renderGallery($images, null, ($attributes['no_album_info'] ?? '') !== '1');
+        return $this->renderGallery($images, null, ($attributes['no_album_info'] ?? '') !== '1', $baseUrl);
     }
 
     /**
      * @param array<int, array{id: int, filename: string, title: string, width: int, height: int, albumId?: int, albumFolder?: string}> $images
      * @param array{id: int, folder: string, title: string}|null $album
      */
-    private function renderGallery(array $images, ?array $album, bool $showAlbumInfo = true): string
+    private function renderGallery(array $images, ?array $album, bool $showAlbumInfo, string $baseUrl): string
     {
         MediaViewer::markUsed();
-        $baseUrl = rtrim($this->settings->settings()['base_url'], '/');
 
         $html = '<div class="lp-gallery-shortcode">';
 
@@ -249,15 +285,48 @@ final class GalleryShortcode
         return $baseUrl . '/albums/' . $encodedFolder . '/' . rawurlencode($filename);
     }
 
-    private function query(): ?GalleryQueryService
+    /**
+     * `gallery="{slug}"`, or the configured default connection when omitted. Null when neither
+     * resolves to a real connection (an unknown slug, or no connection configured at all).
+     *
+     * @param array<string, string> $attributes
+     */
+    private function resolveGallerySlug(array $attributes): ?string
     {
+        $slug = trim($attributes['gallery'] ?? '');
+
+        if ($slug === '') {
+            $slug = $this->settings->defaultConnection();
+        }
+
+        return $slug !== null && $slug !== '' && $this->settings->connection($slug) !== null ? $slug : null;
+    }
+
+    /**
+     * One connection at a time — a page can embed shortcodes from more
+     * than one Gallery installation, so each resolved slug's connection
+     * is opened (and cached) independently within this one render() call.
+     */
+    private function query(string $slug): ?GalleryQueryService
+    {
+        if (array_key_exists($slug, $this->injectedQueriesBySlug)) {
+            return $this->injectedQueriesBySlug[$slug];
+        }
+
         if ($this->injectedQuery !== null) {
             return $this->injectedQuery;
         }
 
-        $database = $this->settings->connect();
+        if (array_key_exists($slug, $this->queryCache)) {
+            return $this->queryCache[$slug];
+        }
 
-        return $database !== null ? new GalleryQueryService($database, $this->settings->settings()['table_prefix']) : null;
+        $database = $this->settings->connect($slug);
+        $connection = $this->settings->connection($slug);
+        $query = $database !== null && $connection !== null ? new GalleryQueryService($database, $connection['table_prefix']) : null;
+        $this->queryCache[$slug] = $query;
+
+        return $query;
     }
 
     /**
