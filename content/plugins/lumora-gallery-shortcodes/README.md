@@ -8,10 +8,11 @@ This is an **optional integration plugin**. Lumora Press remains fully functiona
 
 - `[lumora_gallery_album album_id="12"]` (or `folder="some-album"`) — every image in the given album.
 - `[lumora_gallery_album album_id="12" count="5"]` — the newest 5 images in that album.
+- `[lumora_gallery_album album_id="12,7,15"]` — every image across multiple albums combined (comma-separated ids). Adding `count` shows the newest N images across those albums instead. `folder` is ignored once more than one `album_id` is given.
 - `[lumora_gallery_album image_id="4,9,12"]` — one or more specific images, by id (comma-separated). `album_id`/`folder` are optional here — an image id is already globally unique — and only affect which album the "View album" link points at.
 - `[lumora_gallery_newest count="10"]` — the newest 10 images across the entire gallery (every public album).
 
-Every thumbnail links to the real full-size image and opens it in Lumora Press's own existing PhotoSwipe lightbox — the same one every other gallery in Lumora Press uses, no extra JavaScript needed. Each rendered block also links back to the album (or the Gallery site itself, for the newest-across-the-gallery variant) below the images.
+Every thumbnail links to the real full-size image and opens it in Lumora Press's own existing PhotoSwipe lightbox — the same one every other gallery in Lumora Press uses, no extra JavaScript needed. Each rendered block also links back to the album below the images — or, for the multi-album and newest-across-the-gallery variants (no single album to link to), the Gallery site itself.
 
 Only public albums and approved images are ever shown — this plugin has no concept of a Gallery user account or login, so it only ever reads what a logged-out Gallery visitor could see.
 

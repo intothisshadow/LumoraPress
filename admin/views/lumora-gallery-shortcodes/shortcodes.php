@@ -50,9 +50,9 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list">
-        <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database.</span></li>
+        <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database. Give more than one, comma-separated (e.g. <code>"12,7,15"</code>), to combine images from several albums into one block.</span></li>
         <li><span><code>folder</code></span><span>An album's folder path instead of its ID (e.g. <code>"xena/season-1"</code>). Ignored when <code>album_id</code> is also given.</span></li>
-        <li><span><code>count</code></span><span>Show the newest <em>N</em> images in the album, newest first, instead of every image. Needs <code>album_id</code>/<code>folder</code> to know which album.</span></li>
+        <li><span><code>count</code></span><span>Show the newest <em>N</em> images instead of every image — newest first. With a single <code>album_id</code>/<code>folder</code>, the newest N in that album; with multiple <code>album_id</code>s, the newest N across all of them combined.</span></li>
         <li><span><code>image_id</code></span><span>One or more specific images by id, comma-separated (e.g. <code>"4,9,12"</code>). An image id is already globally unique in the Gallery's own schema, so <code>album_id</code>/<code>folder</code> is optional here — given anyway, it only decides which album the "View album" link points at.</span></li>
     </ul>
 
@@ -65,6 +65,12 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <p class="lp-field__hint">The newest 6 images in an album:</p>
     <pre><code>[lumora_gallery_album album_id="12" count="6"]</code></pre>
+
+    <p class="lp-field__hint">Every image across three albums, combined:</p>
+    <pre><code>[lumora_gallery_album album_id="12,7,15"]</code></pre>
+
+    <p class="lp-field__hint">The newest 6 images across those same three albums:</p>
+    <pre><code>[lumora_gallery_album album_id="12,7,15" count="6"]</code></pre>
 
     <p class="lp-field__hint">Specific images, in the order given:</p>
     <pre><code>[lumora_gallery_album image_id="4,9,12"]</code></pre>

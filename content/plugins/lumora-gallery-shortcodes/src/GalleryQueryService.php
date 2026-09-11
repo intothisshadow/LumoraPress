@@ -220,6 +220,74 @@ final class GalleryQueryService
     }
 
     /**
+     * Every approved image across multiple public albums at once, grouped
+     * by album (alphabetically by title) and then in that album's own
+     * manual ordering (`pos`) within each group — the multi-album analog
+     * of `imagesForAlbum()`. Non-public albums and unknown ids among
+     * $albumIds are silently skipped rather than failing the whole call.
+     *
+     * @param array<int, int> $albumIds
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int, albumId: int, albumFolder: string}>
+     */
+    public function imagesForAlbums(array $albumIds): array
+    {
+        if ($albumIds === []) {
+            return [];
+        }
+
+        [$placeholders, $params] = $this->albumIdParams($albumIds);
+
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT i.id, i.filename, i.title, i.width, i.height, i.album_id, a.folder AS album_folder
+                    FROM ' . $this->imagesTable() . ' i
+                    INNER JOIN ' . $this->albumsTable() . ' a ON a.id = i.album_id
+                    WHERE i.approved = 1 AND a.visibility = 0 AND i.album_id IN (' . implode(',', $placeholders) . ')
+                 ORDER BY a.title ASC, i.pos ASC, i.id ASC
+                    LIMIT ' . self::MAX_IMAGES,
+                $params,
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map($this->hydrateMultiAlbumImage(...), $rows);
+    }
+
+    /**
+     * The newest `count` approved images across multiple public albums at
+     * once, newest first — the multi-album analog of `newestInAlbum()`.
+     *
+     * @param array<int, int> $albumIds
+     * @return array<int, array{id: int, filename: string, title: string, width: int, height: int, albumId: int, albumFolder: string}>
+     */
+    public function newestInAlbums(array $albumIds, int $count): array
+    {
+        if ($albumIds === []) {
+            return [];
+        }
+
+        $limit = max(1, min($count, self::MAX_IMAGES));
+        [$placeholders, $params] = $this->albumIdParams($albumIds);
+
+        try {
+            $rows = $this->database->fetchAll(
+                'SELECT i.id, i.filename, i.title, i.width, i.height, i.album_id, a.folder AS album_folder
+                    FROM ' . $this->imagesTable() . ' i
+                    INNER JOIN ' . $this->albumsTable() . ' a ON a.id = i.album_id
+                    WHERE i.approved = 1 AND a.visibility = 0 AND i.album_id IN (' . implode(',', $placeholders) . ')
+                 ORDER BY i.added_at DESC, i.id DESC
+                    LIMIT ' . $limit,
+                $params,
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map($this->hydrateMultiAlbumImage(...), $rows);
+    }
+
+    /**
      * The newest `count` approved images across every public album,
      * gallery-wide.
      *
@@ -269,6 +337,46 @@ final class GalleryQueryService
             'width' => (int) $row['width'],
             'height' => (int) $row['height'],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{id: int, filename: string, title: string, width: int, height: int, albumId: int, albumFolder: string}
+     */
+    private function hydrateMultiAlbumImage(array $row): array
+    {
+        return [
+            'id' => (int) $row['id'],
+            'filename' => (string) $row['filename'],
+            'title' => (string) $row['title'],
+            'width' => (int) $row['width'],
+            'height' => (int) $row['height'],
+            'albumId' => (int) $row['album_id'],
+            'albumFolder' => (string) $row['album_folder'],
+        ];
+    }
+
+    /**
+     * Builds the `IN (...)` placeholder list and bound params shared by
+     * `imagesForAlbums()`/`newestInAlbums()` — same named-placeholder
+     * approach as `imagesByIds()`'s own `$imageIds` handling.
+     *
+     * @param array<int, int> $albumIds
+     * @return array{0: array<int, string>, 1: array<string, int>}
+     */
+    private function albumIdParams(array $albumIds): array
+    {
+        $albumIds = array_slice(array_unique($albumIds), 0, self::MAX_IMAGES);
+        $placeholders = [];
+        $params = [];
+
+        foreach ($albumIds as $index => $albumId) {
+            $key = "album_id{$index}";
+            $placeholders[] = ":{$key}";
+            $params[$key] = $albumId;
+        }
+
+        return [$placeholders, $params];
     }
 
     private function albumsTable(): string

@@ -68,16 +68,25 @@ final class GalleryShortcode
     }
 
     /**
-     * Three variants, checked in order:
+     * Four variants, checked in order:
      *
      * 1. `image_id` — one or more specific images (comma-separated).
      *    `album_id`/`folder` are optional here — an image id is already
      *    globally unique, so they're only used to pick which album the
      *    "View album" link below points at when given; without them,
-     *    the first resolved image's own album is used instead.
-     * 2. `count` (with `album_id`/`folder`) — the newest N images in
-     *    that album.
-     * 3. `album_id`/`folder` alone — every image in that album.
+     *    the first resolved image's own album is used instead. When
+     *    `album_id` carries more than one id, only the first is used for
+     *    this link — combining `image_id` with a multi-album `album_id`
+     *    is not a meaningful pairing.
+     * 2. `album_id` with more than one comma-separated id — every image
+     *    (or, with `count`, the newest N) across all of those albums
+     *    combined, newest-across-the-gallery-style with no single album
+     *    to link to. `folder` is ignored in this variant, matching how
+     *    `folder` is already secondary to `album_id` in the single-album
+     *    variant below.
+     * 3. `count` (with a single `album_id`/`folder`) — the newest N
+     *    images in that one album.
+     * 4. `album_id`/`folder` alone (single) — every image in that album.
      *
      * @param array<string, string> $attributes
      */
@@ -89,9 +98,8 @@ final class GalleryShortcode
             return '';
         }
 
-        $albumId = ($attributes['album_id'] ?? '') !== '' ? (int) $attributes['album_id'] : null;
+        $albumIds = $this->parseIntList($attributes['album_id'] ?? '');
         $folder = trim($attributes['folder'] ?? '');
-        $album = ($albumId !== null || $folder !== '') ? $query->findAlbum($albumId, $folder !== '' ? $folder : null) : null;
 
         if (($attributes['image_id'] ?? '') !== '') {
             $imageIds = $this->parseIntList($attributes['image_id']);
@@ -101,12 +109,28 @@ final class GalleryShortcode
                 return '';
             }
 
+            $album = ($albumIds !== [] || $folder !== '') ? $query->findAlbum($albumIds[0] ?? null, $folder !== '' ? $folder : null) : null;
+
             if ($album === null) {
                 $album = $query->findAlbumForImage($images[0]['id']);
             }
 
             return $this->renderGallery($images, $album);
         }
+
+        if (count($albumIds) > 1) {
+            $images = ($attributes['count'] ?? '') !== ''
+                ? $query->newestInAlbums($albumIds, (int) $attributes['count'])
+                : $query->imagesForAlbums($albumIds);
+
+            if ($images === []) {
+                return '';
+            }
+
+            return $this->renderGallery($images, null);
+        }
+
+        $album = ($albumIds !== [] || $folder !== '') ? $query->findAlbum($albumIds[0] ?? null, $folder !== '' ? $folder : null) : null;
 
         if ($album === null) {
             return '';

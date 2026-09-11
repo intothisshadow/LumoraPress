@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: Lumora Gallery Shortcodes
  * Plugin URI: https://lumorapress.org/plugins/lumora-gallery-shortcodes
  * Description: Embed albums/images from a separately-installed Lumora Gallery site into Lumora Press posts and pages — whole albums, the newest N images from an album, specific images, or the newest N images across the entire gallery. Thumbnails open the real full-size image in the same PhotoSwipe lightbox every other gallery in Lumora Press uses. Entirely optional: Lumora Gallery is never required for Lumora Press to work.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
@@ -65,8 +65,10 @@ add_filter('content_html', static fn (string $html): string => $galleryShortcode
  *
  * Covers only `[lumora_gallery_album]`'s "whole album" variant
  * (`album_id` alone) and `[lumora_gallery_newest]`'s `count` — the album
- * shortcode's `count` (newest N within one album) and `image_id`
- * (specific images) variants are left typeable by hand.
+ * shortcode's `count` (newest N within one album), `image_id` (specific
+ * images), and multi-album (`album_id` with more than one comma-separated
+ * id) variants are left typeable by hand; the Select field here only ever
+ * produces a single id.
  */
 add_action('register_shortcodes', static function () use ($gallerySettings): void {
     $albumChoices = [];
