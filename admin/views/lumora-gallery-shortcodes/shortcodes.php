@@ -54,6 +54,7 @@ $configured = (new GallerySettingsService())->isConfigured();
         <li><span><code>folder</code></span><span>An album's folder path instead of its ID (e.g. <code>"xena/season-1"</code>). Ignored when <code>album_id</code> is also given.</span></li>
         <li><span><code>count</code></span><span>Show the newest <em>N</em> images instead of every image — newest first. With a single <code>album_id</code>/<code>folder</code>, the newest N in that album; with multiple <code>album_id</code>s, the newest N across all of them combined.</span></li>
         <li><span><code>image_id</code></span><span>One or more specific images by id, comma-separated (e.g. <code>"4,9,12"</code>). An image id is already globally unique in the Gallery's own schema, so <code>album_id</code>/<code>folder</code> is optional here — given anyway, it only decides which album the "View album" link points at.</span></li>
+        <li><span><code>no_album_info</code></span><span>Set to <code>"1"</code> to drop the album title and "View album" link, leaving just the bare thumbnails — each still links to its own full-size image and lightbox.</span></li>
     </ul>
 
     <h3>Examples</h3>
@@ -74,6 +75,9 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <p class="lp-field__hint">Specific images, in the order given:</p>
     <pre><code>[lumora_gallery_album image_id="4,9,12"]</code></pre>
+
+    <p class="lp-field__hint">Just the thumbnails, no title or "View album" link:</p>
+    <pre><code>[lumora_gallery_album album_id="12" no_album_info="1"]</code></pre>
 </section>
 
 <section class="lp-admin__panel">
@@ -89,6 +93,7 @@ $configured = (new GallerySettingsService())->isConfigured();
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list">
         <li><span><code>count</code></span><span>How many images to show, newest first. Defaults to 10 if omitted.</span></li>
+        <li><span><code>no_album_info</code></span><span>Set to <code>"1"</code> to drop the "View gallery" link, leaving just the bare thumbnails.</span></li>
     </ul>
 
     <h3>Examples</h3>
@@ -97,4 +102,7 @@ $configured = (new GallerySettingsService())->isConfigured();
 
     <p class="lp-field__hint">The newest 20:</p>
     <pre><code>[lumora_gallery_newest count="20"]</code></pre>
+
+    <p class="lp-field__hint">The newest 20, just thumbnails:</p>
+    <pre><code>[lumora_gallery_newest count="20" no_album_info="1"]</code></pre>
 </section>

@@ -88,6 +88,10 @@ final class GalleryShortcode
      *    images in that one album.
      * 4. `album_id`/`folder` alone (single) — every image in that album.
      *
+     * `no_album_info="1"` applies on top of any of these: the title and
+     * "View album"/"View gallery" link are dropped, leaving just the bare
+     * thumbnails, each still linking to its own full-size image.
+     *
      * @param array<string, string> $attributes
      */
     private function renderAlbum(array $attributes): string
@@ -100,6 +104,7 @@ final class GalleryShortcode
 
         $albumIds = $this->parseIntList($attributes['album_id'] ?? '');
         $folder = trim($attributes['folder'] ?? '');
+        $showAlbumInfo = ($attributes['no_album_info'] ?? '') !== '1';
 
         if (($attributes['image_id'] ?? '') !== '') {
             $imageIds = $this->parseIntList($attributes['image_id']);
@@ -115,7 +120,7 @@ final class GalleryShortcode
                 $album = $query->findAlbumForImage($images[0]['id']);
             }
 
-            return $this->renderGallery($images, $album);
+            return $this->renderGallery($images, $album, $showAlbumInfo);
         }
 
         if (count($albumIds) > 1) {
@@ -127,7 +132,7 @@ final class GalleryShortcode
                 return '';
             }
 
-            return $this->renderGallery($images, null);
+            return $this->renderGallery($images, null, $showAlbumInfo);
         }
 
         $album = ($albumIds !== [] || $folder !== '') ? $query->findAlbum($albumIds[0] ?? null, $folder !== '' ? $folder : null) : null;
@@ -146,10 +151,14 @@ final class GalleryShortcode
             return '';
         }
 
-        return $this->renderGallery($images, $album);
+        return $this->renderGallery($images, $album, $showAlbumInfo);
     }
 
     /**
+     * `no_album_info="1"` drops the "View gallery" link below the
+     * thumbnails, the same as it drops `[lumora_gallery_album]`'s own
+     * title/"View album" link — see renderAlbum()'s docblock.
+     *
      * @param array<string, string> $attributes
      */
     private function renderNewest(array $attributes): string
@@ -170,21 +179,21 @@ final class GalleryShortcode
         // No single album to link to — every image here can belong to a
         // different one — so the "View" link below points at the
         // Gallery site's own base URL instead of one album's page.
-        return $this->renderGallery($images, null);
+        return $this->renderGallery($images, null, ($attributes['no_album_info'] ?? '') !== '1');
     }
 
     /**
      * @param array<int, array{id: int, filename: string, title: string, width: int, height: int, albumId?: int, albumFolder?: string}> $images
      * @param array{id: int, folder: string, title: string}|null $album
      */
-    private function renderGallery(array $images, ?array $album): string
+    private function renderGallery(array $images, ?array $album, bool $showAlbumInfo = true): string
     {
         MediaViewer::markUsed();
         $baseUrl = rtrim($this->settings->settings()['base_url'], '/');
 
         $html = '<div class="lp-gallery-shortcode">';
 
-        if ($album !== null) {
+        if ($showAlbumInfo && $album !== null) {
             $html .= '<h3 class="lp-gallery-shortcode__title">' . esc_html($album['title'] !== '' ? $album['title'] : $album['folder']) . '</h3>';
         }
 
@@ -197,12 +206,14 @@ final class GalleryShortcode
 
         $html .= '</ul>';
 
-        $viewUrl = $album !== null
-            ? $baseUrl . '/album.php?album=' . $album['id']
-            : $baseUrl . '/';
+        if ($showAlbumInfo) {
+            $viewUrl = $album !== null
+                ? $baseUrl . '/album.php?album=' . $album['id']
+                : $baseUrl . '/';
 
-        $viewLabel = $album !== null ? 'View album' : 'View gallery';
-        $html .= '<a class="lp-gallery-shortcode__view-link" href="' . esc_url($viewUrl) . '">' . esc_html($viewLabel) . ' &rarr;</a>';
+            $viewLabel = $album !== null ? 'View album' : 'View gallery';
+            $html .= '<a class="lp-gallery-shortcode__view-link" href="' . esc_url($viewUrl) . '">' . esc_html($viewLabel) . ' &rarr;</a>';
+        }
 
         $html .= '</div>';
 
