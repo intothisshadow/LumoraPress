@@ -349,6 +349,28 @@ final class ContentRenderer
             return $content;
         }
 
-        return strip_tags($this->render($content, $format));
+        $html = $this->render($content, $format);
+
+        // strip_tags() alone concatenates adjacent elements with no
+        // separator at all ("<p>A</p><p>B</p>" becomes "AB", fusing two
+        // paragraphs into one word) — inserting whitespace after every
+        // closing tag (and void <br>) first guarantees a real word
+        // boundary survives; harmless for inline tags since the run of
+        // whitespace collapses to one space below regardless.
+        $withBreaks = preg_replace(['#</[a-z][a-z0-9]*>#i', '#<br\s*/?>#i'], ['$0 ', ' '], $html) ?? $html;
+        $stripped = strip_tags($withBreaks);
+
+        // strip_tags() doesn't decode entities either — without this, a
+        // literal "&amp;"/"&gt;"/"&#039;" surviving from the rendered
+        // HTML would double-escape once the caller re-escapes this
+        // "plain text" for display.
+        $decoded = html_entity_decode($stripped, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $collapsed = trim((string) preg_replace('/\s+/', ' ', $decoded));
+
+        // The blanket whitespace-after-every-closing-tag insertion above
+        // also lands before trailing punctuation immediately following
+        // an inline element (e.g. "<code>code</code>." -> "code ."),
+        // which this undoes.
+        return (string) preg_replace('/\s+([.,!?;:)])/', '$1', $collapsed);
     }
 }
