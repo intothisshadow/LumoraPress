@@ -19,10 +19,11 @@ Inserted via the editor's **Insert Folder** button. Renders every image in a Med
 | Attribute | Required | Description |
 | --- | --- | --- |
 | `folder_id` | Yes | The Media folder's id. |
+| `size` | No | `small` (default, a cropped square "Thumbnail"), `medium`, `large`, or `full` — same size names as the single Insert Image picker. An image smaller than the chosen size is never upscaled to fill it; it's shown at its own real, smaller dimensions instead. |
 | `link` | No | `none` (default) or `full` — whether each thumbnail links to the full-size image in the lightbox. |
 
 ```
-[lumora_folder_gallery folder_id="12" link="full"]
+[lumora_folder_gallery folder_id="12" size="medium" link="full"]
 ```
 
 ### `[lumora_audio]`

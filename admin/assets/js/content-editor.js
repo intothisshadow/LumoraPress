@@ -522,9 +522,18 @@
      * data-media-folders (LP-115), used until now only for
      * openMediaPicker()'s own *filter* dropdown — reused here as the
      * required folder-to-insert choice. onInsert receives
-     * {folderId, link} ('link' is 'none'/'file', matching the Insert
-     * Image "Link To" select's own value/label pair exactly, so the
-     * two pickers stay visually consistent).
+     * {folderId, link, size} ('link' is 'none'/'file', matching the
+     * Insert Image "Link To" select's own value/label pair exactly, so
+     * the two pickers stay visually consistent; 'size' reuses the same
+     * SIZE_LABELS/SIZE_ORDER Insert Image's own Size field uses).
+     *
+     * The Size field exists so the gallery can request Medium/Large/Full
+     * instead of always the cropped 150px "Thumbnail" grid — and so
+     * "Thumbnail" itself renders correctly for an image smaller than
+     * 150px, which ThumbnailService never upscales to fill: see
+     * FolderGalleryShortcode::resolveImage()'s identical reasoning for
+     * why the shortcode never claims dimensions bigger than the file it
+     * actually links to.
      */
     function openFolderGalleryPicker(container, onInsert) {
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
@@ -552,6 +561,23 @@
         folderField.appendChild(folderLabelEl);
         folderField.appendChild(folderSelect);
 
+        var sizeField = document.createElement('p');
+        sizeField.className = 'lp-field';
+        var sizeLabelEl = document.createElement('label');
+        sizeLabelEl.textContent = 'Size';
+        var sizeSelect = document.createElement('select');
+
+        SIZE_ORDER.forEach(function (name) {
+            var option = document.createElement('option');
+            option.value = name;
+            option.textContent = SIZE_LABELS[name];
+            option.selected = name === 'small';
+            sizeSelect.appendChild(option);
+        });
+
+        sizeField.appendChild(sizeLabelEl);
+        sizeField.appendChild(sizeSelect);
+
         var linkField = document.createElement('p');
         linkField.className = 'lp-field';
         var linkLabelEl = document.createElement('label');
@@ -577,7 +603,7 @@
         insertButton.textContent = 'Insert';
         insertButton.disabled = folders.length === 0;
         insertButton.addEventListener('click', function () {
-            onInsert({ folderId: parseInt(folderSelect.value, 10) || 0, link: linkSelect.value });
+            onInsert({ folderId: parseInt(folderSelect.value, 10) || 0, link: linkSelect.value, size: sizeSelect.value });
             dialog.close();
         });
 
@@ -599,6 +625,7 @@
             dialog.appendChild(status);
         } else {
             dialog.appendChild(folderField);
+            dialog.appendChild(sizeField);
             dialog.appendChild(linkField);
         }
 
@@ -1906,7 +1933,7 @@
                         openFolderGalleryPicker(container, function (payload) {
                             var cm = editor.codemirror;
                             var link = payload.link === 'file' ? 'full' : 'none';
-                            cm.replaceSelection('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
+                            cm.replaceSelection('[lumora_folder_gallery folder_id="' + payload.folderId + '" size="' + payload.size + '" link="' + link + '"]');
                         });
                     },
                     className: 'fa fa-th',
@@ -2285,7 +2312,7 @@
                             onAction: function () {
                                 openFolderGalleryPicker(container, function (payload) {
                                     var link = payload.link === 'file' ? 'full' : 'none';
-                                    editor.insertContent('[lumora_folder_gallery folder_id="' + payload.folderId + '" link="' + link + '"]');
+                                    editor.insertContent('[lumora_folder_gallery folder_id="' + payload.folderId + '" size="' + payload.size + '" link="' + link + '"]');
                                 });
                             },
                         });

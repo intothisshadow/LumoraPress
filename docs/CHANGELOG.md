@@ -9,6 +9,7 @@ All notable changes to Lumora Press are documented in this file.
 - Trash for Tags, with restore (LP-011): the admin Tags list gained an "All"/"Trash" status-tab pair, matching Categories' own Trash flow exactly — Move to Trash, Restore, Delete Permanently, Empty Trash, plus the matching bulk actions. Deleting a tag no longer removes it immediately; it moves to the Trash first, where it can be restored or permanently deleted.
 - Tag archive theme customization (LP-011): a theme can now provide its own `tag.php` template for tag archives specifically, distinct from the shared `archive.php` every other archive type still uses — falls back to `archive.php` automatically when a theme doesn't provide one, so every existing theme is unaffected.
 - Tags on post-list and search cards (LP-011): a post's own tags now also show on the homepage/archive listing cards and on search results, not just its own single page — all bundled/default styling included.
+- Size option for the Folder Gallery shortcode: the editor's "Insert Folder" dialog gained the same Size field (Thumbnail/Medium/Large/Full Size) the single Insert Image picker already has, via a new `size` attribute on `[lumora_folder_gallery]`.
 
 ### Changed
 
@@ -17,6 +18,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - A tag name longer than 191 characters (or blank, bypassing the admin form's own client-side check) could reach the database with no server-side validation — `TagService` now validates the same way `CategoryService` already does.
+- The Folder Gallery shortcode's thumbnails were forced into a fixed 150×150px box regardless of the source image's real size, upscaling (and blurring) any image smaller than 150px in both dimensions instead of showing it at its own true size.
 
 ## [0.14.0] — 2026-09-13
 

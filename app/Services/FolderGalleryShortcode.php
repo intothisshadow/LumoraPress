@@ -95,24 +95,30 @@ final class FolderGalleryShortcode
             $link = 'none';
         }
 
+        $size = $attributes['size'] ?? 'small';
+
+        if (!in_array($size, ['small', 'medium', 'large', 'full'], true)) {
+            $size = 'small';
+        }
+
         $items = $this->media->query(['folderIds' => [$folder->id], 'type' => 'image'], self::MAX_IMAGES)['items'];
 
         if ($items === []) {
             return '';
         }
 
-        return $this->renderGallery($items, $link);
+        return $this->renderGallery($items, $link, $size);
     }
 
     /**
      * @param array<int, array<string, mixed>> $items
      */
-    private function renderGallery(array $items, string $link): string
+    private function renderGallery(array $items, string $link, string $size): string
     {
         $html = '<div class="lp-folder-gallery"><ul class="lp-folder-gallery__items">';
 
         foreach ($items as $item) {
-            $html .= '<li class="lp-folder-gallery__item">' . $this->renderThumbnail($item, $link) . '</li>';
+            $html .= '<li class="lp-folder-gallery__item">' . $this->renderThumbnail($item, $link, $size) . '</li>';
         }
 
         $html .= '</ul></div>';
@@ -123,26 +129,33 @@ final class FolderGalleryShortcode
     /**
      * @param array<string, mixed> $item
      */
-    private function renderThumbnail(array $item, string $link): string
+    private function renderThumbnail(array $item, string $link, string $size): string
     {
-        // Falls back to the full-size file the same way the Insert
-        // Image picker's own gridThumbnailUrl() does client-side
-        // (content-editor.js) — a "small" thumbnail may not exist yet
-        // if it was disabled in Theme Options or skipped for being
-        // smaller than the target crop size.
-        $thumbUrl = $this->thumbnails->url($item, 'small') ?? $this->media->url($item);
+        $resolved = $this->resolveImage($item, $size);
         $alt = (string) ($item['alt_text'] ?? '');
+        $dimensionAttrs = ($resolved['width'] > 0 ? ' width="' . $resolved['width'] . '"' : '')
+            . ($resolved['height'] > 0 ? ' height="' . $resolved['height'] . '"' : '');
+
+        // A size class per the *requested* size, plus is-cropped only
+        // when $resolved actually is that size's exact crop box (a real
+        // generated thumbnail, not a same-or-smaller original fallen
+        // back to) — style.css only forces a fixed square box for the
+        // combination of both, so an undersized original renders at its
+        // own real (smaller) dimensions instead of being upscaled to
+        // fill a box it was never actually resized into. See
+        // resolveImage()'s own docblock.
+        $sizeClass = 'lp-folder-gallery__thumb--' . $size . ($resolved['isCropped'] ? ' is-cropped' : '');
 
         if ($link === 'full') {
             $fullUrl = $this->media->url($item);
-            $width = (int) ($item['width'] ?? 0);
-            $height = (int) ($item['height'] ?? 0);
+            $fullWidth = (int) ($item['width'] ?? 0);
+            $fullHeight = (int) ($item['height'] ?? 0);
 
-            $img = '<img class="lp-folder-gallery__thumb" src="' . esc_url($thumbUrl) . '" alt="' . esc_html($alt) . '" loading="lazy">';
+            $img = '<img class="lp-folder-gallery__thumb ' . $sizeClass . '" src="' . esc_url($resolved['url']) . '" alt="' . esc_html($alt) . '"' . $dimensionAttrs . ' loading="lazy">';
 
             return '<a class="lp-folder-gallery__link" href="' . esc_url($fullUrl) . '"'
-                . ($width > 0 ? ' data-pswp-width="' . $width . '"' : '')
-                . ($height > 0 ? ' data-pswp-height="' . $height . '"' : '')
+                . ($fullWidth > 0 ? ' data-pswp-width="' . $fullWidth . '"' : '')
+                . ($fullHeight > 0 ? ' data-pswp-height="' . $fullHeight . '"' : '')
                 . ' data-pswp-caption="' . esc_html($alt) . '">' . $img . '</a>';
         }
 
@@ -152,7 +165,64 @@ final class FolderGalleryShortcode
         // still gets wrapped in a lightbox anchor pointing at its own
         // (small, cropped) src, the same behavior Insert Image's own
         // "Link To: None" already avoids this exact way.
-        return '<img class="lp-folder-gallery__thumb no-lightbox" src="' . esc_url($thumbUrl) . '" alt="' . esc_html($alt) . '" loading="lazy">';
+        return '<img class="lp-folder-gallery__thumb ' . $sizeClass . ' no-lightbox" src="' . esc_url($resolved['url']) . '" alt="' . esc_html($alt) . '"' . $dimensionAttrs . ' loading="lazy">';
+    }
+
+    /**
+     * Resolves $size to a real URL and real, never-upscaled dimensions —
+     * ThumbnailService never generates a thumbnail larger than its
+     * source (generateOne() skips a size the source is already smaller
+     * than in both dimensions), so a size that was never actually
+     * generated falls back to the original file and its own real
+     * width/height, exactly the way the Insert Image picker's own
+     * gridThumbnailUrl()/sizes map already does client-side. `isCropped`
+     * is true only when a real thumbnail row exists for $size *and*
+     * that size's configured mode is 'crop' (only "Thumbnail"/small by
+     * default) — style.css uses it to decide whether forcing a fixed
+     * square box is actually correct for what's being rendered.
+     *
+     * @param array<string, mixed> $item
+     * @return array{url: string, width: int, height: int, isCropped: bool}
+     */
+    private function resolveImage(array $item, string $size): array
+    {
+        $fallback = [
+            'url' => $this->media->url($item),
+            'width' => (int) ($item['width'] ?? 0),
+            'height' => (int) ($item['height'] ?? 0),
+            'isCropped' => false,
+        ];
+
+        if ($size === 'full') {
+            return $fallback;
+        }
+
+        $url = $this->thumbnails->url($item, $size);
+
+        if ($url === null) {
+            return $fallback;
+        }
+
+        $thumbnailRow = null;
+
+        foreach ($this->thumbnails->thumbnailsFor((int) $item['id']) as $row) {
+            if ($row['size_name'] === $size) {
+                $thumbnailRow = $row;
+
+                break;
+            }
+        }
+
+        if ($thumbnailRow === null) {
+            return $fallback;
+        }
+
+        return [
+            'url' => $url,
+            'width' => (int) $thumbnailRow['width'],
+            'height' => (int) $thumbnailRow['height'],
+            'isCropped' => ($this->thumbnails->sizes()[$size]['mode'] ?? '') === 'crop',
+        ];
     }
 
     /**

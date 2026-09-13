@@ -2030,18 +2030,36 @@ a.lp-post-list__comments:focus {
  * — this shortcode's output usually lands inside .lp-post__content,
  * whose own "img { max-width: 100%; height: auto; }" rule (above) is
  * equally specific to a single-class selector and would otherwise win
- * on source order alone, collapsing the fixed thumbnail crop back to
- * each image's natural aspect ratio. Matching its own "class + element"
- * specificity tier is what makes source order (this rule comes later)
- * decide it instead — the same mechanism .lp-downloads-list__description
- * img's own alignment rules above already rely on.
+ * on source order alone. Matching its own "class + element" specificity
+ * tier is what makes source order (this rule comes later) decide it
+ * instead — the same mechanism .lp-downloads-list__description img's
+ * own alignment rules above already rely on.
  */
 img.lp-folder-gallery__thumb {
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    max-width: 100%;
+    height: auto;
+}
+
+/*
+ * The fixed 150px square crop box only applies to a real generated
+ * "Thumbnail" (size="small") crop — .is-cropped is added by
+ * FolderGalleryShortcode only when that thumbnail file actually exists.
+ * ThumbnailService never upscales, so a source image smaller than
+ * 150px in both dimensions never gets one; without this guard, forcing
+ * width/height: 150px onto that smaller original would stretch it to
+ * fill the box instead of showing it at its own real, sharp size (the
+ * bug this distinction exists to avoid). Medium/Large/Full sizes are
+ * never cropped (ThumbnailService's own "fit" mode, or the original
+ * file), so they only ever fall through to the max-width/height:auto
+ * rule above — shown at their real size, capped only by the
+ * surrounding content's width.
+ */
+img.lp-folder-gallery__thumb--small.is-cropped {
     width: 150px;
     height: 150px;
     object-fit: cover;
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
 }
 
 /* =========================================================
@@ -2134,7 +2152,7 @@ img.lp-folder-gallery__thumb {
 }
 
 @media (max-width: 720px) {
-    img.lp-folder-gallery__thumb {
+    img.lp-folder-gallery__thumb--small.is-cropped {
         width: 100px;
         height: 100px;
     }
