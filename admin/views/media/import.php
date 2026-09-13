@@ -58,6 +58,23 @@ $buildFolderOptions = function (array $allFolders, array $excludeIds, ?int $pare
     return $options;
 };
 
+// media-import-continue.js drives the batch loop via repeated fetch()
+// calls instead of a redirect-per-batch <form> submit, so the panel
+// updates in place. It marks its request with this header; the
+// continue_import branch below responds with JSON only when present, so
+// a plain form submit (no JS) still works via the redirect-based fallback.
+$isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+$respondJson = static function (array $payload): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
     $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -113,6 +130,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     } elseif ($form === 'continue_import' && Csrf::verify('continue_import', $token)) {
         $importToken = (string) ($_POST['import_token'] ?? '');
+        $state = null;
 
         if (preg_match('/^[a-f0-9]{32}$/', $importToken) === 1 && is_file($importCachePath($importToken))) {
             $state = json_decode((string) file_get_contents($importCachePath($importToken)), true);
@@ -150,7 +168,31 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        header('Location: ' . admin_url('media/import') . '?import_token=' . $importToken);
+        $redirectUrl = admin_url('media/import') . '?import_token=' . $importToken;
+
+        if ($isAjaxContinueRequest) {
+            if (!is_array($state) || $state['done']) {
+                $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+            }
+
+            $processed = min((int) $state['offset'], (int) $state['total']);
+            $total = (int) $state['total'];
+
+            $respondJson([
+                'done' => false,
+                'imported' => (int) $state['imported'],
+                'duplicate' => (int) $state['duplicate'],
+                'failed' => (int) $state['failed'],
+                'processed' => $processed,
+                'total' => $total,
+                'percent' => $total > 0 ? (int) round(min(100, ($processed / $total) * 100)) : 100,
+                // A fresh token for the JS's next fetch() call, since a
+                // plain JSON response has no <form> to read one from.
+                'csrf_token' => Csrf::token('continue_import'),
+            ]);
+        }
+
+        header('Location: ' . $redirectUrl);
         exit;
     } elseif ($form === 'media_import_settings' && $currentUser->can('manage_options') && Csrf::verify('media_import_settings', $token)) {
         // This page only requires upload_files, but which server
@@ -273,11 +315,11 @@ if (preg_match('/^[a-f0-9]{32}$/', $importTokenParam) === 1 && is_file($importCa
             : 100;
         ?>
         <p>
-            Imported <?= (int) $importState['imported'] ?>, skipped <?= (int) $importState['duplicate'] ?> duplicate(s),
-            failed <?= (int) $importState['failed'] ?> &mdash; <?= min((int) $importState['offset'], (int) $importState['total']) ?> of <?= (int) $importState['total'] ?> processed.
+            Imported <span data-lp-import-imported><?= (int) $importState['imported'] ?></span>, skipped <span data-lp-import-duplicate><?= (int) $importState['duplicate'] ?></span> duplicate(s),
+            failed <span data-lp-import-failed><?= (int) $importState['failed'] ?></span> &mdash; <span data-lp-import-processed><?= min((int) $importState['offset'], (int) $importState['total']) ?></span> of <span data-lp-import-total><?= (int) $importState['total'] ?></span> processed.
         </p>
-        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $importPercent ?>" aria-valuemin="0" aria-valuemax="100">
-            <div class="lp-thumbnails__progress-bar" data-style-width="<?= $importPercent ?>%"></div>
+        <div class="lp-thumbnails__progress" data-lp-import-progress-bar-wrap role="progressbar" aria-valuenow="<?= $importPercent ?>" aria-valuemin="0" aria-valuemax="100">
+            <div class="lp-thumbnails__progress-bar" data-lp-import-progress-bar data-style-width="<?= $importPercent ?>%"></div>
         </div>
         <?php if (($importState['done'] ?? false) !== true): ?>
             <form method="post" action="<?= esc_url(admin_url('media/import')) ?>" id="import-bulk-continue">

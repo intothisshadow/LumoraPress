@@ -22,6 +22,7 @@ All notable changes to Lumora Press are documented in this file.
 
 - Shortcode "Attributes" reference lists (Downloads and Lumora Gallery Shortcodes' own Shortcodes screens) had ragged, unaligned columns — each row sized its attribute-name column independently, so the description text started at a different position on every row, and a longer attribute name like `no_album_info` could wrap mid-word onto two lines. The list now lays out as a real aligned table (one shared column width across every row) and each attribute name renders as a small accent-colored pill instead of bare unstyled text.
 - Thumbnail generation and optimization triggered a `Function imagedestroy() is deprecated` warning on PHP 8.5 — the call has had no effect since PHP 8.0 made GD images garbage-collected objects, so it was removed rather than suppressed.
+- Media Manager's "Import from Server" batch import (LP-167) reloaded the whole admin page for every 10-file batch instead of updating the progress in place — it now drives the same fetch()-based continue loop the Updates page's Backups section and Visitor Stats' GeoLite2 import already use.
 
 ## [0.13.0] — 2026-09-11
 
