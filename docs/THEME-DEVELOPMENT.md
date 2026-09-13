@@ -401,8 +401,10 @@ case:
 show_site_title(): bool                 // whether to render your title/logo block
 has_header_image(): bool
 header_image_url(): ?string
-header_height(): string                 // bare value; also flows through
-                                         // theme_options_css() as --lp-header-image-height
+header_height(): string                 // bare value, '' when the admin hasn't set an
+                                         // override (so your theme's own default height
+                                         // wins); also flows through theme_options_css()
+                                         // as --lp-header-image-height
 
 // Welcome Message section — call in exactly one of header.php/sidebar.php
 has_welcome_message(): bool

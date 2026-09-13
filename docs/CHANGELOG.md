@@ -19,6 +19,7 @@ All notable changes to Lumora Press are documented in this file.
 
 - A tag name longer than 191 characters (or blank, bypassing the admin form's own client-side check) could reach the database with no server-side validation — `TagService` now validates the same way `CategoryService` already does.
 - The Folder Gallery shortcode's thumbnails were forced into a fixed 150×150px box regardless of the source image's real size, upscaling (and blurring) any image smaller than 150px in both dimensions instead of showing it at its own true size.
+- The "Header image height" Theme Option always emitted a CSS override, even when an administrator had never touched the setting, silently forcing every theme's own header image height to the option's numeric default instead of letting the theme's own value win until explicitly overridden — the same class of bug already fixed for Content width. The option now defaults to "Use theme's own height" and can be cleared back to it.
 
 ## [0.14.0] — 2026-09-13
 

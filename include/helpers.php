@@ -498,9 +498,11 @@ if (!function_exists('header_image_url')) {
 
 if (!function_exists('header_height')) {
     /**
-     * Only meaningful alongside header_image_url(). The CSS rule flows
-     * through theme_options_css() via --lp-header-image-height; this
-     * exists for a theme that needs the bare value directly.
+     * Only meaningful alongside header_image_url(). Returns '' when the
+     * administrator hasn't set an explicit override, so the theme's own
+     * default height wins — the same contract --lp-header-image-height
+     * follows via theme_options_css(). Exists for a theme that needs the
+     * bare value directly instead of the CSS variable.
      */
     function header_height(): string
     {

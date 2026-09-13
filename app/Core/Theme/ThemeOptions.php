@@ -297,12 +297,13 @@ final class ThemeOptions
             section: 'header',
             type: ThemeOptionType::Number,
             label: 'Header image height (px)',
-            default: '200',
+            default: '',
             cssVariable: '--lp-header-image-height',
             min: 50,
             max: 800,
             cssUnit: 'px',
-            help: 'Only applies when a header image is set below.',
+            help: 'Only applies when a header image is set below. Leave blank to use the active theme\'s own height.',
+            allowEmpty: true,
         ));
 
         $this->registerSection('welcome_message', 'Welcome Message', 'An optional message shown near the top of your site.');
@@ -588,6 +589,10 @@ final class ThemeOptions
 
     private function sanitizeNumber(ThemeOptionField $field, string $rawValue): ?string
     {
+        if ($rawValue === '') {
+            return $field->allowEmpty ? '' : null;
+        }
+
         if (!is_numeric($rawValue)) {
             return null;
         }
