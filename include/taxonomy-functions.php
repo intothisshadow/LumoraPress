@@ -28,18 +28,20 @@ use LumoraPress\Models\Tag;
 if (!function_exists('get_the_tags')) {
     /**
      * The Tags $post is assigned to, alphabetical. Empty array for a
-     * tagless post, never null.
+     * tagless post, never null. Accepts a bare post id too — search.php's
+     * result cards only ever have a SearchResult, not a full Post object,
+     * for a 'post'-type result.
      *
      * @return array<int, Tag>
      */
-    function get_the_tags(Post $post): array
+    function get_the_tags(Post|int $post): array
     {
-        return ActiveTags::tags()->tagsForPost($post->id);
+        return ActiveTags::tags()->tagsForPost(is_int($post) ? $post : $post->id);
     }
 }
 
 if (!function_exists('post_has_tags')) {
-    function post_has_tags(Post $post): bool
+    function post_has_tags(Post|int $post): bool
     {
         return get_the_tags($post) !== [];
     }
@@ -50,7 +52,7 @@ if (!function_exists('the_tags')) {
      * get_the_tags(), rendered as a $sep-joined list of links wrapped in
      * $before/$after. Outputs nothing for a tagless post.
      */
-    function the_tags(Post $post, string $before = '', string $sep = ', ', string $after = ''): void
+    function the_tags(Post|int $post, string $before = '', string $sep = ', ', string $after = ''): void
     {
         $links = array_map(
             static fn (Tag $tag): string => '<a href="' . esc_url(tag_permalink($tag)) . '">' . esc_html($tag->name) . '</a>',

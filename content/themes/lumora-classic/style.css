@@ -1051,6 +1051,35 @@ a.lp-post-list__comments:focus {
     text-decoration: underline;
 }
 
+/* LP-011 — a card's own tags, shown on index.php/archive.php's post
+   listings. Same pill treatment as .lp-post__tags on a single post,
+   just a tighter top margin to fit a compact card. */
+.lp-post-list__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+
+.lp-post-list__tags-item a {
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: 999px;
+    color: var(--lp-text);
+    display: inline-block;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+    text-decoration: none;
+}
+
+.lp-post-list__tags-item a:hover,
+.lp-post-list__tags-item a:focus {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
+}
+
 /* =========================================================
    Search results
    ========================================================= */
@@ -1124,6 +1153,35 @@ a.lp-post-list__comments:focus {
 
 .lp-search-results__excerpt {
     margin: 0;
+}
+
+/* LP-011 — a 'post'-type result's own tags. Same pill treatment as
+   .lp-post-list__tags, its own class since search results aren't post
+   listing cards (a Page/Category/Tag/Author result never has one). */
+.lp-search-results__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+
+.lp-search-results__tags-item a {
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: 999px;
+    color: var(--lp-text);
+    display: inline-block;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+    text-decoration: none;
+}
+
+.lp-search-results__tags-item a:hover,
+.lp-search-results__tags-item a:focus {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
 }
 
 .lp-search-highlight {

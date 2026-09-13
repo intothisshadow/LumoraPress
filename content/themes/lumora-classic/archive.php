@@ -80,6 +80,13 @@ $comment_counts ??= [];
                                 <?php endif; ?>
                                 <a class="lp-post-list__more" href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html(theme_option('read_more_text')) ?></a>
                             <?php endif; ?>
+                            <?php if (post_has_tags($post)): ?>
+                                <ul class="lp-post-list__tags">
+                                    <?php foreach (get_the_tags($post) as $postTag): ?>
+                                        <li class="lp-post-list__tags-item"><a href="<?= esc_url(tag_permalink($postTag)) ?>"><?= esc_html($postTag->name) ?></a></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
                         </div>
                     </article>
                 <?php endforeach; ?>

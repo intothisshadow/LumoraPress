@@ -52,6 +52,13 @@ $results ??= [];
                             <?php if ($result->excerpt !== ''): ?>
                                 <p class="lp-search-results__excerpt"><?= highlight_terms(esc_html($result->excerpt), $query) ?></p>
                             <?php endif; ?>
+                            <?php if ($result->type === 'post' && post_has_tags($result->id)): ?>
+                                <ul class="lp-search-results__tags">
+                                    <?php foreach (get_the_tags($result->id) as $resultTag): ?>
+                                        <li class="lp-search-results__tags-item"><a href="<?= esc_url(tag_permalink($resultTag)) ?>"><?= esc_html($resultTag->name) ?></a></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
                         </div>
                     </article>
                 <?php endforeach; ?>
