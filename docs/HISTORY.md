@@ -14488,3 +14488,109 @@ Reported via a screenshot: an auto-generated excerpt showed a literal `&gt;` ins
 - [x] Unit tests: single-album, multi-album, and `[lumora_gallery_newest]` cases in `GalleryShortcodeTest`, each confirming the thumbnails/lightbox links survive while the title and view-link disappear.
 - [x] Docs updated: plugin `README.md`'s shortcode list and the admin Lumora Gallery Shortcodes &rsaquo; Shortcodes reference page (new attribute row + example for both shortcodes).
 - [x] Plugin version bumped 0.2.0 &rarr; 0.3.0 (`lumora-gallery-shortcodes.php` header).
+
+## 0.14.0 (2026-09-13)
+
+### LP-164. Removed the "Fix Double-Encoded Text" and "Migrate Download Categories" Maintenance Tools
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Both tools (LP-113's WordPress-import double-encoding repair, and LPP-011's Folder-to-download-category migration) were one-time historical migration utilities tied to fixing up data from Ariane's own past WordPress import and Downloads' pre-category-taxonomy era. Ariane was the only Lumora Press install that ever needed either, and both have already been run to completion on her site — removed entirely rather than carried forward as permanent admin surface with no ongoing purpose.
+
+#### Checklist
+
+- [x] Removed both sections (forms, POST handlers, result banners) from `admin/views/maintenance/tools.php`, along with the now-unused `$downloadsActive` `@var` doc annotation (the variable itself stays in scope for `admin/index.php`'s own menu-building use, just no longer referenced inside this view).
+- [x] Deleted `app/Services/EntityDecodeRepairService.php` and `app/Services/DownloadCategoryMigrationService.php` entirely — neither owns a dedicated database table, so no migration was needed to drop anything.
+- [x] Removed both services from `Kernel`'s constructor/property list and their construction in `include/bootstrap.php`.
+- [x] Deleted `EntityDecodeRepairServiceTest.php`/`DownloadCategoryMigrationServiceTest.php` and the now-unused `SqliteDatabaseFactory::withDownloadCategoryMigrationFixtures()` fixture (used only by the deleted test).
+- [x] Full unit suite green (2265 tests, down from 2277 — the 12 removed tests accounted for exactly the difference).
+
+------
+
+### LP-166. Plugin Action Links on the Admin Plugins Screen
+
+**Status:** Done
+
+`admin/views/plugins.php` already renders Details/Activate/Deactivate/Delete for every plugin (in three places: the list-table row's `.lp-admin__row-actions`, the grid card's `.lp-plugin-card__actions`, and the Details panel's own `.lp-plugin-details__actions`), but nothing links to a plugin's *own* functional/settings pages — the way WordPress's own Plugins screen shows a "Settings" link (and any other links a plugin registers) right under each plugin's name. For a bundled plugin with no top-level sidebar menu of its own (Lumora Shield's settings live as a tab on Settings &rsaquo; Security plus a section of Maintenance &rsaquo; Logs; Font Awesome/Emoji Picker live as nested Settings tabs; Dummy Content is a gated section of Maintenance &rsaquo; Tools), the Plugins screen is currently the *only* place an administrator would naturally look to activate/deactivate it, and it gives no hint at all that a settings page exists somewhere else in the admin — this ticket closes that discoverability gap.
+
+#### Design
+
+Mirrors WordPress's own real mechanism, not a static plugin-header field (a header can't express "two different links, one of them conditional, pointing at two different existing screens" cleanly — Lumora Gallery Shortcodes alone needs both a Settings and a Shortcodes link):
+
+- **A dynamic filter hook, `plugin_action_links_{$slug}`** — exactly WordPress's own naming convention for this exact feature. `HookManager::applyFilters()`/`apply_filters()` already accept any string hook name (confirmed: no fixed hook registry to extend), so this needs no core hook-list change, only each plugin's own bootstrap file calling `add_filter("plugin_action_links_{$slug}", fn(array $links): array => [...$links, ['label' => 'Settings', 'url' => admin_url('...')]])`, the same shape `register_shortcodes`'s existing per-plugin `add_action()` callbacks already use.
+- **`admin/views/plugins.php`** calls `apply_filters("plugin_action_links_{$info->slug}", [])` once per plugin row and renders whatever comes back (usually 0-2 links) into all three existing action locations, positioned before the built-in Details/Activate/Deactivate/Delete links — matching where WordPress itself places plugin-declared links relative to its own built-in ones.
+- **Every bundled plugin with a real admin page gets its bootstrap updated** to register its own link(s), pointing at wherever that plugin's functionality actually already lives:
+  - Lumora Gallery Shortcodes → Settings + Shortcodes (its own top-level menu's two children).
+  - Downloads / Contact Forms / Visitor Stats → Settings (each already has its own top-level menu; the link is still worth having for one-click access without leaving the Plugins screen, same as WordPress plugins with their own menu still commonly show one).
+  - Lumora Shield → `admin_url('settings/security') . '?tab=lumora-shield'` and `admin_url('maintenance/logs') . '#enumeration-attempts'` — the two places its settings/logs actually live today, with no top-level menu of its own to find them via otherwise.
+  - Font Awesome / Emoji Picker → their respective nested Settings tab URLs.
+  - Dummy Content → `admin_url('maintenance/tools')` (its gated section).
+  - WordPress Importer → `admin_url('maintenance/import')`.
+  - A plugin with no functional admin surface at all (if any) registers nothing — an empty return from the filter renders no extra links, not an empty gap.
+
+#### Checklist
+
+- [x] `admin/views/plugins.php`: call `apply_filters("plugin_action_links_{$info->slug}", [])` per plugin, render the results into the list-table row, grid card, and Details panel action areas.
+- [x] Register action links in every bundled plugin's own bootstrap file per the mapping above.
+- [x] Confirm a plugin with zero registered links renders identically to today (no empty separator, no layout shift) — the `foreach` over an empty links array renders nothing, verified by `PluginActionLinksTest::testAPluginRegisteringNoLinksChangesNothing`.
+- [x] Unit/integration test coverage: the filter fires with the correct slug per plugin, a plugin registering two links renders both, a plugin registering none changes nothing. See `PHP Test Suite/Unit/Core/PluginActionLinksTest.php`.
+- [x] Verify live on the dev install: confirm each bundled plugin's row/card/Details panel now shows the correct link(s), that clicking one actually lands on that plugin's real settings screen, and that Details/Activate/Deactivate/Delete still render exactly as before.
+
+------
+
+### LPP-021. Support Multiple Lumora Gallery Installations
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+The Lumora Gallery Shortcodes plugin (LPP-015) currently stores exactly one Gallery database connection (`GallerySettingsService`'s single `lumora_gallery_shortcodes_settings` option row: `db_host`/`db_port`/`db_name`/`db_user`/`db_password`/`table_prefix`/`base_url`), so `[lumora_gallery_album]`/`[lumora_gallery_newest]` can only ever pull from one Gallery site. Ariane runs (or may run) more than one separately-installed Lumora Gallery site and wants to embed albums from any of them into Lumora Press content, not just whichever one connection happens to be configured.
+
+#### Design
+
+- **Storage:** replace the single settings blob with a set of named connections: `{"connections": {"{slug}": {"label": ..., "db_host": ..., "db_port": ..., "db_name": ..., "db_user": ..., "db_password": ..., "table_prefix": ..., "base_url": ...}, ...}, "default_connection": "{slug}"}`. `GallerySettingsService` gains `connections()`, `connection(string $slug)`, `saveConnection(string $slug, array $settings)`, `deleteConnection(string $slug)`, `setDefaultConnection(string $slug)`, `defaultConnection(): ?string`.
+- **Backward-compatible migration:** on first read of the old single-connection shape (no `connections` key present), wrap it into one connection — slug `default`, label "Gallery" — and persist the new shape. Existing installs with one Gallery configured need zero admin action, and every already-published `[lumora_gallery_album]`/`[lumora_gallery_newest]` shortcode (none of which mention a specific installation today) keeps resolving to the same site it always has.
+- **Shortcode attribute:** both shortcodes gain an optional `gallery="{slug}"` attribute. Omitted → resolves to `defaultConnection()`, so single-Gallery sites never need to write it. An unknown/misspelled slug renders nothing, matching every other failure mode `GalleryShortcode` already has (unreachable DB, unconfigured connection, missing album).
+- **`GalleryShortcode::query()`:** becomes keyed by connection slug (resolve + cache one `Database`/`GalleryQueryService` per slug actually used during a single `render()` call, since one page can embed shortcodes from more than one installation) instead of today's single lazy connection.
+- **Admin UI (`admin/views/lumora-gallery-shortcodes/settings.php`):** becomes a list of configured connections (label, host, configured/not, a "Default" indicator) with Edit/Delete/"Make Default" actions, plus an "Add Connection" form reusing today's Connection fields (host/port/name/user/password/table prefix/base URL) with a new Label field a slug is derived from. Keep the existing "Auto-detect from config.php" and "Save & Test Connection" flows per-connection. Refuse to delete the last remaining connection or the current default without picking a new default first.
+- **Insert Shortcode picker (`lumora-gallery-shortcodes.php`'s `register_shortcodes` listener):** add a `gallery` Select field (choices = every connection's label, keyed by slug, default = `defaultConnection()`) to both shortcodes. `ShortcodeField` has no cascading/dependent-choices support today, so — consistent with the existing precedent that `count`/`image_id`/multi-album `album_id` are already "typeable by hand" rather than picker-driven — the `album_id` Select's choices stay scoped to the default connection only; picking an album from a non-default installation means typing `album_id` (and `gallery`) by hand. Revisit only if `ShortcodeField` ever gains dependent-field support.
+- **`GalleryConfigParser`/`detectBaseUrl`/`testConnection`:** unchanged internally — already operate on one raw settings array, just invoked once per connection (whichever one is being added/edited) instead of once globally.
+
+#### Checklist
+
+- [x] `GallerySettingsService`: multi-connection storage (`connections()`/`connection()`/`saveConnection()`/`deleteConnection()`/`setDefaultConnection()`/`defaultConnection()`), with the old-shape-to-`default`-connection migration on first read.
+- [x] `GalleryShortcode`: `gallery` attribute on both shortcodes, per-slug connection resolution/caching, safe fallback (empty render) on an unknown slug.
+- [x] Rework `admin/views/lumora-gallery-shortcodes/settings.php` into a connection list + add/edit/delete/"Make Default" UI, reusing the existing per-connection form fields and Detect/Test flows.
+- [x] Add the `gallery` Select field to both shortcodes' Insert Shortcode picker registration; document the default-connection-only scope for the `album_id` picker choices in the picker's own docblock (mirroring the existing `count`/`image_id`/multi-album carve-out note).
+- [x] Update the plugin's `README.md` to describe configuring more than one Gallery connection and the `gallery="slug"` attribute.
+- [x] Unit tests: multi-connection CRUD, the legacy-single-connection-blob migration (a pre-migration fixture still resolves to a working `default` connection with zero admin action), `gallery` attribute resolution (explicit slug, omitted → default, unknown slug → empty render), a page combining shortcodes from two different connections rendering distinct content. 19 new tests (`GallerySettingsServiceTest` + additions to `GalleryShortcodeTest`); full unit suite green (2277 tests).
+- [x] Verify live on the dev install: configured a second Gallery connection alongside the existing (auto-migrated) one, confirmed `[lumora_gallery_album album_id="1"]` (default) and `[lumora_gallery_album gallery="second-gallery" album_id="2"]` on the same post rendered distinct albums, the Insert Shortcode picker's new Gallery field listed both connections, and the existing legacy single-connection option row migrated to the new `{"connections": {...}, "default_connection": "default"}` shape automatically with zero admin action. Test post and test connection removed afterward.
+
+------
+
+### LP-167. Import from server
+
+**Status:** Done
+
+Make import add behaviour not update the whole page, only inside the section. Like Backups on Update page.
+
+The Media Manager's "Import from Server" screen (`admin/views/media/import.php`, LP-041) drove its batch-import continue loop with `thumbnail-bulk.js`'s auto-submit behavior — a real `<form>` submit and full-page reload for every 10-file batch, the same shape the Updates page's staged install/backup loop and Visitor Stats' GeoLite2 CSV import used to have before each grew its own fetch()-driven script. Gave the import loop the same treatment: a new `admin/assets/js/media-import-continue.js` drives `#import-bulk-continue` via repeated `fetch()` calls instead, updating the imported/duplicate/failed/processed counts and the progress bar in place; `continue_import`'s POST handler now responds with JSON (mirroring `updates.php`'s `$isAjaxContinueRequest` pattern) when the request carries the `X-Requested-With: fetch` header, falling back to the original redirect-per-batch flow for a no-JS submit. `import-bulk-continue` removed from `thumbnail-bulk.js`'s auto-submit list (`thumb-bulk-continue`, i.e. bulk thumbnail regeneration, is untouched — out of scope for this ticket). Live-verified on the dev install with a 25-file scratch import (3 batches of 10/10/5): network log showed three background `fetch()` POSTs with no page navigation between them, then a single final navigation once the batch loop reported done, matching the Backups section's own AJAX-in-place behavior.
+
+------
+
+### LP-168. Editors: link an image to a URL or existing page
+
+**Status:** Done
+
+Editors: ability to click on an image in the editor and add a link to it, to a URL or an existing page.
+
+Scoped to the WYSIWYG editor (TinyMCE, LP-016) — the shared `content-editor.js` used by Posts, Pages, and Downloads' description field. The Markdown editor (EasyMDE) has no equivalent: its editing surface is plain text (`![alt](url)`), not a rendered, clickable image, so there's nothing to click on there; a linked image is already achievable by hand as `[![alt](url)](link)`.
+
+The WYSIWYG editor already had an "Insert/Edit Link" dialog (`openLinkPicker()`, LP-130) that can target a typed URL or search existing Posts/Pages — but it only worked for a text selection. Selecting an image and using it was actually a silent bug: `existingAnchor.textContent = text` (editing an existing link) and `editor.insertContent('<a>...</a>')` (inserting a new one) both replace the selection with escaped text, destroying the image entirely instead of wrapping it.
+
+- [x] Detect an image control-selection (`editor.selection.getNode().nodeName === 'IMG'`) in `openLinkPicker()` and branch on it separately from the existing text-link path.
+- [x] Hide the "Link Text" field for an image selection (nothing to label) and retitle the dialog ("Add Link to Image" / "Edit Image Link").
+- [x] Add/Update wraps or rewraps the actual `<img>` element in a new or existing `<a>` (`editor.dom.create('a')` + `insertBefore`/`appendChild`, inside an `undoManager.transact()`) instead of going through `insertContent()` with a text label.
+- [x] Remove Link already worked correctly for an image once reached (`editor.dom.remove(existingAnchor, true)` unwraps, keeping the `<img>` child) — no change needed there.
+- [x] "Or link to existing content" (Posts/Pages search) works identically for an image selection — it only ever sets the URL field, which both paths share.
+- [x] Added TinyMCE's `quickbars` plugin (`quickbars_image_toolbar: 'lumoraLink'`, with the default insert/selection quickbars turned off) so clicking an image shows a small floating "Insert/Edit Link" button right next to it — the literal "click on the image" entry point — in addition to the main toolbar button and the existing Cmd/Ctrl+K shortcut, both of which now also work correctly on an image selection.
+- [x] Verified existing text-link Insert/Edit/Remove behavior is unchanged — the new branch is `isImageSelection`-gated and the text path is untouched.
+- [x] Live-verified on the dev install (Posts editor): inserted an image, clicked it to open the new floating quickbar, used "Insert/Edit Link" to link it to a typed URL, reopened and re-linked it to an existing Page via the search list instead, then Remove Link — the image itself was never lost at any step, and Undo/Redo behaved normally throughout.
