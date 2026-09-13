@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Trash for Tags, with restore (LP-011): the admin Tags list gained an "All"/"Trash" status-tab pair, matching Categories' own Trash flow exactly — Move to Trash, Restore, Delete Permanently, Empty Trash, plus the matching bulk actions. Deleting a tag no longer removes it immediately; it moves to the Trash first, where it can be restored or permanently deleted.
 - Tag archive theme customization (LP-011): a theme can now provide its own `tag.php` template for tag archives specifically, distinct from the shared `archive.php` every other archive type still uses — falls back to `archive.php` automatically when a theme doesn't provide one, so every existing theme is unaffected.
 
 ### Changed

@@ -104,7 +104,9 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | Name | Type | Args | Fires in |
 |---|---|---|---|
 | `tag_saved` | action | `Tag $tag` | [`TagService`](../app/Services/TagService.php): `create()`, `update()`. |
-| `tag_deleted` | action | `int $id` | `delete()`. |
+| `tag_trashed` | action | `int $id` | `trash()`. |
+| `tag_restored` | action | `int $id` | `restore()` — fires on restore, matching `category_restored`. |
+| `tag_deleted` | action | `int $id` | `delete()` (permanent). |
 | `tag_merged` | action | `int $sourceId, int $targetId` | `merge()`, after the merge transaction completes. |
 
 ### Media lifecycle

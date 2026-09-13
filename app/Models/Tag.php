@@ -28,6 +28,12 @@ final class Tag
         public readonly string $description,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
+        public readonly ?DateTimeImmutable $trashedAt = null,
     ) {
+    }
+
+    public function isTrashed(): bool
+    {
+        return $this->trashedAt !== null;
     }
 }

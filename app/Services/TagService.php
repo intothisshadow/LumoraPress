@@ -146,6 +146,49 @@ final class TagService
         return $tag;
     }
 
+    /**
+     * Soft-deletes a tag — mirrors CategoryService::trash()'s trashed_at
+     * pattern. A trashed tag is excluded everywhere it would normally
+     * show up publicly or be offered for assignment/autocomplete, but
+     * stays reachable via findById() for the admin Trash tab. There is
+     * no automatic purge; delete() is the only way to actually remove one.
+     */
+    public function trash(int $id): bool
+    {
+        $trashed = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET trashed_at = :trashed_at WHERE id = :id',
+            ['trashed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
+
+        if ($trashed) {
+            $this->invalidateCaches();
+            $this->hooks?->doAction('tag_trashed', $id);
+        }
+
+        return $trashed;
+    }
+
+    /**
+     * Restores a trashed tag. Unlike PostService::restore()/
+     * PageService::restore() there is no status to reset — clearing
+     * trashed_at alone is enough to make the tag publicly visible again,
+     * exactly as it was before being trashed.
+     */
+    public function restore(int $id): bool
+    {
+        $restored = $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET trashed_at = NULL WHERE id = :id',
+            ['id' => $id],
+        ) > 0;
+
+        if ($restored) {
+            $this->invalidateCaches();
+            $this->hooks?->doAction('tag_restored', $id);
+        }
+
+        return $restored;
+    }
+
     public function delete(int $id): bool
     {
         $deleted = (bool) $this->database->transaction(function () use ($id): int {
@@ -235,7 +278,7 @@ final class TagService
             $this->database->fetchAll(
                 'SELECT t.id FROM ' . $this->table() . ' t
                     LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
-                 WHERE pt.tag_id IS NULL',
+                 WHERE pt.tag_id IS NULL AND t.trashed_at IS NULL',
             ),
         );
 
@@ -257,9 +300,16 @@ final class TagService
         return $this->byIdCache[$id] = ($row === null ? null : $this->hydrate($row));
     }
 
+    /**
+     * Excludes trashed tags — a trashed tag's archive/feed must 404 like
+     * any other unknown slug, not keep serving stale content.
+     */
     public function findBySlug(string $slug): ?Tag
     {
-        $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE slug = :slug', ['slug' => $slug]);
+        $row = $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . ' WHERE slug = :slug AND trashed_at IS NULL',
+            ['slug' => $slug],
+        );
 
         return $row === null ? null : $this->hydrate($row);
     }
@@ -277,18 +327,34 @@ final class TagService
         );
 
         if ($row !== null) {
-            return $this->hydrate($row);
+            $tag = $this->hydrate($row);
+
+            // Typing a previously-trashed tag's name back into a post
+            // should just work like tagging with any other existing
+            // name — silently restoring it is friendlier than either
+            // reviving it invisibly-still-trashed (assignToPost() would
+            // attach the post, but tagsForPost()/the admin list would
+            // never show it again) or creating a same-named duplicate.
+            if ($tag->isTrashed()) {
+                $this->restore($tag->id);
+                $tag = $this->findById($tag->id) ?? $tag;
+            }
+
+            return $tag;
         }
 
         return $this->create($name, '');
     }
 
     /**
+     * Excludes trashed tags, matching every other default-listing method
+     * here — see trash()'s docblock.
+     *
      * @return array<int, Tag>
      */
     public function listAll(): array
     {
-        $rows = $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' ORDER BY name ASC');
+        $rows = $this->database->fetchAll('SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY name ASC');
 
         return array_map($this->hydrate(...), $rows);
     }
@@ -315,7 +381,7 @@ final class TagService
         }
 
         $rows = $this->database->fetchAll(
-            'SELECT name FROM ' . $this->table() . ' WHERE name LIKE :term ORDER BY name ASC LIMIT ' . max(1, $limit),
+            'SELECT name FROM ' . $this->table() . ' WHERE trashed_at IS NULL AND name LIKE :term ORDER BY name ASC LIMIT ' . max(1, $limit),
             ['term' => '%' . $term . '%'],
         );
 
@@ -323,14 +389,14 @@ final class TagService
     }
 
     /**
-     * Total tag count — the admin list's "Tags (N)" heading, matching
-     * Posts'/Pages'/Categories' own status-count conventions. A single
-     * COUNT() rather than count(listAll()), which would otherwise fetch
-     * and hydrate every row just to discard them.
+     * Non-trashed tag count — the admin list's "All (N)" status link,
+     * matching Posts'/Pages'/Categories' own status-count conventions. A
+     * single COUNT() rather than count(listAll()), which would otherwise
+     * fetch and hydrate every row just to discard them.
      */
     public function count(): int
     {
-        return (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table());
+        return (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table() . ' WHERE trashed_at IS NULL');
     }
 
     /**
@@ -348,7 +414,7 @@ final class TagService
      */
     public function listAllWithPostCounts(array $filters = []): array
     {
-        $conditions = [];
+        $conditions = ['t.trashed_at IS NULL'];
         $params = [];
 
         $term = trim((string) ($filters['term'] ?? ''));
@@ -429,6 +495,63 @@ final class TagService
     }
 
     /**
+     * Trashed tags with their assigned post count, for the admin list's
+     * Trash tab — same shape as listAllWithPostCounts(), ordered
+     * most-recently-trashed first so the newest arrivals surface at the
+     * top, matching CategoryService's Trash tab convention.
+     *
+     * @return array<int, array{tag: Tag, postCount: int}>
+     */
+    public function listTrashedWithPostCounts(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT t.*, COUNT(pt.post_id) AS post_count
+               FROM ' . $this->table() . ' t
+               LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+              WHERE t.trashed_at IS NOT NULL
+              GROUP BY t.id
+              ORDER BY t.trashed_at DESC',
+        );
+
+        return array_map(
+            fn (array $row): array => ['tag' => $this->hydrate($row), 'postCount' => (int) $row['post_count']],
+            $rows,
+        );
+    }
+
+    public function trashedCount(): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE trashed_at IS NOT NULL',
+        );
+    }
+
+    /**
+     * Permanently deletes every currently-trashed tag via delete(), so
+     * each one gets the same post_tags cleanup a single Delete
+     * Permanently would — not a bare bulk DELETE.
+     *
+     * @return int how many tags were removed
+     */
+    public function emptyTrash(): int
+    {
+        $trashedIds = array_map(
+            static fn (array $row): int => (int) $row['id'],
+            $this->database->fetchAll('SELECT id FROM ' . $this->table() . ' WHERE trashed_at IS NOT NULL'),
+        );
+
+        $removed = 0;
+
+        foreach ($trashedIds as $trashedId) {
+            if ($this->delete($trashedId)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
      * The admin Tags list's Usage Statistics panel's "Most Used" section —
      * the $limit tags with the highest post count, ties broken
      * alphabetically. Excludes unused tags (see unusedCount()/deleteUnused()
@@ -463,6 +586,7 @@ final class TagService
             'SELECT t.*, COUNT(pt.post_id) AS post_count
                FROM ' . $this->table() . ' t
                INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+              WHERE t.trashed_at IS NULL
               GROUP BY t.id
               ORDER BY post_count ' . $direction . ', t.name ASC
               LIMIT ' . max(0, $limit),
@@ -485,7 +609,7 @@ final class TagService
         return (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . ' t
                 LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
-             WHERE pt.tag_id IS NULL',
+             WHERE pt.tag_id IS NULL AND t.trashed_at IS NULL',
         );
     }
 
@@ -497,7 +621,7 @@ final class TagService
     public function recentlyCreated(int $limit = 5): array
     {
         $rows = $this->database->fetchAll(
-            'SELECT * FROM ' . $this->table() . ' ORDER BY created_at DESC, id DESC LIMIT ' . max(0, $limit),
+            'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT ' . max(0, $limit),
         );
 
         return array_map($this->hydrate(...), $rows);
@@ -519,6 +643,7 @@ final class TagService
                FROM ' . $this->table() . ' t
                INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
                INNER JOIN ' . $this->postsTable() . ' p ON p.id = pt.post_id
+              WHERE t.trashed_at IS NULL
               GROUP BY t.id
               ORDER BY last_used_at DESC, t.id DESC
               LIMIT ' . max(0, $limit),
@@ -531,6 +656,10 @@ final class TagService
     }
 
     /**
+     * Excludes trashed tags, matching CategoryService::categoriesForPost()'s
+     * identical exclusion — a trashed tag shouldn't keep appearing
+     * attached to a post in the editor or on the public site.
+     *
      * @return array<int, Tag>
      */
     public function tagsForPost(int $postId): array
@@ -538,7 +667,7 @@ final class TagService
         $rows = $this->database->fetchAll(
             'SELECT t.* FROM ' . $this->table() . ' t
                 INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
-             WHERE pt.post_id = :post_id
+             WHERE pt.post_id = :post_id AND t.trashed_at IS NULL
              ORDER BY t.name ASC',
             ['post_id' => $postId],
         );
@@ -690,6 +819,7 @@ final class TagService
             description: (string) ($row['description'] ?? ''),
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+            trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
         );
     }
 

@@ -68,30 +68,92 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $editingId = $existing?->id;
             }
         }
-    } elseif ($form === 'delete') {
+    } elseif ($form === 'trash') {
         $id = (int) ($_POST['id'] ?? 0);
         $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-        if (!Csrf::verify('tag_delete_' . $id, $token)) {
+        if (!Csrf::verify('tag_trash_' . $id, $token)) {
             header('Location: ' . admin_url('posts/tags'));
             exit;
         }
 
         if ($canDeleteTags && $id > 0) {
+            $tagService->trash($id);
+        }
+
+        header('Location: ' . admin_url('posts/tags') . '?trashed=1');
+        exit;
+    } elseif ($form === 'restore_tag') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('tag_restore_' . $id, $token)) {
+            header('Location: ' . admin_url('posts/tags'));
+            exit;
+        }
+
+        if ($canDeleteTags && $id > 0) {
+            $tagService->restore($id);
+        }
+
+        header('Location: ' . admin_url('posts/tags') . '?status=trash&tag_restored=1');
+        exit;
+    } elseif ($form === 'delete_permanently') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('tag_delete_permanently_' . $id, $token)) {
+            header('Location: ' . admin_url('posts/tags'));
+            exit;
+        }
+
+        $existing = $id > 0 ? $tagService->findById($id) : null;
+
+        // Permanent delete is only offered for tags already in the Trash
+        // — Move to Trash is the only reachable path to removing one
+        // from the "All" view.
+        if ($existing !== null && $existing->isTrashed() && $canDeleteTags) {
             $tagService->delete($id);
         }
 
-        header('Location: ' . admin_url('posts/tags'));
+        header('Location: ' . admin_url('posts/tags') . '?status=trash&tag_deleted=1');
+        exit;
+    } elseif ($form === 'empty_trash') {
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if (!Csrf::verify('tags_empty_trash', $token)) {
+            header('Location: ' . admin_url('posts/tags'));
+            exit;
+        }
+
+        if ($canDeleteTags) {
+            $tagService->emptyTrash();
+        }
+
+        header('Location: ' . admin_url('posts/tags') . '?status=trash&trash_emptied=1');
         exit;
     } elseif ($form === 'bulk_action' && Csrf::verify('tags_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
         $ids = array_values(array_filter(array_map('intval', is_array($_POST['tag_ids'] ?? null) ? $_POST['tag_ids'] : [])));
         $mergeTargetId = (int) ($_POST['merge_target_id'] ?? 0);
+        $statusSuffix = isset($_POST['status']) ? '?status=' . urlencode((string) $_POST['status']) : '';
 
         if ($canDeleteTags) {
-            if ($bulkAction === 'delete') {
+            if ($bulkAction === 'trash') {
                 foreach ($ids as $id) {
-                    $tagService->delete($id);
+                    $tagService->trash($id);
+                }
+            } elseif ($bulkAction === 'restore') {
+                foreach ($ids as $id) {
+                    $tagService->restore($id);
+                }
+            } elseif ($bulkAction === 'delete_permanently') {
+                foreach ($ids as $id) {
+                    $existing = $tagService->findById($id);
+
+                    if ($existing !== null && $existing->isTrashed()) {
+                        $tagService->delete($id);
+                    }
                 }
             } elseif ($bulkAction === 'merge' && $mergeTargetId > 0) {
                 foreach ($ids as $id) {
@@ -104,10 +166,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        header('Location: ' . admin_url('posts/tags'));
+        header('Location: ' . admin_url('posts/tags') . $statusSuffix);
         exit;
     }
 }
+
+$statusFilter = (string) ($_GET['status'] ?? '');
+$isTrashView = $statusFilter === 'trash';
 
 $action ??= is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
 $editingId ??= isset($_GET['id']) ? (int) $_GET['id'] : null;
@@ -122,7 +187,7 @@ if ($action === 'edit') {
     }
 }
 ?>
-<h1 class="lp-admin__title">Tags (<?= (int) $tagService->count() ?>)</h1>
+<h1 class="lp-admin__title">Tags</h1>
 
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
@@ -130,6 +195,22 @@ if ($action === 'edit') {
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Tag saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trashed'])): ?>
+    <div class="lp-alert lp-alert--success">Tag moved to Trash.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['tag_restored'])): ?>
+    <div class="lp-alert lp-alert--success">Tag restored.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['tag_deleted'])): ?>
+    <div class="lp-alert lp-alert--success">Tag permanently deleted.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['trash_emptied'])): ?>
+    <div class="lp-alert lp-alert--success">Trash emptied.</div>
 <?php endif; ?>
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
@@ -170,6 +251,9 @@ if ($action === 'edit') {
     <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('posts/tags')) ?>?action=new">Add New Tag</a></p>
 
     <?php
+    $trashedTagsCount = $tagService->trashedCount();
+    $statusLinks = ['' => 'All (' . $tagService->count() . ')', 'trash' => 'Trash (' . $trashedTagsCount . ')'];
+
     $termFilter = trim((string) ($_GET['q'] ?? ''));
     $minPostsFilter = (int) ($_GET['min_posts'] ?? 0);
     $dateFromFilter = (string) ($_GET['date_from'] ?? '');
@@ -186,7 +270,7 @@ if ($action === 'edit') {
     ];
     $hasActiveFilter = $termFilter !== '' || $minPostsFilter > 0 || $dateFromFilter !== '' || $dateToFilter !== '' || $lastUsedFromFilter !== '' || $lastUsedToFilter !== '';
 
-    $rows = $tagService->listAllWithPostCounts($tagFilters);
+    $rows = $isTrashView ? $tagService->listTrashedWithPostCounts() : $tagService->listAllWithPostCounts($tagFilters);
 
     $mostUsedTags = $tagService->mostUsed(5);
     $leastUsedTags = $tagService->leastUsed(5);
@@ -195,40 +279,51 @@ if ($action === 'edit') {
     $recentlyUsedTags = $tagService->recentlyUsed(5);
     ?>
 
-    <section class="lp-admin__panel">
-        <details class="lp-admin__collapsible" <?= $hasActiveFilter ? 'open' : '' ?>>
-            <summary>Search &amp; Filter</summary>
-            <div class="lp-admin__collapsible__body">
-                <form method="get" action="<?= esc_url(admin_url('posts/tags')) ?>" class="lp-admin__filter-form">
-                    <p class="lp-field">
-                        <label for="tags-q">Search name or slug</label>
-                        <input type="text" id="tags-q" name="q" value="<?= esc_attr($termFilter) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="tags-min-posts">Minimum posts</label>
-                        <input type="number" id="tags-min-posts" name="min_posts" min="0" value="<?= $minPostsFilter > 0 ? (int) $minPostsFilter : '' ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="tags-date-from">Created from</label>
-                        <input type="date" id="tags-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="tags-date-to">Created to</label>
-                        <input type="date" id="tags-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="tags-last-used-from">Last used from</label>
-                        <input type="date" id="tags-last-used-from" name="last_used_from" value="<?= esc_attr($lastUsedFromFilter) ?>">
-                    </p>
-                    <p class="lp-field">
-                        <label for="tags-last-used-to">Last used to</label>
-                        <input type="date" id="tags-last-used-to" name="last_used_to" value="<?= esc_attr($lastUsedToFilter) ?>">
-                    </p>
-                    <button type="submit" class="lp-button">Filter</button>
-                </form>
-            </div>
-        </details>
-    </section>
+    <p class="lp-admin__filters">
+        <?php foreach ($statusLinks as $value => $label): ?>
+            <a
+                href="<?= esc_url(admin_url('posts/tags')) ?><?= $value !== '' ? '?status=' . esc_attr($value) : '' ?>"
+                class="<?= $statusFilter === $value ? 'is-active' : '' ?>"
+            ><?= esc_html($label) ?></a>
+        <?php endforeach; ?>
+    </p>
+
+    <?php if (!$isTrashView): ?>
+        <section class="lp-admin__panel">
+            <details class="lp-admin__collapsible" <?= $hasActiveFilter ? 'open' : '' ?>>
+                <summary>Search &amp; Filter</summary>
+                <div class="lp-admin__collapsible__body">
+                    <form method="get" action="<?= esc_url(admin_url('posts/tags')) ?>" class="lp-admin__filter-form">
+                        <p class="lp-field">
+                            <label for="tags-q">Search name or slug</label>
+                            <input type="text" id="tags-q" name="q" value="<?= esc_attr($termFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="tags-min-posts">Minimum posts</label>
+                            <input type="number" id="tags-min-posts" name="min_posts" min="0" value="<?= $minPostsFilter > 0 ? (int) $minPostsFilter : '' ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="tags-date-from">Created from</label>
+                            <input type="date" id="tags-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="tags-date-to">Created to</label>
+                            <input type="date" id="tags-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="tags-last-used-from">Last used from</label>
+                            <input type="date" id="tags-last-used-from" name="last_used_from" value="<?= esc_attr($lastUsedFromFilter) ?>">
+                        </p>
+                        <p class="lp-field">
+                            <label for="tags-last-used-to">Last used to</label>
+                            <input type="date" id="tags-last-used-to" name="last_used_to" value="<?= esc_attr($lastUsedToFilter) ?>">
+                        </p>
+                        <button type="submit" class="lp-button">Filter</button>
+                    </form>
+                </div>
+            </details>
+        </section>
+    <?php endif; ?>
 
     <section class="lp-admin__panel">
         <details class="lp-admin__collapsible">
@@ -306,29 +401,47 @@ if ($action === 'edit') {
     </section>
 
     <section class="lp-admin__panel">
+        <?php if ($isTrashView && $rows !== []): ?>
+            <form method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" data-lp-confirm="Permanently delete every tag in the Trash? This cannot be undone.">
+                <?= Csrf::field('tags_empty_trash') ?>
+                <input type="hidden" name="form" value="empty_trash">
+                <button type="submit" class="lp-button lp-button--danger">Empty Trash</button>
+            </form>
+        <?php endif; ?>
+
         <?php if ($rows === []): ?>
-            <p class="lp-admin__widget-placeholder"><?= $hasActiveFilter ? 'No tags match these filters.' : 'No tags yet.' ?></p>
+            <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : ($hasActiveFilter ? 'No tags match these filters.' : 'No tags yet.') ?></p>
         <?php else: ?>
             <form id="tags-bulk-form" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>" data-lp-bulk-form>
                 <?= Csrf::field('tags_bulk_action') ?>
                 <input type="hidden" name="form" value="bulk_action">
+                <?php if ($statusFilter !== ''): ?>
+                    <input type="hidden" name="status" value="<?= esc_attr($statusFilter) ?>">
+                <?php endif; ?>
 
                 <?php if ($canDeleteTags): ?>
                     <p class="lp-admin__bulk-actions">
                         <label class="lp-visually-hidden" for="tags-bulk-action">Bulk action</label>
                         <select id="tags-bulk-action" name="bulk_action">
                             <option value="">Bulk actions</option>
-                            <option value="delete">Delete</option>
-                            <option value="merge">Merge into&hellip;</option>
-                            <option value="remove_unused">Remove unused tags</option>
+                            <?php if ($isTrashView): ?>
+                                <option value="restore">Restore</option>
+                                <option value="delete_permanently">Delete Permanently</option>
+                            <?php else: ?>
+                                <option value="trash">Move to Trash</option>
+                                <option value="merge">Merge into&hellip;</option>
+                                <option value="remove_unused">Remove unused tags</option>
+                            <?php endif; ?>
                         </select>
-                        <label class="lp-visually-hidden" for="tags-merge-target">Merge target</label>
-                        <select id="tags-merge-target" name="merge_target_id">
-                            <option value="0">(select a tag to merge into)</option>
-                            <?php foreach ($tagService->listAll() as $mergeTargetOption): ?>
-                                <option value="<?= (int) $mergeTargetOption->id ?>"><?= esc_html($mergeTargetOption->name) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php if (!$isTrashView): ?>
+                            <label class="lp-visually-hidden" for="tags-merge-target">Merge target</label>
+                            <select id="tags-merge-target" name="merge_target_id">
+                                <option value="0">(select a tag to merge into)</option>
+                                <?php foreach ($tagService->listAll() as $mergeTargetOption): ?>
+                                    <option value="<?= (int) $mergeTargetOption->id ?>"><?= esc_html($mergeTargetOption->name) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php endif; ?>
                         <button type="submit" class="lp-button lp-button--secondary" data-lp-confirm="Apply this bulk action to the selected tags?">Apply</button>
                     </p>
                 <?php endif; ?>
@@ -345,7 +458,9 @@ if ($action === 'edit') {
                             <th scope="col">Name</th>
                             <th scope="col">Slug</th>
                             <th scope="col">Posts</th>
-                            <th scope="col">Last Used</th>
+                            <?php if (!$isTrashView): ?>
+                                <th scope="col">Last Used</th>
+                            <?php endif; ?>
                             <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
@@ -360,7 +475,11 @@ if ($action === 'edit') {
                                     </td>
                                 <?php endif; ?>
                                 <td>
-                                    <a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $listedTag->id ?>"><?= esc_html($listedTag->name) ?></a>
+                                    <?php if ($isTrashView): ?>
+                                        <?= esc_html($listedTag->name) ?>
+                                    <?php else: ?>
+                                        <a href="<?= esc_url(admin_url('posts/tags')) ?>?action=edit&id=<?= (int) $listedTag->id ?>"><?= esc_html($listedTag->name) ?></a>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= esc_html($listedTag->slug) ?></td>
                                 <td>
@@ -370,16 +489,35 @@ if ($action === 'edit') {
                                         0
                                     <?php endif; ?>
                                 </td>
-                                <td><?= $row['lastUsedAt'] !== null ? esc_html($row['lastUsedAt']->format('M j, Y')) : '—' ?></td>
+                                <?php if (!$isTrashView): ?>
+                                    <td><?= $row['lastUsedAt'] !== null ? esc_html($row['lastUsedAt']->format('M j, Y')) : '—' ?></td>
+                                <?php endif; ?>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($canDeleteTags): ?>
-                                        <?php $deleteFormId = 'tag-delete-form-' . $listedTag->id; ?>
-                                        <span class="lp-admin__inline-form">
-                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('tag_delete_' . $listedTag->id)) ?>" form="<?= esc_attr($deleteFormId) ?>">
-                                            <input type="hidden" name="form" value="delete" form="<?= esc_attr($deleteFormId) ?>">
-                                            <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>" form="<?= esc_attr($deleteFormId) ?>">
-                                            <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deleteFormId) ?>" data-lp-confirm="Delete this tag permanently?">Delete</button>
-                                        </span>
+                                        <?php if ($isTrashView): ?>
+                                            <?php $restoreFormId = 'tag-restore-form-' . $listedTag->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('tag_restore_' . $listedTag->id)) ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                                <input type="hidden" name="form" value="restore_tag" form="<?= esc_attr($restoreFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>" form="<?= esc_attr($restoreFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($restoreFormId) ?>">Restore</button>
+                                            </span>
+                                            <?php $deletePermFormId = 'tag-delete-permanently-form-' . $listedTag->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('tag_delete_permanently_' . $listedTag->id)) ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="form" value="delete_permanently" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>" form="<?= esc_attr($deletePermFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deletePermFormId) ?>" data-lp-confirm="Permanently delete this tag? This cannot be undone.">Delete Permanently</button>
+                                            </span>
+                                        <?php else: ?>
+                                            <?php $trashFormId = 'tag-trash-form-' . $listedTag->id; ?>
+                                            <span class="lp-admin__inline-form">
+                                                <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('tag_trash_' . $listedTag->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="form" value="trash" form="<?= esc_attr($trashFormId) ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $listedTag->id ?>" form="<?= esc_attr($trashFormId) ?>">
+                                                <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($trashFormId) ?>" data-lp-confirm="Move this tag to the Trash?">Trash</button>
+                                            </span>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -396,7 +534,12 @@ if ($action === 'edit') {
                 foreach ($rows as $row):
                     $listedTag = $row['tag'];
                     ?>
-                    <form id="tag-delete-form-<?= (int) $listedTag->id ?>" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>"></form>
+                    <?php if ($isTrashView): ?>
+                        <form id="tag-restore-form-<?= (int) $listedTag->id ?>" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>"></form>
+                        <form id="tag-delete-permanently-form-<?= (int) $listedTag->id ?>" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>"></form>
+                    <?php else: ?>
+                        <form id="tag-trash-form-<?= (int) $listedTag->id ?>" method="post" action="<?= esc_url(admin_url('posts/tags')) ?>"></form>
+                    <?php endif; ?>
                     <?php
                 endforeach;
             endif;
