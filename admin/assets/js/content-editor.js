@@ -697,24 +697,43 @@
     // meant to surface a short, obvious shortlist, not browse the whole
     // site; a specific, older item is still reachable by typing more of
     // its title into Search.
+    //
+    // LP-168: also opens for an image selection, reachable via the
+    // floating quickbar TinyMCE shows when an image is clicked (see
+    // quickbars_image_toolbar below) as well as the main toolbar button.
+    // "Link Text" makes no sense for an image, so it's hidden, and
+    // Add/Update/Remove wrap or unwrap the actual <img> element in place
+    // rather than going through insertContent() with an escaped text
+    // label, which would silently replace the image with plain text.
     // ------------------------------------------------------------------
 
     function openLinkPicker(container, editor) {
         var pickerUrl = container.dataset.uploadUrl;
         var pickerCsrf = container.dataset.linkPickerCsrf;
 
+        // LP-168: the selected node is a control selection (an <img>)
+        // rather than a text range when the admin clicked an image —
+        // "Link Text" makes no sense there, and Apply/Remove below must
+        // wrap/unwrap the image element itself rather than replacing the
+        // selection with escaped label text (which would silently
+        // destroy the image).
+        var selectedNode = editor.selection.getNode();
+        var isImageSelection = selectedNode.nodeName === 'IMG';
+
         // Editing an existing link puts the dialog in "Update" mode —
         // its href/text/target seed the fields below, and Update/Remove
         // Link act on this same <a> element in place rather than
         // inserting a new one.
-        var existingAnchor = editor.dom.getParent(editor.selection.getNode(), 'A');
+        var existingAnchor = editor.dom.getParent(selectedNode, 'A');
 
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-editor-link-dialog';
 
         var heading = document.createElement('h2');
         heading.className = 'lp-editor-media-dialog__heading';
-        heading.textContent = existingAnchor ? 'Edit Link' : 'Insert Link';
+        heading.textContent = isImageSelection
+            ? (existingAnchor ? 'Edit Image Link' : 'Add Link to Image')
+            : (existingAnchor ? 'Edit Link' : 'Insert Link');
 
         var urlField = document.createElement('p');
         urlField.className = 'lp-field';
@@ -727,6 +746,9 @@
         urlField.appendChild(urlLabel);
         urlField.appendChild(urlInput);
 
+        // Kept even for an image selection (some code paths below read
+        // its .value unconditionally) — it's simply never appended to
+        // the dialog in that case, since there's no text to label an image.
         var textField = document.createElement('p');
         textField.className = 'lp-field';
         var textLabel = document.createElement('label');
@@ -863,29 +885,57 @@
                 return;
             }
 
-            var text = textInput.value.trim() || url;
-
-            // Direct DOM edits (the existingAnchor branch) bypass
-            // insertContent()'s own undo-level/change-event handling, so
-            // they're wrapped in a transaction — the same "change" event
-            // this fires is what editor.on('change keyup', ...) below
-            // listens for to keep the real <textarea> form field synced.
-            if (existingAnchor) {
+            // Direct DOM edits (the existingAnchor/isImageSelection
+            // branches) bypass insertContent()'s own undo-level/change-
+            // event handling, so they're wrapped in a transaction — the
+            // same "change" event this fires is what
+            // editor.on('change keyup', ...) below listens for to keep
+            // the real <textarea> form field synced.
+            if (isImageSelection) {
+                // LP-168: wraps/rewraps the actual <img> element rather
+                // than going through insertContent() with a text label —
+                // insertContent() would replace the image's control
+                // selection with the given HTML string outright, losing
+                // the image entirely.
                 editor.undoManager.transact(function () {
-                    existingAnchor.setAttribute('href', url);
-                    existingAnchor.textContent = text;
+                    var anchor = existingAnchor;
+
+                    if (!anchor) {
+                        anchor = editor.dom.create('a');
+                        selectedNode.parentNode.insertBefore(anchor, selectedNode);
+                        anchor.appendChild(selectedNode);
+                    }
+
+                    anchor.setAttribute('href', url);
 
                     if (newTabCheckbox.checked) {
-                        existingAnchor.setAttribute('target', '_blank');
+                        anchor.setAttribute('target', '_blank');
                     } else {
-                        existingAnchor.removeAttribute('target');
-                        existingAnchor.removeAttribute('rel');
+                        anchor.removeAttribute('target');
+                        anchor.removeAttribute('rel');
                     }
                 });
-                editor.selection.select(existingAnchor);
+                editor.selection.select(selectedNode);
             } else {
-                var targetAttr = newTabCheckbox.checked ? ' target="_blank"' : '';
-                editor.insertContent('<a href="' + escapeHtmlAttr(url) + '"' + targetAttr + '>' + escapeHtmlAttr(text) + '</a>');
+                var text = textInput.value.trim() || url;
+
+                if (existingAnchor) {
+                    editor.undoManager.transact(function () {
+                        existingAnchor.setAttribute('href', url);
+                        existingAnchor.textContent = text;
+
+                        if (newTabCheckbox.checked) {
+                            existingAnchor.setAttribute('target', '_blank');
+                        } else {
+                            existingAnchor.removeAttribute('target');
+                            existingAnchor.removeAttribute('rel');
+                        }
+                    });
+                    editor.selection.select(existingAnchor);
+                } else {
+                    var targetAttr = newTabCheckbox.checked ? ' target="_blank"' : '';
+                    editor.insertContent('<a href="' + escapeHtmlAttr(url) + '"' + targetAttr + '>' + escapeHtmlAttr(text) + '</a>');
+                }
             }
 
             dialog.close();
@@ -920,7 +970,11 @@
 
         dialog.appendChild(heading);
         dialog.appendChild(urlField);
-        dialog.appendChild(textField);
+
+        if (!isImageSelection) {
+            dialog.appendChild(textField);
+        }
+
         dialog.appendChild(newTabLabel);
         dialog.appendChild(existingHeading);
         dialog.appendChild(searchInput);
@@ -2001,7 +2055,12 @@
             // reason — lumoraLink (openLinkPicker() below) fully
             // replaces its dialog with one that can also target an
             // existing Post/Page from a live, searchable list.
-            var basePlugins = 'lists table code codesample searchreplace fullscreen wordcount help';
+            // LP-168: 'quickbars' only powers the floating image toolbar
+            // configured below (quickbars_image_toolbar) — its own
+            // default insert/selection toolbars are turned off, since
+            // their "quickimage" button would reopen exactly the native
+            // image dialog LP-115 above deliberately left out.
+            var basePlugins = 'lists table code codesample searchreplace fullscreen wordcount help quickbars';
 
             // Both are real linked stylesheets loaded into the iframe via
             // content_css — the admin CSP's style-src 'self' has no
@@ -2055,6 +2114,16 @@
                     // additional rows instead, every button visible at
                     // a glance.
                     toolbar_mode: 'wrap',
+                    // LP-168: clicking an image shows a small floating
+                    // toolbar right next to it with only "Insert/Edit
+                    // Link" (the same lumoraLink button/dialog the main
+                    // toolbar already uses) — a direct, one-click path to
+                    // linking an image without reaching for the main
+                    // toolbar. The default insert/selection quickbars are
+                    // disabled since neither applies here.
+                    quickbars_insert_toolbar: false,
+                    quickbars_selection_toolbar: false,
+                    quickbars_image_toolbar: 'lumoraLink',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — never on the public
                     // site (the marker itself is always stripped before
