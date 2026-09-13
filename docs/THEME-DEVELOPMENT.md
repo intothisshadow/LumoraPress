@@ -88,17 +88,19 @@ useful if your theme has no sidebar at all.
 
 ## Template hierarchy
 
-Lumora Press does **not** implement a cascading template hierarchy the
-way classic WordPress does (no `single-{post-type}-{slug}.php` fallback
-chain). `SiteController` hardcodes which literal filename to render for
-each route:
+Lumora Press does **not** implement a deep cascading template hierarchy
+the way classic WordPress does (no `single-{post-type}-{slug}.php`
+fallback chain, no per-category/per-slug overrides). `SiteController`
+hardcodes which literal filename to render for each route, with one
+narrow exception:
 
 | Route | Template |
 |---|---|
 | Homepage / static "Posts page" | `index.php` |
 | Single post (and post preview) | `single.php` |
 | Static page | `page.php` |
-| Author, category, tag, and date archives | `archive.php` (all four — distinguished only by an `$archive_type` variable: `'author'`/`'category'`/`'tag'`/`'date'`) |
+| Tag archive | `tag.php`, falling back to `archive.php` if the theme doesn't provide one |
+| Author, category, and date archives | `archive.php` — distinguished only by an `$archive_type` variable: `'author'`/`'category'`/`'date'` (`'tag'` also still applies when a theme has no `tag.php`) |
 | Search results | `search.php` |
 | Unmatched route / explicit 404 | `404.php` |
 | Maintenance Mode | `maintenance.php` |
@@ -110,9 +112,16 @@ Tags reference below. `functions.php` is loaded once per request,
 separately from rendering, before any template or Theme Options
 registration happens.
 
-There is no way for a theme to add a per-slug or per-category template
-override beyond what's listed above (a `single-my-slug.php` file, for
-example, is simply never looked for).
+`tag.php` is entirely optional — a theme with no `tag.php` file behaves
+exactly as before, tag archives rendering through `archive.php` like
+every other archive type. Providing `tag.php` gets the identical set of
+variables `archive.php` receives for a tag archive (`$archive_type` is
+still `'tag'`), it's simply a separate file a theme can style
+differently from its other archives. This is the only template in the
+table above with a fallback; there is no equivalent override for
+categories, authors, or dates, and no way to add a per-slug or
+per-category template beyond what's listed (a `single-my-slug.php` file,
+for example, is simply never looked for).
 
 ## The "loop"
 

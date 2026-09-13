@@ -52,12 +52,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $action = $existing === null ? 'new' : 'edit';
             $editingId = $existing?->id;
         } else {
-            $tag = $existing === null
-                ? $tagService->create($name, $description, $slug !== '' ? $slug : null)
-                : $tagService->update($id, $name, $description, $slug !== '' ? $slug : null);
+            try {
+                $tag = $existing === null
+                    ? $tagService->create($name, $description, $slug !== '' ? $slug : null)
+                    : $tagService->update($id, $name, $description, $slug !== '' ? $slug : null);
 
-            header('Location: ' . admin_url('posts/tags') . '?action=edit&id=' . $tag->id . '&saved=1');
-            exit;
+                header('Location: ' . admin_url('posts/tags') . '?action=edit&id=' . $tag->id . '&saved=1');
+                exit;
+            } catch (\InvalidArgumentException $exception) {
+                // Same redisplay reasoning as the empty-name branch above —
+                // reached only for the max-length case, since $name === ''
+                // is already caught before this point.
+                $error = $exception->getMessage();
+                $action = $existing === null ? 'new' : 'edit';
+                $editingId = $existing?->id;
+            }
         }
     } elseif ($form === 'delete') {
         $id = (int) ($_POST['id'] ?? 0);

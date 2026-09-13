@@ -893,7 +893,9 @@ final class SiteController
         $pagination = $this->posts->paginateByTag($tag->id, $page, $this->postsPerPage());
 
         $this->markCacheableForGuests(['posts', 'tag_' . $tag->id]);
-        $this->theme->render('archive.php', [
+        // A theme may provide tag.php for tag-archive-specific markup;
+        // every theme already ships archive.php as the fallback (LP-011).
+        $this->theme->renderFirstAvailable(['tag.php', 'archive.php'], [
             'page_title' => $tag->name,
             'archive_type' => 'tag',
             'archive_description' => $tag->description,

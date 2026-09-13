@@ -115,6 +115,35 @@ final class ThemeRenderer
     }
 
     /**
+     * Renders the first of $templates that the active theme actually
+     * provides, falling back through the rest in order — a small,
+     * WordPress-style template hierarchy for the handful of archive
+     * types that want it (e.g. `tag.php` overriding the generic
+     * `archive.php` for tag archives specifically), without every theme
+     * needing to supply the more specific file. The last entry should
+     * always be a template every theme is required to ship (e.g.
+     * `archive.php`), so this only ever throws under the same
+     * "theme is missing a required file" condition render() already does.
+     *
+     * @param array<int, string> $templates
+     * @param array<string, mixed> $vars
+     */
+    public function renderFirstAvailable(array $templates, array $vars = []): void
+    {
+        foreach ($templates as $template) {
+            $path = $this->locateTemplate($template);
+
+            if ($path !== null) {
+                $this->includeTemplate($path, $vars);
+
+                return;
+            }
+        }
+
+        throw new RuntimeException('Theme template not found: ' . implode(', ', $templates));
+    }
+
+    /**
      * @param array<string, mixed> $vars
      */
     public function renderPartial(string $partial, array $vars = []): void

@@ -39,7 +39,7 @@ $controller = new PostsController($kernel->posts, $kernel->categories, $kernel->
 // PostsController; this view discards the buffered HTML shell, sets the
 // JSON Content-Type, dispatches to the matching controller method
 // (which echoes the JSON body directly), and exits.
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'font_awesome_icon_query', 'emoji_picker_record_recent'], true)) {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] ?? null, ['editor_upload', 'convert_content', 'add_category', 'media_picker_query', 'featured_image_picker_query', 'link_picker_query', 'tag_autocomplete_query', 'font_awesome_icon_query', 'emoji_picker_record_recent'], true)) {
     // Discard admin/index.php's output buffer before sending a JSON
     // response, or the buffered HTML would flush alongside it.
     while (ob_get_level() > 0) {
@@ -145,6 +145,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['form'] 
         'add_category' => $controller->quickAddCategory($_POST, $currentUser->can('edit_posts'), $csrfToken),
         'media_picker_query' => $controller->queryMediaForPicker($_POST, $currentUser->can('edit_posts'), $csrfToken),
         'featured_image_picker_query' => $controller->queryFeaturedImagePicker($_POST, $currentUser->can('edit_posts'), $csrfToken),
+        'tag_autocomplete_query' => $controller->queryTagsForAutocomplete($_POST, $currentUser->can('edit_posts'), $csrfToken),
     };
 
     exit;
@@ -233,7 +234,6 @@ $categoryTree = $kernel->categories->listAllForTree();
 $assignedCategoryIds = $post !== null
     ? array_map(static fn ($category) => $category->id, $kernel->categories->categoriesForPost($post->id))
     : [];
-$allTagNames = $kernel->tags->allNames();
 $assignedTagNames = $post !== null
     ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
     : [];
@@ -526,7 +526,7 @@ if ($savedLayout['order'] === []) {
                                     <?php break;
 
                                 case 'tags': ?>
-                                    <div class="lp-field lp-tag-input" data-lp-tag-input data-suggestions="<?= esc_attr(json_encode($allTagNames)) ?>">
+                                    <div class="lp-field lp-tag-input" data-lp-tag-input data-query-url="<?= esc_url(admin_url('posts/new')) ?>" data-query-csrf="<?= esc_attr(Csrf::token('tag_autocomplete_query')) ?>">
                                         <label for="post-tags">Tags</label>
                                         <input
                                             type="text"

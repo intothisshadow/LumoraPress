@@ -2,6 +2,20 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Tag archive theme customization (LP-011): a theme can now provide its own `tag.php` template for tag archives specifically, distinct from the shared `archive.php` every other archive type still uses — falls back to `archive.php` automatically when a theme doesn't provide one, so every existing theme is unaffected.
+
+### Changed
+
+- Tag autocomplete (LP-011): the Post editor's tag-input widget now searches server-side (a small debounced query per keystroke) instead of preloading every tag's name into the page and filtering client-side — keeps the page payload and suggestion speed independent of the site's total tag count.
+
+### Fixed
+
+- A tag name longer than 191 characters (or blank, bypassing the admin form's own client-side check) could reach the database with no server-side validation — `TagService` now validates the same way `CategoryService` already does.
+
 ## [0.14.0] — 2026-09-13
 
 ### Added

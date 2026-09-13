@@ -32,6 +32,14 @@ use RuntimeException;
 final class TagService
 {
     /**
+     * Matches the `name` column's `VARCHAR(191)` width
+     * (`0008_create_tags_tables.sql`) and CategoryService::MAX_NAME_LENGTH
+     * — same reasoning as there: the longest string a typical MySQL/
+     * MariaDB unique-indexable utf8mb4 column can hold.
+     */
+    public const MAX_NAME_LENGTH = 191;
+
+    /**
      * Request-scoped findById() memoization, mirroring CategoryService::$byIdCache — a single
      * request routinely resolves the same tag id more than once (the Post editor's tag bridge,
      * a tag archive page's own findById() during breadcrumb/related-content rendering). Holds
@@ -59,8 +67,13 @@ final class TagService
     ) {
     }
 
+    /**
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
+     */
     public function create(string $name, string $description, ?string $slug = null): Tag
     {
+        $this->validateName($name);
+
         $slug = $this->generateUniqueSlug($slug !== null && $slug !== '' ? $slug : $name);
         $now = new DateTimeImmutable();
 
@@ -89,8 +102,13 @@ final class TagService
         return $tag;
     }
 
+    /**
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
+     */
     public function update(int $id, string $name, string $description, ?string $slug = null): Tag
     {
+        $this->validateName($name);
+
         $existing = $this->findById($id);
 
         if ($existing === null) {
@@ -276,19 +294,30 @@ final class TagService
     }
 
     /**
-     * Every tag's name only, for the Post editor's tag-input autocomplete
-     * widget (`admin/views/posts/new.php`'s `data-suggestions`), which
-     * needs nothing else — selecting just `name` instead of `SELECT *`
-     * and skipping full Tag hydration avoids the slug/description/
-     * timestamp columns and object-construction cost listAll() pays for
-     * every tag on every Post editor page load, mattering most for a
-     * site with a large tag collection.
+     * Server-side search backing the Post editor's tag-input autocomplete
+     * widget (`admin/views/posts/new.php`, `tag-input.js`) — a small,
+     * name-only, LIKE-filtered result set queried per keystroke instead of
+     * every tag's name being preloaded into the page and filtered
+     * client-side (the widget's original approach), which grew both the
+     * page payload and the in-browser filtering cost linearly with the
+     * site's total tag count. An empty term returns no results, matching
+     * the widget's own behavior of never showing suggestions before the
+     * admin has typed anything.
      *
      * @return array<int, string>
      */
-    public function allNames(): array
+    public function searchNames(string $term, int $limit = 10): array
     {
-        $rows = $this->database->fetchAll('SELECT name FROM ' . $this->table() . ' ORDER BY name ASC');
+        $term = trim($term);
+
+        if ($term === '') {
+            return [];
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT name FROM ' . $this->table() . ' WHERE name LIKE :term ORDER BY name ASC LIMIT ' . max(1, $limit),
+            ['term' => '%' . $term . '%'],
+        );
 
         return array_map(static fn (array $row): string => (string) $row['name'], $rows);
     }
@@ -597,6 +626,20 @@ final class TagService
     {
         $this->byIdCache = [];
         $this->postCountCache = null;
+    }
+
+    /**
+     * @throws \InvalidArgumentException if $name is empty or exceeds MAX_NAME_LENGTH
+     */
+    private function validateName(string $name): void
+    {
+        if (trim($name) === '') {
+            throw new \InvalidArgumentException('A name is required.');
+        }
+
+        if (mb_strlen($name) > self::MAX_NAME_LENGTH) {
+            throw new \InvalidArgumentException('The name cannot be longer than ' . self::MAX_NAME_LENGTH . ' characters.');
+        }
     }
 
     private function generateUniqueSlug(string $source, ?int $ignoreId = null): string

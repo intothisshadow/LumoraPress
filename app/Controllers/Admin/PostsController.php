@@ -697,6 +697,30 @@ final class PostsController
     }
 
     /**
+     * The Post editor's tag-input widget's server-side autocomplete
+     * search (LP-011) — see TagService::searchNames()'s docblock for why
+     * this replaced preloading every tag's name into the page.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function queryTagsForAutocomplete(array $post, bool $canEditPosts, ?string $csrfToken): void
+    {
+        if (!$canEditPosts || !Csrf::verify('tag_autocomplete_query', $csrfToken)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Not permitted.']);
+
+            return;
+        }
+
+        $term = trim((string) ($post['term'] ?? ''));
+
+        echo json_encode([
+            'names' => $this->tags->searchNames($term, 8),
+            'csrfToken' => Csrf::token('tag_autocomplete_query'),
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $post
      */
     public function quickAddCategory(array $post, bool $canEditPosts, ?string $csrfToken): void
