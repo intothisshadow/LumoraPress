@@ -362,6 +362,21 @@ foreach ($pluginList as $info) {
 <?php endif; ?>
 
 <section class="lp-admin__panel">
+    <h2>Install a Plugin</h2>
+    <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" enctype="multipart/form-data">
+        <?= Csrf::field('install_plugin') ?>
+        <input type="hidden" name="form" value="install_plugin">
+
+        <p class="lp-field">
+            <label for="plugin-zip">Plugin ZIP file</label>
+            <input type="file" id="plugin-zip" name="plugin_zip" accept=".zip" required>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Upload &amp; Review</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
     <h2>Installed Plugins</h2>
 
     <?php if (count($pluginList) > 1): ?>
@@ -700,17 +715,4 @@ foreach ($pluginList as $info) {
 
         <dialog class="lp-plugin-dialog" data-lp-plugin-dialog aria-label="Plugin details"></dialog>
     <?php endif; ?>
-
-    <h3>Install a Plugin</h3>
-    <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" enctype="multipart/form-data">
-        <?= Csrf::field('install_plugin') ?>
-        <input type="hidden" name="form" value="install_plugin">
-
-        <p class="lp-field">
-            <label for="plugin-zip">Plugin ZIP file</label>
-            <input type="file" id="plugin-zip" name="plugin_zip" accept=".zip" required>
-        </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Upload &amp; Review</button>
-    </form>
 </section>

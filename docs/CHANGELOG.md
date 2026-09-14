@@ -27,6 +27,7 @@ All notable changes to Lumora Press are documented in this file.
 - Tag autocomplete (LP-011): the Post editor's tag-input widget now searches server-side (a small debounced query per keystroke) instead of preloading every tag's name into the page and filtering client-side — keeps the page payload and suggestion speed independent of the site's total tag count.
 - Lumora Gallery Shortcodes' admin Shortcodes doc page (LPP-023): the `gallery="{slug}"` non-default-connection example is now its own clearly-labeled section covering both shortcodes, instead of one line buried among unrelated examples in `[lumora_gallery_album]`'s own list.
 - The Plugins screen's Grid/List view toggle now defaults to List for an administrator who hasn't chosen either yet, instead of Grid. An already-saved choice (Grid or List) is unaffected — this only changes the very first view a new administrator sees.
+- The Plugins screen's "Install a Plugin" upload form moved to the top of the page (LP-171), above the Installed Plugins list, instead of below it — no more scrolling past every installed plugin to upload a new one.
 
 ### Fixed
 
