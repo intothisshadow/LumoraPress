@@ -62,9 +62,6 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
     <p class="lp-field__hint">Every image in an album, by ID:</p>
     <pre><code>[lumora_gallery_album album_id="12"]</code></pre>
 
-    <p class="lp-field__hint">Every image in an album on a specific (non-default) Gallery connection:</p>
-    <pre><code>[lumora_gallery_album gallery="xena-archive" album_id="12"]</code></pre>
-
     <p class="lp-field__hint">Every image in an album, by folder path:</p>
     <pre><code>[lumora_gallery_album folder="some-album"]</code></pre>
 
@@ -110,4 +107,23 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
 
     <p class="lp-field__hint">The newest 20, just thumbnails:</p>
     <pre><code>[lumora_gallery_newest count="20" no_album_info="1"]</code></pre>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Using a Non-Default Gallery Connection</h2>
+    <p class="lp-field__hint">
+        With only one Gallery connection configured, every example above
+        works exactly as shown — <code>gallery</code> never needs to be
+        written. Once a second connection exists (see Lumora Gallery
+        Shortcodes &rsaquo; Settings), add <code>gallery="{slug}"</code>
+        to either shortcode to say which connection to read from; a
+        shortcode that omits it always falls back to whichever
+        connection is marked Default.
+    </p>
+
+    <p class="lp-field__hint">The same album as above, but read from the connection whose slug is <code>xena-archive</code> instead of the Default one:</p>
+    <pre><code>[lumora_gallery_album gallery="xena-archive" album_id="12"]</code></pre>
+
+    <p class="lp-field__hint">The newest 10 images gallery-wide, from that same non-default connection:</p>
+    <pre><code>[lumora_gallery_newest gallery="xena-archive"]</code></pre>
 </section>

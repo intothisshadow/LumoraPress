@@ -15,6 +15,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Changed
 
 - Tag autocomplete (LP-011): the Post editor's tag-input widget now searches server-side (a small debounced query per keystroke) instead of preloading every tag's name into the page and filtering client-side — keeps the page payload and suggestion speed independent of the site's total tag count.
+- Lumora Gallery Shortcodes' admin Shortcodes doc page (LPP-023): the `gallery="{slug}"` non-default-connection example is now its own clearly-labeled section covering both shortcodes, instead of one line buried among unrelated examples in `[lumora_gallery_album]`'s own list.
 
 ### Fixed
 
