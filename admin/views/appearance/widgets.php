@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\WidgetsController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Widgets\WidgetManager;
 
@@ -22,22 +23,6 @@ if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
 }
-
-// Widget assignments persist as one JSON option ("widgets_config", keyed by
-// sidebar id). Each form loads the full config, mutates the one
-// sidebar/widget it targets, saves it back, and updates the in-memory
-// WidgetManager too so the page re-renders with the change immediately.
-// INACTIVE_SIDEBAR_ID is a reserved "sidebar" id in this same structure
-// that holds deactivated widgets until reactivated or deleted.
-$loadWidgetsConfig = static function () use ($kernel): array {
-    $decoded = json_decode((string) $kernel->config->option('widgets_config', '{}'), true);
-
-    return is_array($decoded) ? $decoded : [];
-};
-
-$saveWidgetsConfig = static function (array $widgetsConfig) use ($kernel): void {
-    $kernel->config->setOption('widgets_config', json_encode($widgetsConfig));
-};
 
 /**
  * Field definitions per widget type, shared by the render form and the
@@ -134,231 +119,34 @@ $renderWidgetSettingsFields = static function (array $widget, array $fields): vo
     }
 };
 
-$error = null;
+// Many forms render on this page load. POST handling lives in
+// WidgetsController, including the per-widget/sidebar/direction CSRF action
+// scoping (see its own docblock) — this view just dispatches to it and turns
+// the result into a redirect or an $error string.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
-$postedWidgetId = trim((string) ($_POST['widget_id'] ?? ''));
-$postedSidebarId = trim((string) ($_POST['sidebar_id'] ?? ''));
-$postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+$error = null;
+$csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-// Many forms render on this page load; Csrf::field() overwrites the
-// session's token per action name on every call, so each name below is
-// scoped to the specific widget/sidebar id it acts on.
-$postedDirection = (string) ($_POST['direction'] ?? '');
-$postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
-$postedPosition = (string) ($_POST['position'] ?? 'before');
-$postedTargetSidebarId = trim((string) ($_POST['target_sidebar_id'] ?? ''));
-$csrfAction = match ($form) {
-    'add_widget' => 'widget_add_' . $postedSidebarId,
-    'update_widget' => 'widget_update_' . $postedWidgetId,
-    // Move Up/Down render as two forms for the same widget id, so scoped
-    // by direction too or the second Csrf::field() call would overwrite
-    // the first's token.
-    'move_widget' => 'widget_move_' . $postedDirection . '_' . $postedWidgetId,
-    // One reposition form per sidebar, not per widget — sortable.js fills
-    // its dragged/target/position fields and submits on drop.
-    'reposition_widget' => 'widget_reposition_' . $postedSidebarId,
-    'deactivate_widget' => 'widget_deactivate_' . $postedWidgetId,
-    'activate_widget' => 'widget_activate_' . $postedWidgetId,
-    'delete_widget' => 'widget_delete_' . $postedWidgetId,
-    default => 'widget_unknown_form',
-};
+if ($form !== '') {
+    $controller = new WidgetsController($kernel->widgets, $kernel->config);
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction, $postedToken)) {
-    $sidebarId = $postedSidebarId;
-    $knownSidebars = $kernel->widgets->sidebars();
-    $isInactiveBucket = $sidebarId === WidgetManager::INACTIVE_SIDEBAR_ID;
+    $result = match ($form) {
+        'add_widget' => $controller->addWidget($_POST, $csrfToken),
+        'update_widget' => $controller->updateWidget($_POST, $csrfToken),
+        'deactivate_widget' => $controller->deactivateWidget($_POST, $csrfToken),
+        'activate_widget' => $controller->activateWidget($_POST, $csrfToken),
+        'delete_widget' => $controller->deleteWidget($_POST, $csrfToken),
+        'move_widget' => $controller->moveWidget($_POST, $csrfToken),
+        'reposition_widget' => $controller->repositionWidget($_POST, $csrfToken),
+        default => null,
+    };
 
-    if (!$isInactiveBucket && !array_key_exists($sidebarId, $knownSidebars)) {
-        $error = 'Unknown widget area.';
-    } elseif ($form === 'add_widget') {
-        $widgetType = trim((string) ($_POST['widget_type'] ?? ''));
-
-        if (!array_key_exists($widgetType, $kernel->widgets->widgetTypes())) {
-            $error = 'Unknown widget type.';
-        } else {
-            $widgetsConfig = $loadWidgetsConfig();
-            $widgetsConfig[$sidebarId] ??= [];
-            $widgetsConfig[$sidebarId][] = ['type' => $widgetType, 'settings' => []];
-            $kernel->widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
-            $widgetsConfig[$sidebarId] = $kernel->widgets->widgetsFor($sidebarId);
-            $saveWidgetsConfig($widgetsConfig);
-
-            header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
-            exit;
-        }
-    } elseif ($form === 'update_widget') {
-        $widgetId = $postedWidgetId;
-        $widgetsConfig = $loadWidgetsConfig();
-        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
-        $matched = false;
-
-        foreach ($sidebarWidgets as $index => $widget) {
-            if (($widget['id'] ?? null) === $widgetId) {
-                $fields = $settingsFieldsFor($widget['type']);
-                $settings = [];
-
-                foreach ($fields as $field) {
-                    $raw = $_POST['settings'][$field['key']] ?? null;
-                    $settings[$field['key']] = $field['type'] === 'checkbox' ? ($raw === '1' ? '1' : '0') : trim((string) $raw);
-                }
-
-                $sidebarWidgets[$index]['settings'] = $settings;
-                $matched = true;
-
-                break;
-            }
+    if ($result !== null) {
+        if ($result->redirectUrl !== null) {
+            redirect($result->redirectUrl);
         }
 
-        if ($matched) {
-            $widgetsConfig[$sidebarId] = $sidebarWidgets;
-            $saveWidgetsConfig($widgetsConfig);
-            $kernel->widgets->setWidgets($sidebarId, $sidebarWidgets);
-
-            header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
-            exit;
-        }
-
-        $error = 'That widget no longer exists.';
-    } elseif ($form === 'deactivate_widget') {
-        // Moves the widget into the reserved INACTIVE_SIDEBAR_ID bucket
-        // instead of deleting it, preserving settings for later reactivation.
-        $widgetId = $postedWidgetId;
-        $widgetsConfig = $loadWidgetsConfig();
-        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
-        $moving = null;
-        $remaining = [];
-
-        foreach ($sidebarWidgets as $widget) {
-            if (($widget['id'] ?? null) === $widgetId) {
-                $moving = $widget;
-            } else {
-                $remaining[] = $widget;
-            }
-        }
-
-        if ($moving !== null) {
-            $widgetsConfig[$sidebarId] = $remaining;
-            $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] ??= [];
-            $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID][] = $moving;
-            $saveWidgetsConfig($widgetsConfig);
-            $kernel->widgets->setWidgets($sidebarId, $remaining);
-            $kernel->widgets->setWidgets(WidgetManager::INACTIVE_SIDEBAR_ID, $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID]);
-        }
-
-        header('Location: ' . admin_url('appearance/widgets') . '?deactivated=1');
-        exit;
-    } elseif ($form === 'activate_widget') {
-        // $sidebarId here is always INACTIVE_SIDEBAR_ID (the source);
-        // target_sidebar_id is the destination the admin picked.
-        if (!array_key_exists($postedTargetSidebarId, $knownSidebars)) {
-            $error = 'Choose a widget area to activate this widget into.';
-        } else {
-            $widgetId = $postedWidgetId;
-            $widgetsConfig = $loadWidgetsConfig();
-            $inactiveWidgets = $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] ?? [];
-            $moving = null;
-            $remaining = [];
-
-            foreach ($inactiveWidgets as $widget) {
-                if (($widget['id'] ?? null) === $widgetId) {
-                    $moving = $widget;
-                } else {
-                    $remaining[] = $widget;
-                }
-            }
-
-            if ($moving !== null) {
-                $widgetsConfig[WidgetManager::INACTIVE_SIDEBAR_ID] = $remaining;
-                $widgetsConfig[$postedTargetSidebarId] ??= [];
-                $widgetsConfig[$postedTargetSidebarId][] = $moving;
-                $saveWidgetsConfig($widgetsConfig);
-                $kernel->widgets->setWidgets(WidgetManager::INACTIVE_SIDEBAR_ID, $remaining);
-                $kernel->widgets->setWidgets($postedTargetSidebarId, $widgetsConfig[$postedTargetSidebarId]);
-            }
-
-            header('Location: ' . admin_url('appearance/widgets') . '?activated=1');
-            exit;
-        }
-    } elseif ($form === 'delete_widget') {
-        // Permanent removal — used from the Inactive Widgets list once a
-        // widget's settings are no longer wanted at all.
-        $widgetId = $postedWidgetId;
-        $widgetsConfig = $loadWidgetsConfig();
-        $widgetsConfig[$sidebarId] = array_values(array_filter(
-            $widgetsConfig[$sidebarId] ?? [],
-            static fn (array $widget): bool => ($widget['id'] ?? null) !== $widgetId,
-        ));
-        $saveWidgetsConfig($widgetsConfig);
-        $kernel->widgets->setWidgets($sidebarId, $widgetsConfig[$sidebarId]);
-
-        header('Location: ' . admin_url('appearance/widgets') . '?deleted=1');
-        exit;
-    } elseif ($form === 'move_widget') {
-        $widgetId = $postedWidgetId;
-        $direction = $postedDirection;
-        $widgetsConfig = $loadWidgetsConfig();
-        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
-        $position = null;
-
-        foreach ($sidebarWidgets as $index => $widget) {
-            if (($widget['id'] ?? null) === $widgetId) {
-                $position = $index;
-
-                break;
-            }
-        }
-
-        $swapWith = $direction === 'up' ? $position - 1 : $position + 1;
-
-        if ($position !== null && $swapWith >= 0 && $swapWith < count($sidebarWidgets)) {
-            [$sidebarWidgets[$position], $sidebarWidgets[$swapWith]] = [$sidebarWidgets[$swapWith], $sidebarWidgets[$position]];
-            $widgetsConfig[$sidebarId] = $sidebarWidgets;
-            $saveWidgetsConfig($widgetsConfig);
-            $kernel->widgets->setWidgets($sidebarId, $sidebarWidgets);
-        }
-
-        header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
-        exit;
-    } elseif ($form === 'reposition_widget') {
-        // Splice out the dragged widget, then splice it back in at the
-        // target's position — works for a drag to any position, not just
-        // an adjacent swap.
-        $widgetId = $postedWidgetId;
-        $targetId = $postedTargetId;
-        $widgetsConfig = $loadWidgetsConfig();
-        $sidebarWidgets = $widgetsConfig[$sidebarId] ?? [];
-
-        $dragged = null;
-        $remaining = [];
-
-        foreach ($sidebarWidgets as $widget) {
-            if (($widget['id'] ?? null) === $widgetId) {
-                $dragged = $widget;
-            } else {
-                $remaining[] = $widget;
-            }
-        }
-
-        $targetIndex = null;
-
-        foreach ($remaining as $index => $widget) {
-            if (($widget['id'] ?? null) === $targetId) {
-                $targetIndex = $index;
-
-                break;
-            }
-        }
-
-        if ($dragged !== null && $targetIndex !== null) {
-            $insertAt = $postedPosition === 'after' ? $targetIndex + 1 : $targetIndex;
-            array_splice($remaining, $insertAt, 0, [$dragged]);
-            $widgetsConfig[$sidebarId] = $remaining;
-            $saveWidgetsConfig($widgetsConfig);
-            $kernel->widgets->setWidgets($sidebarId, $remaining);
-        }
-
-        header('Location: ' . admin_url('appearance/widgets') . '?saved=1');
-        exit;
+        $error = $result->errorMessage;
     }
 }
 ?>

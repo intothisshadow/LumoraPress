@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\MenusController;
 use LumoraPress\Core\Security\Csrf;
 
 if (!isset($kernel)) {
@@ -22,31 +23,13 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// Menus + per-location assignment persist as two JSON options
-// ("nav_menus", "nav_menu_locations"). Each form mutates the in-memory
-// MenuManager, then re-saves the relevant option.
-$persistMenus = static function () use ($kernel): void {
-    $kernel->config->setOption('nav_menus', json_encode($kernel->menus->menus()));
-};
-
-$persistLocations = static function () use ($kernel): void {
-    $assignments = [];
-
-    foreach (array_keys($kernel->menus->locations()) as $slug) {
-        $menuId = $kernel->menus->menuIdForLocation($slug);
-
-        if ($menuId !== null) {
-            $assignments[$slug] = $menuId;
-        }
-    }
-
-    $kernel->config->setOption('nav_menu_locations', json_encode($assignments));
-};
-
 /**
  * Every id in $items that is $itemId or a descendant of it — excluded
  * from that item's own "Parent" <select> so an item can never become its
- * own ancestor.
+ * own ancestor. Duplicated from MenusController::descendantIds() (private
+ * there) since this view needs it purely for rendering each item's own
+ * "Parent" option list, not for the save-time cycle guard the controller
+ * already applies.
  *
  * @param array<int, array<string, mixed>> $items
  * @return array<int, string>
@@ -86,276 +69,47 @@ $flattenForDisplay = static function (array $items, ?string $parentId = null, in
     return $result;
 };
 
-$error = null;
+// Many forms render on this same page load. POST handling lives in
+// MenusController, including the per-menu/item/direction CSRF action
+// scoping (see its own docblock) — this view just dispatches to it and turns
+// the result into a redirect or an $error string.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+$error = null;
 $postedMenuId = trim((string) ($_POST['menu_id'] ?? ''));
-$postedItemId = trim((string) ($_POST['item_id'] ?? ''));
-$postedDirection = (string) ($_POST['direction'] ?? '');
-$postedTargetId = trim((string) ($_POST['target_id'] ?? ''));
-$postedPosition = (string) ($_POST['position'] ?? 'before');
-$postedToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+$csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
-// Many forms render on this same page load, so each CSRF action name is
-// scoped to the specific menu/item/direction id it acts on.
-$csrfAction = match ($form) {
-    'create_menu' => 'menu_create',
-    'rename_menu' => 'menu_rename_' . $postedMenuId,
-    'duplicate_menu' => 'menu_duplicate_' . $postedMenuId,
-    'delete_menu' => 'menu_delete_' . $postedMenuId,
-    'add_custom_link' => 'menu_add_custom_link_' . $postedMenuId,
-    'add_pages' => 'menu_add_pages_' . $postedMenuId,
-    'add_posts' => 'menu_add_posts_' . $postedMenuId,
-    'add_categories' => 'menu_add_categories_' . $postedMenuId,
-    'add_tags' => 'menu_add_tags_' . $postedMenuId,
-    'update_item' => 'menu_update_item_' . $postedItemId,
-    'remove_item' => 'menu_remove_item_' . $postedItemId,
-    'move_item' => 'menu_move_' . $postedDirection . '_' . $postedItemId,
-    // One reposition form per menu — sortable.js fills its
-    // dragged/target/position fields and submits on drop.
-    'reposition_item' => 'menu_reposition_' . $postedMenuId,
-    'save_locations' => 'menu_save_locations',
-    default => 'menu_unknown_form',
-};
+if ($form !== '') {
+    $controller = new MenusController($kernel->menus, $kernel->config, $kernel->pages, $kernel->posts, $kernel->categories, $kernel->tags);
 
-$redirectMenuId = $postedMenuId;
+    $result = match ($form) {
+        'create_menu' => $controller->createMenu($_POST, $csrfToken),
+        'rename_menu' => $controller->renameMenu($_POST, $csrfToken),
+        'duplicate_menu' => $controller->duplicateMenu($_POST, $csrfToken),
+        'delete_menu' => $controller->deleteMenu($_POST, $csrfToken),
+        'add_custom_link' => $controller->addCustomLink($_POST, $csrfToken),
+        'add_pages' => $controller->addPages($_POST, $csrfToken),
+        'add_posts' => $controller->addPosts($_POST, $csrfToken),
+        'add_categories' => $controller->addCategories($_POST, $csrfToken),
+        'add_tags' => $controller->addTags($_POST, $csrfToken),
+        'update_item' => $controller->updateItem($_POST, $csrfToken),
+        'remove_item' => $controller->removeItem($_POST, $csrfToken),
+        'move_item' => $controller->moveItem($_POST, $csrfToken),
+        'reposition_item' => $controller->repositionItem($_POST, $csrfToken),
+        'save_locations' => $controller->saveLocations($_POST, $csrfToken),
+        default => null,
+    };
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && Csrf::verify($csrfAction, $postedToken)) {
-    if ($form === 'create_menu') {
-        $name = trim((string) ($_POST['name'] ?? ''));
-
-        if ($name === '') {
-            $error = 'Please enter a menu name.';
-        } else {
-            $newId = $kernel->menus->createMenu($name);
-            $persistMenus();
-
-            header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($newId) . '&saved=1');
-            exit;
-        }
-    } elseif ($form === 'save_locations') {
-        foreach (array_keys($kernel->menus->locations()) as $slug) {
-            $selectedMenuId = trim((string) ($_POST['location'][$slug] ?? ''));
-            $kernel->menus->assignMenuToLocation($slug, $selectedMenuId !== '' ? $selectedMenuId : null);
+    if ($result !== null) {
+        if ($result->redirectUrl !== null) {
+            redirect($result->redirectUrl);
         }
 
-        $persistLocations();
-
-        header('Location: ' . admin_url('appearance/menus') . '?saved=1');
-        exit;
-    } elseif ($kernel->menus->menu($postedMenuId) === null) {
-        $error = 'That menu no longer exists.';
-    } elseif ($form === 'rename_menu') {
-        $name = trim((string) ($_POST['name'] ?? ''));
-
-        if ($name === '') {
-            $error = 'Please enter a menu name.';
-        } else {
-            $kernel->menus->renameMenu($postedMenuId, $name);
-            $persistMenus();
-
-            header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-            exit;
-        }
-    } elseif ($form === 'duplicate_menu') {
-        $name = trim((string) ($_POST['name'] ?? '')) ?: ($kernel->menus->menu($postedMenuId)['name'] . ' Copy');
-        $newId = $kernel->menus->duplicateMenu($postedMenuId, $name);
-        $persistMenus();
-
-        header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode((string) $newId) . '&saved=1');
-        exit;
-    } elseif ($form === 'delete_menu') {
-        $kernel->menus->deleteMenu($postedMenuId);
-        $persistMenus();
-        $persistLocations();
-
-        header('Location: ' . admin_url('appearance/menus') . '?deleted=1');
-        exit;
-    } elseif ($form === 'add_custom_link') {
-        $label = trim((string) ($_POST['label'] ?? ''));
-        $url = trim((string) ($_POST['url'] ?? ''));
-
-        if ($label === '' || $url === '') {
-            $error = 'Please enter both a label and a URL.';
-        } else {
-            $kernel->menus->addMenuItem($postedMenuId, ['label' => $label, 'url' => $url]);
-            $persistMenus();
-
-            header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-            exit;
-        }
-    } elseif (in_array($form, ['add_pages', 'add_posts', 'add_categories', 'add_tags'], true)) {
-        $selectedIds = is_array($_POST['selected_ids'] ?? null) ? array_map('intval', $_POST['selected_ids']) : [];
-
-        if ($selectedIds === []) {
-            $error = 'Please select at least one item to add.';
-        } else {
-            match ($form) {
-                'add_pages' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
-                    foreach ($kernel->pages->listAllForMenuSelect() as $page) {
-                        if (in_array($page['id'], $selectedIds, true)) {
-                            $pageForLink = $kernel->pages->findById((int) $page['id']);
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $page['title'], 'url' => $pageForLink !== null ? page_permalink($pageForLink) : site_url($page['slug'])]);
-                        }
-                    }
-                })(),
-                'add_posts' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
-                    foreach ($kernel->posts->listAllForMenuSelect() as $post) {
-                        if (in_array($post['id'], $selectedIds, true)) {
-                            $postForLink = $kernel->posts->findById((int) $post['id']);
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $post['title'], 'url' => $postForLink !== null ? post_permalink($postForLink) : site_url('post/' . $post['slug'])]);
-                        }
-                    }
-                })(),
-                'add_categories' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
-                    foreach ($kernel->categories->listAll() as $category) {
-                        if (in_array($category->id, $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $category->name, 'url' => category_permalink($category)]);
-                        }
-                    }
-                })(),
-                'add_tags' => (static function () use ($kernel, $postedMenuId, $selectedIds): void {
-                    foreach ($kernel->tags->listAll() as $tag) {
-                        if (in_array($tag->id, $selectedIds, true)) {
-                            $kernel->menus->addMenuItem($postedMenuId, ['label' => $tag->name, 'url' => tag_permalink($tag)]);
-                        }
-                    }
-                })(),
-            };
-
-            $persistMenus();
-
-            header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-            exit;
-        }
-    } elseif ($form === 'update_item') {
-        $menu = $kernel->menus->menu($postedMenuId);
-        $items = $menu['items'];
-        $matched = false;
-
-        foreach ($items as $index => $item) {
-            if ($item['id'] === $postedItemId) {
-                $parentId = trim((string) ($_POST['parentId'] ?? ''));
-                $descendants = $descendantIds($items, $postedItemId);
-
-                // Reject a parent that is this item or one of its own
-                // descendants — the only cycle guard needed.
-                if ($parentId === $postedItemId || in_array($parentId, $descendants, true)) {
-                    $parentId = '';
-                }
-
-                $items[$index] = [
-                    'id' => $item['id'],
-                    'label' => trim((string) ($_POST['label'] ?? $item['label'])),
-                    'url' => trim((string) ($_POST['url'] ?? $item['url'])),
-                    'target' => ($_POST['target'] ?? '') === '1' ? '_blank' : '_self',
-                    'cssClass' => trim((string) ($_POST['cssClass'] ?? '')),
-                    'rel' => trim((string) ($_POST['rel'] ?? '')),
-                    'titleAttribute' => trim((string) ($_POST['titleAttribute'] ?? '')),
-                    'parentId' => $parentId,
-                ];
-                $matched = true;
-
-                break;
-            }
-        }
-
-        if ($matched) {
-            $kernel->menus->setMenuItems($postedMenuId, $items);
-            $persistMenus();
-
-            header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-            exit;
-        }
-
-        $error = 'That menu item no longer exists.';
-    } elseif ($form === 'remove_item') {
-        $kernel->menus->removeMenuItem($postedMenuId, $postedItemId);
-        $persistMenus();
-
-        header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&removed=1');
-        exit;
-    } elseif ($form === 'move_item') {
-        $menu = $kernel->menus->menu($postedMenuId);
-        $items = $menu['items'];
-        $targetIndex = null;
-
-        foreach ($items as $index => $item) {
-            if ($item['id'] === $postedItemId) {
-                $targetIndex = $index;
-
-                break;
-            }
-        }
-
-        if ($targetIndex !== null) {
-            // Reorders among true siblings (same parentId), not raw array
-            // position, since items with a different parent can sit between.
-            $parentId = $items[$targetIndex]['parentId'];
-            $siblingIndices = array_keys(array_filter(
-                $items,
-                static fn (array $item): bool => $item['parentId'] === $parentId,
-            ));
-            $positionAmongSiblings = array_search($targetIndex, $siblingIndices, true);
-            $swapPosition = $postedDirection === 'up' ? $positionAmongSiblings - 1 : $positionAmongSiblings + 1;
-
-            if ($positionAmongSiblings !== false && $swapPosition >= 0 && $swapPosition < count($siblingIndices)) {
-                $swapIndex = $siblingIndices[$swapPosition];
-                [$items[$targetIndex], $items[$swapIndex]] = [$items[$swapIndex], $items[$targetIndex]];
-                $kernel->menus->setMenuItems($postedMenuId, $items);
-                $persistMenus();
-            }
-        }
-
-        header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-        exit;
-    } elseif ($form === 'reposition_item') {
-        // Splices the dragged item out and back in at the target position;
-        // target must share its parentId (server-side backstop for
-        // sortable.js's own guard). Re-parenting stays the dropdown's job.
-        $menu = $kernel->menus->menu($postedMenuId);
-        $items = $menu['items'];
-        $draggedIndex = null;
-
-        foreach ($items as $index => $item) {
-            if ($item['id'] === $postedItemId) {
-                $draggedIndex = $index;
-
-                break;
-            }
-        }
-
-        if ($draggedIndex !== null) {
-            $dragged = $items[$draggedIndex];
-            $remaining = array_values(array_filter(
-                $items,
-                static fn (array $item): bool => $item['id'] !== $postedItemId,
-            ));
-
-            $targetIndex = null;
-
-            foreach ($remaining as $index => $item) {
-                if ($item['id'] === $postedTargetId && $item['parentId'] === $dragged['parentId']) {
-                    $targetIndex = $index;
-
-                    break;
-                }
-            }
-
-            if ($targetIndex !== null) {
-                $insertAt = $postedPosition === 'after' ? $targetIndex + 1 : $targetIndex;
-                array_splice($remaining, $insertAt, 0, [$dragged]);
-                $kernel->menus->setMenuItems($postedMenuId, $remaining);
-                $persistMenus();
-            }
-        }
-
-        header('Location: ' . admin_url('appearance/menus') . '?menu_id=' . urlencode($postedMenuId) . '&saved=1');
-        exit;
+        $error = $result->errorMessage;
     }
 }
 
 $allMenus = $kernel->menus->menus();
-$currentMenuId = is_string($_GET['menu_id'] ?? null) ? $_GET['menu_id'] : ($redirectMenuId !== '' ? $redirectMenuId : null);
+$currentMenuId = is_string($_GET['menu_id'] ?? null) ? $_GET['menu_id'] : ($postedMenuId !== '' ? $postedMenuId : null);
 
 if ($currentMenuId === null || !array_key_exists($currentMenuId, $allMenus)) {
     $currentMenuId = array_key_first($allMenus);

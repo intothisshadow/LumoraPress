@@ -29,6 +29,7 @@ All notable changes to Lumora Press are documented in this file.
 - The Plugins screen's Grid/List view toggle now defaults to List for an administrator who hasn't chosen either yet, instead of Grid. An already-saved choice (Grid or List) is unaffected — this only changes the very first view a new administrator sees.
 - The Plugins screen's "Install a Plugin" upload form moved to the top of the page (LP-171), above the Installed Plugins list, instead of below it — no more scrolling past every installed plugin to upload a new one.
 - Plugins' form-handling logic (activate, deactivate, delete, bulk activate/deactivate/delete, and install/confirm/cancel from ZIP) now lives in a dedicated `PluginsController` class the same way Themes/Posts/Pages/Categories already do (LP-082/LP-163) — an internal refactor with no user-facing behavior change, except that a form whose session token has expired now shows an error message instead of silently reloading the page with no feedback.
+- Widgets' and Menus' form-handling logic (add/update/deactivate/activate/delete/move/reposition a widget; create/rename/duplicate/delete a menu, add items from Pages/Posts/Categories/Tags, update/remove/move/reposition an item, assign menu locations) now lives in dedicated `WidgetsController`/`MenusController` classes the same way every other admin screen already does (LP-082) — an internal refactor with no user-facing behavior change, except that a form whose session token has expired now shows an error message instead of silently reloading the page with no feedback.
 
 ### Fixed
 
