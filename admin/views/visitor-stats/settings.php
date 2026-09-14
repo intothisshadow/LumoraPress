@@ -308,13 +308,47 @@ $geoipRangeCount = $viewStats->geoipRangeCount();
             <code>.zip</code> file itself, or a directory containing the two
             already-extracted CSVs (using their exact original filenames).
         </p>
+        <?php
+        // Best-effort, not a guarantee: a downloaded MaxMind archive has
+        // no fixed sibling-install layout to key off (unlike the other
+        // "Discover" controls in this app, which look for a specific
+        // config file), only a recognizable filename — so this only
+        // checks dirname(LUMORA_ROOT) (the same directory Maintenance >
+        // Updates shows as "Installed At") and its immediate sibling
+        // directories, one level deep, for a `GeoLite2*.zip`. Pre-fills
+        // the field below rather than importing outright — unlike the
+        // "Detect from config.php"-style controls elsewhere, this one
+        // triggers a real import, so a candidate is offered for review,
+        // not run automatically.
+        $geoipParent = dirname(LUMORA_ROOT);
+        $geoipDiscovered = isset($_GET['discover_geoip'])
+            ? array_slice(array_merge(glob($geoipParent . '/GeoLite2*.zip') ?: [], glob($geoipParent . '/*/GeoLite2*.zip') ?: []), 0, 50)
+            : null;
+        $geoipDirectoryValue = is_string($_GET['geoip_directory'] ?? null) ? $_GET['geoip_directory'] : '';
+        ?>
+        <?php if ($geoipDiscovered === null): ?>
+            <p><a class="lp-button" href="<?= esc_url(admin_url('visitor-stats/settings')) ?>?discover_geoip=1#geoip-directory">Discover GeoLite2 Download</a></p>
+        <?php elseif ($geoipDiscovered === []): ?>
+            <p class="lp-admin__widget-placeholder">
+                No <code>GeoLite2*.zip</code> found next to this install (<code><?= esc_html($geoipParent) ?></code>)
+                or one level into its sibling directories — either it's elsewhere, or this host's
+                permissions don't allow reading that location.
+            </p>
+        <?php else: ?>
+            <ul class="lp-import-scan__list">
+                <?php foreach ($geoipDiscovered as $candidate): ?>
+                    <li><a class="lp-button lp-button--link" href="<?= esc_url(admin_url('visitor-stats/settings') . '?geoip_directory=' . rawurlencode($candidate) . '#geoip-directory') ?>"><?= esc_html($candidate) ?></a></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+
         <form method="post" action="<?= esc_url(admin_url('visitor-stats/settings')) ?>">
             <?= Csrf::field('visitor_stats_geoip_import_from_path') ?>
             <input type="hidden" name="form" value="visitor_stats_geoip_import_from_path">
 
             <p class="lp-field">
                 <label for="geoip-directory">ZIP file or directory path</label>
-                <input type="text" id="geoip-directory" name="geoip_directory" placeholder="/home/username/GeoLite2-Country-CSV_20260101.zip">
+                <input type="text" id="geoip-directory" name="geoip_directory" value="<?= esc_attr($geoipDirectoryValue) ?>" placeholder="/home/username/GeoLite2-Country-CSV_20260101.zip">
                 <span class="lp-field__hint">A path to the GeoLite2 <code>.zip</code> file, or a directory containing both <code>GeoLite2-Country-Blocks-IPv4.csv</code> and <code>GeoLite2-Country-Locations-en.csv</code>.</span>
             </p>
 

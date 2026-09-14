@@ -32,7 +32,7 @@ Lumora Gallery &rsaquo; Settings lists every configured Gallery connection, with
 
 One connection is always marked Default — whichever a shortcode resolves to when it omits `gallery` entirely. With only one connection configured, `gallery` never needs to be written at all.
 
-If a Gallery install's own `config.php` is readable on this server's local filesystem, "Auto-detect from config.php" (on that connection's Add/Edit screen) pre-fills the database fields above straight from it (the same convenience the WordPress Importer plugin offers for a source site's `wp-config.php`) — and, once that connection actually works, the base URL too, read from the Gallery's own database. Every pre-filled field stays fully editable; this is a shortcut, not a requirement.
+If a Gallery install's own `config.php` is readable on this server's local filesystem, "Auto-detect from config.php" (on that connection's Add/Edit screen) pre-fills the database fields above straight from it (the same convenience the WordPress Importer plugin offers for a source site's `wp-config.php`) — and, once that connection actually works, the base URL too, read from the Gallery's own database. Every pre-filled field stays fully editable; this is a shortcut, not a requirement. If the Gallery site lives in a directory next to this Lumora Press install on the same server, "Discover config.php" finds it for you — clicking a discovered candidate runs Auto-detect on it in one click, no path to type at all.
 
 "Save &amp; Test Connection" confirms the credentials can open a connection and see the Gallery's own tables, without exposing raw connection errors on the settings screen.
 

@@ -17,6 +17,7 @@ All notable changes to Lumora Press are documented in this file.
 - Collapsible long comment threads (LP-012): a sub-thread with more than 10 total replies now renders collapsed by default with a "N replies" toggle, keeping long-running discussions on an old post readable.
 - Search and filter by user/IP/date on the admin Comments screen (LP-012), alongside the existing status filter.
 - A "Statistics" tab on the admin Comments screen (LP-012): status-count cards, a Comments Over Time chart, Top Commenters, and Most Commented posts/pages.
+- "Discover" buttons for server filepath fields (LP-169): the WordPress Importer's wp-config.php/uploads-folder/gallery-folder fields, Lumora Gallery Shortcodes' config.php field, and Visitor Stats' GeoIP-file field can now find a candidate path next to this install instead of requiring it to be typed by hand.
 
 ### Changed
 

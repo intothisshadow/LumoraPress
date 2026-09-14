@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Filesystem\SiblingDirectoryScanner;
 use RuntimeException;
 
 /**
@@ -92,44 +93,12 @@ final class MediaImportService
         array $exclude = [],
         int $limit = 200,
     ): array {
-        $resolvedParent = realpath($scanParent);
+        $resolvedAllowed = array_filter(array_map('realpath', $allowedDirectories), static fn (string|false $path): bool => $path !== false);
 
-        if ($resolvedParent === false || !is_dir($resolvedParent)) {
-            return [];
-        }
-
-        $entries = scandir($resolvedParent);
-
-        if ($entries === false) {
-            return [];
-        }
-
-        $resolvedExclude = array_filter(array_map('realpath', $exclude), static fn ($path): bool => $path !== false);
-        $resolvedAllowed = array_filter(array_map('realpath', $allowedDirectories), static fn ($path): bool => $path !== false);
-
-        $candidates = [];
-
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
-                continue;
-            }
-
-            $path = $resolvedParent . '/' . $entry;
-            $resolvedPath = realpath($path);
-
-            if ($resolvedPath === false || !is_dir($resolvedPath) || in_array($resolvedPath, $resolvedExclude, true)) {
-                continue;
-            }
-
-            $candidates[] = [
-                'path' => $resolvedPath,
-                'alreadyAllowed' => in_array($resolvedPath, $resolvedAllowed, true),
-            ];
-        }
-
-        usort($candidates, static fn (array $a, array $b): int => strcmp($a['path'], $b['path']));
-
-        return array_slice($candidates, 0, $limit);
+        return array_map(
+            static fn (string $path): array => ['path' => $path, 'alreadyAllowed' => in_array($path, $resolvedAllowed, true)],
+            SiblingDirectoryScanner::scan($scanParent, null, $exclude, $limit),
+        );
     }
 
     /**

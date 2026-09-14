@@ -36,6 +36,8 @@ This plugin parses both files once and loads a compact network-range-to-country 
 
 The Blocks CSV can be a few hundred thousand rows, so the actual database import runs in batches across several requests rather than one long request — after you upload or point at the files, the page shows a running "N ranges loaded so far…" status and advances itself automatically (JavaScript) until it finishes; with JavaScript disabled, click "Continue Import" to advance one batch at a time instead. Leave the page open until it redirects to the finished state.
 
+If you already uploaded the ZIP to this server via FTP/SFTP, "Discover GeoLite2 Download" checks next to this install and one level into its sibling directories for a `GeoLite2*.zip` and fills the path field for you — a convenience only, since (unlike this app's other "Discover" controls) there's no fixed install layout to key off, only the filename MaxMind's own download uses.
+
 v1 only resolves IPv4 addresses; an IPv6 visitor's view doesn't get a country.
 
 GeoLite2 data is © MaxMind, used under MaxMind's own GeoLite2 End User License Agreement — see MaxMind's site for current terms. This plugin only reads whatever file you provide from your own MaxMind account; it does not distribute MaxMind's data itself.

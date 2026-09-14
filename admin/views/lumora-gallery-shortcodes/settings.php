@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Core\Filesystem\SiblingDirectoryScanner;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\LumoraGalleryShortcodes\GalleryConfigParser;
 use LumoraPress\Plugins\LumoraGalleryShortcodes\GallerySettingsService;
@@ -40,7 +41,7 @@ $error = null;
 // stay on that same connection's form rather than bouncing back to the list.
 $contextSlug = is_string($_POST['context_slug'] ?? null) ? $_POST['context_slug'] : (is_string($_GET['edit'] ?? null) ? $_GET['edit'] : '');
 $isEditingExisting = $contextSlug !== '' && $service->connection($contextSlug) !== null;
-$showForm = $isEditingExisting || isset($_GET['add']) || in_array($form, ['lumora_gallery_shortcodes_connection', 'detect_gallery_config'], true);
+$showForm = $isEditingExisting || isset($_GET['add']) || in_array($form, ['lumora_gallery_shortcodes_connection', 'detect_gallery_config', 'detect_gallery_config_discovered'], true);
 
 $existingConnection = $isEditingExisting ? $service->connection($contextSlug) : null;
 
@@ -97,7 +98,15 @@ if ($form === 'lumora_gallery_shortcodes_connection' && Csrf::verify('lumora_gal
             exit;
         }
     }
-} elseif ($form === 'detect_gallery_config' && Csrf::verify('detect_gallery_config', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+} elseif (
+    in_array($form, ['detect_gallery_config', 'detect_gallery_config_discovered'], true)
+    && Csrf::verify($form, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)
+) {
+    // 'detect_gallery_config_discovered' is the identical handler,
+    // reached by clicking a "Discover" candidate instead of typing a
+    // path by hand — same logic, its own CSRF action name so its token
+    // (rendered once, reused across every candidate form) doesn't
+    // collide with the manual form's.
     try {
         $detected = (new GalleryConfigParser())->parse($formValues['gallery_config_path']);
 
@@ -296,6 +305,48 @@ $defaultSlug = $service->defaultConnection();
 
         <button type="submit" class="lp-button lp-button--secondary">Detect from config.php</button>
     </form>
+
+    <?php
+    // Finds a *candidate path* to type above — distinct from "Detect from
+    // config.php" above, which parses a path already known to be
+    // correct. Rooted at dirname(LUMORA_ROOT), the same directory
+    // Maintenance > Updates shows as "Installed At".
+    $galleryConfigDiscovered = isset($_GET['discover_gallery_config'])
+        ? SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'config.php', [LUMORA_ROOT])
+        : null;
+    ?>
+    <?php if ($galleryConfigDiscovered === null): ?>
+        <p><a class="lp-button" href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>?<?= $contextSlug !== '' ? 'edit=' . esc_attr($contextSlug) : 'add=1' ?>&amp;discover_gallery_config=1#gallery-config-path">Discover config.php</a></p>
+    <?php elseif ($galleryConfigDiscovered === []): ?>
+        <p class="lp-admin__widget-placeholder">
+            No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
+            contains a <code>config.php</code> — either the Gallery site isn't on this same server, or
+            this host's permissions don't allow reading that location.
+        </p>
+    <?php else: ?>
+        <?php $discoveredGalleryConfigToken = Csrf::token('detect_gallery_config_discovered'); ?>
+        <ul class="lp-import-scan__list">
+            <?php foreach ($galleryConfigDiscovered as $candidate): ?>
+                <li>
+                    <form method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>" class="lp-admin__inline-form">
+                        <input type="hidden" name="csrf_token" value="<?= esc_attr($discoveredGalleryConfigToken) ?>">
+                        <input type="hidden" name="form" value="detect_gallery_config_discovered">
+                        <input type="hidden" name="context_slug" value="<?= esc_attr($contextSlug) ?>">
+                        <input type="hidden" name="gallery_config_path" value="<?= esc_attr($candidate . '/config.php') ?>">
+                        <input type="hidden" name="label" value="<?= esc_attr($formValues['label']) ?>">
+                        <input type="hidden" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
+                        <input type="hidden" name="db_port" value="<?= esc_attr((string) $formValues['db_port']) ?>">
+                        <input type="hidden" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>">
+                        <input type="hidden" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>">
+                        <input type="hidden" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
+                        <input type="hidden" name="table_prefix" value="<?= esc_attr($formValues['table_prefix']) ?>">
+                        <input type="hidden" name="base_url" value="<?= esc_attr($formValues['base_url']) ?>">
+                        <button type="submit" class="lp-button lp-button--link"><?= esc_html($candidate . '/config.php') ?></button>
+                    </form>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
 
     <h3>Connection</h3>
 

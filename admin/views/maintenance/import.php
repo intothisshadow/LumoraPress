@@ -17,6 +17,7 @@
 /** @var bool $wordPressImporterActive */
 /** @var bool $downloadsActive */
 
+use LumoraPress\Core\Filesystem\SiblingDirectoryScanner;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
@@ -70,8 +71,12 @@ $formValues = [
     'db_password' => is_string($_POST['db_password'] ?? null) ? $_POST['db_password'] : '',
     'db_prefix' => is_string($_POST['db_prefix'] ?? null) ? $_POST['db_prefix'] : 'wp_',
     'wxr_path' => is_string($_POST['wxr_path'] ?? null) ? $_POST['wxr_path'] : '',
-    'uploads_path' => is_string($_POST['uploads_path'] ?? null) ? $_POST['uploads_path'] : '',
-    'gallery_path' => is_string($_POST['gallery_path'] ?? null) ? $_POST['gallery_path'] : '',
+    // Falls back to $_GET (not just $_POST, unlike every other field
+    // here) so a plain "Discover" link can pre-fill these two without a
+    // form submission of its own — nothing to detect/parse, just a path
+    // to suggest, so no state-changing POST/CSRF is warranted.
+    'uploads_path' => is_string($_POST['uploads_path'] ?? null) ? $_POST['uploads_path'] : (is_string($_GET['uploads_path'] ?? null) ? $_GET['uploads_path'] : ''),
+    'gallery_path' => is_string($_POST['gallery_path'] ?? null) ? $_POST['gallery_path'] : (is_string($_GET['gallery_path'] ?? null) ? $_GET['gallery_path'] : ''),
     'wp_config_path' => is_string($_POST['wp_config_path'] ?? null) ? $_POST['wp_config_path'] : '',
 ];
 
@@ -202,7 +207,12 @@ if ($wordPressImporterActive) {
 
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
-    if ($form === 'detect_wp_config' && Csrf::verify('detect_wp_config', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    // 'detect_wp_config_discovered' is the identical handler, reached by
+    // clicking a "Discover" candidate below instead of typing a path by
+    // hand — same logic, distinct CSRF action name so its own token
+    // (rendered once, reused across every candidate form) doesn't
+    // collide with the manual form's.
+    if (in_array($form, ['detect_wp_config', 'detect_wp_config_discovered'], true) && Csrf::verify($form, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         try {
             $detected = (new WordPressConfigParser())->parse($formValues['wp_config_path']);
 
@@ -843,6 +853,49 @@ endif;
                 <button type="submit" class="lp-button lp-button--secondary">Detect from wp-config.php</button>
             </form>
 
+            <?php
+            // Finds a *candidate path* to type above — distinct from the
+            // "Detect from wp-config.php" button above, which parses a
+            // path already known to be correct. Rooted at dirname(LUMORA_ROOT),
+            // the same directory Maintenance > Updates shows as "Installed At".
+            $wpConfigDiscovered = isset($_GET['discover_wp_config'])
+                ? SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'wp-config.php', [LUMORA_ROOT])
+                : null;
+            ?>
+            <?php if ($wpConfigDiscovered === null): ?>
+                <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?discover_wp_config=1#wp-import-wp-config-path">Discover wp-config.php</a></p>
+            <?php elseif ($wpConfigDiscovered === []): ?>
+                <p class="lp-admin__widget-placeholder">
+                    No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
+                    contains a <code>wp-config.php</code> — either the WordPress site isn't on this same
+                    server, or this host's permissions don't allow reading that location.
+                </p>
+            <?php else: ?>
+                <?php $discoveredWpConfigToken = Csrf::token('detect_wp_config_discovered'); ?>
+                <ul class="lp-import-scan__list">
+                    <?php foreach ($wpConfigDiscovered as $candidate): ?>
+                        <li>
+                            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" class="lp-admin__inline-form">
+                                <input type="hidden" name="csrf_token" value="<?= esc_attr($discoveredWpConfigToken) ?>">
+                                <input type="hidden" name="form" value="detect_wp_config_discovered">
+                                <input type="hidden" name="wp_config_path" value="<?= esc_attr($candidate . '/wp-config.php') ?>">
+                                <input type="hidden" name="source_type" value="<?= esc_attr($formValues['source_type']) ?>">
+                                <input type="hidden" name="db_host" value="<?= esc_attr($formValues['db_host']) ?>">
+                                <input type="hidden" name="db_port" value="<?= esc_attr($formValues['db_port']) ?>">
+                                <input type="hidden" name="db_name" value="<?= esc_attr($formValues['db_name']) ?>">
+                                <input type="hidden" name="db_user" value="<?= esc_attr($formValues['db_user']) ?>">
+                                <input type="hidden" name="db_password" value="<?= esc_attr($formValues['db_password']) ?>">
+                                <input type="hidden" name="db_prefix" value="<?= esc_attr($formValues['db_prefix']) ?>">
+                                <input type="hidden" name="wxr_path" value="<?= esc_attr($formValues['wxr_path']) ?>">
+                                <input type="hidden" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>">
+                                <input type="hidden" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>">
+                                <button type="submit" class="lp-button lp-button--link"><?= esc_html($candidate . '/wp-config.php') ?></button>
+                            </form>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
             <h3>Source</h3>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-test-form">
@@ -852,6 +905,41 @@ endif;
                 <?php $renderConnectionFields('wp-import'); ?>
 
                 <h3>Source files</h3>
+
+                <?php
+                // Same "find a candidate, don't parse anything" shape as
+                // the wp-config.php discovery above, but simpler: uploads_
+                // path/gallery_path are plain values, not something to
+                // detect from file content, so a bookmarkable GET link is
+                // enough — no form/CSRF needed. Filling both together in
+                // one click, since a discovered WordPress root is the
+                // natural anchor for both wp-content/uploads and its
+                // sibling wp-content/gallery.
+                $uploadsDiscovered = isset($_GET['discover_uploads'])
+                    ? SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'wp-content/uploads', [LUMORA_ROOT])
+                    : null;
+                ?>
+                <?php if ($uploadsDiscovered === null): ?>
+                    <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?discover_uploads=1#wp-import-uploads-path">Discover Source Files</a></p>
+                <?php elseif ($uploadsDiscovered === []): ?>
+                    <p class="lp-admin__widget-placeholder">
+                        No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
+                        contains a <code>wp-content/uploads</code> folder.
+                    </p>
+                <?php else: ?>
+                    <ul class="lp-import-scan__list">
+                        <?php foreach ($uploadsDiscovered as $candidate): ?>
+                            <?php
+                            $candidateUploads = $candidate . '/wp-content/uploads';
+                            $candidateGallery = $candidate . '/wp-content/gallery';
+                            $discoverUrl = admin_url('maintenance/import') . '?uploads_path=' . rawurlencode($candidateUploads)
+                                . (is_dir($candidateGallery) ? '&gallery_path=' . rawurlencode($candidateGallery) : '')
+                                . '#wp-import-uploads-path';
+                            ?>
+                            <li><a class="lp-button lp-button--link" href="<?= esc_url($discoverUrl) ?>"><?= esc_html($candidateUploads) ?></a></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
 
                 <p class="lp-field">
                     <label for="wp-import-uploads-path">Uploads folder path (server filesystem)</label>
