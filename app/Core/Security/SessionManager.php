@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Security;
 
+use SessionHandlerInterface;
+
 /**
  * Configures and manages PHP sessions with secure defaults: HttpOnly,
  * SameSite=Lax, and Secure when served over HTTPS.
@@ -27,6 +29,7 @@ final class SessionManager
         private readonly string $sessionPath,
         private readonly bool $secureCookies,
         private readonly string $sessionName = 'lumora_press_session',
+        private readonly ?SessionHandlerInterface $handler = null,
     ) {
     }
 
@@ -36,8 +39,22 @@ final class SessionManager
             return;
         }
 
-        if (is_dir($this->sessionPath) && is_writable($this->sessionPath)) {
+        // Debian/Ubuntu-family hosts ship PHP with session.gc_probability=0 and rely on a
+        // distro cron job that only sweeps the default session.save_path — since we've just
+        // taken session storage over ourselves (a custom handler, or a redirected file path),
+        // nothing would ever clean it up otherwise. Force PHP's own probabilistic GC back on
+        // so it isn't silently disabled by a host default that no longer applies here; PHP
+        // calls a custom handler's gc() under these same settings, not just the file handler's.
+        if ($this->handler !== null) {
+            session_set_save_handler($this->handler, true);
+
+            ini_set('session.gc_probability', '1');
+            ini_set('session.gc_divisor', '100');
+        } elseif (is_dir($this->sessionPath) && is_writable($this->sessionPath)) {
             session_save_path($this->sessionPath);
+
+            ini_set('session.gc_probability', '1');
+            ini_set('session.gc_divisor', '100');
         }
 
         session_name($this->sessionName);

@@ -788,6 +788,41 @@ final class UpdateService
     private function migrateStage(): void
     {
         (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->migrate();
+
+        $this->cleanupObsoleteSessionFiles();
+    }
+
+    /**
+     * Sessions moved from files to the database by default (LP-173) — once that's active
+     * (session_path unset, the default), storage/sessions/ should never hold anything, so
+     * any file already there is permanently orphaned: nothing will ever read it again. Runs
+     * every update, not just the one that introduced this, since it's a no-op once the
+     * directory is already empty and self-heals it if an admin ever switches back to the
+     * database after a period on the file-path override. Leaves the current request's own
+     * session file alone — this request is still running the pre-update code until it ends,
+     * so that file is still genuinely in use for the rest of it.
+     */
+    private function cleanupObsoleteSessionFiles(): void
+    {
+        if ($this->config === null || trim((string) $this->config->get('session_path', '')) !== '') {
+            return;
+        }
+
+        $sessionsPath = rtrim($this->installRoot, '/') . '/storage/sessions';
+
+        if (!is_dir($sessionsPath)) {
+            return;
+        }
+
+        $currentSessionFile = session_status() === PHP_SESSION_ACTIVE
+            ? $sessionsPath . '/sess_' . session_id()
+            : null;
+
+        foreach (glob($sessionsPath . '/sess_*') ?: [] as $sessionFile) {
+            if ($sessionFile !== $currentSessionFile) {
+                @unlink($sessionFile);
+            }
+        }
     }
 
     private function clearCacheAndVerifyStage(string $toVersion): void

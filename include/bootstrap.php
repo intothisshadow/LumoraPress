@@ -46,6 +46,7 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
 use LumoraPress\Core\Security\CspNonce;
+use LumoraPress\Core\Security\DatabaseSessionHandler;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
@@ -169,14 +170,20 @@ SiteUrl::set((string) $config->option('site_url', $detectedSiteUrl));
 
 $secureCookies = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 
-// Empty (the default) means storage/sessions inside this install — see
-// config.example.php's own comment. An install can point this elsewhere
-// (outside this directory, a tmpfs, etc.) by setting an absolute path.
+// Read early (normally resolved further down, alongside the other services
+// that need it) since DatabaseSessionHandler needs it before session_start().
+$tablePrefix = (string) $config->get('table_prefix', 'lp_');
+
+// Empty (the default) means sessions are stored in the database — see
+// config.example.php's own comment. An install can request plain session
+// files at a given absolute path instead (outside this directory, a
+// tmpfs, etc.), the same as before this option meant "the database."
 $configuredSessionPath = trim((string) $config->get('session_path', ''));
 
 $sessions = new SessionManager(
-    sessionPath: $configuredSessionPath !== '' ? $configuredSessionPath : LUMORA_ROOT . '/storage/sessions',
+    sessionPath: $configuredSessionPath,
     secureCookies: $secureCookies,
+    handler: $configuredSessionPath === '' ? new DatabaseSessionHandler($database, $tablePrefix) : null,
 );
 $sessions->start();
 
@@ -236,8 +243,6 @@ add_filter('csp_directives', static function (array $directives) use ($config): 
 $shortcodes = new ShortcodeManager();
 Shortcodes::set($shortcodes);
 require LUMORA_ROOT . '/include/shortcodes.php';
-
-$tablePrefix = (string) $config->get('table_prefix', 'lp_');
 
 $plugins = new PluginManager(LUMORA_ROOT . '/content/plugins');
 $activePlugins = $config->option('active_plugins', '[]');

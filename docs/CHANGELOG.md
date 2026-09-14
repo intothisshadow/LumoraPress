@@ -4,6 +4,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Sessions are now stored in the database by default instead of as files in `storage/sessions/` (LP-173), matching how WordPress avoids depending on a host's own PHP session cleanup at all. A new `{prefix}sessions` table backs login state; cleanup is now driven entirely by PHP's own session garbage collector rather than the filesystem. Setting `session_path` in `config.php` to an absolute path still stores plain session files there instead, for anyone who prefers that. Updating from an earlier version switches over automatically — whoever is logged into the admin area at the exact moment of the update will need to log back in once, and any leftover files in `storage/sessions/` are cleaned up automatically as part of applying the update.
+
+### Fixed
+
+- Session files in `storage/sessions/` accumulated indefinitely on Debian/Ubuntu-family hosts (LP-172): those distros disable PHP's own session garbage collector by default and rely on a system cron job that only cleans PHP's default session directory, not the app's own. Session cleanup is no longer dependent on the host's own configuration.
+
 ## [0.15.0] — 2026-09-14
 
 ### Added

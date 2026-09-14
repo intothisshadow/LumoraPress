@@ -32,11 +32,13 @@ return [
     'timezone' => 'UTC',
     'locale' => 'en',
 
-    // Where PHP session files are written. Empty string (the default)
-    // means storage/sessions inside this install. Set an absolute path
-    // to write sessions elsewhere instead (a location outside this
-    // directory, a tmpfs, etc.) — if the path doesn't exist or isn't
-    // writable, PHP's own session.save_path ini setting is used instead
-    // (see SessionManager::start()).
+    // Where PHP session data is stored. Empty string (the default) means
+    // the database (a {prefix}sessions table, via DatabaseSessionHandler)
+    // — no per-host cleanup dependency, since PHP's own session GC drives
+    // it directly. Set an absolute path to write plain session files
+    // there instead (a location outside this directory, a tmpfs, etc.) —
+    // if the path doesn't exist or isn't writable, PHP's own
+    // session.save_path ini setting is used instead (see
+    // SessionManager::start()).
     'session_path' => '',
 ];
