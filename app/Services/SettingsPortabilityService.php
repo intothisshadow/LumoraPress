@@ -78,6 +78,7 @@ final class SettingsPortabilityService
         'comment_notify_admin_new' => 'bool',
         'comment_notify_admin_moderation' => 'bool',
         'comment_notify_author' => 'bool',
+        'comment_notify_on_reply' => 'bool',
         'comment_notify_recipients' => 'string',
         'comment_moderation_manual_all' => 'bool',
         'comment_moderation_auto_approve_previous' => 'bool',

@@ -26,10 +26,11 @@ use LumoraPress\Models\Post;
 
 /**
  * Sends the "Notify administrator of new comments" / "...when comments
- * require moderation" / "Notify post author" emails from Settings >
- * Discussion. Uses the existing Mailer interface rather than a new
- * transport, and admin_email (already the "From" address source for
- * password-reset mail) as the default administrator recipient.
+ * require moderation" / "Notify post author" / "Notify comment author on
+ * replies" emails from Settings > Discussion. Uses the existing Mailer
+ * interface rather than a new transport, and admin_email (already the
+ * "From" address source for password-reset mail) as the default
+ * administrator recipient.
  */
 final class CommentNotificationService
 {
@@ -129,6 +130,68 @@ final class CommentNotificationService
         foreach ($recipients as $to) {
             $this->mailer->send($to, $subject, $body);
         }
+    }
+
+    /**
+     * Notifies whoever left $parent that $reply was posted to it —
+     * $parent->guestEmail already holds the real email either way (a
+     * registered commenter's own account email, not just guests — see
+     * SiteController::submitComment()'s own guest_email assignment), so
+     * no separate lookup by user id is needed here.
+     */
+    public function notifyReply(Comment $reply, Comment $parent, Post $post): void
+    {
+        if ($this->config->option('comment_notify_on_reply', '0') !== '1') {
+            return;
+        }
+
+        $recipient = $this->replyRecipient($reply, $parent);
+
+        if ($recipient === null) {
+            return;
+        }
+
+        $link = post_permalink($post) . '#comment-' . $reply->id;
+        $subject = 'New reply to your comment on "' . $post->title . '"';
+        $body = $reply->guestName . " replied to your comment:\n\n" . $reply->content . "\n\n" . $link;
+
+        $this->mailer->send($recipient, $subject, $body);
+    }
+
+    /**
+     * Mirrors notifyReply(Post) exactly, for Pages.
+     */
+    public function notifyReplyOnPage(Comment $reply, Comment $parent, Page $page): void
+    {
+        if ($this->config->option('comment_notify_on_reply', '0') !== '1') {
+            return;
+        }
+
+        $recipient = $this->replyRecipient($reply, $parent);
+
+        if ($recipient === null) {
+            return;
+        }
+
+        $link = page_permalink($page) . '#comment-' . $reply->id;
+        $subject = 'New reply to your comment on "' . $page->title . '"';
+        $body = $reply->guestName . " replied to your comment:\n\n" . $reply->content . "\n\n" . $link;
+
+        $this->mailer->send($recipient, $subject, $body);
+    }
+
+    /**
+     * Never a valid recipient: replying to your own earlier comment (same
+     * email either way — see this class's own docblock on $guestEmail),
+     * or a missing/invalid email.
+     */
+    private function replyRecipient(Comment $reply, Comment $parent): ?string
+    {
+        if (strcasecmp($reply->guestEmail, $parent->guestEmail) === 0) {
+            return null;
+        }
+
+        return filter_var($parent->guestEmail, FILTER_VALIDATE_EMAIL) !== false ? $parent->guestEmail : null;
     }
 
     /**

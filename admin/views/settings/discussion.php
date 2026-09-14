@@ -52,6 +52,7 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
     $kernel->config->setOption('comment_notify_admin_new', ($_POST['comment_notify_admin_new'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_admin_moderation', ($_POST['comment_notify_admin_moderation'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_author', ($_POST['comment_notify_author'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('comment_notify_on_reply', ($_POST['comment_notify_on_reply'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_recipients', trim((string) ($_POST['comment_notify_recipients'] ?? '')));
 
     header('Location: ' . admin_url('settings/discussion') . '?saved=1');
@@ -106,6 +107,7 @@ $commentOrder = (string) $kernel->config->option('comment_order', 'asc');
 $notifyAdminNew = $kernel->config->option('comment_notify_admin_new', '1') !== '0';
 $notifyAdminModeration = $kernel->config->option('comment_notify_admin_moderation', '1') !== '0';
 $notifyAuthor = $kernel->config->option('comment_notify_author', '0') === '1';
+$notifyOnReply = $kernel->config->option('comment_notify_on_reply', '0') === '1';
 $notifyRecipients = (string) $kernel->config->option('comment_notify_recipients', '');
 
 $manualApprovalForAll = $kernel->config->option('comment_moderation_manual_all', '0') === '1';
@@ -242,6 +244,10 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
         <label class="lp-field--checkbox">
             <input type="checkbox" name="comment_notify_author" value="1" <?= $notifyAuthor ? 'checked' : '' ?>>
             Email the post's author when their post receives a comment
+        </label>
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_notify_on_reply" value="1" <?= $notifyOnReply ? 'checked' : '' ?>>
+            Email a commenter when someone replies to their comment
         </label>
 
         <p class="lp-field">

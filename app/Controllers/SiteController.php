@@ -430,11 +430,15 @@ final class SiteController
             exit;
         }
 
+        $parentComment = null;
+
         if ($parentId !== null) {
             $parent = $this->comments->findById($parentId);
 
             if ($parent === null || $parent->postId !== $post->id) {
                 $parentId = null;
+            } else {
+                $parentComment = $parent;
             }
         }
 
@@ -488,6 +492,10 @@ final class SiteController
 
         if ($status !== CommentStatus::Spam) {
             $this->commentNotifications->notifyNewComment($comment, $post);
+
+            if ($parentComment !== null) {
+                $this->commentNotifications->notifyReply($comment, $parentComment, $post);
+            }
         }
 
         // A guest who checked "Save my info" gets those fields pre-filled next time; unchecking never writes/clears anything.
@@ -592,11 +600,15 @@ final class SiteController
             exit;
         }
 
+        $parentComment = null;
+
         if ($parentId !== null) {
             $parent = $this->comments->findById($parentId);
 
             if ($parent === null || $parent->pageId !== $page->id) {
                 $parentId = null;
+            } else {
+                $parentComment = $parent;
             }
         }
 
@@ -650,6 +662,10 @@ final class SiteController
 
         if ($status !== CommentStatus::Spam) {
             $this->commentNotifications->notifyNewCommentOnPage($comment, $page);
+
+            if ($parentComment !== null) {
+                $this->commentNotifications->notifyReplyOnPage($comment, $parentComment, $page);
+            }
         }
 
         if ($authUser === null && $this->config->option('comment_cookies_consent_enabled', '0') === '1' && ($_POST['comment_save_info'] ?? '') === '1') {
