@@ -138,6 +138,7 @@ if (!function_exists('comment_form')) {
             <p class="lp-field">
                 <label for="<?= esc_attr($formId) ?>-content">Comment</label>
                 <textarea id="<?= esc_attr($formId) ?>-content" name="content" rows="5" required></textarea>
+                <?= lp_emoji_picker_button(['target' => '#' . $formId . '-content']) ?>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary"><?= esc_html($submitLabel) ?></button>
@@ -146,11 +147,35 @@ if (!function_exists('comment_form')) {
     }
 }
 
+if (!function_exists('comment_descendant_count')) {
+    /**
+     * Total replies anywhere under $children, not just the direct count —
+     * comment_list()'s own measure of "how long is this sub-thread" for
+     * deciding whether to collapse it.
+     *
+     * @param array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $children
+     */
+    function comment_descendant_count(array $children): int
+    {
+        $count = count($children);
+
+        foreach ($children as $child) {
+            $count += comment_descendant_count($child['children']);
+        }
+
+        return $count;
+    }
+}
+
 if (!function_exists('comment_list')) {
     /**
      * Renders a nested comment thread. $maxDepth caps visual indentation
      * only, not the data — replies past the cap still render, flattened
      * as siblings at the deepest depth, matching classic WordPress.
+     * $collapseThreshold wraps a sub-thread with more than that many total
+     * replies in a collapsed-by-default `<details>`, the same pattern the
+     * per-comment Reply form below already uses — long-running threads on
+     * an old post stay readable without an ever-growing page.
      *
      * @param array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $tree
      * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool} $guestFieldOptions
@@ -165,6 +190,7 @@ if (!function_exists('comment_list')) {
         bool $avatarsEnabled = true,
         string $avatarRating = 'g',
         string $avatarDefault = 'mp',
+        int $collapseThreshold = 10,
     ): void {
         if ($tree === []) {
             return;
@@ -194,8 +220,16 @@ if (!function_exists('comment_list')) {
                     </article>
                     <?php
                     $nextDepth = $depth < $maxDepth ? $depth + 1 : $depth;
-                    comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault);
+                    $descendantCount = comment_descendant_count($node['children']);
                     ?>
+                    <?php if ($descendantCount > $collapseThreshold): ?>
+                        <details class="lp-comment__thread">
+                            <summary><?= (int) $descendantCount ?> repl<?= $descendantCount === 1 ? 'y' : 'ies' ?></summary>
+                            <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold); ?>
+                        </details>
+                    <?php else: ?>
+                        <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold); ?>
+                    <?php endif; ?>
                 </li>
             <?php endforeach; ?>
         </ol>

@@ -13,6 +13,8 @@ All notable changes to Lumora Press are documented in this file.
 - Lumora Sweep plugin (LPP-022): an optional database cleanup utility adding a Sweep tab to Maintenance > Tools, with per-category preview counts and Clean Up actions for excess revisions (a one-time retroactive prune beyond `revision_retention`), old trashed posts/pages, old spam/trashed comments, orphaned/duplicate `post_meta` rows, and an off-by-default unused categories/tags check — each followed by an `OPTIMIZE TABLE` on whatever it just cleaned.
 - IP Blacklist for comments (LP-012): a new field on Settings > Discussion — a comment submitted from a listed IP address is marked as Spam outright, the same way a disallowed keyword already is, and doesn't apply to anyone with permission to moderate comments. The admin Comments list also now shows each comment's IP address.
 - Notify on replies (LP-012): a new "Email a commenter when someone replies to their comment" toggle on Settings > Discussion, off by default. Never fires when replying to your own earlier comment.
+- Emoji support in comments (LP-012): an "Insert Emoji" button next to every comment/reply textarea, when the Emoji Picker plugin is active — search or browse by category, the same dialog the Post/Page editor already offers.
+- Collapsible long comment threads (LP-012): a sub-thread with more than 10 total replies now renders collapsed by default with a "N replies" toggle, keeping long-running discussions on an old post readable.
 
 ### Changed
 

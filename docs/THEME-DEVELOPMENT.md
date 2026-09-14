@@ -235,7 +235,7 @@ All of these accept `Post|Page|SearchResult $item` — anything with a
 | Function | Purpose |
 |---|---|
 | `comment_form(Post\|Page $content, ?User $currentUser, array $guestFieldOptions = [], ?int $parentId = null, string $submitLabel = 'Post Comment'): void` | Renders one CSRF-protected form. Pass `$parentId` for a reply form. |
-| `comment_list(array $tree, Post\|Page $content, ?User $currentUser, array $guestFieldOptions = [], int $depth = 0, int $maxDepth = 5, bool $avatarsEnabled = true, string $avatarRating = 'g', string $avatarDefault = 'mp'): void` | Renders the full nested comment thread, each reply's form embedded via `comment_form()`. |
+| `comment_list(array $tree, Post\|Page $content, ?User $currentUser, array $guestFieldOptions = [], int $depth = 0, int $maxDepth = 5, bool $avatarsEnabled = true, string $avatarRating = 'g', string $avatarDefault = 'mp', int $collapseThreshold = 10): void` | Renders the full nested comment thread, each reply's form embedded via `comment_form()`. A sub-thread with more than `$collapseThreshold` total replies renders inside a collapsed-by-default `<details class="lp-comment__thread">` instead of always-expanded. |
 | `comments_template(array $vars = []): void` | Fires the `comments_template` action, then renders the theme's own `comments.php` (no-op if it doesn't exist). Call this from `single.php`/`page.php` rather than writing comment markup by hand. |
 | `comment_avatar_url(string $email, string $rating = 'g', string $default = 'mp', int $size = 48): string` | A Gravatar URL — used internally by `comment_list()`, exposed if you need it directly. |
 | `format_comment_content(string $raw): string` | Escapes raw comment text and auto-links bare URLs. |

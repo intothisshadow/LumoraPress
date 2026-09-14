@@ -74,5 +74,15 @@ final class FooterAssets
             <script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>
             <?php
         }
+
+        // lp_emoji_picker_button() (Emoji Picker plugin, LPP-006) already
+        // renders '' when the plugin is inactive/disabled, so the button
+        // itself never appears without this — checked here rather than
+        // loading the script unconditionally on every page.
+        if (lp_emoji_picker_enabled()) {
+            ?>
+            <script src="<?= esc_url(core_asset_url('js/emoji-picker.js')) ?>"></script>
+            <?php
+        }
     }
 }

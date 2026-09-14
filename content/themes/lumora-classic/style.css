@@ -1381,6 +1381,139 @@ a.lp-post-list__comments:focus {
     left: -9999px;
 }
 
+/* Emoji Picker plugin (LPP-006): lp_emoji_picker_button()'s own trigger
+   class, styled here since the button markup itself is plugin-rendered,
+   not theme markup — see comment_form() in include/comment-functions.php. */
+.lp-emoji-picker-trigger {
+    display: block;
+    margin-top: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+    color: var(--lp-text);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.lp-emoji-picker-trigger:hover,
+.lp-emoji-picker-trigger:focus-visible {
+    border-color: var(--lp-accent);
+}
+
+/* assets/js/emoji-picker.js's own dialog — a lean public reimplementation
+   of the Post/Page editor's admin emoji picker, for the trigger above. */
+.lp-comment-emoji-dialog {
+    width: min(420px, 92vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+    color: var(--lp-text);
+}
+
+.lp-comment-emoji-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.lp-comment-emoji-dialog__heading {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+}
+
+.lp-comment-emoji-dialog__search {
+    flex-shrink: 0;
+    width: 100%;
+    margin-bottom: 0.6rem;
+}
+
+.lp-comment-emoji-dialog__categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+    flex-shrink: 0;
+}
+
+.lp-comment-emoji-dialog__category {
+    background: none;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    padding: 0.25rem 0.55rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: var(--lp-text);
+}
+
+.lp-comment-emoji-dialog__category:hover,
+.lp-comment-emoji-dialog__category:focus-visible,
+.lp-comment-emoji-dialog__category.is-active {
+    border-color: var(--lp-accent);
+}
+
+.lp-comment-emoji-dialog__category.is-active {
+    background: var(--lp-accent);
+    color: #fff;
+}
+
+.lp-comment-emoji-dialog__status {
+    flex-shrink: 0;
+    margin: 0 0 0.6rem;
+    color: var(--lp-text-muted);
+    font-size: 0.85rem;
+}
+
+.lp-comment-emoji-dialog__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 0.35rem;
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
+    margin-bottom: 0.75rem;
+}
+
+.lp-comment-emoji-dialog__item {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: none;
+    cursor: pointer;
+    font-size: 1.3rem;
+    line-height: 1;
+}
+
+.lp-comment-emoji-dialog__item:hover,
+.lp-comment-emoji-dialog__item:focus-visible {
+    border-color: var(--lp-accent);
+}
+
+.lp-comment-emoji-dialog__close {
+    align-self: flex-start;
+    flex-shrink: 0;
+}
+
+/* Collapsible long threads (LP-012): comment_list() wraps a sub-thread
+   with more than a handful of total replies in this collapsed-by-default
+   <details>, the same pattern .lp-comment__reply above already uses for
+   the per-comment reply form. */
+.lp-comment__thread {
+    margin-top: 0.75rem;
+}
+
+.lp-comment__thread > summary {
+    cursor: pointer;
+    color: var(--lp-accent);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+}
+
 .lp-comments__pagination {
     display: flex;
     align-items: center;
