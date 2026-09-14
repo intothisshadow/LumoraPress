@@ -58,6 +58,7 @@ $meta_description = $seo_description ?? meta_description();
         <link rel="stylesheet" href="<?= esc_url(theme_option('google_fonts_url')) ?>">
     <?php endif; ?>
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">
+    <link rel="stylesheet" href="<?= esc_url(theme_url('responsive.css')) ?>">
     <?php if (theme_options_css() !== ''): ?>
         <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= theme_options_css() ?></style>
     <?php endif; ?>

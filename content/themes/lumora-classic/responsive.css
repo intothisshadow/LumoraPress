@@ -1,0 +1,159 @@
+/*
+ * Lumora Classic responsive overrides, split out of style.css so viewport
+ * breakpoints aren't scattered next to whichever component each one
+ * happens to override. Grouped into one @media block per breakpoint
+ * (largest max-width first); rules within each block keep the same
+ * relative order they had in style.css, since a selector repeated across
+ * two blocks depends on that order to keep the same rule winning.
+ * prefers-color-scheme/prefers-reduced-motion queries stay in style.css —
+ * they're preference toggles, not viewport breakpoints.
+ */
+
+@media (max-width: 840px) {
+    .lp-content--home .lp-post-list__item:first-child {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.85fr);
+    }
+}
+
+@media (max-width: 720px) {
+    .lp-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .lp-post__thumbnail--hero img {
+        height: 200px;
+    }
+
+    .lp-post-list__thumbnail img {
+        height: 200px;
+    }
+
+    img.lp-folder-gallery__thumb--small.is-cropped {
+        width: 100px;
+        height: 100px;
+    }
+
+    img.lp-gallery-shortcode__thumb {
+        width: 100px;
+        height: 100px;
+    }
+
+    .lp-site-header {
+        margin-top: 0;
+        border-radius: 0;
+    }
+
+    .lp-site-header__inner {
+        grid-template:
+            "brand brand" auto
+            "search toggle" auto
+            "nav nav" auto / minmax(0, 1fr) auto;
+        padding: 1.15rem 1rem 1rem;
+    }
+
+    .lp-site-header__image-wrap + .lp-site-header__inner {
+        margin-top: -3.25rem;
+        border-radius: 14px 14px 0 0;
+    }
+
+    .lp-search-form {
+        justify-self: start;
+    }
+
+    .lp-search-form__input {
+        width: min(12rem, 52vw);
+    }
+
+    .lp-nav-menu {
+        gap: 0.2rem 0.85rem;
+    }
+
+    .lp-nav-menu__item a {
+        font-size: 0.72rem;
+    }
+
+    .lp-welcome-message {
+        border-radius: 0;
+        padding-right: 1rem;
+        padding-left: 1rem;
+    }
+
+    .lp-welcome-message::before {
+        left: 1rem;
+    }
+
+    .lp-layout {
+        padding: 2rem 1rem 2.5rem;
+    }
+
+    .lp-content--home .lp-post-list {
+        grid-template-columns: 1fr;
+    }
+
+    .lp-content--home .lp-post-list__item:first-child {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail,
+    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail img {
+        min-height: 220px;
+        height: 220px;
+    }
+
+    .lp-content--home .lp-post-list__item:first-child .lp-post-list__body {
+        padding: 1.4rem;
+    }
+
+    .lp-content--home--classic .lp-post-list__item,
+    .lp-content--home--classic .lp-post-list__item:first-child,
+    .lp-content--home--classic .lp-post-list__item:not(:first-child) {
+        flex-direction: column;
+    }
+
+    .lp-content--home--classic .lp-post-list__thumbnail,
+    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail,
+    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    .lp-content--home--classic .lp-post-list__thumbnail img,
+    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail img,
+    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
+        height: 210px;
+    }
+
+    /* Overrides the desktop .lp-content--thumbnail-above height (320px)
+       back down to the same 200px every other mobile hero image on this
+       site uses — its 3-class selector otherwise outranks the 210px rule
+       just above, which is scoped to plain .lp-content--home--classic. */
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
+        height: 200px;
+    }
+
+    .lp-content--home--classic .lp-post-list__body,
+    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__body,
+    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__body {
+        padding: 0;
+    }
+}
+
+/* LP-119 — the reply chain's own margin/padding/avatar size compound at
+   each nesting level (comment_list()'s own $maxDepth cap still applies
+   here — 5 levels by default); on a narrow phone that eats most of the
+   content column by the deepest allowed level, so both shrink here. */
+@media (max-width: 480px) {
+    .lp-comment-list--replies {
+        margin-left: 0.75rem;
+        padding-left: 0.5rem;
+    }
+
+    .lp-comment__avatar {
+        width: 32px;
+        height: 32px;
+        margin: 0 0.5rem 0.35rem 0;
+    }
+}

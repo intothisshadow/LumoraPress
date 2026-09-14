@@ -8,37 +8,6 @@ Version: 0.2.0
    Tokens
    ========================================================= */
 
-:root {
-    --lp-bg: #ffffff;
-    --lp-bg-alt: #f7f7f8;
-    --lp-text: #1d2327;
-    --lp-text-muted: #646970;
-    --lp-border: #dcdcde;
-    --lp-accent: #2271b1;
-    --lp-accent-hover: #135e96;
-    --lp-radius: 4px;
-    --lp-max-width: 960px;
-    --lp-font-body: Georgia, "Times New Roman", serif;
-    --lp-font-size-base: 16px;
-    --lp-line-height-base: 1.6;
-    --lp-success-bg: #edfaef;
-    --lp-success-border: #00a32a;
-    --lp-success-text: #005c15;
-    --lp-error-bg: #fcf0f1;
-    --lp-error-border: #d63638;
-    --lp-error-text: #7a1a1c;
-    /* LP-016's fixed font-color palette (both editors) — see the
-       .has-{color}-color rules below for why this is a hardcoded set of
-       named colors rather than a free-pick color. */
-    --lp-color-red: #c0392b;
-    --lp-color-orange: #d35400;
-    --lp-color-yellow: #9a7d0a;
-    --lp-color-green: #1e8449;
-    --lp-color-blue: #2471a3;
-    --lp-color-purple: #7d3c98;
-    --lp-color-gray: #616a6b;
-}
-
 /*
  * LP-117: dark tokens are declared twice on purpose — once gated by the
  * OS/browser's prefers-color-scheme (the default, for a visitor who
@@ -77,44 +46,12 @@ Version: 0.2.0
     }
 }
 
-:root[data-theme="dark"] {
-    --lp-bg: #15171a;
-    --lp-bg-alt: #1c1f22;
-    --lp-text: #e4e6e8;
-    --lp-text-muted: #9aa0a6;
-    --lp-border: #33383d;
-    --lp-accent: #4c9be8;
-    --lp-accent-hover: #6cb0ef;
-    --lp-success-bg: #16281a;
-    --lp-success-border: #2fae4a;
-    --lp-success-text: #7fd996;
-    --lp-error-bg: #3a1f20;
-    --lp-error-border: #d63638;
-    --lp-error-text: #f2b8b9;
-    --lp-color-red: #e57368;
-    --lp-color-orange: #e8954a;
-    --lp-color-yellow: #d9b93d;
-    --lp-color-green: #4fbb7d;
-    --lp-color-blue: #5fa8dd;
-    --lp-color-purple: #b07fd0;
-    --lp-color-gray: #9aa0a6;
-}
-
 /* =========================================================
    Reset & base
    ========================================================= */
 
 * {
     box-sizing: border-box;
-}
-
-body.lp-site {
-    margin: 0;
-    font-family: var(--lp-font-body);
-    font-size: var(--lp-font-size-base);
-    background: var(--lp-bg);
-    color: var(--lp-text);
-    line-height: var(--lp-line-height-base);
 }
 
 a {
@@ -146,85 +83,8 @@ img {
 }
 
 /* =========================================================
-   Header
-   ========================================================= */
-
-.lp-site-header {
-    border-bottom: 1px solid var(--lp-border);
-    background: var(--lp-bg-alt);
-}
-
-.lp-site-header__inner {
-    max-width: var(--lp-max-width);
-    margin: 0 auto;
-    padding: 1.25rem 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-
-.lp-site-header__brand a {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 1.4rem;
-    font-weight: 700;
-    text-decoration: none;
-    color: var(--lp-text);
-}
-
-.lp-site-header__logo {
-    display: block;
-    max-height: 48px;
-    width: auto;
-}
-
-.lp-site-header__tagline {
-    display: block;
-    margin-top: 0.15rem;
-    font-size: 0.85rem;
-    font-weight: 400;
-    color: var(--lp-text-muted);
-}
-
-/* LP-123: optional header image, above the header bar. --lp-header-image-height
-   is the Header section's own configurable Theme Option (default 200px). */
-.lp-site-header__image-wrap {
-    max-width: var(--lp-max-width);
-    margin: 0 auto;
-}
-
-.lp-site-header__image {
-    display: block;
-    width: 100%;
-    height: var(--lp-header-image-height, 200px);
-    object-fit: cover;
-}
-
-/* =========================================================
    Navigation menus
    ========================================================= */
-
-.lp-nav-menu {
-    list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-    margin: 0;
-    padding: 0;
-}
-
-.lp-nav-menu__item a {
-    text-decoration: none;
-    color: var(--lp-text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 0.95rem;
-}
-
-.lp-nav-menu__item a:hover,
-.lp-nav-menu__item a:focus {
-    color: var(--lp-accent);
-}
 
 /* Nested submenus (LP-049) — hidden by default and revealed on hover/focus
    of their parent item, the classic dropdown pattern; positioned relative
@@ -281,12 +141,6 @@ img {
    Search form (site header)
    ========================================================= */
 
-.lp-search-form {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
 .lp-search-form__label {
     position: absolute;
     width: 1px;
@@ -296,56 +150,9 @@ img {
     white-space: nowrap;
 }
 
-.lp-search-form__input {
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
-    padding: 0.4rem 0.6rem;
-    font-size: 0.9rem;
-    background: var(--lp-bg);
-    color: var(--lp-text);
-}
-
-.lp-search-form__button {
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
-    padding: 0.4rem 0.75rem;
-    font-size: 0.9rem;
-    background: var(--lp-bg-alt);
-    color: var(--lp-text);
-    cursor: pointer;
-}
-
-.lp-search-form__button:hover,
-.lp-search-form__button:focus {
-    border-color: var(--lp-accent);
-    color: var(--lp-accent);
-}
-
 /* =========================================================
    Theme toggle (LP-117)
    ========================================================= */
-
-.lp-theme-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 2.25rem;
-    height: 2.25rem;
-    padding: 0;
-    border: 1px solid var(--lp-border);
-    border-radius: 50%;
-    background: var(--lp-bg-alt);
-    font-size: 1rem;
-    line-height: 1;
-    cursor: pointer;
-    transition: border-color 0.15s ease;
-}
-
-.lp-theme-toggle:hover,
-.lp-theme-toggle:focus-visible {
-    border-color: var(--lp-accent);
-}
 
 .lp-theme-toggle:focus-visible {
     outline: 2px solid var(--lp-accent);
@@ -381,30 +188,8 @@ img {
    Layout
    ========================================================= */
 
-.lp-layout {
-    max-width: var(--lp-max-width);
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 2.5rem;
-    align-items: start;
-}
-
-@media (max-width: 720px) {
-    .lp-layout {
-        grid-template-columns: 1fr;
-    }
-}
-
 .lp-main {
     min-width: 0;
-}
-
-.lp-page-title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 2rem;
-    margin-top: 0;
 }
 
 /* LP-009 Hierarchy UI breadcrumbs — content/page.php only renders this
@@ -494,17 +279,6 @@ img {
 .lp-maintenance__return-at {
     margin-top: 0.75rem;
     color: var(--lp-text-muted);
-}
-
-.lp-post,
-.lp-page {
-    max-width: 68ch;
-}
-
-.lp-post__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 2rem;
-    margin-top: 0;
 }
 
 .lp-post__meta,
@@ -644,17 +418,6 @@ a.lp-post-list__comments:focus {
 
 .lp-post__content {
     max-width: 68ch;
-}
-
-.lp-post__thumbnail {
-    margin: 0 0 1.5rem;
-}
-
-.lp-post__thumbnail img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    border-radius: 4px;
 }
 
 /* =========================================================
@@ -930,13 +693,6 @@ a.lp-post-list__comments:focus {
     margin: 0 0 1.5rem;
 }
 
-.lp-post__thumbnail img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    border-radius: 4px;
-}
-
 /* "Show featured image above title" Theme Option — same full-width
    banner treatment as .lp-post-list__thumbnail's own hero-banner
    image, applied to a single post/page instead of a listing card. */
@@ -949,12 +705,6 @@ a.lp-post-list__comments:focus {
     height: 320px;
     object-fit: cover;
     border-radius: var(--lp-radius);
-}
-
-@media (max-width: 720px) {
-    .lp-post__thumbnail--hero img {
-        height: 200px;
-    }
 }
 
 /* =========================================================
@@ -1000,12 +750,6 @@ a.lp-post-list__comments:focus {
     border-radius: var(--lp-radius);
 }
 
-@media (max-width: 720px) {
-    .lp-post-list__thumbnail img {
-        height: 200px;
-    }
-}
-
 .lp-post-list__body {
     flex: 1;
     min-width: 0;
@@ -1015,11 +759,6 @@ a.lp-post-list__comments:focus {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 1.5rem;
     margin: 0 0 0.35rem;
-}
-
-.lp-post-list__title a {
-    text-decoration: none;
-    color: var(--lp-text);
 }
 
 .lp-post-list__title a:hover,
@@ -1255,23 +994,11 @@ a.lp-post-list__comments:focus {
    Sidebar & widgets
    ========================================================= */
 
-.lp-sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
 .lp-widget {
     background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
     padding: 1.25rem;
-}
-
-.lp-widget__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 1rem;
-    margin-top: 0;
 }
 
 .lp-widget__content {
@@ -1282,22 +1009,6 @@ a.lp-post-list__comments:focus {
 /* LP-123: the optional Welcome Message, either below the header (a
    full-width band) or inside .lp-sidebar (styled like a .lp-widget so it
    reads as part of that same list rather than a mismatched extra box). */
-.lp-welcome-message {
-    max-width: var(--lp-max-width);
-    margin: 0 auto;
-    padding: 1.25rem 1.5rem;
-    color: var(--lp-text);
-}
-
-.lp-sidebar .lp-welcome-message {
-    max-width: none;
-    margin: 0;
-    padding: 1.25rem;
-    background: var(--lp-bg-alt);
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
-}
-
 /*
  * Text/HTML widget WYSIWYG output (LP-112), plus the Custom HTML widget's
  * hand-authored markup — both render into this same .lp-widget__content
@@ -1369,16 +1080,6 @@ a.lp-post-list__comments:focus {
    Comments, Archives, and the Navigation Menu widget all render a plain
    link list; Tag Cloud and Meta reuse the same list/count building
    blocks. */
-
-.lp-widget__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    font-size: 0.95rem;
-}
 
 .lp-widget__count {
     color: var(--lp-text-muted);
@@ -1680,23 +1381,6 @@ a.lp-post-list__comments:focus {
     left: -9999px;
 }
 
-/* LP-119 — the reply chain's own margin/padding/avatar size compound at
-   each nesting level (comment_list()'s own $maxDepth cap still applies
-   here — 5 levels by default); on a narrow phone that eats most of the
-   content column by the deepest allowed level, so both shrink here. */
-@media (max-width: 480px) {
-    .lp-comment-list--replies {
-        margin-left: 0.75rem;
-        padding-left: 0.5rem;
-    }
-
-    .lp-comment__avatar {
-        width: 32px;
-        height: 32px;
-        margin: 0 0.5rem 0.35rem 0;
-    }
-}
-
 .lp-comments__pagination {
     display: flex;
     align-items: center;
@@ -1714,23 +1398,6 @@ a.lp-post-list__comments:focus {
 /* =========================================================
    Footer
    ========================================================= */
-
-.lp-site-footer {
-    border-top: 1px solid var(--lp-border);
-    background: var(--lp-bg-alt);
-    margin-top: 2rem;
-}
-
-.lp-site-footer__inner {
-    max-width: var(--lp-max-width);
-    margin: 0 auto;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: center;
-    text-align: center;
-}
 
 /* Footer Widget Area (LP-048): renders above the footer navigation/
    copyright row, only when at least one widget is assigned. Widgets
@@ -1770,12 +1437,6 @@ a.lp-post-list__comments:focus {
 
 /* LP-132: shown only when Settings > Privacy has a Privacy Policy Page
    configured — see footer.php's own privacy_policy_url() check. */
-.lp-site-footer__privacy-link {
-    color: var(--lp-accent);
-    font-size: 0.85rem;
-    text-decoration: none;
-}
-
 .lp-site-footer__privacy-link:hover,
 .lp-site-footer__privacy-link:focus {
     color: var(--lp-accent-hover);
@@ -2151,13 +1812,6 @@ img.lp-folder-gallery__thumb--small.is-cropped {
     width: auto;
 }
 
-@media (max-width: 720px) {
-    img.lp-folder-gallery__thumb--small.is-cropped {
-        width: 100px;
-        height: 100px;
-    }
-}
-
 /* =========================================================
    Lumora Gallery Shortcodes (LPP-015)
    ========================================================= */
@@ -2217,13 +1871,6 @@ img.lp-gallery-shortcode__thumb {
     color: var(--lp-accent-hover);
 }
 
-@media (max-width: 720px) {
-    img.lp-gallery-shortcode__thumb {
-        width: 100px;
-        height: 100px;
-    }
-}
-
 /* =========================================================
    Lumora Classic composition
 
@@ -2248,6 +1895,22 @@ img.lp-gallery-shortcode__thumb {
     --lp-line-height-base: 1.65;
     --lp-surface-shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
     --lp-header-ink: #172033;
+    --lp-success-bg: #edfaef;
+    --lp-success-border: #00a32a;
+    --lp-success-text: #005c15;
+    --lp-error-bg: #fcf0f1;
+    --lp-error-border: #d63638;
+    --lp-error-text: #7a1a1c;
+    /* LP-016's fixed font-color palette (both editors) — see the
+       .has-{color}-color rules below for why this is a hardcoded set of
+       named colors rather than a free-pick color. */
+    --lp-color-red: #c0392b;
+    --lp-color-orange: #d35400;
+    --lp-color-yellow: #9a7d0a;
+    --lp-color-green: #1e8449;
+    --lp-color-blue: #2471a3;
+    --lp-color-purple: #7d3c98;
+    --lp-color-gray: #616a6b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2274,9 +1937,27 @@ img.lp-gallery-shortcode__thumb {
     --lp-accent-hover: #8be1d5;
     --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
     --lp-header-ink: #0e141d;
+    --lp-success-bg: #16281a;
+    --lp-success-border: #2fae4a;
+    --lp-success-text: #7fd996;
+    --lp-error-bg: #3a1f20;
+    --lp-error-border: #d63638;
+    --lp-error-text: #f2b8b9;
+    --lp-color-red: #e57368;
+    --lp-color-orange: #e8954a;
+    --lp-color-yellow: #d9b93d;
+    --lp-color-green: #4fbb7d;
+    --lp-color-blue: #5fa8dd;
+    --lp-color-purple: #b07fd0;
+    --lp-color-gray: #9aa0a6;
 }
 
 body.lp-site {
+    margin: 0;
+    font-family: var(--lp-font-body);
+    font-size: var(--lp-font-size-base);
+    color: var(--lp-text);
+    line-height: var(--lp-line-height-base);
     background:
         radial-gradient(circle at 8% 4%, rgba(15, 139, 141, 0.08), transparent 25rem),
         var(--lp-bg);
@@ -2294,6 +1975,7 @@ body.lp-site {
 
 .lp-site-header__image-wrap {
     position: relative;
+    margin: 0 auto;
     max-width: none;
     overflow: hidden;
     background: #25364a;
@@ -2309,6 +1991,7 @@ body.lp-site {
 }
 
 .lp-site-header__image {
+    display: block;
     width: 100%;
     height: var(--lp-header-image-height, clamp(280px, 40vw, 440px));
     min-height: 260px;
@@ -2320,6 +2003,8 @@ body.lp-site {
 .lp-site-header__inner {
     position: relative;
     z-index: 1;
+    align-items: center;
+    justify-content: space-between;
     display: grid;
     grid-template:
         "brand search toggle" auto
@@ -2347,6 +2032,7 @@ body.lp-site {
 .lp-site-header__brand a {
     display: inline-flex;
     align-items: center;
+    text-decoration: none;
     color: #fff;
     font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: clamp(1.35rem, 2.4vw, 2rem);
@@ -2360,10 +2046,14 @@ body.lp-site {
 }
 
 .lp-site-header__logo {
+    display: block;
+    width: auto;
     max-height: 52px;
 }
 
 .lp-site-header__tagline {
+    display: block;
+    font-weight: 400;
     margin-top: 0.2rem;
     color: rgba(255, 255, 255, 0.68);
     font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -2378,10 +2068,16 @@ body.lp-site {
 }
 
 .lp-nav-menu {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0;
     gap: 0.3rem 1.35rem;
 }
 
 .lp-nav-menu__item a {
+    text-decoration: none;
     display: inline-block;
     padding: 0.2rem 0;
     color: rgba(255, 255, 255, 0.82);
@@ -2411,11 +2107,17 @@ body.lp-site {
 }
 
 .lp-search-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     grid-area: search;
     align-self: center;
 }
 
 .lp-search-form__input {
+    border: 1px solid var(--lp-border);
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
     width: 10rem;
     border-color: rgba(255, 255, 255, 0.22);
     border-radius: 999px;
@@ -2429,6 +2131,9 @@ body.lp-site {
 }
 
 .lp-search-form__button {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+    cursor: pointer;
     border: 0;
     border-radius: 999px;
     background: #61d0c2;
@@ -2445,6 +2150,19 @@ body.lp-site {
 }
 
 .lp-theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--lp-border);
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
     grid-area: toggle;
     align-self: center;
     border-color: rgba(255, 255, 255, 0.22);
@@ -2457,6 +2175,7 @@ body.lp-site {
 }
 
 .lp-welcome-message {
+    color: var(--lp-text);
     position: relative;
     max-width: var(--lp-max-width);
     margin: 0 auto;
@@ -2492,6 +2211,10 @@ body.lp-site {
 }
 
 .lp-layout {
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    align-items: start;
     max-width: var(--lp-max-width);
     padding: 2.75rem 1.5rem 3.5rem;
     gap: 2.5rem;
@@ -2624,10 +2347,14 @@ body.lp-site {
 }
 
 .lp-post-list__title a {
+    text-decoration: none;
+    color: var(--lp-text);
     transition: color 0.15s ease;
 }
 
 .lp-sidebar {
+    display: flex;
+    flex-direction: column;
     gap: 1rem;
 }
 
@@ -2640,7 +2367,12 @@ body.lp-site {
 }
 
 .lp-sidebar .lp-welcome-message {
+    max-width: none;
+    margin: 0;
     padding: 1.25rem;
+    background: var(--lp-bg-alt);
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
 }
 
 .lp-sidebar .lp-welcome-message::before {
@@ -2652,6 +2384,7 @@ body.lp-site {
 }
 
 .lp-widget__title {
+    margin-top: 0;
     margin-bottom: 0.9rem;
     font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 0.78rem;
@@ -2660,6 +2393,12 @@ body.lp-site {
 }
 
 .lp-widget__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.95rem;
     gap: 0;
 }
 
@@ -2683,6 +2422,7 @@ body.lp-site {
 }
 
 .lp-post__title {
+    margin-top: 0;
     font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: clamp(2rem, 5vw, 3.35rem);
     letter-spacing: -0.05em;
@@ -2690,6 +2430,9 @@ body.lp-site {
 }
 
 .lp-post__thumbnail img {
+    display: block;
+    max-width: 100%;
+    height: auto;
     border-radius: 12px;
 }
 
@@ -2701,8 +2444,14 @@ body.lp-site {
 }
 
 .lp-site-footer__inner {
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     max-width: var(--lp-max-width);
     padding: 2.25rem 1.5rem;
+    gap: 0.75rem;
 }
 
 .lp-site-footer__powered-by,
@@ -2712,82 +2461,9 @@ body.lp-site {
 }
 
 .lp-site-footer__privacy-link {
+    font-size: 0.85rem;
+    text-decoration: none;
     color: #8be1d5;
-}
-
-@media (max-width: 840px) {
-    .lp-content--home .lp-post-list__item:first-child {
-        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.85fr);
-    }
-}
-
-@media (max-width: 720px) {
-    .lp-site-header {
-        margin-top: 0;
-        border-radius: 0;
-    }
-
-    .lp-site-header__inner {
-        grid-template:
-            "brand brand" auto
-            "search toggle" auto
-            "nav nav" auto / minmax(0, 1fr) auto;
-        padding: 1.15rem 1rem 1rem;
-    }
-
-    .lp-site-header__image-wrap + .lp-site-header__inner {
-        margin-top: -3.25rem;
-        border-radius: 14px 14px 0 0;
-    }
-
-    .lp-search-form {
-        justify-self: start;
-    }
-
-    .lp-search-form__input {
-        width: min(12rem, 52vw);
-    }
-
-    .lp-nav-menu {
-        gap: 0.2rem 0.85rem;
-    }
-
-    .lp-nav-menu__item a {
-        font-size: 0.72rem;
-    }
-
-    .lp-welcome-message {
-        border-radius: 0;
-        padding-right: 1rem;
-        padding-left: 1rem;
-    }
-
-    .lp-welcome-message::before {
-        left: 1rem;
-    }
-
-    .lp-layout {
-        padding: 2rem 1rem 2.5rem;
-    }
-
-    .lp-content--home .lp-post-list {
-        grid-template-columns: 1fr;
-    }
-
-    .lp-content--home .lp-post-list__item:first-child {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail,
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail img {
-        min-height: 220px;
-        height: 220px;
-    }
-
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__body {
-        padding: 1.4rem;
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2906,41 +2582,4 @@ body.lp-site {
 .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__body,
 .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__body {
     padding: 0;
-}
-
-@media (max-width: 720px) {
-    .lp-content--home--classic .lp-post-list__item,
-    .lp-content--home--classic .lp-post-list__item:first-child,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) {
-        flex-direction: column;
-    }
-
-    .lp-content--home--classic .lp-post-list__thumbnail,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
-        flex-basis: auto;
-        width: 100%;
-    }
-
-    .lp-content--home--classic .lp-post-list__thumbnail img,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-        height: 210px;
-    }
-
-    /* Overrides the desktop .lp-content--thumbnail-above height (320px)
-       back down to the same 200px every other mobile hero image on this
-       site uses — its 3-class selector otherwise outranks the 210px rule
-       just above, which is scoped to plain .lp-content--home--classic. */
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-        height: 200px;
-    }
-
-    .lp-content--home--classic .lp-post-list__body,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__body,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__body {
-        padding: 0;
-    }
 }
