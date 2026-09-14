@@ -4646,7 +4646,19 @@ select:focus {
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
-.lp-button--link:hover {
+/*
+ * :visited:hover is listed explicitly, not just :hover — a plugin action
+ * link (Settings, etc.) is a real <a href> the admin actually navigates
+ * to, so once visited its color falls under .lp-table td a:visited
+ * (higher specificity than a bare :hover pseudo-class here) instead of
+ * this rule, leaving white text unset and the *unhovered* accent-blue
+ * color showing through on top of this same rule's accent-blue
+ * background — invisible text, only after that link had been clicked at
+ * least once. See a.lp-button--link.lp-button--link--view below for the
+ * same underlying collision, already solved there via two classes.
+ */
+.lp-button--link:hover,
+.lp-button--link:visited:hover {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
     color: #fff;
