@@ -9,7 +9,7 @@ Version: 0.2.0
    ========================================================= */
 
 /*
- * LP-117: dark tokens are declared twice on purpose — once gated by the
+ * Dark tokens are declared twice on purpose — once gated by the
  * OS/browser's prefers-color-scheme (the default, for a visitor who
  * hasn't made an explicit choice), and once under :root[data-theme="dark"]
  * (for a visitor who explicitly picked Dark via the header toggle,
@@ -17,7 +17,7 @@ Version: 0.2.0
  * guard on the media-query block stops an explicit Light choice from
  * being overridden back to dark by a dark system preference. Keep both
  * blocks' values identical — see header.php/theme-toggle.js for where the
- * attribute comes from. Mirrors admin.css's identical LP-087 pattern.
+ * attribute comes from. Mirrors admin.css's identical pattern.
  */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -86,7 +86,7 @@ img {
    Navigation menus
    ========================================================= */
 
-/* Nested submenus (LP-049) — hidden by default and revealed on hover/focus
+/* Nested submenus — hidden by default and revealed on hover/focus
    of their parent item, the classic dropdown pattern; positioned relative
    to the parent <li> so it doesn't disturb the top-level menu's own
    layout (flex row in the header, stacked list in the sidebar/footer). */
@@ -125,7 +125,7 @@ img {
     left: 100%;
 }
 
-/* Inside the sidebar widget (.lp-widget__nav-menu, LP-048) the top-level
+/* Inside the sidebar widget (.lp-widget__nav-menu) the top-level
    list stacks vertically rather than flowing horizontally, so a dropdown
    position doesn't apply — submenus expand inline, indented, instead. */
 
@@ -151,7 +151,7 @@ img {
 }
 
 /* =========================================================
-   Theme toggle (LP-117)
+   Theme toggle
    ========================================================= */
 
 .lp-theme-toggle:focus-visible {
@@ -192,7 +192,7 @@ img {
     min-width: 0;
 }
 
-/* LP-009 Hierarchy UI breadcrumbs — content/page.php only renders this
+/* Hierarchy UI breadcrumbs — content/page.php only renders this
    for a page with at least one ancestor (see the_page_breadcrumbs()'s
    own docblock); a top-level page shows no breadcrumb trail at all. */
 
@@ -289,7 +289,7 @@ img {
     margin: 0 0 1rem;
 }
 
-/* LP-118 — post_categories()/the_post_categories() rendered inline in the
+/* post_categories()/the_post_categories() rendered inline in the
    meta line, on both the single post view and listing cards. */
 .lp-post__categories a,
 .lp-post-list__categories a {
@@ -319,7 +319,7 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
-/* LP-011 — get_the_tags()/the_tags() rendered as a pill list below a
+/* get_the_tags()/the_tags() rendered as a pill list below a
    single post's own content, distinct from .lp-widget__tag-cloud-item
    (different component, even though visually similar). */
 .lp-post__tags {
@@ -348,7 +348,7 @@ a.lp-post-list__comments:focus {
     color: var(--lp-accent);
 }
 
-/* LP-011 — the_related_posts(), rendered under a single post's own
+/* the_related_posts(), rendered under a single post's own
    article, before comments. */
 .lp-related-posts {
     border-top: 1px solid var(--lp-border);
@@ -421,7 +421,7 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
-   Rendered post/page content (LP-015/LP-016) — typography for
+   Rendered post/page content — typography for
    everything MarkdownParser/HtmlSanitizer can produce: headings,
    code, blockquotes, tables, task lists, footnotes, and the
    [[toc]] table of contents.
@@ -455,7 +455,7 @@ a.lp-post-list__comments:focus {
 }
 
 /*
- * LP-016's image alignment — classes the WYSIWYG editor's Insert Media
+ * Image alignment — classes the WYSIWYG editor's Insert Media
  * "Alignment" step adds directly to the <img> (content-editor.js).
  * .alignnone needs no rule of its own: an inline <img> with no float is
  * already the "no alignment" default.
@@ -477,7 +477,7 @@ a.lp-post-list__comments:focus {
 }
 
 /*
- * WordPress Importer's [caption] shortcode conversion (LPP-004) wraps a
+ * WordPress Importer's [caption] shortcode conversion wraps a
  * migrated image and its caption text in <figure class="lp-caption
  * {align}"><img ...><figcaption>...</figcaption></figure> — the align.*
  * rules here mirror the plain img.align* rules above so a captioned
@@ -596,7 +596,7 @@ a.lp-post-list__comments:focus {
 }
 
 /*
- * LP-016's text alignment (WYSIWYG editor toolbar) — distinct from
+ * Text alignment (WYSIWYG editor toolbar) — distinct from
  * .lp-align-center/.lp-align-right above, which are Markdown table-cell
  * alignment classes (renderTable() in MarkdownParser). TinyMCE's align
  * toolbar is configured (content-editor.js) to apply these
@@ -620,7 +620,7 @@ a.lp-post-list__comments:focus {
 }
 
 /*
- * LP-016's fixed font-color palette (both editors) — a hardcoded set of
+ * Fixed font-color palette (both editors) — a hardcoded set of
  * named colors rather than a free-pick color, applied as a class on a
  * <span> instead of an inline style="color:..." since HtmlSanitizer
  * never allows a style attribute at all. Names must match the palette
@@ -770,7 +770,7 @@ a.lp-post-list__comments:focus {
     margin: 0 0 0.75rem;
 }
 
-/* LP-079: full-content post-listing mode ("Post Display" Theme Option) —
+/* Full-content post-listing mode ("Post Display" Theme Option) —
    reuses .lp-post__content's rich-content rules (headings, images, lists,
    etc.) for the identical rendered markup the_content() produces on a
    single-post page; this class only adds listing-specific spacing. */
@@ -790,7 +790,7 @@ a.lp-post-list__comments:focus {
     text-decoration: underline;
 }
 
-/* LP-011 — a card's own tags, shown on index.php/archive.php's post
+/* A card's own tags, shown on index.php/archive.php's post
    listings. Same pill treatment as .lp-post__tags on a single post,
    just a tighter top margin to fit a compact card. */
 .lp-post-list__tags {
@@ -894,7 +894,7 @@ a.lp-post-list__comments:focus {
     margin: 0;
 }
 
-/* LP-011 — a 'post'-type result's own tags. Same pill treatment as
+/* A 'post'-type result's own tags. Same pill treatment as
    .lp-post-list__tags, its own class since search results aren't post
    listing cards (a Page/Category/Tag/Author result never has one). */
 .lp-search-results__tags {
@@ -1006,11 +1006,11 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
-/* LP-123: the optional Welcome Message, either below the header (a
+/* The optional Welcome Message, either below the header (a
    full-width band) or inside .lp-sidebar (styled like a .lp-widget so it
    reads as part of that same list rather than a mismatched extra box). */
 /*
- * Text/HTML widget WYSIWYG output (LP-112), plus the Custom HTML widget's
+ * Text/HTML widget WYSIWYG output, plus the Custom HTML widget's
  * hand-authored markup — both render into this same .lp-widget__content
  * wrapper, so both benefit from real typography for the tag set
  * HtmlSanitizer allows rather than unstyled browser defaults. A compact
@@ -1076,7 +1076,7 @@ a.lp-post-list__comments:focus {
     text-align: justify;
 }
 
-/* Core widgets (LP-048): Pages, Categories, Recent Posts, Recent
+/* Core widgets: Pages, Categories, Recent Posts, Recent
    Comments, Archives, and the Navigation Menu widget all render a plain
    link list; Tag Cloud and Meta reuse the same list/count building
    blocks. */
@@ -1086,7 +1086,7 @@ a.lp-post-list__comments:focus {
     font-size: 0.85em;
 }
 
-/* Nested Pages/Categories widget output (LP-104) — a child page's or
+/* Nested Pages/Categories widget output — a child page's or
    subcategory's own <ul> lives inside its parent's <li>, indented by
    padding rather than margin so the parent's own bottom border (if a
    theme adds one later) wouldn't get cut short by a child list sitting
@@ -1125,7 +1125,7 @@ a.lp-post-list__comments:focus {
     border-bottom-color: currentColor;
 }
 
-/* Statistics widget (LP-048): reuses .lp-widget__list/.lp-widget__count
+/* Statistics widget: reuses .lp-widget__list/.lp-widget__count
    above, plus its own label styling for the "Posts / Pages / Comments /
    Users" rows. */
 
@@ -1143,7 +1143,7 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text);
 }
 
-/* Social Links widget (LP-048): a row of icon links for a fixed set of
+/* Social Links widget: a row of icon links for a fixed set of
    platforms. lp_icon() renders nothing when the (optional) Font Awesome
    plugin isn't active, in which case the platform's name is shown as
    plain text instead — see .lp-visually-hidden below for when it is. */
@@ -1381,7 +1381,7 @@ a.lp-post-list__comments:focus {
     left: -9999px;
 }
 
-/* Emoji Picker plugin (LPP-006): lp_emoji_picker_button()'s own trigger
+/* Emoji Picker plugin: lp_emoji_picker_button()'s own trigger
    class, styled here since the button markup itself is plugin-rendered,
    not theme markup — see comment_form() in include/comment-functions.php. */
 .lp-emoji-picker-trigger {
@@ -1499,7 +1499,7 @@ a.lp-post-list__comments:focus {
     flex-shrink: 0;
 }
 
-/* Collapsible long threads (LP-012): comment_list() wraps a sub-thread
+/* Collapsible long threads: comment_list() wraps a sub-thread
    with more than a handful of total replies in this collapsed-by-default
    <details>, the same pattern .lp-comment__reply above already uses for
    the per-comment reply form. */
@@ -1532,7 +1532,7 @@ a.lp-post-list__comments:focus {
    Footer
    ========================================================= */
 
-/* Footer Widget Area (LP-048): renders above the footer navigation/
+/* Footer Widget Area: renders above the footer navigation/
    copyright row, only when at least one widget is assigned. Widgets
    themselves reuse .lp-widget/.lp-widget__* unchanged from the sidebar —
    only this wrapper (a wrapping row of cards instead of a single stacked
@@ -1568,7 +1568,7 @@ a.lp-post-list__comments:focus {
     color: inherit;
 }
 
-/* LP-132: shown only when Settings > Privacy has a Privacy Policy Page
+/* Shown only when Settings > Privacy has a Privacy Policy Page
    configured — see footer.php's own privacy_policy_url() check. */
 .lp-site-footer__privacy-link:hover,
 .lp-site-footer__privacy-link:focus {
@@ -1576,7 +1576,7 @@ a.lp-post-list__comments:focus {
     text-decoration: underline;
 }
 
-/* LP-123: additional per-theme footer content, distinct from the
+/* Additional per-theme footer content, distinct from the
    fixed "Powered by Lumora Press" line above it
    (.lp-site-footer__powered-by). */
 .lp-footer-html {
@@ -1589,7 +1589,7 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
-   Media Viewer & Lightbox (LP-031)
+   Media Viewer & Lightbox
    ========================================================= */
 
 /*
@@ -1659,7 +1659,7 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
-   Embeds (LP-023)
+   Embeds
    ========================================================= */
 
 /*
@@ -1705,11 +1705,11 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
-   Downloads List (LPP-007)
+   Downloads List
    ========================================================= */
 /*
  * Rendered by the WordPress Importer plugin's DownloadsShortcode
- * (LPP-004/LPP-007) in place of a migrated [sdm_show_dl_from_category]
+ * in place of a migrated [sdm_show_dl_from_category]
  * shortcode — one list per Folder, mixing real Media Manager downloads
  * with external-link Redirects.
  */
@@ -1790,7 +1790,7 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
-   Folder Gallery (LP-122)
+   Folder Gallery
    ========================================================= */
 /*
  * Rendered by FolderGalleryShortcode for the [lumora_folder_gallery]
@@ -1857,7 +1857,7 @@ img.lp-folder-gallery__thumb--small.is-cropped {
 }
 
 /* =========================================================
-   Media Player (LP-150)
+   Media Player
    ========================================================= */
 /*
  * Rendered by MediaPlayerShortcode for the [lumora_audio]/[lumora_video]
@@ -1899,7 +1899,7 @@ img.lp-folder-gallery__thumb--small.is-cropped {
 }
 
 /* =========================================================
-   Contact Forms (LPP-003)
+   Contact Forms
    ========================================================= */
 /*
  * Rendered by the Contact Forms plugin's [contact_form] shortcode. Reuses
@@ -1946,7 +1946,7 @@ img.lp-folder-gallery__thumb--small.is-cropped {
 }
 
 /* =========================================================
-   Lumora Gallery Shortcodes (LPP-015)
+   Lumora Gallery Shortcodes
    ========================================================= */
 /*
  * Rendered by the optional Lumora Gallery Shortcodes plugin's
@@ -2034,7 +2034,7 @@ img.lp-gallery-shortcode__thumb {
     --lp-error-bg: #fcf0f1;
     --lp-error-border: #d63638;
     --lp-error-text: #7a1a1c;
-    /* LP-016's fixed font-color palette (both editors) — see the
+    /* Fixed font-color palette (both editors) — see the
        .has-{color}-color rules below for why this is a hardcoded set of
        named colors rather than a free-pick color. */
     --lp-color-red: #c0392b;
