@@ -14594,3 +14594,737 @@ The WYSIWYG editor already had an "Insert/Edit Link" dialog (`openLinkPicker()`,
 - [x] Added TinyMCE's `quickbars` plugin (`quickbars_image_toolbar: 'lumoraLink'`, with the default insert/selection quickbars turned off) so clicking an image shows a small floating "Insert/Edit Link" button right next to it — the literal "click on the image" entry point — in addition to the main toolbar button and the existing Cmd/Ctrl+K shortcut, both of which now also work correctly on an image selection.
 - [x] Verified existing text-link Insert/Edit/Remove behavior is unchanged — the new branch is `isImageSelection`-gated and the text path is untouched.
 - [x] Live-verified on the dev install (Posts editor): inserted an image, clicked it to open the new floating quickbar, used "Insert/Edit Link" to link it to a typed URL, reopened and re-linked it to an existing Page via the search list instead, then Remove Link — the image itself was never lost at any step, and Undo/Redo behaved normally throughout.
+
+------
+
+## 0.15.0 (2026-09-14)
+
+### LP-011. Tags
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+**Implemented (2026-07-21), first pass.** A flat, non-hierarchical
+taxonomy with name-based find-or-create (case-insensitive) and a full
+custom vanilla-JS chip/autocomplete widget on the Post editor's Tags
+field — the project's first admin JavaScript file, built as progressive
+enhancement over a plain comma-separated text input. Merge, rename,
+bulk actions, trash, usage-statistics dashboards, SEO fields, and RSS
+integration are intentionally left for a future pass — see unchecked
+items below.
+
+**Implemented (2026-09-02), second pass — Merge, Bulk Actions, Display
+on Posts, Related Posts.** `TagService` gained `merge()` (mirroring
+`CategoryService::merge()` minus hierarchy reparenting, since tags are
+flat) and `deleteUnused()`. The admin Tags list (`admin/views/posts/tags.php`)
+gained row checkboxes and a bulk-actions bar — Delete, Merge into&hellip;,
+and Remove unused tags — mirroring Categories' own bulk-actions pattern
+exactly, plus a `posts/all-posts?tag={id}` link on each row's post count
+(the existing `tagId` filter `PostService::paginateForAdmin()` already
+supported). "Rename tags" needed no new code — the existing full Edit
+screen's Name field already renames a tag; a bulk "Rename" action isn't
+coherent the way Delete/Merge/Remove-unused are (each selected tag would
+need its own distinct new name), so it stays unchecked under Bulk
+Actions with a note, while per-tag renaming above is checked off.
+`PostService` gained `relatedByTags()` (most-shared-tags-first, then
+recency). A new `include/taxonomy-functions.php` (`get_the_tags()`/
+`post_has_tags()`/`the_tags()`/`get_related_posts()`/`the_related_posts()`,
+backed by new `ActiveTags`/`ActivePosts` static bridges, same shape as
+`ActiveCategories`) renders a post's own tags and a "Related Posts"
+block on both themes' `single.php` — see "Display Tags on Posts —
+Implementation Plan" below for the tags-display design this followed.
+Tag cloud widget, autocomplete-at-scale, and tag-based search/filtering
+remain deferred — see unchecked items below.
+
+**Also (2026-09-07), bug fix: form redisplay on validation error.** The admin Tags screen (`admin/views/posts/tags.php`) had the identical form-redisplay bug that was fixed on the Categories screen for LP-010: the Create/Edit Tag form posts to a plain URL with no `?action=` query string, so when a save failed validation (a blank name) and the handler didn't `exit`, `$action` fell back to its GET-derived default of `'list'` — the error banner rendered, but the form itself vanished, replaced by the Tags list. Fixed the same way: the validation-error path now sets `$action`/`$editingId` explicitly (`'new'`/`'edit'` matching whichever was being saved) before the GET-derived defaults below use `??=` instead of unconditionally overwriting them. Verified live in the browser: a blank name now correctly redisplays the form (New or Edit, as appropriate) alongside the error banner, and a normal successful save is unaffected.
+
+**Implemented (2026-09-10), third pass — Search & Filtering.** The admin
+Tags list (`admin/views/posts/tags.php`) gained a collapsible "Search &
+Filter" panel, mirroring Categories' own exactly: search by name/slug,
+minimum post count, and a created-date range. `TagService::listAllWithPostCounts()`
+grew a `$filters` parameter with the same shape as `CategoryService`'s
+own (`term`/`minPosts`/`dateFrom`/`dateTo`). "Last used date" had no
+dedicated column to filter on, so it's derived instead — a `LEFT JOIN`
+to `{prefix}posts` computes `MAX(p.created_at)` among a tag's assigned
+posts as `lastUsedAt`, shown as a new "Last Used" column on the list and
+filterable via `lastUsedFrom`/`lastUsedTo` (a `HAVING` clause, since it's
+a post-aggregate value). This avoids a schema/migration change to track
+"last used" as its own column. Covered by six new `TagServiceTest`
+cases; `SqliteDatabaseFactory::withPostsAndTagsTable()` (already existed
+for `PostService::relatedByTags()` tests) replaces `withTagsTable()` as
+the fixture so the new `LEFT JOIN` has a `posts` table to join against.
+
+**Implemented (2026-09-10), fourth pass — Usage Statistics.** The admin
+Tags list gained a second collapsible panel, "Usage Statistics" (closed
+by default, unlike "Search & Filter" which opens when a filter is
+active), showing five `TagService` reports: `mostUsed()`/`leastUsed()`
+(top/bottom 5 by post count, unused tags excluded from both),
+`unusedCount()` (a plain tally alongside the existing "Remove unused
+tags" bulk action), `recentlyCreated()` (newest 5 by `created_at`), and
+`recentlyUsed()` (newest 5 by the same derived last-used date the
+Search & Filter pass added, unused tags excluded). Reuses the existing
+`lp-admin__grid`/`lp-admin__meta-list` components the Visitor Stats
+report already established, rather than introducing new markup/CSS.
+Covered by eight new `TagServiceTest` cases; `recentlyCreated()`/
+`recentlyUsed()` both tie-break their `ORDER BY ... DESC` on `id DESC`,
+matching `CommentService::recentForAdmin()`'s existing convention, so
+two tags created/used within the same second still sort deterministically.
+
+**Implemented (2026-09-10), fifth pass — Performance.** `TagService`
+gained the same request-scoped memoization `CategoryService` already
+has: `findById()` now caches by id (including a confirmed-miss null),
+and `postCount()` now loads every tag's count in a single `GROUP BY`
+query on first access instead of one `COUNT()` per call, both cleared
+by `invalidateCaches()` from every mutating method (`create()`/
+`update()`/`delete()`/`merge()`, plus `assignToPost()` clearing just the
+count cache). `update()` invalidates before its post-save `findById()`
+re-fetch, not after, since the pre-save `findById()` at the top of that
+method would otherwise have already primed the cache with the stale
+row. A new `allNames()` selects only the `name` column (skipping
+slug/description/timestamps and full `Tag` hydration) for the Post
+editor's tag-input autocomplete suggestions (`admin/views/posts/new.php`),
+which previously pulled every column via `listAll()` just to discard
+everything but the name. Tags have no hierarchy, so — unlike Categories'
+own Performance pass, which eliminated a real per-row ancestor-walk cost
+in the admin tree view — there was no equivalent N+1 to fix in tag
+archive generation; `PostService::paginateByTag()` was already a single
+indexed query, and the `findById()`/`postCount()` memoization above
+covers the remaining case of the same tag being looked up more than
+once within one request. 5 new `TagServiceTest` cases; full Docker PHP
+8.2/8.3/8.4 matrix passed (2345 tests/7343 assertions/4 pre-existing
+skips — logged in `PHP Test Suite/TEST_LOG.md`).
+
+**Implemented (2026-09-13), sixth pass — closing out the remaining open
+items.** `TagService::allNames()` (preloading every tag's name into the
+Post editor page for client-side filtering) replaced with
+`searchNames(string $term, int $limit = 10)`, a server-side `LIKE`
+search returning only a small matching set — `tag-input.js` now
+debounces (200ms) and `fetch()`s a new `tag_autocomplete_query`
+sub-action (`PostsController::queryTagsForAutocomplete()`) instead of
+filtering an in-memory array, mirroring the existing media/link-picker
+CSRF-refresh pattern. This is what actually fixes "Fast search with
+large tag collections" — the page payload and per-keystroke cost no
+longer scale with the site's total tag count. Also added the
+server-side name validation `TagService` was missing relative to
+`CategoryService` (`MAX_NAME_LENGTH = 191`, matching the `name`
+column's `VARCHAR(191)` width, plus the empty-name check `create()`/
+`update()` didn't previously enforce themselves) — `admin/views/posts/tags.php`
+now catches `\InvalidArgumentException` from a save alongside its
+existing blank-name fast path. `ThemeRenderer` gained
+`renderFirstAvailable(array $templates, array $vars)`, a small
+WordPress-style template-hierarchy fallback; `SiteController::tag()`
+now renders `tag.php` when a theme provides one, falling back to
+`archive.php` exactly as before when it doesn't — zero behavior change
+for every existing theme, since none ships a `tag.php` yet. Confirmed
+via a temporary test file on the dev install's active theme (added,
+verified the override rendered, removed) that the override path works,
+then confirmed the fallback path is unaffected once removed. Separately
+confirmed the "Tag cloud widget" checklist item was already done —
+`CoreWidgets::registerCoreWidgets()`'s `tag_cloud` widget (built under
+LP-048, Classic Widgets) — and that "Autocomplete testing"/"Usage
+statistics testing" were already covered by existing `TagServiceTest`
+cases, all three simply never checked off here. PHP 8.2/8.3
+compatibility confirmed via the v0.14.0 release's full Docker
+8.2/8.3/8.4/8.5 matrix (2375 tests, all green). 12 new/changed
+`TagServiceTest` cases, 4 new `PostsControllerTest` cases, 3 new
+`ThemeRendererTest` cases; full unit suite green (2285 tests, 7070
+assertions). Live-verified on the dev install: tag-input's suggestion
+dropdown now visibly comes from a real `fetch()` request (confirmed via
+the network log) rather than instantly filtering a preloaded list, a
+chip adds/removes correctly and excludes already-chipped names from
+future suggestions, an over-length tag name is rejected with the form
+correctly redisplayed, and a normal save still works.
+
+**Implemented (2026-09-13), seventh pass — Trash with restore
+functionality.** `Tag` gained a `trashed_at` soft-delete column
+(`0064_add_trashed_at_to_tags.sql`) and an `isTrashed()` method, mirroring
+`Category`'s identical pattern exactly. `TagService` gained `trash()`/
+`restore()`/`listTrashedWithPostCounts()`/`trashedCount()`/`emptyTrash()`,
+and every existing default-listing method (`listAll()`,
+`listAllWithPostCounts()`, `searchNames()`, `findBySlug()`, `tagsForPost()`,
+`mostUsed()`/`leastUsed()`/`unusedCount()`/`recentlyCreated()`/
+`recentlyUsed()`, `deleteUnused()`) now excludes trashed tags, matching
+`CategoryService`'s own exclusions row for row. `findOrCreateByName()`
+additionally restores a previously-trashed tag on reuse instead of
+leaving it invisibly trashed (which `assignToPost()` would otherwise
+attach a post to with no way to see it again) or creating a same-named
+duplicate. The admin Tags list gained an "All (N)"/"Trash (N)" status-tab
+pair (replacing the plain "Tags (N)" heading), a Trash-view-specific
+bulk-actions/row-actions set (Restore/Delete Permanently, vs. the
+existing Move to Trash/Merge/Remove unused outside it), and an Empty
+Trash button — the exact same shape `admin/views/posts/categories.php`
+already established, including redirect/CSRF-action-naming/banner
+conventions (`tag_trash_{id}`/`tag_restore_{id}`/
+`tag_delete_permanently_{id}`/`tags_empty_trash`). Two new hooks,
+`tag_trashed`/`tag_restored`, documented in `docs/DEVELOPER-APIS.md`
+alongside the existing `tag_saved`/`tag_deleted`/`tag_merged`. 15 new
+`TagServiceTest` cases (trash/restore/list-trashed/trashed-count/
+empty-trash, plus confirming every other query excludes trashed tags and
+that `findOrCreateByName()` restores rather than duplicates); full unit
+suite green (2300 tests, 7101 assertions). Live-verified on the dev
+install end to end: trashed a tag (banner + counts updated + row moved
+out of "All"), viewed it in "Trash" (plain text name, Restore/Delete
+Permanently actions, no Last Used column), Restored it (banner + counts
++ back in "All"), trashed it again and Delete-Permanently'd it (banner,
+gone from both views), and exercised the bulk path (selected two tags,
+"Move to Trash", then "Empty Trash" — both banners and counts correct
+throughout). Test tags removed afterward.
+
+**Implemented (2026-09-13), eighth pass — tags on post-list/search
+cards, closing the ticket out.** The last open item: a post's own tags
+now also show on `index.php`/`archive.php`'s post-listing cards and on
+`search.php`'s `'post'`-type result cards, not just `single.php`.
+`get_the_tags()`/`post_has_tags()`/`the_tags()` (`include/taxonomy-functions.php`)
+widened to accept `Post|int` rather than only `Post` — `search.php`
+only ever has a `SearchResult` (which carries a bare `id`, not a full
+`Post`), and only a `'post'`-type result has tags at all (Page/Category/
+Tag/Author never do). New `.lp-post-list__tags`/`.lp-post-list__tags-item`
+and `.lp-search-results__tags`/`.lp-search-results__tags-item` classes
+across all four themes (`lumora-classic`, `custom themes/duskline`/
+`xena-central`/`dragonquill`), each reusing that theme's own existing
+`.lp-post__tags` pill styling — duskline/xena-central's `nth-child(6n)`
+tag-color-cycling technique included — rather than a new visual
+language; `dragonquill`'s `index.php` already had this from an earlier
+session, its `archive.php`/`search.php` and CSS did not and were brought
+in line. 2 new `TaxonomyFunctionsTest` cases for the `int` id path; full
+unit suite green (2302 tests, 7104 assertions). Live-verified on the dev
+install: a tagged post's pill(s) render correctly on the homepage, its
+tag's own archive page, and search results (confirmed real markup/links
+via the DOM, not just visually) — checked against both the active theme
+(Dragonquill) and, after a temporary Activate/Activate-back round trip,
+Lumora Classic too, confirming the classes and styling work
+theme-independently. Dragonquill was left re-activated as it was before
+this check.
+
+### Goal
+
+Implement a flexible, non-hierarchical Tags system that allows users to organize and discover related content through keywords. Unlike Categories, Tags should be lightweight, free-form descriptors that help connect posts across different topics.
+
+The system should provide intelligent tag management, autocomplete, usage statistics, SEO-friendly URLs, and seamless integration with posts, search, RSS feeds, themes, and future plugins.
+
+### Features
+
+#### Tag Management
+
+- [x] Create tags
+- [x] Edit existing tags
+- [x] Delete tags
+- [x] Merge duplicate tags — `TagService::merge()`, admin Tags list's "Merge into&hellip;" bulk action
+- [x] Rename tags — the existing full Edit screen's Name field already does this (a rename is just an update() with a new name); no dedicated "rename" flow was ever needed, this line was just never checked off
+- [x] Bulk management — admin Tags list gained checkboxes + a bulk-actions bar (Delete/Merge into&hellip;/Remove unused tags), mirroring Categories' own bulk-actions pattern
+- [x] Trash with restore functionality — `trashed_at` soft-delete column (`0064_add_trashed_at_to_tags.sql`), mirroring `CategoryService`'s exact pattern: `TagService::trash()`/`restore()`/`listTrashedWithPostCounts()`/`trashedCount()`/`emptyTrash()`, an "All"/"Trash" status-tab pair on the admin Tags list, and a Trash-view-specific bulk-actions/row-actions set (Restore/Delete Permanently, vs. Move to Trash/Merge/Remove unused outside it)
+- [x] Permanent delete
+
+#### Tag Information
+
+- [x] Name
+
+- [x] Slug
+
+- [x] Description (optional)
+
+  
+
+  
+
+- [x] Usage count
+
+- [x] Creation date
+
+- [x] Last used date — derived from the newest `created_at` among a tag's assigned posts (no dedicated column), shown as a "Last Used" column on the admin Tags list
+
+#### Autocomplete
+
+- [x] Autocomplete while editing posts — full custom vanilla-JS widget (`admin/assets/js/tag-input.js`), not just a `<datalist>`
+- [x] Existing tag suggestions
+- [x] Keyboard navigation — Arrow Up/Down, Enter, comma, Backspace, Escape
+- [x] Automatically create new tags
+- [x] Prevent accidental duplicates — case-insensitive `findOrCreateByName()`
+- [x] Fast search with large tag collections — `TagService::searchNames()` (server-side `LIKE`, small `LIMIT`) queried via a debounced `fetch()` in `tag-input.js`, replacing the old approach of preloading every tag's name into the page and filtering client-side
+
+#### Posts Integration
+
+- [x] Assign multiple tags to posts
+- [x] Remove tags from posts
+- [x] Create tags while editing
+- [x] Display tag usage count
+- [x] Link usage count to filtered post list — the admin Tags list's post-count column (`admin/views/posts/tags.php`) now links to the admin Posts list pre-filtered to that tag (`?tag={id}`, the existing `tagId` filter in `PostService::paginateForAdmin()`), same as clicking a WordPress tag count does
+- [x] Automatically update usage statistics — `postCount()`/`listAllWithPostCounts()` query live, not a cached counter
+- [x] Related posts by shared tags — `PostService::relatedByTags()` + `get_related_posts()`/`the_related_posts()`, rendered on both themes' `single.php` below a post's own content
+
+#### Tag Archives
+
+- [x] Tag archive pages
+- [x] Pagination
+- [x] Tag description
+- [x] Theme customization — `SiteController::tag()` renders `tag.php` when the active theme provides one (`ThemeRenderer::renderFirstAvailable()`), falling back to the shared `archive.php` exactly as before when it doesn't
+- [x] Post count display
+
+#### URLs & Permalinks
+
+- [x] Automatic slug generation
+- [x] Manual slug editing
+- [x] Duplicate slug detection
+- Configurable permalink structure — built and done; not a token structure, see LP-078's "Tag base" field, which renames the `/tag/` prefix
+
+#### Search & Filtering
+
+- [x] Search by name — admin Tags list's "Search & Filter" panel, same shape as Categories' own (`TagService::listAllWithPostCounts()`'s `term` filter, `LIKE` against name)
+- [x] Search by slug — same `term` filter also matches slug
+- [x] Filter by usage count — "Minimum posts" field, `minPosts` filter
+- [x] Filter by creation date — "Created from"/"Created to" fields, `dateFrom`/`dateTo` filters
+- [x] Filter by last used — "Last used from"/"Last used to" fields, `lastUsedFrom`/`lastUsedTo` filters against the derived last-used date above
+
+#### Usage Statistics
+
+- [x] Number of associated posts
+- [x] Most-used tags — admin Tags list's "Usage Statistics" panel, `TagService::mostUsed()`
+- [x] Least-used tags — same panel, `TagService::leastUsed()`
+- [x] Unused tags — same panel, `TagService::unusedCount()`, alongside the existing "Remove unused tags" bulk action
+- [x] Recently created tags — same panel, `TagService::recentlyCreated()`
+- [x] Recently used tags — same panel, `TagService::recentlyUsed()`, against the derived last-used date above
+
+#### Bulk Actions
+
+- [x] Delete
+- [x] Merge
+- [x] Remove unused tags — one-click action (no selection needed), `TagService::deleteUnused()`
+
+---
+
+### Task List
+
+#### Database
+
+- [x] Design tags database schema
+- [x] Create tag/post relationship tables — `{prefix}post_tags`
+- [x] Create migration scripts — `0008_create_tags_tables.sql`
+- [x] Add indexes for performance
+- [x] Support future extensibility
+
+#### Backend
+
+- [x] Create Tag model
+- [x] Create Tag repository — `TagService`'s data-access methods, same "no separate repository layer" convention as Post/Page/Category
+- [x] Create Tag service layer
+- [x] Implement CRUD operations
+- [x] Implement autocomplete — server-side `findOrCreateByName()` + `searchNames()`-backed suggestion query (`tag_autocomplete_query`), debounced and fetched from `tag-input.js`
+- [x] Implement slug generation
+- [x] Implement merge functionality — `TagService::merge()`
+- [x] Track usage statistics
+- [x] Implement validation — `TagService::create()`/`update()` now validate (empty name, `MAX_NAME_LENGTH = 191`) the same way `CategoryService` does, in addition to the admin view's own blank-name fast path
+- [x] Implement permissions
+- [x] Implement search — `TagService::listAllWithPostCounts()`'s `term` filter (name/slug)
+- [x] Implement filtering
+
+#### Admin Interface
+
+- [x] Build Tags listing page
+- [x] Build Create Tag page
+- [x] Build Edit Tag page
+- [x] Display usage counts
+- [x] Add autocomplete support
+- [x] Add merge interface — the bulk-actions bar's "Merge into&hellip;" action + target-tag select
+- [x] Add bulk actions — Delete/Merge into&hellip;/Remove unused tags
+- [x] Add confirmation dialogs
+- [x] Display total tag count — `TagService::count()`/`trashedCount()` feed the admin Tags list's "All (N)"/"Trash (N)" status-tab links (added alongside Trash with restore functionality below), matching Categories' own convention exactly; the bare "Tags" `<h1>` no longer carries the count itself now that the tabs do.
+
+#### Frontend
+
+- [x] Tag archive pages
+- [x] Tag cloud widget — built under LP-048 (Classic Widgets): `CoreWidgets::registerCoreWidgets()`'s `tag_cloud` widget, font-size-scaled by post count
+- [x] Theme integration
+- [x] Display tags on posts — `get_the_tags()`/`post_has_tags()`/`the_tags()` (`include/taxonomy-functions.php`), rendered on both themes' `single.php`; see "Display Tags on Posts — Implementation Plan" below
+- [x] Link tags to archive pages
+
+#### Performance
+
+- [x] Optimize autocomplete queries — `TagService::searchNames()` selects only `name`, `LIKE`-filtered and `LIMIT`-bound server-side, replacing the old `allNames()` (every tag's name, unfiltered) preloaded into the page
+- [x] Cache popular tags — `mostUsed()`/`leastUsed()` (added in the Usage Statistics pass above) already run a single `LIMIT`-bound query each; the new request-scoped `postCount()` cache below is what actually eliminates repeat queries elsewhere in a request
+- [x] Cache tag counts — `TagService::postCount()` now backed by one request-scoped `GROUP BY` query, mirroring `CategoryService::postCount()`; `findById()` also gained the same request-scoped memoization as `CategoryService::findById()`
+- [x] Optimize archive generation — tags are flat (no ancestor chain to walk, unlike Categories), so `PostService::paginateByTag()` was already a single indexed query; the `findById()`/`postCount()` memoization above covers the remaining case of a tag being looked up more than once in the same request
+
+#### Security
+
+- [x] CSRF protection
+- [x] Permission checks
+- [x] Input validation
+- [x] Output escaping
+- [x] XSS protection
+
+#### Testing
+
+- [x] Unit tests — `Unit/Services/TagServiceTest.php`
+- [x] Integration tests — `Integration/TagServiceIntegrationTest.php` (real MySQL only, confirms `findOrCreateByName()`'s case-insensitive matching for real)
+- [x] Autocomplete testing — `TagServiceTest`'s `testSearchNames*` cases and `PostsControllerTest`'s `testQueryTagsForAutocomplete*` cases cover the server-side search/query the widget calls; the `tag-input.js` widget itself still has no browser/JS test coverage — this project has no JS testing framework anywhere (a deliberate choice, see `CLAUDE.md`'s "avoids Node.js dependencies"), so that specific gap is project-wide, not tag-specific, and isn't closed by this pass
+- [x] Merge testing — `TagServiceTest`'s `testMerge*` cases
+- [x] Usage statistics testing — `TagServiceTest`'s `testMostUsed*`/`testLeastUsed*`/`testUnusedCount*`/`testRecentlyCreated*`/`testRecentlyUsed*` cases (added in the fourth pass above), never checked off here until now
+- [x] Slug generation testing
+- [x] PHP 8.2 compatibility — confirmed via the v0.14.0 release's full Docker 8.2/8.3/8.4/8.5 matrix
+- [x] PHP 8.3 compatibility — same matrix run
+- [x] PHP 8.4 compatibility
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Update CHANGELOG.md
+- [x] Document Tag APIs — `docs/DEVELOPER-APIS.md` (new): the Tag lifecycle hooks (`tag_saved`/`tag_deleted`)
+- [x] Document theme integration — `docs/THEME-DEVELOPMENT.md` (new): `tag_permalink()`, `archive.php`'s handling of tag archives, and the full template-tag API
+
+**Implemented (2026-08-18).** Both new docs cover every content type
+together, not just Posts — see LP-008's own Documentation implementation
+note for the full write-up.
+
+#### Success Criteria
+
+- [x] Users can quickly organize content using tags.
+- [x] Autocomplete makes tagging fast and consistent.
+- [x] Duplicate and unused tags are easy to manage. — case-insensitive dedup on creation, plus the admin Tags list's Merge and Remove unused tags bulk actions
+- [x] Tag archives integrate seamlessly with themes and search. — themes yes; search itself isn't implemented yet (separate ticket)
+- [x] The implementation remains lightweight, performant, and scalable for sites with thousands of tags. — the sixth pass's server-side `searchNames()` closes the one real scaling gap this criterion was tracking (client-side filtering of every tag's name); not load-tested against an actual thousands-of-tags dataset, but the query itself is a single indexed, `LIMIT`-bound `LIKE` — the same shape every other search/filter query in this codebase already relies on at scale
+
+---
+
+### Display Tags on Posts — Implementation Plan
+
+A post's assigned tags are currently invisible on the frontend outside the
+tag archive itself — `TagService::tagsForPost(int $postId): array<Tag>`
+already exists and is fully functional (used by the admin editor and
+`SiteController::tag()`), but no theme-facing helper or template wires it
+into a single post's own page. This is a pure display gap, not a data or
+service-layer one.
+
+**Architecture:**
+
+- New `include/taxonomy-functions.php`, following the same procedural
+  "theme template tag" convention as `author-functions.php`/
+  `permalink-functions.php`/`content-display-functions.php` (all thin
+  wrappers around an existing service, `esc_html()`/`esc_url()`'d at the
+  point of output):
+  - `get_the_tags(Post $post): array` — wraps `TagService::tagsForPost()`.
+  - `post_has_tags(Post $post): bool`.
+  - `the_tags(Post $post, string $before = '', string $sep = ', ', string $after = ''): void`
+    — WordPress-style template tag: echoes each tag as a link to
+    `tag_permalink($tag)`, joined by `$sep`, wrapped in `$before`/`$after`
+    when at least one tag exists; echoes nothing for a tagless post (no
+    empty wrapper markup).
+- Wire the new file into `include/bootstrap.php`'s existing explicit
+  `require` list (alongside `content-display-functions.php`, which
+  `TagService`'s container entry is already resolved near).
+- `default` theme's `single.php`: render tags via `the_tags()` after
+  `.lp-post__content` (or as part of `.lp-post__meta`, matching where the
+  original Duskline Publii theme put its post-header tag row — decide at
+  implementation time), wrapped in a new `.lp-post__tags` list of
+  `.lp-post__tags-item` links — new, stable, dedicated classes per the
+  Public-Facing CSS Rule, not a reuse of `.lp-widget__tag-cloud-item`
+  (different component, even if visually similar).
+- `default` theme's `style.css`: style `.lp-post__tags`/`.lp-post__tags-item`
+  as a pill list, echoing `.lp-widget__tag-cloud-item`'s look without
+  sharing its class.
+- Optional (own checklist item, not required for the core gap): the same
+  treatment on `index.php`/`archive.php` post-list cards
+  (`.lp-post-list__tags`), and on `search.php` result cards.
+- Per this project's Custom Theme Rules, propagate the equivalent addition
+  to `custom themes/duskline/` (`single.php` + `style.css`, using its own
+  `.lp-post__tags-item` styling — the tag-color-cycling technique already
+  built for its Tag Cloud widget, `nth-child(6n+N)` against
+  `--dl-tag-1`..`--dl-tag-6`, is a natural fit here too) in the same
+  implementation session, additively, without touching anything already
+  there.
+
+**Checklist:**
+
+- [x] `include/taxonomy-functions.php`: `get_the_tags()`, `post_has_tags()`,
+      `the_tags()` — also `get_related_posts()`/`the_related_posts()` for
+      the "Related posts by shared tags" item above, added in the same
+      file/session since both need the same `ActiveTags` bridge.
+- [x] Wire the new file into `include/bootstrap.php`'s require list.
+- [x] `default` theme: tags rendered on `single.php`, new
+      `.lp-post__tags`/`.lp-post__tags-item` classes styled in `style.css`.
+- [x] `custom themes/duskline/`: same addition, propagated in the same
+      session per the Custom Theme Rules, applied additively.
+- [x] Optional: tags on post-list cards (`index.php`/`archive.php`) and
+      search results (`search.php`), all four themes (`lumora-classic`
+      plus `custom themes/duskline`/`xena-central`/`dragonquill` — the
+      latter's `index.php` already had it from an earlier pass;
+      `archive.php`/`search.php` didn't). `get_the_tags()`/
+      `post_has_tags()`/`the_tags()` widened to accept a bare post id
+      (`Post|int`) alongside a full `Post` object, since `search.php`'s
+      cards are `SearchResult`s, not `Post`s, for a `'post'`-type result
+      — every other result type (Page/Category/Tag/Author) never shows
+      tags. New `.lp-post-list__tags`/`.lp-post-list__tags-item` and
+      `.lp-search-results__tags`/`.lp-search-results__tags-item` classes,
+      reusing each theme's own existing `.lp-post__tags` pill styling
+      (including duskline/xena-central's `nth-child(6n)` tag-color-
+      cycling technique) rather than inventing a new visual language.
+- [x] Unit tests for the new functions — new
+      `Unit/Core/TaxonomyFunctionsTest.php`, following
+      `ContentDisplayFunctionsTest.php`'s/`MediaFunctionsTest.php`'s
+      existing pattern for testing a procedural `include/*.php` file
+      (bootstrap the function file directly, assert against a real or
+      fake `Post`/`Tag`).
+- [x] `README.md`/`CHANGELOG.md` updates once implemented (custom theme
+      changes stay excluded from both, per this project's CHANGELOG Rules).
+
+------
+
+### LP-163. Bulk Activation and Deactivation of Plugins
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+The admin Plugins screen (`admin/views/plugins.php`) already has a bulk-actions bar (`plugins-bulk-form`), but it only ever offers "Delete" — activating or deactivating more than one plugin still means clicking each row's own Activate/Deactivate button individually. The row checkbox column itself is currently only rendered for *inactive* plugins (`<?php if (!$info->isActive): ?>` around the `<input type="checkbox">`), since Delete is the only bulk action and only an inactive plugin can be deleted.
+
+### Design
+
+Everything this needs already exists elsewhere in the same file — this is a generalization, not a new subsystem:
+
+- **Checkbox column:** render the row checkbox for every plugin, not just inactive ones (drop the `!$info->isActive` guard around the `<input type="checkbox">`; the column's own visibility gate, currently `$hasDeletablePlugins`, becomes "the plugin list isn't empty" instead, since Activate/Deactivate apply regardless of delete-eligibility).
+- **Bulk actions dropdown:** add "Activate" and "Deactivate" options alongside the existing "Delete" in `#plugins-bulk-action`.
+- **Handler:** generalize the existing `bulk_delete_plugins` POST branch (already switches on `bulk_action`, currently only handling `'delete'`) into `activate`/`deactivate`/`delete` branches, reusing the exact closures/gates the single-row actions already use — no new activation logic, since activating/deactivating a plugin is already just a one-line membership toggle in the `active_plugins` option list (`$readActivePlugins()`/`$writeActivePlugins()`, already defined at the top of this file) with no lifecycle hook to fire (confirmed: `PluginManager`/`PluginRegistry` have no `plugin_activated`/`plugin_deactivated` hook today — a newly-activated plugin's bootstrap file simply gets `require`d starting the next request that reads the updated list). One read + one write per bulk request, not N.
+  - `activate`: skip a slug that's unknown, already active, or `isDisabled` (PHP-version-incompatible) — the same three conditions the single-row `activate_plugin` branch already checks.
+  - `deactivate`: skip a slug that's unknown or already inactive — matches the single-row `deactivate_plugin` branch (which has no other precondition today).
+  - `delete`: unchanged, already implemented (skip unknown or still-active).
+- **Result banner:** extend the existing `bulk_deleted`/`bulk_skipped` query-param + `lp-alert` pattern with matching `bulk_activated`/`bulk_activate_skipped` and `bulk_deactivated`/`bulk_deactivate_skipped` pairs, worded the same way ("N plugin(s) activated. N skipped (already active, or requires a newer PHP version).").
+- **Confirm dialog:** the Apply button currently carries a static `data-lp-confirm="Delete the selected plugins permanently?..."`, which would misfire if left in place once Activate/Deactivate share that same button (neither needs confirming — both are freely reversible, one click each way). Dropping the confirm entirely for all three actions was considered — this codebase's own All Posts bulk bar takes exactly that approach when a dropdown mixes reversible actions with a soft (reversible) "Move to Trash" — but Plugins' bulk Delete is a *genuinely irreversible* file removal (`PluginInstaller::delete()`), unlike Trash, so silently losing that confirmation would be a real regression rather than a style match. Instead: a small, generic, CSP-safe addition mirroring `select-all.js`'s existing shape — each `<option>` in the bulk-action `<select>` that needs confirming carries its own `data-lp-confirm="..."` (only `delete`'s option would); a new tiny script copies the selected `<option>`'s `data-lp-confirm` onto the paired Apply button's own `data-lp-confirm` attribute on `change`, or removes it when the selected option has none — `confirm-submit.js`'s existing click handler (which already reads `button.dataset.lpConfirm` at click time) then needs no changes at all. Generic enough that any future bulk-action bar mixing destructive and non-destructive options can reuse the same markup contract.
+
+### Checklist
+
+- [x] Render the row checkbox for every plugin (not just inactive), gated on the plugin list being non-empty rather than `$hasDeletablePlugins`.
+- [x] Add "Activate"/"Deactivate" options to `#plugins-bulk-action`.
+- [x] Generalize the `bulk_delete_plugins` POST handler into `activate`/`deactivate`/`delete` branches with the eligibility rules above; rename the form/CSRF-token identifier to something that no longer implies delete-only (e.g. `bulk_plugin_action`).
+- [x] Extend the results banner with `bulk_activated`/`bulk_deactivated` counts (plus their own skipped counts), matching the existing `bulk_deleted`/`bulk_skipped` wording.
+- [x] New small shared script (`bulk-action-confirm.js`): copies a bulk-action `<select>`'s selected `<option>`'s own `data-lp-confirm` onto the paired Apply button on `change`, so only genuinely destructive bulk actions confirm.
+- [x] Move the "Delete" option's confirm text from the Apply button onto the `<option value="delete">` itself; verify Activate/Deactivate submit with no prompt and Delete still prompts exactly as it does today.
+- [x] Unit/integration test coverage: bulk activate (mixed already-active/disabled/valid slugs — correct activate + skip counts), bulk deactivate (mixed already-inactive/valid slugs), existing bulk delete behavior unchanged. Unblocked (2026-09-14) by extracting `admin/views/plugins.php`'s entire POST-handling dispatch (single-row activate/deactivate/delete, bulk activate/deactivate/delete, install/confirm/cancel) into a new `PluginsController`, the exact extract-to-controller pattern LP-082 already proved out for Themes/Posts/Pages/Categories (`AdminActionResult` return value, no `header()`/`exit` inside the controller itself). 22 new `PluginsControllerTest` cases covering every branch, including the two genuinely new ones this ticket added (bulk activate with a mixed valid/already-active/PHP-disabled/unknown slug list; bulk deactivate with a mixed active/inactive list) plus a CSRF-failure case per method (including `cancelInstallPlugin()`, added once its own CSRF gap was closed — see below) and the pre-existing bulk-delete path re-verified unchanged. No mocks — real `PluginRegistry`/`PluginInstaller` over temp directories and real ZIPs, mirroring `ThemesControllerTest.php`'s own fixture helpers.
+- [x] Verify live on the dev install: selected a mix of active/inactive plugins and ran Activate, Deactivate, and Delete-option confirm-copy (via direct DOM inspection) in turn — bulk Deactivate on Contact Forms produced "1 plugin deactivated.", bulk Activate with all rows selected produced "2 plugins activated. 8 skipped (already active, or requires a newer PHP version).", and selecting the Delete option (without submitting) confirmed the Apply button picks up its confirm text while Activate/Deactivate leave it unset. Did not simulate a PHP-version-disabled plugin specifically; the `isDisabled` skip path is exercised by the same code the single-row `activate_plugin` branch already relies on. Re-verified end to end after the controller extraction (2026-09-14): single-row Deactivate on Font Awesome, then bulk-Activate it back, both against the real dev-install database, produced "Plugin deactivated." then "1 plugin activated." exactly as before.
+
+**Implemented (2026-09-14), test-coverage pass.** New `app/Controllers/Admin/PluginsController.php` holds every branch `admin/views/plugins.php` used to handle inline — `activatePlugin()`/`deactivatePlugin()`/`deletePlugin()`/`bulkPluginAction()`/`installPlugin()`/`confirmInstallPlugin()`/`cancelInstallPlugin()` — each returning an `AdminActionResult` instead of calling `header()`/`exit` directly, so the whole file (not just this ticket's own bulk-action logic) is now unit-testable. The Grid/List view-mode toggle (a pure fire-and-forget JSON sub-action) stays inline in the view, mirroring `CategoriesController`'s own precedent for its Category Image picker query. `readActivePlugins()`/`writeActivePlugins()` moved into the controller unchanged (still a single JSON-encoded `active_plugins` option, no new schema). One deliberate behavior change, matching `ThemesController`'s own precedent exactly: a CSRF failure on any of these forms now shows an inline error instead of silently re-rendering with no feedback. `cancelInstallPlugin()` initially kept the pre-extraction behavior of having no CSRF check at all — flagged separately as a real, pre-existing gap rather than silently fixed as a side effect of this refactor, via a spawned follow-up task. Ariane started that task in a parallel session while this one was still in progress; it landed the fix directly (CSRF token param + verification, a `Csrf::field()` added to the Cancel form, a new CSRF-failure test) in the same shared working tree, so both changes ended up in one commit. Full suite green (2392 tests, 7333 assertions); `composer stan` shows only the same 18 pre-existing errors, none in the new code; `composer cs-fix` clean on every changed file.
+
+------
+
+### LP-169. Server Filepath Discovery for Import/Config Fields
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Several admin screens (core and plugins) ask an administrator to type a raw server filesystem path to something outside this install — another app's config file, its uploads folder, a downloaded GeoIP archive. One pattern (Media Manager's "Import from Server") already has real discovery: a "Discover Directories" button scans `dirname(LUMORA_ROOT)` (this install's own parent directory — the same absolute path already shown as "Installed At" on Maintenance › Updates) and offers sibling directories as clickable candidates instead of making the admin type one blind. Every other server-filepath field lacks this — the admin must already know and type the exact path before anything useful happens, even the two fields that already have an "Auto-detect from config.php"-style feature (that only parses a config file's content once given a correct path; it doesn't help find the path itself).
+
+### Fields needing discovery, that don't have it yet
+
+- **WordPress Importer** (`admin/views/maintenance/import.php`): `wp_config_path` (auto-detects DB creds from `wp-config.php` once a path is given, but the path itself isn't discovered), `uploads_path` (server filesystem path to `wp-content/uploads`, standalone field for the NextGEN-only import path), `gallery_path` (server filesystem path to `wp-content/gallery`, NextGEN Gallery import).
+- **Lumora Gallery Shortcodes** (`admin/views/lumora-gallery-shortcodes/settings.php`): `gallery_config_path` (same "auto-detect DB creds from a given config.php" shape as wp_config_path above — the path itself isn't discovered).
+- **Visitor Stats** (`admin/views/visitor-stats/settings.php`): the GeoIP "Import From A Server Path" field (a downloaded `GeoLite2*.zip`, or the two already-extracted CSV filenames) — the most heuristic of the four, since there's no fixed sibling-app layout to key off, only a recognizable filename pattern.
+- **Out of scope:** `wxr_path` (a one-off exported `.xml` file an admin uploads/points at — nothing plausible to discover, since it isn't a convention-following sibling install).
+
+### Design
+
+- Factor `MediaImportService::discoverCandidateDirectories()`'s scan loop (scandir + realpath + dotfile/exclude filtering, already proven and tested) out into a small shared `app/Core/Filesystem/SiblingDirectoryScanner.php`, reused by Media Import (refactored to delegate to it, behavior unchanged) and every field below — not four separate copies of the same scandir loop.
+- Add an optional marker filter to the shared scanner: given a relative path (e.g. `wp-config.php`, `config.php`, `wp-content/uploads`), only return sibling directories that actually contain it — so "Discover" for the WordPress importer's `wp_config_path` field only surfaces siblings that plausibly *are* a WordPress install, not every unrelated directory next to this one.
+- Scan root is always `dirname(LUMORA_ROOT)` — the same directory Maintenance › Updates already shows as "Installed At" (`rtrim(LUMORA_ROOT, '/')`), i.e. wherever this install's own parent directory is. No new concept to introduce; reuse the constant that's already the single source of truth for "where am I on disk."
+- Each discovered candidate renders as a one-click option (mirroring Media Import's own "Discovered Directories" checklist UI) that either pre-fills the relevant text field or — for the two auto-detect fields (`wp_config_path`, `gallery_config_path`) — submits the existing detect-from-config-file handler directly with that path, so picking a candidate does the whole job in one click instead of two.
+- GeoIP: a lighter, file-glob-based variant (not directory-marker-based) scanning `dirname(LUMORA_ROOT)` and its immediate sibling directories, one level deep, for `GeoLite2*.zip` or the two known CSV filenames — clearly labeled as a best-effort convenience, not a guarantee (a MaxMind download could be renamed or live anywhere).
+
+### Checklist
+
+- [x] Extract `SiblingDirectoryScanner` from `MediaImportService::discoverCandidateDirectories()`; refactor that method to delegate to it with no behavior change (existing tests must still pass unmodified).
+- [x] Add the optional marker-file filter to `SiblingDirectoryScanner`.
+- [x] Wire discovery into WordPress Importer's `wp_config_path` field (marker: `wp-config.php`), submitting the existing `detect_wp_config` handler directly per candidate.
+- [x] Wire discovery into WordPress Importer's standalone `uploads_path` field (marker: `wp-content/uploads`) and `gallery_path` field (marker: `wp-content/gallery`).
+- [x] Wire discovery into Lumora Gallery Shortcodes' `gallery_config_path` field (marker: `config.php`), submitting the existing `detect_gallery_config` handler directly per candidate.
+- [x] Add the lighter file-glob discovery variant for Visitor Stats' GeoIP server-path field.
+- [x] Unit tests for `SiblingDirectoryScanner` (marker filtering, exclude list, dotfile skipping) and for the refactored `MediaImportService` method (regression only).
+- [x] Verify live on the dev install: with at least one genuinely discoverable sibling present, confirm each screen's Discover control finds it and that picking it actually fills/submits correctly; confirm an empty/permission-denied scan degrades to today's plain "type it yourself" behavior with no error.
+
+**Implementation notes (2026-09-14).** Built exactly per the Design
+section above, no deviations. `SiblingDirectoryScanner::scan()` is a
+static, single-method utility (scandir/realpath/dotfile-skip, plus the
+new optional `$markerRelativePath` filter — `file_exists($candidate .
+'/' . $marker)`, which works for both a marker file like `wp-config.php`
+and a nested marker like `wp-content/uploads`); `MediaImportService::
+discoverCandidateDirectories()` now delegates to it and maps the result
+into its own `{path, alreadyAllowed}` shape, unchanged from the caller's
+perspective. `uploads_path`/`gallery_path` turned out not to need the
+"submit a handler directly" shape the two auto-detect fields
+(`wp_config_path`, `gallery_config_path`) needed — they're plain values
+with nothing to parse, so `$formValues` for those two now also falls
+back to `$_GET` (previously `$_POST`-only), letting a plain bookmarkable
+GET link pre-fill both at once (a discovered uploads folder's sibling
+`wp-content/gallery`, only linked when it actually exists) with no new
+form/CSRF machinery — simpler than the config-file fields, correctly
+so, since nothing state-changing happens on a Discover click there.
+GeoIP's field previously had no persisted value at all (blank every
+render); it now also reads `$_GET['geoip_directory']` for the same
+pre-fill-only reason, explicitly never auto-submitting the real import
+since that action *is* state-changing and deserves the existing
+explicit "Import From Path" click. The two config-file fields'
+CSRF handling reuses the existing `Csrf::verify()` single-use-token
+behavior directly: one `Csrf::token('..._discovered')` call renders
+once per page and is reused verbatim across every candidate's own
+mini-form — correct and simple, since single-use only matters at
+verify time (the first click consumes it; a second requires a fresh
+page load either way). 10 new `SiblingDirectoryScannerTest` cases; the
+existing 30 `MediaImportServiceTest` cases pass unmodified against the
+refactored method; full suite green (2358 tests, 7239 assertions);
+stan/cs-fix clean on every changed file. Live-verified on the dev
+install against three genuinely pre-existing sibling installs already
+on that machine (`/home/piia/Coding/webserver/html/wordpress` — a real
+WordPress site with both `wp-content/uploads` and `wp-content/gallery`
+— and `/home/piia/Coding/webserver/html/lumoragallery-preview`, a real
+Lumora Gallery install): each "Discover" control found the real
+candidate, and clicking it correctly ran the full one-click detect flow
+for `wp_config_path`/`gallery_config_path` (confirmed real DB
+credentials landed in the form fields both times) and pre-filled both
+`uploads_path` and `gallery_path` together across all three of that
+field's separate render locations on the page. Confirmed graceful
+"nothing found" degradation for GeoIP (no `GeoLite2*.zip` present on
+that machine), then confirmed the positive match too with a temporary
+empty test file, cleaned up afterward. No leftover state from testing
+— the Gallery "Detect" flow only fills an unsaved Add-Connection form,
+never persisted anything.
+
+------
+
+### LP-170. Posts and Pages Show Username as Slug
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Security vulnerability: Posts, Pages etc are showing Username as author slug, should show Display Name. Must be Display Name everywhere where author slug is used, for admin and all staff.
+
+**Implemented (2026-09-14).** `UserService::authorSlug()`/`findByAuthorSlug()` were slugifying `username`, not `displayName` — since `verifyCredentials()` accepts username or email to log in, every post/page permalink, author archive URL, search result, and author RSS feed link was publishing half of a working login credential for every published author on the site. Both methods now build the slug from `displayName`; every call site (`PermalinkService`, `SearchService`, `include/author-functions.php`'s `the_author_link()`, and `SiteController::author()`/`authorFeed()`) already went through these two methods, so no other file needed changes. Since `displayName` (unlike `username`) isn't guaranteed unique, a new private `authorSlugMap()` deduplicates on the fly the same way `CategoryService`/`PostService`'s own `generateUniqueSlug()` do for stored slugs — first user by id keeps the bare slug, a later colliding one gets `-2`, `-3`, etc. — still with no new `users` schema column, matching the original design's own stated rationale. 6 new/rewritten `UserServiceTest` cases, including a regression test that a differing username never resolves as the slug and a dedup/trashed-exclusion pair; full suite green (2370 tests, 7267 assertions); `composer stan` shows only the same 18 pre-existing errors, none in the new code; `composer cs-fix` clean. Live-verified against `lumorapress-preview`'s own real data: Ariane's actual login username (`xxxxxx`, [note from Ariane: username anonymized here] distinct from her `display_name` "Ariane") no longer appears anywhere in rendered output — every post byline links to `/author/ariane`, and `/author/xxxxxx` now 404s where it previously resolved. Also created a temporary Author account (username `jd_secret_login`, Display Name "Jane Doe") to confirm the fix holds for a second real account; removed afterward (unit tests cover the dedup/collision case directly against a real `UserService`, not re-verified live).
+
+------
+
+### LP-171. Plugins Page
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Plugins page:
+
+- [x] Bug: On several active plugins, the Settings button is unreadable on hover: text is same blue as background — root cause found (2026-09-14) after Ariane supplied a screenshot showing it live: a `:visited` plugin Settings link (i.e. one already clicked into at least once) being hovered hit a real CSS specificity collision between `.lp-button--link:hover` (white text) and `.lp-table td a:visited` (accent-blue text, higher specificity since it has two element selectors) — the same underlying collision `.lp-button--link--view`'s own fix already solved for the "View" row-action chip, just never applied to plugin action links since those didn't exist yet when that fix landed. Only ever visible on a link the admin had actually navigated to before, which is exactly why the first investigation pass (a fresh, never-visited browser session) couldn't reproduce it. Fixed in `admin/assets/css/admin.css` by adding a `.lp-button--link:visited:hover` selector alongside the existing `:hover` one, giving it enough specificity (3 classes vs. `.lp-table td a:visited`'s 1 class + 2 elements) to win regardless of visited state.
+- [x] Move Install Plugin to top of page. — the "Install a Plugin" upload form is now its own panel at the top of the page (right after the pending-install-confirmation banner when one is showing), above "Installed Plugins" instead of buried below the plugin grid/table at the bottom.
+
+**Implemented (2026-09-14), two passes.** First pass moved "Install a Plugin": `admin/views/plugins.php` relocated the `<h2>`/form block (unchanged markup) to its own `<section class="lp-admin__panel">` immediately after the alerts/pending-install block and before "Installed Plugins" — removed the old duplicate copy that used to sit at the very bottom of the page. No PHP logic changed (same form, same CSRF field, same POST handler). That pass also investigated the hover bug and couldn't reproduce it in a fresh browser session, so left it open pending more detail.
+
+Second pass: Ariane supplied a screenshot showing the exact broken state (Visitor & Post View Statistics' Settings button, solid blue with invisible text) — confirmed the link was one she'd already visited. That was the missing piece: a *visited* link's hover state, not just any hover state. Re-read `.lp-table td a:visited { color: var(--lp-admin-accent) }` (admin.css) against `.lp-button--link:hover { color: #fff }` and worked out the specificity collision by hand (both selectors tie at 2 in the class/pseudo-class column, so the extra `td`/`a` element selectors on the `.lp-table` rule win the tiebreak) — the exact same mechanism the pre-existing `a.lp-button--link.lp-button--link--view` override already documents solving for the "View" chip, just never extended to cover plugin action links. Fixed by adding `.lp-button--link:visited:hover` to the existing hover rule (3 classes/pseudo-classes now beats the `.lp-table td a:visited` rule's 1 class + 2 elements regardless of the element-count tiebreak). Verified the fix is correctly scoped: `.lp-button--link` is the only bare (non `--view`, non `--danger`) `.lp-button--link` class ever applied to a real `<a href>` anywhere in the admin (every other usage is a `<button>`, which has no `:visited` state at all), so this one selector addition covers every instance of the bug without touching anything else. Could not force a real browser `:visited` state inside the automated browser tool used for verification (visited-link styling is deliberately hard to introspect/force via automation in modern browsers, for anti-fingerprinting reasons) — confirmed the fix is live and the non-visited hover path is unaffected (still white-on-blue), and confirmed via manual CSS specificity arithmetic (cross-checked twice) that the same fix pattern already proven correct for the View button applies identically here. `composer stan`/`cs-fix` don't apply (CSS-only change); manually verified brace/comment balance in `admin.css` after editing.
+
+------
+
+### LPP-022. Lumora Sweep — Database Cleanup Utility
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+A bundled-but-optional plugin for cleaning up unused, orphaned, and duplicated database rows — inspired by the WP-Sweep plugin Ariane uses on her WordPress sites. Genuine maintenance convenience, not something "Sit down. Write. Publish." depends on — same reasoning that already moved Visitor Stats (LPP-014) out of core: a site owner who doesn't want this extra admin surface should never have it installed at all.
+
+### Admin UI placement
+
+Lives as its own tab on **Maintenance &rsaquo; Tools**, the same way Lumora Shield's settings live as a tab on **Settings &rsaquo; Security** (`admin/views/settings/security.php`'s `$tabs`/`?tab=` pattern: a `$tabs = ['general' => 'General']` array gains `$tabs['sweep'] = 'Sweep'` only while the plugin is active, `$activeTab` resolved from `$_GET['tab']`, the plugin's whole section gated on `class_exists(SweepService::class, false)` and rendered inside a `<div class="lp-tabs__panel" ... hidden>` block). **`admin/views/maintenance/tools.php` currently has no tab bar at all** (unlike Security) — this ticket is what first adds that same `.lp-tabs`/`$tabs`/`?tab=` scaffolding to Tools, with "General" covering everything the screen already has (Export/Import Settings, Dummy Content) and "Sweep" as the new second tab.
+
+### What actually applies to Lumora Press's own schema
+
+WP-Sweep's feature list is WordPress-shaped; Lumora Press's schema is smaller and already handles some of this reactively. Ported over only what's real here, checked against the actual migrations (`install/migrations/`) and models rather than assumed:
+
+- **Excess revisions** — `RevisionService` already caps revisions per post/page at the `revision_retention` option (default 25) going forward; Sweep's value is retroactive — a site that lowered that setting after already accumulating more revisions than the new cap needs a one-time prune, which nothing currently does automatically.
+- **Trashed posts/pages** older than N days — Posts already has its own "Empty Trash" (`admin/views/posts/all-posts.php`); confirm whether Pages has the equivalent before assuming Sweep needs to build it fresh, vs. Sweep's value being one combined cross-content-type view/trigger instead of visiting each screen separately.
+- **Spam/Trashed comments** (`CommentStatus::Spam`/`::Trash`) older than N days — check `admin/views/comments.php` for any existing bulk-empty action first, same caveat as above.
+- **Orphaned `post_meta` rows** (`{prefix}post_meta.post_id` referencing a since-deleted post) — a real, generic cleanup target regardless of WordPress heritage; can genuinely occur from a raw DB operation bypassing `PostService`, or from data older than a cascade-delete fix.
+- **Duplicate `post_meta` rows** (identical `post_id`+`meta_key`+`meta_value`) — a plausible bug artifact, safe to de-duplicate.
+- **Unused categories/tags** (zero posts attached) — **opt-in only**, off by default: an empty category can be intentional (reserved for future content), unlike an orphaned meta row which is never intentional.
+- **Table optimization** (`OPTIMIZE TABLE`) on whatever tables were just cleaned, via the existing `Database` class's raw-query capability — no new abstraction needed.
+- **Explicitly does not apply / not built:** "auto-drafts" (no such `PostStatus` case — Lumora's `Draft` posts are real user drafts, not a WordPress-style silent autosave state, so nothing here is safe to sweep), "orphan user meta" (no `user_meta` table exists), "transient options" (this app has no transients API/table at all). Don't invent schema that doesn't exist to make the feature list match WP-Sweep's 1:1 — sweep what's actually there.
+
+### Design
+
+- **Preview before delete, per category, not one giant button.** Each cleanup category (Revisions/Trash/Spam/Orphaned Meta/Duplicate Meta/Unused Terms) shows a live count first ("12 orphaned post_meta rows found") with its own "Clean Up" button and `data-lp-confirm`, mirroring this app's existing per-action confirm convention rather than a single irreversible "Sweep Everything" button.
+- **Manual trigger only for v1** — this app has no cron/queue infrastructure (confirmed via `PHP Test Suite/TEST_LOG.md`'s own notes elsewhere), so scheduled/automatic sweeping isn't attempted; matches WP-Sweep's own default manual-trigger behavior anyway.
+- A `SweepService` (or one small class per category, matching how focused this codebase's other services already are) issues the actual cleanup queries — read-only "count" methods separate from the "delete" methods, so the preview step never risks running a destructive query by accident.
+
+### Checklist
+
+- [x] Add the `$tabs`/`?tab=` tab-bar scaffolding to `admin/views/maintenance/tools.php` (currently has none), with "General" (existing content) and "Sweep" (while active) as the two tabs.
+- [x] `SweepService`: count + clean methods for each real cleanup category listed above.
+- [x] Sweep tab UI: per-category live counts, individual "Clean Up" buttons with confirmation, a results summary after each run.
+- [x] Confirm whether Posts/Pages/Comments already have their own bulk-empty-trash/spam actions before duplicating that logic here — Sweep's value-add is the combined view and the categories nothing else already covers (orphaned/duplicate meta, revision backfill, table optimization).
+- [x] Unit tests: each cleanup category's count/clean methods against fixture data (orphaned rows found and removed, non-orphaned rows left untouched, duplicate detection doesn't false-positive on legitimately-repeated key/value pairs across different posts).
+- [x] Verify live on the dev install: seed some genuinely orphaned/duplicate data, confirm the preview counts match, run each cleanup category, confirm the counts drop to zero and nothing legitimate was removed.
+
+**Implementation notes (2026-09-14).** Posts, Pages, Categories, and Tags
+already had their own unconditional "Empty Trash" (Comments too, via
+`CommentService::emptyByStatus()`) — confirmed before building anything,
+per the checklist item above. Sweep's own value-add is exactly what the
+ticket predicted: the age filter (Posts/Pages/Comments' existing actions
+have none) and the categories nothing else covers at all (excess-revision
+backfill, orphaned/duplicate `post_meta`, unused terms). Built as
+`content/plugins/lumora-sweep/` (`SweepService` — one class, count/clean
+method pairs per category, matching `LumoraShieldService`'s single-class
+shape) with a `Sweep` tab added to Maintenance › Tools following
+`settings/security.php`'s existing `$tabs`/`?tab=` convention exactly.
+Trashed-post/page age uses `trashed_at`; comments have no equivalent
+column, so their age uses `updated_at` (rewritten on every status change
+by `CommentService::updateStatus()`, so it doubles as "how long has this
+been Spam/Trash"). Old trashed-content/comment cleanup reuses
+`PostService`/`PageService`/`CommentService`/`RevisionService` directly
+(same cascade — revisions deleted, then the row — `PostsController`/
+`PagesController::emptyTrash()` already use) rather than a bare `DELETE`,
+so nothing here bypasses those services' own referential cleanup.
+Orphaned/duplicate `post_meta` and unused-terms detection are raw SQL
+(`LEFT JOIN ... IS NULL` / self-join keeping the lowest id), the one
+place this ticket explicitly called for `SweepService` to own the query
+directly. Unused categories/tags stayed opt-in and off by default
+(`sweep_unused_terms_enabled` option) exactly as specified. `OPTIMIZE
+TABLE` runs (best-effort, swallowed on failure — SQLite in tests has no
+such statement) on whichever tables a category just touched. 15 new unit
+tests (`SweepServiceTest`) against a new `SqliteDatabaseFactory::
+withSweepFixtures()` fixture combining every table `SweepService`
+touches; full suite green (2,325 tests). Also live-verified end to end on
+the dev install (`lumorapress-preview`, table prefix `lum_b77362_` — a
+useful confirmation that the table-prefix option is read correctly
+rather than assumed): activated the plugin from Plugins (card/description
+render correctly), seeded a real orphaned `post_meta` row, three
+duplicate `post_meta` rows, an old (40-day) trashed post, an old (40-day)
+spam comment, an unused category, and lowered `revision_retention` to 2
+against a post with several existing revisions. Every category's preview
+count matched (including picking up 4 *pre-existing* orphaned
+`post_meta` rows already on that install from past sessions, not just
+the seeded one — confirming the query finds real accumulated cruft, not
+just freshly-inserted rows), each Clean Up brought its count to exactly
+0, and a DB check afterward confirmed: exactly one `dup_key` row left
+(the lowest id), zero orphaned rows, the trashed post and spam comment
+both actually deleted, revisions pruned to exactly 2 for that post, and
+all 732 real posts on the install left untouched. Test data and the
+temporary `revision_retention`/`sweep_unused_terms_enabled` option rows
+were removed from the dev install afterward.
+
+------
+
+### LPP-023. Lumora Gallery Shortcodes — Clearer Non-Default Gallery Example
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+The admin **Lumora Gallery &rsaquo; Shortcodes** doc page
+(`admin/views/lumora-gallery-shortcodes/shortcodes.php`) documents the
+`gallery="{slug}"` attribute (LPP-021 — reading from a specific
+configured Gallery connection instead of whichever is marked Default)
+as just one more line buried in `[lumora_gallery_album]`'s "Examples"
+list, alongside seven unrelated examples. An admin skimming that list
+for "how do I point this at my second Gallery site" has to notice one
+line among many rather than finding a clearly-labeled section for it.
+
+### Design
+
+- Pull the non-default-connection example out of `[lumora_gallery_album]`'s Examples list into its own `<section class="lp-admin__panel">`, positioned after both existing shortcode sections (`[lumora_gallery_album]`, `[lumora_gallery_newest]`) — matching how a Lumora Shield settings tab or a Downloads shortcode gets its own section rather than a sub-bullet.
+- Cover both shortcodes in the new section (both accept `gallery`), not just `[lumora_gallery_album]`.
+- Keep the one-sentence "only needed once more than one connection is configured; omitted, it uses whichever is marked Default" explanation, since that's the actual behavior an admin needs to understand before the example makes sense.
+
+### Checklist
+
+- [x] Add a new "Using a Non-Default Gallery Connection" section to `admin/views/lumora-gallery-shortcodes/shortcodes.php`, with one example per shortcode.
+- [x] Remove the now-redundant inline `gallery="..."` example from `[lumora_gallery_album]`'s own Examples list, since the new section is the single canonical place for it.
+- [x] Verify live on the dev install: confirm the new section renders correctly and the removed inline example is gone.
+
+**Implementation notes (2026-09-14).** Small, contained doc-page change —
+no PHP logic touched. Removed the buried non-default-connection example
+from `[lumora_gallery_album]`'s own Examples list and added a third
+`<section class="lp-admin__panel">` (same class as the other two
+shortcode sections, so identical styling with no CSS changes needed)
+covering both shortcodes with one standalone example each. Live-verified
+on the dev install: confirmed exactly 3 `.lp-admin__panel` sections
+render, the new section's heading and both examples are present, and
+the old inline example is gone from the album shortcode's list.

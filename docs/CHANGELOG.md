@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-09-14
+
 ### Added
 
 - Trash for Tags, with restore (LP-011): the admin Tags list gained an "All"/"Trash" status-tab pair, matching Categories' own Trash flow exactly — Move to Trash, Restore, Delete Permanently, Empty Trash, plus the matching bulk actions. Deleting a tag no longer removes it immediately; it moves to the Trash first, where it can be restored or permanently deleted.
