@@ -49,16 +49,8 @@ implementation-level detail on each area.
   post listing (the homepage and every category/tag/author/date
   archive) shows each post's comment count linking through to its own
   comment thread, the classic "X Comments" link.
-- **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen
-  for comment defaults (required name/email, registered-only commenting,
-  auto-close after N days, cookie-remembered guest info, threading depth,
-  pagination and ordering), moderation (manual-approval, link/keyword
-  holds, disallowed-keyword rejection, a `comment_is_spam` filter for
-  spam-detection plugins), admin/author email notifications, and avatars
-  (Gravatar rating/default, or a locally uploaded default image).
-- **Privacy Policy Page** — a Settings &rsaquo; Privacy screen to name an
-  existing Page as the site's privacy policy, exposed to themes via the
-  `privacy_policy_url()` template tag.
+- **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen for comment defaults (required name/email, whether to collect a Website URL at all, registered-only commenting, auto-close after N days, cookie-remembered guest info, threading depth, pagination and ordering), moderation (manual-approval, link/keyword holds, disallowed-keyword rejection, IP blacklist, optional IP address anonymization, a `comment_is_spam` filter for spam-detection plugins), admin/author email notifications, and avatars (Gravatar rating/default, or a locally uploaded default image).
+- **Privacy Policy Page & Comment Data Requests** — a Settings &rsaquo; Privacy screen to name an existing Page as the site's privacy policy (exposed to themes via the `privacy_policy_url()` template tag), plus a GDPR-style lookup by commenter email address for exporting that commenter's comments as JSON or erasing their name/email/website/IP from every matching comment while keeping the comment text itself.
 - **RSS & Atom feeds** — a site-wide feed of published posts, plus a
   per-category feed (`/category/{slug}/feed`) for each category.
 - **Search** — full-text search across posts and pages.

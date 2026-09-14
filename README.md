@@ -71,6 +71,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Admin-managed URL redirects
 - Configurable `robots.txt`/`noindex`
 - Optional, off-by-default anonymous install ping (see [Privacy](#privacy-anonymous-install-ping))
+- Optional comment IP address anonymization, a configurable guest Website field, and GDPR-style comment data export/erasure by commenter email (Settings &rsaquo; Privacy)
 
 For the complete feature list and implementation details, see [`docs/FEATURES.md`](docs/FEATURES.md).
 

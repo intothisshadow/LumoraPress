@@ -31,6 +31,7 @@
  * @var string $comment_saved_guest_url
  * @var bool $comment_author_name_required
  * @var bool $comment_author_email_required
+ * @var bool $comment_author_url_enabled
  */
 
 // Exactly one of $post/$page is ever passed in (see the docblock above) —
@@ -50,6 +51,7 @@ $guestFieldOptions = [
     'savedUrl' => $comment_saved_guest_url ?? '',
     'nameRequired' => $comment_author_name_required ?? true,
     'emailRequired' => $comment_author_email_required ?? true,
+    'urlEnabled' => $comment_author_url_enabled ?? true,
 ];
 ?>
 <section id="comments" class="lp-comments">

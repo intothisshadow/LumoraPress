@@ -57,6 +57,12 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
 
     header('Location: ' . admin_url('settings/discussion') . '?saved=1');
     exit;
+} elseif ($form === 'privacy_settings' && Csrf::verify('discussion_privacy_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $kernel->config->setOption('comment_author_url_enabled', ($_POST['comment_author_url_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('comment_ip_anonymization_enabled', ($_POST['comment_ip_anonymization_enabled'] ?? '') === '1' ? '1' : '0');
+
+    header('Location: ' . admin_url('settings/discussion') . '?saved=1');
+    exit;
 } elseif ($form === 'moderation_settings' && Csrf::verify('moderation_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('comment_moderation_manual_all', ($_POST['comment_moderation_manual_all'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_moderation_auto_approve_previous', ($_POST['comment_moderation_auto_approve_previous'] ?? '') === '1' ? '1' : '0');
@@ -94,6 +100,8 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
 $defaultCommentsOpenForNewPosts = $kernel->config->option('comment_default_status_for_new_posts', 'open') !== 'closed';
 $authorNameRequired = $kernel->config->option('comment_author_name_required', '1') !== '0';
 $authorEmailRequired = $kernel->config->option('comment_author_email_required', '1') !== '0';
+$authorUrlEnabled = $kernel->config->option('comment_author_url_enabled', '1') !== '0';
+$ipAnonymizationEnabled = $kernel->config->option('comment_ip_anonymization_enabled', '0') === '1';
 $requireRegistration = $kernel->config->option('comment_require_registration', '0') === '1';
 $closeAfterDays = (string) $kernel->config->option('comment_close_after_days', '0');
 $cookiesConsentEnabled = $kernel->config->option('comment_cookies_consent_enabled', '0') === '1';
@@ -222,6 +230,28 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
                 Newest comments first
             </label>
         </fieldset>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Privacy</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings/discussion')) ?>">
+        <?= Csrf::field('discussion_privacy_settings') ?>
+        <input type="hidden" name="form" value="privacy_settings">
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_author_url_enabled" value="1" <?= $authorUrlEnabled ? 'checked' : '' ?>>
+            Collect a Website URL from guest commenters
+        </label>
+        <span class="lp-field__hint">Off removes the (already optional) Website field from the comment form entirely.</span>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_ip_anonymization_enabled" value="1" <?= $ipAnonymizationEnabled ? 'checked' : '' ?>>
+            Anonymize commenter IP addresses
+        </label>
+        <span class="lp-field__hint">Masks the last part of a commenter's IP address (the last IPv4 octet, or the last 80 bits of an IPv6 address) before it's used for flood control/IP blacklist matching or stored — the same convention analytics tools like Google Analytics use. Only applies to new comments; existing stored addresses are unaffected.</span>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>

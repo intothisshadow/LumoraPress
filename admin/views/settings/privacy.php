@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Settings > Privacy screen: the site's privacy policy page.
+ * The admin Settings > Privacy screen: the site's privacy policy page, anonymous install statistics, and GDPR-style comment data requests.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\Comment;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -72,6 +73,54 @@ if ($form === 'privacy_policy_settings' && Csrf::verify('privacy_policy_settings
     exit;
 }
 
+// Comment Data Requests — GDPR-style export/erasure of a commenter's
+// personal data by email. Export is a GET-triggered download (no state
+// change, the same convention the Contact Forms submissions export
+// already uses); erasure is a POST action since it permanently strips
+// data.
+$commentGdprEmail = trim((string) ($_GET['comment_gdpr_email'] ?? ($_POST['comment_gdpr_email'] ?? '')));
+$commentGdprError = null;
+
+if (isset($_GET['comment_gdpr_export'])) {
+    if (filter_var($commentGdprEmail, FILTER_VALIDATE_EMAIL) === false) {
+        $commentGdprError = 'Enter a valid email address to export comment data.';
+    } else {
+        $exportComments = $kernel->comments->findAllByEmail($commentGdprEmail);
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="comment-data-' . preg_replace('/[^a-z0-9]+/i', '-', $commentGdprEmail) . '-' . date('Y-m-d') . '.json"');
+
+        echo json_encode(array_map(static fn (Comment $exportComment): array => [
+            'id' => $exportComment->id,
+            'name' => $exportComment->guestName,
+            'email' => $exportComment->guestEmail,
+            'website' => $exportComment->guestUrl,
+            'content' => $exportComment->content,
+            'status' => $exportComment->status->value,
+            'ip_address' => $exportComment->ipAddress,
+            'posted_at' => $exportComment->createdAt->format(DATE_ATOM),
+        ], $exportComments), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+} elseif ($form === 'comment_gdpr_erase' && Csrf::verify('comment_gdpr_erase', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if (filter_var($commentGdprEmail, FILTER_VALIDATE_EMAIL) === false) {
+        $commentGdprError = 'Enter a valid email address to erase comment data.';
+    } else {
+        $commentGdprErasedCount = $kernel->comments->anonymizeByEmail($commentGdprEmail);
+
+        header('Location: ' . admin_url('settings/privacy') . '?comment_gdpr_erased=' . $commentGdprErasedCount);
+        exit;
+    }
+}
+
+$commentGdprMatches = $commentGdprEmail !== '' && filter_var($commentGdprEmail, FILTER_VALIDATE_EMAIL) !== false
+    ? $kernel->comments->findAllByEmail($commentGdprEmail)
+    : [];
+
 $privacyPolicyPageId = (int) $kernel->config->option('privacy_policy_page_id', '0');
 $pageOptions = $kernel->pages->listAllForParentSelect();
 $installPingEnabled = $kernel->installPing->isEnabled();
@@ -93,6 +142,14 @@ $installUuid = $installPingEnabled ? $kernel->installPing->getOrCreateUuid() : (
 
 <?php if (isset($_GET['ping_sent'])): ?>
     <div class="lp-alert lp-alert--success">Test ping sent.</div>
+<?php endif; ?>
+
+<?php if ($commentGdprError !== null): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html($commentGdprError) ?></div>
+<?php endif; ?>
+
+<?php if (isset($_GET['comment_gdpr_erased'])): ?>
+    <div class="lp-alert lp-alert--success"><?= (int) $_GET['comment_gdpr_erased'] ?> comment(s) had their personal data erased. Comment text was kept; the author's name, email, website, and IP address were removed.</div>
 <?php endif; ?>
 
 <section class="lp-admin__panel">
@@ -154,5 +211,34 @@ $installUuid = $installPingEnabled ? $kernel->installPing->getOrCreateUuid() : (
             <input type="hidden" name="form" value="install_ping_test">
             <button type="submit" class="lp-button">Send a test ping now</button>
         </form>
+    <?php endif; ?>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Comment Data Requests</h2>
+    <p class="lp-field__hint">Look up every comment posted under a given email address — whether left as a guest or by a signed-in account — for a GDPR-style data access or erasure request. Matching is case-insensitive.</p>
+
+    <form method="get" action="<?= esc_url(admin_url('settings/privacy')) ?>">
+        <p class="lp-field">
+            <label for="comment-gdpr-email">Commenter email address</label>
+            <input type="email" id="comment-gdpr-email" name="comment_gdpr_email" value="<?= esc_attr($commentGdprEmail) ?>" required>
+        </p>
+        <button type="submit" class="lp-button lp-button--secondary">Look Up</button>
+        <button type="submit" name="comment_gdpr_export" value="1" class="lp-button lp-button--secondary">Export as JSON</button>
+    </form>
+
+    <?php if ($commentGdprEmail !== '' && $commentGdprError === null): ?>
+        <p class="lp-field__hint">
+            <?= count($commentGdprMatches) ?> comment(s) found for <code><?= esc_html($commentGdprEmail) ?></code>.
+        </p>
+
+        <?php if ($commentGdprMatches !== []): ?>
+            <form method="post" action="<?= esc_url(admin_url('settings/privacy')) ?>" data-lp-confirm="Permanently erase this commenter's name, email, website, and IP address from every matching comment? The comment text itself is kept. This cannot be undone.">
+                <?= Csrf::field('comment_gdpr_erase') ?>
+                <input type="hidden" name="form" value="comment_gdpr_erase">
+                <input type="hidden" name="comment_gdpr_email" value="<?= esc_attr($commentGdprEmail) ?>">
+                <button type="submit" class="lp-button lp-button--danger">Erase Personal Data</button>
+            </form>
+        <?php endif; ?>
     <?php endif; ?>
 </section>

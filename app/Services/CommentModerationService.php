@@ -101,6 +101,28 @@ final class CommentModerationService
     }
 
     /**
+     * Whether the guest comment form collects a Website URL at all — a
+     * site owner who considers even an optional field too much to ask a
+     * commenter for can turn it off entirely rather than just making it
+     * optional (it already was).
+     */
+    public function isAuthorUrlEnabled(): bool
+    {
+        return $this->config->option('comment_author_url_enabled', '1') !== '0';
+    }
+
+    /**
+     * Whether a submitted comment's IP address is masked (last IPv4 octet,
+     * or last 80 bits of IPv6) before flood control, IP-blacklist matching,
+     * and storage all see it — see IpAnonymizer's own docblock for why
+     * enough of the address survives for those checks to keep working.
+     */
+    public function isIpAnonymizationEnabled(): bool
+    {
+        return $this->config->option('comment_ip_anonymization_enabled', '0') === '1';
+    }
+
+    /**
      * The default "Allow comments" state for a brand-new post (Settings >
      * Discussion's "Allow comments on new posts") — only consulted when
      * creating a post, never overrides an existing post's own toggle.

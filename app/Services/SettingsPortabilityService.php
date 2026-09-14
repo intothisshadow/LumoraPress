@@ -65,6 +65,8 @@ final class SettingsPortabilityService
         // Discussion
         'comment_author_name_required' => 'bool',
         'comment_author_email_required' => 'bool',
+        'comment_author_url_enabled' => 'bool',
+        'comment_ip_anonymization_enabled' => 'bool',
         'comment_require_registration' => 'bool',
         'comment_close_after_days' => 'int',
         'comment_cookies_consent_enabled' => 'bool',

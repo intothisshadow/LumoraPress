@@ -25,6 +25,7 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
+use LumoraPress\Core\Security\IpAnonymizer;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
@@ -251,6 +252,7 @@ final class SiteController
             'comment_cookies_consent_enabled' => $this->config->option('comment_cookies_consent_enabled', '0') === '1',
             'comment_author_name_required' => $this->commentModeration->isAuthorNameRequired(),
             'comment_author_email_required' => $this->commentModeration->isAuthorEmailRequired(),
+            'comment_author_url_enabled' => $this->commentModeration->isAuthorUrlEnabled(),
             'comment_saved_guest_name' => is_string($_COOKIE['lp_commenter_name'] ?? null) ? $_COOKIE['lp_commenter_name'] : '',
             'comment_saved_guest_email' => is_string($_COOKIE['lp_commenter_email'] ?? null) ? $_COOKIE['lp_commenter_email'] : '',
             'comment_saved_guest_url' => is_string($_COOKIE['lp_commenter_url'] ?? null) ? $_COOKIE['lp_commenter_url'] : '',
@@ -308,6 +310,7 @@ final class SiteController
             'comment_cookies_consent_enabled' => $this->config->option('comment_cookies_consent_enabled', '0') === '1',
             'comment_author_name_required' => $this->commentModeration->isAuthorNameRequired(),
             'comment_author_email_required' => $this->commentModeration->isAuthorEmailRequired(),
+            'comment_author_url_enabled' => $this->commentModeration->isAuthorUrlEnabled(),
             'comment_saved_guest_name' => is_string($_COOKIE['lp_commenter_name'] ?? null) ? $_COOKIE['lp_commenter_name'] : '',
             'comment_saved_guest_email' => is_string($_COOKIE['lp_commenter_email'] ?? null) ? $_COOKIE['lp_commenter_email'] : '',
             'comment_saved_guest_url' => is_string($_COOKIE['lp_commenter_url'] ?? null) ? $_COOKIE['lp_commenter_url'] : '',
@@ -390,6 +393,11 @@ final class SiteController
         }
 
         $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+
+        if ($this->commentModeration->isIpAnonymizationEnabled()) {
+            $ipAddress = IpAnonymizer::anonymize($ipAddress);
+        }
+
         $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
 
         if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
@@ -413,6 +421,12 @@ final class SiteController
         $guestEmail = $authUser !== null ? $authUser->email : trim((string) ($_POST['guest_email'] ?? ''));
         $guestUrl = trim((string) ($_POST['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
+
+        // Enforced server-side, not just hidden in the form: a disabled
+        // field must never persist a value even from a hand-crafted request.
+        if (!$this->commentModeration->isAuthorUrlEnabled()) {
+            $guestUrl = null;
+        }
 
         // When a field isn't required, fill a placeholder rather than leave it empty — guest_name/guest_email are NOT NULL columns.
         if ($authUser === null) {
@@ -562,6 +576,11 @@ final class SiteController
         }
 
         $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+
+        if ($this->commentModeration->isIpAnonymizationEnabled()) {
+            $ipAddress = IpAnonymizer::anonymize($ipAddress);
+        }
+
         $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
 
         if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
@@ -584,6 +603,12 @@ final class SiteController
         $guestEmail = $authUser !== null ? $authUser->email : trim((string) ($_POST['guest_email'] ?? ''));
         $guestUrl = trim((string) ($_POST['guest_url'] ?? ''));
         $guestUrl = $guestUrl !== '' && filter_var($guestUrl, FILTER_VALIDATE_URL) !== false ? $guestUrl : null;
+
+        // Enforced server-side, not just hidden in the form: a disabled
+        // field must never persist a value even from a hand-crafted request.
+        if (!$this->commentModeration->isAuthorUrlEnabled()) {
+            $guestUrl = null;
+        }
 
         if ($authUser === null) {
             if ($guestName === '' && !$this->commentModeration->isAuthorNameRequired()) {

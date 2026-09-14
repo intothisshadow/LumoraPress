@@ -81,7 +81,7 @@ if (!function_exists('comment_form')) {
      * invalidate each other. Scoped per post/page id and parent id; pages
      * get a 'page_' prefix since a post and page can share a numeric id.
      *
-     * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool} $guestFieldOptions
+     * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool, urlEnabled?: bool} $guestFieldOptions
      */
     function comment_form(Post|Page $content, ?User $currentUser, array $guestFieldOptions = [], ?int $parentId = null, string $submitLabel = 'Post Comment'): void
     {
@@ -92,6 +92,7 @@ if (!function_exists('comment_form')) {
             'savedUrl' => '',
             'nameRequired' => true,
             'emailRequired' => true,
+            'urlEnabled' => true,
         ];
 
         $isPage = $content instanceof Page;
@@ -122,10 +123,12 @@ if (!function_exists('comment_form')) {
                     <input type="email" id="<?= esc_attr($formId) ?>-email" name="guest_email" value="<?= esc_attr($guestFieldOptions['savedEmail']) ?>" <?= $guestFieldOptions['emailRequired'] ? 'required' : '' ?>>
                 </p>
 
-                <p class="lp-field">
-                    <label for="<?= esc_attr($formId) ?>-url">Website <span class="lp-field__hint">(optional)</span></label>
-                    <input type="url" id="<?= esc_attr($formId) ?>-url" name="guest_url" value="<?= esc_attr($guestFieldOptions['savedUrl']) ?>">
-                </p>
+                <?php if ($guestFieldOptions['urlEnabled']): ?>
+                    <p class="lp-field">
+                        <label for="<?= esc_attr($formId) ?>-url">Website <span class="lp-field__hint">(optional)</span></label>
+                        <input type="url" id="<?= esc_attr($formId) ?>-url" name="guest_url" value="<?= esc_attr($guestFieldOptions['savedUrl']) ?>">
+                    </p>
+                <?php endif; ?>
 
                 <?php if ($guestFieldOptions['cookieConsent']): ?>
                     <label class="lp-field--checkbox">
@@ -178,7 +181,7 @@ if (!function_exists('comment_list')) {
      * an old post stay readable without an ever-growing page.
      *
      * @param array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $tree
-     * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool} $guestFieldOptions
+     * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool, urlEnabled?: bool} $guestFieldOptions
      */
     function comment_list(
         array $tree,

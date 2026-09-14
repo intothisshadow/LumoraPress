@@ -170,6 +170,60 @@ final class CommentService
     }
 
     /**
+     * Every comment (any status, Posts and Pages, newest first) posted
+     * under $email — case-insensitive, matching guest_email's stored
+     * value whether the commenter was a guest or a signed-in user (already
+     * the real address either way, see this class's own docblock). Backs
+     * the Settings > Privacy "Comment Data Requests" GDPR export/erasure
+     * tools.
+     *
+     * @return array<int, Comment>
+     */
+    public function findAllByEmail(string $email): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE LOWER(guest_email) = LOWER(:guest_email) ORDER BY created_at DESC',
+            ['guest_email' => $email],
+        );
+
+        return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
+     * GDPR erasure: strips personal identifiers (name, email, website, IP,
+     * user agent) from every comment matching $email while keeping the
+     * comment content and thread structure intact — an outright delete()
+     * would orphan every reply the same way it already does for a single
+     * comment, a much larger effect than an erasure request calls for.
+     * user_id is left untouched deliberately: unlinking a still-existing
+     * account from its own comment history is a "delete my account"
+     * concern, not this one. The replacement email is unique per comment
+     * (not one shared placeholder) so hasPreviouslyApprovedComment()/
+     * flood control/etc. never treat two unrelated erased commenters as
+     * the same person afterward.
+     *
+     * @return int how many comments were anonymized
+     */
+    public function anonymizeByEmail(string $email): int
+    {
+        $matches = $this->findAllByEmail($email);
+
+        foreach ($matches as $match) {
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET guest_name = :guest_name, guest_email = :guest_email, guest_url = NULL, ip_address = NULL, user_agent = NULL, updated_at = :updated_at WHERE id = :id',
+                [
+                    'guest_name' => __('Anonymous'),
+                    'guest_email' => 'anonymized-' . $match->id . '@removed.invalid',
+                    'updated_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
+                    'id' => $match->id,
+                ],
+            );
+        }
+
+        return count($matches);
+    }
+
+    /**
      * Permanently deletes every comment currently at the given status via
      * delete(), so each one gets the same reply-orphaning cleanup a
      * single per-comment delete would — not a bare bulk DELETE. Unlike

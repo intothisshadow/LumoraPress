@@ -18,6 +18,9 @@ All notable changes to Lumora Press are documented in this file.
 - Search and filter by user/IP/date on the admin Comments screen (LP-012), alongside the existing status filter.
 - A "Statistics" tab on the admin Comments screen (LP-012): status-count cards, a Comments Over Time chart, Top Commenters, and Most Commented posts/pages.
 - "Discover" buttons for server filepath fields (LP-169): the WordPress Importer's wp-config.php/uploads-folder/gallery-folder fields, Lumora Gallery Shortcodes' config.php field, and Visitor Stats' GeoIP-file field can now find a candidate path next to this install instead of requiring it to be typed by hand.
+- Comment IP address anonymization (LP-012): a new "Anonymize commenter IP addresses" toggle on Settings > Discussion, off by default — when enabled, the last IPv4 octet (or last 80 bits of an IPv6 address) is masked before it's used for flood control/IP blacklist matching or stored, the same convention analytics tools like Google Analytics use.
+- Configurable guest Website field (LP-012): a new "Collect a Website URL from guest commenters" toggle on Settings > Discussion, on by default — turning it off removes the already-optional Website field from the comment form entirely, enforced server-side as well as in the form.
+- GDPR-style comment data requests (LP-012): a new "Comment Data Requests" panel on Settings > Privacy to look up every comment posted under a given email address (guest or signed-in), export them as a JSON download, or erase that commenter's name/email/website/IP address from every matching comment while keeping the comment text and thread structure intact.
 
 ### Changed
 
