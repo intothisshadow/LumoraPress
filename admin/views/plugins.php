@@ -248,7 +248,7 @@ if ($pendingToken !== null) {
 }
 
 $pluginList = $kernel->pluginRegistry->discover();
-$listView = $kernel->users->getListViewMode($currentUser->id, 'plugins');
+$listView = $kernel->users->getListViewMode($currentUser->id, 'plugins', 'list');
 
 // LP-166: each plugin's own bootstrap registers its functional/settings
 // links via add_filter("plugin_action_links_{$slug}", ...), mirroring

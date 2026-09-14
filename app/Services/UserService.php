@@ -344,16 +344,20 @@ final class UserService
 
     /**
      * This user's saved Grid/List view-mode choice for the given admin
-     * list screen, defaulting to 'grid' since every such screen only had
-     * a grid layout before this feature.
+     * list screen, falling back to $default when nothing has been saved
+     * for that screen yet.
      */
-    public function getListViewMode(int $id, string $screenType): string
+    public function getListViewMode(int $id, string $screenType, string $default = 'grid'): string
     {
         $user = $this->findById($id);
         $decoded = json_decode($user?->listViewPreferences ?? '{}', true);
         $forScreen = is_array($decoded) ? ($decoded[$screenType] ?? null) : null;
 
-        return $forScreen === 'list' ? 'list' : 'grid';
+        if ($forScreen === 'list' || $forScreen === 'grid') {
+            return $forScreen;
+        }
+
+        return $default === 'list' ? 'list' : 'grid';
     }
 
     /**
