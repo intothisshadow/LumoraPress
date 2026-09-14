@@ -217,6 +217,96 @@ final class CommentService
         );
     }
 
+    /**
+     * Non-trashed comments posted per day over the last $days days,
+     * oldest first, zero-filled for a day with none — mirrors the
+     * Visitor Stats plugin's own PostViewService::dailyTotals() shape.
+     *
+     * @return array<int, array{date: string, count: int}>
+     */
+    public function dailyTotals(int $days): array
+    {
+        $since = date('Y-m-d', strtotime('-' . max(0, $days - 1) . ' days'));
+
+        $rows = $this->database->fetchAll(
+            'SELECT DATE(created_at) AS day, COUNT(*) AS count FROM ' . $this->table() . "
+                WHERE created_at >= :since AND status != 'trash'
+             GROUP BY DATE(created_at)",
+            ['since' => $since . ' 00:00:00'],
+        );
+
+        $byDate = [];
+
+        foreach ($rows as $row) {
+            $byDate[(string) $row['day']] = (int) $row['count'];
+        }
+
+        $totals = [];
+
+        for ($offset = $days - 1; $offset >= 0; $offset--) {
+            $date = date('Y-m-d', strtotime('-' . $offset . ' days'));
+            $totals[] = ['date' => $date, 'count' => $byDate[$date] ?? 0];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * The most frequent commenters over the last $days days, by
+     * guest_email — already the real address either way, registered
+     * account or guest, per SiteController's own guest_email assignment
+     * (see CommentModerationService's identical reasoning). MAX(guest_name)
+     * rather than a bare guest_name, since a name isn't functionally
+     * dependent on the email it's grouped by (the same person could have
+     * typed their name slightly differently across comments).
+     *
+     * @return array<int, array{name: string, email: string, count: int}>
+     */
+    public function topCommenters(int $days, int $limit = 10): array
+    {
+        $since = date('Y-m-d H:i:s', strtotime('-' . max(0, $days) . ' days'));
+
+        $rows = $this->database->fetchAll(
+            'SELECT MAX(guest_name) AS name, guest_email AS email, COUNT(*) AS count FROM ' . $this->table() . "
+                WHERE created_at >= :since AND status != 'trash'
+             GROUP BY guest_email
+             ORDER BY count DESC, name ASC
+             LIMIT " . (int) $limit,
+            ['since' => $since],
+        );
+
+        return array_map(static fn (array $row): array => [
+            'name' => (string) $row['name'],
+            'email' => (string) $row['email'],
+            'count' => (int) $row['count'],
+        ], $rows);
+    }
+
+    /**
+     * The posts/pages with the most comments over the last $days days.
+     *
+     * @return array<int, array{postId: ?int, pageId: ?int, count: int}>
+     */
+    public function topCommentedContent(int $days, int $limit = 10): array
+    {
+        $since = date('Y-m-d H:i:s', strtotime('-' . max(0, $days) . ' days'));
+
+        $rows = $this->database->fetchAll(
+            'SELECT post_id, page_id, COUNT(*) AS count FROM ' . $this->table() . "
+                WHERE created_at >= :since AND status != 'trash'
+             GROUP BY post_id, page_id
+             ORDER BY count DESC
+             LIMIT " . (int) $limit,
+            ['since' => $since],
+        );
+
+        return array_map(static fn (array $row): array => [
+            'postId' => $row['post_id'] !== null ? (int) $row['post_id'] : null,
+            'pageId' => $row['page_id'] !== null ? (int) $row['page_id'] : null,
+            'count' => (int) $row['count'],
+        ], $rows);
+    }
+
     public function countForPost(int $postId, CommentStatus $status = CommentStatus::Approved): int
     {
         return (int) $this->database->fetchColumn(
@@ -285,17 +375,65 @@ final class CommentService
      * row — LEFT, not INNER, since exactly one of post_id/page_id is
      * ever set per comment, see Comment's own docblock).
      *
+     * $search matches comment content, guest name, or guest email
+     * (substring, case-insensitive per the column collation). $userId
+     * matches only comments from that registered user — a guest comment
+     * always has a NULL user_id, so this filter naturally excludes every
+     * guest comment while it's active, not a bug. $ipAddress is an exact
+     * match, the same convention the IP Blacklist field already uses.
+     * $dateFrom/$dateTo are inclusive 'Y-m-d' bounds on created_at.
+     *
      * @return array{comments: array<int, array{comment: Comment, contentTitle: string, contentSlug: string, contentType: string}>, total: int, page: int, perPage: int, totalPages: int}
      */
-    public function paginateForAdmin(int $page = 1, int $perPage = 20, ?CommentStatus $statusFilter = null): array
-    {
+    public function paginateForAdmin(
+        int $page = 1,
+        int $perPage = 20,
+        ?CommentStatus $statusFilter = null,
+        ?string $search = null,
+        ?int $userId = null,
+        ?string $ipAddress = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+    ): array {
         $page = max(1, $page);
 
         // Matches PostService::paginateForAdmin()'s "All excludes Trash"
         // convention, so the Comments screen's "All" tab count can be
         // stated as a sum of the other three tabs' own status labels.
-        $where = $statusFilter !== null ? 'WHERE c.status = :status' : "WHERE c.status != 'trash'";
+        $conditions = [$statusFilter !== null ? 'c.status = :status' : "c.status != 'trash'"];
         $params = $statusFilter !== null ? ['status' => $statusFilter->value] : [];
+
+        if ($search !== null && $search !== '') {
+            // Three distinct placeholders for the same value: MySQL's real
+            // prepared statements (PDO::ATTR_EMULATE_PREPARES => false)
+            // reject a repeated named placeholder.
+            $conditions[] = '(c.content LIKE :search_content OR c.guest_name LIKE :search_name OR c.guest_email LIKE :search_email)';
+            $params['search_content'] = '%' . $search . '%';
+            $params['search_name'] = '%' . $search . '%';
+            $params['search_email'] = '%' . $search . '%';
+        }
+
+        if ($userId !== null) {
+            $conditions[] = 'c.user_id = :user_id';
+            $params['user_id'] = $userId;
+        }
+
+        if ($ipAddress !== null && $ipAddress !== '') {
+            $conditions[] = 'c.ip_address = :ip_address';
+            $params['ip_address'] = $ipAddress;
+        }
+
+        if ($dateFrom !== null && $dateFrom !== '') {
+            $conditions[] = 'c.created_at >= :date_from';
+            $params['date_from'] = $dateFrom . ' 00:00:00';
+        }
+
+        if ($dateTo !== null && $dateTo !== '') {
+            $conditions[] = 'c.created_at <= :date_to';
+            $params['date_to'] = $dateTo . ' 23:59:59';
+        }
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
 
         $total = (int) $this->database->fetchColumn(
             'SELECT COUNT(*) FROM ' . $this->table() . ' c ' . $where,

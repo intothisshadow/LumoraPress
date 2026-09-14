@@ -27,6 +27,25 @@ if (!isset($kernel)) {
 $commentService = $kernel->comments;
 $error = null;
 
+// Every filter below (search/user/IP/date) is carried through status-tab
+// links, pagination (render_pagination() reads $_SERVER['REQUEST_URI']'s
+// own query string, so it needs no help), and the redirect back after a
+// moderate/bulk/delete action — built once here so every one of those
+// stays in sync rather than each hand-building its own subset.
+$searchFilter = trim((string) ($_GET['q'] ?? ''));
+$userFilter = isset($_GET['user_id']) && $_GET['user_id'] !== '' ? (int) $_GET['user_id'] : null;
+$ipFilter = trim((string) ($_GET['ip'] ?? ''));
+$dateFromFilter = trim((string) ($_GET['date_from'] ?? ''));
+$dateToFilter = trim((string) ($_GET['date_to'] ?? ''));
+
+$filterQuery = array_filter([
+    'q' => $searchFilter,
+    'user_id' => $userFilter,
+    'ip' => $ipFilter,
+    'date_from' => $dateFromFilter,
+    'date_to' => $dateToFilter,
+], static fn (mixed $value): bool => $value !== null && $value !== '');
+
 // Tells Akismet when a moderator overturned its original call, so its
 // model improves — shared by the single-row and bulk-action handlers.
 $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newStatus) use ($kernel): void {
@@ -98,7 +117,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
         }
 
-        header('Location: ' . admin_url('comments') . (isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : ''));
+        $redirectQuery = $filterQuery;
+
+        if (isset($_GET['status'])) {
+            $redirectQuery['status'] = (string) $_GET['status'];
+        }
+
+        header('Location: ' . admin_url('comments') . ($redirectQuery !== [] ? '?' . http_build_query($redirectQuery) : ''));
         exit;
     } elseif ($form === 'delete') {
         $id = (int) ($_POST['id'] ?? 0);
@@ -152,7 +177,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $submitAkismetFeedback($previousComment, $bulkStatus);
         }
 
-        header('Location: ' . admin_url('comments') . (isset($_GET['status']) ? '?status=' . esc_attr((string) $_GET['status']) : ''));
+        $redirectQuery = $filterQuery;
+
+        if (isset($_GET['status'])) {
+            $redirectQuery['status'] = (string) $_GET['status'];
+        }
+
+        header('Location: ' . admin_url('comments') . ($redirectQuery !== [] ? '?' . http_build_query($redirectQuery) : ''));
         exit;
     }
 }
@@ -169,6 +200,9 @@ if ($action === 'edit') {
         exit;
     }
 }
+
+$tabs = ['moderation' => 'Moderation', 'statistics' => 'Statistics'];
+$activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'] : 'moderation';
 ?>
 <h1 class="lp-admin__title">Comments</h1>
 
@@ -214,6 +248,22 @@ if ($action === 'edit') {
         </form>
     </section>
 <?php else: ?>
+    <div class="lp-tabs">
+        <div class="lp-tabs__list" role="tablist" aria-label="Comments section">
+            <?php foreach ($tabs as $tabKey => $tabLabel): ?>
+                <button
+                    type="button"
+                    class="lp-tabs__tab"
+                    id="lp-tab-<?= esc_attr($tabKey) ?>"
+                    role="tab"
+                    aria-selected="<?= $activeTab === $tabKey ? 'true' : 'false' ?>"
+                    aria-controls="lp-tabpanel-<?= esc_attr($tabKey) ?>"
+                    tabindex="<?= $activeTab === $tabKey ? '0' : '-1' ?>"
+                ><?= esc_html($tabLabel) ?></button>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="lp-tabs__panel" id="lp-tabpanel-moderation" role="tabpanel" aria-labelledby="lp-tab-moderation"<?= $activeTab === 'moderation' ? '' : ' hidden' ?>>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('comments')) ?>">
             <?= Csrf::field('comment_settings') ?>
@@ -231,7 +281,31 @@ if ($action === 'edit') {
     $statusFilter = CommentStatus::tryFrom((string) ($_GET['status'] ?? ''));
     $isTrashView = $statusFilter === CommentStatus::Trash;
     $isSpamView = $statusFilter === CommentStatus::Spam;
-    $pagination = $commentService->paginateForAdmin($page, statusFilter: $statusFilter);
+    $pagination = $commentService->paginateForAdmin(
+        $page,
+        statusFilter: $statusFilter,
+        search: $searchFilter !== '' ? $searchFilter : null,
+        userId: $userFilter,
+        ipAddress: $ipFilter !== '' ? $ipFilter : null,
+        dateFrom: $dateFromFilter !== '' ? $dateFromFilter : null,
+        dateTo: $dateToFilter !== '' ? $dateToFilter : null,
+    );
+    $allUsersForFilter = $kernel->users->listAll();
+
+    // The exact filter+status combination currently being viewed, as a
+    // query string — every POST form below (bulk action, per-row
+    // moderate/delete) submits its action to this same URL so the
+    // redirect-back-to-current-view logic at the top of this file (which
+    // reads $_GET, populated only from the URL a POST was submitted to,
+    // not from whatever the browser last displayed) actually has
+    // something to read.
+    $currentViewQuery = $filterQuery;
+
+    if ($statusFilter !== null) {
+        $currentViewQuery['status'] = $statusFilter->value;
+    }
+
+    $currentViewQueryString = $currentViewQuery !== [] ? '?' . http_build_query($currentViewQuery) : '';
 
     // "All" excludes Trash (see paginateForAdmin()'s matching exclusion),
     // so its own count is every other status summed rather than a simple
@@ -252,12 +326,56 @@ if ($action === 'edit') {
 
     <p class="lp-admin__filters">
         <?php foreach ($statusLinks as $value => $label): ?>
+            <?php $tabQuery = $filterQuery; ?>
+            <?php if ($value !== '') { $tabQuery['status'] = $value; } ?>
             <a
-                href="<?= esc_url(admin_url('comments')) ?><?= $value !== '' ? '?status=' . esc_attr($value) : '' ?>"
+                href="<?= esc_url(admin_url('comments')) ?><?= $tabQuery !== [] ? '?' . http_build_query($tabQuery) : '' ?>"
                 class="<?= ($statusFilter?->value ?? '') === $value ? 'is-active' : '' ?>"
             ><?= esc_html($label) ?></a>
         <?php endforeach; ?>
     </p>
+
+    <form method="get" action="<?= esc_url(admin_url('comments')) ?>" class="lp-admin__panel lp-comments-filter-form">
+        <?php if ($statusFilter !== null): ?>
+            <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+        <?php endif; ?>
+
+        <p class="lp-field">
+            <label for="comments-filter-q">Search</label>
+            <input type="search" id="comments-filter-q" name="q" value="<?= esc_attr($searchFilter) ?>" placeholder="Comment content, name, or email">
+        </p>
+
+        <p class="lp-field">
+            <label for="comments-filter-user">User</label>
+            <select id="comments-filter-user" name="user_id">
+                <option value="">Any user</option>
+                <?php foreach ($allUsersForFilter as $filterUser): ?>
+                    <option value="<?= (int) $filterUser->id ?>" <?= $userFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">A guest comment has no account, so this only matches signed-in commenters.</span>
+        </p>
+
+        <p class="lp-field">
+            <label for="comments-filter-ip">IP address</label>
+            <input type="text" id="comments-filter-ip" name="ip" value="<?= esc_attr($ipFilter) ?>" placeholder="203.0.113.1">
+        </p>
+
+        <p class="lp-field">
+            <label for="comments-filter-date-from">From</label>
+            <input type="date" id="comments-filter-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+        </p>
+
+        <p class="lp-field">
+            <label for="comments-filter-date-to">To</label>
+            <input type="date" id="comments-filter-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+        </p>
+
+        <button type="submit" class="lp-button lp-button--secondary">Filter</button>
+        <?php if ($filterQuery !== []): ?>
+            <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('comments')) ?><?= $statusFilter !== null ? '?status=' . esc_attr($statusFilter->value) : '' ?>">Clear filters</a>
+        <?php endif; ?>
+    </form>
 
     <section class="lp-admin__panel">
         <?php if ($isTrashView && $pagination['total'] > 0): ?>
@@ -283,7 +401,7 @@ if ($action === 'edit') {
                 default => 'No comments yet.',
             } ?></p>
         <?php else: ?>
-            <form method="post" action="<?= esc_url(admin_url('comments')) ?>" data-lp-bulk-form>
+            <form method="post" action="<?= esc_url(admin_url('comments') . $currentViewQueryString) ?>" data-lp-bulk-form>
                 <?= Csrf::field('comments_bulk_action') ?>
                 <input type="hidden" name="form" value="bulk_action">
                 <?php if ($statusFilter !== null): ?>
@@ -400,11 +518,11 @@ if ($action === 'edit') {
                         continue;
                     }
                     ?>
-                    <form id="comment-moderate-form-<?= (int) $comment->id ?>-<?= esc_attr($targetStatus->value) ?>" method="post" action="<?= esc_url(admin_url('comments')) ?><?= $statusFilter !== null ? '?status=' . esc_attr($statusFilter->value) : '' ?>"></form>
+                    <form id="comment-moderate-form-<?= (int) $comment->id ?>-<?= esc_attr($targetStatus->value) ?>" method="post" action="<?= esc_url(admin_url('comments') . $currentViewQueryString) ?>"></form>
                     <?php
                 endforeach;
                 ?>
-                <form id="comment-delete-form-<?= (int) $comment->id ?>" method="post" action="<?= esc_url(admin_url('comments')) ?>"></form>
+                <form id="comment-delete-form-<?= (int) $comment->id ?>" method="post" action="<?= esc_url(admin_url('comments') . $currentViewQueryString) ?>"></form>
                 <?php
             endforeach;
             ?>
@@ -412,4 +530,120 @@ if ($action === 'edit') {
             <?php render_pagination($pagination, 'Comments pagination'); ?>
         <?php endif; ?>
     </section>
+        </div>
+
+        <?php
+        // Computed unconditionally, not just while this tab is active —
+        // matches the existing Settings > Security tab pattern (both
+        // panels' data is always available server-side; admin-tabs.js
+        // just toggles which is visible, no page reload needed).
+        $statsAllowedRanges = [7, 30, 90];
+        $statsRange = (int) ($_GET['stats_range'] ?? 30);
+
+        if (!in_array($statsRange, $statsAllowedRanges, true)) {
+            $statsRange = 30;
+        }
+
+        $statsLimit = 10;
+        $dailyTotals = $commentService->dailyTotals($statsRange);
+        $topCommenters = $commentService->topCommenters($statsRange, $statsLimit);
+        $topCommentedContent = $commentService->topCommentedContent($statsRange, $statsLimit);
+        $maxDailyComments = max(1, ...array_map(static fn (array $row): int => $row['count'], $dailyTotals !== [] ? $dailyTotals : [['count' => 0]]));
+        ?>
+        <div class="lp-tabs__panel" id="lp-tabpanel-statistics" role="tabpanel" aria-labelledby="lp-tab-statistics"<?= $activeTab === 'statistics' ? '' : ' hidden' ?>>
+            <div class="lp-stats__cards">
+                <div class="lp-stats__card">
+                    <span class="lp-stats__card-value"><?= (int) $statusCounts[CommentStatus::Pending->value] ?></span>
+                    <span class="lp-stats__card-label">Pending</span>
+                </div>
+                <div class="lp-stats__card">
+                    <span class="lp-stats__card-value"><?= (int) $statusCounts[CommentStatus::Approved->value] ?></span>
+                    <span class="lp-stats__card-label">Approved</span>
+                </div>
+                <div class="lp-stats__card">
+                    <span class="lp-stats__card-value"><?= (int) $statusCounts[CommentStatus::Spam->value] ?></span>
+                    <span class="lp-stats__card-label">Spam</span>
+                </div>
+                <div class="lp-stats__card">
+                    <span class="lp-stats__card-value"><?= (int) $statusCounts[CommentStatus::Trash->value] ?></span>
+                    <span class="lp-stats__card-label">Trash</span>
+                </div>
+            </div>
+
+            <div class="lp-stats__range-toggle">
+                <?php foreach ($statsAllowedRanges as $rangeOption): ?>
+                    <a
+                        href="<?= esc_url(admin_url('comments')) ?>?tab=statistics&stats_range=<?= (int) $rangeOption ?>"
+                        class="lp-stats__range-toggle-option<?= $statsRange === $rangeOption ? ' is-active' : '' ?>"
+                    >Last <?= (int) $rangeOption ?> Days</a>
+                <?php endforeach; ?>
+            </div>
+
+            <section class="lp-admin__panel">
+                <h2>Comments Over Time</h2>
+                <?php if (array_sum(array_column($dailyTotals, 'count')) === 0): ?>
+                    <p class="lp-admin__widget-placeholder">No comments in this range.</p>
+                <?php else: ?>
+                    <div class="lp-stats__chart">
+                        <?php foreach ($dailyTotals as $day): ?>
+                            <div class="lp-stats__bar-row">
+                                <span class="lp-stats__bar-label"><?= esc_html(date('M j', strtotime($day['date']))) ?></span>
+                                <span class="lp-stats__bar-track">
+                                    <span class="lp-stats__bar-fill" data-style-width="<?= (int) round($day['count'] / $maxDailyComments * 100) ?>%"></span>
+                                </span>
+                                <span class="lp-stats__bar-value"><?= (int) $day['count'] ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <div class="lp-admin__grid">
+                <section class="lp-admin__panel">
+                    <h2>Top Commenters</h2>
+                    <?php if ($topCommenters === []): ?>
+                        <p class="lp-admin__widget-placeholder">No comments in this range.</p>
+                    <?php else: ?>
+                        <ul class="lp-admin__meta-list">
+                            <?php foreach ($topCommenters as $commenterRow): ?>
+                                <li>
+                                    <span><?= esc_html($commenterRow['name']) ?> <span class="lp-field__hint">&lt;<?= esc_html($commenterRow['email']) ?>&gt;</span></span>
+                                    <span><?= (int) $commenterRow['count'] ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </section>
+
+                <section class="lp-admin__panel">
+                    <h2>Most Commented</h2>
+                    <?php if ($topCommentedContent === []): ?>
+                        <p class="lp-admin__widget-placeholder">No comments in this range.</p>
+                    <?php else: ?>
+                        <ul class="lp-admin__meta-list">
+                            <?php foreach ($topCommentedContent as $contentRow): ?>
+                                <?php
+                                if ($contentRow['pageId'] !== null) {
+                                    $statsContent = $kernel->pages->findById($contentRow['pageId']);
+                                    $statsLink = $statsContent !== null ? page_permalink($statsContent) : null;
+                                } else {
+                                    $statsContent = $contentRow['postId'] !== null ? $kernel->posts->findById($contentRow['postId']) : null;
+                                    $statsLink = $statsContent !== null ? post_permalink($statsContent) : null;
+                                }
+
+                                if ($statsContent === null) {
+                                    continue;
+                                }
+                                ?>
+                                <li>
+                                    <span><a href="<?= esc_url($statsLink) ?>#comments"><?= esc_html($statsContent->title) ?></a></span>
+                                    <span><?= (int) $contentRow['count'] ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </section>
+            </div>
+        </div>
+    </div>
 <?php endif; ?>

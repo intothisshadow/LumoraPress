@@ -15,6 +15,8 @@ All notable changes to Lumora Press are documented in this file.
 - Notify on replies (LP-012): a new "Email a commenter when someone replies to their comment" toggle on Settings > Discussion, off by default. Never fires when replying to your own earlier comment.
 - Emoji support in comments (LP-012): an "Insert Emoji" button next to every comment/reply textarea, when the Emoji Picker plugin is active — search or browse by category, the same dialog the Post/Page editor already offers.
 - Collapsible long comment threads (LP-012): a sub-thread with more than 10 total replies now renders collapsed by default with a "N replies" toggle, keeping long-running discussions on an old post readable.
+- Search and filter by user/IP/date on the admin Comments screen (LP-012), alongside the existing status filter.
+- A "Statistics" tab on the admin Comments screen (LP-012): status-count cards, a Comments Over Time chart, Top Commenters, and Most Commented posts/pages.
 
 ### Changed
 
