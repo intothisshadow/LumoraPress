@@ -82,29 +82,66 @@ final class UserService
 
     /**
      * Public author archives (`/author/{slug}`) — there's no dedicated
-     * `slug` column on users, so this slugifies every username and
+     * `slug` column on users, so this slugifies every display name and
      * compares against $slug rather than adding a new schema column.
      * Fine at the scale of a typical blog's author list.
+     *
+     * Deliberately built from displayName, never username: username is
+     * also a valid login identifier (see verifyCredentials()), so every
+     * post/page permalink and author archive URL would otherwise publish
+     * half of a working login credential for anyone visiting the site.
      */
     public function findByAuthorSlug(string $slug): ?User
     {
-        foreach ($this->listAll() as $user) {
-            if ($this->slugify($user->username) === $slug) {
-                return $user;
-            }
-        }
+        $userId = array_search($slug, $this->authorSlugMap(), true);
 
-        return null;
+        return $userId === false ? null : $this->findById((int) $userId);
     }
 
     /**
      * The URL-safe slug for $user's author archive — see
      * findByAuthorSlug()'s docblock for why this is computed rather than
-     * stored.
+     * stored, and why it's built from displayName rather than username.
      */
     public function authorSlug(User $user): string
     {
-        return $this->slugify($user->username);
+        return $this->authorSlugMap()[$user->id] ?? $this->slugify($user->displayName);
+    }
+
+    /**
+     * Deduplicated displayName => slug assignment for every non-trashed
+     * user, ordered by id so a slug collision (two authors sharing a
+     * display name, e.g. "Admin"/"Admin") always resolves the same way
+     * regardless of either account's later username/displayName edits —
+     * the earlier-created account keeps the bare slug, later ones get
+     * "-2", "-3", etc., the same convention CategoryService's/PostService's
+     * own generateUniqueSlug() already use for stored slugs.
+     *
+     * @return array<int, string> userId => author slug
+     */
+    private function authorSlugMap(): array
+    {
+        $users = $this->listAll();
+        usort($users, static fn (User $left, User $right): int => $left->id <=> $right->id);
+
+        $seen = [];
+        $map = [];
+
+        foreach ($users as $user) {
+            $base = $this->slugify($user->displayName);
+            $slug = $base;
+            $suffix = 2;
+
+            while (isset($seen[$slug])) {
+                $slug = $base . '-' . $suffix;
+                $suffix++;
+            }
+
+            $seen[$slug] = true;
+            $map[$user->id] = $slug;
+        }
+
+        return $map;
     }
 
     private function slugify(string $value): string

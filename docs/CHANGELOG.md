@@ -30,6 +30,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Security: the public author archive URL, and every post/page/search-result byline link pointing to it, was built from an author's login username rather than their Display Name (LP-170) — since a username is also a valid login identifier, this published a working half of every author's login credentials on every page they'd posted to. Author slugs are now built from Display Name, with automatic `-2`/`-3` disambiguation for two authors sharing one.
 - A tag name longer than 191 characters (or blank, bypassing the admin form's own client-side check) could reach the database with no server-side validation — `TagService` now validates the same way `CategoryService` already does.
 - The Folder Gallery shortcode's thumbnails were forced into a fixed 150×150px box regardless of the source image's real size, upscaling (and blurring) any image smaller than 150px in both dimensions instead of showing it at its own true size.
 - The "Header image height" Theme Option always emitted a CSS override, even when an administrator had never touched the setting, silently forcing every theme's own header image height to the option's numeric default instead of letting the theme's own value win until explicitly overridden — the same class of bug already fixed for Content width. The option now defaults to "Use theme's own height" and can be cleared back to it.
