@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\PluginsController;
 use LumoraPress\Core\Security\Csrf;
 
 if (!isset($kernel)) {
@@ -48,191 +49,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 // Plugin Browser: a two-step install flow (stage -> confirm/cancel) so
 // an upload colliding with an already-installed plugin can be reviewed
 // and either replaced or cancelled.
+//
+// POST handling lives in PluginsController; this view dispatches to it
+// and turns the AdminActionResult into a redirect or an $error string —
+// same pattern LP-082 established for Themes/Posts/Pages/Categories. The
+// Grid/List view-mode toggle above is the one JSON sub-action left
+// inline, mirroring CategoriesController's own precedent.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 $pendingInstall = null;
 
-/**
- * @return array<int, string>
- */
-$readActivePlugins = static function () use ($kernel): array {
-    $value = $kernel->config->option('active_plugins', '[]');
-    $decoded = is_string($value) ? (json_decode($value, true) ?: []) : (array) $value;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $form !== '' && $form !== 'set_list_view') {
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+    $controller = new PluginsController($kernel->pluginRegistry, $kernel->pluginInstaller, $kernel->config);
 
-    return array_values(array_map('strval', $decoded));
-};
+    $result = match ($form) {
+        'activate_plugin' => $controller->activatePlugin($_POST, $csrfToken),
+        'deactivate_plugin' => $controller->deactivatePlugin($_POST, $csrfToken),
+        'delete_plugin' => $controller->deletePlugin($_POST, $csrfToken),
+        'bulk_plugin_action' => $controller->bulkPluginAction($_POST, $csrfToken),
+        'install_plugin' => $controller->installPlugin($_FILES, $csrfToken),
+        'confirm_install_plugin' => $controller->confirmInstallPlugin($_POST, $csrfToken),
+        'cancel_install_plugin' => $controller->cancelInstallPlugin($_POST, $csrfToken),
+        default => null,
+    };
 
-$writeActivePlugins = static function (array $slugs) use ($kernel): void {
-    $kernel->config->setOption('active_plugins', json_encode(array_values($slugs)));
-};
-
-// Every plugin renders its Activate/Deactivate/Delete forms twice (card
-// and details panel), and Csrf::field() overwrites the session token per
-// action name on every call — scoping by slug AND by an "origin" field
-// keeps every rendered form's token distinct.
-$origin = is_string($_POST['origin'] ?? null) ? $_POST['origin'] : '';
-$postedSlug = trim((string) ($_POST['slug'] ?? ''));
-
-if ($form === 'activate_plugin' && Csrf::verify('activate_plugin_' . $origin . '_' . $postedSlug, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-    $target = $kernel->pluginRegistry->infoFor($slug);
-
-    if ($target === null) {
-        $error = 'That plugin could not be found.';
-    } elseif ($target->isDisabled) {
-        $error = 'This plugin cannot be activated: it requires a newer PHP version than this server has.';
-    } else {
-        $active = $readActivePlugins();
-
-        if (!in_array($slug, $active, true)) {
-            $active[] = $slug;
-            $writeActivePlugins($active);
+    if ($result !== null) {
+        if ($result->redirectUrl !== null) {
+            redirect($result->redirectUrl);
         }
 
-        header('Location: ' . admin_url('plugins') . '?activated=1');
-        exit;
+        $error = $result->errorMessage;
     }
-} elseif ($form === 'deactivate_plugin' && Csrf::verify('deactivate_plugin_' . $origin . '_' . $postedSlug, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-    $active = array_values(array_filter($readActivePlugins(), static fn (string $s): bool => $s !== $slug));
-    $writeActivePlugins($active);
-
-    header('Location: ' . admin_url('plugins') . '?deactivated=1');
-    exit;
-} elseif ($form === 'delete_plugin' && Csrf::verify('delete_plugin_' . $origin . '_' . $postedSlug, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $slug = $postedSlug;
-    $target = $kernel->pluginRegistry->infoFor($slug);
-
-    if ($target === null) {
-        $error = 'That plugin could not be found.';
-    } elseif ($target->isActive) {
-        $error = 'The plugin must be deactivated before it can be deleted.';
-    } else {
-        try {
-            $kernel->pluginInstaller->delete($slug);
-
-            header('Location: ' . admin_url('plugins') . '?deleted=1');
-            exit;
-        } catch (\Throwable $exception) {
-            $error = $exception->getMessage();
-        }
-    }
-} elseif ($form === 'bulk_plugin_action' && Csrf::verify('bulk_plugin_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $bulkAction = is_string($_POST['bulk_action'] ?? null) ? $_POST['bulk_action'] : '';
-    $requestedSlugs = array_values(array_unique(array_map('strval', (array) ($_POST['plugin_slugs'] ?? []))));
-
-    if (!in_array($bulkAction, ['activate', 'deactivate', 'delete'], true)) {
-        $error = 'Choose a bulk action to apply.';
-    } elseif ($requestedSlugs === []) {
-        $error = 'Select at least one plugin.';
-    } elseif ($bulkAction === 'activate') {
-        $active = $readActivePlugins();
-        $activatedCount = 0;
-        $skippedCount = 0;
-
-        foreach ($requestedSlugs as $requestedSlug) {
-            $target = $kernel->pluginRegistry->infoFor($requestedSlug);
-
-            if ($target === null || $target->isDisabled || in_array($requestedSlug, $active, true)) {
-                $skippedCount++;
-
-                continue;
-            }
-
-            $active[] = $requestedSlug;
-            $activatedCount++;
-        }
-
-        $writeActivePlugins($active);
-
-        header('Location: ' . admin_url('plugins') . '?bulk_activated=' . $activatedCount . '&bulk_activate_skipped=' . $skippedCount);
-        exit;
-    } elseif ($bulkAction === 'deactivate') {
-        $active = $readActivePlugins();
-        $deactivatedCount = 0;
-        $skippedCount = 0;
-
-        foreach ($requestedSlugs as $requestedSlug) {
-            if (!in_array($requestedSlug, $active, true)) {
-                $skippedCount++;
-
-                continue;
-            }
-
-            $active = array_values(array_filter($active, static fn (string $s): bool => $s !== $requestedSlug));
-            $deactivatedCount++;
-        }
-
-        $writeActivePlugins($active);
-
-        header('Location: ' . admin_url('plugins') . '?bulk_deactivated=' . $deactivatedCount . '&bulk_deactivate_skipped=' . $skippedCount);
-        exit;
-    } else {
-        $deletedCount = 0;
-        $skippedCount = 0;
-
-        foreach ($requestedSlugs as $requestedSlug) {
-            $target = $kernel->pluginRegistry->infoFor($requestedSlug);
-
-            if ($target === null || $target->isActive) {
-                $skippedCount++;
-
-                continue;
-            }
-
-            try {
-                $kernel->pluginInstaller->delete($requestedSlug);
-                $deletedCount++;
-            } catch (\Throwable $exception) {
-                $skippedCount++;
-            }
-        }
-
-        header('Location: ' . admin_url('plugins') . '?bulk_deleted=' . $deletedCount . '&bulk_skipped=' . $skippedCount);
-        exit;
-    }
-} elseif ($form === 'install_plugin' && Csrf::verify('install_plugin', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    if (!isset($_FILES['plugin_zip']) || $_FILES['plugin_zip']['error'] === UPLOAD_ERR_NO_FILE) {
-        $error = 'Please choose a ZIP file to upload.';
-    } elseif ($_FILES['plugin_zip']['error'] !== UPLOAD_ERR_OK) {
-        $error = 'The file upload failed. Please try again.';
-    } else {
-        try {
-            $token = $kernel->pluginInstaller->stage($_FILES['plugin_zip']['tmp_name']);
-
-            header('Location: ' . admin_url('plugins') . '?pending=' . urlencode($token));
-            exit;
-        } catch (\Throwable $exception) {
-            $error = $exception->getMessage();
-        }
-    }
-} elseif ($form === 'confirm_install_plugin' && Csrf::verify('confirm_install_plugin', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $token = (string) ($_POST['token'] ?? '');
-    $replace = ($_POST['replace'] ?? '') === '1';
-
-    try {
-        $installed = $kernel->pluginInstaller->finalize($token, $replace);
-
-        if (($_POST['activate_now'] ?? '') === '1' && !$installed->isDisabled) {
-            $active = $readActivePlugins();
-
-            if (!in_array($installed->slug, $active, true)) {
-                $active[] = $installed->slug;
-                $writeActivePlugins($active);
-            }
-        }
-
-        header('Location: ' . admin_url('plugins') . '?installed=' . urlencode($installed->name));
-        exit;
-    } catch (\Throwable $exception) {
-        $error = $exception->getMessage();
-    }
-} elseif ($form === 'cancel_install_plugin') {
-    $token = (string) ($_POST['token'] ?? '');
-    $kernel->pluginInstaller->discardStaged($token);
-
-    header('Location: ' . admin_url('plugins'));
-    exit;
 }
 
 $pendingToken = is_string($_GET['pending'] ?? null) ? $_GET['pending'] : null;
@@ -354,6 +202,7 @@ foreach ($pluginList as $info) {
             </button>
         </form>
         <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+            <?= Csrf::field('cancel_install_plugin') ?>
             <input type="hidden" name="form" value="cancel_install_plugin">
             <input type="hidden" name="token" value="<?= esc_attr($pendingInstall['token']) ?>">
             <button type="submit" class="lp-button">Cancel</button>
