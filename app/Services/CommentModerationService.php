@@ -119,9 +119,9 @@ final class CommentModerationService
      * before any Akismet/spam-plugin check runs (those remain strictly
      * additive on top of this — see SiteController::submitComment()'s
      * docblock for why). Order of checks mirrors classic WordPress:
-     * a disallowed-keyword match rejects outright regardless of trust;
-     * everything else only ever holds a comment for moderation, it never
-     * un-approves one that trust already earned.
+     * a disallowed-keyword or IP-blacklist match rejects outright
+     * regardless of trust; everything else only ever holds a comment for
+     * moderation, it never un-approves one that trust already earned.
      */
     public function determineStatus(
         ?int $userId,
@@ -130,8 +130,12 @@ final class CommentModerationService
         string $guestEmail,
         ?string $guestUrl,
         string $content,
+        ?string $ipAddress = null,
     ): CommentStatus {
-        if (!$isTrustedModerator && $this->matchesKeywordList($this->disallowedKeywords(), $guestName, $guestEmail, $guestUrl, $content)) {
+        if (
+            !$isTrustedModerator
+            && ($this->matchesKeywordList($this->disallowedKeywords(), $guestName, $guestEmail, $guestUrl, $content) || $this->matchesIpBlacklist($ipAddress))
+        ) {
             return CommentStatus::Spam;
         }
 
@@ -186,6 +190,29 @@ final class CommentModerationService
         }
 
         return false;
+    }
+
+    /**
+     * Exact-match only, same as the keyword lists above — no CIDR range
+     * support, since a plain list an admin can copy an offending IP
+     * straight into (from the admin comment list or server logs) covers
+     * the common case without asking them to work out a subnet mask.
+     */
+    private function matchesIpBlacklist(?string $ipAddress): bool
+    {
+        if ($ipAddress === null || $ipAddress === '') {
+            return false;
+        }
+
+        return in_array($ipAddress, $this->ipBlacklist(), true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function ipBlacklist(): array
+    {
+        return $this->parseKeywordList((string) $this->config->option('comment_ip_blacklist', ''));
     }
 
     /**

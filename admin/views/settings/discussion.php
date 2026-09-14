@@ -62,6 +62,7 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
     $kernel->config->setOption('comment_moderation_link_limit', (string) max(0, (int) ($_POST['comment_moderation_link_limit'] ?? 0)));
     $kernel->config->setOption('comment_moderation_keywords', trim((string) ($_POST['comment_moderation_keywords'] ?? '')));
     $kernel->config->setOption('comment_disallowed_keywords', trim((string) ($_POST['comment_disallowed_keywords'] ?? '')));
+    $kernel->config->setOption('comment_ip_blacklist', trim((string) ($_POST['comment_ip_blacklist'] ?? '')));
 
     header('Location: ' . admin_url('settings/discussion') . '?saved=1');
     exit;
@@ -112,6 +113,7 @@ $autoApprovePrevious = $kernel->config->option('comment_moderation_auto_approve_
 $linkLimit = (string) $kernel->config->option('comment_moderation_link_limit', '0');
 $moderationKeywords = (string) $kernel->config->option('comment_moderation_keywords', '');
 $disallowedKeywords = (string) $kernel->config->option('comment_disallowed_keywords', '');
+$ipBlacklist = (string) $kernel->config->option('comment_ip_blacklist', '');
 $akismetEnabled = $kernel->akismet->isEnabled();
 
 $avatarsEnabled = $kernel->config->option('avatars_enabled', '1') !== '0';
@@ -283,6 +285,12 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
             <label for="comment-disallowed-keywords">Disallowed Comment keywords</label>
             <textarea id="comment-disallowed-keywords" name="comment_disallowed_keywords" rows="5"><?= esc_html($disallowedKeywords) ?></textarea>
             <span class="lp-field__hint">One word or phrase per line. A match marks the comment as Spam outright, regardless of the author's trust level.</span>
+        </p>
+
+        <p class="lp-field">
+            <label for="comment-ip-blacklist">IP Blacklist</label>
+            <textarea id="comment-ip-blacklist" name="comment_ip_blacklist" rows="5"><?= esc_html($ipBlacklist) ?></textarea>
+            <span class="lp-field__hint">One IP address per line. A comment submitted from a listed address is marked as Spam outright, the same as a disallowed keyword — someone with permission to moderate comments is never blocked by this.</span>
         </p>
 
         <p class="lp-field">

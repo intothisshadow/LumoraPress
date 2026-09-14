@@ -11,6 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 - Tags on post-list and search cards (LP-011): a post's own tags now also show on the homepage/archive listing cards and on search results, not just its own single page — all bundled/default styling included.
 - Size option for the Folder Gallery shortcode: the editor's "Insert Folder" dialog gained the same Size field (Thumbnail/Medium/Large/Full Size) the single Insert Image picker already has, via a new `size` attribute on `[lumora_folder_gallery]`.
 - Lumora Sweep plugin (LPP-022): an optional database cleanup utility adding a Sweep tab to Maintenance > Tools, with per-category preview counts and Clean Up actions for excess revisions (a one-time retroactive prune beyond `revision_retention`), old trashed posts/pages, old spam/trashed comments, orphaned/duplicate `post_meta` rows, and an off-by-default unused categories/tags check — each followed by an `OPTIMIZE TABLE` on whatever it just cleaned.
+- IP Blacklist for comments (LP-012): a new field on Settings > Discussion — a comment submitted from a listed IP address is marked as Spam outright, the same way a disallowed keyword already is, and doesn't apply to anyone with permission to moderate comments. The admin Comments list also now shows each comment's IP address.
 
 ### Changed
 

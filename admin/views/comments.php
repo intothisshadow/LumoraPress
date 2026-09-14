@@ -329,6 +329,9 @@ if ($action === 'edit') {
                                 <td>
                                     <?= esc_html($comment->guestName) ?><br>
                                     <span class="lp-field__hint"><?= esc_html($comment->guestEmail) ?></span>
+                                    <?php if ($comment->ipAddress !== null && $comment->ipAddress !== ''): ?>
+                                        <br><span class="lp-field__hint"><?= esc_html($comment->ipAddress) ?></span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $comment->id ?>">

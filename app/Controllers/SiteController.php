@@ -445,6 +445,7 @@ final class SiteController
             guestEmail: $guestEmail,
             guestUrl: $guestUrl,
             content: $content,
+            ipAddress: $ipAddress,
         );
 
         // Akismet, when enabled, can only push a comment toward Spam, never away — additive on the decision above.
@@ -606,6 +607,7 @@ final class SiteController
             guestEmail: $guestEmail,
             guestUrl: $guestUrl,
             content: $content,
+            ipAddress: $ipAddress,
         );
 
         if ($this->akismet->isEnabled()) {
