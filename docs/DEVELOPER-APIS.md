@@ -236,8 +236,12 @@ shipped plugins work around this three different ways, all variations on
 the same `{slug}Active` boolean computed once in `admin/index.php` from
 the active-plugins option and shared into the target view via normal PHP
 `require`-scope: Dummy Content's admin section is wired directly into an
-existing core view (Maintenance › Tools), not registered dynamically;
-WordPress Importer (LPP-004) does the same into a different existing,
+existing core view (Maintenance › Tools), not registered dynamically —
+Lumora Sweep (LPP-022) does the same into that identical screen, as a
+second `$tabs`/`?tab=` tab alongside Dummy Content's own section rather
+than a separate gated block, following `admin/views/settings/security.php`'s
+existing `$tabs`/`?tab=` convention for a plugin adding a tab to an
+existing screen. WordPress Importer (LPP-004) does the same into a different existing,
 always-present menu slot (Maintenance › Import —
 `admin/views/maintenance/import.php`). Font Awesome (LPP-002) and Emoji
 Picker (LPP-006) instead each get a real settings screen of their own by

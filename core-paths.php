@@ -33,6 +33,7 @@ return [
     'content/plugins/visitor-stats',
     'content/plugins/lumora-gallery-shortcodes',
     'content/plugins/emoji-picker',
+    'content/plugins/lumora-sweep',
     'index.php',
     'version.php',
     '.htaccess',

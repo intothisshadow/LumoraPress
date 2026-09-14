@@ -287,6 +287,10 @@ $fontAwesomeActive = in_array('font-awesome', $activePlugins, true);
 // always-present Maintenance > Tools screen, computed here for that view's
 // require-scope.
 $dummyContentActive = in_array('dummy-content', $activePlugins, true);
+// Lumora Sweep has no menu entry of its own — it's a gated "Sweep" tab on
+// the always-present Maintenance > Tools screen, computed here for that
+// view's require-scope, the same as Dummy Content's own gated section above.
+$sweepActive = in_array('lumora-sweep', $activePlugins, true);
 // WordPress Importer gates only the content of maintenance/import.php; the
 // menu entry stays so an admin can find it to activate the plugin.
 $wordPressImporterActive = in_array('wordpress-importer', $activePlugins, true);
