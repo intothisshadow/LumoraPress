@@ -233,7 +233,7 @@ $statusOptions = [PostStatus::Draft, PostStatus::Published, PostStatus::Schedule
 $categoryTree = $kernel->categories->listAllForTree();
 $assignedCategoryIds = $post !== null
     ? array_map(static fn ($category) => $category->id, $kernel->categories->categoriesForPost($post->id))
-    : [];
+    : array_filter([$kernel->categories->getDefaultCategoryId()]);
 $assignedTagNames = $post !== null
     ? array_map(static fn ($tag) => $tag->name, $kernel->tags->tagsForPost($post->id))
     : [];

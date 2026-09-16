@@ -118,6 +118,10 @@ final class CategoriesController
         }
 
         if ($canDeleteCategories && $id > 0) {
+            if ($this->categories->isDefaultCategory($id)) {
+                return AdminActionResult::redirect(admin_url('posts/categories') . '?error=default_category');
+            }
+
             $this->categories->trash($id);
         }
 

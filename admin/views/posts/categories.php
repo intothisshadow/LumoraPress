@@ -191,6 +191,10 @@ if ($action === 'edit') {
     <div class="lp-alert lp-alert--error">That category could not be found.</div>
 <?php endif; ?>
 
+<?php if (($_GET['error'] ?? null) === 'default_category'): ?>
+    <div class="lp-alert lp-alert--error">The default category cannot be moved to the Trash. Posts saved without a category are assigned to it, so it must always exist.</div>
+<?php endif; ?>
+
 <?php if ($action === 'edit' || $action === 'new'): ?>
     <?php
     $category = $editingCategory;
@@ -466,6 +470,9 @@ if ($action === 'edit') {
                                         <?php else: ?>
                                             <a href="<?= esc_url(admin_url('posts/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
                                         <?php endif; ?>
+                                        <?php if ($categoryService->isDefaultCategory($listedCategory->id)): ?>
+                                            <span class="lp-admin__badge" title="Posts saved without a category are assigned here.">Default</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?= esc_html($listedCategory->slug) ?></td>
                                     <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
@@ -493,6 +500,8 @@ if ($action === 'edit') {
                                                     <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($deletePermFormId) ?>">
                                                     <button type="submit" class="lp-button lp-button--link lp-button--link--danger" form="<?= esc_attr($deletePermFormId) ?>" data-lp-confirm="Permanently delete this category? Child categories will be kept but become top-level. This cannot be undone.">Delete Permanently</button>
                                                 </span>
+                                            <?php elseif ($categoryService->isDefaultCategory($listedCategory->id)): ?>
+                                                <span class="lp-admin__row-actions-note">Cannot be trashed</span>
                                             <?php else: ?>
                                                 <?php $trashFormId = 'category-trash-form-' . $listedCategory->id; ?>
                                                 <span class="lp-admin__inline-form">
@@ -539,6 +548,9 @@ if ($action === 'edit') {
                             <?php endif; ?>
                             <span class="lp-categories-tree__title">
                                 <a href="<?= esc_url(admin_url('posts/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
+                                <?php if ($categoryService->isDefaultCategory($listedCategory->id)): ?>
+                                    <span class="lp-admin__badge" title="Posts saved without a category are assigned here.">Default</span>
+                                <?php endif; ?>
                             </span>
                             <span class="lp-categories-tree__slug"><?= esc_html($listedCategory->slug) ?></span>
                             <span class="lp-categories-tree__count">
@@ -549,7 +561,9 @@ if ($action === 'edit') {
                                     <?= (int) $treePostCount ?>
                                 <?php endif; ?>
                             </span>
-                            <?php if ($canDeleteCategories): ?>
+                            <?php if ($canDeleteCategories && $categoryService->isDefaultCategory($listedCategory->id)): ?>
+                                <span class="lp-admin__row-actions-note">Cannot be trashed</span>
+                            <?php elseif ($canDeleteCategories): ?>
                                 <?php $treeTrashFormId = 'category-trash-form-' . $listedCategory->id; ?>
                                 <span class="lp-admin__inline-form">
                                     <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_trash_' . $listedCategory->id)) ?>" form="<?= esc_attr($treeTrashFormId) ?>">

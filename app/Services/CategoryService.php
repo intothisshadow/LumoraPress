@@ -71,11 +71,40 @@ final class CategoryService
      */
     private ?array $postCountCache = null;
 
+    /**
+     * The site's "Uncategorized"-equivalent category id, set by bootstrap.php from the
+     * `default_category_id` option after this service is constructed (mirrors how
+     * PressConfig's own option layer isn't available at construction time either). Null
+     * means no default is configured — a fresh install before the installer runs, or a
+     * database untouched by the LP-175 migration.
+     */
+    private ?int $defaultCategoryId = null;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly ?HookManager $hooks = null,
     ) {
+    }
+
+    public function setDefaultCategoryId(?int $id): void
+    {
+        $this->defaultCategoryId = $id;
+    }
+
+    public function getDefaultCategoryId(): ?int
+    {
+        return $this->defaultCategoryId;
+    }
+
+    /**
+     * Whether $id is the site's configured default category — used to keep it out of the
+     * Trash/Delete actions (see trash()/delete()) so a post saved with no category never
+     * falls back to a dangling id.
+     */
+    public function isDefaultCategory(int $id): bool
+    {
+        return $this->defaultCategoryId !== null && $this->defaultCategoryId === $id;
     }
 
     /**
@@ -189,6 +218,12 @@ final class CategoryService
      */
     public function trash(int $id): bool
     {
+        // The default category is where every categoryless post falls back to (see
+        // assignToPost()) — trashing it would leave that fallback pointing at a dead id.
+        if ($this->isDefaultCategory($id)) {
+            return false;
+        }
+
         $trashed = $this->database->execute(
             'UPDATE ' . $this->table() . ' SET trashed_at = :trashed_at WHERE id = :id',
             ['trashed_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
@@ -230,6 +265,11 @@ final class CategoryService
      */
     public function delete(int $id): bool
     {
+        // Same reasoning as trash() above — the default category must always resolve.
+        if ($this->isDefaultCategory($id)) {
+            return false;
+        }
+
         $deleted = (bool) $this->database->transaction(function () use ($id): int {
             $this->database->execute(
                 'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE parent_id = :parent_id',
@@ -260,12 +300,19 @@ final class CategoryService
      * no composite-key collision), $sourceId's rows are dropped, its children are
      * reparented to $targetId, and $sourceId is deleted. If $targetId was itself a child of
      * $sourceId, it's orphaned rather than reparented to itself, since a category can never
-     * be its own parent. Returns false without changing anything if $sourceId === $targetId
-     * or either doesn't exist.
+     * be its own parent. Returns false without changing anything if $sourceId === $targetId,
+     * either doesn't exist, or $sourceId is the default category — merging it away would
+     * delete it just as surely as delete() would, so it gets the same refusal (trash()/
+     * delete()'s docblocks explain why).
      */
     public function merge(int $sourceId, int $targetId): bool
     {
-        if ($sourceId === $targetId || $this->findById($sourceId) === null || $this->findById($targetId) === null) {
+        if (
+            $sourceId === $targetId
+            || $this->findById($sourceId) === null
+            || $this->findById($targetId) === null
+            || $this->isDefaultCategory($sourceId)
+        ) {
             return false;
         }
 
@@ -800,7 +847,13 @@ final class CategoryService
     }
 
     /**
-     * Replaces every category assignment for a post with $categoryIds.
+     * Replaces every category assignment for a post with $categoryIds. An empty (or
+     * all-invalid) $categoryIds falls back to the site's default category — set via
+     * setDefaultCategoryId() — the same "always assign something" behavior classic
+     * WordPress' own Uncategorized category provides. The fallback id is re-checked against
+     * findById() rather than trusted blindly, so a stale default_category_id (the category
+     * row was removed outside the normal trash()/delete() path, which otherwise refuses to
+     * remove it) leaves the post genuinely categoryless instead of referencing a dead id.
      *
      * @param array<int, int|string> $categoryIds
      */
@@ -810,6 +863,10 @@ final class CategoryService
             array_map('intval', $categoryIds),
             static fn (int $id): bool => $id > 0,
         )));
+
+        if ($ids === [] && $this->defaultCategoryId !== null && $this->findById($this->defaultCategoryId) !== null) {
+            $ids = [$this->defaultCategoryId];
+        }
 
         $this->database->transaction(function () use ($postId, $ids): void {
             $this->database->execute(

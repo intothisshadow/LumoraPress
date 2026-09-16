@@ -679,7 +679,7 @@ final class MediaService
         $limit = max(1, $limit);
 
         return $this->database->fetchAll(
-            "SELECT * FROM " . $this->table() . " WHERE mime_type LIKE 'image/%' AND (alt_text IS NULL OR alt_text = '') ORDER BY uploaded_at DESC LIMIT {$limit}",
+            'SELECT * FROM ' . $this->table() . " WHERE mime_type LIKE 'image/%' AND (alt_text IS NULL OR alt_text = '') ORDER BY uploaded_at DESC LIMIT {$limit}",
         );
     }
 

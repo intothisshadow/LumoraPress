@@ -358,6 +358,8 @@ $posts = new PostService($database, $tablePrefix, $hooks);
 $pages = new PageService($database, $tablePrefix, $hooks);
 $revisions = new RevisionService($database, $tablePrefix, $config);
 $categories = new CategoryService($database, $tablePrefix, $hooks);
+$defaultCategoryId = (int) $config->option('default_category_id', 0);
+$categories->setDefaultCategoryId($defaultCategoryId > 0 ? $defaultCategoryId : null);
 $tags = new TagService($database, $tablePrefix, $hooks);
 $comments = new CommentService($database, $tablePrefix, $hooks);
 

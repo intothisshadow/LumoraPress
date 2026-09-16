@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- A default "Uncategorized" category (LP-175), created automatically on install and assigned by id — not by name — to any post saved with no category chosen, matching how classic WordPress and most other blogging platforms behave. Renaming the category afterward never breaks the fallback, since it's tracked by id. Existing installs get the category created and any already-categoryless posts backfilled to it automatically the next time an update applies. The default category can't be trashed, deleted, or merged away from the admin Categories screen, since every categoryless post depends on it always existing.
+
 ### Changed
 
 - Sessions are now stored in the database by default instead of as files in `storage/sessions/` (LP-173), matching how WordPress avoids depending on a host's own PHP session cleanup at all. A new `{prefix}sessions` table backs login state; cleanup is now driven entirely by PHP's own session garbage collector rather than the filesystem. Setting `session_path` in `config.php` to an absolute path still stores plain session files there instead, for anyone who prefers that. Updating from an earlier version switches over automatically — whoever is logged into the admin area at the exact moment of the update will need to log back in once, and any leftover files in `storage/sessions/` are cleaned up automatically as part of applying the update.
