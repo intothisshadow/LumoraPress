@@ -933,7 +933,15 @@
                         anchor.appendChild(selectedNode);
                     }
 
-                    anchor.setAttribute('href', url);
+                    // editor.dom.setAttrib(), not the plain DOM setAttribute() — TinyMCE's
+                    // HTML parser tags every parsed href with a shadow `data-mce-href`
+                    // attribute it treats as the source of truth on output. setAttribute()
+                    // updates the visible href (so the change looks applied on screen) but
+                    // leaves that shadow attribute pointing at the old URL, and
+                    // editor.getContent() serializes from the shadow attribute — so the
+                    // saved/submitted content silently reverts to the old link. dom.setAttrib()
+                    // keeps both in sync.
+                    editor.dom.setAttrib(anchor, 'href', url);
 
                     if (newTabCheckbox.checked) {
                         anchor.setAttribute('target', '_blank');
@@ -948,7 +956,9 @@
 
                 if (existingAnchor) {
                     editor.undoManager.transact(function () {
-                        existingAnchor.setAttribute('href', url);
+                        // See the isImageSelection branch above for why dom.setAttrib() and
+                        // not setAttribute() — same shadow-attribute gotcha applies here too.
+                        editor.dom.setAttrib(existingAnchor, 'href', url);
                         existingAnchor.textContent = text;
 
                         if (newTabCheckbox.checked) {

@@ -16,6 +16,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The WYSIWYG editor's "Insert/Edit Link" dialog's "Update" button, when editing a link already applied to an image or to text, silently discarded the new URL — the on-screen link looked changed, but saving the post kept the old URL. Caused by updating the link's `href` attribute directly instead of through TinyMCE's own DOM API, which tracks its own internal copy of the attribute and uses that (not the one actually on the page) when generating the content that gets saved.
 - Session files in `storage/sessions/` accumulated indefinitely on Debian/Ubuntu-family hosts (LP-172): those distros disable PHP's own session garbage collector by default and rely on a system cron job that only cleans PHP's default session directory, not the app's own. Session cleanup is no longer dependent on the host's own configuration.
 - WordPress Importer now documents the source WordPress versions it supports (in its Plugins screen description, its own README, and the Maintenance → Import screen) — WordPress 3.5 and later, including the current release, since it was never actually version-gated but left unstated — plus the specific version (WordPress 7.1) it's actually been tested with, on a real production site.
 
