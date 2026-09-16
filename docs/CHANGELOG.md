@@ -4,6 +4,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-09-16
+
 ### Added
 
 - A default "Uncategorized" category (LP-175), created automatically on install and assigned by id — not by name — to any post saved with no category chosen, matching how classic WordPress and most other blogging platforms behave. Renaming the category afterward never breaks the fallback, since it's tracked by id. Existing installs get the category created and any already-categoryless posts backfilled to it automatically the next time an update applies. The default category can't be trashed, deleted, or merged away from the admin Categories screen, since every categoryless post depends on it always existing.

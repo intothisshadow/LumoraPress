@@ -15328,3 +15328,115 @@ covering both shortcodes with one standalone example each. Live-verified
 on the dev install: confirmed exactly 3 `.lp-admin__panel` sections
 render, the new section's heading and both examples are present, and
 the old inline example is gone from the album shortcode's list.
+
+------
+
+## 0.16.0 (2026-09-16)
+
+### LP-172. Session Files Never Cleaned Up on Debian/Ubuntu-Family Hosts
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Ariane reported 466 accumulated files in `storage/sessions/` on one of her live sites, asking whether there was a way to have fewer. Root cause: `SessionManager::start()` redirects PHP's session storage to `storage/sessions/` via `session_save_path()`. Debian/Ubuntu-family PHP packages ship with `session.gc_probability = 0` in php.ini, deliberately disabling PHP's own probabilistic garbage collector — cleanup is instead handled by a distro cron job (`/etc/cron.d/php*`/`phpsessionclean.timer`) that only sweeps the *default* `session.save_path`. Since Lumora Press points sessions at its own directory, that distro job never touches it, and with `gc_probability=0` PHP's built-in collector never runs either — session files accumulate indefinitely on exactly this (very common) class of host. Confirmed by checking a Linux Mint (Debian-family) machine's own php.ini: `session.gc_probability => 0`.
+
+### Fix
+
+`SessionManager::start()` now calls `ini_set('session.gc_probability', '1')`/`ini_set('session.gc_divisor', '100')` (both `PHP_INI_ALL`, safe to set at runtime) immediately after taking over `session_save_path()` — scoped to that same branch, so a host where the given path doesn't exist/isn't writable (and PHP falls through to its own configured `session.save_path`) is left alone, since that host's own GC settings may already be handling its own default path correctly. This makes session cleanup self-sufficient regardless of the host's php.ini defaults, with no admin action, config option, or server access required — matching this project's "shared hosting compatible" performance goal, since shared hosts rarely allow php.ini edits.
+
+### Checklist
+
+- [x] `SessionManager::start()`: force `session.gc_probability`/`session.gc_divisor` back on whenever it takes over the session save path.
+- [x] Unit tests: GC is forced on when the given path is used; GC is left untouched when falling back to the default save path.
+- [x] Full unit suite green (2439 tests, 7427 assertions); `composer stan`/`cs-fix` clean on the changed file.
+
+**Implemented (2026-09-14).** Exactly per the Fix section above — a small, targeted `ini_set()` pair added inside the existing `is_dir()`/`is_writable()` branch, no new config surface. 2 new `SessionManagerTest` cases (forced-on when redirecting, left alone when falling back). Immediate remediation for Ariane's live site (a one-off `find storage/sessions -type f -mmin +180 -delete` over SSH) was given separately in chat, since this app has no way to reach a live server directly; this ticket is the durable fix so it doesn't recur.
+
+------
+
+### LP-173. Database-Backed PHP Sessions
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Follow-up to LP-172. Ariane asked how WordPress avoids the "session files never cleaned up" problem class entirely — core WordPress never uses PHP's native file sessions for login state at all (cookie + database-token based instead), and plugins that need session-like storage (WooCommerce) use their own DB table for exactly this reason: no per-host GC/cron dependency, and it scales across multiple web servers. She asked to switch Lumora Press to the same model.
+
+### Design
+
+A new `{prefix}sessions` table (migration `0065_create_sessions_table.sql`) backs a new `DatabaseSessionHandler`, implementing PHP's native `SessionHandlerInterface` (`open`/`close`/`read`/`write`/`destroy`/`gc`) against `Database` — the same thin-PDO-wrapper class `RememberMeService`/`LoginThrottle` already use. Using PHP's own SPI rather than a hand-rolled scheme means every other `$_SESSION` consumer in the app (`Auth`, `Csrf`, etc.) needed zero changes, and PHP's own `gc_probability`/`gc_divisor` mechanism (already forced on by LP-172) drives `gc()` automatically — no new cron/probabilistic-on-write logic needed. `write()` does an `UPDATE`-then-`INSERT-if-no-rows-affected` rather than a MySQL-only `ON DUPLICATE KEY UPDATE`, keeping it portable to the SQLite-backed unit test suite. Every method fails safe (a logged, silent default) on a database error rather than throwing — a session read/write is infrastructure, not an auth decision, so a transient DB error degrades to "no session this request" instead of crashing the page.
+
+`SessionManager` gained a new trailing optional `?SessionHandlerInterface $handler` constructor param; when present, `start()` registers it via `session_set_save_handler()` instead of redirecting `session_save_path()`. `config.php`'s `session_path` option now means "use the database" when empty (the new default) and "use plain files at this path instead" when set to an absolute path — preserving the previous file-based opt-out exactly, for anyone who wants it. `install/index.php` is untouched: it always uses its own file-based `SessionManager` directly, since no database exists yet during install.
+
+### Checklist
+
+- [x] `install/migrations/0065_create_sessions_table.sql`: `id`/`data`/`last_activity` schema, indexed on `last_activity` for GC.
+- [x] `DatabaseSessionHandler`: full `SessionHandlerInterface` implementation, fail-safe on every method.
+- [x] `SessionManager`: optional `$handler` param, registers it via `session_set_save_handler()` when present; existing file-path branch (and its LP-172 GC-forcing fix) unchanged for the opt-out case.
+- [x] `include/bootstrap.php`: construct `DatabaseSessionHandler` when `session_path` is empty; table prefix resolution moved earlier so it's available before session start.
+- [x] `config/config.example.php`: comment updated to describe the new default.
+- [x] Unit tests: `DatabaseSessionHandlerTest` (round-trip, update-not-duplicate, destroy, GC cutoff, and a "table missing" fail-safe case for every method), a new `SqliteDatabaseFactory::withSessionsTable()` fixture, and a `SessionManagerTest` case confirming a given handler is actually registered (`session_module_name() === 'user'`) and still forces GC on.
+- [x] Full unit suite green (2450 tests, 7447 assertions); `composer stan`/`cs-fix` clean on every changed/new file.
+- [x] Verify live on the dev install: logged in, confirmed a real row appeared in `{prefix}sessions` (not a new file); confirmed the row updates in place across a second request rather than duplicating; logged out and confirmed the row was deleted (a fresh anonymous session's own row took its place); temporarily set `session_path` to an absolute path and confirmed a login then wrote a real file there instead, with no new database row.
+- [x] Automatic cleanup of leftover `storage/sessions/` files as part of applying an update, so an admin upgrading from an older version never has to do this by hand — added after Ariane asked specifically for the update pipeline to handle it, rather than leaving it as manual housekeeping.
+
+**Implemented (2026-09-14).** Exactly per the Design section above. Also cleaned up 71 now-permanently-orphaned file-based session files left over in `storage/sessions/` on the dev install from before this change (harmless but dead weight, since nothing will ever read them again once the database is the active store).
+
+**Update (2026-09-14): automatic cleanup during update.** `UpdateService::migrateStage()` (the step both the synchronous `install()` and the staged `beginInstall()`/`continueInstall()` pipelines share) now also sweeps `storage/sessions/` for stale `sess_*` files right after migrations apply — gated on `session_path` being empty (database mode active), so an install that deliberately opted into the file-path override is never touched. Runs on every update, not just the one that introduces this, so it's a no-op once the directory is already empty and self-heals it if an admin ever switches back to the database after a period on the file override. The currently-in-flight request's own session file is deliberately skipped (it's still genuinely in use by the pre-update code still running that same request) — in practice PHP's own file handler recreates it at request end regardless, so this just avoids relying on that recreation behavior. 2 new `Integration/UpdateServiceIntegrationTest` cases (stale files removed when in database mode; a still-in-use file left alone when the `session_path` override is set), run against a real MySQL/MariaDB server via the Docker matrix alongside the rest of the suite.
+
+------
+
+### LP-175. Default "Uncategorized" Category, Assigned by ID
+
+**Status:** Complete
+
+A post published with no category selected today gets no category row at all — `post_categories` simply has no matching pivot rows for it, so it shows up as uncategorized everywhere (archives, widgets, breadcrumbs) with no real `Category` behind it. Create a real default category on install, the way WordPress and most other blogging platforms do, and fall back to it (by ID, not by name) whenever a post is saved with no category chosen — so a later rename of that category never breaks the fallback.
+
+### Checklist
+
+- [x] Installer creates one default category named "Uncategorized" during a fresh install.
+- [x] Persist that category's ID as a site setting (e.g. `default_category_id`) rather than re-deriving it by name, so renaming the category later never breaks the association.
+- [x] When a post is saved/published with no category selected, assign it to the default category via that stored ID.
+- [x] Decide and implement what happens if the default category is later deleted (e.g. silently recreate it, or reassign `default_category_id` to another category) — needs an explicit decision, not left undefined.
+- [x] Migration path for existing installs upgrading from an older version: create the category if missing, backfill the setting, and assign any already-categoryless posts to it.
+- [x] Test coverage: fresh install creates the category and setting; a post saved with no category gets assigned to it by ID; renaming the category afterward doesn't break the fallback (still resolves via the stored ID).
+
+**Implemented (2026-09-16).** A single new migration (`0066_seed_default_uncategorized_category.sql`) creates the "Uncategorized" category, sets the `default_category_id` option to its id, and backfills any already-categoryless posts to it in one pass — this covers both a fresh install (the installer already runs every pending migration) and an existing install updating, with no separate installer-side code path needed. `CategoryService` gained `setDefaultCategoryId()`/`getDefaultCategoryId()`/`isDefaultCategory()` (wired from `bootstrap.php` off the `default_category_id` option) and `assignToPost()` now falls back to the default category — re-verified against `findById()` each time, so a stale id left behind by direct database tampering leaves a post genuinely categoryless rather than referencing a dead row — instead of leaving a post with no category rows at all. The decision on "what happens if the default category is deleted": it can't be — `trash()`, `delete()`, and `merge()` (as the source side) all refuse outright for the default category id, and the admin Categories screen replaces its Trash action with a "Cannot be trashed" note and a "Default" badge instead of silently failing. The Post editor's category checklist now pre-checks the default category for a brand-new post, matching what the server will actually assign. 8 new `CategoryServiceTest` unit cases plus 3 new `CategoryServiceIntegrationTest` cases against real MySQL/MariaDB (migration seeding, fallback-by-id survives a rename, trash/delete refusal). Verified live on the dev install: a fresh post saved with no category picked landed in Uncategorized; the pre-existing dev install's 731 posts and 110 categories were untouched except for backfilling any genuinely categoryless post.
+
+------
+
+### LP-176. Posts/Pages Bulk Action: Disable Commenting
+
+**Status:** Complete
+
+The All Posts/All Pages admin screens' "Bulk actions" dropdown (`admin/views/posts/all-posts.php`/`all-pages.php`, backed by `PostsController::bulkAction()`/`PagesController::bulkAction()`) already covers Publish/Draft/Set Public/Set Private/Trash/Restore/Delete Permanently/Change Author/Add Category, but there's no way to close commenting on a batch of posts or pages at once — an admin has to open each one individually and uncheck its own "Allow comments" checkbox. Both `Post` and `Page` already carry a per-item `commentsOpen` field (`app/Models/Post.php`/`Page.php`), so this is a matter of exposing it as a bulk action rather than adding new underlying state.
+
+### Checklist
+
+- [x] Add "Disable Commenting" (and, for symmetry, "Enable Commenting") to both the Posts and Pages bulk-action dropdowns.
+- [x] Wire the new action(s) into `PostsController::bulkAction()`/`PagesController::bulkAction()`, flipping `commentsOpen` to `false`/`true` for every selected row via `PostService`/`PageService`.
+- [x] Respect the same permission checks the other bulk actions already use (e.g. `canEditPosts`/`canEditOthersPosts`) rather than introducing a new permission model.
+- [x] Confirm existing comments already posted on an item stay untouched when commenting is disabled afterward — this only affects whether new comments can be submitted, matching the single-post "Allow comments" checkbox's own behavior.
+- [x] Test coverage: bulk-disable across a mixed selection updates only the selected rows' `commentsOpen`, leaves everything else (status, category, author) untouched, and a subsequent bulk-enable reverses it.
+
+**Implemented (2026-09-16).** New `PostService::setCommentsOpen()`/`bulkSetCommentsOpen()` and the equivalent `PageService` methods, wired into both controllers' `bulkAction()` alongside the existing `set_public`/`set_private` pattern. Posts gate on `$canEditPosts` (the same flag `add_category` already requires); Pages have no equivalent standalone capability flag, so the toggle relies on the existing per-row `canEditPage()` ownership filter every other Pages bulk action already goes through. Comments already posted are untouched either way — only whether new ones can be submitted changes. 7 new unit tests across `PostServiceTest`/`PageServiceTest`/`PostsControllerTest`/`PagesControllerTest`, including a mixed-selection case confirming only the selected rows' `commentsOpen` changes. Live-verified on the dev install: bulk-disabling a selected post correctly unchecked its "Allow comments" box while leaving an unselected post untouched.
+
+------
+
+### LP-177. Also Show install/ Directory & Maintenance-Mode Alerts at Top of Admin Sidebar, Condensed to One Line Each
+
+**Status:** Complete
+
+The "`install/` directory still exists" warning (`.lp-alert.lp-alert--error`) and the "Maintenance mode is currently ON" notice (`.lp-alert.lp-alert--warning`) currently only render on the Dashboard (`admin/views/dashboard.php`), each as a multi-sentence paragraph, so they're easy to miss once an admin navigates away from Dashboard. Add a condensed, one-line version of each to the shared admin layout (`admin/views/layout-header.php`, or wherever the persistent sidebar nav is rendered) so they're visible at the top of the sidebar on every admin screen, in addition to — not instead of — the existing full-text versions already on Dashboard. Keep the same background colors (`lp-alert--error`/`lp-alert--warning` as-is — no restyling).
+
+### Checklist
+
+- [x] Add the `$installDirectoryExists` check to the shared sidebar/layout template as a new, separate condensed alert — leave the existing Dashboard one untouched.
+- [x] Do the same for the maintenance-mode-active alert (`$maintenanceActive && $currentUser->can('manage_options')`) — the sidebar version is a notice only; the "Turn On/Off Maintenance Mode" button stays on the Dashboard panel as it is now.
+- [x] Shorten both sidebar alerts' text to fit one line at the sidebar's width — e.g. "`install/` directory still present — remove it" and "Maintenance mode is ON" — while keeping a way to see the full explanation (tooltip/title attribute, or a link to the relevant Dashboard panel/Settings screen).
+- [x] Keep the existing `lp-alert--error`/`lp-alert--warning` classes and their current colors on the new sidebar copies — this is a new, additional placement, not a redesign.
+- [x] Verify both sidebar alerts still only show to a user who can act on them (existing `manage_options` capability check for maintenance mode; confirm the install-dir warning's own visibility rule is preserved) and don't appear at all when neither condition is true.
+- [x] Check responsive/mobile admin sidebar behavior (LP-096) — confirm the condensed alerts don't overflow or wrap awkwardly at narrow widths.
+
+**Implemented (2026-09-16).** `admin/views/layout-header.php` gained the same two checks `dashboard.php` already runs, rendered as `<a class="lp-alert lp-alert--error/--warning lp-admin__sidebar-alert">` rows right under the brand header — each links back to where the full explanation (and, for maintenance mode, the toggle) lives, with a `title` attribute carrying the full text as a tooltip and `overflow: hidden`/`text-overflow: ellipsis`/`white-space: nowrap` keeping each to one line rather than wrapping. Hidden entirely in the collapsed icon-only sidebar mode (alongside `.lp-admin__site-link`/`.lp-admin__version`, which already get the same treatment there) since a truncated one-line alert has nothing useful to show at 64px width; unaffected by the mobile off-canvas drawer, which uses the full expanded width. Live-verified on the dev install: both alerts render stacked in the expanded sidebar, persist across navigation away from Dashboard (confirmed on the Categories screen), and disappear from the collapsed rail.
+
+**Follow-up same day: fixed vertical text clipping.** Ariane caught both sidebar alerts' text getting cut off mid-line rather than truncating with an ellipsis. Root cause: `.lp-admin__sidebar` is a column flexbox with only `.lp-admin__nav` set to grow, and every other fixed-size row normally keeps its natural content height for free via flexbox's "automatic minimum size" behavior (a flex item's min-height defaults to its content size) — but that protection switches off for any item whose own `overflow` isn't `visible`, which `.lp-admin__sidebar-alert` needs for its ellipsis truncation. Without an explicit `flex-shrink: 0`, a sidebar short on vertical space silently squashed the row below one line's height. Fixed by adding `flex-shrink: 0` to `.lp-admin__sidebar-alert`. Re-verified at several viewport heights (420px, 300px) and in the mobile off-canvas drawer — text now truncates horizontally with an ellipsis as intended, never clips vertically.
+
+Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[Unreleased]` → `[0.16.0]` section for the full description): a fix for the WYSIWYG editor's "Insert/Edit Link" dialog, whose "Update" button silently discarded a new URL when editing a link already applied to an image or to text.

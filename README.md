@@ -4,7 +4,7 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
-**Current release**: 0.15.0
+**Current release**: 0.16.0
 
 ## Who is Lumora Press for?
 
