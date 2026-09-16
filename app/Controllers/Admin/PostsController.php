@@ -272,6 +272,12 @@ final class PostsController
             return AdminActionResult::redirect(admin_url('posts/all-posts') . $statusSuffix);
         }
 
+        if (($bulkAction === 'disable_commenting' || $bulkAction === 'enable_commenting') && $canEditPosts) {
+            $this->posts->bulkSetCommentsOpen($editableIds, $bulkAction === 'enable_commenting');
+
+            return AdminActionResult::redirect(admin_url('posts/all-posts') . $statusSuffix);
+        }
+
         foreach ($editableIds as $id) {
             $existing = $this->posts->findById($id);
 

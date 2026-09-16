@@ -326,6 +326,12 @@ final class PagesController
             return AdminActionResult::redirect(admin_url('pages/all-pages') . $statusSuffix);
         }
 
+        if ($bulkAction === 'disable_commenting' || $bulkAction === 'enable_commenting') {
+            $this->pages->bulkSetCommentsOpen($editableIds, $bulkAction === 'enable_commenting');
+
+            return AdminActionResult::redirect(admin_url('pages/all-pages') . $statusSuffix);
+        }
+
         foreach ($editableIds as $id) {
             $existing = $this->pages->findById($id);
 

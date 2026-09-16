@@ -302,6 +302,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                         <?php if ($canDeletePages): ?><option value="trash">Move to Trash</option><?php endif; ?>
                         <?php if ($canEditOthersPages): ?><option value="change_parent">Change parent to&hellip;</option><?php endif; ?>
                         <?php if ($canEditOthersPages): ?><option value="change_author">Change author to&hellip;</option><?php endif; ?>
+                        <option value="disable_commenting">Disable Commenting</option>
+                        <option value="enable_commenting">Enable Commenting</option>
                     <?php endif; ?>
                 </select>
                 <?php if ($canEditOthersPages): ?>

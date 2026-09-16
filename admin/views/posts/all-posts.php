@@ -236,6 +236,8 @@ $allTagsForFilter = $kernel->tags->listAll();
                         <?php if ($canDeletePosts): ?><option value="trash">Move to Trash</option><?php endif; ?>
                         <?php if ($canEditOthersPosts): ?><option value="change_author">Change author to&hellip;</option><?php endif; ?>
                         <option value="add_category">Add category&hellip;</option>
+                        <option value="disable_commenting">Disable Commenting</option>
+                        <option value="enable_commenting">Enable Commenting</option>
                     <?php endif; ?>
                 </select>
                 <?php if ($canEditOthersPosts): ?>

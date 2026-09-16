@@ -365,6 +365,36 @@ final class PageService
     }
 
     /**
+     * Opens/closes commenting on a page — mirrors PostService::setCommentsOpen() exactly.
+     */
+    public function setCommentsOpen(int $id, bool $commentsOpen): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET comment_status = :comment_status WHERE id = :id',
+            ['comment_status' => $commentsOpen ? 'open' : 'closed', 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Bulk form of setCommentsOpen() — mirrors PostService::bulkSetCommentsOpen() exactly.
+     *
+     * @param array<int, int> $ids
+     * @return int how many pages were updated
+     */
+    public function bulkSetCommentsOpen(array $ids, bool $commentsOpen): int
+    {
+        $updated = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->setCommentsOpen($id, $commentsOpen)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
      * Directly changes a page's visibility without touching any other
      * field — mirrors PostService::setVisibility() exactly.
      */
@@ -767,11 +797,11 @@ final class PageService
     public function listAllForParentSelect(?int $excludeId = null): array
     {
         if ($excludeId === null) {
-            $rows = $this->database->fetchAll("SELECT id, title FROM " . $this->table() . " WHERE status != 'trashed' ORDER BY title ASC");
+            $rows = $this->database->fetchAll('SELECT id, title FROM ' . $this->table() . " WHERE status != 'trashed' ORDER BY title ASC");
         } else {
             // Two distinct placeholders for the same value: MySQL's real prepared statements reject a repeated named placeholder.
             $rows = $this->database->fetchAll(
-                "SELECT id, title FROM " . $this->table() . "
+                'SELECT id, title FROM ' . $this->table() . "
                     WHERE status != 'trashed' AND id != :exclude_id AND (parent_id IS NULL OR parent_id != :exclude_id_2)
                  ORDER BY title ASC",
                 ['exclude_id' => $excludeId, 'exclude_id_2' => $excludeId],

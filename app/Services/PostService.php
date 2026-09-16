@@ -303,6 +303,38 @@ final class PostService
     }
 
     /**
+     * Opens/closes commenting on a post. Existing comments already posted are untouched
+     * either way — this only affects whether new ones can be submitted, matching the post
+     * editor's own "Allow comments" checkbox.
+     */
+    public function setCommentsOpen(int $id, bool $commentsOpen): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET comment_status = :comment_status WHERE id = :id',
+            ['comment_status' => $commentsOpen ? 'open' : 'closed', 'id' => $id],
+        ) > 0;
+    }
+
+    /**
+     * Bulk form of setCommentsOpen() — the Bulk Actions "Disable Commenting"/"Enable Commenting".
+     *
+     * @param array<int, int> $ids
+     * @return int how many posts were updated
+     */
+    public function bulkSetCommentsOpen(array $ids, bool $commentsOpen): int
+    {
+        $updated = 0;
+
+        foreach (array_unique(array_map('intval', $ids)) as $id) {
+            if ($this->setCommentsOpen($id, $commentsOpen)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
      * Reassigns a post to a different existing user. Gated by
      * edit_others_posts in the admin UI, not enforced here since
      * PostService has no notion of "the current user."
