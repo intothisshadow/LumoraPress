@@ -8,6 +8,7 @@ All notable changes to Lumora Press are documented in this file.
 
 - A default "Uncategorized" category (LP-175), created automatically on install and assigned by id — not by name — to any post saved with no category chosen, matching how classic WordPress and most other blogging platforms behave. Renaming the category afterward never breaks the fallback, since it's tracked by id. Existing installs get the category created and any already-categoryless posts backfilled to it automatically the next time an update applies. The default category can't be trashed, deleted, or merged away from the admin Categories screen, since every categoryless post depends on it always existing.
 - "Disable Commenting"/"Enable Commenting" bulk actions on the admin Posts and Pages screens (LP-176), for closing or reopening comments on a batch of posts or pages at once instead of opening each one individually.
+- Condensed one-line versions of the "`install/` directory still exists" and "Maintenance mode is ON" alerts now show at the top of the admin sidebar on every screen (LP-177), not just the Dashboard — each links back to where the full explanation (and, for maintenance mode, the toggle) lives.
 
 ### Changed
 

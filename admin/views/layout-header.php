@@ -45,6 +45,12 @@ $themeAttribute = match ($currentUser->themePreference) {
 $isDarkPreference = $currentUser->themePreference === ThemePreference::Dark;
 $nextThemePreference = $isDarkPreference ? ThemePreference::Light : ThemePreference::Dark;
 $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark mode';
+
+// Condensed sidebar counterparts of dashboard.php's own full-text alerts (LP-177) — same
+// visibility rules, so a screen other than Dashboard still surfaces them instead of only
+// showing on the one screen an admin might not be looking at.
+$sidebarInstallDirectoryExists = is_dir(LUMORA_ROOT . '/install');
+$sidebarMaintenanceActive = $currentUser->can('manage_options') && $kernel->maintenance->isActive();
 ?>
 <!DOCTYPE html>
 <html lang="en"<?= $themeAttribute ?>>
@@ -62,6 +68,16 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
             <span class="lp-admin__brand-label">Lumora Press</span>
             <span class="lp-admin__version"><?= esc_html((string) $version['version']) ?></span>
         </div>
+        <?php if ($sidebarInstallDirectoryExists): ?>
+            <a class="lp-alert lp-alert--error lp-admin__sidebar-alert" href="<?= esc_url(admin_url('dashboard')) ?>" title="The install/ directory still exists on the server and should be removed for security. See the Dashboard for details.">
+                <code>install/</code> directory still present &mdash; remove it
+            </a>
+        <?php endif; ?>
+        <?php if ($sidebarMaintenanceActive): ?>
+            <a class="lp-alert lp-alert--warning lp-admin__sidebar-alert" href="<?= esc_url(admin_url('settings/maintenance-mode')) ?>" title="Visitors currently see the maintenance page instead of the site. Turn it off from Settings &rsaquo; Maintenance Mode or the Dashboard.">
+                Maintenance mode is <strong>ON</strong>
+            </a>
+        <?php endif; ?>
         <?php /* LP-154: same shared control row as the one right above .lp-admin__user below — see that one's comment. */ ?>
         <div class="lp-admin__sidebar-controls">
             <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>

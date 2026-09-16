@@ -233,6 +233,43 @@ body.lp-admin-login {
 }
 
 /*
+ * LP-177: condensed one-line counterparts of dashboard.php's install/-directory and
+ * maintenance-mode alerts, shown at the top of the sidebar on every admin screen so
+ * they're not missed once an admin navigates away from Dashboard. Overrides .lp-alert's
+ * block spacing/border-radius to sit flush as a sidebar row instead of a page-content
+ * panel, and truncates rather than wraps — the full explanation is a click away via the
+ * link/title attribute, not something this condensed row needs to fit.
+ */
+.lp-admin__sidebar-alert {
+    display: block;
+    /* .lp-admin__sidebar is a column flexbox (flex-direction: column) with only
+       .lp-admin__nav set to grow (flex: 1) — everything else is meant to keep its natural
+       content height. Every other fixed-size sidebar row gets that for free from
+       flexbox's own "automatic minimum size" (a flex item's min-height defaults to its
+       content size, not 0), but that protection is switched off for any item whose own
+       overflow isn't visible — which this is, for the ellipsis truncation below. Without
+       flex-shrink: 0, a sidebar short on vertical space silently squashes this row below
+       one line's height, clipping the text vertically instead of truncating it
+       horizontally. */
+    flex-shrink: 0;
+    width: 95%;
+    margin: 0;
+    padding: 0.5rem 1rem;
+    border-left-width: 4px;
+    border-radius: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.lp-admin__sidebar-alert:hover,
+.lp-admin__sidebar-alert:focus {
+    text-decoration: underline;
+}
+
+/*
  * LP-092: expand/collapse-all controls, one above the nav and one below
  * it — both share this class and stay in sync via
  * admin/assets/js/nav-toggle.js. Symbol-only by design (no visible
@@ -748,6 +785,7 @@ body.lp-admin-login {
 
     html:not(.lp-admin-sidebar-expanded) .lp-admin__version,
     html:not(.lp-admin-sidebar-expanded) .lp-admin__site-link,
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__sidebar-alert,
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-toggle-all,
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-toggle,
     html:not(.lp-admin-sidebar-expanded) .lp-admin__user-name {
@@ -4603,6 +4641,13 @@ select:focus {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
+}
+
+/* Categories screen — replaces the Trash chip for the default category row. */
+.lp-admin__row-actions-note {
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
+    font-size: 0.8rem;
+    font-style: italic;
 }
 
 /* Updates page */
