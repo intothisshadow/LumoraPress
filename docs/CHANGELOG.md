@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `curl_close()` calls (`AkismetClient`, `BlueskyResolverService`, `GitHubReleaseProvider`, and the Contact Forms plugin's reCAPTCHA/Turnstile clients) triggered a deprecation notice on PHP 8.5, which has no effect anyway since PHP 8.0 automatically frees curl handles — removed outright rather than version-guarded.
+
 ## [0.16.0] — 2026-09-16
 
 ### Added

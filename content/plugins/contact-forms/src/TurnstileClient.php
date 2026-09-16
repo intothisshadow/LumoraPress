@@ -107,7 +107,6 @@ final class TurnstileClient
 
             $body = curl_exec($handle);
             $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
-            curl_close($handle);
 
             return (is_string($body) && $status >= 200 && $status < 300) ? $body : null;
         }

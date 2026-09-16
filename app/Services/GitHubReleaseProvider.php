@@ -499,7 +499,6 @@ final class GitHubReleaseProvider
 
             $body = curl_exec($handle);
             $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
-            curl_close($handle);
 
             return (is_string($body) && $status >= 200 && $status < 300) ? $body : null;
         }
@@ -553,7 +552,6 @@ final class GitHubReleaseProvider
 
             $success = curl_exec($handle);
             $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
-            curl_close($handle);
             fclose($file);
 
             if ($success !== true || $status < 200 || $status >= 300) {
