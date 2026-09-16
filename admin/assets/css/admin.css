@@ -1794,6 +1794,11 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
+.lp-plugin-details__section-heading {
+    margin: 1rem 0 0.35rem;
+    font-size: 0.95rem;
+}
+
 .lp-plugin-details__facts {
     display: grid;
     grid-template-columns: max-content 1fr;

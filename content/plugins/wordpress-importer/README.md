@@ -28,5 +28,7 @@ Migrates an existing WordPress site into Lumora Press: users, categories, tags, 
 
 ## Notes
 
+- **Supported WordPress versions**: any source site running WordPress 3.5 or later, including the current WordPress release. There's no version to select — a direct database connection reads only the core tables (`wp_posts`, `wp_users`, `wp_terms`, `wp_term_taxonomy`, `wp_term_relationships`, `wp_comments`, `wp_usermeta`, `wp_options`) that have been part of WordPress's schema unchanged since 3.5, and both names WordPress has used for its comment-moderation keyword list (`blacklist_keys` before WordPress 5.5, `disallowed_keys` from 5.5 onward) are read so an older or newer source resolves either way. A WXR (`.xml`) export is supported the same way, since the format produced by WordPress's own Tools › Export hasn't changed since 3.5.
+- **Tested with**: WordPress 7.1, both via a direct database connection and a WXR export, against a real ~180-page production site (not a synthetic fixture).
 - Runs as one long synchronous admin request per Start/Resume Import click rather than a background job — this codebase has no queue/cron/worker infrastructure yet. Don't navigate away while an import is in progress; if it's interrupted anyway, resuming picks up where it left off rather than starting over.
 - Database credentials are never persisted anywhere — re-entered on every Test Connection / Preview / Start / Resume Import submission.

@@ -11,6 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - Session files in `storage/sessions/` accumulated indefinitely on Debian/Ubuntu-family hosts (LP-172): those distros disable PHP's own session garbage collector by default and rely on a system cron job that only cleans PHP's default session directory, not the app's own. Session cleanup is no longer dependent on the host's own configuration.
+- WordPress Importer now documents the source WordPress versions it supports (in its Plugins screen description, its own README, and the Maintenance → Import screen) — WordPress 3.5 and later, including the current release, since it was never actually version-gated but left unstated — plus the specific version (WordPress 7.1) it's actually been tested with, on a real production site.
 
 ## [0.15.0] — 2026-09-14
 

@@ -569,6 +569,16 @@ endif;
     <section class="lp-admin__panel">
         <h2>WordPress Importer</h2>
 
+        <h3>Supported WordPress versions</h3>
+
+        <p class="lp-field__hint">
+            Supports any source running WordPress 3.5 or later, including
+            the current WordPress release — there's no version to select.
+            Tested with WordPress 7.1.
+        </p>
+
+        <h3>Import information</h3>
+
         <p class="lp-field__hint">
             Imports users, categories, tags, media, pages, posts, comments,
             menus, and classic widgets from an existing WordPress site — via
