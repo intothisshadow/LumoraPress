@@ -75,6 +75,12 @@ final class FooterAssets
             <?php
         }
 
+        if (ScriptEmbeds::isUsed('instagram')) {
+            ?>
+            <script async src="https://www.instagram.com/embed.js"></script>
+            <?php
+        }
+
         // lp_emoji_picker_button() (Emoji Picker plugin, LPP-006) already
         // renders '' when the plugin is inactive/disabled, so the button
         // itself never appears without this — checked here rather than

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Tracks which script-based Auto-Embed providers (Twitter/X, Bluesky) rendered a blockquote on the current request, so footer.php only loads each provider's own script on pages that need it.
+ * Tracks which script-based Auto-Embed providers (Twitter/X, Bluesky, Instagram) rendered a blockquote on the current request, so footer.php only loads each provider's own script on pages that need it.
  *
  * @package LumoraPress
  * @subpackage Themes

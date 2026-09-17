@@ -35,7 +35,7 @@ if ($form === 'embed_settings' && Csrf::verify('embed_settings', is_string($_POS
 
     $providers = [];
 
-    foreach (['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky'] as $providerKey) {
+    foreach (['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky', 'instagram'] as $providerKey) {
         $providers[$providerKey] = isset($_POST['provider_' . $providerKey]);
     }
 
@@ -59,6 +59,7 @@ $providerLabels = [
     'codepen' => 'CodePen',
     'twitter' => 'Twitter/X',
     'bluesky' => 'Bluesky',
+    'instagram' => 'Instagram',
 ];
 ?>
 <h1 class="lp-admin__title">Embeds</h1>
@@ -98,7 +99,7 @@ $providerLabels = [
                     <?= esc_html($providerLabel) ?>
                 </label>
             <?php endforeach; ?>
-            <span class="lp-field__hint">Twitter/X and Bluesky work differently from the others &mdash; neither has a plain-iframe embed, so enabling either loads a small script (from <code>platform.twitter.com</code> or <code>embed.bsky.app</code> respectively) only on pages that actually contain a matching link. Bluesky links are also resolved once against Bluesky's own servers when the post/page is saved, so a rendered Bluesky embed may take an extra save-and-reload to appear the first time a link is pasted. Other providers can be added by a plugin via the <code>embed_providers</code> filter without touching core.</span>
+            <span class="lp-field__hint">Twitter/X, Bluesky, and Instagram work differently from the others &mdash; none has a plain-iframe embed, so enabling one loads a small script (from <code>platform.twitter.com</code>, <code>embed.bsky.app</code>, or <code>www.instagram.com</code> respectively) only on pages that actually contain a matching link. Bluesky links are also resolved once against Bluesky's own servers when the post/page is saved, so a rendered Bluesky embed may take an extra save-and-reload to appear the first time a link is pasted. Other providers can be added by a plugin via the <code>embed_providers</code> filter without touching core.</span>
         </fieldset>
 
         <p class="lp-field">

@@ -253,6 +253,39 @@ version.
   on/off behavior. Widens the Content-Security-Policy's `script-src` and
   `frame-src` for `embed.bsky.app` — see `EmbedService::filterCsp()`.
 
+## Instagram Auto-Embed (`www.instagram.com/embed.js`)
+
+- **Purpose:** LP-178's Instagram provider for the same Auto-Embed feature
+  — the same script+blockquote shape as Twitter/X above (`EmbedService::wrap()`
+  emits `<blockquote class="instagram-media" data-instgrm-permalink="...">`,
+  and `FooterAssets::render()` conditionally loads `www.instagram.com/embed.js`,
+  which scans the page and replaces each matching blockquote with its own
+  rendered iframe). Covers both a regular post (`/p/{shortcode}`) and a
+  Reel (`/reel/{shortcode}`) — both are permalink-addressable and share the
+  same embed shape. Unlike Bluesky, needs no save-time resolution: the
+  pasted URL alone is enough, and Instagram's own script does its own
+  client-side fetch, so this stays exactly as network-request-free (from
+  Lumora Press's own server) as Twitter/X already is.
+- **Current version:** N/A — same as Twitter/X's `widgets.js` above, no
+  pinned/versioned build exists; loaded from the unversioned
+  `https://www.instagram.com/embed.js` URL Instagram's own documentation
+  specifies.
+- **Date added:** 2026-09-17.
+- **Date last updated:** 2026-09-17.
+- **Loaded from:** `www.instagram.com` directly (not jsDelivr — Instagram's
+  own hosted script, not a package on npm/GitHub).
+- **Source URL:** https://developers.facebook.com/docs/instagram-platform/oembed
+- **License:** Proprietary (Instagram's own hosted script/API; not
+  redistributed by Lumora Press).
+- **Local installation path:** N/A — not bundled, and never will be.
+- **Homepage/Documentation URL:** https://developers.facebook.com/docs/instagram-platform/oembed
+- **Notes:** The `embed.js` script tag is loaded only when Settings &rsaquo;
+  Embeds' Instagram toggle is on **and** the current page actually
+  rendered an Instagram embed (`ScriptEmbeds::isUsed('instagram')`, same
+  gating shape as Twitter/X and Bluesky above). Widens the
+  Content-Security-Policy's `script-src`, `frame-src`, and `connect-src`
+  for `www.instagram.com` — see `EmbedService::filterCsp()`.
+
 ## CSS frameworks
 
 None. The admin UI and every bundled theme (`content/themes/*/style.css`)

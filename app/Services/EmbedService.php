@@ -36,7 +36,7 @@ final class EmbedService
 {
     private const OPTION_KEY = 'embed_settings';
 
-    private const DEFAULT_PROVIDERS = ['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky'];
+    private const DEFAULT_PROVIDERS = ['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky', 'instagram'];
 
     /**
      * Matches a bare URL as the entire content of a paragraph — the shape
@@ -206,6 +206,15 @@ final class EmbedService
                 'aspect' => '',
                 'type' => 'blockquote',
             ],
+            [
+                'key' => 'instagram',
+                'label' => 'Instagram',
+                'match' => self::matchInstagram(...),
+                'allow' => '',
+                'allowfullscreen' => false,
+                'aspect' => '',
+                'type' => 'blockquote',
+            ],
         ];
     }
 
@@ -241,9 +250,10 @@ final class EmbedService
      * default same-origin-only CSP doesn't silently drop the embed. Added unconditionally
      * whenever a provider is enabled, since the CSP header is sent before content renders.
      *
-     * Twitter/X and Bluesky also widen script-src and frame-src, since each replaces its
-     * blockquote with an injected iframe via a hosted script rather than a plain iframe.
-     * Twitter/X additionally widens connect-src for syndication.twitter.com.
+     * Twitter/X, Bluesky, and Instagram also widen script-src and frame-src, since each
+     * replaces its blockquote with an injected iframe via a hosted script rather than a plain
+     * iframe. Twitter/X and Instagram additionally widen connect-src, since each provider's
+     * script fetches the embed's content from its own API rather than the iframe alone.
      *
      * @param array<string, string> $directives
      * @return array<string, string>
@@ -285,6 +295,12 @@ final class EmbedService
             $directives['frame-src'] = ($directives['frame-src'] ?? "'self'") . ' https://embed.bsky.app';
         }
 
+        if ($this->providerEnabled('instagram')) {
+            $directives['script-src'] = ($directives['script-src'] ?? "'self'") . ' https://www.instagram.com';
+            $directives['frame-src'] = ($directives['frame-src'] ?? "'self'") . ' https://www.instagram.com';
+            $directives['connect-src'] = ($directives['connect-src'] ?? "'self'") . ' https://www.instagram.com';
+        }
+
         return $directives;
     }
 
@@ -324,16 +340,20 @@ final class EmbedService
         $src = $match['src'];
 
         if (($provider['type'] ?? 'iframe') === 'blockquote') {
-            // Neither has a plain-iframe embed — each provider's own script (loaded conditionally, see ScriptEmbeds) scans the page and replaces the blockquote with an iframe.
+            // None of these have a plain-iframe embed — each provider's own script (loaded conditionally, see ScriptEmbeds) scans the page and replaces the blockquote with an iframe.
             ScriptEmbeds::markUsed($provider['key']);
 
-            $html = $provider['key'] === 'bluesky'
-                ? '<div class="lp-embed lp-embed--bluesky"' . $style . '>'
+            $html = match ($provider['key']) {
+                'bluesky' => '<div class="lp-embed lp-embed--bluesky"' . $style . '>'
                     . '<blockquote class="bluesky-embed" data-bluesky-uri="' . esc_attr($match['atUri'] ?? '') . '" data-bluesky-cid="' . esc_attr($match['cid'] ?? '') . '"><a href="' . esc_attr($src) . '"></a></blockquote>'
-                    . '</div>'
-                : '<div class="lp-embed lp-embed--' . esc_attr($provider['key']) . '"' . $style . '>'
+                    . '</div>',
+                'instagram' => '<div class="lp-embed lp-embed--instagram"' . $style . '>'
+                    . '<blockquote class="instagram-media" data-instgrm-permalink="' . esc_attr($src) . '" data-instgrm-version="14"><a href="' . esc_attr($src) . '"></a></blockquote>'
+                    . '</div>',
+                default => '<div class="lp-embed lp-embed--' . esc_attr($provider['key']) . '"' . $style . '>'
                     . '<blockquote class="twitter-tweet" data-dnt="true"><a href="' . esc_attr($src) . '"></a></blockquote>'
-                    . '</div>';
+                    . '</div>',
+            };
 
             return (string) $this->hooks->applyFilters('embed_html', $html, $provider['key'], $src);
         }
@@ -497,6 +517,35 @@ final class EmbedService
         return [
             'src' => "https://twitter.com/{$m[1]}/status/{$m[2]}",
             'title' => 'Tweet',
+        ];
+    }
+
+    /**
+     * Matches both a regular post (`/p/{shortcode}`) and a Reel
+     * (`/reel/{shortcode}`) — both are permalink-addressable and share
+     * the same official blockquote-embed shape, unlike Stories, which
+     * expire and have no stable public URL, so aren't supported.
+     * Re-normalizes onto www.instagram.com regardless of which host or
+     * tracking query string was pasted.
+     *
+     * @return array{src: string, title: string}|null
+     */
+    private static function matchInstagram(string $url): ?array
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $path = (string) parse_url($url, PHP_URL_PATH);
+
+        if (!in_array($host, ['instagram.com', 'www.instagram.com'], true)) {
+            return null;
+        }
+
+        if (preg_match('#^/(p|reel)/([\w-]+)#', $path, $m) !== 1) {
+            return null;
+        }
+
+        return [
+            'src' => "https://www.instagram.com/{$m[1]}/{$m[2]}/",
+            'title' => $m[1] === 'reel' ? 'Instagram Reel' : 'Instagram post',
         ];
     }
 
