@@ -25,7 +25,7 @@ if (!isset($kernel)) {
 
 $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
 $postViews = new PostViewService($kernel->database, $tablePrefix);
-$viewStats = new ViewStatsService($kernel->database, $tablePrefix);
+$viewStats = new ViewStatsService($kernel->database, $tablePrefix, LUMORA_ROOT . '/storage/geoip/ranges.bin');
 
 $trackPostViews = $kernel->config->option('track_post_views', '0') === '1';
 

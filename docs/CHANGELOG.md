@@ -7,6 +7,11 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - The admin Pages screen's "Published" tab now shows pages nested by parent/child, the same indentation the unfiltered "All" tab already uses, instead of a flat list — an admin can still see a published page's place in the hierarchy even when its parent isn't published. Drag-and-drop reordering stays limited to the "All" tab, since reordering within a filtered subset could silently move a page relative to a hidden sibling (e.g. a Draft) sharing its real parent.
+- Visitor Stats' GeoIP data now shows when it was last imported on Settings, and flags it as outdated (there, and as a new condensed sidebar alert visible on every admin screen) once it's over 6 months old (LPP-025) — MaxMind periodically revises GeoLite2 as IP allocations shift, and this plugin never checks for a newer release on its own, so nothing previously indicated the data had quietly gone stale. A new generic `admin_sidebar_alerts` filter backs the sidebar alert, so a plugin can add its own condensed sidebar notice without a core code change, the same way `dashboard_widgets` already lets a plugin add a Dashboard panel.
+
+### Changed
+
+- Visitor Stats' GeoIP country lookup (LPP-024) now stores its imported ranges in a sorted flat file (`storage/geoip/ranges.bin`) instead of a database table — that table could hold 400k+ rows once a real GeoLite2 dataset was imported, which made every database backup during a core update needlessly large and slow, since the ranges are reproducible reference data an admin can always re-import, not site content. The existing browser-upload/server-path import flow is unchanged; the underlying `{prefix}geoip_ranges` table is dropped automatically on upgrade, and anyone who had already imported GeoLite2 data will need to re-import it once afterward.
 
 ### Fixed
 

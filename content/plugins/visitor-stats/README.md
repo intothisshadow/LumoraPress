@@ -32,13 +32,17 @@ To enable it:
 
 The ZIP is usually 5–10MB, but the unzipped Blocks CSV alone is often 20MB+ — if your host's PHP upload limit or request timeout is too low for a browser upload to succeed, use the "Or Import From A Server Path" option on that same screen instead: upload the file to the server via FTP/SFTP (the `.zip`, or a directory with the two already-extracted CSVs, exact original filenames), then enter that path.
 
-This plugin parses both files once and loads a compact network-range-to-country table into your database; it doesn't keep the uploaded CSVs around beyond that (they're saved to `storage/geoip/`, outside the web root, so re-importing later with a newer download is just re-uploading). If you never do this, the country breakdown simply stays empty — every other breakdown works fine without it.
+This plugin parses both files once and loads a compact network-range-to-country lookup into a sorted flat file (`storage/geoip/ranges.bin`, outside the web root) rather than your database — it can be a few hundred thousand ranges, and keeping that out of the database means it never bloats a database backup or export. It doesn't keep the uploaded CSVs around beyond the import (they're saved to `storage/geoip/` too, so re-importing later with a newer download is just re-uploading). If you never do this, the country breakdown simply stays empty — every other breakdown works fine without it.
 
-The Blocks CSV can be a few hundred thousand rows, so the actual database import runs in batches across several requests rather than one long request — after you upload or point at the files, the page shows a running "N ranges loaded so far…" status and advances itself automatically (JavaScript) until it finishes; with JavaScript disabled, click "Continue Import" to advance one batch at a time instead. Leave the page open until it redirects to the finished state.
+The Blocks CSV can be a few hundred thousand rows, so the actual import runs in batches across several requests rather than one long request — after you upload or point at the files, the page shows a running "N ranges loaded so far…" status and advances itself automatically (JavaScript) until it finishes; with JavaScript disabled, click "Continue Import" to advance one batch at a time instead. Leave the page open until it redirects to the finished state.
+
+If you're upgrading from an older Lumora Press version, this plugin's country data used to live in a database table instead — that table is dropped automatically on upgrade, and the country breakdown will show "Not installed" again afterward until you re-import the same GeoLite2 ZIP/CSVs once more.
 
 If you already uploaded the ZIP to this server via FTP/SFTP, "Discover GeoLite2 Download" checks next to this install and one level into its sibling directories for a `GeoLite2*.zip` and fills the path field for you — a convenience only, since (unlike this app's other "Discover" controls) there's no fixed install layout to key off, only the filename MaxMind's own download uses.
 
 v1 only resolves IPv4 addresses; an IPv6 visitor's view doesn't get a country.
+
+MaxMind revises GeoLite2 periodically as IP address allocations shift, but this plugin never checks for a newer release on its own (no outbound request, ever). Settings shows when the current data was imported, and once it's over 6 months old, both Settings and the admin sidebar (visible on every screen, for an administrator) show a reminder to download and re-import a fresh copy — it's just a local age check against the last import, not a real check against MaxMind.
 
 GeoLite2 data is © MaxMind, used under MaxMind's own GeoLite2 End User License Agreement — see MaxMind's site for current terms. This plugin only reads whatever file you provide from your own MaxMind account; it does not distribute MaxMind's data itself.
 

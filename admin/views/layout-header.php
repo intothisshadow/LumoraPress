@@ -51,6 +51,16 @@ $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark
 // showing on the one screen an admin might not be looking at.
 $sidebarInstallDirectoryExists = is_dir(LUMORA_ROOT . '/install');
 $sidebarMaintenanceActive = $currentUser->can('manage_options') && $kernel->maintenance->isActive();
+
+/**
+ * A plugin-contributed condensed sidebar alert, in the same spot as the two core checks
+ * above but without a core code change per plugin — see docs/DEVELOPER-APIS.md. Each entry:
+ * ['variant' => 'error'|'warning', 'url' => string, 'title' => string, 'label' => string
+ * (trusted HTML, not escaped — matches dashboard_widgets' own trusted-output convention)].
+ *
+ * @var array<int, array{variant: string, url: string, title: string, label: string}> $sidebarPluginAlerts
+ */
+$sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
 ?>
 <!DOCTYPE html>
 <html lang="en"<?= $themeAttribute ?>>
@@ -78,6 +88,11 @@ $sidebarMaintenanceActive = $currentUser->can('manage_options') && $kernel->main
                 Maintenance mode is <strong>ON</strong>
             </a>
         <?php endif; ?>
+        <?php foreach ($sidebarPluginAlerts as $sidebarPluginAlert): ?>
+            <a class="lp-alert lp-alert--<?= esc_attr($sidebarPluginAlert['variant']) ?> lp-admin__sidebar-alert" href="<?= esc_url($sidebarPluginAlert['url']) ?>" title="<?= esc_attr($sidebarPluginAlert['title']) ?>">
+                <?= $sidebarPluginAlert['label'] ?>
+            </a>
+        <?php endforeach; ?>
         <?php /* LP-154: same shared control row as the one right above .lp-admin__user below — see that one's comment. */ ?>
         <div class="lp-admin__sidebar-controls">
             <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>

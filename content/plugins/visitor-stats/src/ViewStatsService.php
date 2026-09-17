@@ -23,8 +23,12 @@ use ZipArchive;
 
 /**
  * Four site-wide daily-aggregate breakdown tables (never per-post, which would grow
- * unbounded) plus the geoip_ranges lookup table the country breakdown depends on. Takes
- * Database directly so it stays unit-testable against SQLite fixtures.
+ * unbounded) plus a sorted flat binary file the country breakdown's IP lookup depends on.
+ * The GeoIP ranges live outside the database (see LPP-024) because they're a large,
+ * admin-reproducible reference dataset (400k+ rows once imported) rather than site content,
+ * and dumping that many rows on every database backup made backups needlessly slow. Takes
+ * Database directly for the breakdown tables so it stays unit-testable against SQLite
+ * fixtures.
  *
  * Privacy: this class never persists a raw IP address, User-Agent string, or full referrer
  * URL. The raw IP passed to countryForIp() is used only for the in-memory range lookup.
@@ -40,9 +44,26 @@ final class ViewStatsService
      */
     private const DEFAULT_IMPORT_BATCH_SIZE = 20000;
 
+    /** One GeoIP range record: 4-byte network_start + 4-byte network_end + 2-byte country code. */
+    private const RANGE_RECORD_SIZE = 10;
+
+    private const RANGE_PACK_FORMAT = 'NNa2';
+
+    private const RANGE_UNPACK_FORMAT = 'Nstart/Nend/a2country';
+
+    /** How old imported GeoIP data can get before geoipIsStale() flags it — see that method's docblock. */
+    private const STALE_AFTER_SECONDS = 6 * 30 * 24 * 60 * 60;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        /**
+         * Path to the sorted flat binary file of GeoIP ranges (e.g.
+         * storage/geoip/ranges.bin) — need not exist yet; countryForIp()/
+         * geoipRangeCount() simply report "no data" until an import
+         * finishes.
+         */
+        private readonly string $geoipRangesPath,
     ) {
     }
 
@@ -94,11 +115,12 @@ final class ViewStatsService
     }
 
     /**
-     * Resolves an IPv4 address to a country code via the imported
-     * geoip_ranges table — null if no ranges have ever been imported, or
-     * the address falls in a gap the dataset doesn't cover (matches
-     * this ticket's "degrades to absent, not broken" requirement).
-     * IPv6 addresses always resolve to null in v1 (see README.md).
+     * Resolves an IPv4 address to a country code via a binary search over
+     * the sorted flat ranges file — null if no ranges have ever been
+     * imported, or the address falls in a gap the dataset doesn't cover
+     * (matches this ticket's "degrades to absent, not broken"
+     * requirement). IPv6 addresses always resolve to null in v1 (see
+     * README.md).
      */
     public function countryForIp(string $ipAddress): ?string
     {
@@ -110,19 +132,65 @@ final class ViewStatsService
 
         $ipInt = $ipLong < 0 ? $ipLong + 4294967296 : $ipLong;
 
-        $row = $this->database->fetchOne(
-            'SELECT network_end, country_code FROM ' . $this->geoipRangesTable() . '
-              WHERE network_start <= :ip
-              ORDER BY network_start DESC
-              LIMIT 1',
-            ['ip' => $ipInt],
-        );
-
-        if ($row === null || (int) $row['network_end'] < $ipInt) {
+        if (!is_file($this->geoipRangesPath)) {
             return null;
         }
 
-        return (string) $row['country_code'];
+        $handle = fopen($this->geoipRangesPath, 'rb');
+
+        if ($handle === false) {
+            return null;
+        }
+
+        try {
+            $recordCount = intdiv((int) filesize($this->geoipRangesPath), self::RANGE_RECORD_SIZE);
+
+            if ($recordCount === 0) {
+                return null;
+            }
+
+            // Binary search for the range with the greatest network_start
+            // that's still <= $ipInt — the flat-file equivalent of the old
+            // `ORDER BY network_start DESC LIMIT 1` query.
+            $low = 0;
+            $high = $recordCount - 1;
+            $match = null;
+
+            while ($low <= $high) {
+                $mid = intdiv($low + $high, 2);
+                $record = $this->readRangeRecord($handle, $mid);
+
+                if ($ipInt < $record['start']) {
+                    $high = $mid - 1;
+                } else {
+                    $match = $record;
+                    $low = $mid + 1;
+                }
+            }
+
+            if ($match === null || $ipInt > $match['end']) {
+                return null;
+            }
+
+            return $match['country'];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @param resource $handle
+     * @return array{start: int, end: int, country: string}
+     */
+    private function readRangeRecord($handle, int $index): array
+    {
+        fseek($handle, $index * self::RANGE_RECORD_SIZE);
+        $data = (string) fread($handle, self::RANGE_RECORD_SIZE);
+
+        /** @var array{start: int, end: int, country: string} $unpacked */
+        $unpacked = unpack(self::RANGE_UNPACK_FORMAT, $data);
+
+        return $unpacked;
     }
 
     /**
@@ -131,9 +199,41 @@ final class ViewStatsService
      */
     public function geoipRangeCount(): int
     {
-        return (int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->geoipRangesTable(),
-        );
+        if (!is_file($this->geoipRangesPath)) {
+            return 0;
+        }
+
+        return intdiv((int) filesize($this->geoipRangesPath), self::RANGE_RECORD_SIZE);
+    }
+
+    /**
+     * When the current ranges file was last (re)built — finalizeGeoipImport()'s rename()
+     * naturally sets this, so no separate "last imported at" bookkeeping is needed. Null if
+     * nothing has ever been imported.
+     */
+    public function geoipImportedAt(): ?int
+    {
+        if (!is_file($this->geoipRangesPath)) {
+            return null;
+        }
+
+        $mtime = filemtime($this->geoipRangesPath);
+
+        return $mtime === false ? null : $mtime;
+    }
+
+    /**
+     * True once the imported GeoIP data is older than STALE_AFTER_SECONDS — MaxMind revises
+     * GeoLite2 periodically as IP allocations shift, and this plugin never checks for a newer
+     * release itself (no outbound request, see README), so nothing else would ever surface
+     * that the data has quietly gone stale. Never true when nothing's been imported yet —
+     * that's "not installed," a different condition entirely.
+     */
+    public function geoipIsStale(): bool
+    {
+        $importedAt = $this->geoipImportedAt();
+
+        return $importedAt !== null && $importedAt < (time() - self::STALE_AFTER_SECONDS);
     }
 
     /**
@@ -232,14 +332,17 @@ final class ViewStatsService
      * position; the resume position is returned in `nextByteOffset`). Batching exists
      * because a real Blocks CSV is routinely ~450k rows, which can run past a shared host's
      * timeout in one request. $isFirstBatch (not $byteOffset === 0) is the caller's explicit
-     * signal to truncate geoip_ranges once, so a cold start isn't confused with resuming.
+     * signal to start a fresh in-progress ranges file once, so a cold start isn't confused
+     * with resuming. Each batch appends raw (unsorted) range records to a `.building`
+     * sidecar file next to $geoipRangesPath; only once the CSV is fully read does the final
+     * batch sort those records and atomically replace $geoipRangesPath with the result —
+     * a lookup via countryForIp() never sees a partially-imported file.
      *
      * @return array{importedInBatch: int, nextByteOffset: int, done: bool}
      */
     public function importGeoCsvBatch(string $blocksCsvPath, string $locationsCsvPath, int $byteOffset, bool $isFirstBatch, int $batchSize = self::DEFAULT_IMPORT_BATCH_SIZE): array
     {
         $countryByGeonameId = $this->readLocationsCsv($locationsCsvPath);
-        $pdo = $this->database->pdo();
 
         $blocksHandle = fopen($blocksCsvPath, 'rb');
 
@@ -271,65 +374,128 @@ final class ViewStatsService
             throw new RuntimeException('Could not seek to the requested position in the Blocks CSV file.');
         }
 
+        $buildingPath = $this->geoipBuildingPath();
+        $buildingHandle = fopen($buildingPath, $isFirstBatch ? 'wb' : 'ab');
+
+        if ($buildingHandle === false) {
+            fclose($blocksHandle);
+
+            throw new RuntimeException('Could not write the in-progress GeoIP ranges file.');
+        }
+
+        $imported = 0;
+        $rowsRead = 0;
+        $done = false;
+
         try {
-            $result = $this->database->transaction(function () use ($pdo, $blocksHandle, $networkColumn, $geonameIdColumn, $registeredCountryColumn, $countryByGeonameId, $batchSize, $isFirstBatch): array {
-                if ($isFirstBatch) {
-                    $pdo->exec('DELETE FROM ' . $this->geoipRangesTable());
+            while ($rowsRead < $batchSize) {
+                $row = fgetcsv($blocksHandle, null, ",", "\"", "\\");
+
+                if ($row === false) {
+                    $done = true;
+
+                    break;
                 }
 
-                $insert = $pdo->prepare(
-                    'INSERT INTO ' . $this->geoipRangesTable() . ' (network_start, network_end, country_code) VALUES (:network_start, :network_end, :country_code)',
-                );
+                $rowsRead++;
+                $geonameId = trim((string) ($row[$geonameIdColumn] ?? ''));
+                $registeredGeonameId = trim((string) ($row[$registeredCountryColumn] ?? ''));
+                $countryCode = $countryByGeonameId[$geonameId] ?? $countryByGeonameId[$registeredGeonameId] ?? null;
 
-                $imported = 0;
-                $rowsRead = 0;
-                $done = false;
-
-                while ($rowsRead < $batchSize) {
-                    $row = fgetcsv($blocksHandle, null, ",", "\"", "\\");
-
-                    if ($row === false) {
-                        $done = true;
-
-                        break;
-                    }
-
-                    $rowsRead++;
-                    $geonameId = trim((string) ($row[$geonameIdColumn] ?? ''));
-                    $registeredGeonameId = trim((string) ($row[$registeredCountryColumn] ?? ''));
-                    $countryCode = $countryByGeonameId[$geonameId] ?? $countryByGeonameId[$registeredGeonameId] ?? null;
-
-                    if ($countryCode === null) {
-                        continue;
-                    }
-
-                    $range = $this->cidrToRange((string) ($row[$networkColumn] ?? ''));
-
-                    if ($range === null) {
-                        continue;
-                    }
-
-                    $insert->execute([
-                        'network_start' => $range[0],
-                        'network_end' => $range[1],
-                        'country_code' => $countryCode,
-                    ]);
-
-                    $imported++;
+                if ($countryCode === null) {
+                    continue;
                 }
 
-                return ['imported' => $imported, 'done' => $done];
-            });
+                $range = $this->cidrToRange((string) ($row[$networkColumn] ?? ''));
+
+                if ($range === null) {
+                    continue;
+                }
+
+                fwrite($buildingHandle, pack(self::RANGE_PACK_FORMAT, $range[0], $range[1], $countryCode));
+                $imported++;
+            }
         } finally {
+            fclose($buildingHandle);
             $nextByteOffset = ftell($blocksHandle);
             fclose($blocksHandle);
         }
 
+        if ($done) {
+            $this->finalizeGeoipImport($buildingPath);
+        }
+
         return [
-            'importedInBatch' => $result['imported'],
+            'importedInBatch' => $imported,
             'nextByteOffset' => $nextByteOffset === false ? $byteOffset : $nextByteOffset,
-            'done' => $result['done'],
+            'done' => $done,
         ];
+    }
+
+    private function geoipBuildingPath(): string
+    {
+        return $this->geoipRangesPath . '.building';
+    }
+
+    /**
+     * Sorts the just-completed `.building` file by network_start and
+     * atomically replaces $geoipRangesPath with the result, so
+     * countryForIp()'s binary search always sees either the previous
+     * complete import or the new one, never a half-written file.
+     */
+    private function finalizeGeoipImport(string $buildingPath): void
+    {
+        // A real GeoLite2 import is 400k+ records — a one-time admin
+        // operation, so a low shared-host memory_limit is bumped for its
+        // duration rather than risking exhaustion mid-sort, the same
+        // reasoning importGeoCsvBatch()'s set_time_limit(0) already
+        // applies to this class of operation. Best-effort: some hosts
+        // disable ini_set() for memory_limit entirely.
+        @ini_set('memory_limit', '512M');
+
+        $contents = file_get_contents($buildingPath);
+
+        if ($contents === false) {
+            throw new RuntimeException('Could not read the in-progress GeoIP ranges file.');
+        }
+
+        // Sorting the raw fixed-width records directly (rather than
+        // unpack()ing each into its own PHP array first) keeps memory
+        // proportional to the file size instead of paying per-record
+        // array overhead across hundreds of thousands of rows. Byte-wise
+        // comparison of the records still sorts correctly by
+        // network_start, since pack() writes it big-endian ("N") — a
+        // big-endian unsigned integer's byte order already matches its
+        // numeric order.
+        $records = str_split($contents, self::RANGE_RECORD_SIZE);
+        unset($contents);
+
+        sort($records, SORT_STRING);
+
+        $directory = dirname($this->geoipRangesPath);
+
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new RuntimeException('Could not create the GeoIP storage directory.');
+        }
+
+        $sortedPath = $this->geoipRangesPath . '.sorted';
+        $sortedHandle = fopen($sortedPath, 'wb');
+
+        if ($sortedHandle === false) {
+            throw new RuntimeException('Could not write the sorted GeoIP ranges file.');
+        }
+
+        foreach ($records as $record) {
+            fwrite($sortedHandle, $record);
+        }
+
+        fclose($sortedHandle);
+
+        if (!rename($sortedPath, $this->geoipRangesPath)) {
+            throw new RuntimeException('Could not finalize the GeoIP ranges file.');
+        }
+
+        unlink($buildingPath);
     }
 
     /**
@@ -481,10 +647,5 @@ final class ViewStatsService
     private function countriesTable(): string
     {
         return $this->tablePrefix . 'view_stats_countries';
-    }
-
-    private function geoipRangesTable(): string
-    {
-        return $this->tablePrefix . 'geoip_ranges';
     }
 }

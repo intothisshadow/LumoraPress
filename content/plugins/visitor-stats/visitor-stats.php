@@ -58,7 +58,7 @@ add_action('single_post_viewed', static function (Post $post, bool $isGuest): vo
     $kernel = ActiveKernel::instance();
     $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
     $postViews = new PostViewService($kernel->database, $tablePrefix);
-    $viewStats = new ViewStatsService($kernel->database, $tablePrefix);
+    $viewStats = new ViewStatsService($kernel->database, $tablePrefix, LUMORA_ROOT . '/storage/geoip/ranges.bin');
     $userAgentParser = new UserAgentParser();
 
     $postViews->recordView($post->id);
@@ -94,7 +94,7 @@ add_action('dashboard_widgets', static function (User $currentUser): void {
     $kernel = ActiveKernel::instance();
     $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
     $postViews = new PostViewService($kernel->database, $tablePrefix);
-    $viewStats = new ViewStatsService($kernel->database, $tablePrefix);
+    $viewStats = new ViewStatsService($kernel->database, $tablePrefix, LUMORA_ROOT . '/storage/geoip/ranges.bin');
 
     require __DIR__ . '/views/dashboard-widget.php';
 });
@@ -123,3 +123,34 @@ add_filter('plugin_action_links_visitor-stats', static fn (array $links): array 
     ...$links,
     ['label' => 'Settings', 'url' => admin_url('visitor-stats/settings')],
 ]);
+
+/*
+ * A stale GeoIP dataset degrades silently (no error, just occasionally
+ * wrong countries) since this plugin never checks MaxMind for a newer
+ * release itself — see README's "no outbound request" stance. Surfaced
+ * as a sidebar alert via the generic admin_sidebar_alerts filter
+ * (layout-header.php) rather than a core code change, gated on the same
+ * manage_options capability the Settings screen itself requires.
+ */
+add_filter('admin_sidebar_alerts', static function (array $alerts, User $currentUser): array {
+    if (!$currentUser->can('manage_options')) {
+        return $alerts;
+    }
+
+    $kernel = ActiveKernel::instance();
+    $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
+    $viewStats = new ViewStatsService($kernel->database, $tablePrefix, LUMORA_ROOT . '/storage/geoip/ranges.bin');
+
+    if (!$viewStats->geoipIsStale()) {
+        return $alerts;
+    }
+
+    $alerts[] = [
+        'variant' => 'warning',
+        'url' => admin_url('visitor-stats/settings'),
+        'title' => 'The imported GeoLite2 country data is over 6 months old. Consider re-importing a fresh download from Visitor Stats > Settings.',
+        'label' => 'GeoIP data is <strong>outdated</strong>',
+    ];
+
+    return $alerts;
+});

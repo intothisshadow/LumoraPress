@@ -23,7 +23,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-$viewStats = new ViewStatsService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+$geoipDirectory = LUMORA_ROOT . '/storage/geoip';
+$viewStats = new ViewStatsService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $geoipDirectory . '/ranges.bin');
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 
@@ -51,7 +52,6 @@ if ($form === 'visitor_stats_settings' && Csrf::verify('visitor_stats_settings',
     exit;
 }
 
-$geoipDirectory = LUMORA_ROOT . '/storage/geoip';
 $blocksDestination = $geoipDirectory . '/GeoLite2-Country-Blocks-IPv4.csv';
 $locationsDestination = $geoipDirectory . '/GeoLite2-Country-Locations-en.csv';
 $geoipBatchState = null;
@@ -181,6 +181,8 @@ if (isset($_GET['geoip_ready']) && $geoipBatchState === null && $error === null)
 
 $trackPostViews = $kernel->config->option('track_post_views', '0') === '1';
 $geoipRangeCount = $viewStats->geoipRangeCount();
+$geoipImportedAt = $viewStats->geoipImportedAt();
+$geoipIsStale = $viewStats->geoipIsStale();
 ?>
 <h1 class="lp-admin__title">Visitor Stats</h1>
 
@@ -250,8 +252,21 @@ $geoipRangeCount = $viewStats->geoipRangeCount();
             <span data-lp-geoip-status>Importing — <span data-lp-geoip-imported-so-far><?= esc_html((string) $geoipBatchState['imported_so_far']) ?></span> ranges loaded so far…</span>
         <?php else: ?>
             <?= $geoipRangeCount > 0 ? esc_html((string) $geoipRangeCount) . ' ranges loaded' : 'Not installed' ?>
+            <?php if ($geoipImportedAt !== null): ?>
+                — imported <?= esc_html(date('F j, Y', $geoipImportedAt)) ?>
+            <?php endif; ?>
         <?php endif; ?>
     </p>
+
+    <?php if ($geoipBatchState === null && $geoipIsStale): ?>
+        <div class="lp-alert lp-alert--warning">
+            This data is over 6 months old. MaxMind periodically revises
+            GeoLite2 as IP address allocations shift, and this plugin
+            never checks for a newer release on its own (no outbound
+            request — see above). Consider downloading a fresh copy from
+            MaxMind and re-importing it below.
+        </div>
+    <?php endif; ?>
 
     <?php if ($geoipBatchState !== null): ?>
         <div class="lp-alert lp-alert--warning">
