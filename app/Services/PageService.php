@@ -888,6 +888,24 @@ final class PageService
     }
 
     /**
+     * listAllForTree() filtered down to one status, keeping each kept
+     * page's real depth from the full hierarchy rather than re-basing it —
+     * an admin filtering to Published must still see every published page,
+     * even one whose parent is a Draft, so unlike publicTreeForWidget()
+     * this never drops a page for having a hidden parent; it just shows
+     * that page indented with no visible parent row above it.
+     *
+     * @return array<int, array{page: Page, depth: int}>
+     */
+    public function listAllForTreeByStatus(PageStatus $status): array
+    {
+        return array_values(array_filter(
+            $this->listAllForTree(),
+            static fn (array $row): bool => $row['page']->status === $status,
+        ));
+    }
+
+    /**
      * The same shape as listAllForTree(), but restricted to paginatePublished()'s exact
      * visibility rule — backs the Pages widget's nested output, which must never leak a
      * draft/scheduled/private page as some visible page's child. A page whose real parent

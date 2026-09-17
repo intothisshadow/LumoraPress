@@ -143,6 +143,14 @@ $orderDir = (string) ($_GET['order'] ?? 'desc');
 // every other status filter already uses.
 $isTreeView = $statusFilter === null && !$hasActiveFilter;
 
+// The Published tab also shows hierarchical indentation (an admin still
+// needs to see every published page even when its parent isn't
+// published — see PageService::listAllForTreeByStatus()'s own docblock),
+// but never with drag-and-drop reordering: dragging within a filtered
+// subset would silently reorder a page relative to hidden siblings
+// (a Draft parent/sibling not shown here) sharing its real parent_id.
+$isNestedView = $isTreeView || ($statusFilter === PageStatus::Published && !$hasActiveFilter);
+
 // Trash is excluded from "All" (see PageService::paginateForAdmin()'s
 // docblock), so the "All" tab's own count is every non-Trashed status
 // summed rather than a simple "no filter" count.
@@ -162,8 +170,8 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
 $allPagesForParentFilter = $pageService->listAllForParentPicker();
 $allUsersForFilter = $kernel->users->listAll();
 
-if ($isTreeView) {
-    $treeRows = $pageService->listAllForTree();
+if ($isNestedView) {
+    $treeRows = $statusFilter === null ? $pageService->listAllForTree() : $pageService->listAllForTreeByStatus($statusFilter);
     $listedPages = array_map(static fn (array $row): Page => $row['page'], $treeRows);
 } else {
     $pagination = $pageService->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
@@ -273,12 +281,13 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No pages yet.' ?></p>
     <?php else: ?>
         <?php
-        // The bulk-action form and (in tree view) the reposition form
-        // are siblings, not nested — a <form> inside another is invalid
-        // HTML. In tree view, checkboxes use form="pages-bulk-form" to
-        // submit despite living in the separate <ul> below.
+        // The bulk-action form and (in tree/nested view) the reposition
+        // form are siblings, not nested — a <form> inside another is
+        // invalid HTML. In tree/nested view, checkboxes use
+        // form="pages-bulk-form" to submit despite living in the
+        // separate <ul> below.
         ?>
-        <form id="pages-bulk-form" method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>" <?= $isTreeView ? '' : 'data-lp-bulk-form' ?>>
+        <form id="pages-bulk-form" method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>" <?= $isNestedView ? '' : 'data-lp-bulk-form' ?>>
             <?= Csrf::field('pages_bulk_action') ?>
             <input type="hidden" name="form" value="bulk_action">
             <?php if ($statusFilter !== null): ?>
@@ -322,7 +331,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
-            <?php if (!$isTreeView): ?>
+            <?php if (!$isNestedView): ?>
                 <table class="lp-table">
                     <thead>
                         <tr>
@@ -453,24 +462,28 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
             <?php endif; ?>
         </form>
 
-        <?php if ($isTreeView): ?>
-            <div data-lp-sortable-group="pages">
+        <?php if ($isNestedView): ?>
+            <?php if ($isTreeView): ?><div data-lp-sortable-group="pages"><?php endif; ?>
             <ul class="lp-pages-tree">
                 <?php foreach ($treeRows as $treeRow): ?>
                     <?php $listedPage = $treeRow['page']; ?>
                     <li
                         class="lp-pages-tree__item"
                         data-style-margin-left="<?= (int) $treeRow['depth'] * 1.5 ?>rem"
+                        <?php if ($isTreeView): ?>
                         data-lp-sortable-item
                         data-lp-sortable-id="<?= (int) $listedPage->id ?>"
                         data-lp-sortable-parent="<?= esc_attr($listedPage->parentId !== null ? (string) $listedPage->parentId : '') ?>"
+                        <?php endif; ?>
                     >
                         <?php if ($canEditPage($listedPage)): ?>
+                            <?php if ($isTreeView): ?>
                             <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true">&#10021;</span>
                             <span class="lp-pages-tree__move">
                                 <button type="button" data-lp-sortable-move="up" aria-label="Move &ldquo;<?= esc_attr($listedPage->title) ?>&rdquo; up">&#9650;</button>
                                 <button type="button" data-lp-sortable-move="down" aria-label="Move &ldquo;<?= esc_attr($listedPage->title) ?>&rdquo; down">&#9660;</button>
                             </span>
+                            <?php endif; ?>
                             <label class="lp-visually-hidden" for="page-select-<?= (int) $listedPage->id ?>">Select "<?= esc_html($listedPage->title) ?>"</label>
                             <input type="checkbox" id="page-select-<?= (int) $listedPage->id ?>" name="page_ids[]" value="<?= (int) $listedPage->id ?>" form="pages-bulk-form">
                         <?php endif; ?>
@@ -509,6 +522,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                     </li>
                 <?php endforeach; ?>
             </ul>
+            <?php if ($isTreeView): ?>
             <form data-lp-sortable-reposition-form method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>">
                 <?= Csrf::field('page_reposition') ?>
                 <input type="hidden" name="form" value="reposition_page">
@@ -517,6 +531,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                 <input type="hidden" name="position" data-lp-sortable-field="position">
             </form>
             </div>
+            <?php endif; ?>
         <?php endif; ?>
 
         <?php
@@ -542,7 +557,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                 <?php if ($canDeletePages): ?>
                     <form id="page-trash-form-<?= (int) $listedPage->id ?>" method="post" action="<?= esc_url(admin_url('pages/all-pages')) ?>"></form>
                 <?php endif; ?>
-                <?php if (!$isTreeView): ?>
+                <?php if (!$isNestedView): ?>
                     <?php
                     // Quick Edit's form carries real visible fields (via
                     // form="" on each row input), submitted as JSON by
@@ -566,7 +581,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         endforeach;
         ?>
 
-        <?php if (!$isTreeView): ?>
+        <?php if (!$isNestedView): ?>
             <?php render_pagination($pagination, 'Pages pagination'); ?>
         <?php endif; ?>
     <?php endif; ?>

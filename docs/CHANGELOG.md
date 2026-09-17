@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The admin Pages screen's "Published" tab now shows pages nested by parent/child, the same indentation the unfiltered "All" tab already uses, instead of a flat list — an admin can still see a published page's place in the hierarchy even when its parent isn't published. Drag-and-drop reordering stays limited to the "All" tab, since reordering within a filtered subset could silently move a page relative to a hidden sibling (e.g. a Draft) sharing its real parent.
+
 ### Fixed
 
 - `curl_close()` calls (`AkismetClient`, `BlueskyResolverService`, `GitHubReleaseProvider`, and the Contact Forms plugin's reCAPTCHA/Turnstile clients) triggered a deprecation notice on PHP 8.5, which has no effect anyway since PHP 8.0 automatically frees curl handles — removed outright rather than version-guarded.
