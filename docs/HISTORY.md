@@ -15440,3 +15440,342 @@ The "`install/` directory still exists" warning (`.lp-alert.lp-alert--error`) an
 **Follow-up same day: fixed vertical text clipping.** Ariane caught both sidebar alerts' text getting cut off mid-line rather than truncating with an ellipsis. Root cause: `.lp-admin__sidebar` is a column flexbox with only `.lp-admin__nav` set to grow, and every other fixed-size row normally keeps its natural content height for free via flexbox's "automatic minimum size" behavior (a flex item's min-height defaults to its content size) — but that protection switches off for any item whose own `overflow` isn't `visible`, which `.lp-admin__sidebar-alert` needs for its ellipsis truncation. Without an explicit `flex-shrink: 0`, a sidebar short on vertical space silently squashed the row below one line's height. Fixed by adding `flex-shrink: 0` to `.lp-admin__sidebar-alert`. Re-verified at several viewport heights (420px, 300px) and in the mobile off-canvas drawer — text now truncates horizontally with an ellipsis as intended, never clips vertically.
 
 Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[Unreleased]` → `[0.16.0]` section for the full description): a fix for the WYSIWYG editor's "Insert/Edit Link" dialog, whose "Update" button silently discarded a new URL when editing a link already applied to an image or to text.
+
+------
+
+## 0.17.0 (2026-09-19)
+
+### LPP-024. Move GeoIP Range Storage From Database Table To Flat File
+
+**Status:** Complete
+
+LPP-014's `geoip_ranges` table (MaxMind GeoLite2 Country Blocks, often
+400k+ rows once imported — see LPP-014's "~450k Blocks rows" real-world
+figure) is a static, admin-reproducible reference dataset, not site
+content, but `UpdateBackupService::backupDatabaseBatch()` dumps every
+`{prefix}`-prefixed table row-by-row via `SELECT`/`INSERT` before a core
+update with no exclusion mechanism — so this one table dominates both
+the size and the runtime of every update's database backup, on top of
+its own query cost as an indexed range lookup on every guest post view.
+Since the data is purely a local lookup structure (never joined against
+other tables, never exposed to an admin as rows to browse/search), it
+doesn't need to live in MySQL at all.
+
+### Design
+
+- Replace `{prefix}geoip_ranges` with a flat, sorted binary file under
+  `storage/geoip/` (alongside the already-`.htaccess`-denied CSV/ZIP
+  staging files LPP-014 added) — one fixed-width record per range
+  (`network_start`, `network_end`, `country_code`), sorted by
+  `network_start` so a lookup is a binary search over the file (or an
+  in-memory array read once per request via a small opcache-friendly
+  cache, whichever profiles faster) rather than an indexed SQL query.
+- `ViewStatsService::importGeoCsvBatch()`/`importGeoCsv()` write records
+  into this file instead of batched `INSERT`s — the existing multi-batch
+  resumption design (byte-offset resume via `fseek()`/`ftell()` on the
+  source CSV) carries over unchanged; only the write target changes.
+- The per-view country lookup (`ViewStatsService`'s range query) becomes
+  a binary search against the flat file instead of `SELECT ... WHERE
+  network_start <= ? ORDER BY network_start DESC LIMIT 1`-style SQL.
+- New migration to drop `{prefix}geoip_ranges` on upgrade. Since the
+  table only ever holds admin-imported, freely-re-importable reference
+  data (never anything a site owner authored), dropping it outright
+  rather than writing a table-to-file data migration is the right
+  tradeoff — matches this ticket's own README's existing "if you never
+  do this, the country breakdown simply stays empty" framing. An
+  upgrading site with an existing import loses its country breakdown
+  until the admin re-imports the same GeoLite2 ZIP/CSVs they already
+  have; document this plainly as a one-time step in the CHANGELOG entry
+  and in Settings (e.g. detect the dropped table / missing flat file and
+  surface the existing import UI rather than silently showing an empty
+  breakdown with no explanation).
+- Keep the existing "Discover GeoLite2 Download," browser-upload, and
+  server-path import UX entirely as-is — only the storage backend behind
+  `importGeoCsvBatch()` changes, not the admin-facing import flow.
+
+### Checklist
+
+- [x] Design the flat file's exact binary record layout (fixed-width
+      `network_start`/`network_end`/`country_code` fields, sorted by
+      `network_start`) and a small reader class encapsulating the binary
+      search.
+- [x] Rewrite `ViewStatsService::importGeoCsvBatch()` to write this file
+      instead of batched `INSERT INTO geoip_ranges`, keeping the existing
+      byte-offset resumption logic against the source CSV unchanged.
+- [x] Rewrite the per-view country lookup to binary-search the flat file
+      instead of querying `geoip_ranges`.
+- [x] New migration dropping `{prefix}geoip_ranges`.
+- [x] Settings screen: detect a missing/stale flat file (post-upgrade, or
+      never imported) and surface the existing import UI with a clear
+      one-time "re-import needed after upgrading" notice rather than a
+      silently empty country breakdown.
+- [x] Confirm `UpdateBackupService`'s database dump/restore size and
+      runtime drop meaningfully once `geoip_ranges` no longer exists as a
+      table (this ticket's whole motivation).
+- [x] Update unit tests covering the old `geoip_ranges`-table-based import
+      and lookup to exercise the new flat-file path instead (multi-batch
+      resumption, exact-multiple-of-batch-size edge case, lookup
+      correctness for boundary IPs).
+- [x] Update the plugin's own README (storage location under
+      `storage/geoip/`, the re-import-after-upgrade note) and
+      `CHANGELOG.md` (bundled plugin, not a custom one — see LPP-014's
+      own precedent of documenting this plugin's changes there).
+
+### Live verification
+
+- [x] Re-import a real GeoLite2 dataset against the dev install and
+      confirm the country breakdown still populates correctly from the
+      new flat-file backend.
+- [x] Trigger a Maintenance › Updates database backup before/after this
+      change against a dev install with a real GeoLite2 import loaded,
+      and confirm the backup's size and duration drop substantially now
+      that `geoip_ranges` no longer exists as a table to dump.
+
+**Implemented (2026-09-17).** `ViewStatsService` (content/plugins/
+visitor-stats/src/) now takes a third constructor argument, the path to
+a sorted flat binary file (`storage/geoip/ranges.bin`) — each record is
+a fixed 10 bytes (`pack('NNa2', ...)`: 4-byte network_start, 4-byte
+network_end, 2-byte country code). `importGeoCsvBatch()` appends
+unsorted records to a `.building` sidecar file per batch exactly as it
+appended `INSERT`s before; only the final batch (the one that reaches
+EOF) sorts the complete set and atomically `rename()`s it over
+`ranges.bin`, so `countryForIp()` — now a binary search via `fseek()`/
+`unpack()` — never sees a half-written file mid-import. Sorting compares
+the raw fixed-width records as byte strings (`sort($records,
+SORT_STRING)`) rather than unpacking each into its own PHP array first,
+since a big-endian-packed integer's byte order already matches its
+numeric order — found necessary live: unpacking all ~560k records into
+associative arrays first exhausted a real 128M `memory_limit` mid-sort
+on the dev install, fixed by sorting the raw byte strings directly (plus
+a defensive `ini_set('memory_limit', '512M')` for the operation,
+matching `importGeoCsvBatch()`'s existing `set_time_limit(0)`
+precedent for this same class of one-time admin operation). Migration
+`0067_drop_geoip_ranges_table.sql` drops the old table on upgrade; the
+Settings screen's existing "Not installed" status and full import form
+already cover the post-upgrade/never-imported case identically, with no
+new detection code needed. `SqliteDatabaseFactory::withVisitorStatsTables()`
+no longer creates a `geoip_ranges` fixture table; `ViewStatsServiceTest`
+writes a temporary ranges file directly in the same on-disk format
+instead of seeding rows via SQL, plus a new test covering binary-search
+correctness across several non-adjacent ranges. Full unit suite green
+(2468 tests). Verified live end-to-end against the dev install with its
+real, previously-imported ~562k-row GeoLite2 dataset: dropped the old
+`geoip_ranges` table (7 MB, 123k rows — itself a stale partial import
+from earlier dev testing) to simulate the upgrade, confirmed Settings
+correctly showed "Not installed," re-imported the full real
+GeoLite2-Country-Blocks-IPv4.csv (562,555 rows) through the actual
+browser-driven batch-import UI end to end, confirmed a binary-search
+lookup against the resulting `ranges.bin` correctly resolved 8.8.8.8 to
+US, and confirmed the Stats page still renders correctly. Then triggered
+a real Maintenance › Updates database backup: **2.0 MB**, versus an
+existing backup from before this change made against the same site with
+a full GeoLite2 import loaded (**38,184 KB**, i.e. ~37 MB) — roughly an
+18x reduction, confirming this ticket's motivation directly.
+
+------
+
+### LPP-025. GeoIP Data Staleness Check (Settings Notice + Sidebar Alert)
+
+**Status:** Complete
+
+The GeoLite2 country data LPP-014/LPP-024 import is a one-time, admin-triggered snapshot — nothing ever refreshes it automatically, and nothing today tells an admin it's gotten old. MaxMind revises GeoLite2 periodically as IP address allocations shift; a country lookup against a years-old dataset silently gets less accurate over time with no visible symptom (no error, just occasionally wrong countries in the breakdown). Since this plugin's whole design deliberately avoids any outbound network request (see README's "What it never does"), this can't be a live "check MaxMind for a newer release" call — it has to be a purely local staleness signal based on how long ago the current data was imported.
+
+### Design
+
+- `ranges.bin`'s own filesystem mtime already records exactly when the last import finished (`finalizeGeoipImport()`'s `rename()` sets it) — no new bookkeeping needed to track "when was this imported."
+- `ViewStatsService` gains `geoipImportedAt(): ?int` (the mtime, or null if never imported) and `geoipIsStale(): bool` (true once older than a fixed threshold — 6 months, long enough that MaxMind's routine updates don't cause nagging, short enough to still catch genuinely neglected data).
+- Settings screen: next to the existing "N ranges loaded" status line, show the import date, and when stale, a `lp-alert lp-alert--warning` notice suggesting re-import — reuses the exact same import UI already on that screen, no new form.
+- Sidebar alert: mirrors LP-177's condensed install/-directory-exists and maintenance-mode alerts (`admin/views/layout-header.php`), but those are two core-only checks hardcoded directly in that file with no extension point for a plugin to add a third. Rather than hardcoding a plugin-specific check into core layout chrome (inconsistent with this project's "core stays small, plugins hook in" philosophy — see `dashboard_widgets`' own precedent for exactly this kind of gap), add a small generic `admin_sidebar_alerts` filter (`array<int, array{variant: string, url: string, title: string, label: string}> $alerts, User $currentUser`) that core's own two checks also fold into the same render loop, so this becomes the first of potentially several plugin-contributed sidebar alerts rather than a one-off special case. Document it in `docs/DEVELOPER-APIS.md` alongside `dashboard_widgets`.
+- Visitor Stats registers into `admin_sidebar_alerts` (gated on `manage_options`, matching the Settings screen's own capability, and on data actually being imported and stale — never fires when nothing's been imported yet, since that's simply "not installed," not "stale").
+
+### Checklist
+
+- [x] `ViewStatsService::geoipImportedAt()`/`geoipIsStale()`, threshold as a class constant.
+- [x] Settings screen: import-date display plus a staleness warning alert, reusing the existing import UI.
+- [x] New generic `admin_sidebar_alerts` filter in `admin/views/layout-header.php`; migrate the render loop (not necessarily the two existing hardcoded conditions themselves) to consume it alongside the two built-in checks.
+- [x] Visitor Stats registers a stale-GeoIP-data sidebar alert via the new filter.
+- [x] Document `admin_sidebar_alerts` in `docs/DEVELOPER-APIS.md`.
+- [x] Unit tests for `geoipImportedAt()`/`geoipIsStale()` (no file, fresh file, artificially aged file via `touch()` with an old mtime).
+- [x] Update the plugin's own README and `CHANGELOG.md`.
+
+### Live verification
+
+- [x] Age a dev-install `ranges.bin` past the threshold (a one-off local
+      script touching the file, since it's owned by `www-data`) and
+      confirm both the Settings notice and the sidebar alert appear;
+      confirmed they're gone again after touching it back to "now"
+      (simulating a fresh import).
+- [x] Confirmed via unit tests (`testGeoipIsStaleIsFalseWhenNothingHasBeenImported`)
+      and code review that the alert never fires with no GeoIP data
+      imported. The `manage_options`-gating itself wasn't separately
+      exercised live against a lower-privilege account — it's a
+      single, trivial `$currentUser->can(...)` check identical in shape
+      to the existing maintenance-mode alert's own gate, which is
+      already relied on unverified-live the same way.
+
+**Implemented (2026-09-17).** `ViewStatsService::geoipImportedAt()`
+returns `ranges.bin`'s own mtime (or null) — no separate bookkeeping
+needed, since `finalizeGeoipImport()`'s `rename()` already sets it every
+time an import completes. `geoipIsStale()` compares that against a new
+`STALE_AFTER_SECONDS` constant (6 months). Settings
+(`admin/views/visitor-stats/settings.php`) now shows "— imported
+{date}" next to the range count and, when stale, an `lp-alert
+lp-alert--warning` notice above the existing import form. Added a new
+generic `admin_sidebar_alerts` filter (`array<int, array{variant,
+url, title, label}> $alerts, User $currentUser`) in
+`admin/views/layout-header.php`, rendered via a `foreach` right after
+the two existing hardcoded install/-directory and maintenance-mode
+checks (those two are untouched — only a plugin-contributed third alert
+needed a way in); documented alongside `dashboard_widgets` in
+`docs/DEVELOPER-APIS.md`. `visitor-stats.php` registers into it, gated
+on `manage_options` (the same capability Visitor Stats' own Settings
+screen requires) and `geoipIsStale()`. 6 new unit tests
+(`geoipImportedAt`/`geoipIsStale` — null/no-import, exact mtime
+reflection, fresh-import-not-stale, aged-import-is-stale); full suite
+green (2473 tests). Verified live against the dev install: aged its
+real `ranges.bin` (owned by `www-data`, so aged via a one-off local PHP
+script hit through the webserver rather than `touch` directly) 8 months
+back, confirmed both the Settings notice and a
+`GeoIP data is outdated` sidebar alert appeared (read via
+`document.querySelectorAll('.lp-admin__sidebar-alert')`, since the
+Browser pane's narrow viewport collapses the sidebar behind a mobile
+menu toggle), then touched the file back to "now" and confirmed both
+disappeared, leaving only the pre-existing `install/`-directory alert.
+
+------
+
+### LPP-026. Lumora Link Directory
+
+**Status:** Complete
+
+Admin organized directory of links to other sites.
+
+Examples:
+
+> /mnt/Winterfell/Coding/Github/Scripts/Lumora Press/References/link directory categories.jpg
+> /mnt/Winterfell/Coding/Github/Scripts/Lumora Press/References/link directory - a category listing.jpg
+
+Built as a new bundled plugin, `content/plugins/link-directory/` (own top-level "Link Directory" admin menu entry — All Links/Add New/Categories/Shortcodes — following Downloads' own conventions almost exactly: `LinkDirectoryCategoryService` is close to a verbatim copy of `DownloadCategoryService`, and `LinkService`/`LinkDirectoryShortcode` mirror `DownloadService`/`DownloadsShortcode`'s shape). Deliberately simpler than Downloads in two ways: a link's URL is a plain external address stored directly on the `link_directory_links` table rather than routed through RedirectService (no click-hit counting — out of scope for a directory listing), and the Description field is a plain Plain/Markdown/HTML `<textarea>` rather than the full WYSIWYG content-editor widget Posts/Pages/Downloads use, to keep the admin screen's own implementation scope reasonable for what is typically a one-paragraph "About this site" blurb. A thumbnail is an ordinary Media Library image (uploaded or removed the same way Posts/Pages resolve `featuredImageId`); like Downloads' own `thumbnailMediaId`, removing it or deleting the entry never deletes the underlying Media row.
+
+- [x] top categories
+- [x] sub- categories
+- [x] category listing, items:
+  - [x] Title
+  - [x] Category/Sub-category
+  - [x] URL
+  - [x] Thumbnail
+  - [x] Description
+- [x] shortcodes:
+  - [x] show all categories (`[lumora_link_directory]` with no attributes)
+  - [x] show listings in a single category (`[lumora_link_directory category_id="…"]`/`category="…"`)
+
+------
+
+### LP-178. Instagram (Including Reels) Auto-Embed Provider
+
+**Status:** Complete
+
+`EmbedService` (LP-023/LP-070/LP-071) already has a clean, extensible provider architecture — a fixed developer-maintained allowlist with regex-based ID extraction, no oEmbed HTTP discovery, no SSRF surface — covering YouTube, Vimeo, SoundCloud, Spotify, CodePen (plain iframe), and Twitter/X (script + blockquote). Instagram (posts and Reels) is a natural addition: pasting a bare `instagram.com/p/{shortcode}/` or `instagram.com/reel/{shortcode}/` link on its own line should auto-embed the post/Reel, the same way every other supported provider already works.
+
+### Design
+
+Instagram has no plain-iframe embed (like Twitter/X, unlike YouTube/Vimeo) — its own officially documented embed method is a `<blockquote class="instagram-media" data-instgrm-permalink="...">` that `www.instagram.com/embed.js` scans for and replaces with a rendered iframe client-side, identical in shape to Twitter/X's `widgets.js` pattern already in this codebase (and unlike Bluesky, needs no save-time resolution — the pasted URL alone is enough, same as Twitter/X).
+
+- New `'instagram'` provider in `EmbedService::coreProviders()`/`DEFAULT_PROVIDERS`, `type => 'blockquote'`.
+- `matchInstagram()`: matches `instagram.com`/`www.instagram.com` paths `/p/{shortcode}` (post) and `/reel/{shortcode}` (Reel) — both are `[\w-]+`-shaped shortcodes, same regex shape as Twitter's status-id extraction. Re-normalizes onto `www.instagram.com` regardless of tracking query params, same as other providers strip theirs.
+- `EmbedService::wrap()`'s blockquote branch currently hardcodes two shapes via a `=== 'bluesky' ? ... : (twitter shape)` ternary — extend to a three-way `match` (bluesky / instagram / default-twitter-shape) rather than adding a second nested ternary.
+- `FooterAssets::render()` conditionally loads `https://www.instagram.com/embed.js` when `ScriptEmbeds::isUsed('instagram')`, mirroring the Twitter/X and Bluesky blocks exactly.
+- `EmbedService::filterCsp()` widens `script-src`/`frame-src` (and `connect-src`, matching Twitter/X's own `syndication.twitter.com` precedent, since Instagram's embed script fetches oEmbed data from its own API) for `www.instagram.com`, only when the Instagram provider is enabled.
+- Settings &rsaquo; Embeds gains an "Instagram" toggle in the existing Providers fieldset, and its script-based-providers hint text is updated to name Instagram alongside Twitter/X and Bluesky.
+- `docs/THIRD-PARTY.md` gains an "Instagram Auto-Embed" entry, mirroring the Twitter/X/Bluesky entries' exact structure (Purpose/Current version/Loaded from/Source/License/Notes).
+- No new CSS needed — a blockquote-type embed only ever needs `.lp-embed`'s base margin (Twitter/X and Bluesky need none beyond that either); the provider's own script renders its own styled iframe.
+
+### Non-goals
+
+- No IGTV (`/tv/{shortcode}/`) support — legacy, not requested, and Instagram itself has folded IGTV into Reels/regular video posts.
+- No Instagram Stories support — Stories aren't permalink-addressable the way posts/Reels/IGTV are (they expire and have no stable public URL), so there's nothing a pasted link could reference.
+- No save-time resolution (unlike Bluesky) — Instagram's own `embed.js` does its own client-side fetch, so this stays exactly as network-request-free as Twitter/X already is.
+
+### Checklist
+
+- [x] `EmbedService::matchInstagram()` — `/p/{shortcode}` and `/reel/{shortcode}`, both hosts (`instagram.com`/`www.instagram.com`).
+- [x] New `'instagram'` entry in `coreProviders()` and `DEFAULT_PROVIDERS`.
+- [x] Extend `wrap()`'s blockquote-shape branch to a three-way match (bluesky/instagram/twitter-shape default).
+- [x] `FooterAssets::render()`: conditionally load `www.instagram.com/embed.js`.
+- [x] `EmbedService::filterCsp()`: widen `script-src`/`frame-src`/`connect-src` for `www.instagram.com` when enabled.
+- [x] Settings &rsaquo; Embeds: Instagram toggle + updated hint text.
+- [x] `docs/THIRD-PARTY.md`: new Instagram Auto-Embed entry.
+- [x] Unit tests mirroring the existing Twitter/X coverage: post URL embeds, Reel URL embeds, malformed URL falls back to a plain link, `ScriptEmbeds::isUsed('instagram')` marking, disabling Instagram leaves other providers working, CSP directive widening only when enabled.
+- [x] Update `CHANGELOG.md`.
+
+### Live verification
+
+- [x] Pasted a syntactically-valid Instagram post URL and Reel URL (placeholder shortcodes, not real published posts — see implementation note), each alone on their own line, into a dev-install post and confirmed both render as `instagram-media` blockquotes with `embed.js` present and actively processing them client-side (real `.../embed/` iframe requests fired for each, confirming the whole pipeline works — a real shortcode would render actual content the same way).
+- [x] Confirmed `embed.js` is absent from a page with no Instagram link, and present (loaded once) on the page that has one.
+- [x] Confirmed disabling the Instagram toggle on Settings &rsaquo; Embeds leaves a pasted Instagram link as a plain link instead.
+
+**Implemented (2026-09-17).** New `'instagram'` provider in
+`EmbedService` (`app/Services/EmbedService.php`): `matchInstagram()`
+matches `/p/{shortcode}` and `/reel/{shortcode}` on `instagram.com`/
+`www.instagram.com`, re-normalizing onto `www.instagram.com`.
+`wrap()`'s blockquote branch (previously a `bluesky`-vs-else ternary)
+is now a three-way `match` (bluesky/instagram/twitter-shape default),
+emitting `<blockquote class="instagram-media" data-instgrm-permalink="...">`.
+`FooterAssets::render()` conditionally loads `www.instagram.com/embed.js`
+via the existing `ScriptEmbeds::isUsed()` gate; `filterCsp()` widens
+`script-src`/`frame-src`/`connect-src` for `www.instagram.com` only when
+enabled. Settings &rsaquo; Embeds gained an Instagram toggle and updated
+hint text. New `docs/THIRD-PARTY.md` entry mirroring Twitter/X's and
+Bluesky's. 13 new unit tests in `EmbedServiceTest` (post/Reel embed
+shape, host-without-www variant, malformed URL fallback, `ScriptEmbeds`
+marking, disabling leaves other providers working, CSP widening only
+when enabled); full suite green (2481 tests). No new CSS needed — reuses
+`.lp-embed`'s base styling, same as Twitter/X and Bluesky. Verified live
+against the dev install: pasted a post URL and a Reel URL (placeholder
+shortcodes, since testing needs a real account's post to render actual
+content — the mechanism itself is what's being verified) each alone on
+their own line into a test post, confirmed `www.instagram.com/embed.js`
+loaded and correctly parsed both `instagram-media` blockquotes, firing
+a real `https://www.instagram.com/{p|reel}/{shortcode}/embed/?...v=14`
+request per embed (confirmed via `performance.getEntriesByType`) — the
+exact mechanism a real post/Reel would use to render its actual content;
+confirmed the CSP header correctly included `www.instagram.com` in
+`script-src`/`frame-src`/`connect-src`; confirmed `embed.js` is absent
+from an unrelated page's scripts; confirmed turning the Instagram toggle
+off on Settings &rsaquo; Embeds removed both the embed markup and the
+script, leaving the pasted URL as a plain link, then re-enabled it
+afterward. Test post trashed and permanently deleted afterward.
+
+------
+
+### LPP-027. Lumora Link Directory Features & Bugs
+
+**Status:** Complete
+
+Ariane's own report after using LPP-026's freshly-shipped Link Directory plugin: no way in the frontend to actually reach a category's links from the `[lumora_link_directory]` shortcode's "every category" view, a link's URL shown as plain unlinked text, a Description that could scroll sideways off its box depending entirely on the active theme, and no way to back up or move a directory between installs.
+
+### Design
+
+- **Category browsing** (`LinkDirectoryShortcode`): `renderCategoryList()`'s "every category" view previously rendered each category name as plain text with no way to reach its own links short of an admin hand-building a separate page per category (the plugin's own README explicitly documented this as the workaround). Each name is now a link to the *same page*, with a new `lp_link_category` query parameter added — `renderOne()` checks for it (only when no explicit `category`/`category_id` attribute already pins the shortcode to one category) and, when present and valid, renders a new `renderCategoryDetail()` view instead: a "← All categories" link back, that category's own direct sub-categories (themselves clickable, for further drilldown, via a new `LinkDirectoryCategoryService::directChildren()`), and its own direct links. An empty category still renders a "No links in this category yet." message here, rather than the blank string the explicit-attribute path returns for one — the admin just clicked into it and needs to see why it's empty, not have the whole shortcode disappear. The query-string approach mirrors `render_pagination()`'s (`include/helpers.php`) identical path+query-preserving pattern for its own `paged` param, including the same one-listing-per-page limitation.
+- **Linked URLs**: `renderLinks()`'s URL row was `esc_html($item->url)` — inert text, even though the title right above it already linked to the same URL. Now wrapped in an `<a>` identical in shape to the title link; both gained `target="_blank" rel="noopener noreferrer"`, since every entry always points at an external site.
+- **CSS**: LPP-026 shipped with no `.lp-link-directory-*` styling of its own in the bundled theme at all, unlike Downloads' own description field — a long unbroken description (commonly a bare URL) had nothing forcing it to wrap, so whether it scrolled sideways came down entirely to whether the active theme happened to set a global word-wrap rule. Added a `Link Directory` section to `content/themes/lumora-classic/style.css` mirroring the existing `Downloads` section's own structure and img constraints, with `overflow-wrap`/`word-break` on the description and URL.
+- **Export/Import** (new `LinkDirectoryPortabilityService`): a JSON export of every live category and link, and an import that adds them to the current install. Deliberately simpler than `SettingsPortabilityService`'s (`app/Services/SettingsPortabilityService.php`) own stage → inspect → confirm/cancel upload flow — importing here only ever adds new rows, never overwrites an existing value, so there's nothing destructive a confirmation screen needs to guard against. A category's own id travels in the export only so `import()` can rebuild parent/child relationships within that same file (categories are always exported parent-before-child, from the existing `listAllForTree()`, so a child's parent id is already in the id-remap table by the time the child row is processed); it's discarded afterward and never matched against ids already on the destination. Thumbnails are left out of the export entirely — the same "local reference meaningless on another install" reasoning `SettingsPortabilityService`'s own class docblock gives for skipping `homepage_page_id`/`avatar_default_media_id`. Running the same import twice creates duplicates rather than merging — acceptable for what's meant as an occasional backup/copy operation, not a two-way sync.
+- New **Link Directory &rsaquo; Export / Import** admin screen: a GET-triggered download (no CSRF needed, matching Maintenance &rsaquo; Tools' own `export_settings=1` convention) and a CSRF-protected upload form.
+
+### Checklist
+
+- [x] `LinkDirectoryShortcode`: category-drilldown view via `lp_link_category`, explicit `category`/`category_id` attribute always wins over it.
+- [x] `LinkDirectoryCategoryService::directChildren()` for the drilldown view's own sub-category list.
+- [x] Auto-linked URL (and `target`/`rel` on both the title and URL links) in `renderLinks()`.
+- [x] `.lp-link-directory-*` CSS in `content/themes/lumora-classic/style.css`.
+- [x] New `LinkDirectoryPortabilityService` (export/import) and `LinkService::listAllForExport()`.
+- [x] New Link Directory &rsaquo; Export / Import admin screen and menu entry.
+- [x] Updated the plugin's own README and the Shortcodes admin doc page to describe the new drilldown/auto-link behavior and drop the now-stale "no per-category archive routing" caveat.
+- [x] Unit tests: category-list links to the drilldown URL; the drilldown view renders links, sub-categories, and a back link; an empty drilled-into category shows a message instead of nothing; an explicit `category`/`category_id` attribute wins over the query param; the URL renders as a link; `directChildren()`/`listAllForExport()`; `LinkDirectoryPortabilityService` export/import round-trip, hierarchy-preserving remap, trashed rows excluded, invalid/malformed file rejected, malformed rows skipped.
+- [x] Update `CHANGELOG.md`.
+
+**Implemented (2026-09-19).** Exactly per the Design section above. 16 new unit tests across `LinkDirectoryShortcodeTest`/`LinkDirectoryCategoryServiceTest`/`LinkServiceTest`/the new `LinkDirectoryPortabilityServiceTest`; full suite green (2534 tests, 7693 assertions). `composer stan` showed no new findings from the changed/new files (the 18 pre-existing findings it reports are all in unrelated files). `composer cs-fix --dry-run` was clean on every changed/new file except one pre-existing, unrelated formatting quirk already present in `LinkDirectoryCategoryService.php` before this ticket, left untouched to avoid unrelated diff noise.
+
+------
+
+Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[Unreleased]` → `[0.17.0]` section for the full description): nesting the admin Pages "Published" tab by parent/child to match the "All" tab, and removing deprecated `curl_close()` calls (`AkismetClient`, `BlueskyResolverService`, `GitHubReleaseProvider`, and the Contact Forms plugin's reCAPTCHA/Turnstile clients).

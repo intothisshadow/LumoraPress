@@ -235,6 +235,22 @@ final class LinkService
     }
 
     /**
+     * Every non-trashed link, regardless of category — LinkDirectoryPortabilityService's
+     * export data source (LPP-027). Grouping by category_id first keeps a
+     * re-imported file's own link order close to how it reads in the admin.
+     *
+     * @return array<int, Link>
+     */
+    public function listAllForExport(): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL ORDER BY category_id ASC, title ASC',
+        );
+
+        return array_map($this->hydrate(...), $rows);
+    }
+
+    /**
      * @param array<string, mixed> $row
      */
     private function hydrate(array $row): Link

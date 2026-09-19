@@ -41,6 +41,7 @@ require_once __DIR__ . '/src/LinkDirectoryCategory.php';
 require_once __DIR__ . '/src/LinkDirectoryCategoryService.php';
 require_once __DIR__ . '/src/LinkService.php';
 require_once __DIR__ . '/src/LinkDirectoryShortcode.php';
+require_once __DIR__ . '/src/LinkDirectoryPortabilityService.php';
 
 // Needs no Kernel services until content actually contains
 // [lumora_link_directory] (it opens its own database connection then), so

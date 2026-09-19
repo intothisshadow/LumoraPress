@@ -1790,6 +1790,93 @@ a.lp-post-list__comments:focus {
 }
 
 /* =========================================================
+   Link Directory
+   ========================================================= */
+/*
+ * Rendered by the Link Directory plugin's LinkDirectoryShortcode for the
+ * [lumora_link_directory] shortcode (LPP-026). Shipped with no styling of
+ * its own at first, which is why a long, unbroken description (a bare
+ * URL, a long word with no spaces) could push .lp-link-directory-item__description
+ * past its box and scroll sideways on a theme with no global word-wrapping
+ * rule of its own (LPP-027) — overflow-wrap below is the fix, mirroring
+ * .lp-downloads-list__description's own img constraints above.
+ */
+.lp-link-directory-categories {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-link-directory-categories__item {
+    padding: 0.35em 0;
+}
+
+.lp-link-directory-categories__item--indent {
+    padding-left: 1.5em;
+}
+
+.lp-link-directory-category {
+    margin: 1.5em 0;
+}
+
+.lp-link-directory-category__back {
+    margin: 0 0 0.75em;
+}
+
+.lp-link-directory-category__title {
+    margin: 0 0 0.75em;
+}
+
+.lp-link-directory-categories--nested {
+    margin: 0 0 1em;
+    padding-left: 1.5em;
+}
+
+.lp-link-directory-list {
+    margin: 1.5em 0;
+}
+
+.lp-link-directory-item {
+    padding: 1em 0;
+    border-top: 1px solid var(--lp-border);
+    overflow: hidden;
+}
+
+.lp-link-directory-item:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.lp-link-directory-item__title {
+    margin: 0 0 0.5em;
+}
+
+.lp-link-directory-item__thumbnail {
+    max-width: 100%;
+    height: auto;
+    margin: 0 0 0.75em;
+}
+
+.lp-link-directory-item__description {
+    margin: 0 0 0.5em;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.lp-link-directory-item__description img {
+    max-width: 100%;
+    height: auto;
+}
+
+.lp-link-directory-item__url {
+    margin: 0;
+    color: var(--lp-text-muted);
+    font-size: 0.9em;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* =========================================================
    Folder Gallery
    ========================================================= */
 /*

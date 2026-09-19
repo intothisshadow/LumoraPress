@@ -369,6 +369,7 @@ $menu = [
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
                 'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
                 'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
+                'export-import' => ['label' => 'Export / Import', 'icon' => '📤', 'capability' => 'upload_files'],
             ],
         ],
     ] : []),

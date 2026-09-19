@@ -4,12 +4,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-09-19
+
 ### Added
 
 - The admin Pages screen's "Published" tab now shows pages nested by parent/child, the same indentation the unfiltered "All" tab already uses, instead of a flat list — an admin can still see a published page's place in the hierarchy even when its parent isn't published. Drag-and-drop reordering stays limited to the "All" tab, since reordering within a filtered subset could silently move a page relative to a hidden sibling (e.g. a Draft) sharing its real parent.
 - Visitor Stats' GeoIP data now shows when it was last imported on Settings, and flags it as outdated (there, and as a new condensed sidebar alert visible on every admin screen) once it's over 6 months old (LPP-025) — MaxMind periodically revises GeoLite2 as IP allocations shift, and this plugin never checks for a newer release on its own, so nothing previously indicated the data had quietly gone stale. A new generic `admin_sidebar_alerts` filter backs the sidebar alert, so a plugin can add its own condensed sidebar notice without a core code change, the same way `dashboard_widgets` already lets a plugin add a Dashboard panel.
 - Instagram Auto-Embed (LP-178): pasting an Instagram post or Reel link alone on its own line now auto-embeds it, the same way YouTube/Vimeo/Twitter/X/Bluesky links already do. A new "Instagram" toggle on Settings &rsaquo; Embeds controls it.
 - Link Directory (LPP-026): a new bundled plugin for an admin-organized directory of links to other sites — a title, category/sub-category, URL, optional thumbnail, and description per entry, managed from its own "Link Directory" admin menu with the same list-table/Trash/Duplicate conventions as Downloads. `[lumora_link_directory]` shows every category with its link count; `[lumora_link_directory category="…"]` (or `category_id="…"`) shows one category's own links; `[lumora_link_directory link_id="…"]` shows a single entry.
+- `[lumora_link_directory]`'s "every category" view is now browsable on its own (LPP-027): clicking a category name shows that category's own links and any sub-categories right there on the same page, with a link back to the full list — previously a category name was plain text, with no way to actually reach its links short of building a separate page per category. Each link's URL is now also a clickable link, not just its title.
+- Link Directory &rsaquo; Export / Import (LPP-027): download every category and link as one JSON file, or upload one to add its categories/links to this install — a backup, or a way to copy a whole directory to another Lumora Press site.
 
 ### Changed
 
@@ -18,6 +22,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - `curl_close()` calls (`AkismetClient`, `BlueskyResolverService`, `GitHubReleaseProvider`, and the Contact Forms plugin's reCAPTCHA/Turnstile clients) triggered a deprecation notice on PHP 8.5, which has no effect anyway since PHP 8.0 automatically frees curl handles — removed outright rather than version-guarded.
+- A Link Directory entry's Description could scroll sideways instead of wrapping (LPP-027), depending entirely on whether the active theme happened to set its own word-wrapping rule — the plugin shipped with no CSS of its own. Added scoped styling in the bundled theme, the same way Downloads' own description field is already styled.
 
 ## [0.16.0] — 2026-09-16
 

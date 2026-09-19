@@ -358,6 +358,24 @@ final class LinkDirectoryCategoryService
         return $result;
     }
 
+    /**
+     * A parent category's immediate (non-trashed) sub-categories, alphabetical
+     * by name — the shortcode's category-drilldown view uses this to offer
+     * further navigation into sub-categories without listing every
+     * descendant flattened, the way listAllForTree() does for the admin picker.
+     *
+     * @return array<int, LinkDirectoryCategory>
+     */
+    public function directChildren(int $parentId): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . ' WHERE parent_id = :parent_id AND trashed_at IS NULL ORDER BY name ASC',
+            ['parent_id' => $parentId],
+        );
+
+        return array_map($this->hydrate(...), $rows);
+    }
+
     public function linkCount(int $categoryId): int
     {
         return (int) $this->database->fetchColumn(

@@ -36,18 +36,18 @@ $exampleCategory = $allLinkCategories[0] ?? null;
     <p class="lp-field__hint">
         Shows the link directory anywhere in post or page content. With no
         attributes, it lists every category (and sub-category) with its own
-        link count. Given a category, it shows that category's own links —
-        title, thumbnail, description, and URL for each. Renders nothing if
-        nothing can be resolved. See
+        link count — clicking a category browses into that category's own
+        links (and any sub-categories) right there on the same page, with a
+        link back to the full list, so this one placement is a complete,
+        browsable directory on its own. Given a category, it instead shows
+        only that category's own links — title, thumbnail, description, and
+        a clickable URL for each — for a site that wants one category
+        pinned to its own dedicated page. Renders nothing if nothing can be
+        resolved. See
         <a href="<?= esc_url(admin_url('link-directory/categories')) ?>">Link Directory &rsaquo; Categories</a>
-        for a ready-to-copy shortcode per category.
-    </p>
-
-    <p class="lp-field__hint">
-        Lumora Press has no per-category archive routing, so place a
-        category's shortcode on its own page (or a Custom HTML widget) and
-        link to it from your site's navigation — the same manual,
-        page-per-shortcode approach Downloads' own category shortcodes use.
+        for a ready-to-copy shortcode per category, and
+        <a href="<?= esc_url(admin_url('link-directory/export-import')) ?>">Link Directory &rsaquo; Export / Import</a>
+        to back up or copy every category and link to another install.
     </p>
 
     <h3>Attributes</h3>
