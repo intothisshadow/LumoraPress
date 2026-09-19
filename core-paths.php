@@ -34,6 +34,7 @@ return [
     'content/plugins/lumora-gallery-shortcodes',
     'content/plugins/emoji-picker',
     'content/plugins/lumora-sweep',
+    'content/plugins/link-directory',
     'index.php',
     'version.php',
     '.htaccess',

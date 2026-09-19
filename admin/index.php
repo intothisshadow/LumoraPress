@@ -303,6 +303,7 @@ $downloadsActive = in_array('downloads', $activePlugins, true);
 $contactFormsActive = in_array('contact-forms', $activePlugins, true);
 $visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
 $galleryShortcodesActive = in_array('lumora-gallery-shortcodes', $activePlugins, true);
+$linkDirectoryActive = in_array('link-directory', $activePlugins, true);
 // Emoji Picker's settings screen is gated as a nested child (like Font
 // Awesome) since a single Settings screen is its entire admin footprint.
 $emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
@@ -351,6 +352,20 @@ $menu = [
             'default_child' => 'all-downloads',
             'children' => [
                 'all-downloads' => ['label' => 'All Downloads', 'icon' => '📋', 'capability' => 'upload_files'],
+                'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
+                'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
+                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
+            ],
+        ],
+    ] : []),
+    ...($linkDirectoryActive ? [
+        'link-directory' => [
+            'label' => 'Link Directory',
+            'icon' => '🔗',
+            'capability' => 'upload_files',
+            'default_child' => 'all-links',
+            'children' => [
+                'all-links' => ['label' => 'All Links', 'icon' => '📋', 'capability' => 'upload_files'],
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
                 'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
                 'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
