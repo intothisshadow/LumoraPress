@@ -72,15 +72,31 @@ final class PermalinkService
      */
     public function postUrl(Post $post): string
     {
-        $category = $this->categories->categoriesForPost($post->id)[0] ?? null;
-        $author = $this->users->findById($post->authorId);
+        return home_url($this->postPathForStructure($post, $this->structure()));
+    }
 
-        return $this->buildPostUrl(
-            $post->slug,
-            $post->publishedAt ?? $post->createdAt,
-            $category?->slug,
-            $author !== null ? $this->users->authorSlug($author) : null,
-        );
+    /**
+     * $post's path (relative to the site root, no leading/trailing slash)
+     * under an arbitrary $structure rather than the configured one — lets
+     * a structure change compute every post's old and new URL side by side.
+     * The category/author lookups only run when $structure actually uses
+     * those tokens, since most structures never do.
+     */
+    public function postPathForStructure(Post $post, string $structure): string
+    {
+        $categorySlug = null;
+        $authorSlug = null;
+
+        if (str_contains($structure, '%category%')) {
+            $categorySlug = ($this->categories->categoriesForPost($post->id)[0] ?? null)?->slug;
+        }
+
+        if (str_contains($structure, '%author%')) {
+            $author = $this->users->findById($post->authorId);
+            $authorSlug = $author !== null ? $this->users->authorSlug($author) : null;
+        }
+
+        return $this->buildPostPath($structure, $post->slug, $post->publishedAt ?? $post->createdAt, $categorySlug, $authorSlug);
     }
 
     /**
@@ -89,11 +105,11 @@ final class PermalinkService
      * fields on hand (SearchResult rows), not a full Post they could pass
      * to postUrl(). %category%/%author% fall back to $slug the same way
      * postUrl() falls back when a post has no category/a deleted author —
-     * see buildPostUrl()'s docblock.
+     * see buildPostPath()'s docblock.
      */
     public function postUrlForSlugAndDate(string $slug, ?DateTimeImmutable $publishedAt): string
     {
-        return $this->buildPostUrl($slug, $publishedAt ?? new DateTimeImmutable(), null, null);
+        return home_url($this->buildPostPath($this->structure(), $slug, $publishedAt ?? new DateTimeImmutable(), null, null));
     }
 
     /**
@@ -286,7 +302,7 @@ final class PermalinkService
      * postRoutePattern() exactly, so the generated link always actually
      * routes.
      */
-    private function buildPostUrl(string $slug, DateTimeImmutable $date, ?string $categorySlug, ?string $authorSlug): string
+    private function buildPostPath(string $structure, string $slug, DateTimeImmutable $date, ?string $categorySlug, ?string $authorSlug): string
     {
         $replacements = [
             '%postname%' => $slug,
@@ -297,9 +313,7 @@ final class PermalinkService
             '%author%' => $authorSlug ?? $slug,
         ];
 
-        $path = trim(strtr($this->structure(), $replacements), '/');
-
-        return home_url($path);
+        return trim(strtr($structure, $replacements), '/');
     }
 
     private function normalizeBase(string $value, string $default): string

@@ -36,10 +36,7 @@ implementation-level detail on each area.
   one-click "Remove unused tags," a post's own tags are shown on its
   single-post page linked to their archive, and every post's page shows
   a "Related Posts" block of other posts sharing at least one tag.
-- **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the
-  post URL structure (Post name, Day and name, Month and name, or a
-  custom token-based pattern) and rename the Category/Tag archive URL
-  prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`.
+- **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the post URL structure (Post name, Day and name, Month and name, or a custom token-based pattern) and rename the Category/Tag archive URL prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`. Changing the structure on a site with published posts can automatically add a permanent redirect from every post's old URL to its new one, so existing links and search results keep working.
 - **Comments** — threaded discussion on both Posts and Pages, with
   moderation (including bulk approve/spam/trash/delete), a per-status
   count on every filter tab (All/Pending/Approved/Spam/Trash), an

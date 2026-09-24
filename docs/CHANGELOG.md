@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Automatic redirects when the permalink structure changes (LP-078): saving a new post URL structure on Settings &rsaquo; Permalinks now offers a "Redirect old post URLs to their new ones" checkbox (checked by default whenever the site has published posts), which adds a permanent (301) redirect from every published post's old URL to its new one, so existing links, bookmarks, and search-engine results keep working instead of showing a 404. The redirects are ordinary entries on Settings &rsaquo; Redirects, where they can be reviewed, edited, or removed. Changing the structure again keeps every old URL a single hop from its current one, and switching back to an earlier structure cleans up the redirects that would otherwise point at themselves.
+
 ## [0.17.0] — 2026-09-19
 
 ### Added

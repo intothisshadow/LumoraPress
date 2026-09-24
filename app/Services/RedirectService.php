@@ -95,6 +95,23 @@ final class RedirectService
     }
 
     /**
+     * Points every redirect currently targeting $oldTargetUrl at
+     * $newTargetUrl instead, so a URL that moves twice still resolves in a
+     * single hop rather than chaining through an intermediate redirect.
+     */
+    public function retarget(string $oldTargetUrl, string $newTargetUrl): int
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET target_url = :new_target, updated_at = :updated_at WHERE target_url = :old_target',
+            [
+                'new_target' => $newTargetUrl,
+                'old_target' => $oldTargetUrl,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ],
+        );
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function find(int $id): ?array

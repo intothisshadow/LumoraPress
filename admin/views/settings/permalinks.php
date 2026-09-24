@@ -18,6 +18,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\PostStatus;
+use LumoraPress\Services\PermalinkRedirectService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -54,9 +55,18 @@ if ($form === 'structure_settings' && Csrf::verify('permalink_structure_settings
     } elseif (preg_match('/^[a-zA-Z0-9%_\-\/]+$/', $structure) !== 1) {
         $error = 'The permalink structure may only contain letters, numbers, hyphens, underscores, slashes, and %tag% placeholders.';
     } else {
-        $kernel->config->setOption('permalink_structure', '/' . trim($structure, '/') . '/');
+        $oldStructure = $kernel->permalinks->structure();
+        $newStructure = '/' . trim($structure, '/') . '/';
+        $redirectedCount = 0;
 
-        header('Location: ' . admin_url('settings/permalinks') . '?saved=1');
+        if (($_POST['create_redirects'] ?? '') === '1') {
+            $permalinkRedirects = new PermalinkRedirectService($kernel->database, $kernel->posts, $kernel->permalinks, $kernel->redirects);
+            $redirectedCount = $permalinkRedirects->redirectPostsForStructureChange($oldStructure, $newStructure);
+        }
+
+        $kernel->config->setOption('permalink_structure', $newStructure);
+
+        header('Location: ' . admin_url('settings/permalinks') . '?saved=1' . ($redirectedCount > 0 ? '&redirected=' . $redirectedCount : ''));
         exit;
     }
 } elseif ($form === 'base_settings' && Csrf::verify('permalink_base_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -113,12 +123,20 @@ $samplePost = new Post(
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
+<?php $redirectedCount = (int) ($_GET['redirected'] ?? 0); ?>
+<?php if ($redirectedCount > 0): ?>
+    <div class="lp-alert lp-alert--success">
+        <?= esc_html(number_format($redirectedCount)) ?> old post <?= $redirectedCount === 1 ? 'URL now redirects' : 'URLs now redirect' ?> to the new structure.
+        You can review them on the <a href="<?= esc_url(admin_url('settings/redirects')) ?>">Redirects</a> page.
+    </div>
+<?php endif; ?>
+
 <?php if ($hasExistingPosts): ?>
     <div class="lp-alert lp-alert--warning">
         This site already has published posts. Changing the permalink structure below will change
-        those posts' URLs going forward &mdash; any link, bookmark, or search-engine result pointing
-        at the old URL will 404 once you save. Consider setting up redirects on the
-        <a href="<?= esc_url(admin_url('settings/redirects')) ?>">Redirects</a> page for any URL you need to preserve.
+        those posts' URLs going forward. Leave &ldquo;Redirect old post URLs&rdquo; checked when saving
+        so links, bookmarks, and search-engine results pointing at the old URLs keep working instead of
+        showing a 404.
     </div>
 <?php endif; ?>
 
@@ -162,6 +180,16 @@ $samplePost = new Post(
         <p class="lp-field">
             <span class="lp-field__hint">Preview: <code data-lp-permalink-preview><?= esc_html(post_permalink($samplePost)) ?></code></span>
         </p>
+
+        <?php if ($hasExistingPosts): ?>
+            <p class="lp-field">
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="create_redirects" value="1" checked>
+                    Redirect old post URLs to their new ones
+                </label>
+                <span class="lp-field__hint">Adds a permanent (301) redirect for every published post whose URL changes. They appear on the <a href="<?= esc_url(admin_url('settings/redirects')) ?>">Redirects</a> page, where you can edit or remove them.</span>
+            </p>
+        <?php endif; ?>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
