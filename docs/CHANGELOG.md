@@ -18,6 +18,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Changed
 
 - The "Allow comments site-wide" switch moved from the top of the admin Comments screen to Settings &rsaquo; General (in the Site section), alongside the other site-wide options, so the Comments screen is only about moderating comments. The setting itself is unchanged, so existing sites keep whatever they had.
+- The Visitor Stats &rsaquo; Stats page now opens on the last 7 days instead of 30. The 7/30/90-day switch above the chart works as before, and the "Last 30 Days" total card is unchanged.
 
 ### Fixed
 

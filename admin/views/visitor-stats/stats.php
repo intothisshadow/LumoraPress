@@ -33,10 +33,10 @@ $trackPostViews = $kernel->config->option('track_post_views', '0') === '1';
 // whole page is just a re-render of these queries for a different $range,
 // so a GET link is simpler and works with no JavaScript.
 $allowedRanges = [7, 30, 90];
-$range = (int) ($_GET['range'] ?? 30);
+$range = (int) ($_GET['range'] ?? 7);
 
 if (!in_array($range, $allowedRanges, true)) {
-    $range = 30;
+    $range = 7;
 }
 
 $limit = 10;
