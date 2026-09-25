@@ -16,10 +16,15 @@
 declare(strict_types=1);
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Theme\ActiveAuth;
+use LumoraPress\Core\Theme\Authors;
+use LumoraPress\Core\Theme\CommentExtras;
 use LumoraPress\Core\Security\FormTiming;
+use LumoraPress\Models\Comment;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\User;
+use LumoraPress\Services\CommentReportService;
 
 /**
  * Comment theme API, mirroring classic WordPress's comment_form()/
@@ -200,11 +205,17 @@ if (!function_exists('comment_list')) {
         if ($tree === []) {
             return;
         }
+
+        if ($depth === 0) {
+            CommentExtras::markUsed();
+            CommentExtras::prime(comment_tree_ids($tree));
+        }
         ?>
         <ol class="lp-comment-list<?= $depth > 0 ? ' lp-comment-list--replies' : '' ?>">
             <?php foreach ($tree as $node): ?>
                 <?php $comment = $node['comment']; ?>
-                <li id="comment-<?= (int) $comment->id ?>" class="lp-comment">
+                <?php $isByPostAuthor = $comment->userId !== null && $comment->userId === $content->authorId; ?>
+                <li id="comment-<?= (int) $comment->id ?>" class="lp-comment<?= $isByPostAuthor ? ' lp-comment--by-post-author' : '' ?>">
                     <article class="lp-comment__body">
                         <?php if ($avatarsEnabled): ?>
                             <img class="lp-comment__avatar" src="<?= esc_url(comment_avatar_url($comment->guestEmail, $avatarRating, $avatarDefault)) ?>" alt="" width="48" height="48" loading="lazy">
@@ -213,11 +224,20 @@ if (!function_exists('comment_list')) {
                             <span class="lp-comment__author"><?= $comment->guestUrl !== null
                                 ? '<a href="' . esc_url($comment->guestUrl) . '" rel="nofollow ugc noopener" target="_blank">' . esc_html($comment->guestName) . '</a>'
                                 : esc_html($comment->guestName) ?></span>
+                            <?= comment_author_badge($comment, $content) ?>
                             <time class="lp-comment__date" datetime="<?= esc_attr($comment->createdAt->format(DATE_ATOM)) ?>">
                                 <?= esc_html(the_date($comment->createdAt)) ?> at <?= esc_html(the_time($comment->createdAt)) ?>
                             </time>
+                            <?php if ($comment->editedAt !== null): ?>
+                                <span class="lp-comment__edited" title="<?= esc_attr(sprintf(__('Edited %1$s at %2$s'), the_date($comment->editedAt), the_time($comment->editedAt))) ?>"><?= esc_html(__('(edited)')) ?></span>
+                            <?php endif; ?>
                         </p>
                         <div class="lp-comment__content"><?= format_comment_content($comment->content) ?></div>
+                        <div class="lp-comment__actions">
+                            <?= comment_reaction_buttons($comment) ?>
+                            <button type="button" class="lp-comment__quote-button" data-lp-comment-quote data-quote-author="<?= esc_attr($comment->guestName) ?>" data-quote-text="<?= esc_attr(comment_quotable_text($comment->content)) ?>" data-quote-target="comment-form-reply-<?= (int) $comment->id ?>-content" hidden><?= esc_html(__('Quote')) ?></button>
+                            <?= comment_report_form($comment) ?>
+                        </div>
                         <details class="lp-comment__reply">
                             <summary>Reply</summary>
                             <?php comment_form($content, $currentUser, $guestFieldOptions, $comment->id, 'Post Reply'); ?>
@@ -320,5 +340,183 @@ if (!function_exists('comment_subscription_panel')) {
             <?php endif; ?>
         </div>
         <?php
+    }
+}
+
+if (!function_exists('comment_tree_ids')) {
+    /**
+     * Every comment id anywhere in a comment_list() tree.
+     *
+     * @param array<int, array{comment: Comment, children: array<mixed>}> $tree
+     * @return array<int, int>
+     */
+    function comment_tree_ids(array $tree): array
+    {
+        $ids = [];
+
+        foreach ($tree as $node) {
+            $ids[] = $node['comment']->id;
+            array_push($ids, ...comment_tree_ids($node['children']));
+        }
+
+        return $ids;
+    }
+}
+
+if (!function_exists('comment_author_badge')) {
+    /**
+     * A registered commenter's role, or "Post author" when they wrote the
+     * post/page itself. Guests get nothing. Users are looked up once per
+     * request however many comments they left.
+     */
+    function comment_author_badge(Comment $comment, Post|Page $content): string
+    {
+        static $users = [];
+
+        if ($comment->userId === null) {
+            return '';
+        }
+
+        if ($comment->userId === $content->authorId) {
+            return '<span class="lp-comment__role lp-comment__role--post-author">' . esc_html(__('Post author')) . '</span>';
+        }
+
+        if (!array_key_exists($comment->userId, $users)) {
+            $users[$comment->userId] = Authors::users()->findById($comment->userId);
+        }
+
+        $user = $users[$comment->userId];
+
+        return $user === null ? '' : '<span class="lp-comment__role lp-comment__role--' . esc_attr($user->role->value) . '">' . esc_html(__($user->role->label())) . '</span>';
+    }
+}
+
+if (!function_exists('comment_quotable_text')) {
+    /**
+     * $raw without lines it was itself quoting, so quoting a reply doesn't
+     * pile up nested quotes of earlier comments.
+     */
+    function comment_quotable_text(string $raw): string
+    {
+        $lines = array_filter(
+            preg_split('/\r\n|\r|\n/', $raw) ?: [],
+            static fn (string $line): bool => !str_starts_with(ltrim($line), '>'),
+        );
+
+        return trim(implode("\n", $lines));
+    }
+}
+
+if (!function_exists('comment_interaction_csrf_token')) {
+    /**
+     * One token shared by every reaction/report form on the page: minting
+     * one per form would replace the session's token each time, leaving
+     * only the last form valid.
+     */
+    function comment_interaction_csrf_token(): string
+    {
+        static $token = null;
+
+        return $token ??= Csrf::token('comment_interact');
+    }
+}
+
+if (!function_exists('comment_reaction_buttons')) {
+    /**
+     * The comment's Like/reaction buttons with their counts. Read-only
+     * counts (no buttons) for guests when reacting requires signing in.
+     */
+    function comment_reaction_buttons(Comment $comment): string
+    {
+        $reactions = CommentExtras::reactions();
+
+        if ($reactions === null || !$reactions->isEnabled()) {
+            return '';
+        }
+
+        $counts = CommentExtras::countsFor($comment->id);
+        $choice = CommentExtras::choiceFor($comment->id);
+        $labels = [
+            'like' => __('Like'),
+            'love' => __('Love'),
+            'laugh' => __('Haha'),
+            'wow' => __('Wow'),
+            'sad' => __('Sad'),
+        ];
+        $isLikeOnly = $reactions->mode() === 'like';
+        $canReact = !$reactions->requiresLogin() || ActiveAuth::auth()->user() !== null;
+
+        $items = '';
+
+        foreach ($reactions->available() as $key => $emoji) {
+            $count = $counts[$key] ?? 0;
+            $label = $labels[$key] ?? $key;
+            $inner = '<span class="lp-comment-reactions__emoji" aria-hidden="true">' . $emoji . '</span>'
+                . ($isLikeOnly ? '<span class="lp-comment-reactions__label">' . esc_html($label) . '</span>' : '')
+                . '<span class="lp-comment-reactions__count" data-lp-reaction-count' . ($count === 0 ? ' hidden' : '') . '>' . $count . '</span>';
+            $accessibleName = esc_attr($label . ($count > 0 ? ' (' . $count . ')' : ''));
+
+            if (!$canReact) {
+                if ($count > 0) {
+                    $items .= '<span class="lp-comment-reactions__item" title="' . esc_attr($label) . '" aria-label="' . $accessibleName . '">' . $inner . '</span>';
+                }
+
+                continue;
+            }
+
+            $isSelected = $choice === $key;
+            $items .= '<button type="submit" name="reaction" value="' . esc_attr($key) . '" class="lp-comment-reactions__button' . ($isSelected ? ' is-selected' : '') . '"'
+                . ' aria-pressed="' . ($isSelected ? 'true' : 'false') . '" title="' . esc_attr($label) . '" aria-label="' . $accessibleName . '" data-lp-reaction="' . esc_attr($key) . '" data-lp-reaction-label="' . esc_attr($label) . '">'
+                . $inner . '</button>';
+        }
+
+        if ($items === '') {
+            return '';
+        }
+
+        if (!$canReact) {
+            return '<div class="lp-comment-reactions">' . $items . '</div>';
+        }
+
+        return '<form class="lp-comment-reactions" method="post" action="' . esc_url(home_url('comment/' . $comment->id . '/react')) . '" data-lp-comment-reactions>'
+            . '<input type="hidden" name="csrf_token" value="' . esc_attr(comment_interaction_csrf_token()) . '" data-lp-comment-csrf>'
+            . $items
+            . '</form>';
+    }
+}
+
+if (!function_exists('comment_report_form')) {
+    /**
+     * A collapsed "Report" control with a reason picker, or a thank-you
+     * line right after this visitor reported the comment without JavaScript.
+     */
+    function comment_report_form(Comment $comment): string
+    {
+        $reports = CommentExtras::reports();
+
+        if ($reports === null || !$reports->isEnabled()) {
+            return '';
+        }
+
+        if ((int) ($_GET['comment_reported'] ?? 0) === $comment->id) {
+            return '<p class="lp-comment-report__thanks" role="status">' . esc_html(__('Thanks for letting us know. A moderator will take a look.')) . '</p>';
+        }
+
+        $fieldId = 'comment-report-reason-' . $comment->id;
+        $options = '';
+
+        foreach (CommentReportService::REASONS as $key => $label) {
+            $options .= '<option value="' . esc_attr($key) . '">' . esc_html(__($label)) . '</option>';
+        }
+
+        return '<details class="lp-comment-report">'
+            . '<summary>' . esc_html(__('Report')) . '</summary>'
+            . '<form class="lp-comment-report__form" method="post" action="' . esc_url(home_url('comment/' . $comment->id . '/report')) . '" data-lp-comment-report data-lp-report-thanks="' . esc_attr(__('Thanks for letting us know. A moderator will take a look.')) . '">'
+            . '<input type="hidden" name="csrf_token" value="' . esc_attr(comment_interaction_csrf_token()) . '" data-lp-comment-csrf>'
+            . '<label for="' . esc_attr($fieldId) . '">' . esc_html(__('Why are you reporting this comment?')) . '</label>'
+            . '<select id="' . esc_attr($fieldId) . '" name="reason">' . $options . '</select>'
+            . '<button type="submit" class="lp-button lp-button--secondary">' . esc_html(__('Send report')) . '</button>'
+            . '</form>'
+            . '</details>';
     }
 }

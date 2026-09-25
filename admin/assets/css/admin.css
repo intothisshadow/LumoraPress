@@ -5605,3 +5605,12 @@ a.lp-button--link.lp-button--link--view:hover {
 .lp-notifications__row.is-unread td:first-child {
     box-shadow: inset 3px 0 0 var(--lp-admin-accent);
 }
+
+/* Comments screen: visitor reports summary under a reported comment. */
+.lp-comment-reports {
+    display: inline-block;
+    margin-top: 0.25rem;
+    color: var(--lp-admin-error-text);
+    font-size: 0.8rem;
+    font-weight: 600;
+}

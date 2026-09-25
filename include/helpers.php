@@ -242,11 +242,15 @@ if (!function_exists('site_url')) {
 
 if (!function_exists('format_comment_content')) {
     /**
-     * Escapes raw comment text, then auto-links bare http(s) URLs and
+     * Escapes raw comment text, then auto-links bare http(s) URLs, marks
+     * up @mentions, turns runs of "> " lines into a blockquote, and
      * converts newlines to <br> — comments have no Markdown/HTML support.
      * Escaping happens first, so the matched URL text is already safe
      * HTML-attribute content; do NOT esc_url() it again or "&amp;" would
      * double-encode into "&amp;amp;", corrupting multi-param URLs.
+     *
+     * Every @handle gets the same markup whether or not a user by that
+     * name exists, so the rendered comment never reveals which accounts do.
      */
     function format_comment_content(string $raw): string
     {
@@ -258,7 +262,71 @@ if (!function_exists('format_comment_content')) {
             $escaped,
         ) ?? $escaped;
 
-        return nl2br($linked);
+        $linked = preg_replace(COMMENT_MENTION_PATTERN, '<span class="lp-comment__mention">@$1</span>', $linked) ?? $linked;
+
+        if (preg_match('/^&gt;/m', $linked) !== 1) {
+            return nl2br($linked);
+        }
+
+        // Group consecutive "> " lines into one blockquote; everything else keeps plain line breaks.
+        $blocks = [];
+
+        foreach (preg_split('/\r\n|\r|\n/', $linked) ?: [] as $line) {
+            $isQuote = preg_match('/^&gt; ?(.*)$/', $line, $matches) === 1;
+            $lastIndex = array_key_last($blocks);
+
+            if ($lastIndex !== null && $blocks[$lastIndex]['quote'] === $isQuote) {
+                $blocks[$lastIndex]['lines'][] = $isQuote ? $matches[1] : $line;
+            } else {
+                $blocks[] = ['quote' => $isQuote, 'lines' => [$isQuote ? $matches[1] : $line]];
+            }
+        }
+
+        $html = [];
+
+        foreach ($blocks as $block) {
+            // Blank lines around a quote are just spacing, not content.
+            $lines = $block['lines'];
+
+            while ($lines !== [] && trim((string) $lines[0]) === '') {
+                array_shift($lines);
+            }
+
+            while ($lines !== [] && trim((string) end($lines)) === '') {
+                array_pop($lines);
+            }
+
+            if ($lines === []) {
+                continue;
+            }
+
+            $body = implode("<br />\n", $lines);
+            $html[] = $block['quote'] ? '<blockquote class="lp-comment__quote"><p>' . $body . '</p></blockquote>' : '<p>' . $body . '</p>';
+        }
+
+        return implode("\n", $html);
+    }
+}
+
+if (!defined('COMMENT_MENTION_PATTERN')) {
+    /**
+     * An @handle at the start of the text or after whitespace/"(" — so
+     * email addresses and URLs like https://example.social/@name never match.
+     */
+    define('COMMENT_MENTION_PATTERN', '/(?<![^\s(])@([a-z0-9][a-z0-9-]{0,98})/i');
+}
+
+if (!function_exists('comment_mentions')) {
+    /**
+     * The lower-cased handles @mentioned in raw comment text, in order of appearance.
+     *
+     * @return array<int, string>
+     */
+    function comment_mentions(string $raw): array
+    {
+        preg_match_all(COMMENT_MENTION_PATTERN, $raw, $matches);
+
+        return array_map('strtolower', $matches[1]);
     }
 }
 

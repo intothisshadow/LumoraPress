@@ -18,6 +18,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Services\CommentReportService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -25,7 +26,12 @@ if (!isset($kernel)) {
 }
 
 $commentService = $kernel->comments;
+$commentReports = new CommentReportService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->config);
 $error = null;
+
+// "Reported" is its own tab rather than one of the filters below, so the
+// status tabs always lead out of it.
+$reportedOnly = ($_GET['reported'] ?? '') === '1';
 
 // Every filter below (search/user/IP/date) is carried through status-tab
 // links, pagination (render_pagination() reads $_SERVER['REQUEST_URI']'s
@@ -123,6 +129,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $redirectQuery['status'] = (string) $_GET['status'];
         }
 
+        if ($reportedOnly) {
+            $redirectQuery['reported'] = '1';
+        }
+
+        header('Location: ' . admin_url('comments') . ($redirectQuery !== [] ? '?' . http_build_query($redirectQuery) : ''));
+        exit;
+    } elseif ($form === 'dismiss_reports') {
+        $id = (int) ($_POST['id'] ?? 0);
+
+        if (Csrf::verify('comment_dismiss_reports_' . $id, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $commentReports->dismiss($id);
+        }
+
+        $redirectQuery = $filterQuery + ($reportedOnly ? ['reported' => '1'] : []);
         header('Location: ' . admin_url('comments') . ($redirectQuery !== [] ? '?' . http_build_query($redirectQuery) : ''));
         exit;
     } elseif ($form === 'delete') {
@@ -289,7 +309,10 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
         ipAddress: $ipFilter !== '' ? $ipFilter : null,
         dateFrom: $dateFromFilter !== '' ? $dateFromFilter : null,
         dateTo: $dateToFilter !== '' ? $dateToFilter : null,
+        reportedOnly: $reportedOnly,
     );
+    $reportSummaries = $commentReports->summariesFor(array_map(static fn (array $row): int => $row['comment']->id, $pagination['comments']));
+    $reportedCount = $commentReports->reportedCommentCount();
     $allUsersForFilter = $kernel->users->listAll();
 
     // The exact filter+status combination currently being viewed, as a
@@ -303,6 +326,10 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
     if ($statusFilter !== null) {
         $currentViewQuery['status'] = $statusFilter->value;
+    }
+
+    if ($reportedOnly) {
+        $currentViewQuery['reported'] = '1';
     }
 
     $currentViewQueryString = $currentViewQuery !== [] ? '?' . http_build_query($currentViewQuery) : '';
@@ -330,9 +357,15 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
             <?php if ($value !== '') { $tabQuery['status'] = $value; } ?>
             <a
                 href="<?= esc_url(admin_url('comments')) ?><?= $tabQuery !== [] ? '?' . http_build_query($tabQuery) : '' ?>"
-                class="<?= ($statusFilter?->value ?? '') === $value ? 'is-active' : '' ?>"
+                class="<?= !$reportedOnly && ($statusFilter?->value ?? '') === $value ? 'is-active' : '' ?>"
             ><?= esc_html($label) ?></a>
         <?php endforeach; ?>
+        <?php if ($commentReports->isEnabled() || $reportedCount > 0): ?>
+            <a
+                href="<?= esc_url(admin_url('comments')) ?>?<?= esc_attr(http_build_query($filterQuery + ['reported' => '1'])) ?>"
+                class="<?= $reportedOnly ? 'is-active' : '' ?>"
+            >Reported (<?= (int) $reportedCount ?>)</a>
+        <?php endif; ?>
     </p>
 
     <form method="get" action="<?= esc_url(admin_url('comments')) ?>" class="lp-admin__panel lp-comments-filter-form">
@@ -455,6 +488,16 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                                     <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $comment->id ?>">
                                         <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
                                     </a>
+                                    <?php if (isset($reportSummaries[$comment->id])): ?>
+                                        <?php
+                                        $reportParts = [];
+
+                                        foreach ($reportSummaries[$comment->id] as $reason => $reasonCount) {
+                                            $reportParts[] = (CommentReportService::REASONS[$reason] ?? $reason) . ' (' . $reasonCount . ')';
+                                        }
+                                        ?>
+                                        <br><span class="lp-comment-reports">&#9873; Reported: <?= esc_html(implode(', ', $reportParts)) ?></span>
+                                    <?php endif; ?>
                                 </td>
                                 <?php
                                 if ($row['contentType'] === 'page') {
@@ -492,6 +535,15 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                                             </span>
                                         <?php endif; ?>
                                     <?php endforeach; ?>
+                                    <?php if (isset($reportSummaries[$comment->id])): ?>
+                                        <?php $dismissFormId = 'comment-dismiss-form-' . $comment->id; ?>
+                                        <span class="lp-admin__inline-form">
+                                            <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('comment_dismiss_reports_' . $comment->id)) ?>" form="<?= esc_attr($dismissFormId) ?>">
+                                            <input type="hidden" name="form" value="dismiss_reports" form="<?= esc_attr($dismissFormId) ?>">
+                                            <input type="hidden" name="id" value="<?= (int) $comment->id ?>" form="<?= esc_attr($dismissFormId) ?>">
+                                            <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($dismissFormId) ?>" title="Keep the comment and clear its reports">Dismiss reports</button>
+                                        </span>
+                                    <?php endif; ?>
                                     <?php $deleteFormId = 'comment-delete-form-' . $comment->id; ?>
                                     <span class="lp-admin__inline-form">
                                         <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('comment_delete_' . $comment->id)) ?>" form="<?= esc_attr($deleteFormId) ?>">
@@ -523,6 +575,9 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                 endforeach;
                 ?>
                 <form id="comment-delete-form-<?= (int) $comment->id ?>" method="post" action="<?= esc_url(admin_url('comments') . $currentViewQueryString) ?>"></form>
+                <?php if (isset($reportSummaries[$comment->id])): ?>
+                    <form id="comment-dismiss-form-<?= (int) $comment->id ?>" method="post" action="<?= esc_url(admin_url('comments') . $currentViewQueryString) ?>"></form>
+                <?php endif; ?>
                 <?php
             endforeach;
             ?>

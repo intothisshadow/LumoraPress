@@ -105,11 +105,21 @@ final class CommentService
         return $comment;
     }
 
-    public function updateContent(int $id, string $content): Comment
+    /**
+     * Only stamps edited_at when the text actually changes, so saving the
+     * edit form untouched never marks a comment "(edited)" publicly.
+     * Importers pass $markEdited = false: re-syncing from a source site
+     * isn't an edit made here.
+     */
+    public function updateContent(int $id, string $content, bool $markEdited = true): Comment
     {
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
         $this->database->execute(
-            'UPDATE ' . $this->table() . ' SET content = :content, updated_at = :updated_at WHERE id = :id',
-            ['content' => $content, 'updated_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+            'UPDATE ' . $this->table() . ' SET content = :content, updated_at = :updated_at'
+                . ($markEdited ? ', edited_at = :edited_at' : '')
+                . ' WHERE id = :id AND content <> :unchanged',
+            ['content' => $content, 'updated_at' => $now, 'id' => $id, 'unchanged' => $content] + ($markEdited ? ['edited_at' => $now] : []),
         );
 
         $comment = $this->findById($id);
@@ -462,6 +472,7 @@ final class CommentService
         ?string $ipAddress = null,
         ?string $dateFrom = null,
         ?string $dateTo = null,
+        bool $reportedOnly = false,
     ): array {
         $page = max(1, $page);
 
@@ -499,6 +510,10 @@ final class CommentService
         if ($dateTo !== null && $dateTo !== '') {
             $conditions[] = 'c.created_at <= :date_to';
             $params['date_to'] = $dateTo . ' 23:59:59';
+        }
+
+        if ($reportedOnly) {
+            $conditions[] = 'c.id IN (SELECT comment_id FROM ' . $this->tablePrefix . 'comment_reports)';
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
@@ -844,6 +859,7 @@ final class CommentService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             pageId: isset($row['page_id']) && $row['page_id'] !== null ? (int) $row['page_id'] : null,
+            editedAt: isset($row['edited_at']) ? new DateTimeImmutable((string) $row['edited_at']) : null,
         );
     }
 

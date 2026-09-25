@@ -64,6 +64,15 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
 
     header('Location: ' . admin_url('settings/discussion') . '?saved=1');
     exit;
+} elseif ($form === 'interaction_settings' && Csrf::verify('discussion_interaction_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $reactionsMode = is_string($_POST['comment_reactions_mode'] ?? null) ? $_POST['comment_reactions_mode'] : 'off';
+    $kernel->config->setOption('comment_reactions_mode', in_array($reactionsMode, ['off', 'like', 'reactions'], true) ? $reactionsMode : 'off');
+    $kernel->config->setOption('comment_reactions_registered_only', ($_POST['comment_reactions_registered_only'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('comment_reporting_enabled', ($_POST['comment_reporting_enabled'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('comment_report_threshold', (string) max(0, min(100, (int) ($_POST['comment_report_threshold'] ?? 3))));
+
+    header('Location: ' . admin_url('settings/discussion') . '?saved=1');
+    exit;
 } elseif ($form === 'moderation_settings' && Csrf::verify('moderation_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('comment_moderation_manual_all', ($_POST['comment_moderation_manual_all'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_moderation_auto_approve_previous', ($_POST['comment_moderation_auto_approve_previous'] ?? '') === '1' ? '1' : '0');
@@ -118,6 +127,10 @@ $notifyAdminModeration = $kernel->config->option('comment_notify_admin_moderatio
 $notifyAuthor = $kernel->config->option('comment_notify_author', '0') === '1';
 $notifyOnReply = $kernel->config->option('comment_notify_on_reply', '0') === '1';
 $subscriptionsEnabled = $kernel->config->option('comment_subscriptions_enabled', '0') === '1';
+$reactionsMode = (string) $kernel->config->option('comment_reactions_mode', 'off');
+$reactionsRegisteredOnly = $kernel->config->option('comment_reactions_registered_only', '0') === '1';
+$reportingEnabled = $kernel->config->option('comment_reporting_enabled', '0') === '1';
+$reportThreshold = (string) $kernel->config->option('comment_report_threshold', '3');
 $notifyRecipients = (string) $kernel->config->option('comment_notify_recipients', '');
 
 $manualApprovalForAll = $kernel->config->option('comment_moderation_manual_all', '0') === '1';
@@ -344,6 +357,49 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
                 Every submitted comment also passes through the <code>comment_is_spam</code> filter, which a spam-detection
                 plugin (e.g. Lumora Shield) can hook to mark a comment as Spam without needing its own settings page.
             </span>
+        </p>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Reactions &amp; Reporting</h2>
+    <form method="post" action="<?= esc_url(admin_url('settings/discussion')) ?>">
+        <?= Csrf::field('discussion_interaction_settings') ?>
+        <input type="hidden" name="form" value="interaction_settings">
+
+        <fieldset class="lp-field">
+            <legend>Comment reactions</legend>
+            <label class="lp-field--radio">
+                <input type="radio" name="comment_reactions_mode" value="off" <?= !in_array($reactionsMode, ['like', 'reactions'], true) ? 'checked' : '' ?>>
+                Off
+            </label>
+            <label class="lp-field--radio">
+                <input type="radio" name="comment_reactions_mode" value="like" <?= $reactionsMode === 'like' ? 'checked' : '' ?>>
+                A single &ldquo;Like&rdquo; button (👍)
+            </label>
+            <label class="lp-field--radio">
+                <input type="radio" name="comment_reactions_mode" value="reactions" <?= $reactionsMode === 'reactions' ? 'checked' : '' ?>>
+                Emoji reactions (👍 ❤️ 😂 😮 😢)
+            </label>
+            <span class="lp-field__hint">Each person can leave one reaction per comment; choosing it again removes it. Counts are shown next to each comment.</span>
+        </fieldset>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_reactions_registered_only" value="1" <?= $reactionsRegisteredOnly ? 'checked' : '' ?>>
+            Only signed-in users can react (visitors still see the counts)
+        </label>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_reporting_enabled" value="1" <?= $reportingEnabled ? 'checked' : '' ?>>
+            Let visitors report comments to moderators
+        </label>
+
+        <p class="lp-field">
+            <label for="comment-report-threshold">Hold a comment for moderation after</label>
+            <input type="number" id="comment-report-threshold" name="comment_report_threshold" min="0" max="100" value="<?= esc_attr($reportThreshold) ?>"> report(s)
+            <span class="lp-field__hint">Reported comments are listed under Comments &rsaquo; Reported, and moderators get a notification. Set to 0 to never hold a comment automatically.</span>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

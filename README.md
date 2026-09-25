@@ -37,6 +37,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Sticky and private posts
 - Threaded comments and moderation
 - Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
+- Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
 - Full-text search across posts and pages
 
@@ -126,9 +127,10 @@ Lumora Press includes an opt-in, off-by-default mechanism to anonymously count a
 
 Lumora Press sets a small, fixed set of cookies — useful reference for writing your own site's privacy/cookie policy.
 
-- **Session cookie** (`PHPSESSID` or your server's configured session cookie name). Strictly necessary — keeps a logged-in admin/editor session working. Set only for a logged-in user, never for an anonymous visitor.
+- **Session cookie** (`lumora_press_session`). Strictly necessary: it keeps a signed-in user logged in, and for every visitor, signed in or not, it carries the security tokens that protect forms such as the comment form against forgery. Set on every visit, marked HttpOnly and SameSite=Lax, and deleted when the browser closes. It holds only a random identifier.
 - **Remember-me cookie**, set only when a user checks "Remember Me" on the login screen. Strictly necessary for the feature the user explicitly opted into; never set otherwise.
 - **`lp_commenter_name` / `lp_commenter_email` / `lp_commenter_url`** — optional convenience cookies that pre-fill a guest's name/email/website on their next comment. Off by default site-wide (Settings &rsaquo; Discussion &rsaquo; "Enable comment cookies consent"), and even when the site owner turns that on, an individual guest still has to check "Save my name/email in this browser for next time" on the comment form itself before any of the three is ever set — no guest gets these cookies without their own explicit, per-comment opt-in.
+- **`lp_voter`** — set only when a visitor who isn't signed in reacts to or reports a comment (both off by default, Settings &rsaquo; Discussion &rsaquo; Reactions &amp; Reporting). It holds a random identifier so the same browser can't react to or report one comment more than once; only a one-way hash of it is stored on the server, and it contains nothing about the visitor. Lasts one year.
 
 Nothing else in Lumora Press core sets a cookie. A theme or plugin you install may set its own — check its own documentation.
 

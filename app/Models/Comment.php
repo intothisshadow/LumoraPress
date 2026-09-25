@@ -42,6 +42,8 @@ final class Comment
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?int $pageId = null,
+        /** Set when a moderator changes the comment's text after it was posted. */
+        public readonly ?DateTimeImmutable $editedAt = null,
     ) {
     }
 }

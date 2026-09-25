@@ -81,6 +81,13 @@ final class FooterAssets
             <?php
         }
 
+        // Quote buttons, and in-place reactions/reports without a page reload.
+        if (CommentExtras::isUsed()) {
+            ?>
+            <script src="<?= esc_url(core_asset_url('js/comments.js')) ?>"></script>
+            <?php
+        }
+
         // lp_emoji_picker_button() (Emoji Picker plugin, LPP-006) already
         // renders '' when the plugin is inactive/disabled, so the button
         // itself never appears without this — checked here rather than

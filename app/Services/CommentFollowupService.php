@@ -27,8 +27,8 @@ use LumoraPress\Models\User;
  * Everything here waits for a comment to be approved — at submission
  * when it's approved immediately, otherwise when a moderator approves it
  * later — so held or spam comments never reach subscribers or users'
- * inboxes. The one exception is the "awaiting moderation" notice, which
- * only goes to users who can moderate. CommentNotificationService keeps
+ * inboxes. The exceptions are the "awaiting moderation" and "reported"
+ * notices, which only go to users who can moderate. CommentNotificationService keeps
  * its own, separately configured admin/author/reply emails.
  */
 final class CommentFollowupService
@@ -175,6 +175,10 @@ final class CommentFollowupService
             $messages[$parent->userId] = ['comment_reply', sprintf(__('%1$s replied to your comment on "%2$s"'), $comment->guestName, $context['title'])];
         }
 
+        foreach ($this->mentionedUserIds($comment->content) as $mentionedId) {
+            $messages[$mentionedId] ??= ['comment_mention', sprintf(__('%1$s mentioned you in a comment on "%2$s"'), $comment->guestName, $context['title'])];
+        }
+
         $messages[$context['authorId']] ??= [
             'comment_on_your_content',
             sprintf($context['type'] === 'page' ? __('%1$s commented on your page "%2$s"') : __('%1$s commented on your post "%2$s"'), $comment->guestName, $context['title']),
@@ -197,6 +201,25 @@ final class CommentFollowupService
         }
     }
 
+    /**
+     * Visitors reported $comment; $held is true when the reports just moved
+     * it back to Pending.
+     */
+    public function notifyModeratorsOfReport(Comment $comment, bool $held): void
+    {
+        $context = $this->resolveContent($comment);
+
+        if ($context === null) {
+            return;
+        }
+
+        $message = $held
+            ? sprintf(__('A comment from %1$s on "%2$s" was reported by several visitors and is now held for moderation'), $comment->guestName, $context['title'])
+            : sprintf(__('A comment from %1$s on "%2$s" was reported'), $comment->guestName, $context['title']);
+
+        $this->notifyEveryModerator($comment, 'comment_reported', $message, admin_url('comments') . '?reported=1');
+    }
+
     private function notifyModerators(Comment $comment): void
     {
         $context = $this->resolveContent($comment);
@@ -206,13 +229,39 @@ final class CommentFollowupService
         }
 
         $message = sprintf(__('Comment from %1$s on "%2$s" is awaiting moderation'), $comment->guestName, $context['title']);
-        $url = admin_url('comments') . '?status=' . CommentStatus::Pending->value;
 
+        $this->notifyEveryModerator($comment, 'comment_moderation', $message, admin_url('comments') . '?status=' . CommentStatus::Pending->value);
+    }
+
+    private function notifyEveryModerator(Comment $comment, string $type, string $message, string $url): void
+    {
         foreach ($this->users->listAll() as $user) {
             if ($user->id !== $comment->userId && $user->can('moderate_comments')) {
-                $this->notifications->notify($user->id, 'comment_moderation', $message, $url);
+                $this->notifications->notify($user->id, $type, $message, $url);
             }
         }
+    }
+
+    /**
+     * Users named by @author-slug in $content — the same public slug their
+     * author archive uses, never a login name. Capped so one comment can't
+     * fan out into an unbounded number of notifications.
+     *
+     * @return array<int, int>
+     */
+    private function mentionedUserIds(string $content): array
+    {
+        $ids = [];
+
+        foreach (array_slice(array_unique(comment_mentions($content)), 0, 10) as $slug) {
+            $user = $this->users->findByAuthorSlug($slug);
+
+            if ($user !== null) {
+                $ids[] = $user->id;
+            }
+        }
+
+        return $ids;
     }
 
     /**

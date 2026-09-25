@@ -61,7 +61,7 @@ final class CommentImporter
                 return $existing;
             }
 
-            $this->comments->updateContent($existingId, $data->content);
+            $this->comments->updateContent($existingId, $data->content, markEdited: false);
 
             return $this->comments->updateStatus($existingId, $data->status);
         }

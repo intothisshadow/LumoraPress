@@ -1422,6 +1422,153 @@ a.lp-post-list__comments:focus {
     margin-bottom: 1rem;
 }
 
+/* Comment extras: role badges, "(edited)", @mentions, quotes, and the
+   reaction/quote/report actions row that comment_list() renders. */
+.lp-comment__role {
+    display: inline-block;
+    margin: 0 0.35rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--lp-border);
+    border-radius: 999px;
+    color: var(--lp-text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.lp-comment__role--post-author {
+    border-color: var(--lp-accent);
+    color: var(--lp-accent);
+}
+
+.lp-comment__edited {
+    margin-left: 0.35rem;
+    color: var(--lp-text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.lp-comment__mention {
+    color: var(--lp-accent);
+    font-weight: 600;
+}
+
+.lp-comment__content p {
+    margin: 0 0 0.75rem;
+}
+
+.lp-comment__content p:last-child {
+    margin-bottom: 0;
+}
+
+.lp-comment__quote {
+    margin: 0 0 0.75rem;
+    padding: 0.4rem 0.9rem;
+    border-left: 3px solid var(--lp-border);
+    background: var(--lp-bg-alt);
+    color: var(--lp-text-muted);
+}
+
+.lp-comment__quote p {
+    margin: 0;
+}
+
+.lp-comment__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+}
+
+.lp-comment-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0;
+}
+
+.lp-comment-reactions__button,
+.lp-comment-reactions__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid var(--lp-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--lp-text);
+    font: inherit;
+    line-height: 1.5;
+}
+
+.lp-comment-reactions__button {
+    cursor: pointer;
+}
+
+.lp-comment-reactions__button:hover,
+.lp-comment-reactions__button:focus-visible {
+    border-color: var(--lp-accent);
+}
+
+.lp-comment-reactions__button.is-selected {
+    border-color: var(--lp-accent);
+    background: var(--lp-bg-alt);
+    font-weight: 600;
+}
+
+.lp-comment-reactions[aria-busy="true"] {
+    opacity: 0.6;
+}
+
+.lp-comment-reactions__count {
+    color: var(--lp-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.lp-comment__quote-button,
+.lp-comment-report > summary {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--lp-text-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.lp-comment__quote-button:hover,
+.lp-comment__quote-button:focus-visible,
+.lp-comment-report > summary:hover,
+.lp-comment-report > summary:focus-visible {
+    color: var(--lp-accent);
+    text-decoration: underline;
+}
+
+.lp-comment-report > summary {
+    list-style: none;
+}
+
+.lp-comment-report > summary::-webkit-details-marker {
+    display: none;
+}
+
+.lp-comment-report__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.lp-comment-report__thanks {
+    margin: 0;
+    color: var(--lp-text-muted);
+    font-style: italic;
+}
+
 /* Emoji Picker plugin: lp_emoji_picker_button()'s own trigger
    class, styled here since the button markup itself is plugin-rendered,
    not theme markup — see comment_form() in include/comment-functions.php. */

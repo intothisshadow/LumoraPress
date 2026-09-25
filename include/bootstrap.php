@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Controllers\CommentInteractionController;
 use LumoraPress\Controllers\CommentSubscriptionController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\ActiveConfig;
@@ -81,6 +82,8 @@ use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentNotificationService;
 use LumoraPress\Services\CommentFollowupService;
+use LumoraPress\Services\CommentReactionService;
+use LumoraPress\Services\CommentReportService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\CommentSubscriptionService;
 use LumoraPress\Services\ContentImportRegistry;
@@ -786,6 +789,18 @@ add_filter('comment_form_fields_after', static function (string $html, \LumoraPr
     return $html . comment_subscription_checkbox($formId, $user === null);
 });
 
+// Reactions and reporting. comment_list() reaches them through the
+// CommentExtras bridge, since theme templates have no route to services.
+$commentReactions = new CommentReactionService($database, $tablePrefix, $config);
+$commentReports = new CommentReportService($database, $tablePrefix, $config);
+$commentInteractionController = new CommentInteractionController($comments, $posts, $pages, $commentReactions, $commentReports, $commentFollowups, $auth, $site);
+\LumoraPress\Core\Theme\CommentExtras::set($commentReactions, $commentReports, $commentInteractionController->currentVoterKey(...));
+
+add_action('comment_deleted', static function (int $commentId) use ($commentReactions, $commentReports): void {
+    $commentReactions->deleteForComment($commentId);
+    $commentReports->dismiss($commentId);
+});
+
 add_action('comments_template', static function (array $vars = []) use ($commentSubscriptionController, $cache): void {
     $content = $vars['post'] ?? $vars['page'] ?? null;
 
@@ -819,6 +834,8 @@ $router->get('/', fn (array $params) => $site->home($params));
 // /%category%/%postname%/ would otherwise claim this two-segment URL.
 $router->get('/comment-subscription/{token}', fn (array $params) => $commentSubscriptionController->open($params));
 $router->post('/comment-subscription', fn (array $params) => $commentSubscriptionController->update($params));
+$router->post('/comment/{id}/react', fn (array $params) => $commentInteractionController->react($params));
+$router->post('/comment/{id}/report', fn (array $params) => $commentInteractionController->report($params));
 $router->get($postRoutePattern, fn (array $params) => $site->singlePost($params));
 $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
 $router->get($postRoutePattern . '/comments/feed/{format}', fn (array $params) => $site->postCommentsFeed($params));
