@@ -138,13 +138,16 @@ final class PluginRegistry
     }
 
     /**
+     * Public and static so the update pipeline can read a staged plugin
+     * package's header before it's installed anywhere this registry scans.
+     *
      * @return array{
      *     name: string, description: string, version: string, author: string,
      *     authorUri: string, pluginUri: string, license: string, licenseUri: string,
      *     requiresAtLeast: string, requiresPhp: string, requiresPlugins: string, tags: string
      * }
      */
-    private function parseHeader(string $mainFilePath): array
+    public static function parseHeader(string $mainFilePath): array
     {
         $result = [
             'name' => '', 'description' => '', 'version' => '', 'author' => '',

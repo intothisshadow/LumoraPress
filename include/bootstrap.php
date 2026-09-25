@@ -111,6 +111,7 @@ use LumoraPress\Services\PageService;
 use LumoraPress\Services\NotificationService;
 use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
+use LumoraPress\Services\PluginVersionManifest;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
@@ -568,7 +569,9 @@ $corePathsFile = LUMORA_ROOT . '/core-paths.php';
 $updateCorePaths = is_file($corePathsFile) ? require $corePathsFile : [
     'app', 'admin', 'assets', 'include', 'install',
     'content/themes/lumora-classic', 'content/plugins/font-awesome', 'content/plugins/dummy-content',
-    'content/plugins/wordpress-importer', 'content/plugins/downloads',
+    'content/plugins/wordpress-importer', 'content/plugins/downloads', 'content/plugins/contact-forms',
+    'content/plugins/lumora-shield', 'content/plugins/visitor-stats', 'content/plugins/lumora-gallery-shortcodes',
+    'content/plugins/emoji-picker', 'content/plugins/lumora-sweep', 'content/plugins/link-directory',
     'index.php', 'version.php', '.htaccess', 'README.md', 'LICENSE.md', 'docs', 'core-paths.php',
 ];
 
@@ -611,6 +614,7 @@ $updates = new UpdateService(
     users: $users,
     checksums: $updateChecksums,
     progress: $updateProgress,
+    pluginVersions: new PluginVersionManifest(LUMORA_ROOT),
 );
 
 $githubUpdates = new GitHubReleaseProvider($config);
@@ -662,6 +666,12 @@ foreach ([
 // external edge cache (LiteSpeed, via $cacheDriver) also needs purging
 // once new code is live — reuses the existing update hook.
 $hooks->addAction('lumora_press_after_update', static function (string $fromVersion, string $toVersion, \LumoraPress\Models\UpdateStatus $status) use ($cache): void {
+    if ($status === \LumoraPress\Models\UpdateStatus::Success) {
+        $cache->purgeAll();
+    }
+});
+
+$hooks->addAction('lumora_press_after_plugin_update', static function (string $slug, string $fromVersion, string $toVersion, \LumoraPress\Models\UpdateStatus $status) use ($cache): void {
     if ($status === \LumoraPress\Models\UpdateStatus::Success) {
         $cache->purgeAll();
     }

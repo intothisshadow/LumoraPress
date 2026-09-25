@@ -874,7 +874,8 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <li>Update check results are cached; use the button above to force a refresh, or adjust the check frequency in Update settings.</li>
         <li>No site content, media, or user data is ever transmitted during an update check.</li>
         <li>Release source: GitHub Releases (<code><?= esc_html($githubRepo) ?></code>), or a manually uploaded ZIP.</li>
-        <li>Themes and plugins other than the default theme are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, and the root PHP files are replaced.</li>
+        <li>Your own themes and plugins are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, the plugins bundled with Lumora Press, and the root PHP files are replaced.</li>
+        <li>A bundled plugin can also be updated on its own from the Plugins screen when a release includes a newer version of it — only that plugin's folder is replaced, with the same backup and automatic rollback.</li>
         <li>An automatic file and database backup is created before any update is applied. Use the Backups panel above to create one on demand, or restore/delete an existing one.</li>
         <li>Maintenance mode is automatically enabled for the duration of an update and restored to its previous state afterward — the admin area itself always stays reachable.</li>
         <li>If the <code>install/</code> directory is present when an update completes, it is automatically removed during cleanup.</li>

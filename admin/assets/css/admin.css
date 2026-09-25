@@ -1777,6 +1777,38 @@ body.lp-admin-login {
     color: var(--lp-admin-error-text);
 }
 
+.lp-plugin-card__badge--update {
+    background: var(--lp-admin-warning-bg);
+    color: var(--lp-admin-warning-text);
+    border: 1px solid var(--lp-admin-warning-border);
+    white-space: nowrap;
+}
+
+.lp-plugin-card__update {
+    margin: 0 0 0.75rem;
+}
+
+/* Bundled plugin updates: status line + "Check for Updates" above the list */
+
+.lp-plugin-updates-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin: 0 0 1rem;
+}
+
+.lp-plugin-updates-bar__status {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .lp-plugin-card__description {
     font-size: 0.85rem;
     color: var(--lp-admin-sidebar-fg-muted);

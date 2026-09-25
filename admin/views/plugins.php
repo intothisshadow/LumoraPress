@@ -17,6 +17,7 @@
 
 use LumoraPress\Controllers\Admin\PluginsController;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\UpdateStatus;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -59,7 +60,172 @@ $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 $pendingInstall = null;
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $form !== '' && $form !== 'set_list_view') {
+// Bundled plugin updates reuse Maintenance > Updates' staged pipeline
+// (download + validate, confirm, then a fetch()-driven continue loop via
+// update-continue.js), scoped to a single plugin directory. Mirrors that
+// page's handlers, including its no-JS redirect fallback.
+if (($_GET['ajax'] ?? null) === 'progress') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($kernel->updateProgress->read());
+    exit;
+}
+
+$pluginUpdateForms = ['plugin_update_check', 'plugin_update_download', 'plugin_update_install', 'continue_plugin_update', 'plugin_update_cancel'];
+$pluginUpdateSummary = null;
+$pluginUpdateStageLabels = [
+    'backup_files' => 'Backing up files…',
+    'backup_database' => 'Backing up database…',
+    'apply_files' => 'Replacing plugin files…',
+    'clear_cache' => 'Clearing caches…',
+    'cleanup' => 'Finishing up…',
+];
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $pluginUpdateForms, true)) {
+    $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+    $isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+    $respondJson = static function (array $payload): never {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode($payload);
+        exit;
+    };
+
+    if ($form === 'plugin_update_check' && Csrf::verify('plugin_update_check', $csrfToken)) {
+        try {
+            if ($kernel->githubUpdates->checkNow() === null) {
+                $error = 'Could not reach GitHub, or the configured repository has no releases yet. Check the repository setting under Maintenance > Updates and try again.';
+            } else {
+                redirect(admin_url('plugins') . '?plugin_updates_checked=1');
+            }
+        } catch (\Throwable $exception) {
+            $error = 'Could not check for updates: ' . $exception->getMessage();
+        }
+    } elseif ($form === 'plugin_update_download') {
+        $slug = is_string($_POST['slug'] ?? null) ? $_POST['slug'] : '';
+        $origin = in_array($_POST['origin'] ?? null, ['row', 'card', 'details'], true) ? $_POST['origin'] : 'row';
+
+        if (!Csrf::verify('plugin_update_' . $origin . '_' . $slug, $csrfToken)) {
+            $error = 'Your session expired. Please try again.';
+        } elseif (!$kernel->updates->isBundledPlugin($slug)) {
+            $error = 'Only plugins bundled with Lumora Press can be updated this way.';
+        } else {
+            $downloadPath = null;
+
+            $kernel->updateProgress->reset('plugin_download', [
+                ['key' => 'download', 'label' => 'Downloading plugin package'],
+                ['key' => 'validate', 'label' => 'Validating package'],
+                ['key' => 'compatibility', 'label' => 'Checking compatibility'],
+            ]);
+
+            // Releases the session lock before the network download so the progress poller isn't queued behind it.
+            session_write_close();
+
+            try {
+                $downloadDir = rtrim(LUMORA_ROOT, '/') . '/storage/updates/downloads';
+
+                if (!is_dir($downloadDir) && !mkdir($downloadDir, 0755, true) && !is_dir($downloadDir)) {
+                    throw new \RuntimeException('Unable to prepare the downloads directory.');
+                }
+
+                $downloadPath = $downloadDir . '/' . bin2hex(random_bytes(16)) . '.zip';
+
+                $kernel->updateProgress->stage('download');
+                $kernel->githubUpdates->downloadPluginRelease($slug, $downloadPath);
+
+                $pluginUpdateSummary = $kernel->updates->checkPluginPackage($slug, $downloadPath, $currentUser->id);
+            } catch (\Throwable $exception) {
+                $error = $exception->getMessage();
+                $kernel->updateProgress->complete(false, $error);
+            } finally {
+                if ($downloadPath !== null && is_file($downloadPath)) {
+                    unlink($downloadPath);
+                }
+            }
+
+            session_start();
+        }
+    } elseif ($form === 'plugin_update_install' && Csrf::verify('plugin_update_install', $csrfToken)) {
+        $installToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        $kernel->updateProgress->reset('plugin_install', [
+            ['key' => 'backup_files', 'label' => 'Backing up files'],
+            ['key' => 'backup_database', 'label' => 'Backing up database'],
+            ['key' => 'apply_files', 'label' => 'Replacing plugin files'],
+            ['key' => 'clear_cache', 'label' => 'Clearing caches'],
+            ['key' => 'cleanup', 'label' => 'Finishing up'],
+        ]);
+
+        session_write_close();
+
+        try {
+            $begin = $kernel->updates->beginInstall($installToken, $currentUser->id);
+            redirect(admin_url('plugins') . '?plugin_update_token=' . urlencode($begin['token']));
+        } catch (\Throwable $exception) {
+            $error = $exception->getMessage();
+            $kernel->updateProgress->complete(false, $error);
+            session_start();
+        }
+    } elseif ($form === 'continue_plugin_update' && Csrf::verify('plugin_update_continue', $csrfToken)) {
+        $installToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        try {
+            $result = $kernel->updates->continueInstall($installToken);
+
+            if ($result['done']) {
+                $redirectUrl = admin_url('plugins') . '?' . http_build_query([
+                    'plugin_updated' => 1,
+                    'status' => $result['status']->value,
+                    'message' => $result['message'],
+                ]);
+
+                if ($isAjaxContinueRequest) {
+                    $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+                }
+
+                redirect($redirectUrl);
+            }
+
+            if ($isAjaxContinueRequest) {
+                $respondJson([
+                    'done' => false,
+                    'stage' => $result['stage'],
+                    'stage_label' => $pluginUpdateStageLabels[$result['stage']] ?? $result['stage'],
+                    'database_progress' => $result['database_progress'] ?? null,
+                    'csrf_token' => Csrf::token('plugin_update_continue'),
+                ]);
+            }
+
+            redirect(admin_url('plugins') . '?plugin_update_token=' . urlencode($installToken));
+        } catch (\Throwable $exception) {
+            $redirectUrl = admin_url('plugins') . '?plugin_update_error=' . urlencode($exception->getMessage());
+
+            if ($isAjaxContinueRequest) {
+                $respondJson(['done' => true, 'redirect' => $redirectUrl]);
+            }
+
+            redirect($redirectUrl);
+        }
+    } elseif ($form === 'plugin_update_cancel' && Csrf::verify('plugin_update_cancel', $csrfToken)) {
+        try {
+            $kernel->updates->cancel(is_string($_POST['token'] ?? null) ? $_POST['token'] : '');
+        } catch (\Throwable $exception) {
+            // Nothing to clean up, or an already-expired token — safe to ignore.
+        }
+
+        redirect(admin_url('plugins'));
+    } else {
+        $error = 'Your session expired. Please try again.';
+    }
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $form !== '' && $form !== 'set_list_view' && !in_array($form, $pluginUpdateForms, true)) {
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
     $controller = new PluginsController($kernel->pluginRegistry, $kernel->pluginInstaller, $kernel->config);
 
@@ -109,11 +275,113 @@ $pluginActionLinksBySlug = [];
 foreach ($pluginList as $info) {
     $pluginActionLinksBySlug[$info->slug] = apply_filters("plugin_action_links_{$info->slug}", []);
 }
+
+$pluginUpdateToken = is_string($_GET['plugin_update_token'] ?? null) ? $_GET['plugin_update_token'] : null;
+$pluginUpdateProgress = null;
+
+if ($pluginUpdateToken !== null) {
+    try {
+        $pluginUpdateProgress = $kernel->updates->installProgress($pluginUpdateToken);
+
+        if ($pluginUpdateProgress['scope'] !== 'plugin') {
+            $pluginUpdateProgress = null;
+        }
+    } catch (\Throwable $exception) {
+        $error = $exception->getMessage();
+    }
+}
+
+// Cached from the last GitHub check (here or on Maintenance > Updates) — no network call on page load.
+$pluginUpdatesAvailable = $kernel->githubUpdates->cachedPluginUpdates($kernel->updates->installedPluginVersions());
+$pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked_at', '0');
 ?>
 <h1 class="lp-admin__title">Plugins</h1>
 
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
+<?php endif; ?>
+
+<?php if (isset($_GET['plugin_updated'])): ?>
+    <?php $pluginUpdatedStatus = UpdateStatus::tryFrom((string) ($_GET['status'] ?? '')); ?>
+    <div class="lp-alert <?= $pluginUpdatedStatus === UpdateStatus::Success ? 'lp-alert--success' : 'lp-alert--error' ?>">
+        <?= esc_html((string) ($_GET['message'] ?? 'The plugin update finished.')) ?>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_GET['plugin_update_error'])): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html((string) $_GET['plugin_update_error']) ?></div>
+<?php endif; ?>
+
+<?php if (isset($_GET['plugin_updates_checked'])): ?>
+    <div class="lp-alert lp-alert--success">
+        <?= $pluginUpdatesAvailable === [] ? 'All bundled plugins are up to date.' : count($pluginUpdatesAvailable) . ' plugin update' . (count($pluginUpdatesAvailable) === 1 ? '' : 's') . ' available.' ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($pluginUpdateProgress !== null): ?>
+    <section class="lp-admin__panel lp-plugin-update">
+        <h2>Updating <?= esc_html((string) $pluginUpdateProgress['plugin_name']) ?></h2>
+        <p>
+            Updating from <strong><?= esc_html($pluginUpdateProgress['from_version']) ?></strong>
+            to <strong><?= esc_html($pluginUpdateProgress['to_version']) ?></strong>&hellip;
+        </p>
+        <p class="lp-field__hint" data-lp-update-stage><?= esc_html($pluginUpdateStageLabels[$pluginUpdateProgress['stage']] ?? $pluginUpdateProgress['stage']) ?></p>
+        <p class="lp-field__hint" data-lp-update-detail hidden></p>
+        <div class="lp-alert lp-alert--warning">This page updates on its own — leave it open until it finishes.</div>
+
+        <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" id="update-install-continue">
+            <?= Csrf::field('plugin_update_continue') ?>
+            <input type="hidden" name="form" value="continue_plugin_update">
+            <input type="hidden" name="token" value="<?= esc_attr($pluginUpdateToken) ?>">
+            <button type="submit" class="lp-button lp-button--primary">Continue</button>
+        </form>
+    </section>
+    <?php return; ?>
+<?php endif; ?>
+
+<?php if ($pluginUpdateSummary !== null): ?>
+    <section class="lp-admin__panel lp-plugin-update">
+        <h2>Plugin Update Summary</h2>
+        <p>
+            Updating <strong><?= esc_html($pluginUpdateSummary['name']) ?></strong>
+            from <strong><?= esc_html($pluginUpdateSummary['from_version']) ?></strong>
+            to <strong><?= esc_html($pluginUpdateSummary['to_version']) ?></strong>
+        </p>
+
+        <?php if ($pluginUpdateSummary['blocking'] !== []): ?>
+            <ul class="lp-install__requirements">
+                <?php foreach ($pluginUpdateSummary['blocking'] as $problem): ?>
+                    <li class="lp-alert lp-alert--error"><?= esc_html($problem) ?></li>
+                <?php endforeach; ?>
+            </ul>
+            <p><a class="lp-button" href="<?= esc_url(admin_url('plugins')) ?>">Back to Plugins</a></p>
+        <?php else: ?>
+            <?php if ($pluginUpdateSummary['warnings'] !== []): ?>
+                <ul class="lp-install__requirements">
+                    <?php foreach ($pluginUpdateSummary['warnings'] as $warning): ?>
+                        <li class="lp-alert lp-alert--warning"><?= esc_html($warning) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <p>Only this plugin's folder is replaced. Lumora Press will back up your files and database first, and roll back automatically if anything goes wrong.</p>
+
+            <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('plugins')) ?>?ajax=progress" data-lp-update-progress-target="lp-plugin-update-progress-install">
+                <?= Csrf::field('plugin_update_install') ?>
+                <input type="hidden" name="form" value="plugin_update_install">
+                <input type="hidden" name="token" value="<?= esc_attr($pluginUpdateSummary['token']) ?>">
+                <button type="submit" class="lp-button lp-button--primary">Confirm &amp; Update</button>
+            </form>
+            <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+                <?= Csrf::field('plugin_update_cancel') ?>
+                <input type="hidden" name="form" value="plugin_update_cancel">
+                <input type="hidden" name="token" value="<?= esc_attr($pluginUpdateSummary['token']) ?>">
+                <button type="submit" class="lp-button">Cancel</button>
+            </form>
+            <ul id="lp-plugin-update-progress-install" class="lp-update-progress" hidden></ul>
+        <?php endif; ?>
+    </section>
+    <?php return; ?>
 <?php endif; ?>
 
 <?php if (isset($_GET['activated'])): ?>
@@ -228,6 +496,22 @@ foreach ($pluginList as $info) {
 <section class="lp-admin__panel">
     <h2>Installed Plugins</h2>
 
+    <div class="lp-plugin-updates-bar">
+        <p class="lp-plugin-updates-bar__status">
+            <?php if ($pluginUpdatesAvailable !== []): ?>
+                <span class="lp-status-badge lp-status-badge--warning"><?= count($pluginUpdatesAvailable) ?> update<?= count($pluginUpdatesAvailable) === 1 ? '' : 's' ?> available</span>
+            <?php endif; ?>
+            Bundled plugin updates last checked:
+            <?= $pluginUpdatesLastCheckedAt > 0 ? esc_html(date('M j, Y g:i A T', $pluginUpdatesLastCheckedAt)) : 'Never' ?>
+        </p>
+        <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+            <?= Csrf::field('plugin_update_check') ?>
+            <input type="hidden" name="form" value="plugin_update_check">
+            <button type="submit" class="lp-button lp-button--secondary">Check for Updates</button>
+        </form>
+    </div>
+    <ul id="lp-plugin-update-progress" class="lp-update-progress" hidden></ul>
+
     <?php if (count($pluginList) > 1): ?>
         <div class="lp-plugin-toolbar">
             <p class="lp-field lp-plugin-search">
@@ -301,11 +585,14 @@ foreach ($pluginList as $info) {
                     $rowActivateFormId = 'plugin-activate-form-row-' . $info->slug;
                     $rowDeactivateFormId = 'plugin-deactivate-form-row-' . $info->slug;
                     $rowDeleteFormId = 'plugin-delete-form-row-' . $info->slug;
+                    $rowUpdateFormId = 'plugin-update-form-row-' . $info->slug;
+                    $rowUpdate = $pluginUpdatesAvailable[$info->slug] ?? null;
                     ?>
                     <tr
                         data-lp-plugin-row
                         data-plugin-search="<?= esc_attr($rowSearchHaystack) ?>"
                         data-plugin-status="<?= esc_attr($rowStatusValue) ?>"
+                        <?= $rowUpdate !== null ? 'data-plugin-update' : '' ?>
                     >
                         <td>
                             <label class="lp-visually-hidden" for="plugin-select-<?= esc_attr($info->slug) ?>">Select "<?= esc_html($info->name) ?>"</label>
@@ -321,10 +608,24 @@ foreach ($pluginList as $info) {
                                 <span class="lp-plugin-card__badge lp-plugin-card__badge--inactive">Inactive</span>
                             <?php endif; ?>
                         </td>
-                        <td><?= esc_html($info->version) ?></td>
+                        <td>
+                            <?= esc_html($info->version) ?>
+                            <?php if ($rowUpdate !== null): ?>
+                                <span class="lp-plugin-card__badge lp-plugin-card__badge--update">Update available: <?= esc_html($rowUpdate['version']) ?></span>
+                            <?php endif; ?>
+                        </td>
                         <td><?= esc_html($info->author) ?></td>
                         <td><?= esc_html($info->description) ?></td>
                         <td class="lp-admin__row-actions">
+                            <?php if ($rowUpdate !== null): ?>
+                                <span class="lp-admin__inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('plugin_update_row_' . $info->slug)) ?>" form="<?= esc_attr($rowUpdateFormId) ?>">
+                                    <input type="hidden" name="form" value="plugin_update_download" form="<?= esc_attr($rowUpdateFormId) ?>">
+                                    <input type="hidden" name="origin" value="row" form="<?= esc_attr($rowUpdateFormId) ?>">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>" form="<?= esc_attr($rowUpdateFormId) ?>">
+                                    <button type="submit" class="lp-button--link" form="<?= esc_attr($rowUpdateFormId) ?>">Update to v<?= esc_html($rowUpdate['version']) ?></button>
+                                </span>
+                            <?php endif; ?>
                             <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
                                 <a class="lp-button--link" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
                             <?php endforeach; ?>
@@ -367,6 +668,9 @@ foreach ($pluginList as $info) {
         // <form> can't nest inside plugins-bulk-form.
         foreach ($pluginList as $info):
             ?>
+            <?php if (isset($pluginUpdatesAvailable[$info->slug])): ?>
+                <form id="plugin-update-form-row-<?= esc_attr($info->slug) ?>" method="post" action="<?= esc_url(admin_url('plugins')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('plugins')) ?>?ajax=progress" data-lp-update-progress-target="lp-plugin-update-progress"></form>
+            <?php endif; ?>
             <?php if ($info->isActive): ?>
                 <form id="plugin-deactivate-form-row-<?= esc_attr($info->slug) ?>" method="post" action="<?= esc_url(admin_url('plugins')) ?>"></form>
             <?php else: ?>
@@ -385,12 +689,14 @@ foreach ($pluginList as $info) {
                 $searchHaystack = strtolower($info->name . ' ' . $info->author . ' ' . implode(' ', $info->tags));
                 $templateId = 'lp-plugin-details-' . $info->slug;
                 $statusFilterValue = $info->isActive ? 'active' : 'inactive';
+                $cardUpdate = $pluginUpdatesAvailable[$info->slug] ?? null;
                 ?>
                 <div
                     class="lp-plugin-card<?= $info->isActive ? ' lp-plugin-card--active' : '' ?><?= $info->isDisabled ? ' lp-plugin-card--disabled' : '' ?>"
                     data-lp-plugin-card
                     data-plugin-search="<?= esc_attr($searchHaystack) ?>"
                     data-plugin-status="<?= esc_attr($statusFilterValue) ?>"
+                    <?= $cardUpdate !== null ? 'data-plugin-update' : '' ?>
                 >
                     <div class="lp-plugin-card__screenshot-wrap">
                         <?php if ($info->screenshotUrl !== null): ?>
@@ -417,7 +723,21 @@ foreach ($pluginList as $info) {
                             <?php if ($info->version !== ''): ?><span>Version <?= esc_html($info->version) ?></span><?php endif; ?>
                             <?php if ($info->author !== ''): ?><span>By <?= esc_html($info->author) ?></span><?php endif; ?>
                         </p>
+                        <?php if ($cardUpdate !== null): ?>
+                            <p class="lp-plugin-card__update">
+                                <span class="lp-plugin-card__badge lp-plugin-card__badge--update">Update available: <?= esc_html($cardUpdate['version']) ?></span>
+                            </p>
+                        <?php endif; ?>
                         <div class="lp-plugin-card__actions">
+                            <?php if ($cardUpdate !== null): ?>
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('plugins')) ?>?ajax=progress" data-lp-update-progress-target="lp-plugin-update-progress">
+                                    <?= Csrf::field('plugin_update_card_' . $info->slug) ?>
+                                    <input type="hidden" name="form" value="plugin_update_download">
+                                    <input type="hidden" name="origin" value="card">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button lp-button--primary">Update</button>
+                                </form>
+                            <?php endif; ?>
                             <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
                                 <a class="lp-button lp-button--secondary" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
                             <?php endforeach; ?>
@@ -480,6 +800,7 @@ foreach ($pluginList as $info) {
 
                         <dl class="lp-plugin-details__facts">
                             <?php if ($info->version !== ''): ?><dt>Version</dt><dd><?= esc_html($info->version) ?></dd><?php endif; ?>
+                            <?php if ($cardUpdate !== null): ?><dt>Update available</dt><dd>Version <?= esc_html($cardUpdate['version']) ?></dd><?php endif; ?>
                             <?php if ($info->author !== ''): ?>
                                 <dt>Author</dt>
                                 <dd><?php if ($info->authorUri !== ''): ?><a href="<?= esc_url($info->authorUri) ?>" target="_blank" rel="noopener noreferrer"><?= esc_html($info->author) ?></a><?php else: ?><?= esc_html($info->author) ?><?php endif; ?></dd>
@@ -524,6 +845,15 @@ foreach ($pluginList as $info) {
                         <?php do_action('lp_plugin_details_panel', $info); ?>
 
                         <div class="lp-plugin-details__actions">
+                            <?php if ($cardUpdate !== null): ?>
+                                <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('plugin_update_details_' . $info->slug) ?>
+                                    <input type="hidden" name="form" value="plugin_update_download">
+                                    <input type="hidden" name="origin" value="details">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button lp-button--primary">Update to v<?= esc_html($cardUpdate['version']) ?></button>
+                                </form>
+                            <?php endif; ?>
                             <?php foreach ($pluginActionLinksBySlug[$info->slug] as $actionLink): ?>
                                 <a class="lp-button lp-button--secondary" href="<?= esc_url($actionLink['url']) ?>"><?= esc_html($actionLink['label']) ?></a>
                             <?php endforeach; ?>

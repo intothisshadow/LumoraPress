@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Services;
 
+use LumoraPress\Core\Plugin\PluginRegistry;
 use RuntimeException;
 use ZipArchive;
 
@@ -69,57 +70,7 @@ final class UpdatePackageValidator
      */
     public function validateAndStage(string $uploadedZipPath, string $installedVersion, bool $allowDowngrade): array
     {
-        if (!is_file($uploadedZipPath)) {
-            throw new RuntimeException('The uploaded file could not be found.');
-        }
-
-        $zip = new ZipArchive();
-
-        if ($zip->open($uploadedZipPath) !== true) {
-            throw new RuntimeException('The uploaded file is not a valid ZIP archive.');
-        }
-
-        $numFiles = $zip->numFiles;
-
-        if ($numFiles === 0) {
-            $zip->close();
-
-            throw new RuntimeException('The uploaded archive is empty.');
-        }
-
-        if ($numFiles > self::MAX_ENTRIES) {
-            $zip->close();
-
-            throw new RuntimeException('The archive contains too many files to be a valid Lumora Press package.');
-        }
-
-        $names = [];
-        $totalUncompressed = 0;
-
-        for ($i = 0; $i < $numFiles; $i++) {
-            $stat = $zip->statIndex($i);
-
-            if ($stat === false) {
-                continue;
-            }
-
-            $name = (string) $stat['name'];
-
-            if ($this->isUnsafeEntryName($name)) {
-                $zip->close();
-
-                throw new RuntimeException('The archive contains an unsafe file path and was rejected.');
-            }
-
-            $names[] = $name;
-            $totalUncompressed += (int) $stat['size'];
-        }
-
-        if ($totalUncompressed > self::MAX_UNCOMPRESSED_SIZE) {
-            $zip->close();
-
-            throw new RuntimeException('The archive is too large to be processed safely.');
-        }
+        [$zip, $names, $totalUncompressed] = $this->openArchive($uploadedZipPath);
 
         $rootPrefix = $this->detectRootPrefix($names);
 
@@ -259,6 +210,198 @@ final class UpdatePackageValidator
             'staging_path' => $stagingPath,
             'root_prefix' => $rootPrefix,
         ];
+    }
+
+    /**
+     * The plugin-scoped counterpart to validateAndStage(): accepts a ZIP
+     * holding just one bundled plugin (either `{slug}/{slug}.php` or
+     * `{slug}.php` at the archive root). Extracted into a `package/`
+     * subdirectory of the staging path so the plugin directory can later
+     * be moved into place whole without carrying UpdateService's own
+     * pending.json along with it.
+     *
+     * @return array{
+     *     blocking: array<int, string>,
+     *     warnings: array<int, string>,
+     *     from_version: string,
+     *     to_version: string,
+     *     token: string,
+     *     staging_path: string,
+     *     root_prefix: string,
+     *     name: string,
+     *     requires_at_least: string,
+     *     requires_php: string,
+     * }
+     */
+    public function validateAndStagePlugin(string $zipPath, string $slug, string $installedVersion): array
+    {
+        if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1) {
+            throw new RuntimeException('Invalid plugin identifier.');
+        }
+
+        [$zip, $names, $totalUncompressed] = $this->openArchive($zipPath);
+
+        $mainFile = $slug . '.php';
+
+        if (in_array($mainFile, $names, true)) {
+            $packagePrefix = '';
+        } elseif (in_array($slug . '/' . $mainFile, $names, true)) {
+            $packagePrefix = $slug . '/';
+        } else {
+            $zip->close();
+
+            throw new RuntimeException("The archive does not look like an update package for this plugin (missing {$mainFile}).");
+        }
+
+        $freeSpace = disk_free_space($this->installRoot);
+
+        if ($freeSpace !== false && $freeSpace < $totalUncompressed * 3) {
+            $zip->close();
+
+            throw new RuntimeException(
+                'There is not enough free disk space to safely apply this update (need roughly 3x the package size).',
+            );
+        }
+
+        $token = bin2hex(random_bytes(16));
+        $stagingPath = rtrim($this->stagingRoot, '/') . '/' . $token;
+        $extractPath = $stagingPath . '/package';
+
+        if (!is_dir($extractPath) && !mkdir($extractPath, 0755, true) && !is_dir($extractPath)) {
+            $zip->close();
+
+            throw new RuntimeException('Unable to create a staging directory for the update.');
+        }
+
+        if (!$zip->extractTo($extractPath)) {
+            $zip->close();
+            $this->removeDirectory($stagingPath);
+
+            throw new RuntimeException('Failed to extract the update archive.');
+        }
+
+        $zip->close();
+
+        $rootPrefix = 'package/' . $packagePrefix;
+        $header = PluginRegistry::parseHeader(rtrim($stagingPath . '/' . $rootPrefix, '/') . '/' . $mainFile);
+        $toVersion = $header['version'];
+
+        if (preg_match('/^\d+\.\d+\.\d+/', $toVersion) !== 1) {
+            $this->removeDirectory($stagingPath);
+
+            throw new RuntimeException('The plugin package does not declare a valid Version.');
+        }
+
+        $blocking = [];
+        $warnings = [];
+
+        $comparison = version_compare($toVersion, $installedVersion);
+
+        if ($comparison < 0) {
+            $blocking[] = sprintf(
+                'This package (version %s) is older than the installed version of the plugin (%s).',
+                $toVersion,
+                $installedVersion,
+            );
+        } elseif ($comparison === 0) {
+            $warnings[] = sprintf('This package is the same version (%s) of the plugin that is already installed.', $toVersion);
+        }
+
+        if (preg_match('/-(dev|alpha|beta|rc)(\.|$|\d)/i', $toVersion) === 1) {
+            $warnings[] = sprintf(
+                'This package (version %s) looks like a development build rather than a stable release — installing it on a production site is not recommended.',
+                $toVersion,
+            );
+        }
+
+        $pluginsDirectory = rtrim($this->installRoot, '/') . '/content/plugins';
+        $pluginDirectory = $pluginsDirectory . '/' . $slug;
+
+        // Replacing the directory wholesale needs its parent writable too, not just the directory itself.
+        if (!is_writable($pluginsDirectory) || (is_dir($pluginDirectory) && !is_writable($pluginDirectory))) {
+            $blocking[] = "\"content/plugins/{$slug}\" is not writable by the web server.";
+        }
+
+        if ($blocking !== []) {
+            $this->removeDirectory($stagingPath);
+        }
+
+        return [
+            'blocking' => $blocking,
+            'warnings' => $warnings,
+            'from_version' => $installedVersion,
+            'to_version' => $toVersion,
+            'token' => $token,
+            'staging_path' => $stagingPath,
+            'root_prefix' => $rootPrefix,
+            'name' => $header['name'] !== '' ? $header['name'] : $slug,
+            'requires_at_least' => $header['requiresAtLeast'],
+            'requires_php' => $header['requiresPhp'],
+        ];
+    }
+
+    /**
+     * Opens an archive and runs the structural checks every package type
+     * shares (entry count, unsafe paths, uncompressed size). The caller
+     * owns the returned open ZipArchive and must close it.
+     *
+     * @return array{0: ZipArchive, 1: array<int, string>, 2: int}
+     */
+    private function openArchive(string $zipPath): array
+    {
+        if (!is_file($zipPath)) {
+            throw new RuntimeException('The uploaded file could not be found.');
+        }
+
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('The uploaded file is not a valid ZIP archive.');
+        }
+
+        $numFiles = $zip->numFiles;
+
+        if ($numFiles === 0) {
+            $zip->close();
+
+            throw new RuntimeException('The uploaded archive is empty.');
+        }
+
+        if ($numFiles > self::MAX_ENTRIES) {
+            $zip->close();
+
+            throw new RuntimeException('The archive contains too many files to be a valid Lumora Press package.');
+        }
+
+        $names = [];
+        $totalUncompressed = 0;
+
+        for ($i = 0; $i < $numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+
+            if ($stat === false) {
+                continue;
+            }
+
+            $name = (string) $stat['name'];
+
+            if ($this->isUnsafeEntryName($name)) {
+                $zip->close();
+
+                throw new RuntimeException('The archive contains an unsafe file path and was rejected.');
+            }
+
+            $names[] = $name;
+            $totalUncompressed += (int) $stat['size'];
+        }
+
+        if ($totalUncompressed > self::MAX_UNCOMPRESSED_SIZE) {
+            $zip->close();
+
+            throw new RuntimeException('The archive is too large to be processed safely.');
+        }
+
+        return [$zip, $names, $totalUncompressed];
     }
 
     private function isUnsafeEntryName(string $name): bool

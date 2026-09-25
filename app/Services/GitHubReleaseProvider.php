@@ -72,6 +72,7 @@ final class GitHubReleaseProvider
      *     sha256: ?string,
      *     prerelease: bool,
      *     download: array{type: string, url: string, name: string, size: ?int},
+     *     plugins: array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>,
      * }|null Null when GitHub could not be reached or returned no usable release.
      */
     public function fetchLatestRelease(): ?array
@@ -160,6 +161,7 @@ final class GitHubReleaseProvider
      *     sha256: ?string,
      *     prerelease: bool,
      *     download: array{type: string, url: string, name: string, size: ?int},
+     *     plugins: array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>,
      * }|null
      */
     public function checkNow(): ?array
@@ -184,6 +186,7 @@ final class GitHubReleaseProvider
      *     changelog_url: ?string,
      *     prerelease: bool,
      *     download: array{type: string, url: string, name: string, size: ?int},
+     *     plugins: array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>,
      * } $release
      */
     private function cacheRelease(array $release): void
@@ -196,6 +199,80 @@ final class GitHubReleaseProvider
         $this->config->setOption('update_last_known_prerelease', $release['prerelease'] ? '1' : '0');
         $this->config->setOption('update_last_known_download_name', $release['download']['name']);
         $this->config->setOption('update_last_known_download_size', (string) ($release['download']['size'] ?? ''));
+
+        $plugins = [];
+
+        foreach ($release['plugins'] as $slug => $plugin) {
+            $plugins[$slug] = [
+                'version' => $plugin['version'],
+                'download_name' => $plugin['download']['name'],
+                'download_size' => $plugin['download']['size'],
+            ];
+        }
+
+        $this->config->setOption('update_last_known_plugins', (string) json_encode($plugins));
+    }
+
+    /**
+     * The cached plugin assets from the most recent check that are newer
+     * than what's installed — no network call, safe on every page load.
+     *
+     * @param array<string, string> $installedVersions slug => installed version
+     *
+     * @return array<string, array{version: string, download_name: string, download_size: ?int}>
+     */
+    public function cachedPluginUpdates(array $installedVersions): array
+    {
+        $decoded = json_decode((string) $this->config->option('update_last_known_plugins', ''), true);
+
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $updates = [];
+
+        foreach ($decoded as $slug => $plugin) {
+            if (!is_string($slug) || !is_array($plugin) || !is_string($plugin['version'] ?? null) || !isset($installedVersions[$slug])) {
+                continue;
+            }
+
+            if (version_compare($plugin['version'], $installedVersions[$slug], '>')) {
+                $updates[$slug] = [
+                    'version' => $plugin['version'],
+                    'download_name' => (string) ($plugin['download_name'] ?? ''),
+                    'download_size' => isset($plugin['download_size']) ? (int) $plugin['download_size'] : null,
+                ];
+            }
+        }
+
+        return $updates;
+    }
+
+    /**
+     * Downloads one bundled plugin's package from the latest release,
+     * re-fetching release metadata rather than trusting the cache (asset
+     * URLs can go stale). Its `.sha256` companion is verified when present.
+     *
+     * @throws RuntimeException when the release or plugin asset can't be found, or on download/checksum failure.
+     */
+    public function downloadPluginRelease(string $slug, string $destinationPath): void
+    {
+        $release = $this->fetchLatestRelease();
+
+        if ($release === null) {
+            throw new RuntimeException('Could not reach GitHub to download the plugin update.');
+        }
+
+        $plugin = $release['plugins'][$slug] ?? null;
+
+        if ($plugin === null) {
+            throw new RuntimeException('The latest release does not include an update package for this plugin.');
+        }
+
+        $this->downloadRelease([
+            'download' => $plugin['download'],
+            'sha256' => $plugin['sha256_url'] !== null ? $this->fetchChecksum($plugin['sha256_url']) : null,
+        ], $destinationPath);
     }
 
     /**
@@ -378,6 +455,7 @@ final class GitHubReleaseProvider
      *     sha256: ?string,
      *     prerelease: bool,
      *     download: array{type: string, url: string, name: string, size: ?int},
+     *     plugins: array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>,
      * }
      */
     private function mapRelease(array $data): array
@@ -449,7 +527,63 @@ final class GitHubReleaseProvider
             'sha256' => $sha256,
             'prerelease' => $prerelease,
             'download' => $download,
+            'plugins' => $this->mapPluginAssets($assets),
         ];
+    }
+
+    /**
+     * Collects the `{slug}-v{version}.zip` (+ `.sha256`) assets
+     * build-release.sh attaches for bundled plugins whose version changed.
+     * Checksums are only fetched at download time, so a check costs no
+     * extra requests. Slugs are lowercase-only, which is also what keeps
+     * the core `LumoraPress-v{version}.zip` asset out of this map.
+     *
+     * @param array<int|string, mixed> $assets
+     *
+     * @return array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>
+     */
+    private function mapPluginAssets(array $assets): array
+    {
+        $checksumUrls = [];
+
+        foreach ($assets as $asset) {
+            if (is_array($asset) && is_string($asset['name'] ?? null) && str_ends_with($asset['name'], '.zip.sha256')) {
+                $checksumUrls[substr($asset['name'], 0, -strlen('.sha256'))] = (string) ($asset['url'] ?? '');
+            }
+        }
+
+        $plugins = [];
+
+        foreach ($assets as $asset) {
+            if (!is_array($asset) || !is_string($asset['name'] ?? null) || !is_string($asset['url'] ?? null)) {
+                continue;
+            }
+
+            if (preg_match('/^([a-z0-9][a-z0-9_-]*)-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.zip$/', $asset['name'], $matches) !== 1) {
+                continue;
+            }
+
+            [, $slug, $version] = $matches;
+
+            if (isset($plugins[$slug]) && version_compare($plugins[$slug]['version'], $version, '>=')) {
+                continue;
+            }
+
+            $plugins[$slug] = [
+                'version' => $version,
+                'download' => [
+                    'type' => 'asset',
+                    'url' => $asset['url'],
+                    'name' => $asset['name'],
+                    'size' => isset($asset['size']) ? (int) $asset['size'] : null,
+                ],
+                'sha256_url' => ($checksumUrls[$asset['name']] ?? '') !== '' ? $checksumUrls[$asset['name']] : null,
+            ];
+        }
+
+        ksort($plugins);
+
+        return $plugins;
     }
 
     private function fetchChecksum(string $assetApiUrl): ?string

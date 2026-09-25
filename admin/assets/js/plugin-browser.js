@@ -17,7 +17,7 @@
  *       <tr data-lp-plugin-row data-plugin-search="..." data-plugin-status="active|inactive">
  *     <div data-lp-plugin-grid>                             — card container
  *       <div data-lp-plugin-card data-plugin-search="..." data-plugin-status="active|inactive">
- *   Both rows and cards may carry:
+ *   Both rows and cards may carry a bare `data-plugin-update` attribute (matched by the "update" filter value) and:
  *       <button data-lp-plugin-details-trigger data-plugin-template="lp-plugin-details-{slug}">
  *   <template id="lp-plugin-details-{slug}">               — details panel markup
  *   <p data-lp-plugin-empty hidden>                         — "no results" message
@@ -62,7 +62,9 @@
                 var haystack = item.getAttribute('data-plugin-search') || '';
                 var itemStatus = item.getAttribute('data-plugin-status') || '';
                 var matchesQuery = query === '' || haystack.indexOf(query) !== -1;
-                var matchesStatus = status === 'all' || status === itemStatus;
+                var matchesStatus = status === 'all'
+                    || status === itemStatus
+                    || (status === 'update' && item.hasAttribute('data-plugin-update'));
                 var matches = matchesQuery && matchesStatus;
 
                 item.hidden = !matches;

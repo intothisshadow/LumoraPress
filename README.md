@@ -109,6 +109,8 @@ Administrators can update Lumora Press entirely from within the admin panel — 
 - If anything goes wrong mid-update, Lumora Press rolls back to the pre-update backup automatically.
 - If the admin panel itself ever becomes unreachable after a failed update, the backup files can also be restored by hand.
 
+The plugins bundled with Lumora Press can also be updated on their own, without updating Lumora Press itself. When a release includes a newer version of one, the **Plugins** screen marks it "Update available" with an **Update** button (use **Check for Updates** there, or on Maintenance &rsaquo; Updates, to look for new releases). The same backup, checks, and automatic rollback apply, but only that plugin's folder is replaced. If the new plugin version needs a newer Lumora Press than you're running, it's refused until you update Lumora Press first.
+
 Update history, backup management, and full mechanics are documented in [`docs/UPDATES.md`](docs/UPDATES.md).
 
 ## Privacy: Anonymous Install Ping

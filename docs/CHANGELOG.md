@@ -4,6 +4,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Update bundled plugins on their own (LP-162): a plugin that ships with Lumora Press can now be updated without a full Lumora Press update. When a release includes a newer copy of a bundled plugin, the Plugins screen shows an "Update available" badge on that plugin with an Update button, a count of available updates above the list, and a "Check for Updates" button; the existing "Update Available" filter now shows just those plugins. Updating downloads the plugin's package from the release, checks it (including its SHA-256 checksum), shows a summary to confirm, then backs up your files and database, replaces only that plugin's folder, and rolls back automatically if anything fails, with the same in-place progress as Maintenance &rsaquo; Updates. A plugin version that needs a newer Lumora Press than the site is running is refused with a message to update Lumora Press first; this is the first time a plugin's "Requires at least" is actually enforced. Plugin updates appear in the Update History on Maintenance &rsaquo; Updates with the source "Plugin". Plugins you installed yourself aren't affected.
+- Two new actions, `lumora_press_before_plugin_update` and `lumora_press_after_plugin_update`, fire around a bundled plugin update (the core update actions don't fire for one).
+
 ### Changed
 
 - The XML sitemap address now appears on Settings &rsaquo; Reading, in the Search Engine Visibility section next to the `robots.txt` link, with a note that it's the address to submit to Google Search Console or Bing Webmaster Tools (and that `robots.txt` stops pointing to it while indexing is discouraged). It was previously only listed under Settings &rsaquo; Redirects.

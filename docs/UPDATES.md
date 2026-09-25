@@ -79,6 +79,16 @@ GitHub Update Settings panel (hourly/daily/weekly, or disabled entirely).
 This only ever checks; nothing downloads or installs without an explicit
 click.
 
+## Updating a bundled plugin on its own
+
+A plugin that ships with Lumora Press (Font Awesome, Downloads, Contact Forms, and the rest of the bundled set) can be updated without a full Lumora Press update, for when a release fixes only that plugin.
+
+- **Where updates come from.** A GitHub release can carry a separate package for each bundled plugin whose version changed, named `{plugin-folder}-v{version}.zip` with a matching `.sha256` checksum, alongside the usual full Lumora Press package. The same "Check for Updates" that looks for a new Lumora Press release also notes these plugin packages, whether it runs from Maintenance &rsaquo; Updates, the Dashboard's automatic check, or the **Check for Updates** button on the Plugins screen.
+- **What you see.** On the **Plugins** screen, each bundled plugin with a newer package shows an "Update available" badge and an **Update** button (in the list, the grid, and the Details panel), and the count of available updates appears above the list. The "Update Available" filter shows only those plugins. Plugins you installed yourself never show an update here; replace them with a new ZIP through Install a Plugin as before.
+- **What happens.** Update downloads the plugin's package from the latest release, verifies its checksum, and checks it: it must really be that plugin, it can't be older than what's installed, and its "Requires at least" and "Requires PHP" must be met. A plugin version that needs a newer Lumora Press than this site runs is refused, with a message to update Lumora Press first. A summary screen then shows the version change and any warnings (another user active in the admin, or a file in that plugin edited since it was installed) before you confirm.
+- **Applying it.** The same safety steps as a full update run, with live progress on the page: maintenance mode, a backup of the core files and database (labelled with the Lumora Press version), then only that plugin's folder is replaced. There are no database migrations for a plugin-only update, since a bundled plugin's tables ship with Lumora Press itself. If anything fails, the backup is restored automatically. Settings, content, and whether the plugin is active are left as they were.
+- **History.** Plugin updates appear in Maintenance &rsaquo; Updates' Update History with the source "Plugin", the plugin's own old and new version numbers, and the plugin's name in the message. Lumora Press keeps its own record of each bundled plugin's installed version in `storage/updates/plugin-versions.json`, kept in step with each plugin's own `Version:` header, including when a full Lumora Press update brings a newer copy of a plugin.
+
 ## Manual recovery
 
 If the admin panel itself becomes unreachable after a failed update,

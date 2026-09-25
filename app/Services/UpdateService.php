@@ -21,6 +21,7 @@ use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\InstallerCleanup;
+use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\UpdateStatus;
 use RuntimeException;
@@ -63,6 +64,8 @@ final class UpdateService
      */
     private const MAX_MODIFIED_FILES_SHOWN = 10;
 
+    private const PLUGINS_PATH_PREFIX = 'content/plugins/';
+
     /**
      * @param array<int, string> $corePaths Paths (relative to $installRoot) the
      *     updater overlays from the staged package onto the installation.
@@ -96,7 +99,165 @@ final class UpdateService
         private readonly ?UserService $users = null,
         private readonly ?UpdateChecksumManifest $checksums = null,
         private readonly ?UpdateProgress $progress = null,
+        private readonly ?PluginVersionManifest $pluginVersions = null,
     ) {
+    }
+
+    /**
+     * Bundled plugins are exactly the `content/plugins/{slug}` entries in
+     * core-paths.php — the only plugins a release asset can ever update.
+     *
+     * @return array<int, string>
+     */
+    public function bundledPluginSlugs(): array
+    {
+        $slugs = [];
+
+        foreach ($this->corePaths as $corePath) {
+            if (!str_starts_with($corePath, self::PLUGINS_PATH_PREFIX)) {
+                continue;
+            }
+
+            $slug = substr($corePath, strlen(self::PLUGINS_PATH_PREFIX));
+
+            if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) === 1) {
+                $slugs[] = $slug;
+            }
+        }
+
+        return $slugs;
+    }
+
+    public function isBundledPlugin(string $slug): bool
+    {
+        return in_array($slug, $this->bundledPluginSlugs(), true);
+    }
+
+    /**
+     * Installed versions of every bundled plugin present on disk, synced
+     * against each plugin's own header (which stays authoritative).
+     *
+     * @return array<string, string>
+     */
+    public function installedPluginVersions(): array
+    {
+        $headerVersions = [];
+
+        foreach ($this->bundledPluginSlugs() as $slug) {
+            $mainFile = $this->pluginMainFile($slug);
+
+            if (is_file($mainFile)) {
+                $headerVersions[$slug] = PluginRegistry::parseHeader($mainFile)['version'];
+            }
+        }
+
+        if ($this->pluginVersions === null) {
+            return array_filter($headerVersions, static fn (string $version): bool => $version !== '');
+        }
+
+        $recorded = $this->pluginVersions->sync($headerVersions);
+
+        // Only plugins still installed — a deleted plugin's stale entry is harmless on disk but must not show as updatable.
+        return array_intersect_key($recorded, $headerVersions);
+    }
+
+    /**
+     * Blocking problems with installing a plugin package whose header
+     * declares these requirements. Pure logic, split out so it's
+     * unit-testable; an unrecognisable version string fails open, the
+     * same as isDatabaseVersionSupported().
+     *
+     * @return array<int, string>
+     */
+    public static function pluginRequirementProblems(string $requiresAtLeast, string $requiresPhp, string $coreVersion, string $phpVersion = PHP_VERSION): array
+    {
+        $problems = [];
+        $requiresAtLeast = trim($requiresAtLeast);
+        $requiresPhp = trim($requiresPhp);
+
+        if (preg_match('/^\d+(\.\d+)*$/', $requiresAtLeast) === 1 && version_compare($coreVersion, $requiresAtLeast, '<')) {
+            $problems[] = sprintf(
+                'This version of the plugin requires Lumora Press %s or higher; this site is running %s. Update Lumora Press itself first.',
+                $requiresAtLeast,
+                $coreVersion,
+            );
+        }
+
+        if (preg_match('/^\d+(\.\d+)*$/', $requiresPhp) === 1 && version_compare($phpVersion, $requiresPhp, '<')) {
+            $problems[] = sprintf(
+                'This version of the plugin requires PHP %s or higher; the server is running PHP %s.',
+                $requiresPhp,
+                $phpVersion,
+            );
+        }
+
+        return $problems;
+    }
+
+    /**
+     * The plugin-scoped counterpart to checkUpload(): validates and stages
+     * a single bundled plugin's package, then hands off to the same
+     * beginInstall()/continueInstall() pipeline core updates use.
+     *
+     * @return array{
+     *     blocking: array<int, string>,
+     *     warnings: array<int, string>,
+     *     slug: string,
+     *     name: string,
+     *     from_version: string,
+     *     to_version: string,
+     *     token: string,
+     * }
+     */
+    public function checkPluginPackage(string $slug, string $zipPath, ?int $currentUserId = null): array
+    {
+        if (!$this->isBundledPlugin($slug)) {
+            throw new RuntimeException('Only plugins bundled with Lumora Press can be updated this way.');
+        }
+
+        $fromVersion = $this->installedPluginVersions()[$slug] ?? '0.0.0';
+
+        $this->progress?->stage('validate');
+
+        $result = $this->validator->validateAndStagePlugin($zipPath, $slug, $fromVersion);
+
+        $this->progress?->stage('compatibility');
+
+        array_push($result['blocking'], ...self::pluginRequirementProblems($result['requires_at_least'], $result['requires_php'], $this->installedVersion()));
+        array_push($result['blocking'], ...$this->backupLocationProblems());
+
+        array_push($result['warnings'], ...$this->activeUserProblems($currentUserId));
+        array_push($result['warnings'], ...$this->modifiedCoreFileProblems(self::PLUGINS_PATH_PREFIX . $slug . '/'));
+
+        $this->progress?->complete(
+            $result['blocking'] === [],
+            $result['blocking'] === [] ? 'Ready to install.' : 'Please resolve the issues below and try again.',
+        );
+
+        if ($result['blocking'] === []) {
+            file_put_contents(rtrim($result['staging_path'], '/') . '/' . self::PENDING_FILE, json_encode([
+                'scope' => 'plugin',
+                'plugin_slug' => $slug,
+                'plugin_name' => $result['name'],
+                'from_version' => $result['from_version'],
+                'to_version' => $result['to_version'],
+                'root_prefix' => $result['root_prefix'],
+                'source' => 'plugin',
+                'created_at' => time(),
+            ], JSON_THROW_ON_ERROR));
+        } else {
+            $this->removeDirectory($result['staging_path']);
+        }
+
+        return [
+            'blocking' => $result['blocking'],
+            'warnings' => $result['warnings'],
+            'slug' => $slug,
+            'name' => $result['name'],
+            'from_version' => $result['from_version'],
+            'to_version' => $result['to_version'],
+            'token' => $result['token'],
+        ];
     }
 
     /**
@@ -299,10 +460,12 @@ final class UpdateService
      * last successful install(). A mismatch means a core file was
      * hand-edited since then and will be silently overwritten. Returns
      * [] when nothing was recorded yet — fail-safe, not a false alarm.
+     * $pathPrefix narrows the check to the files a plugin-scoped update
+     * would actually overwrite.
      *
      * @return array<int, string>
      */
-    public function modifiedCoreFileProblems(): array
+    public function modifiedCoreFileProblems(?string $pathPrefix = null): array
     {
         if ($this->checksums === null) {
             return [];
@@ -317,6 +480,10 @@ final class UpdateService
         $modified = [];
 
         foreach ($expected as $relativePath => $expectedHash) {
+            if ($pathPrefix !== null && !str_starts_with($relativePath, $pathPrefix)) {
+                continue;
+            }
+
             $absolute = rtrim($this->installRoot, '/') . '/' . $relativePath;
             $actualHash = is_file($absolute) ? hash_file('sha256', $absolute) : false;
 
@@ -370,6 +537,10 @@ final class UpdateService
 
         $stagingPath = $this->stagingPathFor($token);
         $pending = $this->readPending($stagingPath);
+
+        if ($pending['scope'] !== 'core') {
+            throw new RuntimeException('Plugin updates must be installed through the staged update pipeline.');
+        }
 
         $fromVersion = $pending['from_version'];
         $toVersion = $pending['to_version'];
@@ -454,10 +625,14 @@ final class UpdateService
 
         try {
             $previousMaintenanceMode = $this->beginMaintenanceMode();
-            $this->hooks->doAction('lumora_press_before_update', $pending['from_version'], $pending['to_version']);
 
             $state = [
                 'token' => $token,
+                'scope' => $pending['scope'],
+                'plugin_slug' => $pending['plugin_slug'],
+                'plugin_name' => $pending['plugin_name'],
+                // Backups always capture the whole core tree, so they're labelled with the core version even for a plugin update.
+                'backup_version' => $this->installedVersion(),
                 'from_version' => $pending['from_version'],
                 'to_version' => $pending['to_version'],
                 'root_prefix' => $pending['root_prefix'],
@@ -472,6 +647,7 @@ final class UpdateService
                 'effective_core_paths' => null,
             ];
 
+            $this->fireBeforeUpdateHook($state);
             $this->writeInstallState($state);
             $this->progress?->stage('backup_files');
 
@@ -509,11 +685,13 @@ final class UpdateService
         $this->validateToken($token);
         $state = $this->readInstallState($token);
         $stagingPath = $this->stagingPathFor($token);
+        $pluginSlug = ($state['scope'] ?? 'core') === 'plugin' ? (string) $state['plugin_slug'] : null;
+        $backupVersion = (string) ($state['backup_version'] ?? $state['from_version']);
 
         try {
             switch ($state['stage']) {
                 case 'backup_files':
-                    $state['files_backup_path'] = $this->backups->backupFiles($state['from_version']);
+                    $state['files_backup_path'] = $this->backups->backupFiles($backupVersion);
                     $state['stage'] = 'backup_database';
                     $this->progress?->stage('backup_database');
 
@@ -521,7 +699,7 @@ final class UpdateService
 
                 case 'backup_database':
                     $result = $this->backups->backupDatabaseBatch(
-                        $state['from_version'],
+                        $backupVersion,
                         $state['database_backup_path'],
                         $state['database_table_index'],
                         $state['database_row_offset'],
@@ -538,9 +716,16 @@ final class UpdateService
                     break;
 
                 case 'apply_files':
-                    $state['effective_core_paths'] = $this->applyFilesStage($stagingPath, $state['root_prefix']);
-                    $state['stage'] = 'migrate';
-                    $this->progress?->stage('migrate');
+                    if ($pluginSlug !== null) {
+                        $state['effective_core_paths'] = $this->applyPluginFilesStage($stagingPath, $state['root_prefix'], $pluginSlug);
+                        // A plugin package carries no migrations — its schema ships with core, which is what Requires at least guards.
+                        $state['stage'] = 'clear_cache';
+                        $this->progress?->stage('clear_cache');
+                    } else {
+                        $state['effective_core_paths'] = $this->applyFilesStage($stagingPath, $state['root_prefix']);
+                        $state['stage'] = 'migrate';
+                        $this->progress?->stage('migrate');
+                    }
 
                     break;
 
@@ -552,18 +737,29 @@ final class UpdateService
                     break;
 
                 case 'clear_cache':
-                    $this->clearCacheAndVerifyStage($state['to_version']);
+                    if ($pluginSlug !== null) {
+                        $this->clearCacheAndVerifyPluginStage($pluginSlug, $state['to_version']);
+                    } else {
+                        $this->clearCacheAndVerifyStage($state['to_version']);
+                    }
+
                     $state['stage'] = 'cleanup';
                     $this->progress?->stage('cleanup');
 
                     break;
 
                 case 'cleanup':
-                    $this->cleanupStage($state['effective_core_paths'] ?? [], $stagingPath);
+                    if ($pluginSlug !== null) {
+                        $this->cleanupPluginStage($pluginSlug, $state['to_version'], $stagingPath);
+                    } else {
+                        $this->cleanupStage($state['effective_core_paths'] ?? [], $stagingPath);
+                    }
 
-                    $message = "Successfully updated from {$state['from_version']} to {$state['to_version']}.";
+                    $message = $pluginSlug !== null
+                        ? "Successfully updated {$state['plugin_name']} from {$state['from_version']} to {$state['to_version']}."
+                        : "Successfully updated from {$state['from_version']} to {$state['to_version']}.";
                     $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], UpdateStatus::Success, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
-                    $this->hooks->doAction('lumora_press_after_update', $state['from_version'], $state['to_version'], UpdateStatus::Success);
+                    $this->fireAfterUpdateHook($state, UpdateStatus::Success);
                     $this->progress?->complete(true, $message);
                     $this->endMaintenanceMode($state['previous_maintenance_mode']);
                     $this->releaseLock();
@@ -582,7 +778,7 @@ final class UpdateService
 
             $this->removeDirectory($stagingPath);
             $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], $status, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
-            $this->hooks->doAction('lumora_press_after_update', $state['from_version'], $state['to_version'], $status);
+            $this->fireAfterUpdateHook($state, $status);
             $this->progress?->complete(false, $message);
             $this->endMaintenanceMode($state['previous_maintenance_mode']);
             $this->releaseLock();
@@ -706,18 +902,53 @@ final class UpdateService
      * pipeline's current stage — for the admin view's GET render between
      * continueInstall() calls. Never advances anything.
      *
-     * @return array{stage: string, from_version: string, to_version: string}
+     * @return array{stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string}
      */
     public function installProgress(string $token): array
     {
         $this->validateToken($token);
         $state = $this->readInstallState($token);
+        $isPlugin = ($state['scope'] ?? 'core') === 'plugin';
 
         return [
             'stage' => (string) $state['stage'],
             'from_version' => (string) $state['from_version'],
             'to_version' => (string) $state['to_version'],
+            'scope' => $isPlugin ? 'plugin' : 'core',
+            'plugin_slug' => $isPlugin ? (string) $state['plugin_slug'] : null,
+            'plugin_name' => $isPlugin ? (string) $state['plugin_name'] : null,
         ];
+    }
+
+    /**
+     * Plugin updates get their own hooks: firing the core ones with plugin
+     * version numbers would mislead every listener expecting core versions.
+     *
+     * @param array<string, mixed> $state
+     */
+    private function fireBeforeUpdateHook(array $state): void
+    {
+        if (($state['scope'] ?? 'core') === 'plugin') {
+            $this->hooks->doAction('lumora_press_before_plugin_update', $state['plugin_slug'], $state['from_version'], $state['to_version']);
+
+            return;
+        }
+
+        $this->hooks->doAction('lumora_press_before_update', $state['from_version'], $state['to_version']);
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    private function fireAfterUpdateHook(array $state, UpdateStatus $status): void
+    {
+        if (($state['scope'] ?? 'core') === 'plugin') {
+            $this->hooks->doAction('lumora_press_after_plugin_update', $state['plugin_slug'], $state['from_version'], $state['to_version'], $status);
+
+            return;
+        }
+
+        $this->hooks->doAction('lumora_press_after_update', $state['from_version'], $state['to_version'], $status);
     }
 
     /**
@@ -785,6 +1016,68 @@ final class UpdateService
         return $effectiveCorePaths;
     }
 
+    /**
+     * Replaces one bundled plugin's directory wholesale, the same way
+     * applyFilesStage() replaces each corePath.
+     *
+     * @return array<int, string> the single path overlaid
+     */
+    private function applyPluginFilesStage(string $stagingPath, string $rootPrefix, string $slug): array
+    {
+        $source = rtrim($stagingPath . '/' . $rootPrefix, '/');
+
+        if (!is_file($source . '/' . $slug . '.php')) {
+            throw new RuntimeException('The staged plugin package is missing its main file.');
+        }
+
+        $relativePath = self::PLUGINS_PATH_PREFIX . $slug;
+        $this->overlayPath($source, rtrim($this->installRoot, '/') . '/' . $relativePath);
+
+        return [$relativePath];
+    }
+
+    private function clearCacheAndVerifyPluginStage(string $slug, string $toVersion): void
+    {
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+        }
+
+        $this->clearCache();
+
+        if (PluginRegistry::parseHeader($this->pluginMainFile($slug))['version'] !== $toVersion) {
+            throw new RuntimeException('The installed plugin version did not match the update package after applying it.');
+        }
+    }
+
+    /**
+     * Refreshes only this plugin's slice of the checksum baseline — the
+     * rest of core wasn't touched, so its recorded checksums stay valid.
+     */
+    private function cleanupPluginStage(string $slug, string $toVersion, string $stagingPath): void
+    {
+        $relativePath = self::PLUGINS_PATH_PREFIX . $slug;
+
+        if ($this->checksums !== null) {
+            $prefix = $relativePath . '/';
+            $kept = array_filter(
+                $this->checksums->read(),
+                static fn (string $path): bool => !str_starts_with($path, $prefix),
+                ARRAY_FILTER_USE_KEY,
+            );
+
+            $this->checksums->write(array_merge($kept, $this->checksums->computeForCorePaths([$relativePath])));
+        }
+
+        $this->pluginVersions?->record($slug, $toVersion);
+
+        $this->removeDirectory($stagingPath);
+    }
+
+    private function pluginMainFile(string $slug): string
+    {
+        return rtrim($this->installRoot, '/') . '/' . self::PLUGINS_PATH_PREFIX . $slug . '/' . $slug . '.php';
+    }
+
     private function migrateStage(): void
     {
         (new Migrator($this->database, $this->migrationsPath, $this->tablePrefix))->migrate();
@@ -850,6 +1143,9 @@ final class UpdateService
 
         $this->removeObsoleteCorePaths($effectiveCorePaths);
         $this->checksums?->write($this->checksums->computeForCorePaths($effectiveCorePaths));
+
+        // A core release can carry newer bundled plugins too, so their recorded versions must follow.
+        $this->installedPluginVersions();
 
         $this->removeDirectory($stagingPath);
     }
@@ -1292,7 +1588,16 @@ final class UpdateService
     }
 
     /**
-     * @return array{from_version: string, to_version: string, root_prefix: string, source: string, created_at: int}
+     * @return array{
+     *     from_version: string,
+     *     to_version: string,
+     *     root_prefix: string,
+     *     source: string,
+     *     created_at: int,
+     *     scope: string,
+     *     plugin_slug: ?string,
+     *     plugin_name: ?string,
+     * }
      */
     private function readPending(string $stagingPath): array
     {
@@ -1315,12 +1620,23 @@ final class UpdateService
             throw new RuntimeException('This pending update has expired. Please upload the package again.');
         }
 
+        $isPlugin = ($pending['scope'] ?? 'core') === 'plugin';
+        $pluginSlug = $isPlugin && is_string($pending['plugin_slug'] ?? null) ? $pending['plugin_slug'] : null;
+
+        // Re-checked here since the slug ends up in a filesystem path during apply_files.
+        if ($isPlugin && ($pluginSlug === null || !$this->isBundledPlugin($pluginSlug))) {
+            throw new RuntimeException('The pending update record is corrupt. Please start the update again.');
+        }
+
         return [
             'from_version' => (string) $pending['from_version'],
             'to_version' => (string) $pending['to_version'],
             'root_prefix' => (string) $pending['root_prefix'],
             'source' => is_string($pending['source'] ?? null) ? $pending['source'] : 'manual',
             'created_at' => (int) $pending['created_at'],
+            'scope' => $isPlugin ? 'plugin' : 'core',
+            'plugin_slug' => $pluginSlug,
+            'plugin_name' => $isPlugin ? (string) ($pending['plugin_name'] ?? $pluginSlug) : null,
         ];
     }
 
