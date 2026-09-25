@@ -71,7 +71,7 @@ final class CommentImporter
             : null;
 
         $comment = $this->comments->create(
-            postId: $data->postId,
+            postId: $data->pageId !== null ? null : $data->postId,
             parentId: $parentId,
             userId: $data->userId,
             guestName: $data->guestName,
@@ -81,6 +81,7 @@ final class CommentImporter
             status: $data->status,
             ipAddress: null,
             userAgent: null,
+            pageId: $data->pageId,
             commentedAt: $data->commentedAt,
         );
 

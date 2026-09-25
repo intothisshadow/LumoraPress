@@ -129,12 +129,16 @@ final class PostImporter
      */
     private function assignTaxonomyAndMeta(int $postId, ImportedPost $data): void
     {
-        $categoryIds = array_map(
+        $categoryIds = $data->categoryIds !== [] ? $data->categoryIds : array_map(
             fn (string $name): int => $this->categories->findOrCreateByName($name)->id,
             $data->categories,
         );
         $this->categories->assignToPost($postId, $categoryIds);
         $this->tags->assignToPost($postId, $data->tags);
         $this->posts->replaceMetaForPost($postId, $data->meta);
+
+        if ($data->metaTitle !== null || $data->metaDescription !== null) {
+            $this->posts->updateSeo($postId, $data->metaTitle, $data->metaDescription);
+        }
     }
 }

@@ -66,6 +66,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Automatic, downloadable backups and one-click rollback
 - Updates via GitHub Releases or a manual ZIP upload
 - Portable settings export/import between installs
+- Full content export, as a Lumora Press file for moving to another Lumora Press site or as a WordPress (WXR) file for moving elsewhere, plus import of Lumora Press exports
 
 ### SEO & Privacy
 - SEO titles and meta descriptions
@@ -82,7 +83,7 @@ For the complete feature list and implementation details, see [`docs/FEATURES.md
 
 - PHP 8.2, 8.3, 8.4, or 8.5
 - MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search)
-- The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip` is required only for the manual core-update and theme-install features)
+- The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip` is required only for the manual core-update, theme-install, and Lumora Press content export/import features)
 - Apache with `mod_rewrite` (the shipped `.htaccess` files assume Apache)
 - `config/`, `storage/logs/`, `storage/sessions/`, `storage/cache/`, and `content/uploads/` writable by the web server user
 
@@ -112,6 +113,15 @@ Administrators can update Lumora Press entirely from within the admin panel — 
 The plugins bundled with Lumora Press can also be updated on their own, without updating Lumora Press itself. When a release includes a newer version of one, the **Plugins** screen marks it "Update available" with an **Update** button (use **Check for Updates** there, or on Maintenance &rsaquo; Updates, to look for new releases). The same backup, checks, and automatic rollback apply, but only that plugin's folder is replaced. If the new plugin version needs a newer Lumora Press than you're running, it's refused until you update Lumora Press first.
 
 Update history, backup management, and full mechanics are documented in [`docs/UPDATES.md`](docs/UPDATES.md).
+
+## Moving Your Content
+
+**Maintenance &rsaquo; Export** downloads your site's content — posts, pages, comments, media, users, menus, and widgets, or just the ones you pick — as a single file. Themes, plugins, site settings, and passwords are never included (use Export Settings on Maintenance &rsaquo; Tools to copy settings between Lumora Press sites).
+
+- **Lumora Press (.zip)** keeps everything exactly as it is, for moving to another Lumora Press site or keeping as a backup. By default it also contains your uploaded images and files; uncheck "Include uploaded files" for a much smaller file that still lists every media item's details. Import it on the other site from **Maintenance &rsaquo; Import**. Importing the same site's export again updates what it brought in last time (or leaves it alone, if you choose) instead of creating duplicates. Imported users keep their roles but have no password yet — each one uses "Forgot password?" on the login screen before signing in.
+- **WordPress WXR (.xml)** is WordPress's own export format, readable by WordPress and many other platforms. A few Lumora Press-only details (such as SEO overrides, featured-image crops, media folders, user roles, and widgets) have nowhere to go in that format; after the export you'll see a list of exactly what was left out. Like WordPress's own exports, it links to your uploaded files by address rather than containing them, so keep this site online until the importing site has fetched them.
+
+An export file holds your users' email addresses and all of your unpublished content, so treat it like a backup. It can be downloaded once, and is removed from the server right after (or after an hour if it's never downloaded).
 
 ## Privacy: Anonymous Install Ping
 

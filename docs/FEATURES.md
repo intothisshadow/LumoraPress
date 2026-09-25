@@ -71,6 +71,7 @@ implementation-level detail on each area.
   anything install-specific (Security, Privacy, Redirects, Cache,
   Embeds, or a setting referencing a specific local media file or page)
   is never included.
+- **Content Export/Import** (Maintenance &rsaquo; Export / Import) — export posts, pages, comments, media, users, menus, and widgets (all or any subset) as a lossless Lumora Press `.zip` (a `manifest.json` plus, optionally, the uploaded files) or as a WordPress WXR `.xml` file, with a list of anything WXR couldn't carry shown after the export. A Lumora Press export imports back into any Lumora Press site from Maintenance &rsaquo; Import, remapping authors, featured images, categories, page parents, and comment threads, and rewriting links to the old site and its media; re-importing the same site's export updates or skips what it brought in before instead of duplicating it. Plugins can add further export formats (see `docs/DEVELOPER-APIS.md`).
 - **Appearance** — theme browser (install, activate, preview — a
   previewed theme now persists across the whole site as you click
   through it, not just the page you started on — and delete inactive

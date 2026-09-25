@@ -20,6 +20,7 @@ namespace LumoraPress\Services\Import;
 use DateTimeImmutable;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\PageStatus;
+use LumoraPress\Models\PageVisibility;
 
 /**
  * $parentExternalId (not a local id) is deliberate: pages within one
@@ -51,6 +52,15 @@ final class ImportedPage
          * against it.
          */
         public readonly ?string $externalId = null,
+        /**
+         * Null keeps PageService's own default on create and the page's
+         * current value on an Overwrite, for sources that don't carry it.
+         */
+        public readonly ?PageVisibility $visibility = null,
+        public readonly ?bool $commentsOpen = null,
+        /** SEO overrides; null leaves the page's own fallback in place. */
+        public readonly ?string $metaTitle = null,
+        public readonly ?string $metaDescription = null,
     ) {
     }
 }

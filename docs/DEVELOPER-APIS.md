@@ -319,6 +319,12 @@ route-registration hook exists.
 | `lumora_press_before_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::beginInstall()` for a bundled-plugin-only update (Plugins screen &rsaquo; Update). The versions are the plugin's, not core's; the two core update actions above never fire for a plugin-only update. |
 | `lumora_press_after_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion, UpdateStatus $status` | `UpdateService::continueInstall()`, when a bundled plugin update finishes — on success **and** on failure/rollback, like `lumora_press_after_update`. Core uses it to purge the page cache on success. |
 
+### Content export
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `export_formats` | filter | `array<int, ExportFormatWriter> $writers` | [`ExportFormatRegistry`](../app/Services/Export/ExportFormatRegistry.php)'s constructor, each time Maintenance &rsaquo; Export loads. Core passes its two writers (`lumora_press`, `wxr`); return the list with your own writer added (or one removed/replaced). Anything that isn't an `ExportFormatWriter` is ignored. See [Content Export API](#content-export-api) below. |
+
 ## Comments API
 
 Everything a plugin can do with comments, in one place. Every hook below also appears in the reference tables above; this section shows how they fit together.
@@ -389,6 +395,23 @@ add_filter('comment_reaction_types', static function (array $types): array {
 ### Replacing the comment system
 
 A plugin that provides its own commenting system (a hosted comments service, say) returns that section's HTML from `comments_template_html`. The built-in section, including the theme's `comments.php` and everything core adds through the `comments_template` action, is then skipped for that post or page. The filter receives the same `$vars` the theme passes to `comments_template()` (`post` or `page`, `current_user`, ...), so you can return `null` to fall back to the built-in comments where you don't want to take over. Any third-party script you load still needs its domain added to the Content-Security-Policy through the `csp_directives` filter.
+
+## Content Export API
+
+Maintenance &rsaquo; Export builds one format-neutral snapshot of the site and hands it to whichever format the admin picked, so a plugin can add a format (Ghost JSON, Markdown with front matter, and so on) without reading any site data itself.
+
+- **The payload.** [`ContentExportService`](../app/Services/ContentExportService.php)`::build(ExportOptions)` returns an [`ExportContent`](../app/Services/Export/ExportContent.php): the site's name/URL/uploads URL plus `users`, `categories`, `tags`, `folders`, `media` (with `mediaFiles` giving each item's path relative to the uploads folder and its MIME type), `pages` (parents first), `posts`, `comments` (parents first), `menus`, `menuLocations`, and `widgets`. The objects are the same `Imported*` classes the import layer uses (`app/Services/Import/`); every id in them (author, featured image, category, a comment's post/page/parent) is the exporting site's own id, and each object's `externalId` is that id as a string. Trashed content, spam comments, passwords, and commenters' IP addresses/user agents are never included.
+- **Writing a format.** Implement [`ExportFormatWriter`](../app/Services/Export/ExportFormatWriter.php): `id()`, `label()` and `description()` (shown on the Export screen), `supportedContentTypes()` (any of the `ExportOptions::POSTS`/`PAGES`/`USERS`/`MEDIA`/`COMMENTS`/`MENUS`/`WIDGETS` constants — the screen disables the rest for your format), `bundlesUploads()` (whether "Include uploaded files" applies), `mimeType()`, `downloadFileName(ExportContent)`, `write(ExportContent, ExportOptions): string` (write the file and return its absolute path; the Export screen streams it once and deletes it), and `notices()` (plain-text notes from the last `write()` about anything your format couldn't carry, listed to the admin after the export — return `[]` if nothing was lost). `ExportOptions` arrives already narrowed to what your writer supports. Throw a `RuntimeException` with a user-readable message if writing fails. Register it with the `export_formats` filter:
+
+```php
+add_filter('export_formats', static function (array $writers): array {
+    $writers[] = new MyGhostJsonWriter(LUMORA_ROOT . '/storage/exports');
+
+    return $writers;
+});
+```
+
+- **The Lumora Press format.** [`ExportManifest`](../app/Services/Export/ExportManifest.php) defines `manifest.json` (`format: "lumora-press-content-export"`, `format_version: 1`) and is the only code that encodes or decodes it; [`LumoraPressZipWriter`](../app/Services/Export/LumoraPressZipWriter.php) stores it at the ZIP root with media under `uploads/{relative path}`. The importer ([`LumoraPressExportSource`](../app/Services/Import/LumoraPressExportSource.php) + [`LumoraPressImportService`](../app/Services/Import/LumoraPressImportService.php)) records everything in `ContentImportRegistry` under the source `lumora_press_export`, with external ids of the form `{site key}:{id}` (the key is derived from the exporting site's URL).
 
 ## Plugin structure & lifecycle
 

@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services\Import;
 
 use LumoraPress\Models\Page;
+use LumoraPress\Models\PageVisibility;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\PageService;
 use RuntimeException;
@@ -70,7 +71,7 @@ final class PageImporter
                 return $existing;
             }
 
-            return $this->pages->update(
+            $page = $this->pages->update(
                 id: $existingId,
                 title: $data->title,
                 content: $data->content,
@@ -82,14 +83,15 @@ final class PageImporter
                 slug: $data->slug,
                 contentFormat: $data->contentFormat,
                 featuredImageCrop: $data->featuredImageCrop,
+                visibility: $data->visibility,
                 // update()'s own $commentsOpen has no "keep existing"
-                // fallback (always defaults to true when omitted) —
-                // ImportedPage carries no commentsOpen field of its own
-                // to overwrite it with, so the row's current value is
-                // explicitly preserved instead of silently reopening
+                // fallback (always defaults to true when omitted), so a
+                // source that doesn't carry it must not silently reopen
                 // comments an admin had closed locally.
-                commentsOpen: $existing->commentsOpen,
+                commentsOpen: $data->commentsOpen ?? $existing->commentsOpen,
             );
+
+            return $this->applySeo($page, $data);
         }
 
         $page = $this->pages->create(
@@ -104,10 +106,23 @@ final class PageImporter
             slug: $data->slug,
             contentFormat: $data->contentFormat,
             featuredImageCrop: $data->featuredImageCrop,
+            visibility: $data->visibility ?? PageVisibility::Public,
+            commentsOpen: $data->commentsOpen ?? true,
         );
 
         $this->registry->record($batchId, $source, 'page', $page->id, $data->externalId);
 
-        return $page;
+        return $this->applySeo($page, $data);
+    }
+
+    private function applySeo(Page $page, ImportedPage $data): Page
+    {
+        if ($data->metaTitle === null && $data->metaDescription === null) {
+            return $page;
+        }
+
+        $this->pages->updateSeo($page->id, $data->metaTitle, $data->metaDescription);
+
+        return $this->pages->findById($page->id) ?? $page;
     }
 }

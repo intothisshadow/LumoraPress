@@ -60,6 +60,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/confirm-submit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/auto-submit.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/color-field-reset.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/export-format.js')) ?>" defer></script>
 <?php if (\LumoraPress\Core\Theme\MediaViewer::isUsed()): ?>
     <!-- Media Viewer & Lightbox — see content/themes/lumora-classic/footer.php's identical block for why this is CDN-loaded and conditional. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css">

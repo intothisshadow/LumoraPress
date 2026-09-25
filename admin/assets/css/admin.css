@@ -3617,6 +3617,30 @@ select:focus {
 }
 
 /*
+ * Maintenance > Export: each format/content-type option carries its own
+ * explanation, wrapped onto its own line under the label rather than
+ * squeezed beside it. An option the chosen format can't carry is dimmed.
+ */
+.lp-export-form .lp-field--checkbox {
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.lp-export-form .lp-field--checkbox .lp-field__hint {
+    flex-basis: 100%;
+    margin: 0 0 0 1.6rem;
+}
+
+/* .lp-field__hint's own display rule would otherwise override [hidden]. */
+.lp-export-form .lp-field--checkbox .lp-field__hint[hidden] {
+    display: none;
+}
+
+.lp-export-form .lp-field--checkbox:has(input:disabled) {
+    opacity: 0.6;
+}
+
+/*
  * Clickable visual radio picker (currently only Appearance > Customize's
  * "Featured image position" field) — a small illustrated diagram per
  * choice instead of a plain <select>, so the effect of each option is

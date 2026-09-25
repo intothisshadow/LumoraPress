@@ -65,6 +65,17 @@ final class ImportedPost
          * id. Null for sources with no such concept (dummy content).
          */
         public readonly ?string $externalId = null,
+        /**
+         * Already-resolved local category ids. When non-empty they're
+         * assigned instead of $categories, since name lookup can't tell
+         * two same-named categories under different parents apart.
+         *
+         * @var array<int, int>
+         */
+        public readonly array $categoryIds = [],
+        /** SEO overrides; null leaves the post's own fallback in place. */
+        public readonly ?string $metaTitle = null,
+        public readonly ?string $metaDescription = null,
     ) {
     }
 }

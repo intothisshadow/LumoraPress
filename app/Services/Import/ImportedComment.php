@@ -20,9 +20,10 @@ namespace LumoraPress\Services\Import;
 use LumoraPress\Models\CommentStatus;
 
 /**
- * $postId is an already-resolved local id (Posts are always imported
- * before Comments — see CommentImporter's ordering-contract docblock —
- * so the caller already has it). $parentExternalId is deliberately NOT
+ * $postId (or $pageId, for a comment on a page — exactly one is set) is
+ * an already-resolved local id (content is always imported before its
+ * Comments — see CommentImporter's ordering-contract docblock — so the
+ * caller already has it). $parentExternalId is deliberately NOT
  * resolved yet: within one comment batch, a reply can reference a
  * sibling comment that doesn't have a local id until its own import()
  * call runs, so CommentImporter::import() takes a separate
@@ -32,7 +33,7 @@ use LumoraPress\Models\CommentStatus;
 final class ImportedComment
 {
     public function __construct(
-        public readonly int $postId,
+        public readonly ?int $postId,
         public readonly string $content,
         public readonly string $guestName,
         public readonly string $guestEmail,
@@ -52,6 +53,7 @@ final class ImportedComment
          * dummy content, which has no original date to preserve.
          */
         public readonly ?\DateTimeImmutable $commentedAt = null,
+        public readonly ?int $pageId = null,
     ) {
     }
 }
