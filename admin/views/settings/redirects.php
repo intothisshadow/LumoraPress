@@ -143,9 +143,8 @@ $allRedirects = $redirects->listAll();
 <section class="lp-admin__panel">
     <h2>Other SEO Tools</h2>
     <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
-        <li>XML sitemap: <a href="<?= esc_url(home_url('sitemap.xml')) ?>" target="_blank" rel="noopener noreferrer"><?= esc_html(home_url('sitemap.xml')) ?></a> &mdash; every published post, page, category, and tag, regenerated on every request.</li>
-        <li>robots.txt: <a href="<?= esc_url(home_url('robots.txt')) ?>" target="_blank" rel="noopener noreferrer"><?= esc_html(home_url('robots.txt')) ?></a> already references the sitemap above.</li>
-        <li>Search engine visibility (discourage indexing) and the site-wide default meta description live on <a href="<?= esc_url(admin_url('settings/reading')) ?>">Settings &rsaquo; Reading</a> and <a href="<?= esc_url(admin_url('settings/general')) ?>">Settings &rsaquo; General</a> respectively.</li>
+        <li>robots.txt: <a href="<?= esc_url(home_url('robots.txt')) ?>" target="_blank" rel="noopener noreferrer"><?= esc_html(home_url('robots.txt')) ?></a></li>
+        <li>The XML sitemap address, search engine visibility (discourage indexing), and the site-wide default meta description live on <a href="<?= esc_url(admin_url('settings/reading')) ?>">Settings &rsaquo; Reading</a> (the first two) and <a href="<?= esc_url(admin_url('settings/general')) ?>">Settings &rsaquo; General</a> (the last).</li>
         <li>Per-post/page SEO title and meta description overrides are on that post or page's own editor screen.</li>
     </ul>
 </section>

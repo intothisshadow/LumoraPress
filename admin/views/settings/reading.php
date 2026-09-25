@@ -150,6 +150,12 @@ $discourageSearchEngines = $kernel->config->option('discourage_search_engines', 
         </label>
         <span class="lp-field__hint">It is up to search engines to honor this request. Adds a site-wide <code>Disallow: /</code> to <a href="<?= esc_url(home_url('robots.txt')) ?>" target="_blank" rel="noopener noreferrer"><code>robots.txt</code></a> and a <code>&lt;meta name="robots" content="noindex,nofollow"&gt;</code> tag to every page.</span>
 
+        <p class="lp-field">
+            <strong>XML sitemap</strong>
+            <a href="<?= esc_url(home_url('sitemap.xml')) ?>" target="_blank" rel="noopener noreferrer"><?= esc_html(home_url('sitemap.xml')) ?></a>
+            <span class="lp-field__hint">Lists every published post, page, category, and tag, and is regenerated on every request. Submit this address to Google Search Console or Bing Webmaster Tools.<?= $discourageSearchEngines ? ' While indexing is discouraged above, <code>robots.txt</code> no longer points search engines to it.' : ' <code>robots.txt</code> already points search engines to it.' ?></span>
+        </p>
+
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>

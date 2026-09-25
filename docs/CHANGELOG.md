@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The XML sitemap address now appears on Settings &rsaquo; Reading, in the Search Engine Visibility section next to the `robots.txt` link, with a note that it's the address to submit to Google Search Console or Bing Webmaster Tools (and that `robots.txt` stops pointing to it while indexing is discouraged). It was previously only listed under Settings &rsaquo; Redirects.
+
 ## [0.18.0] — 2026-09-25
 
 ### Added
