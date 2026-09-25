@@ -1381,6 +1381,47 @@ a.lp-post-list__comments:focus {
     left: -9999px;
 }
 
+/* Comment-thread subscriptions: the confirm/unsubscribe panel above the
+   comments and the "Watch this thread" button (comment_subscription_panel()). */
+.lp-comment-subscription {
+    margin: 2rem 0 0;
+    max-width: 68ch;
+}
+
+.lp-comment-subscription__manage,
+.lp-comment-subscription__watch {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+}
+
+.lp-comment-subscription__watch {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.lp-comment-subscription__text {
+    margin: 0 0 0.5rem;
+}
+
+.lp-comment-subscription__watch .lp-comment-subscription__text {
+    margin: 0;
+}
+
+.lp-comment-subscription__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.lp-comment-form__subscribe {
+    margin-bottom: 1rem;
+}
+
 /* Emoji Picker plugin: lp_emoji_picker_button()'s own trigger
    class, styled here since the button markup itself is plugin-rendered,
    not theme markup — see comment_form() in include/comment-functions.php. */

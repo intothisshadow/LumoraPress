@@ -19,6 +19,7 @@ use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Models\ThemePreference;
+use LumoraPress\Services\NotificationService;
 
 /** @var \LumoraPress\Core\Kernel $kernel */
 if (!isset($kernel)) {
@@ -308,8 +309,12 @@ $linkDirectoryActive = in_array('link-directory', $activePlugins, true);
 // Awesome) since a single Settings screen is its entire admin footprint.
 $emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
 
+$notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
+    // Every signed-in role has an inbox; 'count' is shown beside the label.
+    'notifications' => ['label' => 'Notifications', 'icon' => '📣', 'capability' => null, 'count' => $notifications->unreadCount($currentUser->id)],
     'posts' => [
         'label' => 'Posts',
         'icon' => '📝',

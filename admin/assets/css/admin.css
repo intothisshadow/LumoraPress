@@ -340,6 +340,20 @@ body.lp-admin-login {
     font-size: 0.95rem;
 }
 
+/* Unread count beside a sidebar entry, e.g. Notifications. */
+.lp-admin__nav-count {
+    margin-left: auto;
+    min-width: 1.25rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--lp-admin-accent);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+}
+
 /*
  * Top-level nav rows (LP-056) drop their icon and go uppercase to read as
  * section headings; only sub-nav rows (.lp-admin__nav-submenu) keep icons
@@ -800,6 +814,19 @@ body.lp-admin-login {
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a {
         justify-content: center;
         padding: 0.65rem 0.25rem;
+    }
+
+    /* Collapsed rows show only the icon, so the count sits on its corner instead. */
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > a {
+        position: relative;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-count {
+        position: absolute;
+        top: 0.2rem;
+        right: 0.35rem;
+        margin: 0;
+        font-size: 0.6rem;
     }
 
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav > ul > li > a > .lp-admin__nav-icon,
@@ -5555,4 +5582,26 @@ a.lp-button--link.lp-button--link--view:hover {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+}
+
+/* Notifications screen */
+.lp-notifications__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.lp-notifications__actions,
+.lp-notifications__when {
+    white-space: nowrap;
+}
+
+.lp-notifications__row.is-unread .lp-notifications__message {
+    font-weight: 600;
+}
+
+.lp-notifications__row.is-unread td:first-child {
+    box-shadow: inset 3px 0 0 var(--lp-admin-accent);
 }

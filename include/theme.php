@@ -130,13 +130,14 @@ if (!function_exists('content_split_at_more_tag')) {
 if (!function_exists('comments_template')) {
     /**
      * Renders the active theme's comments.php partial, if it has one —
-     * silently does nothing otherwise, same as get_sidebar().
+     * silently does nothing otherwise, same as get_sidebar(). Listeners
+     * receive the same $vars, so they know which post/page is being shown.
      *
      * @param array<string, mixed> $vars
      */
     function comments_template(array $vars = []): void
     {
-        do_action('comments_template');
+        do_action('comments_template', $vars);
         ActiveTheme::instance()->renderPartial('comments', $vars);
     }
 }

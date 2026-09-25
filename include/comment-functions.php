@@ -144,6 +144,8 @@ if (!function_exists('comment_form')) {
                 <?= lp_emoji_picker_button(['target' => '#' . $formId . '-content']) ?>
             </p>
 
+            <?= apply_filters('comment_form_fields_after', '', $content, $currentUser, $parentId, $formId) ?>
+
             <button type="submit" class="lp-button lp-button--primary"><?= esc_html($submitLabel) ?></button>
         </form>
         <?php
@@ -236,6 +238,87 @@ if (!function_exists('comment_list')) {
                 </li>
             <?php endforeach; ?>
         </ol>
+        <?php
+    }
+}
+
+if (!function_exists('comment_subscription_checkbox')) {
+    /**
+     * The comment form's "Notify me of new comments" opt-in, added to
+     * every form through the comment_form_fields_after filter.
+     */
+    function comment_subscription_checkbox(string $formId, bool $isGuest): string
+    {
+        $hint = $isGuest ? ' <span class="lp-field__hint">' . esc_html(__('(you\'ll be asked to confirm by email)')) . '</span>' : '';
+
+        return '<label class="lp-field--checkbox lp-comment-form__subscribe" for="' . esc_attr($formId) . '-subscribe">'
+            . '<input type="checkbox" id="' . esc_attr($formId) . '-subscribe" name="comment_subscribe" value="1"> '
+            . esc_html(__('Notify me of new comments by email')) . $hint
+            . '</label>';
+    }
+}
+
+if (!function_exists('comment_subscription_panel')) {
+    /**
+     * The thread's subscription notices and buttons, rendered above the
+     * comments section via the comments_template action — see
+     * CommentSubscriptionController::panelState() for the $state shape.
+     *
+     * @param array{notice: ?string, manage: ?array{status: string}, watch: ?array{watching: bool, contentType: string, contentId: int}, formAction: string} $state
+     */
+    function comment_subscription_panel(array $state): void
+    {
+        if ($state['notice'] === null && $state['manage'] === null && $state['watch'] === null) {
+            return;
+        }
+
+        $notices = [
+            'confirmed' => ['success', __('Your subscription is confirmed. We\'ll email you when someone comments here.')],
+            'unsubscribed' => ['success', __('You\'ve been unsubscribed and won\'t get any more emails about new comments here.')],
+            'watching' => ['success', __('You\'re now watching this thread. We\'ll let you know about new comments.')],
+            'confirm_sent' => ['success', __('We\'ve emailed you a link to confirm your subscription to new comments.')],
+            'confirm_after_approval' => ['success', __('Once your comment is approved, we\'ll email you a link to confirm your subscription to new comments.')],
+            'error' => ['error', __('That subscription link is no longer valid.')],
+        ];
+        $notice = $state['notice'] !== null ? ($notices[$state['notice']] ?? null) : null;
+        ?>
+        <div id="lp-comment-subscription" class="lp-comment-subscription">
+            <?php if ($notice !== null): ?>
+                <div class="lp-alert lp-alert--<?= esc_attr($notice[0]) ?>"><?= esc_html($notice[1]) ?></div>
+            <?php endif; ?>
+
+            <?php if ($state['manage'] !== null): ?>
+                <form class="lp-comment-subscription__manage" method="post" action="<?= esc_url($state['formAction']) ?>">
+                    <?= Csrf::field('comment_subscription') ?>
+                    <?php if ($state['manage']['status'] === 'pending'): ?>
+                        <p class="lp-comment-subscription__text"><?= esc_html(__('Confirm that you want an email whenever someone comments here?')) ?></p>
+                        <p class="lp-comment-subscription__actions">
+                            <button type="submit" class="lp-button lp-button--primary" name="subscription_action" value="confirm"><?= esc_html(__('Confirm subscription')) ?></button>
+                            <button type="submit" class="lp-button lp-button--secondary" name="subscription_action" value="unsubscribe"><?= esc_html(__('Cancel')) ?></button>
+                        </p>
+                    <?php else: ?>
+                        <p class="lp-comment-subscription__text"><?= esc_html(__('You\'re subscribed to new comments here.')) ?></p>
+                        <p class="lp-comment-subscription__actions">
+                            <button type="submit" class="lp-button lp-button--secondary" name="subscription_action" value="unsubscribe"><?= esc_html(__('Unsubscribe')) ?></button>
+                        </p>
+                    <?php endif; ?>
+                </form>
+            <?php endif; ?>
+
+            <?php if ($state['watch'] !== null): ?>
+                <form class="lp-comment-subscription__watch" method="post" action="<?= esc_url($state['formAction']) ?>">
+                    <?= Csrf::field('comment_subscription') ?>
+                    <input type="hidden" name="content_type" value="<?= esc_attr($state['watch']['contentType']) ?>">
+                    <input type="hidden" name="content_id" value="<?= (int) $state['watch']['contentId'] ?>">
+                    <?php if ($state['watch']['watching']): ?>
+                        <span class="lp-comment-subscription__text"><?= esc_html(__('You\'re watching this thread.')) ?></span>
+                        <button type="submit" class="lp-button lp-button--secondary" name="subscription_action" value="unwatch"><?= esc_html(__('Stop watching')) ?></button>
+                    <?php else: ?>
+                        <button type="submit" class="lp-button lp-button--secondary" name="subscription_action" value="watch"><?= esc_html(__('Watch this thread')) ?></button>
+                    <?php endif; ?>
+                </form>
+            <?php endif; ?>
+        </div>
         <?php
     }
 }

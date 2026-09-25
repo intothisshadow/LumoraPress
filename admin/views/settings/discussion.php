@@ -53,6 +53,7 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
     $kernel->config->setOption('comment_notify_admin_moderation', ($_POST['comment_notify_admin_moderation'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_author', ($_POST['comment_notify_author'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_on_reply', ($_POST['comment_notify_on_reply'] ?? '') === '1' ? '1' : '0');
+    $kernel->config->setOption('comment_subscriptions_enabled', ($_POST['comment_subscriptions_enabled'] ?? '') === '1' ? '1' : '0');
     $kernel->config->setOption('comment_notify_recipients', trim((string) ($_POST['comment_notify_recipients'] ?? '')));
 
     header('Location: ' . admin_url('settings/discussion') . '?saved=1');
@@ -116,6 +117,7 @@ $notifyAdminNew = $kernel->config->option('comment_notify_admin_new', '1') !== '
 $notifyAdminModeration = $kernel->config->option('comment_notify_admin_moderation', '1') !== '0';
 $notifyAuthor = $kernel->config->option('comment_notify_author', '0') === '1';
 $notifyOnReply = $kernel->config->option('comment_notify_on_reply', '0') === '1';
+$subscriptionsEnabled = $kernel->config->option('comment_subscriptions_enabled', '0') === '1';
 $notifyRecipients = (string) $kernel->config->option('comment_notify_recipients', '');
 
 $manualApprovalForAll = $kernel->config->option('comment_moderation_manual_all', '0') === '1';
@@ -279,6 +281,11 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
             <input type="checkbox" name="comment_notify_on_reply" value="1" <?= $notifyOnReply ? 'checked' : '' ?>>
             Email a commenter when someone replies to their comment
         </label>
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comment_subscriptions_enabled" value="1" <?= $subscriptionsEnabled ? 'checked' : '' ?>>
+            Let visitors subscribe to new comments on a post or page by email
+        </label>
+        <span class="lp-field__hint">Adds a &ldquo;Notify me of new comments&rdquo; checkbox to the comment form, and a &ldquo;Watch this thread&rdquo; button for signed-in users. Guests confirm their subscription through an emailed link (sent once their comment is approved), and every email includes an unsubscribe link.</span>
 
         <p class="lp-field">
             <label for="comment-notify-recipients">Additional recipients</label>

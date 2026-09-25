@@ -121,6 +121,20 @@ final class CommentService
         return $comment;
     }
 
+    /**
+     * Claims the one-time right to send $id's follow-up notifications
+     * (subscribers, in-app) — the conditional UPDATE means a comment
+     * approved, unapproved, and approved again never notifies twice, and
+     * two concurrent approvals can't both win.
+     */
+    public function claimFollowup(int $id): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET followup_notified_at = :now WHERE id = :id AND followup_notified_at IS NULL',
+            ['now' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
+    }
+
     public function updateStatus(int $id, CommentStatus $status): Comment
     {
         $this->database->execute(

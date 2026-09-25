@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Controllers\CommentSubscriptionController;
 use LumoraPress\Controllers\SiteController;
 use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
@@ -79,7 +80,9 @@ use LumoraPress\Services\BlueskyResolverService;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentNotificationService;
+use LumoraPress\Services\CommentFollowupService;
 use LumoraPress\Services\CommentService;
+use LumoraPress\Services\CommentSubscriptionService;
 use LumoraPress\Services\ContentImportRegistry;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\EditorPreferenceService;
@@ -102,6 +105,7 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\NotificationService;
 use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
@@ -735,6 +739,75 @@ ActiveKernel::set($kernel);
 
 $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);
 
+// Thread subscriptions and in-app notifications. Hooked here rather than
+// inside SiteController so moderator approvals from the admin, which only
+// fire comment_status_changed, are covered by the same code path.
+$commentSubscriptions = new CommentSubscriptionService($database, $tablePrefix);
+$commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, new NotificationService($database, $tablePrefix));
+$commentSubscriptionController = new CommentSubscriptionController($commentSubscriptions, $commentFollowups, $posts, $pages, $auth, $site);
+
+// Subscribing must happen before onCommentPosted() so an immediately
+// approved guest comment sends its confirmation email in the same request.
+add_action('comment_posted', static function (\LumoraPress\Models\Comment $comment) use ($commentFollowups, $auth): void {
+    if (($_POST['comment_subscribe'] ?? '') === '1') {
+        $user = $auth->user();
+        $subscription = $commentFollowups->subscribeCommenter($comment, $user);
+
+        if ($user === null && $subscription !== null && $subscription['status'] === CommentSubscriptionService::STATUS_PENDING) {
+            CommentSubscriptionController::flashSubscribed(
+                $comment->pageId !== null ? 'page' : 'post',
+                (int) ($comment->pageId ?? $comment->postId),
+                $comment->status === \LumoraPress\Models\CommentStatus::Approved,
+            );
+        }
+    }
+
+    $commentFollowups->onCommentPosted($comment);
+});
+add_action('comment_status_changed', [$commentFollowups, 'onStatusChanged']);
+
+add_filter('comment_form_fields_after', static function (string $html, \LumoraPress\Models\Post|\LumoraPress\Models\Page $content, ?\LumoraPress\Models\User $user, ?int $parentId, string $formId) use ($commentFollowups, $commentSubscriptions): string {
+    static $watching = [];
+
+    if (!$commentFollowups->subscriptionsEnabled()) {
+        return $html;
+    }
+
+    // A signed-in user already watching the thread has nothing to opt into.
+    if ($user !== null) {
+        $key = ($content instanceof \LumoraPress\Models\Page ? 'page' : 'post') . ':' . $content->id;
+        $watching[$key] ??= ($commentSubscriptions->findFor($content instanceof \LumoraPress\Models\Page ? 'page' : 'post', $content->id, $user->email)['status'] ?? null) === CommentSubscriptionService::STATUS_ACTIVE;
+
+        if ($watching[$key]) {
+            return $html;
+        }
+    }
+
+    return $html . comment_subscription_checkbox($formId, $user === null);
+});
+
+add_action('comments_template', static function (array $vars = []) use ($commentSubscriptionController, $cache): void {
+    $content = $vars['post'] ?? $vars['page'] ?? null;
+
+    if (!$content instanceof \LumoraPress\Models\Post && !$content instanceof \LumoraPress\Models\Page) {
+        return;
+    }
+
+    $currentUser = $vars['current_user'] ?? null;
+    $state = $commentSubscriptionController->panelState($content, $currentUser instanceof \LumoraPress\Models\User ? $currentUser : null);
+
+    if ($state === null) {
+        return;
+    }
+
+    // Visitor-specific notices and forms must never be served from a shared page cache.
+    if ($state['notice'] !== null || $state['manage'] !== null) {
+        $cache->disableCaching();
+    }
+
+    comment_subscription_panel($state);
+});
+
 // Patterns are derived from PermalinkService, not hardcoded, so a
 // configured permalink_structure/category_base/tag_base option changes
 // what Router actually matches, not just what the *_permalink()
@@ -742,6 +815,10 @@ $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments
 $postRoutePattern = $permalinks->postRoutePattern();
 
 $router->get('/', fn (array $params) => $site->home($params));
+// Registered ahead of the post route: a custom structure such as
+// /%category%/%postname%/ would otherwise claim this two-segment URL.
+$router->get('/comment-subscription/{token}', fn (array $params) => $commentSubscriptionController->open($params));
+$router->post('/comment-subscription', fn (array $params) => $commentSubscriptionController->update($params));
 $router->get($postRoutePattern, fn (array $params) => $site->singlePost($params));
 $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
 $router->get($postRoutePattern . '/comments/feed/{format}', fn (array $params) => $site->postCommentsFeed($params));

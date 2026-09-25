@@ -135,7 +135,7 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
                         </li>
                     <?php else: ?>
                         <li class="lp-admin__nav-item<?= $isParentActive ? ' is-active' : '' ?>">
-                            <a href="<?= esc_url(admin_url($slug)) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span></a>
+                            <a href="<?= esc_url(admin_url($slug)) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span><?php if (($item['count'] ?? 0) > 0): ?><span class="lp-admin__nav-count"><?= (int) $item['count'] ?><span class="lp-visually-hidden"> unread</span></span><?php endif; ?></a>
                         </li>
                     <?php endif; ?>
                 <?php endforeach; ?>

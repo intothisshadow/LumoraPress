@@ -36,6 +36,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Categories and tags, with hierarchical category URLs, archive pages, merge, and bulk actions
 - Sticky and private posts
 - Threaded comments and moderation
+- Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
 - Full-text search across posts and pages
 
