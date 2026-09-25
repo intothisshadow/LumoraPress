@@ -15779,3 +15779,572 @@ Ariane's own report after using LPP-026's freshly-shipped Link Directory plugin:
 ------
 
 Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[Unreleased]` → `[0.17.0]` section for the full description): nesting the admin Pages "Published" tab by parent/child to match the "All" tab, and removing deprecated `curl_close()` calls (`AkismetClient`, `BlueskyResolverService`, `GitHubReleaseProvider`, and the Contact Forms plugin's reCAPTCHA/Turnstile clients).
+
+## 0.18.0 (2026-09-25)
+
+### LP-012. Comments
+
+**Status:** Complete
+
+**Update (2026-09-25), third pass — Developer API and its documentation closed out; LP-012 is complete.** The Developer API section's plain bullets were turned into checkboxes as each was built: comment metadata (`comment_meta` table, `CommentService` meta methods, cleanup on delete and an orphan sweep on `post_deleted`, since deleting a post drops its comments in bulk), `comment_moderation_status` (in `SiteController::filterCommentStatus()`, accepts only Approved/Pending/Spam), the previous status as `comment_status_changed`'s second argument, `notification_created`, `comment_content_html`, `comment_reaction_types` (reaction definitions now carry their own emoji and label; Settings > Discussion lists whatever is actually offered), and `comments_template_html` (replaces the section including the `comments_template` action). The spam-provider bullet was already served by `comment_is_spam`. Documented in a new "Comments API" guide in `docs/DEVELOPER-APIS.md`, whose Service layer paragraph also no longer claims there's no global Kernel accessor (`ActiveKernel` is the supported route). 13 new unit tests. Live-verified on `lumorapress-preview` with a throwaway dev-only plugin (removed afterward): the moderation filter held a normally auto-approved admin comment, a form field went through `comment_form_fields_after` → `comment_posted` → `setMeta()` → `comment_content_html`, a custom 👏 reaction rendered and stored, and `notification_created` received a moderation notice. Noticed but left alone: deleting a *page* has never deleted its comments (`PageService::delete()`), unlike posts — flagged separately. **Fixed 2026-09-25:** `PageService::delete()` now deletes the page's comments. The orphan sweep runs on `page_deleted` too, together with a new `CommentSubscriptionService::deleteOrphaned()`. Both sweeps check whether the row still exists, so trashing a page removes nothing. Migration 0077 cleans up comments and satellite rows that earlier page deletions left behind.
+
+**Update (2026-09-25), second pass — User Features, Reactions, and Future Enhancements closed out.** All nine open items built: quoting, @mentions, role badges, the edited indicator, likes/emoji reactions with counts and duplicate prevention, and comment reporting. Everything renders from core template tags inside `comment_list()` (through a new `CommentExtras` bridge that batches a thread's reaction counts and the visitor's own choices in two queries), so no theme template changed; only CSS was added (`lumora-classic` + all four custom themes). **Reactions/reports** post to `/comment/{id}/react` and `/comment/{id}/report` (`CommentInteractionController`), work as plain form posts, and update in place through a new `assets/js/comments.js` (loaded by `FooterAssets` only when a thread rendered) that sends `X-Requested-With: fetch` and copies the fresh CSRF token from every JSON response into all the page's forms. One shared `comment_interact` token per page, since a per-form `Csrf::field()` would invalidate the others. Only approved comments on publicly visible content can be reacted to or reported. Guests are identified by a random `lp_voter` cookie (HttpOnly, SameSite=Lax, 1 year, documented in README's Cookies section) of which only a hash is stored. **Reporting** notifies moderators on the first report and again when the threshold holds the comment (the hold goes through `updateStatus()`, so the normal status hooks fire); the admin Comments screen got a Reported tab that approve/unapprove actions keep you on, per-row reason summaries, and Dismiss reports. `comment_deleted` now also clears a comment's reactions and reports. **Mentions** use the public author slug (`UserService::authorSlug()`), never the login name, capped at 10 per comment, and render identically for real and nonexistent handles so they can't be used to discover accounts. 30+ new unit tests. Live-verified on `lumorapress-preview` (Sands of Kemet): settings panel, role badge + mention markup, in-place react/switch/remove with token refresh, guest no-JS reaction with the cookie + toggle-off + bad-CSRF/unknown-reaction/missing-comment handling, registered-only read-only counts, guest report (curl) + browser report reaching the threshold of 2 and holding the comment, Reported tab/approve/Dismiss, admin edit → "(edited)", Quote → blockquote reply. Test comments/reactions/reports removed and the settings deleted afterward.
+
+**Update (2026-09-25) — the whole Notifications section is now closed out.** In-app notifications, watch/subscribe to comment threads, and unsubscribe links were the three open items; all three were built together since they share one dispatch point. `CommentFollowupService` listens on `comment_posted` and `comment_status_changed` and only acts once a comment is Approved, claimed exactly once via a new `comments.followup_notified_at` column (`CommentService::claimFollowup()`, a conditional UPDATE, so approve → unapprove → approve never re-notifies; migration 0071 backfills every already-approved comment so old comments never notify retroactively). **Subscriptions** (`{prefix}comment_subscriptions`, migration 0070, keyed by post-or-page + email) come from a comment-form checkbox, added through a new generic `comment_form_fields_after` filter so no theme needed editing, or from a "Watch this thread" button for signed-in users. A signed-in user's subscription is active immediately. A guest's is pending until confirmed by email, and that confirmation email waits until their comment is approved, so a spam/held comment never mails an address someone typed in. **Unsubscribe/confirm links** (`/comment-subscription/{token}`, registered ahead of the post route so a `%category%` structure can't swallow it) never act on GET: they stash the token in the session and redirect to the thread, where core renders a panel with a POST button via the `comments_template` action, which now passes its `$vars` along. That keeps the token out of URLs/Referer headers and makes mail-scanner prefetches harmless. **In-app notifications** (`{prefix}notifications`, migration 0072, `NotificationService`, generic enough for plugins) back a new admin Notifications screen (`📣`, every role) with a sidebar unread count, mark read / mark all read / clear read, plus a Watched Threads list with Stop watching. Recipients are deduped to one notice per user per comment (reply > author > watcher), never the commenter themself; moderators get an awaiting-moderation notice for held comments. Subscriber emails skip the commenter and, when `comment_notify_on_reply` is on, the parent commenter (who already gets the reply email). Theme CSS (`.lp-comment-subscription*`, `.lp-comment-form__subscribe`) added to `lumora-classic` and all four custom themes. Found and fixed along the way: a pre-existing LP-173 bug where `DatabaseSessionHandler::write()` treated MySQL's "0 affected rows" (unchanged data within the same second) as a missing row and hit a duplicate-key INSERT, turning any rapid repeat request into a 500; regression test in `Integration/DatabaseSessionHandlerIntegrationTest.php` (fails without the fix). 35 new unit tests plus the integration test. Live-verified on `lumorapress-preview` (Sands of Kemet theme): watch/unwatch, a real guest comment with the checkbox (pending subscription, moderator notice, one-time "we'll email you once approved" flash), approval from the admin Comments screen (followup claimed once, author notice), the emailed link (GET changed nothing, bogus token 404, confirm then unsubscribe via the POST panel), the notification links, the sidebar badge, mark-all-read, and Stop watching. Actual email delivery was not verifiable locally (no `sendmail` on this machine); recipients/content are covered by unit tests. Test data removed and the setting switched back off afterward.
+
+**Update (2026-09-14), fifth pass same session — the entire Privacy section is now closed out.** All four remaining open items were built. **IP anonymization:** a new `app/Core/Security/IpAnonymizer.php` masks the last IPv4 octet, or the last 80 bits of an IPv6 address (the same convention analytics tools like Google Analytics use), and a new "Anonymize commenter IP addresses" toggle on Settings > Discussion (`comment_ip_anonymization_enabled`, off by default) applies it in `SiteController::submitComment()`/`submitPageComment()` before the IP is used for flood control or IP-blacklist matching, or stored. **Configurable guest fields:** a new "Collect a Website URL from guest commenters" toggle (`comment_author_url_enabled`, on by default — the field was already optional, this controls whether it's collected at all); `comment_form()` gained a `urlEnabled` guest-field option hiding the field, and the submitted value is discarded server-side too when the toggle is off, not just hidden in the form. **GDPR export/erasure:** a new "Comment Data Requests" panel on Settings > Privacy looks up every comment posted under a given email address (guest or signed-in, matching `guest_email` case-insensitively) and offers a JSON export download or an "Erase Personal Data" action. `CommentService` gained `findAllByEmail()` and `anonymizeByEmail()` — erasure strips name/email/website/IP/user agent from matching comments while keeping the comment content and reply structure intact, deliberately not an outright delete (which would orphan every reply the same way a manual delete already does — a much larger effect than an erasure request calls for). The replacement email is unique per comment (`anonymized-{id}@removed.invalid`), so two unrelated erased commenters are never treated as the same person by flood control/auto-approve-previous afterward. Propagated the new `urlEnabled` guest field to all 5 themes' `comments.php` (`lumora-classic` plus the 4 `custom themes/`) the same session, per the Custom Theme Rules. 9 new tests (`IpAnonymizerTest`, `CommentModerationServiceTest`, `CommentServiceTest`); full suite green (2367 tests, 7259 assertions); `composer stan` shows only the same 18 pre-existing errors, none in new code; `composer cs-fix` clean on every changed file. Live-verified end to end on `lumorapress-preview`: submitted a real guest comment over curl with IP anonymization on and the Website field disabled — confirmed the field was actually absent from the rendered form, the stored IP showed as the anonymized `::` (this environment's loopback is IPv6), and a submitted `guest_url` was discarded despite being force-included in the raw POST; looked up that comment's email on Settings > Privacy (found 1), triggered the JSON export (200 OK), then Erase Personal Data and confirmed the admin Comments list showed "Anonymous" / `anonymized-{id}@removed.invalid` with the original comment text intact and no IP address shown; deleted the test comment and reverted both Discussion toggles to their prior state afterward.
+
+**Update (2026-09-14), fourth pass same session — the whole Admin
+Features section is now closed out.** Search comments, Filter by user/
+IP/date, and Comment statistics dashboard were the five remaining open
+items — all five built. `CommentService::paginateForAdmin()` gained
+`$search` (matches content/guest_name/guest_email), `$userId` (registered
+commenters only — a guest comment has no account to filter by, by
+design, not a gap), `$ipAddress` (exact match, same convention the IP
+Blacklist field already uses), and `$dateFrom`/`$dateTo` (inclusive).
+The admin Comments screen gained a filter form (search/user dropdown/IP/
+date range) above the table, and a new "Statistics" tab next to the
+existing moderation view (the `$tabs`/`.lp-tabs` scaffolding this
+screen never had before — added the same way Sweep's LPP-022 ticket
+added it to Tools), with status-count cards, a Comments Over Time bar
+chart (7/30/90-day toggle, reusing the exact `.lp-stats__*` CSS classes
+and daily-zero-fill shape the Visitor Stats plugin's own Stats page
+established, no new CSS needed), Top Commenters (grouped by email — the
+real address either way, registered or guest, per
+`CommentModerationService`'s identical existing reasoning), and Most
+Commented posts/pages. Both tabs' data compute unconditionally
+server-side (matching Settings > Security's own precedent) so
+`admin-tabs.js`'s already-global progressive enhancement switches
+between them with no page reload and no new JavaScript of this ticket's
+own. Every filter (not just status) now survives a moderate/bulk/delete
+action's redirect and every status-tab link, via one `$filterQuery`
+array built once and threaded through — previously only `status` was
+preserved. **A real bug caught only by live-testing against MySQL, not
+by the (SQLite-backed) unit suite:** the search filter's first draft
+reused one `:search` placeholder three times in one query; `Database`
+disables emulated prepared statements, and MySQL's real prepared
+statements reject a repeated named placeholder — SQLite tolerates it
+fine, which is exactly why `CommentServiceIntegrationTest`'s own class
+docblock already warns about this precise failure mode from a past
+incident. Fixed (three distinct placeholders bound to the same value)
+and a new integration test added to close the gap for future changes to
+this query. 17 new `CommentServiceTest` cases plus 1 new
+`CommentServiceIntegrationTest` case (run against a throwaway database
+on the dev install's own local MySQL server, confirmed passing, then
+dropped); full unit suite green (2348 tests, 7225 assertions); stan/
+cs-fix clean on every changed file. Live-verified end to end on the dev
+install: search, user filter, and an inclusive date range each narrowed
+the table to exactly the expected rows; a row-action redirect while a
+search filter was active landed back on that same filtered view (not a
+plain, filter-less reload); the Statistics tab (seeded with fresh
+same-day comments for the test) showed the correct daily chart, top
+commenter grouped by email, and both commented posts by title/link; all
+seeded test data removed and the one comment temporarily un-approved
+during the redirect-preservation check restored to Approved afterward.
+
+**Update (2026-09-14), third pass same session.** Implemented both
+remaining open items from Core Features and Sorting & Display.
+**Emoji support:** discovered the Emoji Picker plugin (LPP-006) already
+ships a purpose-built, documented-but-unused developer API for exactly
+this — `lp_emoji_picker_button(array $args = [])`, whose own docblock
+says "e.g. a theme's comment form." `comment_form()`
+(`include/comment-functions.php`) now calls it next to every comment/
+reply textarea; it renders nothing when the plugin is inactive/
+disabled, so this is always safe. The trigger's own click handler
+(`content-editor.js`'s `wireStandaloneEmojiTriggers()`) only ever
+shipped in the admin-only editor bundle, never loaded on the public
+site — so a new small standalone script, `assets/js/emoji-picker.js`,
+carries a lean reimplementation of the same dialog (search, category
+tabs, keyboard grid navigation), kept separate from the huge admin
+bundle the same way `media-viewer.js` is already its own public script
+distinct from the admin media picker. `FooterAssets::render()` emits it
+only when `lp_emoji_picker_enabled()` is true. **Collapsible long
+threads:** `comment_list()` gained a `$collapseThreshold` parameter
+(default 10) — a sub-thread with more total replies than that renders
+inside a collapsed-by-default `<details class="lp-comment__thread">`,
+the exact native `<details>`/`<summary>` pattern the per-comment Reply
+form immediately above it already uses; a new `comment_descendant_count()`
+helper does the recursive count. Since every bundled/custom theme's
+`comments.php` is already a thin wrapper calling the shared
+`comment_list()`/`comment_form()` (no per-theme duplication to begin
+with — confirmed by reading all 5 before starting), neither feature
+needed touching a single theme's PHP. CSS is the one per-theme piece
+(Public-Facing CSS Rule): added identically to `lumora-classic` and all
+four `custom themes/` (`duskline`, `dragonquill`, `xena-central`,
+`sands-of-kemet` — all share the exact same `--lp-bg-alt`/`--lp-text`/
+`--lp-border`/`--lp-accent`/`--lp-radius` token names, so the block
+needed no per-theme rewriting), each verified to have landed via a
+re-read afterward. 5 new `CommentFunctionsTest` cases; full suite green
+(2340 tests, 7201 assertions); `composer stan`/`cs-fix` clean on every
+changed file. Live-verified end to end on the dev install (active theme
+there is `dragonquill`): opened the emoji dialog on the real "Leave a
+Comment" form, confirmed 9 categories/106 items rendered, searched
+"heart" (21 matches), clicked an emoji and confirmed it landed in the
+textarea with the dialog staying open for repeated inserts. Seeded 12
+real replies under an existing comment, confirmed the thread rendered
+collapsed with a "12 replies" summary and expanded correctly on click,
+while an untouched short thread elsewhere on the same page rendered
+normally (uncollapsed); test replies removed afterward.
+
+**Update (2026-09-14), second pass same session.** Picked as the
+continuation of the IP-blacklist pass above. Before building anything,
+audited the remaining unchecked "Sorting & Display" items against the
+actual code the same way the earlier pass did for the bulk-actions
+cluster — "Newest first," "Flat view," and "Pagination or 'Load more'"
+were all three already fully built and working (`comment_order`,
+`comment_threading_enabled`, `comment_pagination_enabled`/
+`comment_per_page`, all real Settings > Discussion options already
+consumed by `CommentService::paginateForPost()`/`paginateForPage()` and
+rendered in the theme's `comments.php`), just never checked off. Checked
+off with notes rather than left stale. The one genuinely missing item
+built this pass: **Notify on replies** — a new "Email a commenter when
+someone replies to their comment" toggle (`comment_notify_on_reply`,
+off by default, added to `SettingsPortabilityService`'s portable
+fields) on Settings > Discussion. `CommentNotificationService` gained
+`notifyReply()`/`notifyReplyOnPage()`, wired into
+`SiteController::submitComment()`/`submitPageComment()` right alongside
+the existing `notifyNewComment()`/`notifyNewCommentOnPage()` calls
+(same "skip entirely for Spam" guard). The recipient is always
+`$parent->guestEmail` — already the real email either way, registered
+account or guest, per `SiteController`'s own `guest_email` assignment —
+so no separate user lookup is needed; a reply to your own earlier
+comment (matching email) is never notified. 5 new
+`CommentNotificationServiceTest` cases (first test coverage this class
+has ever had) using a small in-file `FakeMailer` double; full suite
+green (2335 tests, 7194 assertions); `composer stan`/`cs-fix` clean on
+every changed file. Live-verified end to end on the dev install: turned
+the setting on via the real Settings > Discussion form, submitted a
+real reply to an existing comment through the public site, confirmed no
+error in `storage/logs/error.log`, then reverted the test data and
+setting. (While reading that log, noticed an unrelated pre-existing
+`fputcsv()` PHP 8.4 deprecation warning from the Contact Forms CSV
+export screen — flagged as a separate follow-up, not fixed here since
+it's unrelated to this ticket.)
+
+**Update (2026-09-14):** picked as the next sensible item to work on this
+session. Before adding anything new, checked the actual admin Comments
+screen against several items still marked unchecked here — Bulk
+moderation/Bulk approve/Bulk delete/Bulk mark as spam/Empty Spam/Trash
+button/Add bulk actions were all already fully built (the bulk-action
+dropdown and separate Empty Trash/Empty Spam buttons), just never
+checked off; "URL limit" turned out to be the exact same feature as
+"Link moderation" listed two lines below it under a different name; and
+"Guest name blacklist" is already covered by the existing Disallowed/
+Moderation keyword lists, which match against the author name too, not
+a separate list. All checked off with a note rather than left stale.
+The one genuinely missing piece from that cluster — an **IP blacklist**
+— is new this session: `CommentModerationService::determineStatus()`
+gained an `?string $ipAddress` parameter and a `comment_ip_blacklist`
+option (new "IP Blacklist" field on Settings > Discussion, exact-match
+list, one IP per line), checked the same tier as the Disallowed keyword
+list — rejects outright as Spam regardless of trust, except for a
+trusted moderator. Deliberately left out of `SettingsPortabilityService`'s
+portable fields (unlike the keyword lists, which are already portable)
+since a site's own abuse-history IP list isn't something another install
+should inherit, the same reasoning Security/Privacy settings are
+already excluded for. The admin Comments list also now shows each
+comment's IP address (previously not shown anywhere in the admin UI),
+so a moderator actually has something to copy into the new field. 6 new
+`CommentModerationServiceTest` cases (3 for the IP blacklist, exercising
+match/trusted-moderator-exempt/no-match); full suite green (2330 tests,
+7185 assertions); `composer stan` clean on every changed file.
+Live-verified end to end on the dev install: saved an IP to the field,
+confirmed it persisted; submitted a real guest comment from a
+non-blacklisted address (landed Pending, the normal first-time-guest
+default) and then from the exact blacklisted address (`::1`, this
+browser's own loopback address, added temporarily) and confirmed it
+landed as Spam; test comments and the temporary blacklist value removed
+afterward.
+
+**Implemented (2026-07-23), first pass.** Scoped to Posts only (Pages,
+media, and albums are out of scope — media/albums belong to Lumora
+Gallery, a separate application per CLAUDE.md's Independence rule).
+Guest commenting is the primary path; a signed-in dashboard user (any
+role, not just Administrator/Editor) can also comment without re-typing
+their name/email, reusing the existing admin session rather than a
+separate public login system. Reactions, notifications, mentions,
+avatars, Akismet/Turnstile/hCaptcha/reCAPTCHA, blacklists, and GDPR
+tooling are intentionally left for a future pass — see unchecked items
+below.
+
+**Update (2026-08-14):** the "Pages... out of scope" note above is now
+partly out of date — LP-009's "Discussion settings" pass added comment
+support for Pages (a nullable `page_id` column alongside `post_id` on
+`{prefix}comments`, `CommentService` generalized to a LEFT JOIN against
+both posts and pages, a parallel `submitPageComment()`/Discussion box/
+`comments_template()` wiring). See LP-009's own eleventh-pass note for
+full detail — recorded here too since this ticket's own Goal statement
+originally scoped Pages as future work. Media/albums remain out of
+scope (still belong to Lumora Gallery, a separate application).
+
+**Update (2026-08-06):** several of the items below that were still
+unchecked (auto-close-after-days, admin/author notifications, word
+blacklist, link moderation, Akismet, user avatars) were delivered by
+`LP-047` (Discussion Settings) rather than as a further pass on this
+ticket — checked off here with a cross-reference to avoid tracking the
+same work twice; see `LP-047`'s own implementation note for what actually
+changed.
+
+### Goal
+
+Implement a modern, flexible commenting system for media, albums, pages, and other content types, with strong moderation tools and spam protection.
+
+### Core Features
+
+- [x] Guest commenting (optional) — name/email/optional website
+
+- [x] Registered user commenting — any signed-in dashboard user; no separate public account system
+
+- [x] Threaded replies
+
+- [x] Unlimited nesting depth (configurable) — nesting itself is unlimited; the depth limit is not separately configurable
+
+- [x] Emoji support — `comment_form()` renders the Emoji Picker plugin's own `lp_emoji_picker_button()` next to every comment/reply textarea (returns nothing when that plugin is inactive), backed by a new small standalone public script (`assets/js/emoji-picker.js`), separate from the admin editor's own bundle
+
+- [x] Auto-link URLs — `format_comment_content()`, escaped first then linkified with `rel="nofollow ugc noopener"`
+
+### Moderation
+
+- [x] Approval queue — default status is Pending unless the commenter is trusted (see below)
+- [x] Manual approval
+- [x] Auto-approve trusted users — the commenter has moderate_comments, or (for guests) has a prior Approved comment with that email (`CommentService::hasPreviouslyApprovedComment()`)
+- [x] Edit comments — content only, via the admin edit screen
+- [x] Delete comments — permanent; replies are orphaned (parent_id cleared) rather than cascade-deleted, mirroring CategoryService's precedent
+- [x] Soft delete — modeled as the Trash status rather than a separate deleted_at column, consistent with Posts/Categories/Tags not having real trash tables either
+- [x] Restore deleted comments — moving a Trash/Spam comment back to Pending or Approved
+- [x] Lock comments on individual content — per-post "Allow Comments" checkbox (`comment_status` column)
+- [x] Globally disable comments — site-wide toggle on the admin Comments screen (`comments_enabled` option)
+- [x] Close comments after configurable number of days — implemented under `LP-047` (Discussion Settings), not tracked twice; see that ticket
+
+### Spam Protection
+
+- [x] CSRF protection — every form (main comment form, each reply form, each admin moderation action) has its own scoped action name; see CommentService's/SiteController's docblocks for why a shared name across multiple forms on one page silently breaks moderation (a real bug caught and fixed during this session)
+- [x] Flood control / rate limiting — 30 seconds minimum between comments from the same IP
+- [x] Honeypot field — hidden `comment_website` field; a bot filling it in gets a silent fake-success redirect
+- [x] Guest name blacklist — covered by the existing Disallowed/Moderation keyword lists below, which already match against the author name (`CommentModerationService::matchesKeywordList()` builds its haystack from name+email+url+content), not a separate list
+- [x] IP blacklist — new "IP Blacklist" field on Settings > Discussion (`comment_ip_blacklist`), matched the same way the Disallowed keyword list rejects outright (regardless of trust, exempting a trusted moderator); the admin Comments list now also shows each comment's IP so a moderator has something to copy into it
+- [x] Word blacklist — `LP-047`'s "Disallowed comment keywords"/"Comment moderation keyword list"
+- [x] URL limit — same feature as "Link moderation" directly below (`comment_moderation_link_limit`), listed twice under different names
+- [x] Link moderation — `LP-047`'s "Hold comments containing more than X links"
+- [x] Akismet integration (optional) — already implemented (`LP-025`, `AkismetClient`), this checkbox was simply never updated when that landed; `LP-047` now surfaces its enabled/disabled status on the Discussion settings page
+
+Cloudflare Turnstile, hCaptcha, and reCAPTCHA support: moved to `ideas for later.md` (Comments (LP-012): Extension Ideas).
+
+### Notifications
+
+- [x] Notify content owner — `LP-047`'s "Notify post author of new comments"
+- [x] Notify moderators — `LP-047`'s "Notify administrator of new comments"/"...when comments require moderation"
+- [x] Notify on replies — new "Email a commenter when someone replies to their comment" toggle on Settings > Discussion (`comment_notify_on_reply`, off by default); never fires on a self-reply
+- [x] Email notifications — `CommentNotificationService` (`LP-047`), via the existing `LP-058` `Mailer`
+- [x] In-app notifications — admin Notifications screen (`admin/views/notifications.php`, `NotificationService`, `{prefix}notifications`) with a sidebar unread count; replies to your comment, comments on your posts/pages, comments on watched threads, and awaiting-moderation notices for moderators
+- [x] Watch/subscribe to comment threads — `comment_subscriptions_enabled` (Settings > Discussion, off by default); comment-form checkbox via the new `comment_form_fields_after` filter, "Watch this thread" for signed-in users; guest double opt-in sent only once their comment is approved (`CommentSubscriptionService`, `CommentFollowupService`)
+- [x] Unsubscribe links — every subscriber email links to `/comment-subscription/{token}`, which only stores the token in the session and shows a confirm/unsubscribe button on the thread (`CommentSubscriptionController`), so link-prefetching mail scanners can't act
+
+### User Features
+
+- [x] Quote previous comments — Quote button (`comments.js`) opens that comment's reply form pre-filled with `> ` lines; `format_comment_content()` renders runs of `>` lines as `<blockquote class="lp-comment__quote">`
+- [x] Mention users (@username) — `@author-slug` (public, never the login name), rendered identically whether or not the user exists; in-app `comment_mention` notice once approved (`CommentFollowupService`)
+- [x] User avatars — `LP-047`'s Avatars section (Gravatar, configurable rating/default, locally uploaded default)
+- [x] Display user roles — `comment_author_badge()`: role label for registered commenters, "Post author" (+ `.lp-comment--by-post-author`) on their own post
+- [x] Edited indicator — `comments.edited_at` (migration 0073) set by `CommentService::updateContent()` only when the text changes (importers opt out); "(edited)" with a timestamp tooltip
+- [x] Permalink for each comment — `#comment-{id}` anchors, linked from the admin list and used after posting
+
+Comment history: moved to `ideas for later.md` (Comments (LP-012): Extension Ideas).
+
+### Reactions
+
+- [x] Like button — `comment_reactions_mode` = `like` (Settings > Discussion > Reactions & Reporting)
+- [x] Optional reaction system (❤️ 👍 😂 😮 etc.) — `comment_reactions_mode` = `reactions` (👍 ❤️ 😂 😮 😢), off by default; `CommentReactionService`, `{prefix}comment_reactions` (migration 0074)
+- [x] Display reaction counts — batched per thread via the `CommentExtras` bridge; read-only counts for guests when `comment_reactions_registered_only` is on
+- [x] Prevent duplicate reactions — unique (comment_id, voter_key); voter = `u:{id}` or `g:{sha256 of the lp_voter cookie}`; same reaction again removes it, another switches it
+
+### Sorting & Display
+
+- [x] Oldest first — the public default
+- [x] Newest first — Settings > Discussion's "Comment order" radio (`comment_order`), consumed by `CommentService::paginateForPost()`/`paginateForPage()`
+- [x] Threaded view
+- [x] Flat view — Settings > Discussion's "Enable threaded comments" toggle (`comment_threading_enabled`); off gives a flat, unnested list via the same pagination methods above
+- [x] Collapsible long threads — `comment_list()` wraps a sub-thread with more than 10 total replies in a collapsed-by-default `<details>`, the same native pattern the per-comment Reply form already uses
+- [x] Pagination or "Load more" — Settings > Discussion's "Enable comment pagination"/"Comments per page" (`comment_pagination_enabled`/`comment_per_page`), real server-side pagination (`?cpage=`) with Newer/Older Comments links, not just an unbounded list
+
+### Admin Features
+
+- [x] Bulk moderation — the admin Comments screen's "Bulk actions" dropdown (Approve/Unapprove/Mark as Spam/Move to Trash/Delete Permanently), not previously checked off here despite already being built
+- [x] Bulk approve — same bulk-action dropdown
+- [x] Bulk delete — same bulk-action dropdown
+- [x] Bulk mark as spam — same bulk-action dropdown
+- [x] Empty Spam/Trash button — separate "Empty Trash"/"Empty Spam" buttons, shown on the Trash/Spam status-filter views respectively
+- [x] Search comments — matches comment content, guest name, or guest email
+- [x] Filter by user — registered commenters only, by design; a guest comment has no account to filter by
+- [x] Filter by IP — exact match, same convention the IP Blacklist field already uses
+- [x] Filter by status
+- [x] Filter by date — inclusive From/To range
+- [x] Comment statistics dashboard — new "Statistics" tab on the Comments screen: status-count cards, a Comments Over Time bar chart (7/30/90-day toggle), Top Commenters, and Most Commented posts/pages
+
+### Privacy
+
+- [x] Store commenter IP (configurable) — stored unconditionally, not yet toggleable
+- [x] IP anonymization option — new "Anonymize commenter IP addresses" toggle on Settings > Discussion (`comment_ip_anonymization_enabled`, off by default); masks the last IPv4 octet or last 80 bits of an IPv6 address before flood control/IP-blacklist matching and storage all see it
+- [x] GDPR-friendly data export — "Comment Data Requests" panel on Settings > Privacy: look up every comment posted under a given email address and download them as JSON
+- [x] GDPR comment deletion tools — same panel's "Erase Personal Data" action (`CommentService::anonymizeByEmail()`): strips name/email/website/IP from every matching comment while keeping the comment text and thread structure, rather than an outright delete that would orphan replies
+- [x] Configurable guest information fields — new "Collect a Website URL from guest commenters" toggle on Settings > Discussion (`comment_author_url_enabled`, on by default); off removes the already-optional Website field from the comment form entirely, enforced server-side as well as in the form
+
+### Developer API
+
+Provide a standardized Comments API.
+
+Extensions should be able to:
+
+- [x] Register comment providers — `comments_template_html` filter replaces the whole comment section (a third-party commenting system)
+- [x] Hook into comment submission — `do_action('comment_posted', $comment)` fires after every successful submission
+- [x] Hook into moderation — `comment_status_changed` now also passes the previous status; `comment_deleted`
+- [x] Add custom moderation rules — `comment_moderation_status` filter (last word on a new comment's status, after built-in checks/Akismet/`comment_is_spam`)
+- [x] Add notification providers — `notification_created` action on every in-app notification; `NotificationService::notify()` for plugins' own
+- [x] Add spam detection providers — the existing `comment_is_spam` filter, now documented in the Comments API guide
+- [x] Extend comment metadata — `{prefix}comment_meta` (migration 0076), `CommentService::setMeta()`/`metaValue()`/`metaForComment()`/`metaForComments()`, removed with its comment (and swept via `deleteOrphanedCommentData()` on `post_deleted`); `comment_content_html` filter to display it
+- [x] Add custom reaction types — `comment_reaction_types` filter, keys validated to the stored column's width
+
+### Future Enhancements
+
+- [x] Comment reporting — `comment_reporting_enabled` (off by default), `CommentReportService`/`{prefix}comment_reports` (migration 0075), one report per person, moderator notices, auto-hold at `comment_report_threshold` (default 3, 0 = never), admin Comments "Reported" tab + Dismiss reports
+
+Pinned comments, featured comments, moderator notes, AI-assisted spam detection and moderation suggestions, activity feed integration, and federated comments: moved to `ideas for later.md` (Comments (LP-012): Extension Ideas).
+---
+
+### Task List
+
+#### Database
+
+- [x] Design comments schema — `{prefix}comments`, migration `0009_create_comments_table.sql`
+- [x] Add `comment_status` (open/closed) to posts — migration `0010_add_comment_status_to_posts.sql`, the project's first `ALTER TABLE` migration (previous features always shipped their full schema in one `CREATE TABLE`)
+- [x] Support threaded replies — self-referencing nullable `parent_id`
+- [x] Add indexes for performance — `post_id`, `parent_id`, `status`, `(ip_address, created_at)` for flood-control lookups
+
+#### Backend
+
+- [x] Create Comment model and CommentStatus enum
+- [x] Create Comment service layer — `CommentService`, same "no separate repository layer" convention as Post/Page/Category/Tag/User
+- [x] Implement CRUD operations
+- [x] Implement moderation state transitions
+- [x] Implement the public comment tree builder — `publicTreeForPost()`
+- [x] Implement flood control
+- [x] Implement auto-approve trust check
+- [x] Implement permissions — public submission has none; admin screen requires `moderate_comments`
+- [x] Implement search/filtering beyond status — the admin Comments screen's search (content/name/email), user, IP, and date-range filters (`CommentService::paginateForAdmin()`), built in the Admin Features pass
+
+#### Admin Interface
+
+- [x] Build Comments moderation screen — replaces the `placeholder.php` fallback the `comments` menu entry fell through to previously
+- [x] Build comment edit screen
+- [x] Add per-comment moderation actions (Approve/Unapprove/Spam/Trash/Delete)
+- [x] Add confirmation dialog on permanent delete
+- [x] Add status filter tabs
+- [x] Wire the Dashboard's "Recent Comments" widget to real data
+- [x] Add bulk actions — see "Bulk moderation" etc. under Admin Features above
+
+#### Frontend
+
+- [x] Public comment list and threaded replies (`content/themes/default/comments.php`)
+- [x] Public comment submission form, with a distinct form (and CSRF action) per reply target
+- [x] Honeypot field
+- [x] Auto-linked URLs
+- [x] Theme integration — `comments_template()` helper (mirrors `get_header()`/`get_footer()`/`get_sidebar()`), called from `single.php`
+
+#### Security
+
+- [x] CSRF protection — see the "a real bug caught and fixed" note above; every form on the page needs its own action name, not just every page
+- [x] Permission checks
+- [x] Input validation — required name/comment, valid email, valid or empty website URL
+- [x] Output escaping
+- [x] XSS protection
+
+#### Testing
+
+- [x] Unit tests — `Unit/Services/CommentServiceTest.php`
+- [x] Integration tests — `Integration/CommentServiceIntegrationTest.php` (real MySQL only; also confirms deleting a post cascades to its comments)
+- [x] `PostService`/`PageService`-style regression coverage — `Unit/Services/PostServiceTest.php` gained tests for `comment_status` and the comments cleanup on post delete
+- [x] Manually verified end-to-end in a real browser + curl against live MySQL: guest comment, reply threading, all five admin moderation actions (Approve/Unapprove/Spam/Trash/Delete), and the site-wide comments toggle
+- [x] PHP 8.2 compatibility — full suite (Unit + Integration) green on the Docker PHP 8.2/8.3/8.4/8.5 + MariaDB matrix, 2026-09-25 (see `PHP Test Suite/TEST_LOG.md`)
+- [x] PHP 8.3 compatibility — full suite (Unit + Integration) green on the Docker PHP 8.2/8.3/8.4/8.5 + MariaDB matrix, 2026-09-25 (see `PHP Test Suite/TEST_LOG.md`)
+- [x] PHP 8.4 compatibility
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Update CHANGELOG.md
+- [x] Document the Comments API for plugin authors beyond the one `comment_posted` hook — new "Comments API" section in `docs/DEVELOPER-APIS.md` (plus every hook in the reference tables)
+
+#### Success Criteria
+
+- [x] Visitors can leave comments without an account, and signed-in users can comment without retyping their details.
+- [x] Moderators can approve, reject, edit, and permanently remove comments from a dedicated admin screen.
+- [x] Spam is meaningfully slowed by CSRF + honeypot + flood control, without requiring a third-party service.
+- [x] Comments integrate with the existing theme system the same way Posts/Pages/Categories/Tags do.
+- [x] Administrators can efficiently moderate at scale — bulk actions, search, and filter by status/user/IP/date are all in place now; still untested against a genuinely large (tens of thousands of rows) comment volume specifically.
+
+
+### LP-078. Permalink Structure & Settings
+
+**Status:** Complete
+
+### Philosophy
+
+Classic WordPress (the project's own reference era, 3.5–4.9) exposed
+permalink structure as a single Settings &rsaquo; Permalinks page:
+pick a common preset (Day and name, Month and name, Post name, Numeric)
+or write a custom structure from tokens (`%postname%`, `%year%`,
+`%monthnum%`, `%day%`, `%category%`, `%author%`, ...), plus separate
+Category base / Tag base fields to rename those archive prefixes. This
+ticket brings the same capability to Posts (structure) and Category/Tag
+archives (base prefix). Pages and a numeric "Plain" fallback were
+rejected outright — see `DECISIONS.md` (2026-09-25).
+
+### Architecture Note
+
+LP-008's own "Configurable permalink structure" item was deferred with
+the note that it "touches Router, every URL-generation call site, feeds,
+and sitemaps" — this ticket is that work. Confirmed by tracing every
+place a post URL is currently hand-built as the literal string
+`'post/' . $post->slug`: `SiteController` (redirect-after-submit, RSS/
+Atom item links, sitemap, Open Graph), `ApiController`'s `permalink`
+field, `CommentNotificationService`, `CoreWidgets` (Recent Posts/Recent
+Comments), every theme template (`index.php`, `archive.php`,
+`comments.php`, `header.php`), `admin/views/appearance/menus.php`'s
+"Add Posts" quick-add, `admin/views/comments.php`, and the new
+Permalink row in `admin/views/posts/new.php` — at least 15 separate call
+sites, each of which would need to change if the structure became
+configurable. Route registration has the same problem from the other
+direction: `include/bootstrap.php` registers `$router->get('/post/{slug}',
+...)` as one literal pattern string, not derived from any setting.
+
+**The only viable approach is a single choke point on both sides**:
+a new `post_permalink(Post $post): string` helper (theme API, mirroring
+`the_author_link()`'s role as the one place author-URL construction
+lives) that every call site above is migrated to call instead of
+hand-building the string, plus a `PermalinkService` that both
+`post_permalink()` and `Router`'s registration read the active
+structure from. Building the setting without first consolidating every
+call site would leave most of the application still hardcoded to
+`/post/{slug}` regardless of what the admin configures — a half-feature
+that looks configurable but mostly isn't.
+
+### Goal
+
+Let a site owner choose how post URLs are structured (date-based or
+plain post-name, or a custom token pattern), and rename the Category/Tag
+archive URL prefixes — without breaking feeds, sitemaps, the REST API,
+or any existing internal link-building.
+
+### Settings Page
+
+- [x] New Settings &rsaquo; Permalinks admin page
+- [x] Post structure presets: Post name (`/post/%postname%`, today's
+      fixed behavior, stays the default), Day and name
+      (`/%year%/%monthnum%/%day%/%postname%`), Month and name
+      (`/%year%/%monthnum%/%postname%`)
+- [x] Custom Structure field accepting the token set below, with a live
+      preview of what a real post's URL would look like (mirrors
+      `admin/assets/js/url-preview.js`'s existing live-preview pattern) —
+      `admin/assets/js/permalink-preview.js`, a sibling client-side-only
+      preview (substitutes sample token values, doesn't round-trip to the
+      server)
+- [x] Category base field (default `category`) and Tag base field
+      (default `tag`) — renames the `/category/{slug}` /
+      `/tag/{slug}` prefix
+
+### Tokens
+
+- [x] `%postname%` — the post's slug
+- [x] `%year%` / `%monthnum%` / `%day%` — from `published_at`
+- [x] `%category%` — the post's first assigned category's slug (posts
+      with no category fall back to `%postname%` alone for that segment,
+      same "graceful fallback" WordPress itself uses)
+- [x] `%author%` — the author's slug (`UserService::authorSlug()`,
+      already exists from LP-008's author archives)
+
+### Implementation
+
+- [x] `PermalinkService` — resolves the active structure (from a new
+      `permalink_structure` option) into a real URL for a given `Post`,
+      and the reverse: a compiled route pattern `Router` registers
+      instead of the current literal `/post/{slug}` string
+- [x] `post_permalink(Post $post): string` theme API helper — the one
+      choke point every call site enumerated in the Architecture Note
+      above is migrated to use instead of hand-building `'post/' .
+      $post->slug` (plus `category_permalink()`/`tag_permalink()`/
+      `search_result_permalink()` siblings for the category/tag/search-
+      result call sites the same Architecture Note also covers)
+- [x] `Router` gains support for a structure-derived pattern (not just
+      the fixed `{slug}` segment) — date/category/author tokens each
+      get their own route-parameter extraction. `Router::match()`'s
+      existing `{name}` placeholder mechanism turned out to already be
+      fully generic (any placeholder name, not just `slug`), so no change
+      to `Router` itself was needed — `PermalinkService::postRoutePattern()`
+      compiles `%token%` to `{token}` and `include/bootstrap.php` registers
+      that pattern instead of a hardcoded one.
+- [x] Feeds (LP-013) and the XML sitemap (LP-022) use `post_permalink()`
+      rather than their own inline construction
+- [x] REST API (`ApiController`)'s `permalink` field uses
+      `post_permalink()`
+
+### Migration & Compatibility
+
+- [x] Changing the structure on a site with existing published posts is
+      a real breaking-link risk (classic WordPress has this exact
+      pitfall too, and does not solve it automatically) — an admin-facing
+      warning on the Settings page when posts already exist, explaining
+      that old URLs will 404 once the structure changes
+- [x] Optionally auto-create redirects (via the existing
+      `RedirectService`, LP-024/LP-028) from every published post's old
+      URL to its new one at the moment the structure is saved —
+      `PermalinkRedirectService`, driven by a "Redirect old post URLs to
+      their new ones" checkbox (checked by default, shown only when
+      published posts exist) on Settings &rsaquo; Permalinks. Creates
+      ordinary 301 rows on Settings &rsaquo; Redirects; a second change
+      retargets earlier redirects so every old URL stays one hop, and
+      switching back to an earlier structure removes the now-self-
+      referencing reverse redirect. Runs in one transaction.
+
+### Success Criteria
+
+- An admin can switch post URLs to a date-based structure and every
+  internal link (theme templates, feeds, sitemap, REST API, admin
+  screens) reflects it immediately, with none still hardcoded to
+  `/post/{slug}`.
+- Category/Tag archive URLs can be renamed via a Settings field, no code
+  changes required.
+- The default (unconfigured) behavior is byte-for-byte the current
+  `/post/{slug}` / `/category/{slug}` / `/tag/{slug}` URLs — this ticket
+  never changes an existing site's URLs unless an admin opts in.
+
+
+### LP-179. Reply to Comments from the Admin Comments Screen
+
+**Status:** Complete
+
+### Goal
+
+A moderator can reply to a comment straight from Comments in the admin, without opening the post first. The reply is published as the signed-in user, threaded under the original comment, and triggers the same follow-ups a front-end reply does.
+
+### Design
+
+- **A "Reply" row action** on Approved and Pending comments opens a dedicated reply screen, `admin/comments?action=reply&id=N`, styled like the existing edit screen: the original comment in context (author, date, the post/page it's on, its formatted text) above a textarea. A separate screen rather than an inline panel because the list table already sits inside the bulk-action form (no nested forms), and it works without JavaScript.
+- **Pending parents:** the button reads "Approve and Reply", as in classic WordPress. The parent is approved first (firing the usual `comment_status_changed` follow-ups), since a reply under a hidden comment would never display.
+- **Logic in a focused service**, `CommentReplyService::reply()`, not in the view. It creates the comment as the signed-in user (their id, display name, and account email), with the parent set and status Approved: a moderator's reply is trusted, so no keyword/link holds, flood limit, or Akismet. The IP honours the "Anonymize commenter IP addresses" setting.
+- **Follow-ups:** it fires `comment_posted`, so everything already hooked there runs (in-app notice to a registered parent commenter, thread-subscriber emails, @mentions). It also sends the existing "someone replied to your comment" email to the parent's commenter when that setting is on. It does not send a "new comment" email to the administrator about their own reply.
+- **Rules:** capability is `moderate_comments`, the same as the rest of the screen; CSRF per parent comment. A Spam or Trash comment, or one whose post/page no longer exists, can't be replied to and gets a clear message.
+- **Non-goals:** inline/AJAX quick reply, reply from the edit screen, bulk reply, replying as a different user.
+
+### Checklist
+
+- [x] `CommentReplyService::reply()`: creates the threaded reply as the signed-in user, approves a Pending parent first, refuses empty text and non-repliable comments
+- [x] Fires `comment_posted` and sends the reply email to the parent's commenter (when enabled), never a new-comment email about the reply itself
+- [x] "Reply" row action on Approved/Pending comments; reply screen showing the original comment in context ("Approve and Reply" for Pending)
+- [x] Success and error messages on the Comments screen; Akismet "not spam" feedback when a Pending parent is approved
+- [x] Unit tests for the service (fields, threading, approval, refusals, hook, email on/off, IP anonymization, page comments)
+- [x] Live verification on the dev install: reply to an Approved and a Pending comment, and check it renders threaded on the post
+- [x] Update `CHANGELOG.md`, `docs/FEATURES.md`, and `docs/DEVELOPER-APIS.md` (`comment_posted` now also fires from the admin)
+
+**Implemented (2026-09-25).** Exactly per the Design section. `CommentReplyService` (`canReplyTo()`/`reply()`) holds the logic; the Comments screen (`admin/views/comments.php`) gained a `form=reply` handler, an `action=reply` screen, a Reply row action (shown from the list query's own data, so no per-row lookup), two alerts, and Akismet "not spam" feedback when a Pending parent is approved. The service is constructed inside the view, like the reactions/reports services, rather than added to `Kernel`. A reply fires `comment_posted` through the injected `HookManager`, so the existing follow-up wiring (in-app notices, subscriber emails, @mentions) needed no changes. 9 new unit tests (`CommentReplyServiceTest`). Live-verified on `lumorapress-preview`: replied to an Approved comment (threaded, "Post author" badge, correct success message) and to a Pending one ("Approve and Reply" approved the parent first); a Spam comment shows no Reply action and its reply URL, like a nonexistent id, is turned away with a message. Actual email delivery (the reply email to the parent's commenter) can't be checked on this machine and is covered by unit tests. Test comments removed afterward.
+
+Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[0.18.0]` section for the full description): the "Allow comments site-wide" switch moved from the Comments screen to Settings &rsaquo; General; the admin Comments screen's search and filters are now in a collapsible panel; the Visitor Stats &rsaquo; Stats page now opens on the last 7 days; the comment form's emoji picker no longer opens empty and now closes when you click outside it; permanently deleting a page now deletes its comments (with a one-time cleanup of comments already orphaned by earlier deletions); a database-session write bug that could turn two quick requests from one visitor into a server error was fixed; and the README's Cookies section was corrected.

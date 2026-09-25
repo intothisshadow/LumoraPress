@@ -188,6 +188,28 @@
         dialog.appendChild(grid);
         dialog.appendChild(closeButton);
         dialog.addEventListener('close', function () { dialog.remove(); });
+
+        // A click on the dimmed backdrop lands on the <dialog> itself, so
+        // compare its position with the dialog's box. Requiring the press to
+        // have started outside too keeps a text-selection drag that ends over
+        // the backdrop from closing the picker.
+        function isOutside(event) {
+            var box = dialog.getBoundingClientRect();
+
+            return event.target === dialog
+                && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom);
+        }
+
+        var pressedOutside = false;
+        dialog.addEventListener('mousedown', function (event) { pressedOutside = isOutside(event); });
+        dialog.addEventListener('click', function (event) {
+            if (pressedOutside && isOutside(event)) {
+                dialog.close();
+            }
+
+            pressedOutside = false;
+        });
+
         document.body.appendChild(dialog);
         dialog.showModal();
 

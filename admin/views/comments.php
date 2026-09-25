@@ -18,6 +18,8 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
+use LumoraPress\Services\CommentNotificationService;
+use LumoraPress\Services\CommentReplyService;
 use LumoraPress\Services\CommentReportService;
 
 if (!isset($kernel)) {
@@ -27,6 +29,14 @@ if (!isset($kernel)) {
 
 $commentService = $kernel->comments;
 $commentReports = new CommentReportService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->config);
+$commentReplies = new CommentReplyService(
+    $commentService,
+    $kernel->posts,
+    $kernel->pages,
+    $kernel->commentModeration,
+    new CommentNotificationService($kernel->config, $kernel->mailer, $kernel->users),
+    $kernel->hooks,
+);
 $error = null;
 
 // "Reported" is its own tab rather than one of the filters below, so the
@@ -130,6 +140,37 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('comments') . ($redirectQuery !== [] ? '?' . http_build_query($redirectQuery) : ''));
         exit;
+    } elseif ($form === 'reply') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $replyParent = $commentService->findById($id);
+
+        if ($replyParent === null) {
+            header('Location: ' . admin_url('comments') . '?error=forbidden');
+            exit;
+        }
+
+        if (Csrf::verify('comment_reply_' . $id, is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $parentWasPending = $replyParent->status === CommentStatus::Pending;
+
+            try {
+                $commentReplies->reply(
+                    $replyParent,
+                    $currentUser,
+                    (string) ($_POST['content'] ?? ''),
+                    is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : null,
+                    is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? $_SERVER['HTTP_USER_AGENT'] : null,
+                );
+
+                if ($parentWasPending) {
+                    $submitAkismetFeedback($replyParent, CommentStatus::Approved);
+                }
+
+                header('Location: ' . admin_url('comments') . '?replied=' . ($parentWasPending ? 'approved' : '1'));
+                exit;
+            } catch (\InvalidArgumentException $exception) {
+                $error = $exception->getMessage();
+            }
+        }
     } elseif ($form === 'dismiss_reports') {
         $id = (int) ($_POST['id'] ?? 0);
 
@@ -216,6 +257,28 @@ if ($action === 'edit') {
     }
 }
 
+$replyingTo = null;
+$replyContentTitle = '';
+$replyContentUrl = '';
+
+if ($action === 'reply') {
+    $replyingTo = $editingId !== null ? $commentService->findById($editingId) : null;
+
+    if ($replyingTo === null) {
+        header('Location: ' . admin_url('comments') . '?error=forbidden');
+        exit;
+    }
+
+    if (!$commentReplies->canReplyTo($replyingTo)) {
+        header('Location: ' . admin_url('comments') . '?error=not_repliable');
+        exit;
+    }
+
+    $replyContent = $replyingTo->pageId !== null ? $kernel->pages->findById($replyingTo->pageId) : $kernel->posts->findById((int) $replyingTo->postId);
+    $replyContentTitle = $replyContent?->title ?? '';
+    $replyContentUrl = $replyContent === null ? '' : ($replyingTo->pageId !== null ? page_permalink($replyContent) : post_permalink($replyContent)) . '#comment-' . $replyingTo->id;
+}
+
 $tabs = ['moderation' => 'Moderation', 'statistics' => 'Statistics'];
 $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'] : 'moderation';
 ?>
@@ -231,6 +294,16 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
     <div class="lp-alert lp-alert--error">That comment could not be found.</div>
+<?php endif; ?>
+
+<?php if (($_GET['error'] ?? null) === 'not_repliable'): ?>
+    <div class="lp-alert lp-alert--error">That comment can't be replied to. Only approved or pending comments on existing posts and pages can.</div>
+<?php endif; ?>
+
+<?php if (($_GET['replied'] ?? null) === 'approved'): ?>
+    <div class="lp-alert lp-alert--success">The comment was approved and your reply was posted.</div>
+<?php elseif (isset($_GET['replied'])): ?>
+    <div class="lp-alert lp-alert--success">Your reply was posted.</div>
 <?php endif; ?>
 
 <?php if (isset($_GET['trash_emptied'])): ?>
@@ -259,6 +332,39 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Comment</button>
+            <a class="lp-button" href="<?= esc_url(admin_url('comments')) ?>">Cancel</a>
+        </form>
+    </section>
+<?php elseif ($action === 'reply'): ?>
+    <section class="lp-admin__panel">
+        <h2>Reply to <?= esc_html($replyingTo->guestName) ?></h2>
+
+        <div class="lp-comment-reply-original">
+            <p class="lp-comment-reply-original__meta">
+                <strong><?= esc_html($replyingTo->guestName) ?></strong>
+                &middot; <?= esc_html($replyingTo->createdAt->format('M j, Y')) ?>
+                <?php if ($replyContentTitle !== ''): ?>
+                    &middot; on <a href="<?= esc_url($replyContentUrl) ?>"><?= esc_html($replyContentTitle) ?></a>
+                <?php endif; ?>
+                <?php if ($replyingTo->status === CommentStatus::Pending): ?>
+                    <span class="lp-status-badge lp-status-badge--pending"><?= esc_html($replyingTo->status->label()) ?></span>
+                <?php endif; ?>
+            </p>
+            <div class="lp-comment-reply-original__text"><?= format_comment_content($replyingTo->content) ?></div>
+        </div>
+
+        <form method="post" action="<?= esc_url(admin_url('comments') . '?action=reply&id=' . (int) $replyingTo->id) ?>">
+            <?= Csrf::field('comment_reply_' . $replyingTo->id) ?>
+            <input type="hidden" name="form" value="reply">
+            <input type="hidden" name="id" value="<?= (int) $replyingTo->id ?>">
+
+            <p class="lp-field">
+                <label for="comment-reply-content">Your reply</label>
+                <textarea id="comment-reply-content" name="content" rows="6" required autofocus><?= esc_html((string) ($_POST['content'] ?? '')) ?></textarea>
+                <span class="lp-field__hint">Posted as <?= esc_html($currentUser->displayName) ?>, under this comment.<?= $replyingTo->status === CommentStatus::Pending ? ' Replying also approves this comment.' : '' ?></span>
+            </p>
+
+            <button type="submit" class="lp-button lp-button--primary"><?= $replyingTo->status === CommentStatus::Pending ? 'Approve and Reply' : 'Reply' ?></button>
             <a class="lp-button" href="<?= esc_url(admin_url('comments')) ?>">Cancel</a>
         </form>
     </section>
@@ -351,47 +457,57 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
         <?php endif; ?>
     </p>
 
-    <form method="get" action="<?= esc_url(admin_url('comments')) ?>" class="lp-admin__panel lp-comments-filter-form">
-        <?php if ($statusFilter !== null): ?>
-            <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
-        <?php endif; ?>
+    <section class="lp-admin__panel">
+        <details class="lp-admin__collapsible" <?= $filterQuery !== [] ? 'open' : '' ?>>
+            <summary>Search &amp; Filter</summary>
+            <div class="lp-admin__collapsible__body">
+                <form method="get" action="<?= esc_url(admin_url('comments')) ?>" class="lp-admin__filter-form lp-comments-filter-form">
+                    <?php if ($statusFilter !== null): ?>
+                        <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+                    <?php endif; ?>
+                    <?php if ($reportedOnly): ?>
+                        <input type="hidden" name="reported" value="1">
+                    <?php endif; ?>
 
-        <p class="lp-field">
-            <label for="comments-filter-q">Search</label>
-            <input type="search" id="comments-filter-q" name="q" value="<?= esc_attr($searchFilter) ?>" placeholder="Comment content, name, or email">
-        </p>
+                    <p class="lp-field">
+                        <label for="comments-filter-q">Search</label>
+                        <input type="search" id="comments-filter-q" name="q" value="<?= esc_attr($searchFilter) ?>" placeholder="Comment content, name, or email">
+                    </p>
 
-        <p class="lp-field">
-            <label for="comments-filter-user">User</label>
-            <select id="comments-filter-user" name="user_id">
-                <option value="">Any user</option>
-                <?php foreach ($allUsersForFilter as $filterUser): ?>
-                    <option value="<?= (int) $filterUser->id ?>" <?= $userFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <span class="lp-field__hint">A guest comment has no account, so this only matches signed-in commenters.</span>
-        </p>
+                    <p class="lp-field">
+                        <label for="comments-filter-user">User</label>
+                        <select id="comments-filter-user" name="user_id">
+                            <option value="">Any user</option>
+                            <?php foreach ($allUsersForFilter as $filterUser): ?>
+                                <option value="<?= (int) $filterUser->id ?>" <?= $userFilter === $filterUser->id ? 'selected' : '' ?>><?= esc_html($filterUser->displayName) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <span class="lp-field__hint">A guest comment has no account, so this only matches signed-in commenters.</span>
+                    </p>
 
-        <p class="lp-field">
-            <label for="comments-filter-ip">IP address</label>
-            <input type="text" id="comments-filter-ip" name="ip" value="<?= esc_attr($ipFilter) ?>" placeholder="203.0.113.1">
-        </p>
+                    <p class="lp-field">
+                        <label for="comments-filter-ip">IP address</label>
+                        <input type="text" id="comments-filter-ip" name="ip" value="<?= esc_attr($ipFilter) ?>" placeholder="203.0.113.1">
+                    </p>
 
-        <p class="lp-field">
-            <label for="comments-filter-date-from">From</label>
-            <input type="date" id="comments-filter-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
-        </p>
+                    <p class="lp-field">
+                        <label for="comments-filter-date-from">From</label>
+                        <input type="date" id="comments-filter-date-from" name="date_from" value="<?= esc_attr($dateFromFilter) ?>">
+                    </p>
 
-        <p class="lp-field">
-            <label for="comments-filter-date-to">To</label>
-            <input type="date" id="comments-filter-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
-        </p>
+                    <p class="lp-field">
+                        <label for="comments-filter-date-to">To</label>
+                        <input type="date" id="comments-filter-date-to" name="date_to" value="<?= esc_attr($dateToFilter) ?>">
+                    </p>
 
-        <button type="submit" class="lp-button lp-button--secondary">Filter</button>
-        <?php if ($filterQuery !== []): ?>
-            <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('comments')) ?><?= $statusFilter !== null ? '?status=' . esc_attr($statusFilter->value) : '' ?>">Clear filters</a>
-        <?php endif; ?>
-    </form>
+                    <button type="submit" class="lp-button lp-button--secondary">Filter</button>
+                    <?php if ($filterQuery !== []): ?>
+                        <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('comments')) ?><?= $statusFilter !== null ? '?status=' . esc_attr($statusFilter->value) : ($reportedOnly ? '?reported=1' : '') ?>">Clear filters</a>
+                    <?php endif; ?>
+                </form>
+            </div>
+        </details>
+    </section>
 
     <section class="lp-admin__panel">
         <?php if ($isTrashView && $pagination['total'] > 0): ?>
@@ -501,6 +617,10 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                                 </td>
                                 <td><?= esc_html($comment->createdAt->format('M j, Y')) ?></td>
                                 <td class="lp-admin__row-actions">
+                                    <?php // The list query already tells us whether the post/page still exists (no slug when it's gone), so no per-row lookup. ?>
+                                    <?php if (in_array($comment->status, [CommentStatus::Approved, CommentStatus::Pending], true) && $row['contentSlug'] !== ''): ?>
+                                        <a class="lp-button lp-button--link" href="<?= esc_url(admin_url('comments') . '?action=reply&id=' . (int) $comment->id) ?>">Reply</a>
+                                    <?php endif; ?>
                                     <?php foreach ([
                                         [CommentStatus::Approved, 'Approve', false],
                                         [CommentStatus::Pending, 'Unapprove', false],

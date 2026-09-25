@@ -1654,12 +1654,13 @@ a.lp-post-list__comments:focus {
     font-size: 0.85rem;
 }
 
+/* flex-basis must be auto: the dialog is content-sized, so a basis of 0 collapses this scroll area to nothing. */
 .lp-comment-emoji-dialog__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
     gap: 0.35rem;
     overflow-y: auto;
-    flex: 1 1 0;
+    flex: 1 1 auto;
     min-height: 0;
     margin-bottom: 0.75rem;
 }

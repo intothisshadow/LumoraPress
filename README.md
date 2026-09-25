@@ -4,7 +4,7 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
-**Current release**: 0.17.0
+**Current release**: 0.18.0
 
 ## Who is Lumora Press for?
 
@@ -35,6 +35,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Drafts, scheduling, revisions, previews, and trash
 - Categories and tags, with hierarchical category URLs, archive pages, merge, and bulk actions
 - Sticky and private posts
+- Configurable permalink structure (post name, date-based, or custom), with optional automatic redirects from the old URLs when it changes
 - Threaded comments and moderation
 - Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
 - Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker

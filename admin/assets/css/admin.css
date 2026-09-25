@@ -5614,3 +5614,21 @@ a.lp-button--link.lp-button--link--view:hover {
     font-size: 0.8rem;
     font-weight: 600;
 }
+
+/* Comments screen: the original comment shown above the reply form. */
+.lp-comment-reply-original {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--lp-admin-border);
+    background: var(--lp-admin-bg);
+}
+
+.lp-comment-reply-original__meta {
+    margin: 0 0 0.5rem;
+    color: var(--lp-admin-text);
+    font-size: 0.85rem;
+}
+
+.lp-comment-reply-original__text {
+    overflow-wrap: anywhere;
+}
