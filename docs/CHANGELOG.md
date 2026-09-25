@@ -14,6 +14,10 @@ All notable changes to Lumora Press are documented in this file.
 - Comment reporting (LP-012): visitors can report a comment as spam, abusive, off-topic, or something else (off by default). Each person can report a comment once; moderators get an in-app notification, the admin Comments screen gains a "Reported" tab showing each comment's reasons with a "Dismiss reports" action, and a comment is automatically held for moderation once it reaches a configurable number of reports (3 by default, or never).
 - Quoting, mentions, roles, and edits in comments (LP-012): every comment has a Quote button that opens a reply already quoting it, and lines starting with ">" now display as a quote. Mentioning someone as @their-author-name notifies them in the admin once the comment is approved (it uses the same public name as their author archive, never a login name, and looks the same whether or not that user exists). Comments from registered users show their role, or "Post author" on their own post, and a comment a moderator has changed shows "(edited)".
 
+### Changed
+
+- The "Allow comments site-wide" switch moved from the top of the admin Comments screen to Settings &rsaquo; General (in the Site section), alongside the other site-wide options, so the Comments screen is only about moderating comments. The setting itself is unchanged, so existing sites keep whatever they had.
+
 ### Fixed
 
 - Two requests from the same visitor within the same second (for example a quick double-click, or an update's progress checks) could fail with a server error when the visitor's session hadn't changed, because the database session store mistook "nothing to update" for "no session yet" and tried to create a duplicate.

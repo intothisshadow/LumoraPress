@@ -92,12 +92,7 @@ $submitAkismetFeedback = function (Comment $previousComment, CommentStatus $newS
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
-    if ($form === 'settings' && Csrf::verify('comment_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        $kernel->config->setOption('comments_enabled', ($_POST['comments_enabled'] ?? '') === '1' ? '1' : '0');
-
-        header('Location: ' . admin_url('comments') . '?saved=1');
-        exit;
-    } elseif ($form === 'edit' && Csrf::verify('comment_edit', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if ($form === 'edit' && Csrf::verify('comment_edit', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $id = (int) ($_POST['id'] ?? 0);
         $content = trim((string) ($_POST['content'] ?? ''));
 
@@ -284,18 +279,6 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
         </div>
 
         <div class="lp-tabs__panel" id="lp-tabpanel-moderation" role="tabpanel" aria-labelledby="lp-tab-moderation"<?= $activeTab === 'moderation' ? '' : ' hidden' ?>>
-    <section class="lp-admin__panel">
-        <form method="post" action="<?= esc_url(admin_url('comments')) ?>">
-            <?= Csrf::field('comment_settings') ?>
-            <input type="hidden" name="form" value="settings">
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="comments_enabled" value="1" <?= $kernel->config->option('comments_enabled', '1') !== '0' ? 'checked' : '' ?>>
-                Allow comments site-wide
-            </label>
-            <button type="submit" class="lp-button lp-button--primary">Save</button>
-        </form>
-    </section>
-
     <?php
     $page = max(1, (int) ($_GET['paged'] ?? 1));
     $statusFilter = CommentStatus::tryFrom((string) ($_GET['status'] ?? ''));

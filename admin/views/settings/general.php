@@ -47,6 +47,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
         $kernel->config->setOption('admin_email', $adminEmailInput);
         $kernel->config->setOption('site_tagline', trim((string) ($_POST['site_tagline'] ?? '')));
         $kernel->config->setOption('timezone', $timezoneInput);
+        $kernel->config->setOption('comments_enabled', ($_POST['comments_enabled'] ?? '') === '1' ? '1' : '0');
 
         do_action('general_settings_saved', 'site_settings');
 
@@ -178,6 +179,12 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
                 <?php endforeach; ?>
             </select>
         </p>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="comments_enabled" value="1" <?= $kernel->config->option('comments_enabled', '1') !== '0' ? 'checked' : '' ?>>
+            Allow comments site-wide
+        </label>
+        <span class="lp-field__hint">When unchecked, comments are closed on every post and page, whatever each one's own setting says. Existing comments stay visible.</span>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
