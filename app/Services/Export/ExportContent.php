@@ -75,6 +75,37 @@ final class ExportContent
     ) {
     }
 
+    /**
+     * The same payload with a replacement media list — e.g. with each
+     * item's absolutePath re-pointed at wherever its file was found.
+     *
+     * @param array<int, ImportedMedia> $media
+     */
+    public function withMedia(array $media): self
+    {
+        return new self(
+            siteName: $this->siteName,
+            siteUrl: $this->siteUrl,
+            uploadsUrl: $this->uploadsUrl,
+            generatorVersion: $this->generatorVersion,
+            exportedAt: $this->exportedAt,
+            contentTypes: $this->contentTypes,
+            includesUploads: $this->includesUploads,
+            users: $this->users,
+            categories: $this->categories,
+            tags: $this->tags,
+            folders: $this->folders,
+            media: $media,
+            mediaFiles: $this->mediaFiles,
+            pages: $this->pages,
+            posts: $this->posts,
+            comments: $this->comments,
+            menus: $this->menus,
+            menuLocations: $this->menuLocations,
+            widgets: $this->widgets,
+        );
+    }
+
     public function includes(string $contentType): bool
     {
         return in_array($contentType, $this->contentTypes, true);

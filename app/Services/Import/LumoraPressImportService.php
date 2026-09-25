@@ -228,9 +228,8 @@ final class LumoraPressImportService
                     $this->urlReplacements[$oldPath] = (string) $row['file_path'];
                 }
             } catch (Throwable $exception) {
-                // Same wording as the WordPress importer's own missing-file case.
                 $this->warnings[] = !is_file($media->absolutePath)
-                    ? "Media #{$sourceId} (\"{$name}\"): file not found in the export, skipped."
+                    ? "Media #{$sourceId} (\"{$name}\"): file not found in the export or the uploaded files folder, skipped."
                     : "Media #{$sourceId} (\"{$name}\"): {$exception->getMessage()}";
             }
         }

@@ -47,9 +47,16 @@ final class LumoraPressExportSource
     /**
      * Extracts into a fresh directory under $workingDirectory; call
      * cleanup() once the import has copied what it needs.
+     *
+     * $uploadsFolder is an optional server folder holding the exporting
+     * site's uploads (its content/uploads, copied across by hand), for an
+     * export made without uploaded files because building one with them
+     * was too much for the host. A media file bundled in the ZIP wins;
+     * otherwise it's read from there.
      */
-    public static function open(string $zipPath, string $workingDirectory): self
+    public static function open(string $zipPath, string $workingDirectory, ?string $uploadsFolder = null): self
     {
+        $resolvedUploadsFolder = $uploadsFolder !== null && trim($uploadsFolder) !== '' ? self::resolveUploadsFolder($uploadsFolder) : null;
         $zip = new ZipArchive();
 
         if ($zip->open($zipPath, ZipArchive::RDONLY) !== true) {
@@ -78,6 +85,10 @@ final class LumoraPressExportSource
             }
 
             self::extractMediaFiles($zip, $prefix, $content, $directory . '/uploads');
+
+            if ($resolvedUploadsFolder !== null) {
+                $content = self::pointMissingFilesAt($content, $resolvedUploadsFolder);
+            }
         } catch (\Throwable $exception) {
             self::removeDirectory($directory);
 
@@ -162,7 +173,25 @@ final class LumoraPressExportSource
         return $paths;
     }
 
-    public function content(): ExportContent
+    /**
+     * @throws RuntimeException when $path isn't an existing, readable folder
+     */
+    public static function resolveUploadsFolder(string $path): string
+    {
+        $resolved = realpath(trim($path));
+
+        if ($resolved === false || !is_dir($resolved)) {
+            throw new RuntimeException('No folder was found at the uploaded files location you entered.');
+        }
+
+        if (!is_readable($resolved)) {
+            throw new RuntimeException('The web server isn\'t allowed to read the uploaded files folder. Check its permissions.');
+        }
+
+        return $resolved;
+    }
+
+        public function content(): ExportContent
     {
         return $this->content;
     }
@@ -264,7 +293,40 @@ final class LumoraPressExportSource
         }
     }
 
-    private static function removeDirectory(string $path): void
+    /**
+     * The manifest's paths are untrusted: each is stripped of traversal
+     * segments first, and the file it resolves to (symlinks followed)
+     * must still sit inside $folder, or it's treated as missing.
+     */
+    private static function pointMissingFilesAt(ExportContent $content, string $folder): ExportContent
+    {
+        $media = [];
+        $prefix = rtrim($folder, '/') . '/';
+
+        foreach ($content->media as $item) {
+            $relativePath = ExportManifest::safeRelativePath($content->mediaFiles[(int) $item->externalId]['filePath'] ?? '');
+            $candidate = !is_file($item->absolutePath) && $relativePath !== '' ? realpath($folder . '/' . $relativePath) : false;
+
+            $media[] = $candidate !== false && is_file($candidate) && str_starts_with($candidate, $prefix)
+                ? new ImportedMedia(
+                    absolutePath: $candidate,
+                    uploadedByUserId: $item->uploadedByUserId,
+                    fileName: $item->fileName,
+                    altText: $item->altText,
+                    caption: $item->caption,
+                    description: $item->description,
+                    folderId: $item->folderId,
+                    externalId: $item->externalId,
+                    uploadedAt: $item->uploadedAt,
+                    relativeDirectory: $item->relativeDirectory,
+                )
+                : $item;
+        }
+
+        return $content->withMedia($media);
+    }
+
+        private static function removeDirectory(string $path): void
     {
         if (!is_dir($path) || is_link($path)) {
             return;

@@ -233,11 +233,12 @@ $showGenerated = isset($_GET['generated']) && $pendingExport !== null;
             </label>
             <span class="lp-field__hint">
                 Adds the actual image and file uploads to the export, so it's
-                complete on its own. Uploads can make the file very large — leave
-                this unchecked to export only their details; importing such a
-                file brings everything else across and lists the media files it
-                couldn't bring. A WordPress export never includes files (the
-                importing site fetches them from this site's addresses instead).
+                complete on its own. Uploads can make the file very large, and on
+                some hosts building it can time out — if so, leave this unchecked
+                and copy this site's <code>content/uploads</code> folder to the new
+                server separately; the import can read each file from that folder.
+                A WordPress export never includes files (the importing site
+                fetches them from this site's addresses instead).
             </span>
         </p>
 

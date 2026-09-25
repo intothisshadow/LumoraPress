@@ -63,7 +63,11 @@ $runNativeImport = static function (string $zipPath) use ($kernel, $currentUser)
     $result = null;
 
     try {
-        $exportSource = LumoraPressExportSource::open($zipPath, LUMORA_ROOT . '/storage/imports');
+        $exportSource = LumoraPressExportSource::open(
+            $zipPath,
+            LUMORA_ROOT . '/storage/imports',
+            is_string($_POST['uploads_folder'] ?? null) ? $_POST['uploads_folder'] : null,
+        );
         $result = (new LumoraPressImportService(
             userImporter: $kernel->userImporter,
             postImporter: $kernel->postImporter,
@@ -97,34 +101,48 @@ $runNativeImport = static function (string $zipPath) use ($kernel, $currentUser)
     exit;
 };
 
+// One form for both sources, like Maintenance > Updates: the "Upload a
+// File" / "File on This Server" tabs set import_source. A server file is
+// one the admin copied there themselves (FTP, SFTP, a host's file
+// manager) for exports bigger than the upload limit; it's left in place.
 if (($_POST['form'] ?? null) === 'import_lumora_press_export' && Csrf::verify('import_lumora_press_export', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $upload = $_FILES['export_file'] ?? null;
-    $uploadError = is_array($upload) ? (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
-
-    if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
-        $nativeImportError = 'That file is larger than this server accepts for uploads (' . ini_get('upload_max_filesize') . '). Copy it onto the server instead and use "Import a file already on this server" below.';
-    } elseif ($uploadError === UPLOAD_ERR_NO_FILE) {
-        $nativeImportError = 'Choose a Lumora Press export file to upload.';
-    } elseif ($uploadError !== UPLOAD_ERR_OK || !is_uploaded_file((string) $upload['tmp_name'])) {
-        $nativeImportError = 'The upload failed. Please try again.';
+    if (($_POST['import_source'] ?? null) === 'server') {
+        try {
+            $nativeImportError = $runNativeImport(LumoraPressExportSource::resolveServerPath(is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : ''));
+        } catch (\RuntimeException $exception) {
+            $nativeImportError = $exception->getMessage();
+        }
     } else {
-        $nativeImportError = $runNativeImport((string) $upload['tmp_name']);
-    }
-}
+        $upload = $_FILES['export_file'] ?? null;
+        $uploadError = is_array($upload) ? (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
 
-// A file the admin copied onto the server themselves (FTP, SFTP, a host's
-// file manager) — for exports bigger than the upload limit. Left in place
-// afterward, since it's theirs, not a temporary upload.
-if (($_POST['form'] ?? null) === 'import_lumora_press_export_path' && Csrf::verify('import_lumora_press_export_path', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    try {
-        $nativeImportError = $runNativeImport(LumoraPressExportSource::resolveServerPath(is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : ''));
-    } catch (\RuntimeException $exception) {
-        $nativeImportError = $exception->getMessage();
+        if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+            $nativeImportError = 'That file is larger than this server accepts for uploads (' . ini_get('upload_max_filesize') . '). Copy it onto the server instead and use the "File on This Server" tab.';
+        } elseif ($uploadError === UPLOAD_ERR_NO_FILE) {
+            $nativeImportError = 'Choose a Lumora Press export file to upload.';
+        } elseif ($uploadError !== UPLOAD_ERR_OK || !is_uploaded_file((string) $upload['tmp_name'])) {
+            $nativeImportError = 'The upload failed. Please try again.';
+        } else {
+            $nativeImportError = $runNativeImport((string) $upload['tmp_name']);
+        }
     }
 }
 
 // Falls back to $_GET so a Discover link can pre-fill it without a form of its own.
 $nativeExportPath = is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : (is_string($_GET['export_path'] ?? null) ? $_GET['export_path'] : '');
+$nativeUploadsFolder = is_string($_POST['uploads_folder'] ?? null) ? $_POST['uploads_folder'] : (is_string($_GET['uploads_folder'] ?? null) ? $_GET['uploads_folder'] : '');
+
+// Each Discover link keeps whatever the other pre-fill currently holds.
+$nativeImportUrl = static function (array $params, string $anchor) use ($nativeExportPath, $nativeUploadsFolder): string {
+    $query = array_filter(['tab' => 'lumora-press', 'export_path' => $nativeExportPath, 'uploads_folder' => $nativeUploadsFolder, ...$params], static fn (string $value): bool => $value !== '');
+
+    return admin_url('maintenance/import') . '?' . http_build_query($query) . '#' . $anchor;
+};
+
+// Another Lumora Press install on this same server is the usual source.
+$nativeUploadsDiscovered = isset($_GET['discover_upload_folders'])
+    ? array_map(static fn (string $site): string => $site . '/content/uploads', SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'content/uploads', [LUMORA_ROOT]))
+    : null;
 $nativeDiscovered = isset($_GET['discover_exports'])
     ? LumoraPressExportSource::discoverArchives([
         dirname(LUMORA_ROOT),
@@ -696,6 +714,13 @@ endif;
     </div>
 
     <div class="lp-tabs__panel" id="lp-tabpanel-lumora-press" role="tabpanel" aria-labelledby="lp-tab-lumora-press"<?= $activeImportTab === 'lumora-press' ? '' : ' hidden' ?>>
+        <?php
+        // A failed server-file attempt, or a Discover link, reopens its own tab.
+        $nativeSource = ($_POST['import_source'] ?? null) === 'server'
+            || (!isset($_POST['import_source']) && ($nativeExportPath !== '' || $nativeDiscovered !== null))
+            ? 'server'
+            : 'upload';
+        ?>
         <section class="lp-admin__panel">
             <h2>Lumora Press Import</h2>
 
@@ -713,22 +738,100 @@ endif;
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" enctype="multipart/form-data">
                 <?= Csrf::field('import_lumora_press_export') ?>
                 <input type="hidden" name="form" value="import_lumora_press_export">
+                <input type="hidden" id="lumora-import-source" name="import_source" value="<?= esc_attr($nativeSource) ?>">
+
+                <h3>1. Choose the export file</h3>
+
+                <div class="lp-tabs" data-lp-tabs-input="lumora-import-source">
+                    <div class="lp-tabs__list" role="tablist" aria-label="Where the export file is">
+                        <button type="button" class="lp-tabs__tab" id="lp-tab-import-upload" role="tab" data-lp-tab-value="upload" aria-selected="<?= $nativeSource === 'upload' ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-import-upload" tabindex="<?= $nativeSource === 'upload' ? '0' : '-1' ?>">Upload a File</button>
+                        <button type="button" class="lp-tabs__tab" id="lp-tab-import-server" role="tab" data-lp-tab-value="server" aria-selected="<?= $nativeSource === 'server' ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-import-server" tabindex="<?= $nativeSource === 'server' ? '0' : '-1' ?>">File on This Server</button>
+                    </div>
+
+                    <div class="lp-tabs__panel" id="lp-tabpanel-import-upload" role="tabpanel" aria-labelledby="lp-tab-import-upload"<?= $nativeSource === 'upload' ? '' : ' hidden' ?>>
+                        <p class="lp-field">
+                            <label for="lumora-import-file">Export file</label>
+                            <input type="file" id="lumora-import-file" name="export_file" accept=".zip,application/zip">
+                            <span class="lp-field__hint">
+                                This server accepts uploads up to <?= esc_html((string) ini_get('upload_max_filesize')) ?>.
+                                An export that includes uploaded files is usually larger than that — copy it
+                                onto the server instead and use &ldquo;File on This Server&rdquo;.
+                            </span>
+                        </p>
+                    </div>
+
+                    <div class="lp-tabs__panel" id="lp-tabpanel-import-server" role="tabpanel" aria-labelledby="lp-tab-import-server"<?= $nativeSource === 'server' ? '' : ' hidden' ?>>
+                        <div id="lumora-import-server">
+                            <p class="lp-field__hint">
+                                For an export too large to upload: copy the <code>.zip</code> onto this server
+                                (by FTP, SFTP, or your host's file manager), then enter where it is. The file
+                                is left where it is afterward.
+                            </p>
+
+                            <?php if ($nativeDiscovered === null): ?>
+                                <p><a class="lp-button" href="<?= esc_url($nativeImportUrl(['discover_exports' => '1'], 'lumora-import-server')) ?>">Discover Export Files</a></p>
+                            <?php elseif ($nativeDiscovered === []): ?>
+                                <p class="lp-admin__widget-placeholder">
+                                    No Lumora Press export files were found in <code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>,
+                                    this site's own folder, or the folders next to it. Enter the file's location by hand below.
+                                </p>
+                            <?php else: ?>
+                                <ul class="lp-import-scan__list">
+                                    <?php foreach ($nativeDiscovered as $candidate): ?>
+                                        <li><a class="lp-button lp-button--link" href="<?= esc_url($nativeImportUrl(['export_path' => $candidate], 'lumora-import-server')) ?>"><?= esc_html($candidate) ?></a> (<?= esc_html(number_format((int) filesize($candidate) / 1048576, 1)) ?> MB)</li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
+
+                            <p class="lp-field">
+                                <label for="lumora-import-path">Export file location (server filesystem)</label>
+                                <input type="text" id="lumora-import-path" name="export_path" value="<?= esc_attr($nativeExportPath) ?>" placeholder="<?= esc_attr(dirname(LUMORA_ROOT)) ?>/lumora-press-export-my-site.zip">
+                                <span class="lp-field__hint">The full path to the <code>.zip</code> file, readable by the web server.</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 id="lumora-import-uploads">2. Uploaded files kept separately (optional)</h3>
+
+                <p class="lp-field__hint">
+                    Building an export that includes every uploaded file can be too much for
+                    some hosts. Instead, export with &ldquo;Include uploaded files&rdquo;
+                    unchecked, copy the old site's <code>content/uploads</code> folder onto this
+                    server (by FTP, SFTP, or your host's file manager — or use it where it is,
+                    if both sites are on this server), and enter that folder here. Each media
+                    file is then read from it, the same way the WordPress importer reads a
+                    WordPress site's uploads folder. Leave blank for an export that already
+                    includes its files.
+                </p>
+
+                <?php if ($nativeUploadsDiscovered === null): ?>
+                    <p><a class="lp-button" href="<?= esc_url($nativeImportUrl(['discover_upload_folders' => '1'], 'lumora-import-uploads')) ?>">Discover Uploads Folders</a></p>
+                <?php elseif ($nativeUploadsDiscovered === []): ?>
+                    <p class="lp-admin__widget-placeholder">
+                        No other site next to this one (in <code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
+                        has a <code>content/uploads</code> folder. Enter the folder's location by hand below.
+                    </p>
+                <?php else: ?>
+                    <ul class="lp-import-scan__list">
+                        <?php foreach ($nativeUploadsDiscovered as $candidate): ?>
+                            <li><a class="lp-button lp-button--link" href="<?= esc_url($nativeImportUrl(['uploads_folder' => $candidate], 'lumora-import-uploads')) ?>"><?= esc_html($candidate) ?></a></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
 
                 <p class="lp-field">
-                    <label for="lumora-import-file">Export file</label>
-                    <input type="file" id="lumora-import-file" name="export_file" accept=".zip,application/zip" required>
-                    <span class="lp-field__hint">
-                        This server accepts uploads up to <?= esc_html((string) ini_get('upload_max_filesize')) ?>.
-                        An export that includes uploaded files is usually larger than that — copy it onto
-                        the server instead and use &ldquo;Import a file already on this server&rdquo; below.
-                    </span>
+                    <label for="lumora-import-uploads-folder">Uploaded files folder (server filesystem)</label>
+                    <input type="text" id="lumora-import-uploads-folder" name="uploads_folder" value="<?= esc_attr($nativeUploadsFolder) ?>" placeholder="/path/to/other-site/content/uploads">
                 </p>
+
+                <h3>3. Import</h3>
 
                 <p class="lp-field">
                     <label for="lumora-import-existing">When content was already imported from the same site</label>
                     <select id="lumora-import-existing" name="existing_content">
                         <option value="overwrite">Update it with the file's version</option>
-                        <option value="skip">Leave it as it is, only add what's new</option>
+                        <option value="skip"<?= ($_POST['existing_content'] ?? null) === 'skip' ? ' selected' : '' ?>>Leave it as it is, only add what's new</option>
                     </select>
                     <span class="lp-field__hint">
                         Importing the same site's export again never creates duplicates: each
@@ -741,51 +844,7 @@ endif;
                     A large export can take a while. Keep this tab open until the import finishes.
                 </div>
 
-                <button type="submit" class="lp-button lp-button--primary">Upload &amp; Import</button>
-            </form>
-
-            <h3 id="lumora-import-server">Import a file already on this server</h3>
-
-            <p class="lp-field__hint">
-                For an export too large to upload: copy the <code>.zip</code> onto this server
-                (by FTP, SFTP, or your host's file manager), then enter where it is. The file is
-                left where it is afterward.
-            </p>
-
-            <?php if ($nativeDiscovered === null): ?>
-                <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?tab=lumora-press&amp;discover_exports=1#lumora-import-server">Discover Export Files</a></p>
-            <?php elseif ($nativeDiscovered === []): ?>
-                <p class="lp-admin__widget-placeholder">
-                    No Lumora Press export files were found in <code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>,
-                    this site's own folder, or the folders next to it. Enter the file's location by hand below.
-                </p>
-            <?php else: ?>
-                <ul class="lp-import-scan__list">
-                    <?php foreach ($nativeDiscovered as $candidate): ?>
-                        <li><a class="lp-button lp-button--link" href="<?= esc_url(admin_url('maintenance/import') . '?tab=lumora-press&export_path=' . rawurlencode($candidate) . '#lumora-import-server') ?>"><?= esc_html($candidate) ?></a> (<?= esc_html(number_format((int) filesize($candidate) / 1048576, 1)) ?> MB)</li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>#lumora-import-server">
-                <?= Csrf::field('import_lumora_press_export_path') ?>
-                <input type="hidden" name="form" value="import_lumora_press_export_path">
-
-                <p class="lp-field">
-                    <label for="lumora-import-path">Export file location (server filesystem)</label>
-                    <input type="text" id="lumora-import-path" name="export_path" value="<?= esc_attr($nativeExportPath) ?>" required placeholder="<?= esc_attr(dirname(LUMORA_ROOT)) ?>/lumora-press-export-my-site.zip">
-                    <span class="lp-field__hint">The full path to the <code>.zip</code> file, readable by the web server.</span>
-                </p>
-
-                <p class="lp-field">
-                    <label for="lumora-import-path-existing">When content was already imported from the same site</label>
-                    <select id="lumora-import-path-existing" name="existing_content">
-                        <option value="overwrite">Update it with the file's version</option>
-                        <option value="skip">Leave it as it is, only add what's new</option>
-                    </select>
-                </p>
-
-                <button type="submit" class="lp-button lp-button--primary">Import From Server</button>
+                <button type="submit" class="lp-button lp-button--primary">Import</button>
             </form>
         </section>
 

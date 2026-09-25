@@ -5,11 +5,19 @@
  * the page is still usable — this only adds the ability to switch tabs
  * without a page reload, following the WAI-ARIA tabs pattern (Left/Right
  * arrow keys move focus and activate).
+ *
+ * Optional: a tab set with `data-lp-tabs-input="{id}"` keeps the hidden
+ * input with that id set to the active tab's `data-lp-tab-value`, so a
+ * form spanning the panels knows which one was chosen on submit.
  */
 (function () {
     'use strict';
 
-    function activate(tabs, panels, index) {
+    function activate(tabs, panels, index, input) {
+        if (input && tabs[index].hasAttribute('data-lp-tab-value')) {
+            input.value = tabs[index].getAttribute('data-lp-tab-value');
+        }
+
         tabs.forEach(function (tab, i) {
             var selected = i === index;
             tab.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -23,7 +31,11 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         Array.prototype.forEach.call(document.querySelectorAll('.lp-tabs'), function (root) {
-            var tabs = Array.prototype.slice.call(root.querySelectorAll('.lp-tabs__tab'));
+            // Only this set's own tabs — a tab set nested inside one of its
+            // panels (Maintenance > Import) is handled as its own root.
+            var tabs = Array.prototype.slice.call(root.querySelectorAll('.lp-tabs__tab')).filter(function (tab) {
+                return tab.closest('.lp-tabs') === root;
+            });
             var panels = tabs.map(function (tab) {
                 return document.getElementById(tab.getAttribute('aria-controls'));
             });
@@ -32,9 +44,11 @@
                 return;
             }
 
+            var input = root.hasAttribute('data-lp-tabs-input') ? document.getElementById(root.getAttribute('data-lp-tabs-input')) : null;
+
             tabs.forEach(function (tab, index) {
                 tab.addEventListener('click', function () {
-                    activate(tabs, panels, index);
+                    activate(tabs, panels, index, input);
                 });
 
                 tab.addEventListener('keydown', function (event) {
@@ -47,7 +61,7 @@
                     event.preventDefault();
                     var nextIndex = (index + delta + tabs.length) % tabs.length;
                     tabs[nextIndex].focus();
-                    activate(tabs, panels, nextIndex);
+                    activate(tabs, panels, nextIndex, input);
                 });
             });
         });
