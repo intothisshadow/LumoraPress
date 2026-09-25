@@ -484,13 +484,18 @@ final class PageService
     /**
      * Permanently removes a page. parent_id has no FK constraint, so a
      * deleted page's children would otherwise point at a nonexistent
-     * parent — direct children are reparented to top-level first.
+     * parent — direct children are reparented to top-level first. The
+     * page's comments go with it, the same as PostService::delete().
      */
     public function delete(int $id): bool
     {
         $this->database->execute(
             'UPDATE ' . $this->table() . ' SET parent_id = NULL WHERE parent_id = :parent_id',
             ['parent_id' => $id],
+        );
+        $this->database->execute(
+            'DELETE FROM ' . $this->tablePrefix . 'comments WHERE page_id = :page_id',
+            ['page_id' => $id],
         );
 
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;

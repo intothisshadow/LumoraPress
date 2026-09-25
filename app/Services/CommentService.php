@@ -145,8 +145,15 @@ final class CommentService
         ) > 0;
     }
 
+    /**
+     * Listeners on 'comment_status_changed' also receive the status the
+     * comment had before (null if it couldn't be read), so a plugin can
+     * tell an approval from an unapproval.
+     */
     public function updateStatus(int $id, CommentStatus $status): Comment
     {
+        $previousStatus = $this->findById($id)?->status;
+
         $this->database->execute(
             'UPDATE ' . $this->table() . ' SET status = :status, updated_at = :updated_at WHERE id = :id',
             ['status' => $status->value, 'updated_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'), 'id' => $id],
@@ -158,7 +165,7 @@ final class CommentService
             throw new RuntimeException('Failed to load the comment that was just updated.');
         }
 
-        $this->hooks?->doAction('comment_status_changed', $comment);
+        $this->hooks?->doAction('comment_status_changed', $comment, $previousStatus);
 
         return $comment;
     }
@@ -176,6 +183,8 @@ final class CommentService
                 ['parent_id' => $id],
             );
 
+            $this->database->execute('DELETE FROM ' . $this->metaTable() . ' WHERE comment_id = :comment_id', ['comment_id' => $id]);
+
             return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
         });
 
@@ -184,6 +193,99 @@ final class CommentService
         }
 
         return $deleted;
+    }
+
+    /**
+     * Plugin-defined data attached to a comment, one value per key.
+     *
+     * @return array<string, string>
+     */
+    public function metaForComment(int $commentId): array
+    {
+        return $this->metaForComments([$commentId])[$commentId] ?? [];
+    }
+
+    /**
+     * Meta for many comments in one query — for rendering a whole thread.
+     *
+     * @param array<int, int> $commentIds
+     * @return array<int, array<string, string>> commentId => [key => value]
+     */
+    public function metaForComments(array $commentIds): array
+    {
+        $params = [];
+
+        foreach (array_values(array_unique(array_map('intval', $commentIds))) as $index => $id) {
+            $params['id_' . $index] = $id;
+        }
+
+        if ($params === []) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_map(static fn (string $key): string => ':' . $key, array_keys($params)));
+        $meta = [];
+
+        foreach ($this->database->fetchAll(
+            'SELECT comment_id, meta_key, meta_value FROM ' . $this->metaTable() . " WHERE comment_id IN ({$placeholders}) ORDER BY id ASC",
+            $params,
+        ) as $row) {
+            $meta[(int) $row['comment_id']][(string) $row['meta_key']] = (string) ($row['meta_value'] ?? '');
+        }
+
+        return $meta;
+    }
+
+    /**
+     * Removes meta, reactions, and reports whose comment no longer exists
+     * — deleting a whole post drops its comments in one bulk statement
+     * that never passes through delete(). Safe to run any time.
+     *
+     * @return int rows removed
+     */
+    public function deleteOrphanedCommentData(): int
+    {
+        $removed = 0;
+
+        foreach (['comment_meta', 'comment_reactions', 'comment_reports'] as $suffix) {
+            $removed += $this->database->execute(
+                'DELETE FROM ' . $this->tablePrefix . $suffix . ' WHERE comment_id NOT IN (SELECT id FROM ' . $this->table() . ')',
+            );
+        }
+
+        return $removed;
+    }
+
+    public function metaValue(int $commentId, string $key): ?string
+    {
+        return $this->metaForComment($commentId)[$key] ?? null;
+    }
+
+    /**
+     * Sets one meta value; null removes the key. Keys are trimmed and
+     * capped at 191 characters (the indexed column's length).
+     */
+    public function setMeta(int $commentId, string $key, ?string $value): void
+    {
+        $key = mb_substr(trim($key), 0, 191);
+
+        if ($key === '') {
+            return;
+        }
+
+        $this->database->transaction(function () use ($commentId, $key, $value): void {
+            $this->database->execute(
+                'DELETE FROM ' . $this->metaTable() . ' WHERE comment_id = :comment_id AND meta_key = :meta_key',
+                ['comment_id' => $commentId, 'meta_key' => $key],
+            );
+
+            if ($value !== null) {
+                $this->database->execute(
+                    'INSERT INTO ' . $this->metaTable() . ' (comment_id, meta_key, meta_value) VALUES (:comment_id, :meta_key, :meta_value)',
+                    ['comment_id' => $commentId, 'meta_key' => $key, 'meta_value' => $value],
+                );
+            }
+        });
     }
 
     public function findById(int $id): ?Comment
@@ -882,6 +984,11 @@ final class CommentService
     private function table(): string
     {
         return $this->tablePrefix . 'comments';
+    }
+
+    private function metaTable(): string
+    {
+        return $this->tablePrefix . 'comment_meta';
     }
 
     private function postsTable(): string

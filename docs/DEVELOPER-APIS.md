@@ -77,16 +77,19 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | Name | Type | Args | Fires in |
 |---|---|---|---|
 | `page_saved` | action | `Page $page` | [`PageService`](../app/Services/PageService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). |
-| `page_deleted` | action | `int $id` | `PageService::trash()` **and** `delete()` (permanent) — same both-mean-the-same-hook caveat as posts. `restore()` fires nothing. |
+| `page_deleted` | action | `int $id` | `PageService::trash()` **and** `delete()` (permanent) — same both-mean-the-same-hook caveat as posts. `restore()` fires nothing. A permanent delete also removes the page's comments, the same as a post's. |
 
 ### Comment lifecycle
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
 | `comment_posted` | action | `Comment $comment` | [`SiteController`](../app/Controllers/SiteController.php)`::submitComment()` and `::submitPageComment()` — the two front-end comment-form handlers, after the comment is saved, before notification dispatch. |
-| `comment_status_changed` | action | `Comment $comment` (reloaded, new status) | `CommentService::updateStatus()`. Core listens here ([`CommentFollowupService`](../app/Services/CommentFollowupService.php)) to send thread-subscriber emails and in-app notifications the first time a comment becomes Approved. |
+| `comment_status_changed` | action | `Comment $comment` (reloaded, new status), `?CommentStatus $previousStatus` | `CommentService::updateStatus()`. The second argument is the status before the change, so a listener can tell an approval from an unapproval. Core listens here ([`CommentFollowupService`](../app/Services/CommentFollowupService.php)) to send thread-subscriber emails and in-app notifications the first time a comment becomes Approved. |
 | `comment_deleted` | action | `int $id` | `CommentService::delete()`. Core listens here to delete the comment's reactions and reports. |
 | `comment_is_spam` | filter | `bool $isSpam, string $guestName, ?string $guestEmail, ?string $guestUrl, string $content, ?string $ipAddress` | Applied identically in two places: `SiteController::submitComment()` and `::submitPageComment()` — the intended extension point for a spam-detection plugin. (Core's own Akismet integration is called inline at each of those same call sites, *not* through this filter.) The Lumora Shield plugin's Comment Analysis module is this filter's first real listener, pushing toward Spam based on content/behavioral heuristics (see `LumoraShieldService::commentIsSpam()`). Can only push a comment *toward* Spam — returning `true` sets Spam status; you cannot un-spam a comment another listener already flagged. |
+| `comment_moderation_status` | filter | `CommentStatus $status, array $data` (`content` = the `Post`/`Page`, `user_id`, `parent_id`, `guest_name`, `guest_email`, `guest_url`, `text`, `ip_address`) | `SiteController::submitComment()`/`::submitPageComment()`, after the built-in moderation checks, Akismet, and `comment_is_spam` — the last word on a new comment's status, for custom moderation rules. Return `CommentStatus::Approved`, `::Pending`, or `::Spam`; any other value is ignored. Unlike `comment_is_spam`, this can also approve a comment the built-in rules would have held. |
+| `comment_content_html` | filter | `string $html, Comment $comment` | `comment_list()` ([`include/comment-functions.php`](../include/comment-functions.php)), wrapping each comment's already-escaped, formatted text. Return trusted HTML — escape anything you add. |
+| `comment_reaction_types` | filter | `array $types` (key ⇒ `['emoji' => string, 'label' => string]`) | [`CommentReactionService`](../app/Services/CommentReactionService.php)`::types()`, the set offered in emoji-reactions mode. Keys must be 1–20 lowercase letters, digits, or underscores; invalid entries are dropped. Like-only mode always uses the built-in `like`. |
 | `contact_form_is_spam` | filter | `bool $isSpam, array<string, string> $data, string $ipAddress` | `ContactFormSubmissionHandler::handle()` (Contact Forms plugin, LPP-003) — applied after that plugin's own CSRF/honeypot/FormTiming/rate-limit/CAPTCHA/Akismet checks, right before persisting the submission. `$data` is every submitted field, keyed by field key (an arbitrary, per-form set — Name/Email/Subject/Message/etc.). Same can-only-push-toward-Spam contract as `comment_is_spam`. The Lumora Shield plugin's Contact Form Protection module is this filter's first listener, reusing `CommentAnalyzer::contentReasons()` against every field value joined together (see `LumoraShieldService::contactFormIsSpam()`). |
 
 ### Category lifecycle
@@ -128,6 +131,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `head_assets` | action | none | Theme convention, not core — `content/themes/lumora-classic/header.php` calls `do_action('head_assets')` right before `</head>`; every theme is expected to do the same (mirrors WordPress's `wp_head`). The Font Awesome plugin listens here to print its `<link>` tag. |
 | `footer_assets` | action | none | Same theme convention, fired right before `</body>`. **Core itself listens here** ([`FooterAssets`](../app/Core/Theme/FooterAssets.php), registered in `include/bootstrap.php`) to emit lightbox/player/embed script tags — a theme that skips this hook silently breaks `the_post_thumbnail_lightbox()`, `[lumora_audio]`/`[lumora_video]`, and auto-embeds. |
 | `get_header` / `get_footer` / `get_sidebar` | action | none | Fired at the top of the corresponding [`get_header()`/`get_footer()`/`get_sidebar()`](../include/theme.php) template-tag function, before the partial is rendered. |
+| `comments_template_html` | filter | `?string $html` (null), `array $vars` | `comments_template()`, before anything renders. Return a string to replace the whole built-in comment section (a third-party commenting system); the `comments_template` action and the theme's `comments.php` are then skipped. |
 | `comments_template` | action | `array $vars` (the same view data `comments.php` receives: `post` or `page`, `current_user`, …) | Fired inside `comments_template()`, before `comments.php` renders. Core listens here to render the comment-subscription panel (`comment_subscription_panel()`). |
 | `comment_form_fields_after` | filter | `string $html, Post\|Page $content, ?User $currentUser, ?int $parentId, string $formId` | [`comment_form()`](../include/comment-functions.php), just before the submit button of every comment and reply form — return extra fields (trusted HTML, not escaped). Core adds the "Notify me of new comments" checkbox here when comment subscriptions are on. |
 | `content_html` | filter | `string $html, string $rawContent, ContentFormat $format` | [`ContentRenderer`](../app/Services/ContentRenderer.php)`::render()` — the *final* HTML filter, after format-specific rendering, sanitization, and lightbox-attribute injection. Font Awesome's `[icon]`-shortcode handling uses this at priority 20 specifically to run after other subscribers. Core's own `[lumora_folder_gallery]` shortcode ([`FolderGalleryShortcode`](../app/Services/FolderGalleryShortcode.php)) and `[lumora_audio]`/`[lumora_video]` ([`MediaPlayerShortcode`](../app/Services/MediaPlayerShortcode.php)) are also registered here, at the default priority — see Shortcodes below. Every callback runs in one single pass, in priority order, each one seeing the *previous* callback's output text — not a separate re-scan per callback. The WordPress Importer plugin's `NextGenGalleryShortcode` relies on this: it rewrites NextGEN Gallery shortcode text into `[lumora_folder_gallery ...]` syntax at priority **5**, specifically so `FolderGalleryShortcode`'s own priority-10 callback still sees and renders that rewritten text within the same pass — a plugin that rewrites one shortcode into another must always register at a lower priority than the shortcode it's rewriting into. |
@@ -313,6 +317,77 @@ route-registration hook exists.
 | `lumora_press_before_update` | action | `string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::install()`, right after the maintenance lock is acquired, before backups start. |
 | `lumora_press_after_update` | action | `string $fromVersion, string $toVersion, UpdateStatus $status` | Same method, fired on **both** the success path and the failure/rollback path — check `$status` to tell them apart. |
 
+## Comments API
+
+Everything a plugin can do with comments, in one place. Every hook below also appears in the reference tables above; this section shows how they fit together.
+
+### Reaching comment data
+
+Inside any hook callback, `ActiveKernel::instance()->comments` is the [`CommentService`](../app/Services/CommentService.php): `findById()`, `updateStatus()` (fires `comment_status_changed`), `delete()` (fires `comment_deleted`), and the metadata methods below. Comment objects ([`Comment`](../app/Models/Comment.php)) are read-only; exactly one of `postId`/`pageId` is set, and `guestEmail` holds the commenter's real address whether they were signed in or not.
+
+### Adding fields and storing extra data
+
+1. Add inputs to every comment and reply form with the `comment_form_fields_after` filter (it receives the form's `$formId`, so give your inputs unique ids like `$formId . '-rating'`).
+2. In a `comment_posted` listener, read your field from `$_POST` and save it with `CommentService::setMeta(int $commentId, string $key, ?string $value)`. Passing `null` removes the key.
+3. Read it back with `metaValue()`, `metaForComment()`, or `metaForComments(array $ids)` (one query for a whole thread), and show it with the `comment_content_html` filter.
+
+Meta is deleted with its comment, including when a whole post or page is permanently deleted (moving one to the Trash keeps its comments and their meta). The Settings › Privacy erasure tool does not touch it, so avoid storing personal data in comment meta, or give site owners your own way to remove it and say so in your plugin's privacy notes.
+
+```php
+use LumoraPress\Core\ActiveKernel;
+
+add_filter('comment_form_fields_after', static fn (string $html, $content, $user, $parentId, string $formId): string
+    => $html . '<p class="lp-field"><label for="' . esc_attr($formId) . '-mood">Mood</label>'
+        . '<input type="text" id="' . esc_attr($formId) . '-mood" name="mood"></p>');
+
+add_action('comment_posted', static function ($comment): void {
+    $mood = trim((string) ($_POST['mood'] ?? ''));
+
+    if ($mood !== '') {
+        ActiveKernel::instance()->comments->setMeta($comment->id, 'mood', mb_substr($mood, 0, 50));
+    }
+});
+
+add_filter('comment_content_html', static function (string $html, $comment): string {
+    $mood = ActiveKernel::instance()->comments->metaValue($comment->id, 'mood');
+
+    return $mood === null ? $html : $html . '<p class="my-mood">Mood: ' . esc_html($mood) . '</p>';
+});
+```
+
+### Spam detection and moderation rules
+
+A new comment's status is decided in this order: the built-in checks (Settings › Discussion's blocklists, link limit, and approval rules), then Akismet if it's on, then `comment_is_spam`, then `comment_moderation_status`.
+
+- **Spam detection providers** use `comment_is_spam`: return `true` to mark the comment Spam. It can only push toward Spam.
+- **Custom moderation rules** use `comment_moderation_status`: return `CommentStatus::Approved`, `::Pending`, or `::Spam` to decide the outcome, for example holding every comment that mentions a competitor, or approving comments from a trusted mailing list. Its `$data` array carries the post or page, the commenter's details, the text, and the IP address.
+
+### Reacting to moderation
+
+- `comment_status_changed` fires on every status change with the reloaded comment and its previous status. Check `$comment->status === CommentStatus::Approved && $previousStatus !== CommentStatus::Approved` to act on approvals only.
+- `comment_deleted` fires after a permanent delete, with the comment id.
+
+### Notifications
+
+- Put a message in a signed-in user's admin Notifications inbox with `NotificationService::notify()` (see Service layer below).
+- **Notification providers** listen for `notification_created` (`int $userId, string $type, string $message, string $url`), which fires for every in-app notification, core's and other plugins', so you can relay them to chat, push, or an email digest. Core's types are `comment_reply`, `comment_mention`, `comment_on_your_content`, `comment_on_watched`, `comment_moderation`, and `comment_reported`.
+
+### Reactions
+
+Add, remove, or reorder emoji reactions with `comment_reaction_types`. A new type is stored and counted like the built-in ones; one reaction per person per comment still applies.
+
+```php
+add_filter('comment_reaction_types', static function (array $types): array {
+    $types['clap'] = ['emoji' => '👏', 'label' => 'Applause'];
+
+    return $types;
+});
+```
+
+### Replacing the comment system
+
+A plugin that provides its own commenting system (a hosted comments service, say) returns that section's HTML from `comments_template_html`. The built-in section, including the theme's `comments.php` and everything core adds through the `comments_template` action, is then skipped for that post or page. The filter receives the same `$vars` the theme passes to `comments_template()` (`post` or `page`, `current_user`, ...), so you can return `null` to fall back to the built-in comments where you don't want to take over. Any third-party script you load still needs its domain added to the Content-Security-Policy through the `csp_directives` filter.
+
 ## Plugin structure & lifecycle
 
 A plugin lives in its own directory under `content/plugins/{slug}/`, with
@@ -437,12 +512,7 @@ what each one owns).
 A plugin only reaches `$kernel` from a context that already has it —
 inside a hook callback fired from code that was itself given `$kernel`
 (most core hooks fire from service methods or controllers that don't
-pass `$kernel` through to the callback, so most hook callbacks work with
-whatever arguments the hook itself provides, not a fresh `$kernel`
-lookup), or from an admin view your plugin is embedded into. There is no
-global `$kernel` accessor a plugin can call from anywhere — this is
-deliberate, matching the project's "no global state" architecture
-standard (see `CLAUDE.md`'s PHP Development Standards).
+pass `$kernel` through to the callback), or from an admin view your plugin is embedded into. When a hook callback needs services the hook doesn't hand it, use `\LumoraPress\Core\ActiveKernel::instance()` (e.g. `ActiveKernel::instance()->comments`), which is how the bundled Visitor Stats and Lumora Shield plugins do it. Only call it inside a callback: your plugin's main file runs before the Kernel exists, so calling it at load time throws.
 
 **In-app notifications.** A plugin can put a message in a signed-in user's admin Notifications inbox (the screen with the unread count in the sidebar) through [`NotificationService`](../app/Services/NotificationService.php): `(new NotificationService($kernel->database, $tablePrefix))->notify($userId, 'my_plugin_event', 'Plain-text message', $url)`. `$type` is a free-form string of up to 50 characters, the message is plain text (escaped on display, capped at 500 characters), and `$url` is where clicking the notification takes the user (an absolute `http(s)` URL or a site-relative path; anything else is ignored). Read notifications older than 90 days are pruned automatically. Core's own notification types are `comment_reply`, `comment_mention`, `comment_on_your_content`, `comment_on_watched`, `comment_moderation`, and `comment_reported`; pick your own prefix for a plugin's types.
 

@@ -19,6 +19,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\PressConfig;
 use PDOException;
 
@@ -38,20 +39,57 @@ final class CommentReactionService
 
     public const MODE_REACTIONS = 'reactions';
 
-    /** Reaction key => emoji. The first entry doubles as the single "Like" in like-only mode. */
-    public const REACTIONS = [
-        'like' => '👍',
-        'love' => '❤️',
-        'laugh' => '😂',
-        'wow' => '😮',
-        'sad' => '😢',
+    /**
+     * Built-in reaction types, key => emoji and label. 'like' doubles as
+     * the single button in like-only mode. Plugins add, remove, or
+     * reorder types through the 'comment_reaction_types' filter.
+     */
+    public const DEFAULT_TYPES = [
+        'like' => ['emoji' => '👍', 'label' => 'Like'],
+        'love' => ['emoji' => '❤️', 'label' => 'Love'],
+        'laugh' => ['emoji' => '😂', 'label' => 'Haha'],
+        'wow' => ['emoji' => '😮', 'label' => 'Wow'],
+        'sad' => ['emoji' => '😢', 'label' => 'Sad'],
     ];
+
+    /** @var array<string, array{emoji: string, label: string}>|null */
+    private ?array $types = null;
 
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly PressConfig $config,
+        private readonly ?HookManager $hooks = null,
     ) {
+    }
+
+    /**
+     * Every reaction type offered in emoji-reactions mode, after the
+     * 'comment_reaction_types' filter. Entries with an invalid key (not
+     * 1–20 lowercase letters, digits, or underscores, the width of the
+     * stored column) or a missing emoji/label are dropped.
+     *
+     * @return array<string, array{emoji: string, label: string}>
+     */
+    public function types(): array
+    {
+        if ($this->types !== null) {
+            return $this->types;
+        }
+
+        $filtered = $this->hooks?->applyFilters('comment_reaction_types', self::DEFAULT_TYPES) ?? self::DEFAULT_TYPES;
+        $types = [];
+
+        foreach (is_array($filtered) ? $filtered : self::DEFAULT_TYPES as $key => $definition) {
+            $emoji = is_array($definition) ? trim((string) ($definition['emoji'] ?? '')) : '';
+            $label = is_array($definition) ? trim((string) ($definition['label'] ?? '')) : '';
+
+            if (is_string($key) && preg_match('/^[a-z0-9_]{1,20}$/', $key) === 1 && $emoji !== '' && $label !== '') {
+                $types[$key] = ['emoji' => $emoji, 'label' => $label];
+            }
+        }
+
+        return $this->types = $types;
     }
 
     public function mode(): string
@@ -72,15 +110,16 @@ final class CommentReactionService
     }
 
     /**
-     * The reactions offered right now, key => emoji, in display order.
+     * The reactions offered right now, in display order. Like-only mode
+     * always uses the built-in Like, whatever the filter did to it.
      *
-     * @return array<string, string>
+     * @return array<string, array{emoji: string, label: string}>
      */
     public function available(): array
     {
         return match ($this->mode()) {
-            self::MODE_LIKE => ['like' => self::REACTIONS['like']],
-            self::MODE_REACTIONS => self::REACTIONS,
+            self::MODE_LIKE => ['like' => self::DEFAULT_TYPES['like']],
+            self::MODE_REACTIONS => $this->types(),
             default => [],
         };
     }

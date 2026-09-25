@@ -147,6 +147,23 @@ final class CommentSubscriptionService
     }
 
     /**
+     * Removes subscriptions whose post or page no longer exists. Checks
+     * the content tables rather than taking an id, because the
+     * post_deleted/page_deleted hooks also fire on trash, and a trashed
+     * thread's watchers must survive a restore. Safe to run any time.
+     *
+     * @return int rows removed
+     */
+    public function deleteOrphaned(): int
+    {
+        return $this->database->execute(
+            'DELETE FROM ' . $this->table()
+            . ' WHERE (post_id IS NOT NULL AND post_id NOT IN (SELECT id FROM ' . $this->tablePrefix . 'posts))'
+            . ' OR (page_id IS NOT NULL AND page_id NOT IN (SELECT id FROM ' . $this->tablePrefix . 'pages))',
+        );
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function activeFor(string $contentType, int $contentId): array

@@ -232,7 +232,7 @@ if (!function_exists('comment_list')) {
                                 <span class="lp-comment__edited" title="<?= esc_attr(sprintf(__('Edited %1$s at %2$s'), the_date($comment->editedAt), the_time($comment->editedAt))) ?>"><?= esc_html(__('(edited)')) ?></span>
                             <?php endif; ?>
                         </p>
-                        <div class="lp-comment__content"><?= format_comment_content($comment->content) ?></div>
+                        <div class="lp-comment__content"><?= apply_filters('comment_content_html', format_comment_content($comment->content), $comment) ?></div>
                         <div class="lp-comment__actions">
                             <?= comment_reaction_buttons($comment) ?>
                             <button type="button" class="lp-comment__quote-button" data-lp-comment-quote data-quote-author="<?= esc_attr($comment->guestName) ?>" data-quote-text="<?= esc_attr(comment_quotable_text($comment->content)) ?>" data-quote-target="comment-form-reply-<?= (int) $comment->id ?>-content" hidden><?= esc_html(__('Quote')) ?></button>
@@ -436,22 +436,15 @@ if (!function_exists('comment_reaction_buttons')) {
 
         $counts = CommentExtras::countsFor($comment->id);
         $choice = CommentExtras::choiceFor($comment->id);
-        $labels = [
-            'like' => __('Like'),
-            'love' => __('Love'),
-            'laugh' => __('Haha'),
-            'wow' => __('Wow'),
-            'sad' => __('Sad'),
-        ];
         $isLikeOnly = $reactions->mode() === 'like';
         $canReact = !$reactions->requiresLogin() || ActiveAuth::auth()->user() !== null;
 
         $items = '';
 
-        foreach ($reactions->available() as $key => $emoji) {
+        foreach ($reactions->available() as $key => $type) {
             $count = $counts[$key] ?? 0;
-            $label = $labels[$key] ?? $key;
-            $inner = '<span class="lp-comment-reactions__emoji" aria-hidden="true">' . $emoji . '</span>'
+            $label = __($type['label']);
+            $inner = '<span class="lp-comment-reactions__emoji" aria-hidden="true">' . esc_html($type['emoji']) . '</span>'
                 . ($isLikeOnly ? '<span class="lp-comment-reactions__label">' . esc_html($label) . '</span>' : '')
                 . '<span class="lp-comment-reactions__count" data-lp-reaction-count' . ($count === 0 ? ' hidden' : '') . '>' . $count . '</span>';
             $accessibleName = esc_attr($label . ($count > 0 ? ' (' . $count . ')' : ''));

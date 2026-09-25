@@ -746,7 +746,7 @@ $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments
 // inside SiteController so moderator approvals from the admin, which only
 // fire comment_status_changed, are covered by the same code path.
 $commentSubscriptions = new CommentSubscriptionService($database, $tablePrefix);
-$commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, new NotificationService($database, $tablePrefix));
+$commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, new NotificationService($database, $tablePrefix, $hooks));
 $commentSubscriptionController = new CommentSubscriptionController($commentSubscriptions, $commentFollowups, $posts, $pages, $auth, $site);
 
 // Subscribing must happen before onCommentPosted() so an immediately
@@ -791,7 +791,7 @@ add_filter('comment_form_fields_after', static function (string $html, \LumoraPr
 
 // Reactions and reporting. comment_list() reaches them through the
 // CommentExtras bridge, since theme templates have no route to services.
-$commentReactions = new CommentReactionService($database, $tablePrefix, $config);
+$commentReactions = new CommentReactionService($database, $tablePrefix, $config, $hooks);
 $commentReports = new CommentReportService($database, $tablePrefix, $config);
 $commentInteractionController = new CommentInteractionController($comments, $posts, $pages, $commentReactions, $commentReports, $commentFollowups, $auth, $site);
 \LumoraPress\Core\Theme\CommentExtras::set($commentReactions, $commentReports, $commentInteractionController->currentVoterKey(...));
@@ -800,6 +800,15 @@ add_action('comment_deleted', static function (int $commentId) use ($commentReac
     $commentReactions->deleteForComment($commentId);
     $commentReports->dismiss($commentId);
 });
+// Deleting a post or page removes its comments in bulk, bypassing
+// comment_deleted. Both hooks also fire on trash, so these sweeps only
+// touch data whose comment or content row is actually gone.
+$sweepDeletedContentData = static function () use ($comments, $commentSubscriptions): void {
+    $comments->deleteOrphanedCommentData();
+    $commentSubscriptions->deleteOrphaned();
+};
+add_action('post_deleted', $sweepDeletedContentData);
+add_action('page_deleted', $sweepDeletedContentData);
 
 add_action('comments_template', static function (array $vars = []) use ($commentSubscriptionController, $cache): void {
     $content = $vars['post'] ?? $vars['page'] ?? null;

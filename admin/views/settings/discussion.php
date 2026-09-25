@@ -128,6 +128,8 @@ $notifyAuthor = $kernel->config->option('comment_notify_author', '0') === '1';
 $notifyOnReply = $kernel->config->option('comment_notify_on_reply', '0') === '1';
 $subscriptionsEnabled = $kernel->config->option('comment_subscriptions_enabled', '0') === '1';
 $reactionsMode = (string) $kernel->config->option('comment_reactions_mode', 'off');
+// Plugins can change the reaction set, so list whatever is actually offered.
+$reactionTypes = (new \LumoraPress\Services\CommentReactionService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->config, $kernel->hooks))->types();
 $reactionsRegisteredOnly = $kernel->config->option('comment_reactions_registered_only', '0') === '1';
 $reportingEnabled = $kernel->config->option('comment_reporting_enabled', '0') === '1';
 $reportThreshold = (string) $kernel->config->option('comment_report_threshold', '3');
@@ -381,7 +383,7 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
             </label>
             <label class="lp-field--radio">
                 <input type="radio" name="comment_reactions_mode" value="reactions" <?= $reactionsMode === 'reactions' ? 'checked' : '' ?>>
-                Emoji reactions (👍 ❤️ 😂 😮 😢)
+                Emoji reactions (<?= esc_html(implode(' ', array_column($reactionTypes, 'emoji'))) ?>)
             </label>
             <span class="lp-field__hint">Each person can leave one reaction per comment; choosing it again removes it. Counts are shown next to each comment.</span>
         </fieldset>

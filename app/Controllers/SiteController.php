@@ -489,6 +489,8 @@ final class SiteController
             $status = CommentStatus::Spam;
         }
 
+        $status = $this->filterCommentStatus($status, $post, $userId, $parentId, $guestName, $guestEmail, $guestUrl, $content, $ipAddress);
+
         $comment = $this->comments->create(
             postId: $post->id,
             parentId: $parentId,
@@ -525,6 +527,39 @@ final class SiteController
 
         header('Location: ' . $redirectTo . '?comment=' . $flag . $anchor);
         exit;
+    }
+
+    /**
+     * The 'comment_moderation_status' filter: a plugin's own moderation
+     * rules get the last word on a new comment's status, after the
+     * built-in checks, Akismet, and 'comment_is_spam'. Only Approved,
+     * Pending, or Spam are accepted back; anything else is ignored.
+     */
+    private function filterCommentStatus(
+        CommentStatus $status,
+        Post|Page $content,
+        ?int $userId,
+        ?int $parentId,
+        string $guestName,
+        string $guestEmail,
+        ?string $guestUrl,
+        string $text,
+        string $ipAddress,
+    ): CommentStatus {
+        $filtered = apply_filters('comment_moderation_status', $status, [
+            'content' => $content,
+            'user_id' => $userId,
+            'parent_id' => $parentId,
+            'guest_name' => $guestName,
+            'guest_email' => $guestEmail,
+            'guest_url' => $guestUrl,
+            'text' => $text,
+            'ip_address' => $ipAddress,
+        ]);
+
+        return $filtered instanceof CommentStatus && in_array($filtered, [CommentStatus::Approved, CommentStatus::Pending, CommentStatus::Spam], true)
+            ? $filtered
+            : $status;
     }
 
     /**
@@ -668,6 +703,8 @@ final class SiteController
         if (apply_filters('comment_is_spam', false, $guestName, $guestEmail, $guestUrl, $content, $ipAddress) === true) {
             $status = CommentStatus::Spam;
         }
+
+        $status = $this->filterCommentStatus($status, $page, $userId, $parentId, $guestName, $guestEmail, $guestUrl, $content, $ipAddress);
 
         $comment = $this->comments->create(
             postId: null,

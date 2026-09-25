@@ -133,10 +133,22 @@ if (!function_exists('comments_template')) {
      * silently does nothing otherwise, same as get_sidebar(). Listeners
      * receive the same $vars, so they know which post/page is being shown.
      *
+     * A plugin providing its own commenting system returns that section's
+     * HTML from the 'comments_template_html' filter; it then replaces the
+     * whole built-in section, including the 'comments_template' action.
+     *
      * @param array<string, mixed> $vars
      */
     function comments_template(array $vars = []): void
     {
+        $replacement = apply_filters('comments_template_html', null, $vars);
+
+        if (is_string($replacement)) {
+            echo $replacement;
+
+            return;
+        }
+
         do_action('comments_template', $vars);
         ActiveTheme::instance()->renderPartial('comments', $vars);
     }

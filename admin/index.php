@@ -309,7 +309,7 @@ $linkDirectoryActive = in_array('link-directory', $activePlugins, true);
 // Awesome) since a single Settings screen is its entire admin footprint.
 $emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
 
-$notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+$notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->hooks);
 
 $menu = [
     'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],

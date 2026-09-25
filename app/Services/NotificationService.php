@@ -19,10 +19,13 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 
 /**
  * Deliberately generic (a type, a plain-text message, a link) rather than
- * comment-specific, so a plugin can notify users through the same inbox.
+ * comment-specific, so a plugin can notify users through the same inbox —
+ * and, through the 'notification_created' action, relay every
+ * notification somewhere else too (chat, push, email digests).
  * Every read/write method is scoped by user id, so one user can never
  * read or mark another user's notifications.
  */
@@ -34,21 +37,28 @@ final class NotificationService
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
     public function notify(int $userId, string $type, string $message, string $url = ''): void
     {
+        $type = substr($type, 0, 50);
+        $message = mb_substr($message, 0, 500);
+        $url = substr($url, 0, 2048);
+
         $this->database->execute(
             'INSERT INTO ' . $this->table() . ' (user_id, type, message, url, created_at) VALUES (:user_id, :type, :message, :url, :created_at)',
             [
                 'user_id' => $userId,
-                'type' => substr($type, 0, 50),
-                'message' => mb_substr($message, 0, 500),
-                'url' => substr($url, 0, 2048),
+                'type' => $type,
+                'message' => $message,
+                'url' => $url,
                 'created_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
+
+        $this->hooks?->doAction('notification_created', $userId, $type, $message, $url);
     }
 
     public function unreadCount(int $userId): int
