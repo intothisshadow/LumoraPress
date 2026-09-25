@@ -54,61 +54,84 @@ if ($wordPressImporterActive && ($_GET['ajax'] ?? null) === 'progress') {
 // WordPress import below; the extracted archive is always removed after.
 $nativeImportError = null;
 
+// Shared by the upload and server-path forms. Returns an error message,
+// or redirects to the summary on success.
+$runNativeImport = static function (string $zipPath) use ($kernel, $currentUser): string {
+    set_time_limit(0);
+    $skip = ($_POST['existing_content'] ?? null) === 'skip';
+    $exportSource = null;
+    $result = null;
+
+    try {
+        $exportSource = LumoraPressExportSource::open($zipPath, LUMORA_ROOT . '/storage/imports');
+        $result = (new LumoraPressImportService(
+            userImporter: $kernel->userImporter,
+            postImporter: $kernel->postImporter,
+            pageImporter: $kernel->pageImporter,
+            mediaImporter: $kernel->mediaImporter,
+            commentImporter: $kernel->commentImporter,
+            menuImporter: $kernel->menuImporter,
+            widgetImporter: $kernel->widgetImporter,
+            categories: $kernel->categories,
+            tags: $kernel->tags,
+            folders: $kernel->folders,
+            menus: $kernel->menus,
+            widgets: $kernel->widgets,
+            config: $kernel->config,
+            registry: $kernel->contentImportRegistry,
+            siteUrl: home_url(),
+            uploadsUrl: home_url('content/uploads'),
+            fallbackUserId: $currentUser->id,
+        ))->import($exportSource->content(), $skip ? ExistingContentMode::Skip : ExistingContentMode::Overwrite);
+        $result['siteName'] = $exportSource->content()->siteName;
+        $result['mode'] = $skip ? 'skip' : 'overwrite';
+    } catch (\RuntimeException $exception) {
+        return 'Could not import this file: ' . $exception->getMessage();
+    } finally {
+        $exportSource?->cleanup();
+    }
+
+    $_SESSION['lp_lumora_press_import'] = $result;
+
+    header('Location: ' . admin_url('maintenance/import') . '?lumora_imported=1');
+    exit;
+};
+
 if (($_POST['form'] ?? null) === 'import_lumora_press_export' && Csrf::verify('import_lumora_press_export', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $upload = $_FILES['export_file'] ?? null;
     $uploadError = is_array($upload) ? (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
 
     if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
-        $nativeImportError = 'That file is larger than this server accepts for uploads (' . ini_get('upload_max_filesize') . '). Export again without uploaded files, or ask your host to raise the limit.';
+        $nativeImportError = 'That file is larger than this server accepts for uploads (' . ini_get('upload_max_filesize') . '). Copy it onto the server instead and use "Import a file already on this server" below.';
     } elseif ($uploadError === UPLOAD_ERR_NO_FILE) {
         $nativeImportError = 'Choose a Lumora Press export file to upload.';
     } elseif ($uploadError !== UPLOAD_ERR_OK || !is_uploaded_file((string) $upload['tmp_name'])) {
         $nativeImportError = 'The upload failed. Please try again.';
     } else {
-        set_time_limit(0);
-        $exportSource = null;
-        $nativeResult = null;
-
-        try {
-            $exportSource = LumoraPressExportSource::open((string) $upload['tmp_name'], LUMORA_ROOT . '/storage/imports');
-            $nativeResult = (new LumoraPressImportService(
-                userImporter: $kernel->userImporter,
-                postImporter: $kernel->postImporter,
-                pageImporter: $kernel->pageImporter,
-                mediaImporter: $kernel->mediaImporter,
-                commentImporter: $kernel->commentImporter,
-                menuImporter: $kernel->menuImporter,
-                widgetImporter: $kernel->widgetImporter,
-                categories: $kernel->categories,
-                tags: $kernel->tags,
-                folders: $kernel->folders,
-                menus: $kernel->menus,
-                widgets: $kernel->widgets,
-                config: $kernel->config,
-                registry: $kernel->contentImportRegistry,
-                siteUrl: home_url(),
-                uploadsUrl: home_url('content/uploads'),
-                fallbackUserId: $currentUser->id,
-            ))->import(
-                $exportSource->content(),
-                ($_POST['existing_content'] ?? null) === 'skip' ? ExistingContentMode::Skip : ExistingContentMode::Overwrite,
-            );
-            $nativeResult['siteName'] = $exportSource->content()->siteName;
-            $nativeResult['mode'] = ($_POST['existing_content'] ?? null) === 'skip' ? 'skip' : 'overwrite';
-        } catch (\RuntimeException $exception) {
-            $nativeImportError = 'Could not import this file: ' . $exception->getMessage();
-        } finally {
-            $exportSource?->cleanup();
-        }
-
-        if ($nativeResult !== null) {
-            $_SESSION['lp_lumora_press_import'] = $nativeResult;
-
-            header('Location: ' . admin_url('maintenance/import') . '?lumora_imported=1');
-            exit;
-        }
+        $nativeImportError = $runNativeImport((string) $upload['tmp_name']);
     }
 }
+
+// A file the admin copied onto the server themselves (FTP, SFTP, a host's
+// file manager) — for exports bigger than the upload limit. Left in place
+// afterward, since it's theirs, not a temporary upload.
+if (($_POST['form'] ?? null) === 'import_lumora_press_export_path' && Csrf::verify('import_lumora_press_export_path', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    try {
+        $nativeImportError = $runNativeImport(LumoraPressExportSource::resolveServerPath(is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : ''));
+    } catch (\RuntimeException $exception) {
+        $nativeImportError = $exception->getMessage();
+    }
+}
+
+// Falls back to $_GET so a Discover link can pre-fill it without a form of its own.
+$nativeExportPath = is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : (is_string($_GET['export_path'] ?? null) ? $_GET['export_path'] : '');
+$nativeDiscovered = isset($_GET['discover_exports'])
+    ? LumoraPressExportSource::discoverArchives([
+        dirname(LUMORA_ROOT),
+        LUMORA_ROOT,
+        ...SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), null, [LUMORA_ROOT]),
+    ])
+    : null;
 
 $nativeImportResult = isset($_GET['lumora_imported']) && is_array($_SESSION['lp_lumora_press_import'] ?? null) ? $_SESSION['lp_lumora_press_import'] : null;
 
@@ -494,6 +517,25 @@ if ($wordPressImporterActive) {
         exit;
     }
 }
+
+// Mirrors Maintenance > Tools' Sweep tab: the WordPress tab only exists
+// while its plugin is active. The WordPress flow's own forms, redirects,
+// and Discover links don't carry ?tab=, so their state reopens that tab.
+$importTabs = ['lumora-press' => 'Lumora Press'];
+
+if ($wordPressImporterActive) {
+    $importTabs['wordpress'] = 'WordPress';
+}
+
+$wordPressStateKeys = ['removed', 'discover_uploads', 'discover_wp_config', 'uploads_path', 'gallery_path'];
+$postedForm = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+$isWordPressRequest = $wordPressImporterActive && (
+    ($postedForm !== '' && !str_starts_with($postedForm, 'import_lumora_press_export'))
+    || array_intersect_key($_GET, array_flip($wordPressStateKeys)) !== []
+);
+$activeImportTab = is_string($_GET['tab'] ?? null) && isset($importTabs[$_GET['tab']])
+    ? $_GET['tab']
+    : ($isWordPressRequest ? 'wordpress' : 'lumora-press');
 ?>
 <h1 class="lp-admin__title">Import</h1>
 
@@ -525,13 +567,20 @@ if ($wordPressImporterActive) {
             <?php endif; ?>
         </p>
 
-        <p class="lp-field__hint">
-            Imported users have no password on this site yet — each one needs
-            to use &ldquo;Lost your password?&rdquo; on the login screen before
-            signing in. Menus that were assigned to a theme location are only
-            placed there if that location was empty; assign the rest from
-            Appearance &rsaquo; Menus.
-        </p>
+        <?php if (($nativeCounts['user'] ?? 0) > 0): ?>
+            <p class="lp-field__hint">
+                Imported users have no password on this site yet — each one needs
+                to use &ldquo;Forgot password?&rdquo; on the login screen before
+                signing in.
+            </p>
+        <?php endif; ?>
+
+        <?php if (($nativeCounts['nav_menu'] ?? 0) > 0): ?>
+            <p class="lp-field__hint">
+                Menus that were assigned to a theme location are only placed there
+                if that location was empty; assign the rest from Appearance &rsaquo; Menus.
+            </p>
+        <?php endif; ?>
 
         <?php if ($nativeWarnings !== []): ?>
             <details class="lp-admin__panel">
@@ -551,56 +600,6 @@ if ($wordPressImporterActive) {
 endif;
 ?>
 
-<?php if (!($wordPressImporterActive && $imported)): ?>
-    <section class="lp-admin__panel">
-        <h2>Lumora Press Export</h2>
-
-        <?php if ($nativeImportError !== null): ?>
-            <div class="lp-alert lp-alert--error"><?= esc_html($nativeImportError) ?></div>
-        <?php endif; ?>
-
-        <p class="lp-field__hint">
-            Imports a <code>.zip</code> file made by Maintenance &rsaquo; Export on
-            another Lumora Press site (or this one): posts, pages, categories,
-            tags, comments, media, users, menus, and widgets — whatever the file
-            contains. Nothing already on this site is removed.
-        </p>
-
-        <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" enctype="multipart/form-data">
-            <?= Csrf::field('import_lumora_press_export') ?>
-            <input type="hidden" name="form" value="import_lumora_press_export">
-
-            <p class="lp-field">
-                <label for="lumora-import-file">Export file</label>
-                <input type="file" id="lumora-import-file" name="export_file" accept=".zip,application/zip" required>
-                <span class="lp-field__hint">
-                    This server accepts uploads up to <?= esc_html((string) ini_get('upload_max_filesize')) ?>.
-                    An export that includes uploaded files can be larger than that; if so, export again
-                    with &ldquo;Include uploaded files&rdquo; unchecked and copy the media across separately.
-                </span>
-            </p>
-
-            <p class="lp-field">
-                <label for="lumora-import-existing">When content was already imported from the same site</label>
-                <select id="lumora-import-existing" name="existing_content">
-                    <option value="overwrite">Update it with the file's version</option>
-                    <option value="skip">Leave it as it is, only add what's new</option>
-                </select>
-                <span class="lp-field__hint">
-                    Importing the same site's export again never creates duplicates: each
-                    post, page, comment, media item, and category remembers where it came
-                    from. Menus and widgets imported before are always left as they are.
-                </span>
-            </p>
-
-            <div class="lp-alert lp-alert--warning">
-                A large export can take a while. Keep this tab open until the import finishes.
-            </div>
-
-            <button type="submit" class="lp-button lp-button--primary">Upload &amp; Import</button>
-        </form>
-    </section>
-<?php endif; ?>
 
 <?php
 // A one-time "Import Summary" screen shown immediately after a real
@@ -689,7 +688,117 @@ if ($wordPressImporterActive && $imported):
 endif;
 ?>
 
+<div class="lp-tabs">
+    <div class="lp-tabs__list" role="tablist" aria-label="Import source">
+        <?php foreach ($importTabs as $tabKey => $tabLabel): ?>
+            <button type="button" class="lp-tabs__tab" id="lp-tab-<?= esc_attr($tabKey) ?>" role="tab" aria-selected="<?= $activeImportTab === $tabKey ? 'true' : 'false' ?>" aria-controls="lp-tabpanel-<?= esc_attr($tabKey) ?>" tabindex="<?= $activeImportTab === $tabKey ? '0' : '-1' ?>"><?= esc_html($tabLabel) ?></button>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="lp-tabs__panel" id="lp-tabpanel-lumora-press" role="tabpanel" aria-labelledby="lp-tab-lumora-press"<?= $activeImportTab === 'lumora-press' ? '' : ' hidden' ?>>
+        <section class="lp-admin__panel">
+            <h2>Lumora Press Import</h2>
+
+            <?php if ($nativeImportError !== null): ?>
+                <div class="lp-alert lp-alert--error"><?= esc_html($nativeImportError) ?></div>
+            <?php endif; ?>
+
+            <p class="lp-field__hint">
+                Imports a <code>.zip</code> file made by Maintenance &rsaquo; Export on
+                another Lumora Press site (or this one): posts, pages, categories,
+                tags, comments, media, users, menus, and widgets — whatever the file
+                contains. Nothing already on this site is removed.
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" enctype="multipart/form-data">
+                <?= Csrf::field('import_lumora_press_export') ?>
+                <input type="hidden" name="form" value="import_lumora_press_export">
+
+                <p class="lp-field">
+                    <label for="lumora-import-file">Export file</label>
+                    <input type="file" id="lumora-import-file" name="export_file" accept=".zip,application/zip" required>
+                    <span class="lp-field__hint">
+                        This server accepts uploads up to <?= esc_html((string) ini_get('upload_max_filesize')) ?>.
+                        An export that includes uploaded files is usually larger than that — copy it onto
+                        the server instead and use &ldquo;Import a file already on this server&rdquo; below.
+                    </span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="lumora-import-existing">When content was already imported from the same site</label>
+                    <select id="lumora-import-existing" name="existing_content">
+                        <option value="overwrite">Update it with the file's version</option>
+                        <option value="skip">Leave it as it is, only add what's new</option>
+                    </select>
+                    <span class="lp-field__hint">
+                        Importing the same site's export again never creates duplicates: each
+                        post, page, comment, media item, and category remembers where it came
+                        from. Menus and widgets imported before are always left as they are.
+                    </span>
+                </p>
+
+                <div class="lp-alert lp-alert--warning">
+                    A large export can take a while. Keep this tab open until the import finishes.
+                </div>
+
+                <button type="submit" class="lp-button lp-button--primary">Upload &amp; Import</button>
+            </form>
+
+            <h3 id="lumora-import-server">Import a file already on this server</h3>
+
+            <p class="lp-field__hint">
+                For an export too large to upload: copy the <code>.zip</code> onto this server
+                (by FTP, SFTP, or your host's file manager), then enter where it is. The file is
+                left where it is afterward.
+            </p>
+
+            <?php if ($nativeDiscovered === null): ?>
+                <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?tab=lumora-press&amp;discover_exports=1#lumora-import-server">Discover Export Files</a></p>
+            <?php elseif ($nativeDiscovered === []): ?>
+                <p class="lp-admin__widget-placeholder">
+                    No Lumora Press export files were found in <code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>,
+                    this site's own folder, or the folders next to it. Enter the file's location by hand below.
+                </p>
+            <?php else: ?>
+                <ul class="lp-import-scan__list">
+                    <?php foreach ($nativeDiscovered as $candidate): ?>
+                        <li><a class="lp-button lp-button--link" href="<?= esc_url(admin_url('maintenance/import') . '?tab=lumora-press&export_path=' . rawurlencode($candidate) . '#lumora-import-server') ?>"><?= esc_html($candidate) ?></a> (<?= esc_html(number_format((int) filesize($candidate) / 1048576, 1)) ?> MB)</li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>#lumora-import-server">
+                <?= Csrf::field('import_lumora_press_export_path') ?>
+                <input type="hidden" name="form" value="import_lumora_press_export_path">
+
+                <p class="lp-field">
+                    <label for="lumora-import-path">Export file location (server filesystem)</label>
+                    <input type="text" id="lumora-import-path" name="export_path" value="<?= esc_attr($nativeExportPath) ?>" required placeholder="<?= esc_attr(dirname(LUMORA_ROOT)) ?>/lumora-press-export-my-site.zip">
+                    <span class="lp-field__hint">The full path to the <code>.zip</code> file, readable by the web server.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="lumora-import-path-existing">When content was already imported from the same site</label>
+                    <select id="lumora-import-path-existing" name="existing_content">
+                        <option value="overwrite">Update it with the file's version</option>
+                        <option value="skip">Leave it as it is, only add what's new</option>
+                    </select>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Import From Server</button>
+            </form>
+        </section>
+
+        <?php if (!$wordPressImporterActive): ?>
+            <section class="lp-admin__panel">
+                <h2>WordPress</h2>
+                <p class="lp-field__hint">To bring content across from an existing WordPress site, activate the WordPress Importer plugin under Plugins.</p>
+            </section>
+        <?php endif; ?>
+    </div>
+
 <?php if ($wordPressImporterActive): ?>
+    <div class="lp-tabs__panel" id="lp-tabpanel-wordpress" role="tabpanel" aria-labelledby="lp-tab-wordpress"<?= $activeImportTab === 'wordpress' ? '' : ' hidden' ?>>
     <?php if ($removed): ?>
         <div class="lp-alert lp-alert--success">All imported content was removed.</div>
     <?php endif; ?>
@@ -1306,9 +1415,6 @@ endif;
             </form>
         <?php endif; ?>
     </section>
-<?php else: ?>
-    <section class="lp-admin__panel">
-        <h2>WordPress</h2>
-        <p class="lp-field__hint">To bring content across from an existing WordPress site, activate the WordPress Importer plugin under Plugins.</p>
-    </section>
+    </div>
 <?php endif; ?>
+</div>

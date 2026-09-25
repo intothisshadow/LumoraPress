@@ -53,7 +53,7 @@ final class LumoraPressExportSource
         $zip = new ZipArchive();
 
         if ($zip->open($zipPath, ZipArchive::RDONLY) !== true) {
-            throw new RuntimeException('The uploaded file is not a valid ZIP archive.');
+            throw new RuntimeException('That file is not a valid ZIP archive.');
         }
 
         $directory = rtrim($workingDirectory, '/') . '/' . bin2hex(random_bytes(16));
@@ -89,6 +89,79 @@ final class LumoraPressExportSource
         return new self($directory, $content);
     }
 
+    /**
+     * Resolves an admin-typed server path to an export archive, for
+     * files too large to upload through the browser. Returns the real
+     * path; open() still decides whether it's genuinely an export.
+     */
+    public static function resolveServerPath(string $path): string
+    {
+        $path = trim($path);
+        $resolved = $path !== '' ? realpath($path) : false;
+
+        if ($resolved === false || !is_file($resolved)) {
+            throw new RuntimeException('No file was found at that path on this server.');
+        }
+
+        if (strtolower(pathinfo($resolved, PATHINFO_EXTENSION)) !== 'zip') {
+            throw new RuntimeException('That file isn\'t a .zip file.');
+        }
+
+        if (!is_readable($resolved)) {
+            throw new RuntimeException('The web server isn\'t allowed to read that file. Check its permissions.');
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Every .zip directly inside $directories that is a Lumora Press
+     * export, for the Import screen's "Discover" list. Only each
+     * archive's file list is read, never its contents.
+     *
+     * @param array<int, string> $directories
+     * @return array<int, string> real paths, sorted, at most $limit
+     */
+    public static function discoverArchives(array $directories, int $limit = 50): array
+    {
+        $found = [];
+
+        foreach ($directories as $directory) {
+            // Plain '*' filtered here rather than GLOB_BRACE, which musl-based PHP builds lack.
+            foreach (glob(rtrim($directory, '/') . '/*') ?: [] as $candidate) {
+                $resolved = strtolower(pathinfo($candidate, PATHINFO_EXTENSION)) === 'zip' ? realpath($candidate) : false;
+
+                if ($resolved === false || isset($found[$resolved]) || !is_file($resolved) || !is_readable($resolved)) {
+                    continue;
+                }
+
+                $zip = new ZipArchive();
+
+                if ($zip->open($resolved, ZipArchive::RDONLY) !== true) {
+                    continue;
+                }
+
+                try {
+                    self::manifestPrefix($zip);
+                    $found[$resolved] = true;
+                } catch (RuntimeException) {
+                    // Some other kind of ZIP; not offered.
+                } finally {
+                    $zip->close();
+                }
+
+                if (count($found) >= $limit) {
+                    break 2;
+                }
+            }
+        }
+
+        $paths = array_keys($found);
+        sort($paths);
+
+        return $paths;
+    }
+
     public function content(): ExportContent
     {
         return $this->content;
@@ -103,6 +176,28 @@ final class LumoraPressExportSource
      * @return array{0: string, 1: string} the entry-name prefix everything else sits under, and the manifest's contents
      */
     private static function readManifest(ZipArchive $zip): array
+    {
+        $prefix = self::manifestPrefix($zip);
+        $stat = $zip->statName($prefix . LumoraPressZipWriter::MANIFEST_NAME);
+
+        if ($stat === false || $stat['size'] > self::MAX_MANIFEST_BYTES) {
+            throw new RuntimeException('The export\'s manifest.json is too large to read.');
+        }
+
+        $json = $zip->getFromName($prefix . LumoraPressZipWriter::MANIFEST_NAME);
+
+        if ($json === false) {
+            throw new RuntimeException('The export\'s manifest.json could not be read.');
+        }
+
+        return [$prefix, $json];
+    }
+
+    /**
+     * Where manifest.json sits: the archive root, or inside exactly one
+     * top-level folder. Reads only the archive's file list.
+     */
+    private static function manifestPrefix(ZipArchive $zip): string
     {
         $prefix = '';
 
@@ -124,19 +219,7 @@ final class LumoraPressExportSource
             $prefix = $candidates[0];
         }
 
-        $stat = $zip->statName($prefix . LumoraPressZipWriter::MANIFEST_NAME);
-
-        if ($stat === false || $stat['size'] > self::MAX_MANIFEST_BYTES) {
-            throw new RuntimeException('The export\'s manifest.json is too large to read.');
-        }
-
-        $json = $zip->getFromName($prefix . LumoraPressZipWriter::MANIFEST_NAME);
-
-        if ($json === false) {
-            throw new RuntimeException('The export\'s manifest.json could not be read.');
-        }
-
-        return [$prefix, $json];
+        return $prefix;
     }
 
     private static function extractMediaFiles(ZipArchive $zip, string $prefix, ExportContent $content, string $uploadsDirectory): void
