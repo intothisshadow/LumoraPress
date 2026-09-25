@@ -80,7 +80,14 @@ final class DatabaseSessionHandler implements SessionHandlerInterface
                 ['id' => $id, 'data' => $data, 'last_activity' => $now],
             );
 
-            if ($updated === 0) {
+            // MySQL reports 0 affected rows when nothing changed (same data
+            // within the same second), so 0 alone doesn't mean the row is missing.
+            $exists = $updated > 0 || $this->database->fetchColumn(
+                'SELECT 1 FROM ' . $this->table() . ' WHERE id = :id',
+                ['id' => $id],
+            ) !== null;
+
+            if (!$exists) {
                 $this->database->execute(
                     'INSERT INTO ' . $this->table() . ' (id, data, last_activity) VALUES (:id, :data, :last_activity)',
                     ['id' => $id, 'data' => $data, 'last_activity' => $now],
