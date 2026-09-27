@@ -56,7 +56,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Theme browser with live, whole-site preview
 - Theme Options / Customize screen — no CSS editing required
 - Custom CSS
-- Widgets and navigation menus
+- Widgets and navigation menus, with nested submenus and menu items you can hide without deleting them
 - Built-in theme file editor
 - Public light/dark mode toggle
 

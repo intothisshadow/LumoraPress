@@ -80,7 +80,8 @@ implementation-level detail on each area.
   layout/post display, Menu, Widgets, Footer; values are scoped per
   active theme, no CSS editing required), widgets (drag-to-reorder,
   including the Dashboard's own widgets, per signed-in user), navigation
-  menus, and a built-in theme file editor.
+  menus (nested submenus, drag-to-reorder, items hidden without deleting
+  them, and plugin-provided item types), and a built-in theme file editor.
 - **Plugin browser** — install, activate, and manage plugins from the
   admin panel, including deleting inactive plugins individually or in
   bulk.

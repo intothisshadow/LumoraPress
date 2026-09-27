@@ -436,6 +436,7 @@ final class LumoraPressImportService
                 titleAttribute: $item->titleAttribute,
                 parentExternalId: $item->parentExternalId,
                 externalId: $item->externalId,
+                hidden: $item->hidden,
             ), $menu->items);
 
             $localMenuIds[(string) $menu->externalId] = $this->menuImporter->import($batchId, LumoraPressExportSource::SOURCE, new ImportedMenu($menu->name, $items, $externalId));

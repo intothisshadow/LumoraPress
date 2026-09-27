@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Controllers\Admin;
 
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Menus\MenuManager;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
@@ -34,7 +35,9 @@ use LumoraPress\Services\TagService;
  * ("nav_menus", "nav_menu_locations") on PressConfig, mirroring the
  * view's own pre-extraction persist closures. Every CSRF action name is
  * scoped per menu/item/direction id, the same reasoning ThemesController's
- * own docblock gives for per-slug scoping.
+ * own docblock gives for per-slug scoping. Every successful change fires
+ * one of the nav_menu_* actions, so a plugin can react (e.g. purge a cache)
+ * without polling the options.
  */
 final class MenusController
 {
@@ -45,6 +48,7 @@ final class MenusController
         private readonly PostService $posts,
         private readonly CategoryService $categories,
         private readonly TagService $tags,
+        private readonly HookManager $hooks,
     ) {
     }
 
@@ -65,6 +69,7 @@ final class MenusController
 
         $newId = $this->menus->createMenu($name);
         $this->persistMenus();
+        $this->hooks->doAction('nav_menu_created', $newId, $this->menus->menu($newId));
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($newId) . '&saved=1');
     }
@@ -91,7 +96,7 @@ final class MenusController
         }
 
         $this->menus->renameMenu($menuId, $name);
-        $this->persistMenus();
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
     }
@@ -114,8 +119,9 @@ final class MenusController
         }
 
         $name = trim((string) ($post['name'] ?? '')) ?: ($menu['name'] . ' Copy');
-        $newId = $this->menus->duplicateMenu($menuId, $name);
+        $newId = (string) $this->menus->duplicateMenu($menuId, $name);
         $this->persistMenus();
+        $this->hooks->doAction('nav_menu_created', $newId, $this->menus->menu($newId));
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode((string) $newId) . '&saved=1');
     }
@@ -137,6 +143,7 @@ final class MenusController
 
         $this->menus->deleteMenu($menuId);
         $this->persistMenus();
+        $this->hooks->doAction('nav_menu_deleted', $menuId);
         $this->persistLocations();
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?deleted=1');
@@ -165,7 +172,7 @@ final class MenusController
         }
 
         $this->menus->addMenuItem($menuId, ['label' => $label, 'url' => $url]);
-        $this->persistMenus();
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
     }
@@ -274,7 +281,7 @@ final class MenusController
         }
 
         $addSelected($selectedIds, $menuId);
-        $this->persistMenus();
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
     }
@@ -320,6 +327,7 @@ final class MenusController
                     'rel' => trim((string) ($post['rel'] ?? '')),
                     'titleAttribute' => trim((string) ($post['titleAttribute'] ?? '')),
                     'parentId' => $parentId,
+                    'hidden' => ($post['hidden'] ?? '') === '1',
                 ];
                 $matched = true;
 
@@ -332,7 +340,7 @@ final class MenusController
         }
 
         $this->menus->setMenuItems($menuId, $items);
-        $this->persistMenus();
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
     }
@@ -354,7 +362,7 @@ final class MenusController
         }
 
         $this->menus->removeMenuItem($menuId, $itemId);
-        $this->persistMenus();
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&removed=1');
     }
@@ -404,7 +412,7 @@ final class MenusController
                 $swapIndex = $siblingIndices[$swapPosition];
                 [$items[$targetIndex], $items[$swapIndex]] = [$items[$swapIndex], $items[$targetIndex]];
                 $this->menus->setMenuItems($menuId, $items);
-                $this->persistMenus();
+                $this->menuChanged($menuId);
             }
         }
 
@@ -467,9 +475,50 @@ final class MenusController
                 $insertAt = $position === 'after' ? $targetIndex + 1 : $targetIndex;
                 array_splice($remaining, $insertAt, 0, [$dragged]);
                 $this->menus->setMenuItems($menuId, $remaining);
-                $this->persistMenus();
+                $this->menuChanged($menuId);
             }
         }
+
+        return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
+    }
+
+    /**
+     * Adds the chosen items from a plugin-registered item type's panel.
+     * Only choices the type's own source still offers are accepted, so a
+     * forged id or URL can't be slipped in through the form.
+     *
+     * @param array<string, mixed> $post
+     */
+    public function addRegisteredItems(array $post, ?string $csrfToken): AdminActionResult
+    {
+        $menuId = trim((string) ($post['menu_id'] ?? ''));
+        $type = trim((string) ($post['item_type'] ?? ''));
+
+        if (!Csrf::verify('menu_add_type_' . $type . '_' . $menuId, $csrfToken)) {
+            return $this->invalidRequest();
+        }
+
+        if ($this->menus->menu($menuId) === null) {
+            return AdminActionResult::error('That menu no longer exists.');
+        }
+
+        if (!isset($this->menus->itemTypes()[$type])) {
+            return AdminActionResult::error('Those items can no longer be added — the plugin that provided them may have been deactivated.');
+        }
+
+        $selectedIds = is_array($post['selected_ids'] ?? null) ? array_map('strval', $post['selected_ids']) : [];
+
+        if ($selectedIds === []) {
+            return AdminActionResult::error('Please select at least one item to add.');
+        }
+
+        foreach ($this->menus->itemTypeOptions($type) as $option) {
+            if (in_array($option['id'], $selectedIds, true)) {
+                $this->menus->addMenuItem($menuId, ['label' => $option['label'], 'url' => $option['url']]);
+            }
+        }
+
+        $this->menuChanged($menuId);
 
         return AdminActionResult::redirect(admin_url('appearance/menus') . '?menu_id=' . urlencode($menuId) . '&saved=1');
     }
@@ -518,6 +567,12 @@ final class MenusController
         $this->config->setOption('nav_menus', json_encode($this->menus->menus()));
     }
 
+    private function menuChanged(string $menuId): void
+    {
+        $this->persistMenus();
+        $this->hooks->doAction('nav_menu_updated', $menuId, $this->menus->menu($menuId));
+    }
+
     private function persistLocations(): void
     {
         $assignments = [];
@@ -531,6 +586,7 @@ final class MenusController
         }
 
         $this->config->setOption('nav_menu_locations', json_encode($assignments));
+        $this->hooks->doAction('nav_menu_locations_updated', $assignments);
     }
 
     /**

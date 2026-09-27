@@ -27,6 +27,7 @@ use LumoraPress\Models\PostStatus;
 use LumoraPress\Models\PostVisibility;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\Import\ImportedMedia;
+use LumoraPress\Services\Import\ImportedMenu;
 use LumoraPress\Services\Import\ImportedPage;
 use LumoraPress\Services\Import\ImportedPost;
 use RuntimeException;
@@ -416,13 +417,15 @@ final class WordPressXmlWriter implements ExportFormatWriter
         $nextId = $ids['menuItem'];
 
         foreach ($content->menus as $menu) {
+            $hidden = self::hiddenMenuItemIds($menu);
+            $items = array_filter($menu->items, static fn ($item): bool => !isset($hidden[(string) $item->externalId]));
             $wxrIdByItemId = [];
 
-            foreach ($menu->items as $item) {
+            foreach ($items as $item) {
                 $wxrIdByItemId[(string) $item->externalId] = ++$nextId;
             }
 
-            foreach ($menu->items as $item) {
+            foreach ($items as $item) {
                 $wxrId = $wxrIdByItemId[(string) $item->externalId];
 
                 $this->startItem($xml, [
@@ -603,6 +606,12 @@ final class WordPressXmlWriter implements ExportFormatWriter
             $this->notices[] = 'User roles left out — the format has no field for them, so every user arrives with the importing site\'s default role.';
         }
 
+        $hiddenMenuItems = array_sum(array_map(static fn (ImportedMenu $menu): int => count(self::hiddenMenuItemIds($menu)), $content->menus));
+
+        if ($hiddenMenuItems > 0) {
+            $this->notices[] = "{$hiddenMenuItems} hidden menu item" . ($hiddenMenuItems === 1 ? '' : 's') . ' left out — WordPress menus have no way to keep an item without showing it.';
+        }
+
         if ($content->menuLocations !== []) {
             $this->notices[] = 'Menu locations left out — menus are exported, but need to be assigned to your new theme\'s locations again.';
         }
@@ -610,6 +619,36 @@ final class WordPressXmlWriter implements ExportFormatWriter
         if ($markdownCount > 0) {
             $this->notices[] = "{$markdownCount} post" . ($markdownCount === 1 ? '' : 's') . '/page' . ($markdownCount === 1 ? '' : 's') . ' written in Markdown ' . ($markdownCount === 1 ? 'was' : 'were') . ' converted to HTML.';
         }
+    }
+
+    /**
+     * Hidden items plus everything nested under them, keyed by external id —
+     * a hidden item's submenu is hidden on the site too.
+     *
+     * @return array<string, true>
+     */
+    private static function hiddenMenuItemIds(ImportedMenu $menu): array
+    {
+        $hidden = [];
+
+        foreach ($menu->items as $item) {
+            if ($item->hidden) {
+                $hidden[(string) $item->externalId] = true;
+            }
+        }
+
+        do {
+            $added = false;
+
+            foreach ($menu->items as $item) {
+                if (!isset($hidden[(string) $item->externalId]) && $item->parentExternalId !== null && isset($hidden[$item->parentExternalId])) {
+                    $hidden[(string) $item->externalId] = true;
+                    $added = true;
+                }
+            }
+        } while ($added);
+
+        return $hidden;
     }
 
     private static function wxrStatus(bool $isPublished, string $status, bool $isPrivate): string

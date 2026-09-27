@@ -41,6 +41,9 @@ final class MenuManager
     /** @var array<string, string> location slug => menu id */
     private array $locationAssignments = [];
 
+    /** @var array<string, array{label: string, source: callable}> */
+    private array $itemTypes = [];
+
     public function registerLocation(string $slug, string $label): void
     {
         $this->locations[$slug] = $label;
@@ -67,6 +70,61 @@ final class MenuManager
             ],
             $items,
         );
+    }
+
+    /**
+     * Adds a panel of selectable items (a plugin's own content, say) to the
+     * admin Menus screen's "Add Menu Items" column. $source is called when
+     * the screen renders and when items are added, and returns the choices:
+     * each an array with 'id', 'label', 'url', and optionally 'depth' for
+     * indenting. The chosen items are stored as plain label + URL, the same
+     * as core's Pages/Posts/Categories/Tags panels.
+     */
+    public function registerItemType(string $type, string $label, callable $source): void
+    {
+        if (preg_match('/^[a-z0-9_-]{1,40}$/', $type) !== 1) {
+            throw new \InvalidArgumentException('Menu item type ids must be 1-40 lowercase letters, digits, hyphens, or underscores.');
+        }
+
+        $this->itemTypes[$type] = ['label' => $label, 'source' => $source];
+    }
+
+    /**
+     * @return array<string, array{label: string, source: callable}>
+     */
+    public function itemTypes(): array
+    {
+        return $this->itemTypes;
+    }
+
+    /**
+     * A registered type's current choices, normalized; a malformed entry
+     * from a plugin's source is skipped rather than breaking the screen.
+     *
+     * @return array<int, array{id: string, label: string, url: string, depth: int}>
+     */
+    public function itemTypeOptions(string $type): array
+    {
+        if (!isset($this->itemTypes[$type])) {
+            return [];
+        }
+
+        $options = [];
+
+        foreach ((array) ($this->itemTypes[$type]['source'])() as $option) {
+            if (!is_array($option) || !isset($option['id'], $option['label'], $option['url'])) {
+                continue;
+            }
+
+            $options[] = [
+                'id' => (string) $option['id'],
+                'label' => (string) $option['label'],
+                'url' => (string) $option['url'],
+                'depth' => max(0, (int) ($option['depth'] ?? 0)),
+            ];
+        }
+
+        return $options;
     }
 
     public function createMenu(string $name, ?string $id = null): string
@@ -103,11 +161,23 @@ final class MenuManager
             return null;
         }
 
+        // Every copied item gets a new id, so parent references must follow
+        // or each nested item would point at a parent outside this menu.
+        $newIds = [];
+
+        foreach ($this->menus[$id]['items'] as $item) {
+            $newIds[$item['id']] = self::generateId();
+        }
+
         $newId = self::generateId();
         $this->menus[$newId] = [
             'name' => $newName,
             'items' => array_map(
-                static fn (array $item): array => [...$item, 'id' => self::generateId()],
+                static fn (array $item): array => [
+                    ...$item,
+                    'id' => $newIds[$item['id']],
+                    'parentId' => $item['parentId'] !== null ? ($newIds[$item['parentId']] ?? null) : null,
+                ],
                 $this->menus[$id]['items'],
             ),
         ];
@@ -146,16 +216,7 @@ final class MenuManager
         }
 
         $this->menus[$menuId]['items'] = array_values(array_map(
-            static fn (array $item): array => [
-                'id' => $item['id'] ?? self::generateId(),
-                'label' => (string) ($item['label'] ?? ''),
-                'url' => (string) ($item['url'] ?? ''),
-                'target' => ($item['target'] ?? '_self') === '_blank' ? '_blank' : '_self',
-                'cssClass' => (string) ($item['cssClass'] ?? ''),
-                'rel' => (string) ($item['rel'] ?? ''),
-                'titleAttribute' => (string) ($item['titleAttribute'] ?? ''),
-                'parentId' => ($item['parentId'] ?? '') !== '' ? (string) $item['parentId'] : null,
-            ],
+            static fn (array $item): array => self::normalizeItem($item, (string) ($item['id'] ?? self::generateId())),
             $items,
         ));
     }
@@ -170,16 +231,7 @@ final class MenuManager
         }
 
         $id = self::generateId();
-        $this->menus[$menuId]['items'][] = [
-            'id' => $id,
-            'label' => (string) ($item['label'] ?? ''),
-            'url' => (string) ($item['url'] ?? ''),
-            'target' => ($item['target'] ?? '_self') === '_blank' ? '_blank' : '_self',
-            'cssClass' => (string) ($item['cssClass'] ?? ''),
-            'rel' => (string) ($item['rel'] ?? ''),
-            'titleAttribute' => (string) ($item['titleAttribute'] ?? ''),
-            'parentId' => ($item['parentId'] ?? '') !== '' ? (string) $item['parentId'] : null,
-        ];
+        $this->menus[$menuId]['items'][] = self::normalizeItem($item, $id);
 
         return $id;
     }
@@ -252,7 +304,8 @@ final class MenuManager
      * The items assigned to $location, nested into a nav_menu()-ready tree
      * via each item's parentId — unlimited depth, same "flat rows in, tree
      * out" shape CommentService::publicTreeForPost() already uses for
-     * comment replies.
+     * comment replies. Hidden items are left out along with their
+     * submenus, which would otherwise have nothing to hang from.
      *
      * @return array<int, array{item: array<string, mixed>, children: array<mixed>}>
      */
@@ -263,7 +316,7 @@ final class MenuManager
 
     public function hasItems(string $location): bool
     {
-        return $this->items($location) !== [];
+        return $this->itemTree($location) !== [];
     }
 
     /**
@@ -275,7 +328,7 @@ final class MenuManager
         $branch = [];
 
         foreach ($items as $item) {
-            if (($item['parentId'] ?? null) !== $parentId) {
+            if (($item['parentId'] ?? null) !== $parentId || ($item['hidden'] ?? false) === true) {
                 continue;
             }
 
@@ -291,6 +344,25 @@ final class MenuManager
         }
 
         return $branch;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private static function normalizeItem(array $item, string $id): array
+    {
+        return [
+            'id' => $id,
+            'label' => (string) ($item['label'] ?? ''),
+            'url' => (string) ($item['url'] ?? ''),
+            'target' => ($item['target'] ?? '_self') === '_blank' ? '_blank' : '_self',
+            'cssClass' => (string) ($item['cssClass'] ?? ''),
+            'rel' => (string) ($item['rel'] ?? ''),
+            'titleAttribute' => (string) ($item['titleAttribute'] ?? ''),
+            'parentId' => ($item['parentId'] ?? '') !== '' ? (string) $item['parentId'] : null,
+            'hidden' => ($item['hidden'] ?? false) === true,
+        ];
     }
 
     private static function generateId(): string

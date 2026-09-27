@@ -335,6 +335,8 @@ and self-guards (no-op if nothing is assigned to that location) — no
 is available if you need a conditional wrapper around surrounding markup
 (a `<nav>` tag, say).
 
+Menu items an administrator marked "Hide on the site" on Appearance › Menus are left out of `nav_menu()`'s output along with everything nested under them, and `has_nav_menu()` returns `false` when every item in the location is hidden. Each item's `<li>` carries `lp-nav-menu__item`, any CSS classes set on the item, and `lp-nav-menu__item--has-children` when it has a submenu (`<ul class="lp-nav-menu__submenu">`). To change the items, classes, or finished markup from `functions.php`, use the `nav_menu_tree`, `nav_menu_item_classes`, and `nav_menu_html` filters (see "Navigation menus" in `docs/DEVELOPER-APIS.md`).
+
 ## Theme Options
 
 A theme (or plugin) registers its own Theme Options fields by hooking `register_theme_options` from `functions.php` — this hook fires *after* your theme's `functions.php` has already loaded and *after* core's own built-in fields (Colors, Typography, Layout, Post Display, Featured Image, Header, Welcome Message, Footer) are already registered:

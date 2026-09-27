@@ -79,7 +79,7 @@ $postedMenuId = trim((string) ($_POST['menu_id'] ?? ''));
 $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
 if ($form !== '') {
-    $controller = new MenusController($kernel->menus, $kernel->config, $kernel->pages, $kernel->posts, $kernel->categories, $kernel->tags);
+    $controller = new MenusController($kernel->menus, $kernel->config, $kernel->pages, $kernel->posts, $kernel->categories, $kernel->tags, $kernel->hooks);
 
     $result = match ($form) {
         'create_menu' => $controller->createMenu($_POST, $csrfToken),
@@ -91,6 +91,7 @@ if ($form !== '') {
         'add_posts' => $controller->addPosts($_POST, $csrfToken),
         'add_categories' => $controller->addCategories($_POST, $csrfToken),
         'add_tags' => $controller->addTags($_POST, $csrfToken),
+        'add_registered_items' => $controller->addRegisteredItems($_POST, $csrfToken),
         'update_item' => $controller->updateItem($_POST, $csrfToken),
         'remove_item' => $controller->removeItem($_POST, $csrfToken),
         'move_item' => $controller->moveItem($_POST, $csrfToken),
@@ -261,6 +262,34 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                     <?php endif; ?>
                 </details>
             <?php endforeach; ?>
+
+            <?php foreach ($kernel->menus->itemTypes() as $itemType => $itemTypeInfo): ?>
+                <?php $typeOptions = $kernel->menus->itemTypeOptions($itemType); ?>
+                <details class="lp-menus-add-panel">
+                    <summary><?= esc_html($itemTypeInfo['label']) ?></summary>
+                    <?php if ($typeOptions === []): ?>
+                        <p class="lp-admin__widget-placeholder">None yet.</p>
+                    <?php else: ?>
+                        <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>">
+                            <?= Csrf::field('menu_add_type_' . $itemType . '_' . $currentMenuId) ?>
+                            <input type="hidden" name="form" value="add_registered_items">
+                            <input type="hidden" name="item_type" value="<?= esc_attr($itemType) ?>">
+                            <input type="hidden" name="menu_id" value="<?= esc_attr($currentMenuId) ?>">
+                            <ul class="lp-menus-add-panel__list">
+                                <?php foreach ($typeOptions as $option): ?>
+                                    <li<?= $option['depth'] > 0 ? ' data-style-margin-left="' . ($option['depth'] * 1.5) . 'rem"' : '' ?>>
+                                        <label class="lp-field--checkbox">
+                                            <input type="checkbox" name="selected_ids[]" value="<?= esc_attr($option['id']) ?>">
+                                            <?= esc_html($option['label']) ?>
+                                        </label>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <button type="submit" class="lp-button lp-button--primary">Add to Menu</button>
+                        </form>
+                    <?php endif; ?>
+                </details>
+            <?php endforeach; ?>
         </div>
 
         <div class="lp-menus-editor__structure">
@@ -286,6 +315,9 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                                     <span class="lp-drag-handle" data-lp-drag-handle aria-hidden="true" title="Drag to reorder">&#10303;</span>
                                     <?= esc_html($item['label']) ?>
                                     <span class="lp-widgets-list__instance-title">&mdash; <?= esc_html($item['url']) ?></span>
+                                    <?php if ($item['hidden']): ?>
+                                        <span class="lp-status-badge lp-menus-structure-list__hidden">Hidden</span>
+                                    <?php endif; ?>
                                 </summary>
 
                                 <form method="post" action="<?= esc_url(admin_url('appearance/menus')) ?>" class="lp-widgets-list__settings">
@@ -323,6 +355,12 @@ $currentMenu = $currentMenuId !== null ? $allMenus[$currentMenuId] : null;
                                         <label for="item-rel-<?= esc_attr($item['id']) ?>">Link Relationship (XFN)</label>
                                         <input type="text" id="item-rel-<?= esc_attr($item['id']) ?>" name="rel" value="<?= esc_attr($item['rel']) ?>">
                                     </p>
+
+                                    <label class="lp-field--checkbox">
+                                        <input type="checkbox" name="hidden" value="1" <?= $item['hidden'] ? 'checked' : '' ?>>
+                                        Hide on the site
+                                    </label>
+                                    <p class="lp-field__hint">Keeps the item in this menu without showing it to visitors; any items nested under it are hidden too.</p>
 
                                     <p class="lp-field">
                                         <label for="item-parent-<?= esc_attr($item['id']) ?>">Parent Item</label>

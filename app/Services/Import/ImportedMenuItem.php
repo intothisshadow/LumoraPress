@@ -44,6 +44,7 @@ final class ImportedMenuItem
         public readonly string $titleAttribute = '',
         public readonly ?string $parentExternalId = null,
         public readonly ?string $externalId = null,
+        public readonly bool $hidden = false,
     ) {
     }
 }

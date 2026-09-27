@@ -319,6 +319,33 @@ route-registration hook exists.
 | `lumora_press_before_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::beginInstall()` for a bundled-plugin-only update (Plugins screen &rsaquo; Update). The versions are the plugin's, not core's; the two core update actions above never fire for a plugin-only update. |
 | `lumora_press_after_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion, UpdateStatus $status` | `UpdateService::continueInstall()`, when a bundled plugin update finishes — on success **and** on failure/rollback, like `lumora_press_after_update`. Core uses it to purge the page cache on success. |
 
+### Navigation menus
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `nav_menu_tree` | filter | `array $tree, string $location` | `nav_menu()` ([`include/menus.php`](../include/menus.php)), before rendering. `$tree` is a list of `['item' => array, 'children' => array]` nodes (the shape `MenuManager::itemTree()` returns, hidden items already removed); an item needs at least `label` and `url`, and may carry `target`, `rel`, `titleAttribute`, and `cssClass`. Return the tree with nodes added, removed, or reordered; return `[]` to render nothing. |
+| `nav_menu_item_classes` | filter | `array<int, string> $classes, array $item, string $location, int $depth` | `nav_menu()`, once per item. `$depth` is 0 for top-level items. Classes are escaped when written out. |
+| `nav_menu_html` | filter | `string $html, string $location` | `nav_menu()`, on the finished `<ul>` just before it's echoed. Return trusted HTML — escape anything you add. |
+| `nav_menu_created` | action | `string $menuId, array $menu` (`name`, `items`) | [`MenusController`](../app/Controllers/Admin/MenusController.php): Create Menu and Duplicate on Appearance &rsaquo; Menus. |
+| `nav_menu_updated` | action | `string $menuId, array $menu` | `MenusController`, after any other change to one menu from Appearance &rsaquo; Menus: rename, adding/editing/hiding/removing an item, or reordering. |
+| `nav_menu_deleted` | action | `string $menuId` | `MenusController::deleteMenu()`. |
+| `nav_menu_locations_updated` | action | `array<string, string> $assignments` (location ⇒ menu id) | `MenusController`, after Save Locations and after deleting a menu (which unassigns it). |
+
+These actions fire for changes made on Appearance &rsaquo; Menus only; an import (Maintenance &rsaquo; Import, or the WordPress Importer) writes menus without firing them.
+
+**Plugin menu item types.** A plugin can add its own panel to the "Add Menu Items" column, next to Pages, Posts, Categories, and Tags:
+
+```php
+register_nav_menu_item_type('downloads', 'Downloads', static function (): array {
+    return [
+        ['id' => 12, 'label' => 'Wallpapers', 'url' => site_url('downloads/wallpapers')],
+        ['id' => 13, 'label' => 'Icons', 'url' => site_url('downloads/icons'), 'depth' => 1],
+    ];
+});
+```
+
+The type id must be 1–40 lowercase letters, digits, hyphens, or underscores. The callback runs when the screen renders and again when items are added; only entries it still returns can be added, so a forged id in the form is ignored. Each chosen entry becomes an ordinary menu item holding its label and URL at that moment, like the built-in panels, so a later change to your content doesn't update items already in a menu. `depth` (optional) only indents the checkbox list. Register the type from your plugin's bootstrap file; if the plugin is deactivated, its panel disappears and items already added stay.
+
 ### Content export
 
 | Name | Type | Args | Fires in |

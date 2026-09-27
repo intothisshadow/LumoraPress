@@ -101,6 +101,7 @@ final class MenuImporter
             'rel' => $item->rel,
             'titleAttribute' => $item->titleAttribute,
             'parentId' => $parentId,
+            'hidden' => $item->hidden,
         ]);
     }
 }

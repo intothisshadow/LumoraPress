@@ -376,6 +376,7 @@ final class ContentExportService
                     titleAttribute: (string) ($item['titleAttribute'] ?? ''),
                     parentExternalId: ($item['parentId'] ?? null) !== null ? (string) $item['parentId'] : null,
                     externalId: (string) ($item['id'] ?? ''),
+                    hidden: ($item['hidden'] ?? false) === true,
                 );
             }
 
