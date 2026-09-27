@@ -331,8 +331,8 @@ final class WordPressXmlWriter implements ExportFormatWriter
             'link' => $content->siteUrl . '/?page_id=' . $wxrId,
             'guid' => $content->siteUrl . '/?page_id=' . $wxrId,
             'author' => $logins[$page->authorId] ?? '',
-            'content' => $this->html($page->content, $page->contentFormat),
-            'excerpt' => $page->excerpt,
+            'content' => $this->html($content, $page->content, $page->contentFormat),
+            'excerpt' => self::absoluteUrlsInHtml($content, $page->excerpt),
             'date' => $page->publishedAt ?? $content->exportedAt,
             'published' => $page->publishedAt !== null,
             'commentStatus' => ($page->commentsOpen ?? true) ? 'open' : 'closed',
@@ -362,8 +362,8 @@ final class WordPressXmlWriter implements ExportFormatWriter
             'link' => $content->siteUrl . '/?p=' . $wxrId,
             'guid' => $content->siteUrl . '/?p=' . $wxrId,
             'author' => $logins[$post->authorId] ?? '',
-            'content' => $this->html($post->content, $post->contentFormat),
-            'excerpt' => $post->excerpt,
+            'content' => $this->html($content, $post->content, $post->contentFormat),
+            'excerpt' => self::absoluteUrlsInHtml($content, $post->excerpt),
             'date' => $post->publishedAt ?? $content->exportedAt,
             'published' => $post->publishedAt !== null,
             'commentStatus' => $post->commentsOpen ? 'open' : 'closed',
@@ -540,13 +540,30 @@ final class WordPressXmlWriter implements ExportFormatWriter
      * shortcodes and embeds, and WordPress should receive the shortcodes
      * themselves (many have direct WordPress equivalents).
      */
-    private function html(string $content, ContentFormat $format): string
+    private function html(ExportContent $content, string $body, ContentFormat $format): string
     {
-        return match ($format) {
-            ContentFormat::Html => $content,
-            ContentFormat::Markdown => $this->renderer->convertFormat($content, ContentFormat::Markdown, ContentFormat::Html),
-            ContentFormat::Plain => nl2br(htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
-        };
+        return self::absoluteUrlsInHtml($content, match ($format) {
+            ContentFormat::Html => $body,
+            ContentFormat::Markdown => $this->renderer->convertFormat($body, ContentFormat::Markdown, ContentFormat::Html),
+            ContentFormat::Plain => nl2br(htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
+        });
+    }
+
+    /**
+     * WordPress stores absolute URLs in content, and its importer only
+     * swaps in the new media URLs where it finds an exact absolute match —
+     * a root-relative "/blog/content/uploads/..." would survive the import
+     * pointing at a path that doesn't exist on the new site.
+     */
+    private static function absoluteUrlsInHtml(ExportContent $content, string $html): string
+    {
+        $origin = self::origin($content);
+
+        return (string) preg_replace_callback(
+            '#(\s(?:src|href|poster)\s*=\s*)(["\'])(/(?!/)[^"\']*)\2#i',
+            static fn (array $m): string => $m[1] . $m[2] . $origin . $m[3] . $m[2],
+            $html,
+        );
     }
 
     private function collectNotices(ExportContent $content): void
@@ -661,10 +678,14 @@ final class WordPressXmlWriter implements ExportFormatWriter
             return $url;
         }
 
-        $parts = parse_url($content->siteUrl);
-        $origin = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        return str_starts_with($url, '/') ? self::origin($content) . $url : rtrim($content->siteUrl, '/') . '/' . $url;
+    }
 
-        return str_starts_with($url, '/') ? $origin . $url : rtrim($content->siteUrl, '/') . '/' . $url;
+    private static function origin(ExportContent $content): string
+    {
+        $parts = parse_url($content->siteUrl);
+
+        return ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '');
     }
 
     private static function slugify(string $value): string

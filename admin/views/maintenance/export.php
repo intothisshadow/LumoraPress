@@ -237,10 +237,20 @@ $showGenerated = isset($_GET['generated']) && $pendingExport !== null;
                 some hosts building it can time out — if so, leave this unchecked
                 and copy this site's <code>content/uploads</code> folder to the new
                 server separately; the import can read each file from that folder.
-                A WordPress export never includes files (the importing site
-                fetches them from this site's addresses instead).
             </span>
         </p>
+
+        <div class="lp-field lp-export-form__wordpress-note">
+            <strong>WordPress Export/Import</strong>
+            <p class="lp-field__hint">
+                A WordPress export (WXR (.xml) format) never includes files (the
+                importing site fetches them from this site's addresses instead).
+                WordPress's own importer downloads every file in a single request,
+                so with thousands of media files it can outlast the importing
+                server's time limit and stop partway; if that happens, raise the
+                limit there (or ask your host to) and import again into a fresh site.
+            </p>
+        </div>
 
         <button type="submit" class="lp-button lp-button--primary">Create Export File</button>
     </form>
