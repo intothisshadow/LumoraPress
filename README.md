@@ -40,7 +40,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
 - Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
-- Full-text search across posts and pages
+- Relevance-ranked search across posts, pages, categories, tags, and authors, with "exact phrase" and -word searches, filters (content type, category, tag, author, date range), sorting, and suggestions when nothing matches; content types, categories, and pages can be left out of search on Settings &rsaquo; General
 
 ### Media
 - Media library with virtual folders and metadata

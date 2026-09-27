@@ -25,7 +25,9 @@ use DateTimeImmutable;
  * of its own: templates call search_result_permalink() instead, so a
  * 'post' result's link honors the configured permalink structure.
  *
- * featuredImageId is always null for Category/Tag/Author results.
+ * featuredImageId is always null for Category/Tag/Author results. `url`
+ * is only set by a plugin search provider whose results don't map onto
+ * a core permalink; search_result_permalink() prefers it when present.
  */
 final class SearchResult
 {
@@ -38,6 +40,22 @@ final class SearchResult
         public readonly ?int $featuredImageId,
         public readonly ?DateTimeImmutable $publishedAt,
         public readonly float $score,
+        public readonly ?string $url = null,
     ) {
+    }
+
+    public function withScore(float $score): self
+    {
+        return new self(
+            $this->type,
+            $this->id,
+            $this->title,
+            $this->slug,
+            $this->excerpt,
+            $this->featuredImageId,
+            $this->publishedAt,
+            $score,
+            $this->url,
+        );
     }
 }

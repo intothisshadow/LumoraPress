@@ -231,10 +231,15 @@ if (!function_exists('search_result_permalink')) {
      * 'page' and 'category' results are handled before the match: their
      * real hierarchical URL needs the actual Page/Category (for
      * page_permalink()'s/category_permalink()'s ancestor chain), falling
-     * back to a flat URL only if the row was since deleted.
+     * back to a flat URL only if the row was since deleted. A plugin
+     * provider's own `url` always wins.
      */
     function search_result_permalink(SearchResult $result): string
     {
+        if ($result->url !== null) {
+            return $result->url;
+        }
+
         if ($result->type === 'page') {
             $page = ActivePages::pages()->findBySlug($result->slug);
 

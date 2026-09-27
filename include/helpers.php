@@ -357,26 +357,40 @@ if (!function_exists('make_excerpt')) {
 
 if (!function_exists('highlight_terms')) {
     /**
-     * Wraps case-insensitive matches of each query word in <mark> tags,
-     * for search results. Takes already-esc_html()-escaped text so it's
-     * safe to echo directly. Words shorter than 2 characters are skipped
-     * to avoid noise; matching against escaped text means a query term
-     * inside an HTML entity can highlight part of it — an accepted edge
-     * case.
+     * Wraps case-insensitive matches of each query word or "quoted phrase"
+     * in <mark> tags, for search results; excluded (-word) terms are never
+     * marked. Takes already-esc_html()-escaped text so it's safe to echo
+     * directly. Words shorter than 2 characters are skipped to avoid noise;
+     * matching against escaped text means a query term inside an HTML
+     * entity can highlight part of it — an accepted edge case.
      */
     function highlight_terms(string $escapedText, string $query): string
     {
-        $words = array_filter(
-            preg_split('/\s+/', trim($query)) ?: [],
-            static fn (string $word): bool => mb_strlen($word) >= 2,
+        // Unquoted words are highlighted as typed rather than as the search
+        // parser normalizes them, so "C++" still marks "C++", not every "c".
+        $unquoted = preg_replace('/"[^"]*"/u', ' ', $query) ?? $query;
+        $typed = array_map(
+            static fn (string $token): string => trim($token, '"*'),
+            array_filter(
+                preg_split('/\s+/u', $unquoted, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                static fn (string $token): bool => !str_starts_with($token, '-'),
+            ),
         );
+
+        $words = array_unique(array_filter(
+            [...\LumoraPress\Services\Search\SearchQuery::parse($query)->phrases, ...$typed],
+            static fn (string $word): bool => mb_strlen($word) >= 2,
+        ));
 
         if ($words === []) {
             return $escapedText;
         }
 
+        // Longest first, so a phrase wins over a word inside it.
+        usort($words, static fn (string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+
         $pattern = '/(' . implode('|', array_map(
-            static fn (string $word): string => preg_quote($word, '/'),
+            static fn (string $word): string => str_replace(' ', '\\s+', preg_quote($word, '/')),
             $words,
         )) . ')/iu';
 

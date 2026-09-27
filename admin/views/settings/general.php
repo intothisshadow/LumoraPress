@@ -17,6 +17,7 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Services\SearchService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -120,6 +121,16 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 } elseif ($form === 'search_settings' && Csrf::verify('search_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('search_min_length', (string) max(1, min(50, (int) ($_POST['search_min_length'] ?? 3))));
     $kernel->config->setOption('search_max_results', (string) max(1, min(500, (int) ($_POST['search_max_results'] ?? 50))));
+
+    // Stored as exclusions rather than inclusions, so a content type a
+    // plugin registers later is searchable until someone opts it out.
+    $includedSearchTypes = is_array($_POST['search_types'] ?? null) ? array_filter($_POST['search_types'], 'is_string') : [];
+    $kernel->config->setOption('search_excluded_types', implode(',', array_diff(array_keys($kernel->search->typeLabels()), $includedSearchTypes)));
+
+    foreach (['search_excluded_category_ids', 'search_excluded_page_ids'] as $idListOption) {
+        $submittedIds = is_array($_POST[$idListOption] ?? null) ? array_filter($_POST[$idListOption], 'is_string') : [];
+        $kernel->config->setOption($idListOption, implode(',', SearchService::parseIdList(implode(',', $submittedIds))));
+    }
 
     header('Location: ' . admin_url('settings/general') . '?saved=1');
     exit;
@@ -373,9 +384,54 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
         </p>
 
         <p class="lp-field">
-            <label for="search-max-results">Maximum results (combined across posts and pages)</label>
+            <label for="search-max-results">Maximum results (combined across all content types)</label>
             <input type="number" id="search-max-results" name="search_max_results" min="1" max="500" value="<?= esc_attr((string) $kernel->config->option('search_max_results', '50')) ?>">
         </p>
+
+        <?php $excludedSearchTypes = $kernel->search->excludedTypes(); ?>
+        <fieldset class="lp-field lp-field--checklist">
+            <legend>Content to include in search results</legend>
+            <?php foreach ($kernel->search->typeLabels() as $searchType => $searchTypeLabel): ?>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="search_types[]" value="<?= esc_attr($searchType) ?>" <?= in_array($searchType, $excludedSearchTypes, true) ? '' : 'checked' ?>>
+                    <?= esc_html($searchTypeLabel) ?>
+                </label>
+            <?php endforeach; ?>
+        </fieldset>
+
+        <?php $excludedSearchCategoryIds = $kernel->search->excludedCategoryIds(); ?>
+        <?php $searchCategoryChoices = $kernel->categories->listAllForParentPicker(); ?>
+        <?php if ($searchCategoryChoices !== []): ?>
+            <fieldset class="lp-field lp-field--checklist">
+                <legend>Exclude categories from search</legend>
+                <span class="lp-field__hint">Posts filed in a ticked category never appear in search results, even if they are also in another category. The category itself is hidden from search too.</span>
+                <div class="lp-field__scroll-list">
+                    <?php foreach ($searchCategoryChoices as $searchCategory): ?>
+                        <label class="lp-field--checkbox">
+                            <input type="checkbox" name="search_excluded_category_ids[]" value="<?= (int) $searchCategory['id'] ?>" <?= in_array($searchCategory['id'], $excludedSearchCategoryIds, true) ? 'checked' : '' ?>>
+                            <?= esc_html(str_repeat('— ', $searchCategory['depth']) . $searchCategory['name']) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </fieldset>
+        <?php endif; ?>
+
+        <?php $excludedSearchPageIds = $kernel->search->excludedPageIds(); ?>
+        <?php $searchPageChoices = $kernel->pages->listAllForParentPicker(); ?>
+        <?php if ($searchPageChoices !== []): ?>
+            <fieldset class="lp-field lp-field--checklist">
+                <legend>Exclude pages from search</legend>
+                <span class="lp-field__hint">Ticked pages stay published and reachable by their address, but never appear in search results.</span>
+                <div class="lp-field__scroll-list">
+                    <?php foreach ($searchPageChoices as $searchPage): ?>
+                        <label class="lp-field--checkbox">
+                            <input type="checkbox" name="search_excluded_page_ids[]" value="<?= (int) $searchPage['id'] ?>" <?= in_array($searchPage['id'], $excludedSearchPageIds, true) ? 'checked' : '' ?>>
+                            <?= esc_html(str_repeat('— ', $searchPage['depth']) . $searchPage['title']) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </fieldset>
+        <?php endif; ?>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>

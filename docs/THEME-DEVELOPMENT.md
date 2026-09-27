@@ -142,7 +142,11 @@ local variables:
 - `single.php` and `page.php` receive a single `$post`/`$page` variable
   directly — no loop needed.
 - `search.php` receives `$results` (an array of `SearchResult` objects),
-  iterated the same way.
+  iterated the same way, plus `$search`: the whole search as one bundle
+  (query, criteria, pagination, filter choices, and empty-state suggestions).
+  Don't pick it apart — hand it straight to `search_filters_form($search)`
+  and `search_empty_state($search)`, so a filter added in a later version
+  reaches your theme without a template change.
 - `comments.php` receives `$comment_tree` (a nested array), rendered via
   the `comment_list()` template tag rather than hand-written iteration.
 
@@ -169,7 +173,10 @@ return.
 | `content_plain_text(string $content, ContentFormat $format): string` | Plain-text rendering of raw content (for meta descriptions, OG tags). Handles Markdown correctly, not just `strip_tags()`. |
 | `content_has_more_tag(string $content): bool` / `content_split_at_more_tag(string $content): array` | Lower-level helpers `render_content()`/`get_the_content_up_to_more_tag()` are built on. |
 | `make_excerpt(string $content, int $wordCount = 55): string` | Strips tags and truncates plain/HTML content to `$wordCount` words, appending `…`. |
-| `highlight_terms(string $escapedText, string $query): string` | Wraps matches of each query word (≥2 chars) in `<mark>`. Operates on **already-escaped** text — see `search.php`. |
+| `highlight_terms(string $escapedText, string $query): string` | Wraps matches of each query word (≥2 chars) and each `"quoted phrase"` in `<mark class="lp-search-highlight">`; `-excluded` words are never marked. Operates on **already-escaped** text — see `search.php`. |
+| `search_filters_form(array $search): void` | Echoes the "Refine search" panel for `search.php`: a `<details class="lp-search-filters">` holding the query, content type, category, tag, author, date range, and sort fields, open while any is in use, with a "Clear filters" link. Only offers choices that can match (e.g. no Author select on a single-author site). Classes: `.lp-search-filters__toggle`, `__form`, `__grid`, `__field` (`--query`, `--date`), `__label`, `__input`, `__select`, `__hint`, `__actions`, `__button`, `__reset`. Plugins can add fields inside it. |
+| `search_empty_state(array $search): void` | Echoes what to show when `$results` is empty: `.lp-empty-state` ("No results found."), a `.lp-search-empty__tips` list (with a "Search again without filters" link when filters were used), then "Recent posts" and "Popular categories" `.lp-search-empty__section` lists. |
+| `search_result_type_label(SearchResult $result): string` | "Post", "Page", "Category", "Tag", "Author", or a plugin's own label for a content type it made searchable. Use it instead of a hard-coded `match` on `$result->type`. |
 | `render_pagination(array $pagination, string $label = 'Posts pagination'): void` | Echoes a pagination `<nav>` for `array{page, totalPages}`: First/Prev/Next/Last controls plus numbered pages truncated with `…` ellipses around the current page and the range's edges; no-op if there's only one page. Styling classes: `.lp-pagination__item--nav` (First/Prev/Next/Last, `.is-disabled` at either end of the range) and `.lp-pagination__item--ellipsis`. |
 
 ### Author
@@ -196,7 +203,7 @@ return.
 | `post_permalink(Post $post): string` | A post's public URL — the single choke point that honors the site's configured permalink structure (see Settings › Permalinks). Always use this, never hand-build `'post/' . $post->slug`. |
 | `page_permalink(Page $page): string` | A page's URL, reflecting its position in the parent/child hierarchy (e.g. `/about/team`) — pages have no *configurable* structure (unlike posts), but their URL is never flat. Always use this, never hand-build `'page/' . $page->slug` — that old flat form still resolves (a permanent redirect to the real URL), but only for back-compat with pre-existing links. |
 | `category_permalink(Category $category): string` / `tag_permalink(Tag $tag): string` | Category/tag archive URLs, honoring the configured base prefix. |
-| `search_result_permalink(SearchResult $result): string` | Dispatches by the result's type to the right permalink builder above. |
+| `search_result_permalink(SearchResult $result): string` | Dispatches by the result's type to the right permalink builder above, or returns the result's own `url` when a plugin's search provider set one. |
 | `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it is up to the theme — the default theme's `footer.php` calls this and renders a "Privacy Policy" link (`.lp-site-footer__privacy-link`) only when it returns non-`null`, but nothing forces a theme to do the same. |
 | `post_categories(Post $post): array` | The Categories `$post` belongs to (alphabetical). Empty array for an uncategorized post, never `null`. |
 | `the_post_categories(Post $post, string $separator = ', ')` | `post_categories()`, echoed as a `$separator`-joined list of links. Outputs nothing at all for an uncategorized post, so it's safe to call unconditionally. |

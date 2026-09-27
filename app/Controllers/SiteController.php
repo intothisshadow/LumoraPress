@@ -31,6 +31,7 @@ use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
+use LumoraPress\Models\SearchCriteria;
 use LumoraPress\Models\User;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\CategoryService;
@@ -1038,9 +1039,12 @@ final class SiteController
      */
     public function search(array $params): void
     {
-        $query = is_string($_GET['q'] ?? null) ? $_GET['q'] : '';
-        $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $results = $this->search->search($query, $page);
+        $extraParams = apply_filters('search_filter_params', []);
+        $criteria = SearchCriteria::fromRequest(
+            $_GET,
+            is_array($extraParams) ? array_values(array_filter($extraParams, 'is_string')) : [],
+        );
+        $results = $this->search->search($criteria);
 
         $this->markCacheableForGuests(['search']);
         $this->theme->render('search.php', [
@@ -1048,6 +1052,11 @@ final class SiteController
             'query' => $results['query'],
             'results' => $results['results'],
             'pagination' => $results,
+            'search' => [
+                ...$results,
+                'filterOptions' => $this->search->filterOptions(),
+                'suggestions' => $results['results'] === [] ? $this->search->emptyStateSuggestions() : ['posts' => [], 'categories' => []],
+            ],
         ]);
     }
 

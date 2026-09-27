@@ -483,7 +483,7 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
     }
 }
 
-$search = new SearchService($database, $tablePrefix, $config, $content, $users);
+$search = new SearchService($database, $tablePrefix, $config, $content, $users, $hooks);
 $akismet = new AkismetClient($config, home_url());
 $commentModeration = new CommentModerationService($config, $comments);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
@@ -558,6 +558,10 @@ require LUMORA_ROOT . '/include/content-display-functions.php';
 // Same shape as content-display-functions.php above: pure orchestration
 // over Csrf/FormTiming, with values passed in by the theme's comments.php.
 require LUMORA_ROOT . '/include/comment-functions.php';
+
+// Search filter form and empty-state template tags — same shape: they
+// render from the bundle SiteController::search() hands search.php.
+require LUMORA_ROOT . '/include/search-functions.php';
 
 // See core-paths.php's own docblock for what this list is.
 //

@@ -15,15 +15,19 @@
 /** @var string $query */
 /** @var array<int, \LumoraPress\Models\SearchResult> $results */
 /** @var array{page: int, totalPages: int}|null $pagination */
+/** @var array<string, mixed> $search */
 get_header();
 $results ??= [];
+$search ??= [];
 ?>
 <div id="lp-content" class="lp-content lp-layout">
     <main class="lp-main">
         <h1 class="lp-page-title">Search Results<?= $query !== '' ? ' for “' . esc_html($query) . '”' : '' ?></h1>
 
+        <?php search_filters_form($search); ?>
+
         <?php if ($results === []): ?>
-            <p class="lp-empty-state">No results found.</p>
+            <?php search_empty_state($search); ?>
         <?php else: ?>
             <div class="lp-search-results lp-gallery">
                 <?php foreach ($results as $result): ?>
@@ -34,13 +38,7 @@ $results ??= [];
                             </div>
                         <?php endif; ?>
                         <div class="lp-search-results__body">
-                            <p class="lp-search-results__type"><?= esc_html(match ($result->type) {
-                                'page' => 'Page',
-                                'category' => 'Category',
-                                'tag' => 'Tag',
-                                'author' => 'Author',
-                                default => 'Post',
-                            }) ?></p>
+                            <p class="lp-search-results__type"><?= esc_html(search_result_type_label($result)) ?></p>
                             <h2 class="lp-search-results__title">
                                 <a href="<?= esc_url(search_result_permalink($result)) ?>">
                                     <?= highlight_terms(esc_html($result->title), $query) ?>

@@ -120,6 +120,7 @@ final class SettingsPortabilityService
         'feed_description' => 'string',
         'search_min_length' => 'int',
         'search_max_results' => 'int',
+        'search_excluded_types' => 'string',
         'revision_retention' => 'int',
         'default_editor' => 'string',
         'lock_editor_to_default' => 'bool',

@@ -15,6 +15,12 @@ All notable changes to Lumora Press are documented in this file.
 - A new `export_formats` filter lets a plugin add its own export format to Maintenance &rsaquo; Export (see "Content Export API" in `docs/DEVELOPER-APIS.md`).
 - Hide a menu item without deleting it (LP-049): each item on Appearance &rsaquo; Menus has a new "Hide on the site" option. A hidden item stays in the menu, marked "Hidden", but isn't shown to visitors, and neither is anything nested under it. Hidden items keep their setting through a Lumora Press export and import; a WordPress export leaves them out and says so in its summary.
 - Menu extension points for plugins and themes (LP-049): `register_nav_menu_item_type()` lets a plugin add its own panel of items to the "Add Menu Items" column on Appearance &rsaquo; Menus, like the built-in Pages and Posts panels. `nav_menu()` gained three filters: `nav_menu_tree` (change the items before they're displayed), `nav_menu_item_classes` (add CSS classes to an item), and `nav_menu_html` (change the finished menu). Four new actions, `nav_menu_created`, `nav_menu_updated`, `nav_menu_deleted`, and `nav_menu_locations_updated`, fire when menus are changed on Appearance &rsaquo; Menus. See `docs/DEVELOPER-APIS.md`.
+- Search filters and sorting (LP-014): search results now have a "Refine search" panel for narrowing results to one content type, a category, a tag, an author, or a publication date range, and for sorting them by best match, newest, oldest, or title. It opens automatically while a filter is in use, and a "Clear filters" link goes back to the plain search. Filtered searches have their own addresses, so they can be bookmarked or shared.
+- Smarter search matching (LP-014): put words in "quotes" to find that exact phrase, or put a minus sign in front of a word (-word) to leave out results containing it. Every other word also matches longer words starting with it, so "photo" finds "photography". Highlighting in the results follows the same rules.
+- Suggestions when a search finds nothing (LP-014): instead of just "No results found", search now offers a few tips (and a link to repeat the search without filters, if any were used), the newest posts, and the categories with the most posts.
+- Leave content out of search (LP-014): the Search section of Settings &rsaquo; General can now switch whole content types (posts, pages, categories, tags, authors) out of search, and exclude chosen categories or pages. A post in an excluded category never appears in search results, even if it is also in another category. The pages themselves stay published and reachable by their address.
+- A Search API for plugin authors (LP-014): the `search_providers` filter adds a searchable content type of your own, `search_result_type_labels` names it, `search_criteria` changes what is searched for, `search_result_score` adjusts ranking, `search_results` changes the final list, and `search_filter_params` plus the `search_filter_fields` action add your own filters to the search form. See "Search API" in `docs/DEVELOPER-APIS.md`.
+- Themes can show the new search panel and empty state with two template tags, `search_filters_form()` and `search_empty_state()`, and label any result with `search_result_type_label()` (see `docs/THEME-DEVELOPMENT.md`). The bundled Lumora Classic theme uses all three, with styles for light and dark mode.
 
 ### Changed
 
@@ -23,6 +29,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Search results could include private posts and pages, and posts that had passed their unpublish date, showing their titles and excerpts to anyone who searched for them. Search now shows exactly what a visitor could open.
+- Search results could include categories and tags that had been moved to the Trash.
 - Duplicating a menu on Appearance &rsaquo; Menus now keeps its submenus. Previously the copy's nested items lost their link to their parent item and didn't appear on the site.
 
 ## [0.18.0] — 2026-09-25

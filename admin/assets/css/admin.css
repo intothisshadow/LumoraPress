@@ -3616,6 +3616,17 @@ select:focus {
     margin-bottom: 0.35rem;
 }
 
+/* A checklist long enough to push the rest of its form off screen (every
+   page or category on a site) scrolls inside its own box instead. */
+.lp-field__scroll-list {
+    max-height: 16rem;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+}
+
 /*
  * Maintenance > Export: each format/content-type option carries its own
  * explanation, wrapped onto its own line under the label rather than

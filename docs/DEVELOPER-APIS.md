@@ -352,6 +352,58 @@ The type id must be 1–40 lowercase letters, digits, hyphens, or underscores. T
 |---|---|---|---|
 | `export_formats` | filter | `array<int, ExportFormatWriter> $writers` | [`ExportFormatRegistry`](../app/Services/Export/ExportFormatRegistry.php)'s constructor, each time Maintenance &rsaquo; Export loads. Core passes its two writers (`lumora_press`, `wxr`); return the list with your own writer added (or one removed/replaced). Anything that isn't an `ExportFormatWriter` is ignored. See [Content Export API](#content-export-api) below. |
 
+### Search
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `search_criteria` | filter | `SearchCriteria $criteria` | [`SearchService::search()`](../app/Services/SearchService.php), first. Return a (new, it's immutable) `SearchCriteria` to change the query, filters, sort, or page. Anything else is ignored. |
+| `search_providers` | filter | `array<string, callable> $providers` | `SearchService::providers()`. Keyed by content type; core registers `post`, `page`, `category`, `tag`, `author`. See [Search API](#search-api). |
+| `search_result_type_labels` | filter | `array<string, string> $labels` | `SearchService::typeLabels()` and the `search_result_type_label()` template tag. Add a display label for your own type. |
+| `search_result_score` | filter | `float $score, SearchResult $result, SearchCriteria $criteria` | `SearchService::search()`, once per candidate before sorting. Return the new relevance score. |
+| `search_results` | filter | `array<int, SearchResult> $results, SearchCriteria $criteria` | `SearchService::search()`, on every candidate before sorting and pagination. Add, remove, or replace results; anything that isn't a `SearchResult` is dropped. |
+| `search_filter_params` | filter | `array<int, string> $names` | `SiteController::search()`. Query-string parameter names your filter reads; their values reach providers as `$criteria->extra[$name]`. Core's own names (`q`, `paged`, `type`, `category`, `tag`, `author`, `from`, `to`, `sort`) can't be claimed. |
+| `search_filter_fields` | action | `SearchCriteria $criteria` | `search_filters_form()` ([`include/search-functions.php`](../include/search-functions.php)), inside the form after core's fields. Echo your own inputs, escaped. |
+
+## Search API
+
+Site search runs one **provider** per content type, merges what they return, and sorts by relevance (or by date/title when the visitor picks that).
+
+- **Adding a content type.** Register a provider with `search_providers`. It's a `callable(SearchCriteria $criteria, SearchQuery $query, int $limit): array` returning at most `$limit` [`SearchResult`](../app/Models/SearchResult.php)s. Give each result your own `type`, a `score` comparable to core's (a strong title match on a post scores roughly 5–15; categories use 1.5–10), and a `url`, which `search_result_permalink()` uses as-is. Name the type with `search_result_type_labels`. Once registered, it appears in the search form's Content type choices and can be switched off on Settings &rsaquo; General like any core type.
+- **Reading the query.** [`SearchQuery`](../app/Services/Search/SearchQuery.php) is the visitor's text already parsed: `phrases` (quoted, required), `terms` (plain words, prefix-matched), and `excluded` (`-word`), all lowercased letters, digits, and underscores only. `plainText()` joins the positive words; `acceptsText($text)` tells you whether a piece of text satisfies the phrases and exclusions; `booleanExpression()` is ready for a MySQL `MATCH … AGAINST (… IN BOOLEAN MODE)` on your own FULLTEXT index, and never contains the visitor's raw operators.
+- **Respecting filters.** [`SearchCriteria`](../app/Models/SearchCriteria.php) carries `type`, `category`, `tag`, and `author` (slugs), `dateFrom`/`dateTo`, `sort`, and `extra`. Core already skips your provider when the visitor picked a different content type; for the other filters, return `[]` if your content can't match them (for example `$criteria->hasContentFilters()` when your items have no date or author).
+- **Custom filters.** Name your query-string parameter with `search_filter_params`, render its input with the `search_filter_fields` action, and read the value from `$criteria->extra` in your provider (or in `search_results` to narrow everyone's results).
+- **Exclusions.** Settings &rsaquo; General's content-type, category, and page exclusions are stored as the options `search_excluded_types`, `search_excluded_category_ids`, and `search_excluded_page_ids` (comma-separated); `SearchService::excludedTypes()`/`excludedCategoryIds()`/`excludedPageIds()` read them.
+- Posts and pages match with MySQL/MariaDB FULLTEXT indexes, which the database keeps current on every save, so there is no index to rebuild. Only content a signed-out visitor could open is ever returned.
+
+```php
+add_filter('search_providers', static function (array $providers): array {
+    $providers['recipe'] = static function (SearchCriteria $criteria, SearchQuery $query, int $limit): array {
+        if ($criteria->hasContentFilters()) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $recipe): SearchResult => new SearchResult(
+                type: 'recipe',
+                id: $recipe['id'],
+                title: $recipe['title'],
+                slug: $recipe['slug'],
+                excerpt: $recipe['summary'],
+                featuredImageId: null,
+                publishedAt: null,
+                score: 5.0,
+                url: site_url('recipes/' . $recipe['slug']),
+            ),
+            my_recipes_matching($query->plainText(), $limit),
+        );
+    };
+
+    return $providers;
+});
+
+add_filter('search_result_type_labels', static fn (array $labels): array => $labels + ['recipe' => 'Recipe']);
+```
+
 ## Comments API
 
 Everything a plugin can do with comments, in one place. Every hook below also appears in the reference tables above; this section shows how they fit together.

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Site search across Posts and Pages.
+ * Site search across Posts, Pages, Categories, Tags, Authors, and plugin-registered content.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -19,24 +19,28 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\SearchCriteria;
 use LumoraPress\Models\SearchResult;
+use LumoraPress\Services\Search\SearchQuery;
 
 /**
- * Site search across Posts, Pages, Categories, Tags, and Authors. Post/Page ranking uses
- * real MySQL/MariaDB FULLTEXT indexes via MATCH(...) AGAINST(...), weighting title matches
- * higher than body — two indexes per table (title+content, title alone) since MySQL requires
- * a MATCH() column list to exactly match a defined index's columns. MySQL-only, so
- * searchTable() is covered only by Integration tests. paginateResults() is factored out as a
- * pure, DB-free static method so merge/sort/paginate stays unit-testable.
+ * Posts and Pages are matched with real MySQL/MariaDB FULLTEXT indexes:
+ * BOOLEAN MODE decides what matches (phrases, prefixes, exclusions), and
+ * NATURAL LANGUAGE MODE scores contribute most of the ranking, with title
+ * matches weighted double. MySQL requires a MATCH() column list to equal a
+ * defined index exactly, hence the two indexes per table (title+content,
+ * title). That SQL is MySQL-only and covered by Integration tests.
  *
- * Categories/Tags/Authors are much smaller (personal-blog scale), so a plain `LIKE` match is
- * proportionate and portable to SQLite. Scoring uses a simple heuristic rather than MySQL's
- * relevance algorithm, so it's never perfectly comparable to a Post/Page FULLTEXT score.
+ * Categories/Tags/Authors are personal-blog scale, so a portable `LIKE`
+ * match with a simple name heuristic is proportionate; its scores are
+ * never perfectly comparable to FULLTEXT relevance.
  *
- * Posts and Pages are queried independently (each capped at search_max_results), merged, and
- * re-sorted — a table matching more rows than the cap won't have every match considered.
+ * Every type is a "provider" callable, filterable through
+ * `search_providers`, each capped at search_max_results before the merge —
+ * a type matching more rows than the cap won't have every match considered.
  */
 final class SearchService
 {
@@ -45,6 +49,19 @@ final class SearchService
     private const DEFAULT_MIN_LENGTH = 3;
 
     private const DEFAULT_MAX_RESULTS = 50;
+
+    private const TITLE_WEIGHT = 2;
+
+    private const SUGGESTION_COUNT = 5;
+
+    /** @var array<string, string> Core content types and their display labels. */
+    public const TYPE_LABELS = [
+        'post' => 'Post',
+        'page' => 'Page',
+        'category' => 'Category',
+        'tag' => 'Tag',
+        'author' => 'Author',
+    ];
 
     /** Heuristic relevance scores for the LIKE-based Category/Tag/Author match. */
     private const SCORE_EXACT_NAME = 10.0;
@@ -55,25 +72,42 @@ final class SearchService
 
     private const SCORE_DESCRIPTION_CONTAINS = 1.5;
 
+    /** One-entry memo so the post and page providers share one resolveFilters() per search. */
+    private ?SearchCriteria $memoCriteria = null;
+
+    /** @var array{categoryId: ?int, tagId: ?int, authorId: ?int}|null */
+    private ?array $memoFilters = null;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly PressConfig $config,
         private readonly ContentRenderer $content,
         private readonly UserService $users,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
     /**
-     * @return array{results: array<int, SearchResult>, total: int, page: int, perPage: int, totalPages: int, query: string}
+     * A plain string is treated as an unfiltered, relevance-sorted query.
+     *
+     * @return array{results: array<int, SearchResult>, total: int, page: int, perPage: int, totalPages: int, query: string, criteria: SearchCriteria}
      */
-    public function search(string $query, int $page = 1): array
+    public function search(SearchCriteria|string $criteria, int $page = 1): array
     {
-        $query = trim($query);
-        $page = max(1, $page);
-        $minLength = max(1, (int) $this->config->option('search_min_length', (string) self::DEFAULT_MIN_LENGTH));
+        if (is_string($criteria)) {
+            $criteria = new SearchCriteria(trim($criteria), max(1, $page));
+        }
 
-        if (mb_strlen($query) < $minLength) {
+        $filtered = $this->applyFilters('search_criteria', $criteria);
+        $criteria = $filtered instanceof SearchCriteria ? $filtered : $criteria;
+
+        $query = trim($criteria->query);
+        $parsed = SearchQuery::parse($query);
+        $minLength = max(1, (int) $this->config->option('search_min_length', (string) self::DEFAULT_MIN_LENGTH));
+        $filters = mb_strlen($query) >= $minLength && $parsed->hasPositiveTerms() ? $this->filtersFor($criteria) : null;
+
+        if ($filters === null) {
             return [
                 'results' => [],
                 'total' => 0,
@@ -81,40 +115,66 @@ final class SearchService
                 'perPage' => self::DEFAULT_PER_PAGE,
                 'totalPages' => 1,
                 'query' => $query,
+                'criteria' => $criteria,
             ];
         }
 
         $maxResults = max(1, (int) $this->config->option('search_max_results', (string) self::DEFAULT_MAX_RESULTS));
+        $candidates = [];
 
-        $candidates = [
-            ...$this->searchTable('posts', 'post', $query, $maxResults),
-            ...$this->searchTable('pages', 'page', $query, $maxResults),
-            ...$this->searchCategories($query, $maxResults),
-            ...$this->searchTags($query, $maxResults),
-            ...$this->searchAuthors($query, $maxResults),
-        ];
+        foreach ($this->providersFor($criteria) as $provider) {
+            foreach ($provider($criteria, $parsed, $maxResults) as $result) {
+                if ($result instanceof SearchResult) {
+                    $candidates[] = $result;
+                }
+            }
+        }
 
-        $paginated = self::paginateResults($candidates, $page, self::DEFAULT_PER_PAGE, $maxResults);
+        if ($this->hooks?->hasFilter('search_result_score') === true) {
+            $candidates = array_map(
+                fn (SearchResult $result): SearchResult => $result->withScore(
+                    (float) $this->applyFilters('search_result_score', $result->score, $result, $criteria),
+                ),
+                $candidates,
+            );
+        }
+
+        $filteredCandidates = $this->applyFilters('search_results', $candidates, $criteria);
+        $candidates = is_array($filteredCandidates)
+            ? array_values(array_filter($filteredCandidates, static fn (mixed $result): bool => $result instanceof SearchResult))
+            : $candidates;
+
+        $paginated = self::paginateResults($candidates, $criteria->page, self::DEFAULT_PER_PAGE, $maxResults, $criteria->sort);
         $paginated['query'] = $query;
+        $paginated['criteria'] = $criteria;
 
         return $paginated;
     }
 
     /**
-     * Merges pre-fetched candidates from both tables, sorts by relevance
-     * score, caps at $maxResults combined, then slices out the requested
-     * page — the only part of search() that has no MySQL-only dependency.
+     * Keeps the $maxResults most relevant candidates, orders them by $sort,
+     * then slices out the requested page. Undated results (categories,
+     * tags, authors) sort after dated ones for the date orders.
      *
      * @param array<int, SearchResult> $candidates
      * @return array{results: array<int, SearchResult>, total: int, page: int, perPage: int, totalPages: int}
      */
-    public static function paginateResults(array $candidates, int $page, int $perPage, int $maxResults): array
-    {
+    public static function paginateResults(
+        array $candidates,
+        int $page,
+        int $perPage,
+        int $maxResults,
+        string $sort = SearchCriteria::SORT_RELEVANCE,
+    ): array {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
 
         usort($candidates, static fn (SearchResult $a, SearchResult $b): int => $b->score <=> $a->score);
         $candidates = array_slice($candidates, 0, max(1, $maxResults));
+
+        if ($sort !== SearchCriteria::SORT_RELEVANCE) {
+            usort($candidates, static fn (SearchResult $a, SearchResult $b): int => self::compareForSort($a, $b, $sort));
+        }
 
         $total = count($candidates);
         $offset = ($page - 1) * $perPage;
@@ -129,28 +189,463 @@ final class SearchService
     }
 
     /**
+     * Every registered provider keyed by content type, core types first.
+     * A provider is `callable(SearchCriteria, SearchQuery, int $limit): array<SearchResult>`.
+     *
+     * @return array<string, callable>
+     */
+    public function providers(): array
+    {
+        $providers = $this->applyFilters('search_providers', [
+            'post' => fn (SearchCriteria $criteria, SearchQuery $query, int $limit): array => $this->searchPosts($criteria, $query, $limit),
+            'page' => fn (SearchCriteria $criteria, SearchQuery $query, int $limit): array => $this->searchPages($criteria, $query, $limit),
+            'category' => fn (SearchCriteria $criteria, SearchQuery $query, int $limit): array => $this->searchCategories($query, $limit),
+            'tag' => fn (SearchCriteria $criteria, SearchQuery $query, int $limit): array => $this->searchTags($query, $limit),
+            'author' => fn (SearchCriteria $criteria, SearchQuery $query, int $limit): array => $this->searchAuthors($query, $limit),
+        ]);
+
+        return is_array($providers)
+            ? array_filter($providers, static fn (mixed $provider, mixed $type): bool => is_string($type) && is_callable($provider), ARRAY_FILTER_USE_BOTH)
+            : [];
+    }
+
+    /**
+     * Display labels for every searchable type, for the search filter form.
+     *
+     * @return array<string, string>
+     */
+    public function searchableTypeLabels(): array
+    {
+        return array_diff_key($this->typeLabels(), array_flip($this->excludedTypes()));
+    }
+
+    /**
+     * Display labels for every registered type, excluded ones included —
+     * for the Settings screen that chooses which to exclude.
+     *
+     * @return array<string, string>
+     */
+    public function typeLabels(): array
+    {
+        $labels = $this->applyFilters('search_result_type_labels', self::TYPE_LABELS);
+        $labels = is_array($labels) ? $labels : self::TYPE_LABELS;
+        $all = [];
+
+        foreach (array_keys($this->providers()) as $type) {
+            $all[$type] = is_string($labels[$type] ?? null) ? $labels[$type] : ucfirst($type);
+        }
+
+        return $all;
+    }
+
+    /**
+     * Content types the administrator removed from search entirely.
+     *
+     * @return list<string>
+     */
+    public function excludedTypes(): array
+    {
+        return array_values(array_filter(
+            array_map('trim', explode(',', (string) $this->config->option('search_excluded_types', ''))),
+            static fn (string $type): bool => $type !== '',
+        ));
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function excludedCategoryIds(): array
+    {
+        return self::parseIdList((string) $this->config->option('search_excluded_category_ids', ''));
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function excludedPageIds(): array
+    {
+        return self::parseIdList((string) $this->config->option('search_excluded_page_ids', ''));
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function parseIdList(string $list): array
+    {
+        $ids = array_map('intval', explode(',', $list));
+
+        return array_values(array_unique(array_filter($ids, static fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * Choices for the public search filter form. Only categories, tags, and
+     * authors with at least one public post are offered, so a filter can
+     * never be picked that is guaranteed to find nothing.
+     *
+     * @return array{types: array<string, string>, categories: array<string, string>, tags: array<string, string>, authors: array<string, string>}
+     */
+    public function filterOptions(): array
+    {
+        $types = $this->searchableTypeLabels();
+        $postsSearchable = isset($types['post']);
+        $publicPost = "p.status = 'published' AND p.visibility = 'public'";
+        $categories = [];
+        $tags = [];
+        $authors = [];
+
+        if ($postsSearchable) {
+            $excludedCategories = $this->excludedCategoryIds();
+
+            foreach ($this->database->fetchAll(
+                'SELECT c.id, c.slug, c.name FROM ' . $this->tablePrefix . 'categories c
+                    WHERE c.trashed_at IS NULL AND EXISTS (
+                        SELECT 1 FROM ' . $this->tablePrefix . 'post_categories pc
+                          JOIN ' . $this->tablePrefix . "posts p ON p.id = pc.post_id
+                         WHERE pc.category_id = c.id AND {$publicPost}
+                    )
+                 ORDER BY c.name ASC",
+            ) as $row) {
+                if (!in_array((int) $row['id'], $excludedCategories, true)) {
+                    $categories[(string) $row['slug']] = (string) $row['name'];
+                }
+            }
+
+            foreach ($this->database->fetchAll(
+                'SELECT t.slug, t.name FROM ' . $this->tablePrefix . 'tags t
+                    WHERE t.trashed_at IS NULL AND EXISTS (
+                        SELECT 1 FROM ' . $this->tablePrefix . 'post_tags pt
+                          JOIN ' . $this->tablePrefix . "posts p ON p.id = pt.post_id
+                         WHERE pt.tag_id = t.id AND {$publicPost}
+                    )
+                 ORDER BY t.name ASC",
+            ) as $row) {
+                $tags[(string) $row['slug']] = (string) $row['name'];
+            }
+        }
+
+        if ($postsSearchable || isset($types['page'])) {
+            foreach ($this->publishingAuthorIds() as $authorId) {
+                $author = $this->users->findById($authorId);
+
+                if ($author !== null) {
+                    $authors[$this->users->authorSlug($author)] = $author->displayName;
+                }
+            }
+
+            asort($authors, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+
+        return ['types' => $types, 'categories' => $categories, 'tags' => $tags, 'authors' => $authors];
+    }
+
+    /**
+     * Somewhere to go next when a search finds nothing: the newest posts and
+     * the busiest categories, both honoring the search exclusions.
+     *
+     * @return array{posts: list<SearchResult>, categories: list<SearchResult>}
+     */
+    public function emptyStateSuggestions(): array
+    {
+        $types = $this->searchableTypeLabels();
+        $posts = [];
+        $categories = [];
+        $excludedCategories = $this->excludedCategoryIds();
+
+        if (isset($types['post'])) {
+            $params = ['now' => $this->now(), 'now_unpublish' => $this->now()];
+            $exclusion = $this->categoryExclusionClause($excludedCategories, $params);
+
+            foreach ($this->database->fetchAll(
+                'SELECT p.id, p.title, p.slug, p.featured_image_id, p.published_at FROM ' . $this->tablePrefix . 'posts p
+                    WHERE ' . $this->publicPostWhere() . $exclusion . '
+                 ORDER BY p.published_at DESC, p.id DESC
+                 LIMIT ' . self::SUGGESTION_COUNT,
+                $params,
+            ) as $row) {
+                $posts[] = new SearchResult(
+                    type: 'post',
+                    id: (int) $row['id'],
+                    title: (string) $row['title'],
+                    slug: (string) $row['slug'],
+                    excerpt: '',
+                    featuredImageId: $row['featured_image_id'] !== null ? (int) $row['featured_image_id'] : null,
+                    publishedAt: $row['published_at'] !== null ? new DateTimeImmutable((string) $row['published_at']) : null,
+                    score: 0.0,
+                );
+            }
+        }
+
+        if (isset($types['category'])) {
+            foreach ($this->database->fetchAll(
+                'SELECT c.id, c.name, c.slug, COUNT(pc.post_id) AS post_count FROM ' . $this->tablePrefix . 'categories c
+                    JOIN ' . $this->tablePrefix . 'post_categories pc ON pc.category_id = c.id
+                    JOIN ' . $this->tablePrefix . "posts p ON p.id = pc.post_id AND p.status = 'published' AND p.visibility = 'public'
+                   WHERE c.trashed_at IS NULL
+                GROUP BY c.id, c.name, c.slug
+                ORDER BY post_count DESC, c.name ASC",
+            ) as $row) {
+                if (in_array((int) $row['id'], $excludedCategories, true)) {
+                    continue;
+                }
+
+                $categories[] = new SearchResult('category', (int) $row['id'], (string) $row['name'], (string) $row['slug'], '', null, null, (float) $row['post_count']);
+
+                if (count($categories) >= self::SUGGESTION_COUNT) {
+                    break;
+                }
+            }
+        }
+
+        return ['posts' => $posts, 'categories' => $categories];
+    }
+
+    /**
+     * Public (unlike searchPosts()/searchPages()) so it's directly
+     * unit-testable against SQLite — `LIKE` runs identically on both.
+     *
      * @return array<int, SearchResult>
      */
-    private function searchTable(string $tableSuffix, string $type, string $query, int $limit): array
+    public function searchCategories(SearchQuery|string $query, int $limit): array
+    {
+        $query = $query instanceof SearchQuery ? $query : SearchQuery::parse($query);
+        $excluded = $this->excludedCategoryIds();
+
+        return array_values(array_filter(
+            $this->searchNamedTable('categories', 'category', $query, $limit),
+            static fn (SearchResult $result): bool => !in_array($result->id, $excluded, true),
+        ));
+    }
+
+    /**
+     * @return array<int, SearchResult>
+     */
+    public function searchTags(SearchQuery|string $query, int $limit): array
+    {
+        return $this->searchNamedTable('tags', 'tag', $query instanceof SearchQuery ? $query : SearchQuery::parse($query), $limit);
+    }
+
+    /**
+     * Only non-trashed users with at least one public post — an author with
+     * nothing public has an empty archive to link to, and this keeps search
+     * from revealing that e.g. Subscriber-only accounts exist.
+     *
+     * @return array<int, SearchResult>
+     */
+    public function searchAuthors(SearchQuery|string $query, int $limit): array
+    {
+        $query = $query instanceof SearchQuery ? $query : SearchQuery::parse($query);
+        $params = [];
+        $likes = $this->likeConditions($query, ['display_name'], $params);
+
+        if ($likes === null) {
+            return [];
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT u.id FROM ' . $this->tablePrefix . 'users u
+                WHERE u.trashed_at IS NULL AND ' . $likes . '
+                  AND EXISTS (
+                      SELECT 1 FROM ' . $this->tablePrefix . "posts p
+                       WHERE p.author_id = u.id AND p.status = 'published' AND p.visibility = 'public'
+                  )
+             ORDER BY u.id ASC
+             LIMIT {$limit}",
+            $params,
+        );
+
+        $results = [];
+
+        foreach ($rows as $row) {
+            $author = $this->users->findById((int) $row['id']);
+
+            if ($author === null || !$query->acceptsText($author->displayName)) {
+                continue;
+            }
+
+            $results[] = new SearchResult(
+                type: 'author',
+                id: $author->id,
+                title: $author->displayName,
+                slug: $this->users->authorSlug($author),
+                excerpt: '',
+                featuredImageId: null,
+                publishedAt: null,
+                score: self::nameMatchScore($author->displayName, '', $query),
+            );
+        }
+
+        return $results;
+    }
+
+    /**
+     * The providers this search actually runs: administrator exclusions
+     * removed, then narrowed by the visitor's type and content filters.
+     * Categories/tags/authors carry no date or author of their own, and
+     * pages have no categories or tags, so those drop out when filtered on.
+     *
+     * @return array<string, callable>
+     */
+    private function providersFor(SearchCriteria $criteria): array
+    {
+        $providers = array_diff_key($this->providers(), array_flip($this->excludedTypes()));
+
+        if ($criteria->type !== null) {
+            $providers = array_intersect_key($providers, [$criteria->type => true]);
+        }
+
+        if ($criteria->hasContentFilters()) {
+            unset($providers['category'], $providers['tag'], $providers['author']);
+        }
+
+        if ($criteria->category !== null || $criteria->tag !== null) {
+            unset($providers['page']);
+        }
+
+        return $providers;
+    }
+
+    /**
+     * @return array{categoryId: ?int, tagId: ?int, authorId: ?int}|null
+     */
+    private function filtersFor(SearchCriteria $criteria): ?array
+    {
+        if ($this->memoCriteria !== $criteria) {
+            $this->memoFilters = $this->resolveFilters($criteria);
+            $this->memoCriteria = $criteria;
+        }
+
+        return $this->memoFilters;
+    }
+
+    /**
+     * Resolves filter slugs to ids. Null means a filter names something that
+     * doesn't exist (or is excluded), so the search can only come back empty.
+     *
+     * @return array{categoryId: ?int, tagId: ?int, authorId: ?int}|null
+     */
+    private function resolveFilters(SearchCriteria $criteria): ?array
+    {
+        $categoryId = null;
+        $tagId = null;
+        $authorId = null;
+
+        if ($criteria->category !== null) {
+            $categoryId = $this->idForSlug('categories', $criteria->category);
+
+            if ($categoryId === null || in_array($categoryId, $this->excludedCategoryIds(), true)) {
+                return null;
+            }
+        }
+
+        if ($criteria->tag !== null) {
+            $tagId = $this->idForSlug('tags', $criteria->tag);
+
+            if ($tagId === null) {
+                return null;
+            }
+        }
+
+        if ($criteria->author !== null) {
+            $authorId = $this->users->findByAuthorSlug($criteria->author)?->id;
+
+            if ($authorId === null) {
+                return null;
+            }
+        }
+
+        return ['categoryId' => $categoryId, 'tagId' => $tagId, 'authorId' => $authorId];
+    }
+
+    private function idForSlug(string $tableSuffix, string $slug): ?int
+    {
+        $id = $this->database->fetchColumn(
+            'SELECT id FROM ' . $this->tablePrefix . $tableSuffix . ' WHERE slug = :slug AND trashed_at IS NULL',
+            ['slug' => $slug],
+        );
+
+        return $id !== false && $id !== null ? (int) $id : null;
+    }
+
+    /**
+     * @return array<int, SearchResult>
+     */
+    private function searchPosts(SearchCriteria $criteria, SearchQuery $query, int $limit): array
+    {
+        $filters = $this->filtersFor($criteria);
+
+        if ($filters === null) {
+            return [];
+        }
+
+        $params = ['now' => $this->now(), 'now_unpublish' => $this->now()];
+        $where = $this->publicPostWhere();
+
+        if ($filters['categoryId'] !== null) {
+            $where .= ' AND EXISTS (SELECT 1 FROM ' . $this->tablePrefix . 'post_categories fc WHERE fc.post_id = p.id AND fc.category_id = :filter_category)';
+            $params['filter_category'] = $filters['categoryId'];
+        }
+
+        if ($filters['tagId'] !== null) {
+            $where .= ' AND EXISTS (SELECT 1 FROM ' . $this->tablePrefix . 'post_tags ft WHERE ft.post_id = p.id AND ft.tag_id = :filter_tag)';
+            $params['filter_tag'] = $filters['tagId'];
+        }
+
+        $where .= $this->authorAndDateClause($criteria, $filters['authorId'], $params);
+        $where .= $this->categoryExclusionClause($this->excludedCategoryIds(), $params);
+
+        return $this->fulltextSearch('posts', 'post', $where, $params, $query, $limit);
+    }
+
+    /**
+     * @return array<int, SearchResult>
+     */
+    private function searchPages(SearchCriteria $criteria, SearchQuery $query, int $limit): array
+    {
+        $filters = $this->filtersFor($criteria);
+
+        if ($filters === null) {
+            return [];
+        }
+
+        $params = ['now' => $this->now()];
+        $where = "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now)) AND p.visibility = 'public'";
+        $where .= $this->authorAndDateClause($criteria, $filters['authorId'], $params);
+        $where .= $this->idListClause('p.id', 'NOT IN', $this->excludedPageIds(), 'excluded_page', $params);
+
+        return $this->fulltextSearch('pages', 'page', $where, $params, $query, $limit);
+    }
+
+    /**
+     * Distinct placeholders for each MATCH: MySQL's native prepared
+     * statements reject a named placeholder used more than once.
+     *
+     * @param array<string, mixed> $params
+     * @return array<int, SearchResult>
+     */
+    private function fulltextSearch(string $tableSuffix, string $type, string $where, array $params, SearchQuery $query, int $limit): array
     {
         $table = $this->tablePrefix . $tableSuffix;
-        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
-        $where = "(status = 'published' OR (status = 'scheduled' AND published_at <= :now))";
+        $weight = self::TITLE_WEIGHT;
+        $params += [
+            'ranking1' => $query->plainText(),
+            'ranking2' => $query->plainText(),
+            'boolean1' => $query->booleanExpression(),
+            'boolean2' => $query->booleanExpression(),
+        ];
 
-        // Three distinct placeholders bound to the same value: MySQL's
-        // native (non-emulated) prepare protocol rejects the same named
-        // placeholder appearing more than once — see
-        // PageService::listAllForParentSelect()'s docblock for the
-        // original regression this mirrors.
+        // The BOOLEAN MODE score is small next to the natural-language ones,
+        // but keeps a prefix-only match (which natural language scores 0)
+        // ranked by how well it matched rather than tied at zero.
         $rows = $this->database->fetchAll(
-            "SELECT id, title, slug, content, content_format, excerpt, featured_image_id, published_at,
-                    (MATCH(title, content) AGAINST(:query1 IN NATURAL LANGUAGE MODE)
-                        + MATCH(title) AGAINST(:query2 IN NATURAL LANGUAGE MODE) * 2) AS relevance_score
-             FROM {$table}
-             WHERE {$where} AND MATCH(title, content) AGAINST(:query3 IN NATURAL LANGUAGE MODE)
+            "SELECT p.id, p.title, p.slug, p.content, p.content_format, p.excerpt, p.featured_image_id, p.published_at,
+                    (MATCH(p.title, p.content) AGAINST(:ranking1 IN NATURAL LANGUAGE MODE)
+                        + MATCH(p.title) AGAINST(:ranking2 IN NATURAL LANGUAGE MODE) * {$weight}
+                        + MATCH(p.title, p.content) AGAINST(:boolean1 IN BOOLEAN MODE)) AS relevance_score
+             FROM {$table} p
+             WHERE {$where} AND MATCH(p.title, p.content) AGAINST(:boolean2 IN BOOLEAN MODE)
              ORDER BY relevance_score DESC
              LIMIT {$limit}",
-            ['now' => $now, 'query1' => $query, 'query2' => $query, 'query3' => $query],
+            $params,
         );
 
         return array_map(
@@ -174,112 +669,120 @@ final class SearchService
     }
 
     /**
-     * Public (unlike searchTable()) so it's directly unit-testable against
-     * SQLite — `LIKE` matching runs identically on both, unlike
-     * searchTable()'s MySQL-only MATCH AGAINST, so there's no need to
-     * route this through the MySQL-only search() entry point just to
-     * exercise it.
-     *
-     * @return array<int, SearchResult>
+     * Mirrors PostService's guest-visibility rule: published or due,
+     * public, and not past unpublish_at. Binds :now and :now_unpublish.
      */
-    public function searchCategories(string $query, int $limit): array
+    private function publicPostWhere(): string
     {
-        $rows = $this->database->fetchAll(
-            'SELECT id, name, slug, description FROM ' . $this->tablePrefix . "categories
-                WHERE name LIKE :name OR description LIKE :description
-             ORDER BY id ASC
-             LIMIT {$limit}",
-            ['name' => '%' . $query . '%', 'description' => '%' . $query . '%'],
-        );
-
-        return array_map(
-            fn (array $row): SearchResult => new SearchResult(
-                type: 'category',
-                id: (int) $row['id'],
-                title: (string) $row['name'],
-                slug: (string) $row['slug'],
-                excerpt: make_excerpt((string) $row['description']),
-                featuredImageId: null,
-                publishedAt: null,
-                score: self::nameMatchScore((string) $row['name'], (string) $row['description'], $query),
-            ),
-            $rows,
-        );
+        return "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now))"
+            . " AND p.visibility = 'public'"
+            . ' AND (p.unpublish_at IS NULL OR p.unpublish_at > :now_unpublish)';
     }
 
     /**
-     * Public for the same testability reason as searchCategories() above.
+     * The date range is inclusive of both days, so "to" compares against
+     * the start of the following day.
      *
-     * @return array<int, SearchResult>
+     * @param array<string, mixed> $params
      */
-    public function searchTags(string $query, int $limit): array
+    private function authorAndDateClause(SearchCriteria $criteria, ?int $authorId, array &$params): string
     {
-        $rows = $this->database->fetchAll(
-            'SELECT id, name, slug, description FROM ' . $this->tablePrefix . "tags
-                WHERE name LIKE :name OR description LIKE :description
-             ORDER BY id ASC
-             LIMIT {$limit}",
-            ['name' => '%' . $query . '%', 'description' => '%' . $query . '%'],
-        );
+        $clause = '';
 
-        return array_map(
-            fn (array $row): SearchResult => new SearchResult(
-                type: 'tag',
-                id: (int) $row['id'],
-                title: (string) $row['name'],
-                slug: (string) $row['slug'],
-                excerpt: make_excerpt((string) $row['description']),
-                featuredImageId: null,
-                publishedAt: null,
-                score: self::nameMatchScore((string) $row['name'], (string) $row['description'], $query),
-            ),
-            $rows,
-        );
+        if ($authorId !== null) {
+            $clause .= ' AND p.author_id = :filter_author';
+            $params['filter_author'] = $authorId;
+        }
+
+        if ($criteria->dateFrom !== null) {
+            $clause .= ' AND p.published_at >= :filter_from';
+            $params['filter_from'] = $criteria->dateFrom->format('Y-m-d 00:00:00');
+        }
+
+        if ($criteria->dateTo !== null) {
+            $clause .= ' AND p.published_at < :filter_to';
+            $params['filter_to'] = $criteria->dateTo->modify('+1 day')->format('Y-m-d 00:00:00');
+        }
+
+        return $clause;
     }
 
     /**
-     * Restricted to non-trashed users who have authored at least one
-     * published post — an author with nothing publicly attributed to them
-     * has no useful destination for a search result to link to (their
-     * `/author/{slug}` archive would simply be empty), and this keeps
-     * search from surfacing the existence of e.g. Subscriber-only accounts
-     * that have never published anything. Public for the same testability
-     * reason as searchCategories() above.
+     * A post filed in any excluded category is hidden, even if it is also
+     * in a category that isn't excluded.
      *
+     * @param list<int> $categoryIds
+     * @param array<string, mixed> $params
+     */
+    private function categoryExclusionClause(array $categoryIds, array &$params): string
+    {
+        if ($categoryIds === []) {
+            return '';
+        }
+
+        return ' AND NOT EXISTS (SELECT 1 FROM ' . $this->tablePrefix . 'post_categories xc WHERE xc.post_id = p.id'
+            . $this->idListClause('xc.category_id', 'IN', $categoryIds, 'excluded_category', $params) . ')';
+    }
+
+    /**
+     * @param list<int> $ids
+     * @param array<string, mixed> $params
+     */
+    private function idListClause(string $column, string $operator, array $ids, string $placeholderPrefix, array &$params): string
+    {
+        if ($ids === []) {
+            return '';
+        }
+
+        $placeholders = [];
+
+        foreach ($ids as $index => $id) {
+            $placeholders[] = ':' . $placeholderPrefix . $index;
+            $params[$placeholderPrefix . $index] = $id;
+        }
+
+        return " AND {$column} {$operator} (" . implode(', ', $placeholders) . ')';
+    }
+
+    /**
      * @return array<int, SearchResult>
      */
-    public function searchAuthors(string $query, int $limit): array
+    private function searchNamedTable(string $tableSuffix, string $type, SearchQuery $query, int $limit): array
     {
+        $params = [];
+        $likes = $this->likeConditions($query, ['name', 'description'], $params);
+
+        if ($likes === null) {
+            return [];
+        }
+
         $rows = $this->database->fetchAll(
-            'SELECT id, display_name FROM ' . $this->tablePrefix . 'users
-                WHERE trashed_at IS NULL AND display_name LIKE :name
-                  AND EXISTS (
-                      SELECT 1 FROM ' . $this->tablePrefix . 'posts
-                       WHERE author_id = ' . $this->tablePrefix . "users.id AND status = 'published'
-                  )
+            'SELECT id, name, slug, description FROM ' . $this->tablePrefix . $tableSuffix . "
+                WHERE trashed_at IS NULL AND {$likes}
              ORDER BY id ASC
              LIMIT {$limit}",
-            ['name' => '%' . $query . '%'],
+            $params,
         );
 
         $results = [];
 
         foreach ($rows as $row) {
-            $author = $this->users->findById((int) $row['id']);
+            $name = (string) $row['name'];
+            $description = (string) ($row['description'] ?? '');
 
-            if ($author === null) {
+            if (!$query->acceptsText($name . ' ' . $description)) {
                 continue;
             }
 
             $results[] = new SearchResult(
-                type: 'author',
-                id: $author->id,
-                title: $author->displayName,
-                slug: $this->users->authorSlug($author),
-                excerpt: '',
+                type: $type,
+                id: (int) $row['id'],
+                title: $name,
+                slug: (string) $row['slug'],
+                excerpt: make_excerpt($description),
                 featuredImageId: null,
                 publishedAt: null,
-                score: self::nameMatchScore($author->displayName, '', $query),
+                score: self::nameMatchScore($name, $description, $query),
             );
         }
 
@@ -287,25 +790,95 @@ final class SearchService
     }
 
     /**
-     * The LIKE-based heuristic relevance score shared by
-     * searchCategories()/searchTags()/searchAuthors() — see this class's
-     * own docblock for why this can never be perfectly comparable to a
-     * Post/Page FULLTEXT score.
+     * Every positive word must appear in at least one of $columns. Matching
+     * word by word (rather than the whole query as one substring) keeps
+     * "rock roll" finding "Rock & Roll"; phrase order and exclusions are
+     * then checked in PHP by SearchQuery::acceptsText().
+     *
+     * @param list<string> $columns
+     * @param array<string, mixed> $params
      */
-    private static function nameMatchScore(string $name, string $description, string $query): float
+    private function likeConditions(SearchQuery $query, array $columns, array &$params): ?string
     {
-        $lowerName = mb_strtolower($name);
-        $lowerQuery = mb_strtolower($query);
+        $words = array_values(array_unique(explode(' ', $query->plainText())));
+        $words = array_filter($words, static fn (string $word): bool => $word !== '');
 
-        if ($lowerName === $lowerQuery) {
+        if ($words === []) {
+            return null;
+        }
+
+        $conditions = [];
+
+        foreach (array_values($words) as $wordIndex => $word) {
+            $alternatives = [];
+
+            foreach ($columns as $columnIndex => $column) {
+                $name = 'like_' . $wordIndex . '_' . $columnIndex;
+                $alternatives[] = "{$column} LIKE :{$name} ESCAPE '!'";
+                $params[$name] = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word) . '%';
+            }
+
+            $conditions[] = '(' . implode(' OR ', $alternatives) . ')';
+        }
+
+        return implode(' AND ', $conditions);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function publishingAuthorIds(): array
+    {
+        return array_map('intval', array_column($this->database->fetchAll(
+            'SELECT DISTINCT p.author_id FROM ' . $this->tablePrefix . 'posts p
+                JOIN ' . $this->tablePrefix . "users u ON u.id = p.author_id AND u.trashed_at IS NULL
+                WHERE p.status = 'published' AND p.visibility = 'public'",
+        ), 'author_id'));
+    }
+
+    private function now(): string
+    {
+        return (new DateTimeImmutable())->format('Y-m-d H:i:s');
+    }
+
+    private function applyFilters(string $hook, mixed $value, mixed ...$args): mixed
+    {
+        return $this->hooks !== null ? $this->hooks->applyFilters($hook, $value, ...$args) : $value;
+    }
+
+    private static function compareForSort(SearchResult $a, SearchResult $b, string $sort): int
+    {
+        if ($sort === SearchCriteria::SORT_TITLE) {
+            return strnatcasecmp(mb_strtolower($a->title), mb_strtolower($b->title));
+        }
+
+        if ($a->publishedAt === null || $b->publishedAt === null) {
+            return ($a->publishedAt === null) <=> ($b->publishedAt === null);
+        }
+
+        return $sort === SearchCriteria::SORT_OLDEST
+            ? $a->publishedAt <=> $b->publishedAt
+            : $b->publishedAt <=> $a->publishedAt;
+    }
+
+    /**
+     * Compared on normalized words, so punctuation in a name ("Rock &
+     * Roll") doesn't stop an otherwise exact match from scoring as one.
+     */
+    private static function nameMatchScore(string $name, string $description, SearchQuery $query): float
+    {
+        $normalizedName = SearchQuery::normalize($name);
+        $needle = $query->plainText();
+
+        if ($normalizedName === $needle) {
             return self::SCORE_EXACT_NAME;
         }
 
-        if (str_starts_with($lowerName, $lowerQuery)) {
+        if (str_starts_with($normalizedName, $needle)) {
             return self::SCORE_NAME_STARTS_WITH;
         }
 
-        if (str_contains($lowerName, $lowerQuery)) {
+        if (str_contains($normalizedName, $needle)) {
             return self::SCORE_NAME_CONTAINS;
         }
 
