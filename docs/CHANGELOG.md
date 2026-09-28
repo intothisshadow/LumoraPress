@@ -2,7 +2,7 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased]
+## [0.19.0] — 2026-09-28
 
 ### Added
 

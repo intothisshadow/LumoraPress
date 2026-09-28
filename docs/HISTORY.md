@@ -16348,3 +16348,390 @@ A moderator can reply to a comment straight from Comments in the admin, without 
 **Implemented (2026-09-25).** Exactly per the Design section. `CommentReplyService` (`canReplyTo()`/`reply()`) holds the logic; the Comments screen (`admin/views/comments.php`) gained a `form=reply` handler, an `action=reply` screen, a Reply row action (shown from the list query's own data, so no per-row lookup), two alerts, and Akismet "not spam" feedback when a Pending parent is approved. The service is constructed inside the view, like the reactions/reports services, rather than added to `Kernel`. A reply fires `comment_posted` through the injected `HookManager`, so the existing follow-up wiring (in-app notices, subscriber emails, @mentions) needed no changes. 9 new unit tests (`CommentReplyServiceTest`). Live-verified on `lumorapress-preview`: replied to an Approved comment (threaded, "Post author" badge, correct success message) and to a Pending one ("Approve and Reply" approved the parent first); a Spam comment shows no Reply action and its reply URL, like a nonexistent id, is turned away with a message. Actual email delivery (the reply email to the parent's commenter) can't be checked on this machine and is covered by unit tests. Test comments removed afterward.
 
 Also shipped this release (not tied to a ticket — see `docs/CHANGELOG.md`'s `[0.18.0]` section for the full description): the "Allow comments site-wide" switch moved from the Comments screen to Settings &rsaquo; General; the admin Comments screen's search and filters are now in a collapsible panel; the Visitor Stats &rsaquo; Stats page now opens on the last 7 days; the comment form's emoji picker no longer opens empty and now closes when you click outside it; permanently deleting a page now deletes its comments (with a one-time cleanup of comments already orphaned by earlier deletions); a database-session write bug that could turn two quick requests from one visitor into a server error was fixed; and the README's Cookies section was corrected.
+
+## 0.19.0 (2026-09-28)
+
+### LP-014. Search
+
+**Status:** Complete
+
+### Goal
+
+Implement a fast, flexible, and extensible search system capable of searching all public content with relevance ranking and filtering.
+
+First pass implemented 2026-08-06: a unified, relevance-ranked search
+across Posts and Pages, using real MySQL/MariaDB FULLTEXT indexes
+(`0011_add_fulltext_index_to_posts_and_pages.sql`) and
+`MATCH(...) AGAINST(...)` — see `docs/CHANGELOG.md`'s entry for this date
+and `SearchService`/`SiteController::search()` in the source.
+Categories/Tags/Authors/Comments/Media search, filters, live search/AJAX,
+suggestions, a pluggable/custom indexing pipeline, and a filter-based
+Developer API are explicitly deferred (not attempted this session), not
+merely unimplemented. MySQL's `NATURAL LANGUAGE MODE` matches whole words
+only — it does not do exact-phrase, prefix, partial-substring, or fuzzy
+matching, so those stay unchecked below even though relevance ranking
+itself works.
+
+**Implemented (2026-08-10):** Categories, Tags, and Authors are now
+included in every search. Unlike Posts/Pages, these tables are
+personal-blog scale (tens, not tens of thousands), so a plain `LIKE`
+match on name/description is proportionate rather than needing their own
+FULLTEXT index — this also makes `SearchService::searchCategories()`/
+`searchTags()`/`searchAuthors()` portable to SQLite and directly
+unit-testable (public methods, unlike the MySQL-only `searchTable()`),
+verified against real MariaDB too via the Docker matrix. A simple name-
+match heuristic (exact > starts-with > contains > description-only)
+scores these results well enough to interleave sensibly with Posts/Pages'
+real FULLTEXT relevance scores, though it can never be perfectly
+comparable — acceptable for this first pass. Author search is restricted
+to non-trashed users with at least one published post, so it never
+surfaces an account with nothing public to link to (and never hints at
+the existence of e.g. a Subscriber-only account). `content/themes/default/search.php`
+gained the two `Category`/`Tag`/`Author`-branch changes (result-type
+label, result URL) needed to link each new result type correctly — no new
+CSS, it reuses the existing search-result markup/classes.
+
+**Implemented (2026-09-27):** second pass. Query syntax via a pure `SearchQuery` parser (`app/Services/Search/`): `"exact phrase"` (required), `-word` exclusion, and every other word prefix-matched (`photo` finds `photography`), sent to MySQL as a sanitized BOOLEAN MODE expression for matching, while NATURAL LANGUAGE MODE scores still drive ranking (a small BOOLEAN MODE score is added so prefix-only matches aren't tied at zero). "Partial matching" stays unchecked: FULLTEXT can't do infix/substring matching, only word prefixes. Filters and sorting live on a new `SearchCriteria` model read from the URL (`type`, `category`, `tag`, `author`, `from`, `to`, `sort`), rendered by two new core template tags (`search_filters_form()`, `search_empty_state()` in `include/search-functions.php`) that every theme's `search.php` calls with the bundled `$search` view data; sorting keeps the `search_max_results` most relevant, then reorders them. Settings › General › Search gained content-type, category, and page exclusions. Every type is now a "provider" behind the `search_providers` filter, plus `search_criteria`, `search_result_score`, `search_results`, `search_result_type_labels`, `search_filter_params`, and the `search_filter_fields` action — which covers the Developer API list below except "Hook into indexing" (there's no indexing step to hook: MySQL maintains the FULLTEXT index itself). Also fixed two leaks found on the way: search returned private posts/pages and posts past `unpublish_at`, and trashed categories/tags.
+
+**Implemented (2026-09-28):** third pass, finishing the Search Features list. A new `search_terms` table (migration 0078, `SearchVocabulary`) holds the words from public post/page titles and category/tag/author names, weighted by use, kept current from the `*_saved` hooks, built automatically on first need, and rebuildable on Settings › Search. Titles and names only (not full content) so a rebuild stays one quick request on large sites. It powers "Did you mean?" (closest word by character Levenshtein, first letter fixed; offered only when the corrected search really finds more, so it can't surface draft/private wording), plus opt-in partial matching (vocabulary words containing the term) and fuzzy matching (words 1–2 edits away) — both widen only the BOOLEAN MODE match, while ranking still uses the typed words. Search suggestions: `/search/suggestions` JSON of public titles prefix-matching every typed word, filled into a native `<datalist>` on every `form[role=search]` by `assets/js/search-suggest.js`, loaded from `footer_assets` (no theme changes). Search statistics: `search_queries` table (`SearchStatistics`) with counts per normalized query only — signed-out visitors' first-page searches, never shown publicly, pruned after 180 days, clearable. All of it lives on a new Settings › Search screen (the Search panel moved there from General). The shared "visible to a signed-out visitor" SQL now lives in `PublicContent`, and every search query uses it (author/category filter lists previously ignored `unpublish_at`). "Partial matching" is word-level: it finds words from titles/names that contain the search, not arbitrary substrings of body text.
+
+**Implemented (2026-09-28):** fourth pass, finishing the User Experience list. `assets/js/search.js` (renamed from `search-suggest.js`, still loaded by `SearchAssets` on `footer_assets`, now always) gives header/widget search boxes an ARIA-combobox panel appended to `<body>` (theme headers clip overflow) and positioned with CSSOM properties (the CSP allows those, unlike style attributes): live results from `/search/live` when "Show live results" is on (opt-in, replaces the datalist there), recent searches (signed-in: new `users.recent_searches` column, migration 0079, `UserService::add/get/clearRecentSearches()`, `/search/panel` + `POST /search/history/clear`; signed-out: localStorage only, never stored for signed-in users so a shared browser keeps nothing), and popular searches (`SearchStatistics::publicPopular()`: ≥5 searches that found something, only while statistics are on; also on the empty search page). Arrow keys/Enter/Escape navigation. On the search page, filters/sort auto-apply and filters, sort, pagination, "Did you mean?", and Back/Forward update `main.lp-main` in place via fetch + DOMParser (falls back to a real load on error, or when new results need the lightbox script the page never loaded); requests send `X-Lp-Search-Refine` so they aren't counted as new searches, and an `lp:content-updated` event lets the lightbox (`media-viewer.js`, refactored to `bindGalleries()`) bind new thumbnails.
+
+**Implemented (2026-09-28):** fifth pass, finishing Search Index, Performance, and Search Settings (the last open items). `SearchIndex` (`app/Services/Search/`) holds the upkeep: `diagnostics()` (row counts, table engine, whether each FULLTEXT index is present and answers a real test `MATCH`, the database's minimum indexed word length and stopword setting, plain-language problems), and a rebuild of fixed stateless stages (`posts`, `pages`, `word_list`, `finish`) — each table stage recreates a missing FULLTEXT index then runs `OPTIMIZE TABLE` (an online rebuild of the index; a failure is reported as a result row, so it's checked); `finish` clears saved results and records `search_index_last_run`. Settings › Search's Search Index panel drives the stages one request at a time via `admin/assets/js/search-index.js` (the Updates-style in-place loop, with a fresh CSRF token per round and a single-request fallback without JavaScript). "Background indexing" is a schedule (`search_index_schedule`: off/daily/weekly/monthly, default off) run from a shutdown function in `include/bootstrap.php` after `fastcgi_finish_request()`/`litespeed_finish_request()`, guarded by a lock file (`storage/cache/search-index.lock`) and a six-hour retry after a failure; it never runs where neither function exists (the screen says so), since it would make one visitor wait. "Cached search results" is `SearchResultCache` (JSON files in `storage/cache/search/`, default 5 minutes, at most 300 entries; JSON rather than `serialize()` so a corrupt file can't warn or instantiate anything), wrapped around the provider loop only, so `search_result_score`/`search_results` still run on every search; cleared on post/page/category/tag save or delete and on any `search_*` option change; a `search_cache_enabled` filter opts a search out. "Weight tags/categories" is `search_taxonomy_weight` (Off/Low=1/Medium=2/High=4 per matched word, default Low) added inside the post provider by `SearchService::applyTaxonomyWeight()`: a boost only, never widens what matches (the tag/category still shows as its own result). Decision: a boost rather than making tag-only posts match, to keep matching rules identical to before.
+
+### Search Scope
+
+- [x] Posts
+- [x] Pages
+- [x] Categories
+- [x] Tags
+- [x] Authors
+
+### Search Features
+
+- [x] Relevance ranking
+- [x] Exact phrase search
+- [x] Partial matching
+- [x] Prefix matching
+- [x] Fuzzy matching
+- [x] Search suggestions
+- [x] "Did you mean?" suggestions
+- [x] Highlight matching terms
+- [x] Pagination
+- [x] Sorting options
+- [x] Search statistics
+
+### Filters
+
+- [x] Content type
+- [x] Category
+- [x] Tag
+- [x] Author
+- [x] Date range
+- [x] Custom filters
+
+### User Experience
+
+- [x] Optional live search
+- [x] AJAX search results
+- [x] Keyboard navigation
+- [x] Search history (optional)
+- [x] Popular searches
+- [x] Recent searches (logged-in users)
+- [x] Empty-state suggestions
+
+### Search Index
+
+- [x] Automatic indexing — MySQL maintains the FULLTEXT index automatically on every insert/update, no batch job needed
+- [x] Incremental indexing — same as above, no rebuild step required for ordinary content changes
+- [x] Rebuild search index
+- [x] Background indexing
+- [x] Search index diagnostics
+
+### Performance
+
+- [x] Optimized database queries — FULLTEXT index instead of `LIKE '%...%'` table scans
+- [x] Cached search results
+- [x] Configurable result limits
+- [x] Efficient pagination
+
+### Search Settings
+
+- [x] Minimum search length
+- [x] Maximum results
+- [x] Enable fuzzy matching
+- [x] Enable live search
+- [x] Weight title higher than content
+- [x] Weight tags/categories
+- [x] Exclude content types
+- [x] Exclude specific pages/categories
+
+### Developer API
+
+Provide a standardized Search API.
+
+Extensions should be able to:
+
+- Register searchable content types
+- Add searchable fields
+- Modify search queries
+- Adjust relevance scoring
+- Register custom filters
+- Register search providers
+- Hook into indexing
+
+### Future Enhancements
+
+None open. Vector/semantic search moved to `ideas for later.md`; the rest were declined (see `DECISIONS.md`).
+
+### LP-028. Website URL Detection During Installation
+
+**Status:** Complete
+
+**Reviewed 2026-09-27.** The last requirement had been met by later features without the ticket being updated: RSS feeds (`FeedService`), canonical tags (`canonical_url()`), comment-subscription emails (`CommentFollowupService`), and roughly 25 other call sites now use `home_url()`/`SiteUrl::get()`. The address is also editable afterward on Settings › General. A "Success Criteria" block about the update system (installing GitHub releases, reliable updates, data preservation, automatic-update readiness) had been pasted here by mistake. It describes the updater, which shipped in 0.4.0 (LP-026 Manual Updates, LP-027 Updates from GitHub Releases; see `HISTORY.md`), so it was removed from this ticket.
+
+### Goal
+
+Detect the site's own absolute URL (scheme + host + install path) automatically during installation, the same way the installer already detects its own subdirectory for `base_path` (see `DECISIONS.md`'s document-root note). Store it as an editable option so an administrator can correct it if the server sits behind a proxy/load balancer, or the site is reached at a different address than the one the installer ran under. This is distinct from LP-003 ("Developer Website URL" — a link to the Lumora Press project's own site); this is the *installed site's* own URL.
+
+When this ticket was written, nothing in Lumora Press consumed an absolute site URL yet (no RSS feeds, sitemaps, canonical tags, or outbound emails existed), but several planned features would need one, and detecting it once at install time (rather than reconstructing it ad hoc from `$_SERVER` wherever it's needed later, which breaks behind reverse proxies unless done carefully) is the more maintainable foundation.
+
+### Requirements
+
+- [x] Detect scheme (`http`/`https`) and host from the installer's own request, combined with the already-detected install path.
+- [x] Pre-fill an editable "Website URL" field on installer step 2 with the detection; validate as a URL on submit.
+- [x] Store as a DB-backed option (`site_url`), not file config — unlike `base_path` (fixed at install time by the server's filesystem layout), the site's public URL is the kind of thing an admin may legitimately need to change later without re-running the installer.
+- [x] Expose it to core/themes/plugins via a new `home_url()` helper, mirroring `site_url()`/`admin_url()`.
+- [x] Fall back to live detection for sites installed before this option existed, so existing installs don't break.
+- [x] Actually consume it somewhere (canonical `<link>` tag, RSS, etc.) — now used by RSS feeds, canonical tags, comment-subscription emails, permalinks/redirects, and the importers.
+
+### LP-039. REST API Access Controls
+
+**Status:** Complete
+
+**Retargeted (2026-07-25):** originally "XML-RPC API Controls." Lumora
+Press has no XML-RPC endpoint and isn't getting one — a legacy protocol
+WordPress itself now recommends disabling, contrary to this project's
+"lightweight, modern" philosophy. Retargeted to apply the same *spirit*
+(global enable/disable, per-endpoint toggles, secure fault responses,
+developer hooks, logging) to LP-021's REST API instead, the API this
+project actually has. See `DECISIONS.md`.
+
+### Goal
+
+Provide granular control over the REST API, allowing administrators to disable or restrict functionality for improved security while retaining compatibility where needed.
+
+### Features
+
+- [x] Global option to completely disable the API — `rest_api_enabled`
+      setting (default **on**, unlike legacy XML-RPC's "disabled by
+      default" advice: a first-party API this project is actively
+      building defaults to available, matching every other core feature).
+
+- [x] Disable remote publishing methods — retargeted as "Allow public
+      (no API token) comment submission via the API" toggle, the closest
+      analog: the one write endpoint reachable with no token at all.
+
+- [x] Allow individual methods to be enabled or disabled — per-resource
+      toggles (posts/pages/categories/tags/comments/search).
+  
+- [x] Allow plugins to register additional methods — already possible
+      without new infrastructure: a plugin can hook `lumora_press_loaded`
+      and call `$router->add(...)` directly, the same as any other route.
+  
+- [x] Log blocked requests (optional) — one `error_log()` line per
+      blocked request (ephemeral, no new DB table — same choice LP-001/
+      LP-041 made for their own logging).
+  
+- [x] Return appropriate fault responses when methods are disabled — a
+      clean JSON 403 (`{"error": {"message": ..., "code": "api_disabled"}}`
+      or `"resource_disabled"`), never an HTML page or PHP error.
+  
+- [x] Configuration page under Security settings — new "REST API" section
+      on the existing Settings screen.
+  
+- [x] Developer hooks for extending or overriding behavior —
+      `rest_api_enabled` and `rest_api_resource_enabled` filters,
+      `rest_api_request` action (fired for every request, allowed or not).
+
+### Security
+
+- [x] Prevent abuse through brute-force authentication attempts — not a
+      throttle (a 256-bit random token validator isn't brute-forceable
+      the way a password is, same reasoning as `RememberMeService`'s own
+      docblock) — deliberately not built here, see LP-021's own
+      "explicitly out of scope" note on rate limiting.
+- [x] Minimize attack surface by exposing only enabled methods — the
+      per-resource toggle gate.
+- [x] Clear administrator warnings when remote publishing features are disabled —
+      the JSON fault response itself; no separate admin-dashboard warning
+      widget was added (the toggle's own UI state already shows what's off).
+
+### Deliverables
+
+- Granular REST API configuration panel
+- Secure defaults for new installations (as adapted above — see the Security section for what carried over vs. what didn't apply)
+- Developer API for REST API extensions
+- Updated documentation
+
+### LP-049. Navigation Menus
+
+**Status:** Complete
+
+**Implemented — drag-and-drop menu item reordering.** Same
+`admin/assets/js/sortable.js` component LP-048's widget reordering above
+now uses, and the same "reuse a real form, `requestSubmit()` on drop"
+approach. The one addition specific to menus: each draggable row also
+carries `data-lp-sortable-parent` (its `parentId`), and sortable.js
+refuses to treat a row as a valid drop target unless its
+`data-lp-sortable-parent` matches the dragged row's — so dragging only
+ever reorders among true siblings, exactly matching Move Up/Move Down's
+own "siblings only" semantics (`$siblingIndices`/`$positionAmongSiblings`
+in `move_item`'s existing logic). Dragging an item never changes its
+`parentId` — re-parenting stays the "Parent Item" dropdown's job. New
+`reposition_item` POST action (`menu_reposition_{menuId}`, one hidden
+form per menu) does the "splice out, splice back in" reorder;
+server-side re-validates the same-parent constraint as a backstop, not
+just relying on the client-side dragover guard. No new automated test
+coverage — same rationale as LP-048's note above.
+
+**Implemented (2026-08-01), first-pass scope.** Before this session,
+`MenuManager` (`app/Core/Menus/MenuManager.php`) was Phase 1 scaffolding
+only — `assign()` wired items directly to a location with no named "menu"
+entity in between, no persistence, and no admin UI (nothing in production
+ever called `assign()`). This session added a real, WordPress-classic
+two-level model: named, reusable menus (create/rename/duplicate/delete)
+that get assigned to theme-registered locations independently, persisted
+as two JSON options (`nav_menus`, `nav_menu_locations` — the same
+approach LP-048's `widgets_config` established) and edited on a new
+Appearance &rsaquo; Menus admin screen
+(`admin/views/appearance/menus.php`, Appearance's third child alongside
+Themes/Widgets). `MenuManager` gained unlimited-depth hierarchy (each item
+has a `parentId`) and `itemTree()`, mirroring
+`CommentService::publicTreeForPost()`'s "flat rows in, tree out" shape;
+`nav_menu()` (`include/menus.php`) now renders real nested `<ul>`
+submenus instead of a single flat list, with hover/focus-reveal dropdown
+CSS in the default theme. The pre-existing `assign()`/`items()`/
+`hasItems()`/`registerLocation()`/`locations()` API is unchanged and still
+works exactly as before for a theme/plugin wiring a location up
+programmatically without the admin UI.
+
+**Completed 2026-09-27.** The last five items: hidden menu items, plugin-registered menu item types, rendering filters, and management actions (see the checklist notes). Also fixed a bug found while there: `MenuManager::duplicateMenu()` gave copied items new ids but kept their old `parentId`s, so every nested item vanished from the copy; parent references are now remapped. Unit tests in `MenuManagerTest`, `NavMenuFunctionsTest`, `MenusControllerTest`, plus the export fixture now includes a hidden item (`WordPressXmlWriterTest`, `LumoraPressImportServiceTest`). Browser-checked on the dev install with a throwaway menu in the footer location (hidden item absent from the public page, badge and checkbox shown in the editor), which was deleted afterward.
+
+### Goal
+
+Implement a classic navigation menu system, allowing themes to define menu locations and administrators to create and manage menus without block-based editing.
+
+### Features
+
+#### Menu Management
+
+- [x] Create multiple navigation menus
+
+- [x] Rename menus
+
+- [x] Duplicate menus
+
+- [x] Delete menus
+
+  
+
+#### Menu Items
+
+- [x] Add Pages
+- [x] Add Posts
+- [x] Add Categories
+- [x] Add Tags
+- [x] Add Custom Links
+- [x] Add custom menu items provided by plugins — `register_nav_menu_item_type()` adds a plugin's own panel to "Add Menu Items"; only entries the type's callback still returns can be added
+
+#### Menu Organization
+
+- [x] Drag-and-drop menu items — same `sortable.js` component LP-048's widget reordering now uses; scoped to reordering among true siblings only (matching Move Up/Move Down's own semantics exactly) — dragging never re-parents an item, that stays the "Parent Item" dropdown's job. Move Up/Move Down buttons stay as the keyboard-accessible fallback. See the implementation note above this ticket's checklist.
+- [x] Unlimited submenu levels — via each item's `parentId`; the "Parent Item" `<select>` is how a menu item is nested, arbitrarily deep
+- [x] Expand/collapse menu items while editing — native `<details>`/`<summary>` per item, same as LP-048's Widgets screen
+- [x] Reorder items via keyboard (accessibility) — Move Up/Move Down are real `<button>` elements, reachable and operable via Tab/Enter/Space with no mouse or drag gesture required
+
+#### Menu Item Settings
+
+- [x] Navigation label
+- [x] Title attribute
+- [x] Open in new tab
+- [x] CSS classes (optional)
+- [x] Link relationship (`rel`) (optional)
+- [x] Disable item without deleting — "Hide on the site" per item (`hidden` flag); hidden items and their submenus are skipped by `nav_menu()`/`has_nav_menu()`, shown with a "Hidden" badge in the editor, kept through the native export/import, and left out of WXR with a notice
+
+#### Theme Integration
+
+- [x] Register menu locations via Theme API — `register_nav_menu()`, pre-existing
+- [x] Assign menus to theme locations — the Menu Locations panel
+- [x] Display unassigned menu warnings — a hint under any location with no menu assigned ("this location won't render anything on the site")
+
+#### Import & Export
+
+- [x] Export menus — Maintenance › Export (both formats; LP-165)
+- [x] Import menus — Maintenance › Import, Lumora Press format (LP-165)
+- [x] Preserve menu hierarchy during import — parent items are reconnected on import (LP-165)
+
+#### Developer API
+
+- [x] Register menu locations — `register_nav_menu()`, pre-existing
+- [x] Register custom menu item types — `register_nav_menu_item_type()` / `MenuManager::registerItemType()`
+- [x] Menu rendering hooks — `nav_menu_tree`, `nav_menu_item_classes`, `nav_menu_html` filters in `nav_menu()`
+- [x] Menu management hooks — `nav_menu_created`, `nav_menu_updated`, `nav_menu_deleted`, `nav_menu_locations_updated` actions fired by `MenusController`
+
+### Design
+
+- [x] Classic menu editor — Appearance &rsaquo; Menus
+- [x] No Navigation Block
+- [x] No Gutenberg dependency
+- [x] Lightweight and keyboard accessible — plain forms/buttons throughout, no drag-only interaction
+
+### Deliverables
+
+- Complete classic menu management system
+- Theme Menu API
+- Plugin extension API
+- Import/export support
+
+### LP-180. Import a Lumora Press Export ZIP From the Server
+
+**Status:** Complete
+
+**Implemented 2026-09-25.** Verified on the dev install with Ariane's OK (instead of a throwaway install, since the test export was a single draft post and no users): Discover found the test ZIP next to the install, "Import From Server" imported the draft credited to the importing admin, the temporary extraction folder was emptied, and the source ZIP was left in place; the post, its registry record, and the test ZIP were then removed. The same pass fixed the import summary's wording ("Forgot password?", matching the real login link) and now shows the users/menus notes only when the import actually brought users/menus. Also done alongside, without a ticket: Maintenance › Import split into Lumora Press / WordPress tabs (mirroring Tools' Sweep tab), and the section renamed "Lumora Press Import".
+
+LP-165's Maintenance › Import "Lumora Press Import" panel only accepts a browser upload, so it's capped by PHP's `upload_max_filesize`/`post_max_size` — 2 MB on the dev install, and commonly 2–64 MB on shared hosting. A Lumora Press export that includes uploaded files is routinely far larger (the dev site's own is 1.47 GB), so in practice the complete, self-contained export format couldn't be imported on most hosts at all. Let the admin point at a `.zip` they've already copied onto the server (FTP/SFTP/file manager) instead, the same way Media Manager's "Import from Server" and the WordPress Importer's WXR path already work.
+
+- Server path field next to the upload, with a "Discover" button per `MEMORY.md`'s standing agreement: lists `.zip` files that are actually Lumora Press exports (contain `manifest.json`) in this install's parent folder, the install root, and each sibling folder's top level. Clicking one only pre-fills the field (a GET link); it never starts an import by itself.
+- The path must resolve to a real, readable `.zip` file; `LumoraPressExportSource::open()` still validates it's a genuine export. The file is left in place after importing (it's the admin's own file, not a temp upload).
+- Same "when content was already imported" choice and the same import pipeline/summary as the upload path — no second import implementation.
+
+### Checklist
+
+- [x] Path validation (`LumoraPressExportSource::resolveServerPath()`): resolves symlinks, requires an existing readable regular file with a `.zip` extension, throws a user-readable `RuntimeException` otherwise.
+- [x] Discovery (`LumoraPressExportSource::discoverArchives()`): finds `.zip` files containing a Lumora Press `manifest.json` (at the root or inside one top-level folder) in the given directories, capped, never recursing deeper than one level.
+- [x] Import screen: "Import a file already on this server" form (path field, Discover link-list, existing-content choice), sharing one handler with the upload form.
+- [x] Unit tests for path validation and discovery.
+- [x] Browser-verify on the dev install: Discover finds a real export, and importing one from a path works end-to-end.
+- [x] README/CHANGELOG updated.
+
+### LP-181. Read a Lumora Press Import's Media From an Uploads Folder on the Server
+
+**Status:** Complete
+
+**Implemented 2026-09-25.** Done as designed. The screen was checked on the dev install (Discover finds a sibling site's `content/uploads`, the link pre-fills both forms' folder field and keeps the export path, no console errors); and, with Ariane's OK, a real end-to-end import through the reworked single form (File on This Server + the dev site's own `content/uploads` as the folder): a manifest-only ZIP brought in a draft post plus its featured image, copied byte-identically from the folder with the post's `<img>` rewritten to the new file; all of it was removed afterward (the copied image through the Media Manager, since `www-data` owns the uploads folder). Afterward, at Ariane's request, the Lumora Press tab was reworked into a single form in numbered steps like Maintenance › Updates — "1. Choose the export file" with **Upload a File** / **File on This Server** sub-tabs (the chosen one is posted as `import_source`, kept current by a new optional `data-lp-tabs-input` feature in `admin-tabs.js`, which also now scopes each tab set to its own tabs so sets can nest), "2. Uploaded files kept separately (optional)", "3. Import" — so the folder field, existing-content choice, and button appear once instead of twice. Observed: a folder created seconds earlier can be missed by Discover until PHP-FPM's filesystem cache catches up — harmless in real use.
+
+A Lumora Press export with "Include uploaded files" checked bundles every upload into one ZIP (1.47 GB for the dev site). On shared hosting, building that ZIP in one request can hit the host's execution-time limit or disk quota and fail. The WordPress Importer avoids this entirely: WXR never carries files, and the importer reads them from a local copy of the source's `wp-content/uploads` folder instead. Offer the same for Lumora Press exports: export *without* uploaded files (a small ZIP), copy the source site's `content/uploads` folder onto the destination server by FTP/SFTP (or point at it directly if both sites share a server), and have the import read each media file from that folder.
+
+- Optional "Uploaded files folder (server filesystem)" field on both Lumora Press import forms (upload and server path), with "Discover" per `MEMORY.md`'s standing agreement: sibling installs' `content/uploads` folders. Pre-fill only.
+- Each media record's file is taken from the ZIP when it's bundled there, otherwise from `{folder}/{file_path}`; a file in neither is skipped and listed, as now. Paths come from the (untrusted) manifest, so the resolved file must stay inside the chosen folder (no `..`, no symlink escaping it); MediaImporter's extension/MIME checks still apply.
+- The Export screen's "Include uploaded files" hint points to this route for large sites.
+
+### Checklist
+
+- [x] `LumoraPressExportSource::open()` takes an optional uploads folder: validated as a real readable directory, used as the fallback source for media files not bundled in the ZIP, with containment checks.
+- [x] `ExportContent::withMedia()` so the media list can be re-pointed without rebuilding the whole payload.
+- [x] Import screen: the optional folder field on both forms, plus Discover; the export and folder GET pre-fills carry each other so neither is lost.
+- [x] Export screen hint and README/CHANGELOG updated.
+- [x] Unit tests: folder fallback, a bundled file taking precedence, containment (traversal/symlink), an invalid folder, and a native round trip exported without uploads + imported with the folder bringing every media file across.
+- [x] Verified on the dev install.
