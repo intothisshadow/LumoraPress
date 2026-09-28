@@ -133,6 +133,7 @@ final class FolderGalleryShortcode
     {
         $resolved = $this->resolveImage($item, $size);
         $alt = (string) ($item['alt_text'] ?? '');
+        $caption = (string) ($item['caption'] ?? '');
         $dimensionAttrs = ($resolved['width'] > 0 ? ' width="' . $resolved['width'] . '"' : '')
             . ($resolved['height'] > 0 ? ' height="' . $resolved['height'] . '"' : '');
 
@@ -156,7 +157,7 @@ final class FolderGalleryShortcode
             return '<a class="lp-folder-gallery__link" href="' . esc_url($fullUrl) . '"'
                 . ($fullWidth > 0 ? ' data-pswp-width="' . $fullWidth . '"' : '')
                 . ($fullHeight > 0 ? ' data-pswp-height="' . $fullHeight . '"' : '')
-                . ' data-pswp-caption="' . esc_html($alt) . '">' . $img . '</a>';
+                . ' data-pswp-caption="' . esc_html($caption !== '' ? $caption : $alt) . '">' . $img . '</a>';
         }
 
         // "Link To: None" opts the thumbnail out of

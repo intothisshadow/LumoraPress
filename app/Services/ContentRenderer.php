@@ -142,6 +142,30 @@ final class ContentRenderer
      * direct image link; an unwrapped `<img>` is wrapped in a new self-link. A `no-lightbox`
      * class on either element opts out.
      */
+    /**
+     * The visible caption of a captioned image (`<figure>` directly holding
+     * $link and a `<figcaption>`), so the lightbox shows the same caption
+     * as the page rather than the alt text. Null when there isn't one.
+     */
+    private function figureCaption(DOMElement $link): ?string
+    {
+        $figure = $link->parentNode;
+
+        if (!$figure instanceof DOMElement || strtolower($figure->tagName) !== 'figure') {
+            return null;
+        }
+
+        foreach ($figure->childNodes as $child) {
+            if ($child instanceof DOMElement && strtolower($child->tagName) === 'figcaption') {
+                $caption = trim((string) preg_replace('/\s+/u', ' ', $child->textContent));
+
+                return $caption !== '' ? $caption : null;
+            }
+        }
+
+        return null;
+    }
+
     private function addLightboxAttributes(string $html): string
     {
         if (!str_contains($html, '<img')) {
@@ -236,10 +260,10 @@ final class ContentRenderer
                 $link->setAttribute('data-pswp-height', (string) $height);
             }
 
-            $alt = $img->getAttribute('alt');
+            $caption = $this->figureCaption($link) ?? $img->getAttribute('alt');
 
-            if ($alt !== '') {
-                $link->setAttribute('data-pswp-caption', $alt);
+            if ($caption !== '') {
+                $link->setAttribute('data-pswp-caption', $caption);
             }
         }
 

@@ -70,6 +70,7 @@ $buildEditorPickerItem = static function (array $item, array $thumbnailsForItem)
         'url' => $kernel->media->url($item),
         'name' => (string) $item['file_name'],
         'alt' => (string) ($item['alt_text'] ?? ''),
+        'caption' => (string) ($item['caption'] ?? ''),
         'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
         'sizes' => $sizes,
     ];
@@ -346,7 +347,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         exit;
     }
 
-    echo json_encode(['content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $from, $to)]);
+    // Tokens are single-use, so hand back a fresh one for the next switch.
+    echo json_encode([
+        'content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $from, $to),
+        'csrf_token' => Csrf::token('convert_content'),
+    ]);
     exit;
 }
 

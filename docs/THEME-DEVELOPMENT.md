@@ -236,7 +236,10 @@ All of these accept `Post|Page|SearchResult $item` — anything with a
 | `the_post_thumbnail_lightbox($item, string $size = 'medium', ?string $largeSize = null, array $attrs = []): void` | Same as above, wrapped in a PhotoSwipe-lightbox `<a>`. **Prefer this over `the_post_thumbnail()`** on any listing/single template — it's what marks the page as needing the lightbox JS/CSS (via `footer_assets`), so using the plain version means clicking the image does nothing. |
 | `post_thumbnail_url($item, string $size = 'medium', bool $absolute = false): ?string` | Just the URL, for OG tags/RSS/manual `<img>` construction. |
 | `post_thumbnail_caption($item): ?string` | The image's caption, or `null`. |
+| `the_post_thumbnail_caption(Post\|Page $item): void` | Echoes the featured image's caption as `<p class="lp-post__thumbnail-caption">`, or nothing when it has none. Call it right after `the_post_thumbnail_lightbox()` in `single.php`/`page.php`. |
 | `post_thumbnail_media($item): ?array` | The raw media row (advanced use — `file_size`, `mime_type`, etc.). |
+
+**Images inside post content.** Both editors insert images with `alignleft`/`aligncenter`/`alignright` and `size-{name}` classes, and a captioned image as `<figure class="lp-caption {alignment}"><img …><figcaption>…</figcaption></figure>` (alignment on the `<figure>`, not the `<img>`, so image and caption move together; the WordPress Importer produces the same markup). Style `.lp-post__content img.alignleft` and friends, plus `.lp-post__content figure.lp-caption` and its `figcaption`; the bundled theme's `style.css` has a complete set to copy.
 
 ### Comments
 

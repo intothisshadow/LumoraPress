@@ -517,6 +517,14 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
+/* A featured image's caption on single posts and pages. */
+.lp-post__thumbnail-caption {
+    color: var(--lp-text-muted);
+    font-size: 0.85em;
+    margin: 0.4em 0 0;
+    text-align: center;
+}
+
 .lp-post__content code {
     padding: 0.15em 0.4em;
     border-radius: var(--lp-radius);

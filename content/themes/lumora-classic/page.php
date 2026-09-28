@@ -26,6 +26,7 @@ get_header(['page' => $page]);
             <?php if ($lpThumbnailAboveTitle): ?>
                 <div class="lp-post__thumbnail lp-post__thumbnail--hero lp-gallery">
                     <?php the_post_thumbnail_lightbox($page, size: 'large'); ?>
+                    <?php the_post_thumbnail_caption($page); ?>
                 </div>
             <?php endif; ?>
             <?php the_page_breadcrumbs($page, $page_ancestors ?? []); ?>
@@ -33,6 +34,7 @@ get_header(['page' => $page]);
             <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($page)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($page, size: 'large'); ?>
+                    <?php the_post_thumbnail_caption($page); ?>
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?= render_content($page->content, $page->contentFormat) ?></div>

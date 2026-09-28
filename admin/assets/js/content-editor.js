@@ -449,6 +449,22 @@
             alignField.appendChild(alignLabelEl);
             alignField.appendChild(alignSelect);
 
+            // Pre-filled from the media item's own Caption field, but
+            // editable per insertion, like classic WordPress. Left empty,
+            // the image is inserted exactly as before (no <figure>).
+            var captionField = document.createElement('p');
+            captionField.className = 'lp-field';
+            var captionLabelEl = document.createElement('label');
+            captionLabelEl.textContent = 'Caption';
+            var captionInput = document.createElement('textarea');
+            captionInput.rows = 2;
+            captionInput.value = item.caption || '';
+            captionInput.id = 'lp-editor-media-caption';
+            captionLabelEl.htmlFor = captionInput.id;
+
+            captionField.appendChild(captionLabelEl);
+            captionField.appendChild(captionInput);
+
             var actions = document.createElement('div');
             actions.className = 'lp-editor-media-dialog__settings-actions';
 
@@ -467,6 +483,7 @@
                     size: sizeSelect.value,
                     align: alignSelect.value,
                     alt: item.alt || item.name,
+                    caption: captionInput.value.replace(/\s+/g, ' ').trim(),
                     linkUrl: linkSelect.value === 'file' ? full.url : null,
                     // The *linked* file's own dimensions — only
                     // meaningful (and only ever different from width/
@@ -493,6 +510,7 @@
             settings.appendChild(sizeField);
             settings.appendChild(linkField);
             settings.appendChild(alignField);
+            settings.appendChild(captionField);
             settings.appendChild(actions);
         }
 
@@ -1930,8 +1948,16 @@
                             // <a> so PhotoSwipe can open it.
                             var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
                             var noLightboxMarker = payload.linkUrl ? '' : '{.no-lightbox}';
-                            var image = '![' + payload.alt + '](' + payload.url + ')' + alignMarker + noLightboxMarker;
-                            cm.replaceSelection(payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image);
+                            // A caption rides in the image title plus a
+                            // {.caption} marker, and only becomes a <figure>
+                            // when the image is a paragraph of its own, hence
+                            // the surrounding blank lines. A straight double
+                            // quote would end the title early.
+                            var title = payload.caption ? ' "' + payload.caption.replace(/"/g, '\u201D') + '"' : '';
+                            var captionMarker = payload.caption ? '{.caption}' : '';
+                            var image = '![' + payload.alt + '](' + payload.url + title + ')' + alignMarker + noLightboxMarker + captionMarker;
+                            var inserted = payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image;
+                            cm.replaceSelection(payload.caption ? '\n\n' + inserted + '\n\n' : inserted);
                         });
                     },
                     className: 'fa fa-photo',
@@ -2283,14 +2309,40 @@
                                     // the Markdown insertion above for why
                                     // no-lightbox is needed even for an
                                     // otherwise-unlinked image.
-                                    var classAttr = 'size-' + payload.size + ' ' + payload.align + (payload.linkUrl ? '' : ' no-lightbox');
+                                    // A captioned image carries its alignment on
+                                    // the wrapping <figure> instead, so the theme
+                                    // floats the image and caption together.
+                                    var classAttr = 'size-' + payload.size + (payload.caption ? '' : ' ' + payload.align) + (payload.linkUrl ? '' : ' no-lightbox');
                                     var image = '<img src="' + escapeHtmlAttr(payload.url) + '" alt="' + escapeHtmlAttr(payload.alt) + '"'
                                         + (payload.width ? ' width="' + payload.width + '"' : '')
                                         + (payload.height ? ' height="' + payload.height + '"' : '')
                                         + ' class="' + classAttr + '">';
+                                    // Inserting with the cursor inside an existing
+                                    // captioned image would nest the new image in
+                                    // its <figure>/<figcaption>, so move to a new
+                                    // empty paragraph after it first. Focus comes
+                                    // first: otherwise insertContent() restores the
+                                    // selection saved when the dialog opened.
+                                    editor.focus();
+                                    var enclosingFigure = editor.dom.getParent(editor.selection.getNode(), 'figure');
+
+                                    if (enclosingFigure) {
+                                        var afterFigure = editor.dom.create('p', {}, '<br data-mce-bogus="1">');
+                                        editor.dom.insertAfter(afterFigure, enclosingFigure);
+                                        editor.selection.setCursorLocation(afterFigure, 0);
+                                    }
+
+                                    var withCaption = function (html) {
+                                        if (!payload.caption) {
+                                            return html;
+                                        }
+
+                                        return '<figure class="lp-caption ' + escapeHtmlAttr(payload.align) + '">' + html
+                                            + '<figcaption>' + escapeHtmlAttr(payload.caption) + '</figcaption></figure>';
+                                    };
 
                                     if (!payload.linkUrl) {
-                                        editor.insertContent(image);
+                                        editor.insertContent(withCaption(image));
 
                                         return;
                                     }
@@ -2308,10 +2360,10 @@
                                     var link = '<a href="' + escapeHtmlAttr(payload.linkUrl) + '"'
                                         + (payload.linkWidth ? ' data-pswp-width="' + payload.linkWidth + '"' : '')
                                         + (payload.linkHeight ? ' data-pswp-height="' + payload.linkHeight + '"' : '')
-                                        + ' data-pswp-caption="' + escapeHtmlAttr(payload.alt) + '"'
+                                        + ' data-pswp-caption="' + escapeHtmlAttr(payload.caption || payload.alt) + '"'
                                         + '>' + image + '</a>';
 
-                                    editor.insertContent(link);
+                                    editor.insertContent(withCaption(link));
                                 });
                             },
                         });
@@ -2505,16 +2557,42 @@
                 formData.append('to', toFormat);
 
                 fetch(container.dataset.uploadUrl, { method: 'POST', body: formData })
-                    .then(function (response) { return response.json(); })
-                    .then(function (json) {
+                    .then(function (response) {
+                        return response.json().then(function (json) {
+                            return { ok: response.ok, json: json };
+                        });
+                    })
+                    .then(function (result) {
+                        var json = result.json || {};
+
+                        if (json.csrf_token) {
+                            document.querySelectorAll('[data-convert-csrf]').forEach(function (editorContainer) {
+                                editorContainer.dataset.convertCsrf = json.csrf_token;
+                            });
+                        }
+
+                        // Switching editors without converted content would
+                        // leave e.g. raw HTML in the Markdown editor, saved as
+                        // the wrong format, so stay put and say why instead.
+                        if (!result.ok || json.content === undefined) {
+                            select.value = fromFormat;
+                            window.alert(json.error || 'The content could not be converted. Reload the page and try again.');
+
+                            return;
+                        }
+
                         if (current) {
                             current.destroy();
                             current = null;
                         }
 
-                        textarea.value = json.content !== undefined ? json.content : currentValue;
+                        textarea.value = json.content;
                         container.dataset.format = toFormat;
                         boot(toFormat);
+                    })
+                    .catch(function () {
+                        select.value = fromFormat;
+                        window.alert('The content could not be converted. Reload the page and try again.');
                     });
             });
         });

@@ -95,13 +95,73 @@ final class HtmlToMarkdownConverter
             'pre' => $this->renderPre($node),
             'blockquote' => "\n" . $this->prefixLines(trim($inner), '> ') . "\n\n",
             'a' => '[' . trim($inner) . '](' . $node->getAttribute('href') . ')',
-            'img' => '![' . $node->getAttribute('alt') . '](' . $node->getAttribute('src') . ')',
+            'img' => $this->renderImage($node),
+            'figure' => $this->renderFigure($node, $inner),
             'ul' => "\n" . $this->renderListItems($node, false) . "\n",
             'ol' => "\n" . $this->renderListItems($node, true) . "\n",
             'table' => "\n" . $this->renderTable($node) . "\n",
             'input' => '',
             default => $inner,
         };
+    }
+
+    /**
+     * An image keeps its alignment/no-lightbox classes as MarkdownParser's
+     * trailing `{.marker}`s; a caption rides in the title with `{.caption}`.
+     * $align overrides the image's own alignment (a captioned figure's).
+     */
+    private function renderImage(DOMElement $img, ?string $caption = null, ?string $align = null): string
+    {
+        $classes = preg_split('/\s+/', $img->getAttribute('class'), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $alignments = ['alignleft', 'aligncenter', 'alignright'];
+        $markers = $align !== null ? [$align] : array_values(array_intersect($classes, $alignments));
+
+        if (in_array('no-lightbox', $classes, true)) {
+            $markers[] = 'no-lightbox';
+        }
+
+        $title = '';
+
+        if ($caption !== null) {
+            // A straight quote would end the Markdown title early.
+            $title = ' "' . str_replace('"', "\u{201D}", $caption) . '"';
+            $markers[] = 'caption';
+        }
+
+        return '![' . $img->getAttribute('alt') . '](' . $img->getAttribute('src') . $title . ')'
+            . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $markers));
+    }
+
+    /**
+     * A captioned `<figure class="lp-caption">` (from either editor or the
+     * WordPress Importer) becomes a standalone captioned image paragraph;
+     * any other figure just keeps its contents.
+     */
+    private function renderFigure(DOMElement $figure, string $inner): string
+    {
+        $classes = preg_split('/\s+/', $figure->getAttribute('class'), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $img = $figure->getElementsByTagName('img')->item(0);
+        $captionElement = $figure->getElementsByTagName('figcaption')->item(0);
+
+        if (!in_array('lp-caption', $classes, true) || !$img instanceof DOMElement || $captionElement === null) {
+            return $inner;
+        }
+
+        $caption = trim((string) preg_replace('/\s+/u', ' ', $captionElement->textContent));
+
+        if ($caption === '') {
+            return $inner;
+        }
+
+        $align = array_values(array_intersect($classes, ['alignleft', 'aligncenter', 'alignright']))[0] ?? null;
+        $image = $this->renderImage($img, $caption, $align);
+        $link = $img->parentNode;
+
+        if ($link instanceof DOMElement && strtolower($link->tagName) === 'a') {
+            $image = '[' . $image . '](' . $link->getAttribute('href') . ')';
+        }
+
+        return "\n" . $image . "\n\n";
     }
 
     /**

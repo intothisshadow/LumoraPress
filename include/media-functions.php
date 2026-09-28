@@ -136,6 +136,21 @@ if (!function_exists('post_thumbnail_caption')) {
     }
 }
 
+if (!function_exists('the_post_thumbnail_caption')) {
+    /**
+     * Echoes the featured image's caption as `<p class="lp-post__thumbnail-caption">`
+     * for single post/page templates, or nothing when it has none.
+     */
+    function the_post_thumbnail_caption(Post|Page $item): void
+    {
+        $caption = post_thumbnail_caption($item);
+
+        if ($caption !== null && trim($caption) !== '') {
+            echo '<p class="lp-post__thumbnail-caption">' . esc_html($caption) . '</p>';
+        }
+    }
+}
+
 if (!function_exists('the_post_thumbnail')) {
     /**
      * Echoes an <img> for $item's featured image at $size, with a real

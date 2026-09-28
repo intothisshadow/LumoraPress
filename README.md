@@ -47,6 +47,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Featured images with manual cropping
 - Multi-file uploads with per-file progress
 - FTP media import
+- Image captions, added while inserting an image in either editor and shown under the image, in the lightbox, and under featured images
 - Image lightbox viewer
 - Audio and video player, embeddable in post/page content
 - Download statistics for documents, archives, audio, and video

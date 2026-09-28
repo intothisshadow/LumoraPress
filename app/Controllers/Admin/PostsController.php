@@ -672,6 +672,7 @@ final class PostsController
             'url' => $this->media->url($item),
             'name' => (string) $item['file_name'],
             'alt' => (string) ($item['alt_text'] ?? ''),
+            'caption' => (string) ($item['caption'] ?? ''),
             'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
             'sizes' => $sizes,
         ];
@@ -699,7 +700,12 @@ final class PostsController
             return;
         }
 
-        echo json_encode(['content' => $this->content->convertFormat((string) ($post['content'] ?? ''), $from, $to)]);
+        // Tokens are single-use, so hand back a fresh one: without it a
+        // second format switch on the same page load would be refused.
+        echo json_encode([
+            'content' => $this->content->convertFormat((string) ($post['content'] ?? ''), $from, $to),
+            'csrf_token' => Csrf::token('convert_content'),
+        ]);
     }
 
     /**

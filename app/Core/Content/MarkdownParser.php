@@ -34,6 +34,9 @@ namespace LumoraPress\Core\Content;
  */
 final class MarkdownParser
 {
+    /** Trailing `{.marker}` names an image accepts. */
+    private const IMAGE_MARKERS = 'alignleft|aligncenter|alignright|no-lightbox|caption';
+
     /**
      * Fixed font-color palette, mirrored by content-editor.js's swatch
      * list and the has-{color}-color classes in style.css. Public because
@@ -384,7 +387,8 @@ final class MarkdownParser
     {
         return match ($block['type']) {
             'heading' => $this->renderHeading((int) $block['level'], (string) $block['lines'][0], is_string($block['align'] ?? null) ? $block['align'] : null),
-            'paragraph' => '<p' . $this->alignmentClassAttr(is_string($block['align'] ?? null) ? $block['align'] : null) . '>' . $this->parseInline($this->joinParagraphLines((array) $block['lines'])) . "</p>\n",
+            'paragraph' => $this->renderCaptionedImage($this->joinParagraphLines((array) $block['lines']))
+                ?? '<p' . $this->alignmentClassAttr(is_string($block['align'] ?? null) ? $block['align'] : null) . '>' . $this->parseInline($this->joinParagraphLines((array) $block['lines'])) . "</p>\n",
             'code' => $this->renderCodeBlock((array) $block['lines'], (string) $block['lang']),
             'blockquote' => '<blockquote>' . $this->renderBlocks($this->parseBlocks((array) $block['lines'])) . "</blockquote>\n",
             'hr' => "<hr>\n",
@@ -631,6 +635,44 @@ final class MarkdownParser
     }
 
     /**
+     * A paragraph holding nothing but one image (optionally linked) whose
+     * markers include `{.caption}` becomes a captioned
+     * `<figure class="lp-caption">`, with the image title as its
+     * `<figcaption>` — the same markup the WYSIWYG editor inserts. The
+     * image's alignment moves to the figure so image and caption float
+     * together. Returns null for any other paragraph.
+     */
+    private function renderCaptionedImage(string $text): ?string
+    {
+        $text = trim($text);
+        $linkUrl = null;
+
+        if (preg_match('/^\[(!\[.*)\]\(\s*(<[^>]*>|[^\s)]+)\s*\)$/s', $text, $link) === 1) {
+            [, $text, $linkUrl] = $link;
+        }
+
+        if (preg_match('/^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)\s+"([^"]*)"\s*\)((?:\{\.(?:' . self::IMAGE_MARKERS . ')\})+)$/', $text, $m) !== 1) {
+            return null;
+        }
+
+        preg_match_all('/\{\.([a-z-]+)\}/', $m[4], $markerMatches);
+        $markers = $markerMatches[1];
+        $caption = trim($m[3]);
+
+        if (!in_array('caption', $markers, true) || $caption === '') {
+            return null;
+        }
+
+        $align = array_values(array_intersect($markers, ['alignleft', 'aligncenter', 'alignright']))[0] ?? null;
+        $imageMarkers = array_diff($markers, ['caption', 'alignleft', 'aligncenter', 'alignright']);
+        $image = '![' . $m[1] . '](' . $m[2] . ')' . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $imageMarkers));
+
+        return '<figure class="lp-caption' . ($align !== null ? ' ' . $align : '') . '">'
+            . $this->parseInline($linkUrl !== null ? '[' . $image . '](' . $linkUrl . ')' : $image)
+            . '<figcaption>' . htmlspecialchars($caption, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</figcaption></figure>\n";
+    }
+
+    /**
      * Trailing `{.alignleft}`/`{.aligncenter}`/`{.alignright}`/
      * `{.no-lightbox}` markers set the image's class list, mirroring the
      * WYSIWYG editor's Insert Media step. `alignnone` is deliberately not
@@ -642,7 +684,7 @@ final class MarkdownParser
     private function parseImages(string $text): string
     {
         return (string) preg_replace_callback(
-            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)((?:\{\.(?:alignleft|aligncenter|alignright|no-lightbox)\})+)?/',
+            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)((?:\{\.(?:' . self::IMAGE_MARKERS . ')\})+)?/',
             function (array $m): string {
                 $alt = htmlspecialchars($m[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $url = $this->sanitizeUrl(trim($m[2], '<>'));
@@ -650,8 +692,10 @@ final class MarkdownParser
 
                 $classes = [];
 
+                // {.caption} only means something on an image that stands
+                // alone (renderCaptionedImage()); inline, it's just dropped.
                 if (isset($m[4]) && $m[4] !== '' && preg_match_all('/\{\.([a-z-]+)\}/', $m[4], $classMatches) > 0) {
-                    $classes = $classMatches[1];
+                    $classes = array_values(array_diff($classMatches[1], ['caption']));
                 }
 
                 $classAttr = $classes !== [] ? ' class="' . htmlspecialchars(implode(' ', $classes), ENT_QUOTES, 'UTF-8') . '"' : '';

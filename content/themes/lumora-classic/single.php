@@ -25,6 +25,7 @@ get_header(['post' => $post]);
             <?php if ($lpThumbnailAboveTitle): ?>
                 <div class="lp-post__thumbnail lp-post__thumbnail--hero lp-gallery">
                     <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
+                    <?php the_post_thumbnail_caption($post); ?>
                 </div>
             <?php endif; ?>
             <h1 class="lp-post__title"><?= esc_html($post->title) ?></h1>
@@ -38,6 +39,7 @@ get_header(['post' => $post]);
             <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($post)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
+                    <?php the_post_thumbnail_caption($post); ?>
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?php the_content($post); ?></div>
