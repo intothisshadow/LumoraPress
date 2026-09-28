@@ -120,6 +120,8 @@ use LumoraPress\Services\PluginVersionManifest;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
+use LumoraPress\Services\Search\SearchIndex;
+use LumoraPress\Services\Search\SearchResultCache;
 use LumoraPress\Services\Search\SearchStatistics;
 use LumoraPress\Services\Search\SearchVocabulary;
 use LumoraPress\Services\SearchService;
@@ -491,6 +493,8 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
 }
 
 $searchVocabulary = new SearchVocabulary($database, $tablePrefix, $config);
+$searchResultCache = new SearchResultCache(LUMORA_ROOT . '/storage/cache/search', $config);
+$searchIndex = new SearchIndex($database, $tablePrefix, $config, $searchVocabulary, $searchResultCache, LUMORA_ROOT . '/storage/cache/search-index.lock');
 $search = new SearchService(
     $database,
     $tablePrefix,
@@ -500,7 +504,44 @@ $search = new SearchService(
     $hooks,
     $searchVocabulary,
     new SearchStatistics($database, $tablePrefix, $config),
+    $searchIndex,
+    $searchResultCache,
 );
+
+// Saved search results are only valid until the content or a search
+// setting changes; the index's own bookkeeping options don't count.
+foreach (['post_saved', 'post_deleted', 'page_saved', 'page_deleted', 'category_saved', 'category_deleted', 'tag_saved', 'tag_deleted'] as $searchCacheAction) {
+    add_action($searchCacheAction, static fn () => $searchResultCache->clear());
+}
+add_action('option_changed', static function (mixed $key = null) use ($searchResultCache): void {
+    if (is_string($key) && str_starts_with($key, 'search_') && !str_starts_with($key, 'search_index_')) {
+        $searchResultCache->clear();
+    }
+});
+
+// The scheduled index refresh runs only after a public page has gone out,
+// so a visitor never waits on it.
+register_shutdown_function(static function () use ($searchIndex): void {
+    if (
+        PHP_SAPI === 'cli'
+        || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET'
+        || !SearchIndex::backgroundRunSupported()
+        || !$searchIndex->isDue()
+    ) {
+        return;
+    }
+
+    ignore_user_abort(true);
+
+    while (ob_get_level() > 0) {
+        ob_end_flush();
+    }
+
+    flush();
+    function_exists('fastcgi_finish_request') ? fastcgi_finish_request() : litespeed_finish_request();
+
+    $searchIndex->runIfDue();
+});
 
 // Keep the search word list current as public titles and names change;
 // words that stop being used are only dropped by a rebuild.

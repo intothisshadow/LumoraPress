@@ -25,7 +25,9 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\SearchCriteria;
 use LumoraPress\Models\SearchResult;
 use LumoraPress\Services\Search\PublicContent;
+use LumoraPress\Services\Search\SearchIndex;
 use LumoraPress\Services\Search\SearchQuery;
+use LumoraPress\Services\Search\SearchResultCache;
 use LumoraPress\Services\Search\SearchStatistics;
 use LumoraPress\Services\Search\SearchVocabulary;
 
@@ -44,6 +46,7 @@ use LumoraPress\Services\Search\SearchVocabulary;
  * Every type is a "provider" callable, filterable through
  * `search_providers`, each capped at search_max_results before the merge —
  * a type matching more rows than the cap won't have every match considered.
+ * What the providers find is kept briefly in SearchResultCache.
  */
 final class SearchService
 {
@@ -54,6 +57,13 @@ final class SearchService
     private const DEFAULT_MAX_RESULTS = 50;
 
     private const TITLE_WEIGHT = 2;
+
+    public const TAXONOMY_WEIGHT_OPTION = 'search_taxonomy_weight';
+
+    public const DEFAULT_TAXONOMY_WEIGHT = 1;
+
+    /** @var array<int, string> Boost per matched word for a matching tag or category, by the setting's value. */
+    public const TAXONOMY_WEIGHT_LABELS = [0 => 'Off', 1 => 'Low', 2 => 'Medium', 4 => 'High'];
 
     private const SUGGESTION_COUNT = 5;
 
@@ -121,7 +131,19 @@ final class SearchService
         private readonly ?HookManager $hooks = null,
         private readonly ?SearchVocabulary $vocabulary = null,
         private readonly ?SearchStatistics $statistics = null,
+        private readonly ?SearchIndex $index = null,
+        private readonly ?SearchResultCache $cache = null,
     ) {
+    }
+
+    public function index(): ?SearchIndex
+    {
+        return $this->index;
+    }
+
+    public function resultCache(): ?SearchResultCache
+    {
+        return $this->cache;
     }
 
     public function vocabulary(): ?SearchVocabulary
@@ -214,17 +236,8 @@ final class SearchService
             ];
         }
 
-        $parsed = $this->expandQuery($parsed);
         $maxResults = max(1, (int) $this->config->option('search_max_results', (string) self::DEFAULT_MAX_RESULTS));
-        $candidates = [];
-
-        foreach ($this->providersFor($criteria) as $provider) {
-            foreach ($provider($criteria, $parsed, $maxResults) as $result) {
-                if ($result instanceof SearchResult) {
-                    $candidates[] = $result;
-                }
-            }
-        }
+        $candidates = $this->candidatesFor($criteria, $parsed, $maxResults);
 
         if ($this->hooks?->hasFilter('search_result_score') === true) {
             $candidates = array_map(
@@ -245,6 +258,119 @@ final class SearchService
         $paginated['criteria'] = $criteria;
 
         return $paginated;
+    }
+
+    /**
+     * What every provider found, from the result cache when there is a
+     * live entry. Cached before the score and result filters so those
+     * still run on every search; the key covers everything that changes
+     * what the providers return, so changing a setting can't serve stale
+     * matches.
+     *
+     * @return list<SearchResult>
+     */
+    private function candidatesFor(SearchCriteria $criteria, SearchQuery $parsed, int $maxResults): array
+    {
+        $providers = $this->providersFor($criteria);
+        $compute = function () use ($criteria, $parsed, $providers, $maxResults): array {
+            $expanded = $this->expandQuery($parsed);
+            $candidates = [];
+
+            foreach ($providers as $provider) {
+                foreach ($provider($criteria, $expanded, $maxResults) as $result) {
+                    if ($result instanceof SearchResult) {
+                        $candidates[] = $result;
+                    }
+                }
+            }
+
+            return $candidates;
+        };
+
+        if ($this->cache === null || !$this->cache->isEnabled() || $this->applyFilters('search_cache_enabled', true, $criteria) !== true) {
+            return $compute();
+        }
+
+        return $this->cache->remember(SearchResultCache::keyFor([
+            'query' => trim($criteria->query),
+            'type' => $criteria->type,
+            'category' => $criteria->category,
+            'tag' => $criteria->tag,
+            'author' => $criteria->author,
+            'from' => $criteria->dateFrom?->format('Y-m-d'),
+            'to' => $criteria->dateTo?->format('Y-m-d'),
+            'extra' => $criteria->extra,
+            'providers' => array_keys($providers),
+            'max' => $maxResults,
+            'partial' => $this->config->option(self::PARTIAL_MATCHING_OPTION, '0'),
+            'fuzzy' => $this->config->option(self::FUZZY_MATCHING_OPTION, '0'),
+            'taxonomy' => $this->taxonomyWeight(),
+            'excluded' => [$this->excludedTypes(), $this->excludedCategoryIds(), $this->excludedPageIds()],
+        ]), $compute);
+    }
+
+    public function taxonomyWeight(): int
+    {
+        $weight = (int) $this->config->option(self::TAXONOMY_WEIGHT_OPTION, (string) self::DEFAULT_TAXONOMY_WEIGHT);
+
+        return array_key_exists($weight, self::TAXONOMY_WEIGHT_LABELS) ? $weight : self::DEFAULT_TAXONOMY_WEIGHT;
+    }
+
+    /**
+     * Raises the score of posts filed under a category, or given a tag,
+     * whose name starts with a searched word. It only re-ranks posts the
+     * text search already found; a post is never matched by its tags
+     * alone (the tag or category itself shows up as its own result).
+     * Public so it can be tested without a FULLTEXT index.
+     *
+     * @param array<int, SearchResult> $results
+     * @return array<int, SearchResult>
+     */
+    public function applyTaxonomyWeight(array $results, SearchQuery $query): array
+    {
+        $weight = $this->taxonomyWeight();
+        $words = $query->positiveWords();
+
+        if ($weight === 0 || $results === [] || $words === []) {
+            return $results;
+        }
+
+        $names = [];
+
+        foreach (['post_categories' => ['categories', 'category_id'], 'post_tags' => ['tags', 'tag_id']] as $linkTable => [$nameTable, $idColumn]) {
+            $params = [];
+            $placeholders = [];
+
+            foreach (array_values($results) as $index => $result) {
+                $placeholders[] = ':post' . $index;
+                $params['post' . $index] = $result->id;
+            }
+
+            foreach ($this->database->fetchAll(
+                'SELECT l.post_id, n.name FROM ' . $this->tablePrefix . $linkTable . ' l
+                    JOIN ' . $this->tablePrefix . $nameTable . " n ON n.id = l.{$idColumn}
+                   WHERE n.trashed_at IS NULL AND l.post_id IN (" . implode(', ', $placeholders) . ')',
+                $params,
+            ) as $row) {
+                $names[(int) $row['post_id']][] = SearchQuery::normalize((string) $row['name']);
+            }
+        }
+
+        return array_map(function (SearchResult $result) use ($names, $words, $weight): SearchResult {
+            $matched = 0;
+
+            foreach ($words as $word) {
+                foreach ($names[$result->id] ?? [] as $name) {
+                    if (str_contains(' ' . $name, ' ' . $word)) {
+                        $matched++;
+
+                        break;
+                    }
+                }
+            }
+
+            return $matched > 0 ? $result->withScore($result->score + $matched * $weight) : $result;
+        }, $results);
     }
 
     /**
@@ -813,7 +939,7 @@ final class SearchService
         $where .= $this->authorAndDateClause($criteria, $filters['authorId'], $params);
         $where .= $this->categoryExclusionClause($this->excludedCategoryIds(), $params);
 
-        return $this->fulltextSearch('posts', 'post', $where, $params, $query, $limit);
+        return $this->applyTaxonomyWeight($this->fulltextSearch('posts', 'post', $where, $params, $query, $limit), $query);
     }
 
     /**

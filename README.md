@@ -40,7 +40,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
 - Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
-- Relevance-ranked search across posts, pages, categories, tags, and authors, with "exact phrase" and -word searches, filters (content type, category, tag, author, date range), sorting, results that update in place, title suggestions or live results as you type, recent and popular searches, "Did you mean?" spelling corrections, optional partial and fuzzy matching, and search statistics; content types, categories, and pages can be left out of search (Settings &rsaquo; Search)
+- Relevance-ranked search across posts, pages, categories, tags, and authors, with "exact phrase" and -word searches, filters (content type, category, tag, author, date range), sorting, results that update in place, title suggestions or live results as you type, recent and popular searches, "Did you mean?" spelling corrections, optional partial and fuzzy matching, and search statistics; content types, categories, and pages can be left out of search, posts can rank higher when their tags or categories match, repeated searches are answered from briefly saved results, and a Search Index panel checks the search indexes and rebuilds them, by hand or on a schedule (Settings &rsaquo; Search)
 
 ### Media
 - Media library with virtual folders and metadata

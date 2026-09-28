@@ -16,6 +16,8 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Services\Search\SearchIndex;
+use LumoraPress\Services\Search\SearchResultCache;
 use LumoraPress\Services\Search\SearchStatistics;
 use LumoraPress\Services\SearchService;
 
@@ -27,6 +29,50 @@ if (!isset($kernel)) {
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $searchVocabulary = $kernel->search->vocabulary();
 $searchStatistics = $kernel->search->statistics();
+$searchIndex = $kernel->search->index();
+$searchResultCache = $kernel->search->resultCache();
+
+// search-index.js runs the rebuild one step per request and asks for JSON;
+// without it the same form falls back to running every step in one request.
+$isAjaxIndexRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+$respondIndexJson = static function (array $payload, int $status = 200): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
+if ($form === 'search_index_rebuild' && $searchIndex !== null) {
+    $indexToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+    $indexStage = is_string($_POST['stage'] ?? null) ? $_POST['stage'] : SearchIndex::STAGES[0];
+
+    if (!Csrf::verify('search_index_rebuild', $indexToken)) {
+        if ($isAjaxIndexRequest) {
+            $respondIndexJson(['error' => 'Your session expired. Reload the page and try again.'], 403);
+        }
+    } elseif ($isAjaxIndexRequest) {
+        $stageResult = $searchIndex->runStage($indexStage);
+        $stagePosition = (int) array_search($indexStage, SearchIndex::STAGES, true);
+
+        $respondIndexJson([
+            'done' => $stageResult['next'] === null && $stageResult['error'] === null,
+            'error' => $stageResult['error'],
+            'next' => $stageResult['next'],
+            'label' => $stageResult['next'] !== null ? SearchIndex::STAGE_LABELS[$stageResult['next']] : '',
+            'percent' => (int) round(($stagePosition + 1) / count(SearchIndex::STAGES) * 100),
+            'csrf_token' => Csrf::token('search_index_rebuild'),
+            'redirect' => admin_url('settings/search') . '?indexed=1',
+        ]);
+    } else {
+        header('Location: ' . admin_url('settings/search') . '?' . ($searchIndex->rebuildAll() ? 'indexed=1' : 'indexfailed=1'));
+        exit;
+    }
+}
 
 if ($form === 'search_settings' && Csrf::verify('search_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('search_min_length', (string) max(1, min(50, (int) ($_POST['search_min_length'] ?? 3))));
@@ -40,9 +86,18 @@ if ($form === 'search_settings' && Csrf::verify('search_settings', is_string($_P
         SearchService::HISTORY_OPTION,
         SearchService::POPULAR_OPTION,
         SearchStatistics::ENABLED_OPTION,
+        SearchResultCache::ENABLED_OPTION,
     ] as $toggleOption) {
         $kernel->config->setOption($toggleOption, ($_POST[$toggleOption] ?? '') === '1' ? '1' : '0');
     }
+
+    $kernel->config->setOption(SearchResultCache::LIFETIME_OPTION, (string) (max(1, min(1440, (int) ($_POST['search_cache_minutes'] ?? 5))) * 60));
+
+    $taxonomyWeight = (int) ($_POST[SearchService::TAXONOMY_WEIGHT_OPTION] ?? SearchService::DEFAULT_TAXONOMY_WEIGHT);
+    $kernel->config->setOption(SearchService::TAXONOMY_WEIGHT_OPTION, (string) (array_key_exists($taxonomyWeight, SearchService::TAXONOMY_WEIGHT_LABELS) ? $taxonomyWeight : SearchService::DEFAULT_TAXONOMY_WEIGHT));
+
+    $indexSchedule = is_string($_POST[SearchIndex::SCHEDULE_OPTION] ?? null) ? $_POST[SearchIndex::SCHEDULE_OPTION] : 'off';
+    $kernel->config->setOption(SearchIndex::SCHEDULE_OPTION, array_key_exists($indexSchedule, SearchIndex::SCHEDULES) ? $indexSchedule : 'off');
 
     // Stored as exclusions rather than inclusions, so a content type a
     // plugin registers later is searchable until someone opts it out.
@@ -61,6 +116,11 @@ if ($form === 'search_settings' && Csrf::verify('search_settings', is_string($_P
 
     header('Location: ' . admin_url('settings/search') . '?rebuilt=1');
     exit;
+} elseif ($form === 'search_clear_cache' && $searchResultCache !== null && Csrf::verify('search_clear_cache', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $searchResultCache->clear();
+
+    header('Location: ' . admin_url('settings/search') . '?cachecleared=1');
+    exit;
 } elseif ($form === 'search_clear_statistics' && $searchStatistics !== null && Csrf::verify('search_clear_statistics', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $searchStatistics->clear();
 
@@ -78,6 +138,12 @@ $unansweredSearches = $searchStatistics?->withoutResults(20) ?? [];
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php elseif (isset($_GET['rebuilt'])): ?>
     <div class="lp-alert lp-alert--success">Search word list rebuilt.</div>
+<?php elseif (isset($_GET['indexed'])): ?>
+    <div class="lp-alert lp-alert--success">Search index rebuilt.</div>
+<?php elseif (isset($_GET['indexfailed'])): ?>
+    <div class="lp-alert lp-alert--error">The search index could not be rebuilt. Details were written to the server error log.</div>
+<?php elseif (isset($_GET['cachecleared'])): ?>
+    <div class="lp-alert lp-alert--success">Saved search results cleared.</div>
 <?php elseif (isset($_GET['cleared'])): ?>
     <div class="lp-alert lp-alert--success">Search statistics cleared.</div>
 <?php endif; ?>
@@ -114,6 +180,16 @@ $unansweredSearches = $searchStatistics?->withoutResults(20) ?? [];
             <span class="lp-field__hint">Both use the words in your post and page titles and your category, tag, and author names (see Search Word List below). Exact matches always rank above these.</span>
         </fieldset>
 
+        <p class="lp-field">
+            <label for="search-taxonomy-weight">Boost posts whose tags or categories match</label>
+            <select id="search-taxonomy-weight" name="<?= esc_attr(SearchService::TAXONOMY_WEIGHT_OPTION) ?>">
+                <?php foreach (SearchService::TAXONOMY_WEIGHT_LABELS as $weightValue => $weightLabel): ?>
+                    <option value="<?= (int) $weightValue ?>" <?= $kernel->search->taxonomyWeight() === $weightValue ? 'selected' : '' ?>><?= esc_html($weightLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">A post ranks higher when a tag or category on it starts with a word searched for. Title matches already count double; this only re-orders posts the search found, and never adds posts on its own.</span>
+        </p>
+
         <fieldset class="lp-field lp-field--checklist">
             <legend>Search box</legend>
 
@@ -145,6 +221,41 @@ $unansweredSearches = $searchStatistics?->withoutResults(20) ?? [];
             <span class="lp-field__hint">Recent searches appear when a visitor clicks into an empty search box. A signed-in user's are saved to their account (the last <?= (int) SearchService::RECENT_SEARCH_LIMIT ?>); everyone else's stay in their own browser and never reach the site. Popular searches appear there too and on the search page when nothing is found, but only terms searched at least <?= (int) SearchStatistics::PUBLIC_MIN_SEARCHES ?> times that found something, and only while search statistics are kept.</span>
             <span class="lp-field__hint">Statistics count what visitors search for, shown below. Only the search text and how often it was searched are kept (never who searched), searches by signed-in users aren't counted, and a search nobody has repeated for <?= (int) SearchStatistics::RETENTION_DAYS ?> days is deleted.</span>
         </fieldset>
+
+        <?php if ($searchResultCache !== null && $searchIndex !== null): ?>
+            <fieldset class="lp-field lp-field--checklist">
+                <legend>Performance</legend>
+
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="<?= esc_attr(SearchResultCache::ENABLED_OPTION) ?>" value="1" <?= $searchResultCache->isEnabled() ? 'checked' : '' ?>>
+                    Keep recent search results so repeated searches are answered without the database
+                </label>
+
+                <span class="lp-field">
+                    <label for="search-cache-minutes">Keep them for (minutes)</label>
+                    <input type="number" id="search-cache-minutes" name="search_cache_minutes" min="1" max="1440" value="<?= (int) round($searchResultCache->lifetime() / 60) ?>">
+                </span>
+
+                <span class="lp-field__hint">Saved results are cleared whenever you publish, edit, or delete a post, page, category, or tag, or change a search setting. A post scheduled to appear or disappear can take up to this long to show up in search.</span>
+
+                <span class="lp-field">
+                    <label for="search-index-schedule">Refresh the search index automatically</label>
+                    <select id="search-index-schedule" name="<?= esc_attr(SearchIndex::SCHEDULE_OPTION) ?>">
+                        <?php foreach (['off' => 'Never', 'daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $scheduleValue => $scheduleLabel): ?>
+                            <option value="<?= esc_attr($scheduleValue) ?>" <?= $searchIndex->schedule() === $scheduleValue ? 'selected' : '' ?>><?= esc_html($scheduleLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </span>
+
+                <span class="lp-field__hint">
+                    <?php if (SearchIndex::backgroundRunSupported()): ?>
+                        Runs the same steps as Rebuild Search Index below, in the background right after a visitor's page has been sent, so nobody waits for it.
+                    <?php else: ?>
+                        This server cannot run work after a page has been sent (it needs PHP-FPM or LiteSpeed), so the index is never refreshed on its own here. Use Rebuild Search Index below instead.
+                    <?php endif; ?>
+                </span>
+            </fieldset>
+        <?php endif; ?>
 
         <?php $excludedSearchTypes = $kernel->search->excludedTypes(); ?>
         <fieldset class="lp-field lp-field--checklist">
@@ -194,6 +305,102 @@ $unansweredSearches = $searchStatistics?->withoutResults(20) ?? [];
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
+
+<?php if ($searchIndex !== null): ?>
+    <?php
+    $indexReport = $searchIndex->diagnostics();
+    $indexLastRun = $searchIndex->lastRun();
+    $cacheStats = $searchResultCache?->stats() ?? ['entries' => 0, 'bytes' => 0];
+    ?>
+    <section class="lp-admin__panel">
+        <h2>Search Index</h2>
+        <p>Searching posts and pages uses indexes your database keeps up to date every time you save. Rebuilding recreates any that are missing and compacts the ones that deleted content leaves bloated. It also refreshes the search word list, and can take a while on a large site.</p>
+
+        <?php if ($indexReport['problems'] === []): ?>
+            <div class="lp-alert lp-alert--success">The search index is healthy.</div>
+        <?php else: ?>
+            <div class="lp-alert lp-alert--error">
+                <p>The search index needs attention:</p>
+                <ul>
+                    <?php foreach ($indexReport['problems'] as $indexProblem): ?>
+                        <li><?= esc_html($indexProblem) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($indexReport['tables'] !== []): ?>
+            <table class="lp-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Content</th>
+                        <th scope="col">Rows</th>
+                        <th scope="col">Table type</th>
+                        <th scope="col">Search index</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($indexReport['tables'] as $indexTable): ?>
+                        <?php $indexesWorking = array_reduce($indexTable['indexes'], static fn (bool $carry, array $state): bool => $carry && $state['working'], true); ?>
+                        <tr>
+                            <th scope="row"><?= esc_html($indexTable['label']) ?></th>
+                            <td><?= esc_html(number_format($indexTable['rows'])) ?></td>
+                            <td><?= esc_html($indexTable['engine'] !== '' ? $indexTable['engine'] : 'Unknown') ?></td>
+                            <td><?= $indexesWorking ? 'Working' : 'Needs attention' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <ul>
+            <?php if ($indexReport['minTokenSize'] !== null): ?>
+                <li>Words shorter than <?= (int) $indexReport['minTokenSize'] ?> characters aren't indexed by your database, so a search for one only matches longer words that start with it. This is a database setting; your host controls it.</li>
+            <?php endif; ?>
+            <?php if ($indexReport['stopwords'] === true): ?>
+                <li>Very common English words ("the", "and") are ignored by the database and never affect results.</li>
+            <?php endif; ?>
+            <li>
+                <?php if ($indexLastRun === null): ?>
+                    The index has not been rebuilt from this screen yet.
+                <?php elseif ($indexLastRun['ok']): ?>
+                    Last rebuilt <?= esc_html(the_date($indexLastRun['at'])) ?>, with <?= esc_html(number_format($indexLastRun['words'])) ?> words in the word list.
+                <?php else: ?>
+                    The last rebuild, on <?= esc_html(the_date($indexLastRun['at'])) ?>, did not finish.
+                <?php endif; ?>
+            </li>
+            <li>
+                <?php if ($searchResultCache === null || !$searchResultCache->isEnabled()): ?>
+                    Saved search results are turned off.
+                <?php elseif (!$searchResultCache->isWritable()): ?>
+                    Saved search results are on, but the storage folder is not writable, so every search runs live.
+                <?php else: ?>
+                    <?= esc_html(number_format($cacheStats['entries'])) ?> saved <?= $cacheStats['entries'] === 1 ? 'search' : 'searches' ?> (<?= esc_html(number_format($cacheStats['bytes'] / 1024, 1)) ?> KB).
+                <?php endif; ?>
+            </li>
+        </ul>
+
+        <form method="post" action="<?= esc_url(admin_url('settings/search')) ?>" id="search-index-rebuild">
+            <?= Csrf::field('search_index_rebuild') ?>
+            <input type="hidden" name="form" value="search_index_rebuild">
+            <input type="hidden" name="stage" value="<?= esc_attr(SearchIndex::STAGES[0]) ?>">
+            <button type="submit" class="lp-button lp-button--secondary">Rebuild Search Index</button>
+        </form>
+
+        <div class="lp-thumbnails__progress" data-lp-search-index-progress-wrap role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" hidden>
+            <div class="lp-thumbnails__progress-bar" data-lp-search-index-progress-bar></div>
+        </div>
+        <p data-lp-search-index-status role="status" aria-live="polite"></p>
+
+        <?php if ($searchResultCache !== null && $cacheStats['entries'] > 0): ?>
+            <form method="post" action="<?= esc_url(admin_url('settings/search')) ?>">
+                <?= Csrf::field('search_clear_cache') ?>
+                <input type="hidden" name="form" value="search_clear_cache">
+                <button type="submit" class="lp-button lp-button--secondary">Clear Saved Search Results</button>
+            </form>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
 
 <?php if ($searchVocabulary !== null): ?>
     <section class="lp-admin__panel">
