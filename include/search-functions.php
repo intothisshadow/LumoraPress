@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Search theme API: search_result_type_label(), search_filters_form(), and search_empty_state().
+ * Search theme API: search_result_type_label(), search_filters_form(), search_did_you_mean(), and search_empty_state().
  *
  * @package LumoraPress
  * @subpackage Core
@@ -20,7 +20,7 @@ use LumoraPress\Models\SearchResult;
 use LumoraPress\Services\SearchService;
 
 /**
- * Both renderers take the `$search` bundle SiteController::search() passes
+ * The renderers take the `$search` bundle SiteController::search() passes
  * to search.php, so a filter added in core reaches every theme without the
  * theme naming it.
  */
@@ -139,6 +139,29 @@ if (!function_exists('search_filters_form')) {
         }
 
         echo '</div></form></details>';
+    }
+}
+
+if (!function_exists('search_did_you_mean')) {
+    /**
+     * "Did you mean …?" with a link to the corrected search, keeping the
+     * visitor's filters. Echoes nothing when there's no better spelling.
+     *
+     * @param array<string, mixed> $search
+     */
+    function search_did_you_mean(array $search): void
+    {
+        $suggestion = $search['didYouMean'] ?? null;
+        $criteria = $search['criteria'] ?? null;
+
+        if (!is_string($suggestion) || $suggestion === '' || !$criteria instanceof SearchCriteria) {
+            return;
+        }
+
+        $url = site_url('search') . '?' . http_build_query($criteria->withQuery($suggestion)->toQueryParams());
+
+        echo '<p class="lp-search-did-you-mean">Did you mean <a class="lp-search-did-you-mean__link" href="' . esc_url($url) . '">'
+            . esc_html($suggestion) . '</a>?</p>';
     }
 }
 

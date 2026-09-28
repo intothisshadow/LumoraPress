@@ -25,6 +25,7 @@ $search ??= [];
         <h1 class="lp-page-title">Search Results<?= $query !== '' ? ' for “' . esc_html($query) . '”' : '' ?></h1>
 
         <?php search_filters_form($search); ?>
+        <?php search_did_you_mean($search); ?>
 
         <?php if ($results === []): ?>
             <?php search_empty_state($search); ?>

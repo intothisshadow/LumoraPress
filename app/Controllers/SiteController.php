@@ -1045,6 +1045,16 @@ final class SiteController
             is_array($extraParams) ? array_values(array_filter($extraParams, 'is_string')) : [],
         );
         $results = $this->search->search($criteria);
+        $didYouMean = $results['criteria']->page === 1 && $results['total'] < SearchService::DID_YOU_MEAN_BELOW
+            ? $this->search->didYouMean($results['criteria'], $results['total'])
+            : null;
+
+        // Signed-in users are mostly the site's own authors testing search,
+        // so only visitors' searches are counted. Later pages repeat a search
+        // rather than being a new one.
+        if ($results['query'] !== '' && $results['criteria']->page === 1 && !$this->auth->check()) {
+            $this->search->statistics()?->record($results['query'], $results['total']);
+        }
 
         $this->markCacheableForGuests(['search']);
         $this->theme->render('search.php', [
@@ -1056,8 +1066,26 @@ final class SiteController
                 ...$results,
                 'filterOptions' => $this->search->filterOptions(),
                 'suggestions' => $results['results'] === [] ? $this->search->emptyStateSuggestions() : ['posts' => [], 'categories' => []],
+                'didYouMean' => $didYouMean,
             ],
         ]);
+    }
+
+    /**
+     * Title suggestions for the search box, as JSON — see
+     * assets/js/search-suggest.js. Never includes other visitors' searches.
+     *
+     * @param array<string, string> $params
+     */
+    public function searchSuggestions(array $params): void
+    {
+        $text = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 200) : '';
+        $suggestions = $this->search->suggestionsEnabled() ? $this->search->suggestTitles($text) : [];
+
+        $this->markCacheableForGuests(['search']);
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        echo json_encode(['suggestions' => $suggestions], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
     }
 
     /**

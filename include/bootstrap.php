@@ -67,6 +67,7 @@ use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Core\Theme\FooterAssets;
+use LumoraPress\Core\Theme\SearchAssets;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptions;
@@ -76,6 +77,10 @@ use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\CoreWidgets;
 use LumoraPress\Core\Widgets\WidgetManager;
 use LumoraPress\Core\Widgets\Widgets;
+use LumoraPress\Models\Category;
+use LumoraPress\Models\Page;
+use LumoraPress\Models\Post;
+use LumoraPress\Models\Tag;
 use LumoraPress\Services\AkismetClient;
 use LumoraPress\Services\BlueskyResolverService;
 use LumoraPress\Services\CategoryService;
@@ -115,6 +120,8 @@ use LumoraPress\Services\PluginVersionManifest;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
 use LumoraPress\Services\RevisionService;
+use LumoraPress\Services\Search\SearchStatistics;
+use LumoraPress\Services\Search\SearchVocabulary;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\SettingsPortabilityService;
 use LumoraPress\Services\TagService;
@@ -483,7 +490,33 @@ foreach ($navMenuLocationsConfig as $locationSlug => $menuId) {
     }
 }
 
-$search = new SearchService($database, $tablePrefix, $config, $content, $users, $hooks);
+$searchVocabulary = new SearchVocabulary($database, $tablePrefix, $config);
+$search = new SearchService(
+    $database,
+    $tablePrefix,
+    $config,
+    $content,
+    $users,
+    $hooks,
+    $searchVocabulary,
+    new SearchStatistics($database, $tablePrefix, $config),
+);
+
+// Keep the search word list current as public titles and names change;
+// words that stop being used are only dropped by a rebuild.
+add_action('post_saved', static function (Post $post) use ($searchVocabulary): void {
+    if ($post->isPubliclyVisible()) {
+        $searchVocabulary->addText($post->title);
+    }
+});
+add_action('page_saved', static function (Page $page) use ($searchVocabulary): void {
+    if ($page->isPubliclyVisible()) {
+        $searchVocabulary->addText($page->title);
+    }
+});
+add_action('category_saved', static fn (Category $category) => $searchVocabulary->addText($category->name));
+add_action('tag_saved', static fn (Tag $tag) => $searchVocabulary->addText($tag->name));
+add_action('footer_assets', [new SearchAssets($search), 'render']);
 $akismet = new AkismetClient($config, home_url());
 $commentModeration = new CommentModerationService($config, $comments);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
@@ -882,6 +915,7 @@ $router->get($permalinks->tagRoutePattern(), fn (array $params) => $site->tag($p
 $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));
+$router->get('/search/suggestions', fn (array $params) => $site->searchSuggestions($params));
 /*
  * "/page/{slug}" is now a legacy URL, permanently redirected to the
  * page's real hierarchical URL — see the route table's closing block

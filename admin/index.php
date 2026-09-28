@@ -458,6 +458,7 @@ $menu = [
             'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options'],
             'permalinks' => ['label' => 'Permalinks', 'icon' => '🔗', 'capability' => 'manage_options'],
             'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options'],
+            'search' => ['label' => 'Search', 'icon' => '🔍', 'capability' => 'manage_options'],
             'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options'],
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
             ...($emojiPickerActive ? ['writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options']] : []),

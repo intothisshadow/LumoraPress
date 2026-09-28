@@ -24,7 +24,10 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\SearchCriteria;
 use LumoraPress\Models\SearchResult;
+use LumoraPress\Services\Search\PublicContent;
 use LumoraPress\Services\Search\SearchQuery;
+use LumoraPress\Services\Search\SearchStatistics;
+use LumoraPress\Services\Search\SearchVocabulary;
 
 /**
  * Posts and Pages are matched with real MySQL/MariaDB FULLTEXT indexes:
@@ -53,6 +56,24 @@ final class SearchService
     private const TITLE_WEIGHT = 2;
 
     private const SUGGESTION_COUNT = 5;
+
+    public const PARTIAL_MATCHING_OPTION = 'search_partial_matching';
+
+    public const FUZZY_MATCHING_OPTION = 'search_fuzzy_matching';
+
+    public const SUGGESTIONS_OPTION = 'search_suggestions_enabled';
+
+    /** Bounds how much a long query can be widened by fuzzy/partial matching. */
+    private const MAX_EXPANDED_TERMS = 8;
+
+    private const PARTIAL_ALTERNATIVES_PER_TERM = 8;
+
+    private const FUZZY_ALTERNATIVES_PER_TERM = 4;
+
+    /** "Did you mean?" is only worked out when a search finds fewer than this. */
+    public const DID_YOU_MEAN_BELOW = 5;
+
+    private const TITLE_SUGGESTION_COUNT = 8;
 
     /** @var array<string, string> Core content types and their display labels. */
     public const TYPE_LABELS = [
@@ -85,7 +106,29 @@ final class SearchService
         private readonly ContentRenderer $content,
         private readonly UserService $users,
         private readonly ?HookManager $hooks = null,
+        private readonly ?SearchVocabulary $vocabulary = null,
+        private readonly ?SearchStatistics $statistics = null,
     ) {
+    }
+
+    public function vocabulary(): ?SearchVocabulary
+    {
+        return $this->vocabulary;
+    }
+
+    public function statistics(): ?SearchStatistics
+    {
+        return $this->statistics;
+    }
+
+    public function minimumQueryLength(): int
+    {
+        return max(1, (int) $this->config->option('search_min_length', (string) self::DEFAULT_MIN_LENGTH));
+    }
+
+    public function suggestionsEnabled(): bool
+    {
+        return $this->config->option(self::SUGGESTIONS_OPTION, '1') !== '0';
     }
 
     /**
@@ -104,7 +147,7 @@ final class SearchService
 
         $query = trim($criteria->query);
         $parsed = SearchQuery::parse($query);
-        $minLength = max(1, (int) $this->config->option('search_min_length', (string) self::DEFAULT_MIN_LENGTH));
+        $minLength = $this->minimumQueryLength();
         $filters = mb_strlen($query) >= $minLength && $parsed->hasPositiveTerms() ? $this->filtersFor($criteria) : null;
 
         if ($filters === null) {
@@ -119,6 +162,7 @@ final class SearchService
             ];
         }
 
+        $parsed = $this->expandQuery($parsed);
         $maxResults = max(1, (int) $this->config->option('search_max_results', (string) self::DEFAULT_MAX_RESULTS));
         $candidates = [];
 
@@ -149,6 +193,100 @@ final class SearchService
         $paginated['criteria'] = $criteria;
 
         return $paginated;
+    }
+
+    /**
+     * A corrected version of the search text when some of its words aren't
+     * on the site's word list and swapping them for the closest ones that
+     * are finds more results, else null. The correction is searched for
+     * real before being offered, so it can never point at nothing, or at
+     * a word that only appears in content visitors can't see.
+     */
+    public function didYouMean(SearchCriteria $criteria, int $currentTotal): ?string
+    {
+        if ($this->vocabulary === null) {
+            return null;
+        }
+
+        $parsed = SearchQuery::parse($criteria->query);
+
+        if (!$parsed->hasPositiveTerms()) {
+            return null;
+        }
+
+        $this->vocabulary->ensureBuilt();
+        $replacements = [];
+
+        foreach ($parsed->positiveWords() as $word) {
+            if (SearchVocabulary::uniqueWords($word) === [] || $this->vocabulary->contains($word)) {
+                continue;
+            }
+
+            $closest = $this->vocabulary->closestWord($word);
+
+            if ($closest !== null) {
+                $replacements[$word] = $closest;
+            }
+        }
+
+        if ($replacements === []) {
+            return null;
+        }
+
+        $corrected = $parsed->toQueryString($replacements);
+
+        return $this->search($criteria->withQuery($corrected))['total'] > $currentTotal ? $corrected : null;
+    }
+
+    /**
+     * Titles of public posts and pages containing every word typed so far
+     * (the last one possibly half-typed), best match first — for the
+     * search box's suggestion list. MySQL-only, like searchPosts().
+     *
+     * @return list<string>
+     */
+    public function suggestTitles(string $text): array
+    {
+        $parsed = SearchQuery::parse($text);
+        $minLength = $this->minimumQueryLength();
+
+        if (!$parsed->hasPositiveTerms() || mb_strlen(trim($text)) < $minLength) {
+            return [];
+        }
+
+        $expression = implode(' ', array_map(static fn (string $word): string => '+' . $word . '*', $parsed->positiveWords()));
+        $types = $this->searchableTypeLabels();
+        $limit = self::TITLE_SUGGESTION_COUNT;
+        $rows = [];
+
+        foreach (['post' => 'posts', 'page' => 'pages'] as $type => $tableSuffix) {
+            if (!isset($types[$type])) {
+                continue;
+            }
+
+            $params = $type === 'post' ? $this->nowParams() : ['now' => $this->now()];
+            $where = $type === 'post'
+                ? PublicContent::postWhere() . $this->categoryExclusionClause($this->excludedCategoryIds(), $params)
+                : PublicContent::pageWhere() . $this->idListClause('p.id', 'NOT IN', $this->excludedPageIds(), 'excluded_page', $params);
+
+            array_push($rows, ...$this->database->fetchAll(
+                'SELECT p.title, MATCH(p.title) AGAINST(:expression1 IN BOOLEAN MODE) AS score FROM ' . $this->tablePrefix . $tableSuffix . " p
+                  WHERE {$where} AND MATCH(p.title) AGAINST(:expression2 IN BOOLEAN MODE)
+                  ORDER BY score DESC, p.published_at DESC
+                  LIMIT {$limit}",
+                $params + ['expression1' => $expression, 'expression2' => $expression],
+            ));
+        }
+
+        usort($rows, static fn (array $a, array $b): int => (float) $b['score'] <=> (float) $a['score']);
+        $titles = [];
+
+        foreach ($rows as $row) {
+            $title = trim((string) $row['title']);
+            $titles[mb_strtolower($title)] ??= $title;
+        }
+
+        return array_slice(array_values($titles), 0, $limit);
     }
 
     /**
@@ -288,7 +426,7 @@ final class SearchService
     {
         $types = $this->searchableTypeLabels();
         $postsSearchable = isset($types['post']);
-        $publicPost = "p.status = 'published' AND p.visibility = 'public'";
+        $publicPost = PublicContent::postWhere();
         $categories = [];
         $tags = [];
         $authors = [];
@@ -304,6 +442,7 @@ final class SearchService
                          WHERE pc.category_id = c.id AND {$publicPost}
                     )
                  ORDER BY c.name ASC",
+                $this->nowParams(),
             ) as $row) {
                 if (!in_array((int) $row['id'], $excludedCategories, true)) {
                     $categories[(string) $row['slug']] = (string) $row['name'];
@@ -318,6 +457,7 @@ final class SearchService
                          WHERE pt.tag_id = t.id AND {$publicPost}
                     )
                  ORDER BY t.name ASC",
+                $this->nowParams(),
             ) as $row) {
                 $tags[(string) $row['slug']] = (string) $row['name'];
             }
@@ -352,7 +492,7 @@ final class SearchService
         $excludedCategories = $this->excludedCategoryIds();
 
         if (isset($types['post'])) {
-            $params = ['now' => $this->now(), 'now_unpublish' => $this->now()];
+            $params = $this->nowParams();
             $exclusion = $this->categoryExclusionClause($excludedCategories, $params);
 
             foreach ($this->database->fetchAll(
@@ -379,10 +519,11 @@ final class SearchService
             foreach ($this->database->fetchAll(
                 'SELECT c.id, c.name, c.slug, COUNT(pc.post_id) AS post_count FROM ' . $this->tablePrefix . 'categories c
                     JOIN ' . $this->tablePrefix . 'post_categories pc ON pc.category_id = c.id
-                    JOIN ' . $this->tablePrefix . "posts p ON p.id = pc.post_id AND p.status = 'published' AND p.visibility = 'public'
+                    JOIN ' . $this->tablePrefix . 'posts p ON p.id = pc.post_id AND ' . PublicContent::postWhere() . '
                    WHERE c.trashed_at IS NULL
                 GROUP BY c.id, c.name, c.slug
-                ORDER BY post_count DESC, c.name ASC",
+                ORDER BY post_count DESC, c.name ASC',
+                $this->nowParams(),
             ) as $row) {
                 if (in_array((int) $row['id'], $excludedCategories, true)) {
                     continue;
@@ -434,7 +575,7 @@ final class SearchService
     public function searchAuthors(SearchQuery|string $query, int $limit): array
     {
         $query = $query instanceof SearchQuery ? $query : SearchQuery::parse($query);
-        $params = [];
+        $params = $this->nowParams();
         $likes = $this->likeConditions($query, ['display_name'], $params);
 
         if ($likes === null) {
@@ -445,8 +586,8 @@ final class SearchService
             'SELECT u.id FROM ' . $this->tablePrefix . 'users u
                 WHERE u.trashed_at IS NULL AND ' . $likes . '
                   AND EXISTS (
-                      SELECT 1 FROM ' . $this->tablePrefix . "posts p
-                       WHERE p.author_id = u.id AND p.status = 'published' AND p.visibility = 'public'
+                      SELECT 1 FROM ' . $this->tablePrefix . 'posts p
+                       WHERE p.author_id = u.id AND ' . PublicContent::postWhere() . "
                   )
              ORDER BY u.id ASC
              LIMIT {$limit}",
@@ -475,6 +616,33 @@ final class SearchService
         }
 
         return $results;
+    }
+
+    /**
+     * Widens each typed word with words on the site's word list that
+     * contain it (partial matching) or are a letter or two away from it
+     * (fuzzy matching), whichever the administrator switched on.
+     */
+    private function expandQuery(SearchQuery $query): SearchQuery
+    {
+        $partial = $this->config->option(self::PARTIAL_MATCHING_OPTION, '0') === '1';
+        $fuzzy = $this->config->option(self::FUZZY_MATCHING_OPTION, '0') === '1';
+
+        if ($this->vocabulary === null || (!$partial && !$fuzzy) || $query->terms === []) {
+            return $query;
+        }
+
+        $this->vocabulary->ensureBuilt();
+        $alternatives = [];
+
+        foreach (array_slice($query->terms, 0, self::MAX_EXPANDED_TERMS) as $term) {
+            $alternatives[$term] = [
+                ...($partial ? $this->vocabulary->wordsContaining($term, self::PARTIAL_ALTERNATIVES_PER_TERM) : []),
+                ...($fuzzy ? $this->vocabulary->similarWords($term, self::FUZZY_ALTERNATIVES_PER_TERM) : []),
+            ];
+        }
+
+        return $query->withAlternatives($alternatives);
     }
 
     /**
@@ -577,7 +745,7 @@ final class SearchService
             return [];
         }
 
-        $params = ['now' => $this->now(), 'now_unpublish' => $this->now()];
+        $params = $this->nowParams();
         $where = $this->publicPostWhere();
 
         if ($filters['categoryId'] !== null) {
@@ -608,7 +776,7 @@ final class SearchService
         }
 
         $params = ['now' => $this->now()];
-        $where = "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now)) AND p.visibility = 'public'";
+        $where = PublicContent::pageWhere();
         $where .= $this->authorAndDateClause($criteria, $filters['authorId'], $params);
         $where .= $this->idListClause('p.id', 'NOT IN', $this->excludedPageIds(), 'excluded_page', $params);
 
@@ -668,15 +836,9 @@ final class SearchService
         );
     }
 
-    /**
-     * Mirrors PostService's guest-visibility rule: published or due,
-     * public, and not past unpublish_at. Binds :now and :now_unpublish.
-     */
     private function publicPostWhere(): string
     {
-        return "(p.status = 'published' OR (p.status = 'scheduled' AND p.published_at <= :now))"
-            . " AND p.visibility = 'public'"
-            . ' AND (p.unpublish_at IS NULL OR p.unpublish_at > :now_unpublish)';
+        return PublicContent::postWhere();
     }
 
     /**
@@ -831,9 +993,18 @@ final class SearchService
     {
         return array_map('intval', array_column($this->database->fetchAll(
             'SELECT DISTINCT p.author_id FROM ' . $this->tablePrefix . 'posts p
-                JOIN ' . $this->tablePrefix . "users u ON u.id = p.author_id AND u.trashed_at IS NULL
-                WHERE p.status = 'published' AND p.visibility = 'public'",
+                JOIN ' . $this->tablePrefix . 'users u ON u.id = p.author_id AND u.trashed_at IS NULL
+                WHERE ' . PublicContent::postWhere(),
+            $this->nowParams(),
         ), 'author_id'));
+    }
+
+    /**
+     * @return array{now: string, now_unpublish: string}
+     */
+    private function nowParams(): array
+    {
+        return ['now' => $this->now(), 'now_unpublish' => $this->now()];
     }
 
     private function now(): string

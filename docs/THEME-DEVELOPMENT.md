@@ -144,8 +144,8 @@ local variables:
 - `search.php` receives `$results` (an array of `SearchResult` objects),
   iterated the same way, plus `$search`: the whole search as one bundle
   (query, criteria, pagination, filter choices, and empty-state suggestions).
-  Don't pick it apart — hand it straight to `search_filters_form($search)`
-  and `search_empty_state($search)`, so a filter added in a later version
+  Don't pick it apart — hand it straight to `search_filters_form($search)`,
+  `search_did_you_mean($search)`, and `search_empty_state($search)`, so a filter added in a later version
   reaches your theme without a template change.
 - `comments.php` receives `$comment_tree` (a nested array), rendered via
   the `comment_list()` template tag rather than hand-written iteration.
@@ -175,6 +175,7 @@ return.
 | `make_excerpt(string $content, int $wordCount = 55): string` | Strips tags and truncates plain/HTML content to `$wordCount` words, appending `…`. |
 | `highlight_terms(string $escapedText, string $query): string` | Wraps matches of each query word (≥2 chars) and each `"quoted phrase"` in `<mark class="lp-search-highlight">`; `-excluded` words are never marked. Operates on **already-escaped** text — see `search.php`. |
 | `search_filters_form(array $search): void` | Echoes the "Refine search" panel for `search.php`: a `<details class="lp-search-filters">` holding the query, content type, category, tag, author, date range, and sort fields, open while any is in use, with a "Clear filters" link. Only offers choices that can match (e.g. no Author select on a single-author site). Classes: `.lp-search-filters__toggle`, `__form`, `__grid`, `__field` (`--query`, `--date`), `__label`, `__input`, `__select`, `__hint`, `__actions`, `__button`, `__reset`. Plugins can add fields inside it. |
+| `search_did_you_mean(array $search): void` | Echoes `<p class="lp-search-did-you-mean">Did you mean <a class="lp-search-did-you-mean__link">…</a>?</p>` when the search found little and a better spelling finds more (keeping the visitor's filters); nothing otherwise. Call it right after `search_filters_form()`, outside the results/empty-state branch. |
 | `search_empty_state(array $search): void` | Echoes what to show when `$results` is empty: `.lp-empty-state` ("No results found."), a `.lp-search-empty__tips` list (with a "Search again without filters" link when filters were used), then "Recent posts" and "Popular categories" `.lp-search-empty__section` lists. |
 | `search_result_type_label(SearchResult $result): string` | "Post", "Page", "Category", "Tag", "Author", or a plugin's own label for a content type it made searchable. Use it instead of a hard-coded `match` on `$result->type`. |
 | `render_pagination(array $pagination, string $label = 'Posts pagination'): void` | Echoes a pagination `<nav>` for `array{page, totalPages}`: First/Prev/Next/Last controls plus numbered pages truncated with `…` ellipses around the current page and the range's edges; no-op if there's only one page. Styling classes: `.lp-pagination__item--nav` (First/Prev/Next/Last, `.is-disabled` at either end of the range) and `.lp-pagination__item--ellipsis`. |
@@ -262,8 +263,9 @@ theme-convention hooks other code (and plugins) expect: `do_action('head_assets'
 right before `</head>` and `do_action('footer_assets')` right before
 `</body>`. Core itself listens on `footer_assets` (to emit lightbox/embed
 script tags when a template used `the_post_thumbnail_lightbox()` or an
-auto-embedded URL), so skipping these hooks will silently break those
-features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook
+auto-embedded URL, and the search box suggestion script, which attaches
+to any `<form role="search">` with an `<input name="q">`), so skipping
+these hooks will silently break those features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook
 reference.
 
 ### Site info & meta

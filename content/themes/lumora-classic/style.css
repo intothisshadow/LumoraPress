@@ -1055,6 +1055,17 @@ a.lp-post-list__comments:focus {
     color: var(--lp-accent);
 }
 
+.lp-search-did-you-mean {
+    font-size: 1.05rem;
+    margin: 0 0 1.5rem;
+}
+
+.lp-search-did-you-mean__link {
+    color: var(--lp-accent);
+    font-style: italic;
+    font-weight: 600;
+}
+
 /* Native date pickers draw their own icon; match it to the dark palette. */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) .lp-search-filters__input,

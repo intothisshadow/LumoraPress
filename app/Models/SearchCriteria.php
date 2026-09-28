@@ -91,6 +91,14 @@ final class SearchCriteria
     }
 
     /**
+     * The same filters and sort with different search text, back on page 1.
+     */
+    public function withQuery(string $query): self
+    {
+        return new self($query, 1, $this->type, $this->category, $this->tag, $this->author, $this->dateFrom, $this->dateTo, $this->sort, $this->extra);
+    }
+
+    /**
      * True when a filter narrows results to dated, authored content —
      * categories, tags, and authors themselves can't match one.
      */

@@ -35,11 +35,13 @@ final class SearchQuery
      * @param list<string> $phrases Multi-word phrases, words joined by one space.
      * @param list<string> $terms
      * @param list<string> $excluded
+     * @param array<string, list<string>> $alternatives Extra words a term may match instead (fuzzy/partial matching).
      */
     private function __construct(
         public readonly array $phrases,
         public readonly array $terms,
         public readonly array $excluded,
+        public readonly array $alternatives = [],
     ) {
     }
 
@@ -92,6 +94,70 @@ final class SearchQuery
         );
     }
 
+    /**
+     * A copy where each term in $alternatives may also match those words.
+     * Alternatives only widen what matches; ranking still uses the words
+     * the visitor typed, so an exact match outranks a stand-in.
+     *
+     * @param array<string, list<string>> $alternatives term => words
+     */
+    public function withAlternatives(array $alternatives): self
+    {
+        $kept = [];
+
+        foreach ($this->terms as $term) {
+            $words = array_values(array_diff(array_unique($alternatives[$term] ?? []), [$term], $this->excluded));
+
+            if ($words !== []) {
+                $kept[$term] = $words;
+            }
+        }
+
+        return new self($this->phrases, $this->terms, $this->excluded, $kept);
+    }
+
+    /**
+     * The query written back out as search text, with any word in
+     * $replacements swapped — how "Did you mean?" builds its suggestion.
+     *
+     * @param array<string, string> $replacements word => replacement
+     */
+    public function toQueryString(array $replacements = []): string
+    {
+        $swap = static fn (string $word): string => $replacements[$word] ?? $word;
+        $parts = [];
+
+        foreach ($this->phrases as $phrase) {
+            $parts[] = '"' . implode(' ', array_map($swap, explode(' ', $phrase))) . '"';
+        }
+
+        foreach ($this->terms as $term) {
+            $parts[] = $swap($term);
+        }
+
+        foreach ($this->excluded as $term) {
+            $parts[] = '-' . $term;
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Every word in the phrases and terms, once each.
+     *
+     * @return list<string>
+     */
+    public function positiveWords(): array
+    {
+        $words = [];
+
+        foreach ([...$this->phrases, ...$this->terms] as $part) {
+            array_push($words, ...explode(' ', $part));
+        }
+
+        return array_values(array_unique($words));
+    }
+
     public function hasPositiveTerms(): bool
     {
         return $this->phrases !== [] || $this->terms !== [];
@@ -111,6 +177,10 @@ final class SearchQuery
 
         foreach ($this->terms as $term) {
             $parts[] = $term . '*';
+
+            foreach ($this->alternatives[$term] ?? [] as $alternative) {
+                $parts[] = $alternative;
+            }
         }
 
         foreach ($this->excluded as $term) {
