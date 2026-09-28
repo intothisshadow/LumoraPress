@@ -168,7 +168,8 @@ if (!function_exists('search_did_you_mean')) {
 if (!function_exists('search_empty_state')) {
     /**
      * What search.php shows instead of results: why nothing matched (too
-     * short, or too narrow) plus the newest posts and busiest categories.
+     * short, or too narrow), popular searches when those are switched on,
+     * and the newest posts and busiest categories.
      *
      * @param array<string, mixed> $search
      */
@@ -213,6 +214,23 @@ if (!function_exists('search_empty_state')) {
 
             echo '</ul></section>';
         };
+
+        $popularSearches = array_filter(
+            is_array($search['popularSearches'] ?? null) ? $search['popularSearches'] : [],
+            static fn (mixed $term): bool => is_string($term) && $term !== '',
+        );
+
+        if ($popularSearches !== []) {
+            echo '<section class="lp-search-empty__section">';
+            echo '<h2 class="lp-search-empty__heading">Popular searches</h2>';
+            echo '<ul class="lp-search-empty__list lp-search-empty__list--searches">';
+
+            foreach ($popularSearches as $term) {
+                echo '<li class="lp-search-empty__item"><a href="' . esc_url(site_url('search') . '?' . http_build_query(['q' => $term])) . '">' . esc_html($term) . '</a></li>';
+            }
+
+            echo '</ul></section>';
+        }
 
         $renderList('Recent posts', $posts);
         $renderList('Popular categories', $categories);

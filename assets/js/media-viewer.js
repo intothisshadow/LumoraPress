@@ -39,8 +39,25 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-        var galleries = document.querySelectorAll('.lp-gallery');
+    // Binds every not-yet-bound gallery under root. Also run for content a
+    // script swaps in later (search results updated in place), announced
+    // with an `lp:content-updated` event dispatched on the new content.
+    function bindGalleries(root, deepLinkHash) {
+        var candidates = Array.prototype.slice.call(root.querySelectorAll('.lp-gallery'));
+
+        if (root.matches && root.matches('.lp-gallery')) {
+            candidates.unshift(root);
+        }
+
+        var galleries = candidates.filter(function (gallery) {
+            if (gallery.dataset.lpLightboxBound === '1') {
+                return false;
+            }
+
+            gallery.dataset.lpLightboxBound = '1';
+
+            return true;
+        });
 
         if (!galleries.length) {
             return;
@@ -48,7 +65,6 @@
 
         var configScript = document.querySelector('script[data-lp-media-viewer]');
         var showFilenames = !!(configScript && configScript.dataset.showFilenames === '1');
-        var deepLinkHash = window.location.hash;
 
         import(LIGHTBOX_URL).then(function (module) {
             var PhotoSwipeLightbox = module.default;
@@ -289,5 +305,13 @@
                 }
             });
         });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        bindGalleries(document, window.location.hash);
+    });
+
+    document.addEventListener('lp:content-updated', function (event) {
+        bindGalleries(event.target instanceof Element ? event.target : document, '');
     });
 })();

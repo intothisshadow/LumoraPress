@@ -36,6 +36,9 @@ if ($form === 'search_settings' && Csrf::verify('search_settings', is_string($_P
         SearchService::PARTIAL_MATCHING_OPTION,
         SearchService::FUZZY_MATCHING_OPTION,
         SearchService::SUGGESTIONS_OPTION,
+        SearchService::LIVE_OPTION,
+        SearchService::HISTORY_OPTION,
+        SearchService::POPULAR_OPTION,
         SearchStatistics::ENABLED_OPTION,
     ] as $toggleOption) {
         $kernel->config->setOption($toggleOption, ($_POST[$toggleOption] ?? '') === '1' ? '1' : '0');
@@ -120,10 +123,26 @@ $unansweredSearches = $searchStatistics?->withoutResults(20) ?? [];
             </label>
 
             <label class="lp-field--checkbox">
+                <input type="checkbox" name="<?= esc_attr(SearchService::LIVE_OPTION) ?>" value="1" <?= $kernel->search->liveSearchEnabled() ? 'checked' : '' ?>>
+                Show live results while visitors type (replaces the title suggestions above in the header and widget search boxes)
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="<?= esc_attr(SearchService::HISTORY_OPTION) ?>" value="1" <?= $kernel->search->historyEnabled() ? 'checked' : '' ?>>
+                Show visitors their own recent searches
+            </label>
+
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="<?= esc_attr(SearchService::POPULAR_OPTION) ?>" value="1" <?= $kernel->config->option(SearchService::POPULAR_OPTION, '0') === '1' ? 'checked' : '' ?>>
+                Show popular searches
+            </label>
+
+            <label class="lp-field--checkbox">
                 <input type="checkbox" name="<?= esc_attr(SearchStatistics::ENABLED_OPTION) ?>" value="1" <?= $searchStatistics?->isEnabled() === true ? 'checked' : '' ?>>
                 Keep search statistics
             </label>
 
+            <span class="lp-field__hint">Recent searches appear when a visitor clicks into an empty search box. A signed-in user's are saved to their account (the last <?= (int) SearchService::RECENT_SEARCH_LIMIT ?>); everyone else's stay in their own browser and never reach the site. Popular searches appear there too and on the search page when nothing is found, but only terms searched at least <?= (int) SearchStatistics::PUBLIC_MIN_SEARCHES ?> times that found something, and only while search statistics are kept.</span>
             <span class="lp-field__hint">Statistics count what visitors search for, shown below. Only the search text and how often it was searched are kept (never who searched), searches by signed-in users aren't counted, and a search nobody has repeated for <?= (int) SearchStatistics::RETENTION_DAYS ?> days is deleted.</span>
         </fieldset>
 

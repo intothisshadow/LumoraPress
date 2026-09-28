@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Loads the search box suggestion script on public pages.
+ * Loads the site search script (suggestions, live results, recent and popular searches, in-place results) on public pages.
  *
  * @package LumoraPress
  * @subpackage Core
@@ -17,31 +17,44 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Theme;
 
+use LumoraPress\Core\Security\Auth;
 use LumoraPress\Services\SearchService;
 
 /**
  * Registered on `footer_assets`, so every theme's search boxes (header,
- * widget, and the search page's own form) get suggestions without the
+ * widget, and the search page's own form) get these features without the
  * theme knowing the script exists. Settings reach the script as data-*
- * attributes because the CSP forbids inline script.
+ * attributes because the CSP forbids inline script. Pages rendered for a
+ * signed-in user are never cached, so data-signed-in is always accurate.
  */
 final class SearchAssets
 {
-    public function __construct(private readonly SearchService $search)
-    {
+    public function __construct(
+        private readonly SearchService $search,
+        private readonly Auth $auth,
+    ) {
     }
 
     public function render(): void
     {
-        if (!$this->search->suggestionsEnabled()) {
-            return;
+        $attributes = [
+            'data-lp-search' => '',
+            'data-min-length' => (string) $this->search->minimumQueryLength(),
+            'data-search-url' => site_url('search'),
+            'data-suggestions-endpoint' => $this->search->suggestionsEnabled() ? site_url('search/suggestions') : '',
+            'data-live-endpoint' => $this->search->liveSearchEnabled() ? site_url('search/live') : '',
+            'data-panel-endpoint' => $this->search->historyEnabled() || $this->search->popularSearchesEnabled() ? site_url('search/panel') : '',
+            'data-clear-endpoint' => site_url('search/history/clear'),
+            'data-history' => $this->search->historyEnabled() ? '1' : '0',
+            'data-signed-in' => $this->auth->check() ? '1' : '0',
+        ];
+
+        $html = '<script defer';
+
+        foreach ($attributes as $name => $value) {
+            $html .= ' ' . $name . '="' . esc_attr($value) . '"';
         }
 
-        printf(
-            '<script defer data-lp-search-suggest data-endpoint="%s" data-min-length="%d" src="%s"></script>' . "\n",
-            esc_url(site_url('search/suggestions')),
-            $this->search->minimumQueryLength(),
-            esc_url(core_asset_url('js/search-suggest.js')),
-        );
+        echo $html . ' src="' . esc_url(core_asset_url('js/search.js')) . '"></script>' . "\n";
     }
 }

@@ -516,7 +516,7 @@ add_action('page_saved', static function (Page $page) use ($searchVocabulary): v
 });
 add_action('category_saved', static fn (Category $category) => $searchVocabulary->addText($category->name));
 add_action('tag_saved', static fn (Tag $tag) => $searchVocabulary->addText($tag->name));
-add_action('footer_assets', [new SearchAssets($search), 'render']);
+add_action('footer_assets', [new SearchAssets($search, $auth), 'render']);
 $akismet = new AkismetClient($config, home_url());
 $commentModeration = new CommentModerationService($config, $comments);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
@@ -916,6 +916,9 @@ $router->get('/archive', fn (array $params) => $site->archive($params));
 $router->get('/archive/{year}/{month}', fn (array $params) => $site->archiveByMonth($params));
 $router->get('/search', fn (array $params) => $site->search($params));
 $router->get('/search/suggestions', fn (array $params) => $site->searchSuggestions($params));
+$router->get('/search/live', fn (array $params) => $site->searchLive($params));
+$router->get('/search/panel', fn (array $params) => $site->searchPanel($params));
+$router->post('/search/history/clear', fn (array $params) => $site->clearSearchHistory($params));
 /*
  * "/page/{slug}" is now a legacy URL, permanently redirected to the
  * page's real hierarchical URL — see the route table's closing block

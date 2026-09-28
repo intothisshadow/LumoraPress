@@ -178,6 +178,8 @@ return.
 | `search_did_you_mean(array $search): void` | Echoes `<p class="lp-search-did-you-mean">Did you mean <a class="lp-search-did-you-mean__link">…</a>?</p>` when the search found little and a better spelling finds more (keeping the visitor's filters); nothing otherwise. Call it right after `search_filters_form()`, outside the results/empty-state branch. |
 | `search_empty_state(array $search): void` | Echoes what to show when `$results` is empty: `.lp-empty-state` ("No results found."), a `.lp-search-empty__tips` list (with a "Search again without filters" link when filters were used), then "Recent posts" and "Popular categories" `.lp-search-empty__section` lists. |
 | `search_result_type_label(SearchResult $result): string` | "Post", "Page", "Category", "Tag", "Author", or a plugin's own label for a content type it made searchable. Use it instead of a hard-coded `match` on `$result->type`. |
+
+**Search page and search box behavior.** The core search script (loaded on `footer_assets`) needs nothing from a theme beyond the markup above, but relies on two conventions: `search.php`'s content sits in `<main class="lp-main">` (the search page's results are swapped in place inside it; a theme without it simply reloads the page instead), and every search box is a `<form role="search">` with an `<input name="q">`. When live search or recent/popular searches are switched on, it adds a panel to `<body>` for style: `.lp-search-live` (the panel), `__list`, `__heading` and `__clear` (group titles and the Clear button), `__option` (with `.is-active` for the keyboard-highlighted entry, and `--result`, `--query`, `--all` variants), `__thumb`, `__text`, `__title`, `__meta`, and `__empty`. While in-place results load, `main.lp-main` carries `aria-busy="true"`. Popular searches on the empty search page use `.lp-search-empty__list--searches`. After swapping in new results the script dispatches a bubbling `lp:content-updated` event on `main.lp-main`; the lightbox listens for it, and a theme script that enhances result markup should too.
 | `render_pagination(array $pagination, string $label = 'Posts pagination'): void` | Echoes a pagination `<nav>` for `array{page, totalPages}`: First/Prev/Next/Last controls plus numbered pages truncated with `…` ellipses around the current page and the range's edges; no-op if there's only one page. Styling classes: `.lp-pagination__item--nav` (First/Prev/Next/Last, `.is-disabled` at either end of the range) and `.lp-pagination__item--ellipsis`. |
 
 ### Author
@@ -266,8 +268,8 @@ theme-convention hooks other code (and plugins) expect: `do_action('head_assets'
 right before `</head>` and `do_action('footer_assets')` right before
 `</body>`. Core itself listens on `footer_assets` (to emit lightbox/embed
 script tags when a template used `the_post_thumbnail_lightbox()` or an
-auto-embedded URL, and the search box suggestion script, which attaches
-to any `<form role="search">` with an `<input name="q">`), so skipping
+auto-embedded URL, and the site search script, which attaches to any
+`<form role="search">` with an `<input name="q">`), so skipping
 these hooks will silently break those features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook
 reference.
 

@@ -25,8 +25,9 @@ use PDOException;
 /**
  * One row per distinct query with a running count — never who searched,
  * when exactly, or from where. Visitors sometimes type personal details
- * into a search box, so these rows are only ever shown to administrators
- * and are deleted once a query hasn't been searched for RETENTION_DAYS.
+ * into a search box, so the full list is only ever shown to
+ * administrators, publicPopular() only offers terms many searches share,
+ * and rows are deleted once a query hasn't been searched for RETENTION_DAYS.
  */
 final class SearchStatistics
 {
@@ -35,6 +36,13 @@ final class SearchStatistics
     public const RETENTION_DAYS = 180;
 
     private const MAX_QUERY_LENGTH = 200;
+
+    /**
+     * A term must have been searched at least this often, and have found
+     * something last time, before it can be shown to visitors as a
+     * popular search — one visitor's typed-in personal details never are.
+     */
+    public const PUBLIC_MIN_SEARCHES = 5;
 
     /** Pruning runs on roughly one recorded search in this many. */
     private const PRUNE_ONE_IN = 50;
@@ -109,6 +117,23 @@ final class SearchStatistics
     public function withoutResults(int $limit): array
     {
         return $this->rows('last_result_count = 0', $limit);
+    }
+
+    /**
+     * Popular searches safe to show visitors (see PUBLIC_MIN_SEARCHES).
+     *
+     * @return list<string>
+     */
+    public function publicPopular(int $limit): array
+    {
+        if (!$this->isEnabled()) {
+            return [];
+        }
+
+        return array_column($this->rows(
+            'searches >= ' . self::PUBLIC_MIN_SEARCHES . ' AND last_result_count > 0',
+            $limit,
+        ), 'query');
     }
 
     /**

@@ -63,6 +63,19 @@ final class SearchService
 
     public const SUGGESTIONS_OPTION = 'search_suggestions_enabled';
 
+    public const LIVE_OPTION = 'search_live_enabled';
+
+    public const HISTORY_OPTION = 'search_history_enabled';
+
+    public const POPULAR_OPTION = 'search_popular_enabled';
+
+    /** How many recent searches a signed-in user's account keeps. */
+    public const RECENT_SEARCH_LIMIT = 8;
+
+    private const LIVE_RESULT_COUNT = 6;
+
+    private const POPULAR_SEARCH_COUNT = 6;
+
     /** Bounds how much a long query can be widened by fuzzy/partial matching. */
     private const MAX_EXPANDED_TERMS = 8;
 
@@ -129,6 +142,45 @@ final class SearchService
     public function suggestionsEnabled(): bool
     {
         return $this->config->option(self::SUGGESTIONS_OPTION, '1') !== '0';
+    }
+
+    public function liveSearchEnabled(): bool
+    {
+        return $this->config->option(self::LIVE_OPTION, '0') === '1';
+    }
+
+    public function historyEnabled(): bool
+    {
+        return $this->config->option(self::HISTORY_OPTION, '0') === '1';
+    }
+
+    /**
+     * Popular searches can only be shown while statistics are being kept.
+     */
+    public function popularSearchesEnabled(): bool
+    {
+        return $this->config->option(self::POPULAR_OPTION, '0') === '1' && $this->statistics?->isEnabled() === true;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function popularSearches(): array
+    {
+        return $this->popularSearchesEnabled() ? ($this->statistics?->publicPopular(self::POPULAR_SEARCH_COUNT) ?? []) : [];
+    }
+
+    /**
+     * The first few best matches for the search box's live results, plus
+     * how many there are in total.
+     *
+     * @return array{results: list<SearchResult>, total: int}
+     */
+    public function liveResults(string $text): array
+    {
+        $found = $this->search(new SearchCriteria(mb_substr(trim($text), 0, 200)));
+
+        return ['results' => array_slice(array_values($found['results']), 0, self::LIVE_RESULT_COUNT), 'total' => $found['total']];
     }
 
     /**

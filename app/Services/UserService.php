@@ -493,6 +493,64 @@ final class UserService
         return $updated;
     }
 
+    /**
+     * The user's own recent site searches, newest first — same flat JSON
+     * list column shape as getRecentEmoji().
+     *
+     * @return list<string>
+     */
+    public function getRecentSearches(int $id): array
+    {
+        $decoded = json_decode($this->findById($id)?->recentSearches ?? '[]', true);
+
+        return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
+    }
+
+    /**
+     * Moves $query to the front of the user's recent searches (matching an
+     * earlier entry case-insensitively), trimmed to $limit entries.
+     *
+     * @return list<string>
+     */
+    public function addRecentSearch(int $id, string $query, int $limit): array
+    {
+        $query = trim($query);
+
+        if ($query === '') {
+            return $this->getRecentSearches($id);
+        }
+
+        $others = array_filter(
+            $this->getRecentSearches($id),
+            static fn (string $previous): bool => mb_strtolower($previous) !== mb_strtolower($query),
+        );
+
+        return $this->saveRecentSearches($id, array_slice([$query, ...$others], 0, max(0, $limit)));
+    }
+
+    public function clearRecentSearches(int $id): void
+    {
+        $this->saveRecentSearches($id, []);
+    }
+
+    /**
+     * @param list<string> $searches
+     * @return list<string>
+     */
+    private function saveRecentSearches(int $id, array $searches): array
+    {
+        $searches = array_values($searches);
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET recent_searches = :recent_searches WHERE id = :id',
+            ['recent_searches' => $searches === [] ? null : json_encode($searches, JSON_UNESCAPED_UNICODE), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+
+        return $searches;
+    }
+
     public function delete(int $id): bool
     {
         $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
@@ -730,6 +788,7 @@ final class UserService
             listViewPreferences: isset($row['list_view_preferences']) ? (string) $row['list_view_preferences'] : null,
             folderTreeState: isset($row['folder_tree_state']) ? (string) $row['folder_tree_state'] : null,
             recentEmoji: isset($row['recent_emoji']) ? (string) $row['recent_emoji'] : null,
+            recentSearches: isset($row['recent_searches']) ? (string) $row['recent_searches'] : null,
         );
     }
 

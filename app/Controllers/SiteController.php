@@ -1049,11 +1049,19 @@ final class SiteController
             ? $this->search->didYouMean($results['criteria'], $results['total'])
             : null;
 
-        // Signed-in users are mostly the site's own authors testing search,
-        // so only visitors' searches are counted. Later pages repeat a search
-        // rather than being a new one.
-        if ($results['query'] !== '' && $results['criteria']->page === 1 && !$this->auth->check()) {
+        // Later pages, and filter/sort changes the search page makes in
+        // place (it sends X-Lp-Search-Refine), repeat a search rather than
+        // being a new one. Signed-in users are mostly the site's own authors
+        // testing search, so only visitors are counted in the statistics;
+        // signed-in users' own searches go to their recent-search list.
+        $isNewSearch = $results['query'] !== '' && $results['criteria']->page === 1
+            && ($_SERVER['HTTP_X_LP_SEARCH_REFINE'] ?? '') !== '1';
+        $currentUser = $this->auth->user();
+
+        if ($isNewSearch && $currentUser === null) {
             $this->search->statistics()?->record($results['query'], $results['total']);
+        } elseif ($isNewSearch && $this->search->historyEnabled()) {
+            $this->users->addRecentSearch($currentUser->id, $results['query'], SearchService::RECENT_SEARCH_LIMIT);
         }
 
         $this->markCacheableForGuests(['search']);
@@ -1067,8 +1075,92 @@ final class SiteController
                 'filterOptions' => $this->search->filterOptions(),
                 'suggestions' => $results['results'] === [] ? $this->search->emptyStateSuggestions() : ['posts' => [], 'categories' => []],
                 'didYouMean' => $didYouMean,
+                'popularSearches' => $results['results'] === [] ? $this->search->popularSearches() : [],
             ],
         ]);
+    }
+
+    /**
+     * The search box's live results, as JSON — see assets/js/search.js.
+     * Only public content, so safe to cache for visitors.
+     *
+     * @param array<string, string> $params
+     */
+    public function searchLive(array $params): void
+    {
+        $text = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 200) : '';
+        $payload = ['results' => [], 'total' => 0];
+
+        if ($this->search->liveSearchEnabled() && $text !== '') {
+            $live = $this->search->liveResults($text);
+            $payload['total'] = $live['total'];
+
+            foreach ($live['results'] as $result) {
+                $payload['results'][] = [
+                    'type' => search_result_type_label($result),
+                    'title' => $result->title,
+                    'url' => search_result_permalink($result),
+                    'date' => $result->publishedAt !== null ? the_date($result->publishedAt) : '',
+                    'thumbnail' => $result->featuredImageId !== null ? post_thumbnail_url($result, 'small') : null,
+                ];
+            }
+        }
+
+        $this->markCacheableForGuests(['search']);
+        $this->sendSearchJson($payload);
+    }
+
+    /**
+     * What the search box offers before anything is typed: the visitor's
+     * own recent searches (signed-in users only; everyone else's live in
+     * their own browser) and popular searches. Never cached, since it can
+     * hold a signed-in user's own history.
+     *
+     * @param array<string, string> $params
+     */
+    public function searchPanel(array $params): void
+    {
+        $user = $this->auth->user();
+        $historyEnabled = $this->search->historyEnabled();
+
+        $this->sendSearchJson([
+            'signedIn' => $user !== null,
+            'recent' => $user !== null && $historyEnabled ? $this->users->getRecentSearches($user->id) : [],
+            'clearToken' => $user !== null && $historyEnabled ? Csrf::token('search_history_clear') : null,
+            'popular' => $this->search->popularSearches(),
+        ]);
+    }
+
+    /**
+     * Clears the signed-in user's recent searches ("Clear" in the search
+     * box's Recent searches list).
+     *
+     * @param array<string, string> $params
+     */
+    public function clearSearchHistory(array $params): void
+    {
+        $user = $this->auth->user();
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+        if ($user === null || !Csrf::verify('search_history_clear', $token)) {
+            http_response_code(403);
+            $this->sendSearchJson(['error' => 'Not permitted.']);
+
+            return;
+        }
+
+        $this->users->clearRecentSearches($user->id);
+        $this->sendSearchJson(['recent' => [], 'clearToken' => Csrf::token('search_history_clear')]);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function sendSearchJson(array $payload): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        echo json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
     }
 
     /**
@@ -1083,9 +1175,7 @@ final class SiteController
         $suggestions = $this->search->suggestionsEnabled() ? $this->search->suggestTitles($text) : [];
 
         $this->markCacheableForGuests(['search']);
-        header('Content-Type: application/json; charset=utf-8');
-        header('X-Robots-Tag: noindex');
-        echo json_encode(['suggestions' => $suggestions], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->sendSearchJson(['suggestions' => $suggestions]);
     }
 
     /**

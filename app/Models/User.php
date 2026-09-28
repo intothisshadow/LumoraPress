@@ -70,6 +70,11 @@ final class User
          * category. Kept undecoded here for the same reason as above.
          */
         public readonly ?string $recentEmoji = null,
+        /**
+         * Raw JSON-encoded list of this user's most recent site searches
+         * (newest first), for the search box's "Recent searches" list.
+         */
+        public readonly ?string $recentSearches = null,
     ) {
     }
 
