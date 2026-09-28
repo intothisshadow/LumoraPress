@@ -109,6 +109,7 @@ Administrators can update Lumora Press entirely from within the admin panel — 
 - Any database migrations the new version needs run automatically.
 - Your uploads, your own themes/plugins, and your configuration are never overwritten.
 - If anything goes wrong mid-update, Lumora Press rolls back to the pre-update backup automatically.
+- If an update is interrupted partway (the browser tab was closed or the connection dropped), Maintenance &rsaquo; Updates says so and offers to **Resume** it or **Discard** it; discarding restores the backup taken at the start if any new files were already in place. No other update can be started until you choose one.
 - If the admin panel itself ever becomes unreachable after a failed update, the backup files can also be restored by hand.
 
 The plugins bundled with Lumora Press can also be updated on their own, without updating Lumora Press itself. When a release includes a newer version of one, the **Plugins** screen marks it "Update available" with an **Update** button (use **Check for Updates** there, or on Maintenance &rsaquo; Updates, to look for new releases). The same backup, checks, and automatic rollback apply, but only that plugin's folder is replaced. If the new plugin version needs a newer Lumora Press than you're running, it's refused until you update Lumora Press first.

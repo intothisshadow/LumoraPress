@@ -315,9 +315,9 @@ route-registration hook exists.
 |---|---|---|---|
 | `lumora_press_loaded` | action | none | The very last line of [`include/bootstrap.php`](../include/bootstrap.php), after routes are registered and the CSP header is set — the closest equivalent to WordPress's `init`/`wp_loaded`. The natural place for a plugin's own late setup that needs everything else already in place. |
 | `lumora_press_before_update` | action | `string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::install()`, right after the maintenance lock is acquired, before backups start. |
-| `lumora_press_after_update` | action | `string $fromVersion, string $toVersion, UpdateStatus $status` | Same method, fired on **both** the success path and the failure/rollback path — check `$status` to tell them apart. |
+| `lumora_press_after_update` | action | `string $fromVersion, string $toVersion, UpdateStatus $status` | Same method, fired on **both** the success path and the failure/rollback path — check `$status` to tell them apart. Also fired by `UpdateService::discardUnfinishedInstall()` when an administrator discards an interrupted update (`RolledBack` if its files had already been applied, otherwise `Failed`). |
 | `lumora_press_before_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion` | [`UpdateService`](../app/Services/UpdateService.php)`::beginInstall()` for a bundled-plugin-only update (Plugins screen &rsaquo; Update). The versions are the plugin's, not core's; the two core update actions above never fire for a plugin-only update. |
-| `lumora_press_after_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion, UpdateStatus $status` | `UpdateService::continueInstall()`, when a bundled plugin update finishes — on success **and** on failure/rollback, like `lumora_press_after_update`. Core uses it to purge the page cache on success. |
+| `lumora_press_after_plugin_update` | action | `string $slug, string $fromVersion, string $toVersion, UpdateStatus $status` | `UpdateService::continueInstall()`, when a bundled plugin update finishes — on success **and** on failure/rollback, like `lumora_press_after_update` (including when an interrupted plugin update is discarded). Core uses it to purge the page cache on success. |
 
 ### Navigation menus
 

@@ -67,6 +67,17 @@ final class UpdateService
     private const PLUGINS_PATH_PREFIX = 'content/plugins/';
 
     /**
+     * An unfinished update whose progress record changed this recently may
+     * still be running in another browser tab, so it can't be discarded yet.
+     */
+    private const UNFINISHED_INSTALL_GRACE_SECONDS = 60;
+
+    private const UNFINISHED_INSTALL_MESSAGE = 'An earlier update did not finish. Resume or discard it on the Maintenance > Updates screen before starting a new one.';
+
+    /** Stages that run after the new files may already be on disk. */
+    private const FILES_APPLIED_STAGES = ['apply_files', 'migrate', 'clear_cache', 'cleanup'];
+
+    /**
      * @param array<int, string> $corePaths Paths (relative to $installRoot) the
      *     updater overlays from the staged package onto the installation.
      * @param ?string $configFilePath config/config.php's absolute path —
@@ -223,6 +234,7 @@ final class UpdateService
 
         $this->progress?->stage('compatibility');
 
+        array_push($result['blocking'], ...$this->unfinishedInstallProblems());
         array_push($result['blocking'], ...self::pluginRequirementProblems($result['requires_at_least'], $result['requires_php'], $this->installedVersion()));
         array_push($result['blocking'], ...$this->backupLocationProblems());
 
@@ -280,7 +292,8 @@ final class UpdateService
 
         $this->progress?->stage('compatibility');
 
-        // Package-dependent checks (PHP version/extensions/writability) already ran in UpdatePackageValidator; these three depend only on this server's own state.
+        // Package-dependent checks (PHP version/extensions/writability) already ran in UpdatePackageValidator; these depend only on this server's own state.
+        array_push($result['blocking'], ...$this->unfinishedInstallProblems());
         array_push($result['blocking'], ...$this->databaseVersionProblems());
         array_push($result['blocking'], ...$this->configCompatibilityProblems());
         array_push($result['blocking'], ...$this->backupLocationProblems());
@@ -619,6 +632,14 @@ final class UpdateService
         $stagingPath = $this->stagingPathFor($token);
         $pending = $this->readPending($stagingPath);
 
+        // Starting over would leave the earlier attempt's files live with no
+        // record of them, so it has to be resumed or discarded first.
+        $unfinished = $this->unfinishedInstall();
+
+        if ($unfinished !== null && $unfinished['token'] !== $token) {
+            throw new RuntimeException(self::UNFINISHED_INSTALL_MESSAGE);
+        }
+
         $this->acquireLock();
 
         $previousMaintenanceMode = null;
@@ -918,6 +939,100 @@ final class UpdateService
             'plugin_slug' => $isPlugin ? (string) $state['plugin_slug'] : null,
             'plugin_name' => $isPlugin ? (string) $state['plugin_name'] : null,
         ];
+    }
+
+    /**
+     * The most recently touched staged install that never reached a final
+     * result — normally the one running right now, or one abandoned when a
+     * browser tab closed or a request timed out partway through.
+     *
+     * @return array{token: string, stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string, updated_at: int}|null
+     */
+    public function unfinishedInstall(): ?array
+    {
+        $newest = null;
+
+        foreach (glob(dirname($this->lockFilePath) . '/install-state-*.json') ?: [] as $path) {
+            if (preg_match('/install-state-([a-f0-9]{32})\.json$/', $path, $matches) !== 1) {
+                continue;
+            }
+
+            $updatedAt = (int) filemtime($path);
+
+            if ($newest !== null && $updatedAt <= $newest['updated_at']) {
+                continue;
+            }
+
+            try {
+                $progress = $this->installProgress($matches[1]);
+            } catch (RuntimeException) {
+                continue;
+            }
+
+            $newest = ['token' => $matches[1], ...$progress, 'updated_at' => $updatedAt];
+        }
+
+        return $newest;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function unfinishedInstallProblems(): array
+    {
+        return $this->unfinishedInstall() !== null ? [self::UNFINISHED_INSTALL_MESSAGE] : [];
+    }
+
+    /**
+     * Closes out an unfinished staged install for good. If its files may
+     * already be live, the attempt's own backups are restored, the same
+     * rollback a failed stage gets; otherwise nothing was changed yet and
+     * only its leftovers are removed.
+     *
+     * @return array{status: UpdateStatus, message: string, clean: bool} `clean` is false only when the rollback itself failed.
+     */
+    public function discardUnfinishedInstall(string $token, ?int $performedByUserId): array
+    {
+        $this->validateToken($token);
+        $state = $this->readInstallState($token);
+
+        if (time() - (int) filemtime($this->installStatePath($token)) < self::UNFINISHED_INSTALL_GRACE_SECONDS) {
+            throw new RuntimeException('This update was still making progress a moment ago. If it is running in another browser tab, let it finish; otherwise wait a minute and try again.');
+        }
+
+        $clean = true;
+
+        if (in_array($state['stage'], self::FILES_APPLIED_STAGES, true)) {
+            ['status' => $status, 'message' => $message] = $this->rollbackAndFail(
+                new RuntimeException('An unfinished update was discarded.'),
+                $state['files_backup_path'],
+                $state['database_backup_path'],
+            );
+
+            if ($status === UpdateStatus::RolledBack) {
+                $message = 'The unfinished update was discarded and the previous version was restored.';
+            } else {
+                $clean = false;
+            }
+        } else {
+            // A half-written database dump must never show up as a restorable backup.
+            if ($state['stage'] === 'backup_database' && is_string($state['database_backup_path']) && is_file($state['database_backup_path'])) {
+                unlink($state['database_backup_path']);
+                $state['database_backup_path'] = null;
+            }
+
+            $status = UpdateStatus::Failed;
+            $message = 'The unfinished update was discarded before it had changed anything.';
+        }
+
+        $this->removeDirectory($this->stagingPathFor($token));
+        $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], $status, $message, $state['files_backup_path'], $state['database_backup_path'], $performedByUserId);
+        $this->fireAfterUpdateHook($state, $status);
+        $this->endMaintenanceMode($state['previous_maintenance_mode']);
+        $this->releaseLock();
+        $this->deleteInstallState($token);
+
+        return ['status' => $status, 'message' => $message, 'clean' => $clean];
     }
 
     /**

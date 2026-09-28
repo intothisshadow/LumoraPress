@@ -236,6 +236,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             header('Location: ' . $redirectUrl);
             exit;
         }
+    } elseif ($form === 'discard_install' && Csrf::verify('update_discard_install', $token)) {
+        $discardToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+
+        // Restoring the backups can take a while on a large site.
+        session_write_close();
+
+        try {
+            $result = $updates->discardUnfinishedInstall($discardToken, $currentUser->id);
+            header('Location: ' . admin_url('maintenance/updates') . '?' . http_build_query([
+                'discarded' => $result['clean'] ? 1 : 0,
+                'message' => $result['message'],
+            ]));
+            exit;
+        } catch (\Throwable $exception) {
+            $error = $exception->getMessage();
+            session_start();
+        }
     } elseif ($form === 'cancel' && Csrf::verify('update_cancel', $token)) {
         $cancelToken = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
 
@@ -401,6 +418,9 @@ if ($updateToken !== null) {
     }
 }
 
+// An update this page isn't already driving, left unfinished when a tab closed or a request timed out.
+$unfinishedInstall = $installProgress === null ? $updates->unfinishedInstall() : null;
+
 $backupToken = is_string($_GET['backup_token'] ?? null) ? $_GET['backup_token'] : null;
 $backupNowProgress = null;
 
@@ -443,6 +463,12 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
     <?php $installedStatus = UpdateStatus::tryFrom((string) ($_GET['status'] ?? '')); ?>
     <div class="lp-alert <?= $installedStatus === UpdateStatus::Success ? 'lp-alert--success' : 'lp-alert--error' ?>">
         <?= esc_html((string) ($_GET['message'] ?? 'The update finished.')) ?>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_GET['discarded'])): ?>
+    <div class="lp-alert <?= $_GET['discarded'] === '1' ? 'lp-alert--success' : 'lp-alert--error' ?>">
+        <?= esc_html((string) ($_GET['message'] ?? 'The unfinished update was discarded.')) ?>
     </div>
 <?php endif; ?>
 
@@ -503,6 +529,44 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <p><a href="<?= esc_url($releasesUrl) ?>" target="_blank" rel="noopener noreferrer">View all releases &#8599;</a></p>
     </div>
 </section>
+
+<?php if ($unfinishedInstall !== null): ?>
+    <?php
+    $unfinishedIsPlugin = $unfinishedInstall['scope'] === 'plugin';
+    $unfinishedResumeUrl = $unfinishedIsPlugin
+        ? admin_url('plugins') . '?plugin_update_token=' . urlencode($unfinishedInstall['token'])
+        : admin_url('maintenance/updates') . '?update_token=' . urlencode($unfinishedInstall['token']);
+    $unfinishedFilesApplied = in_array($unfinishedInstall['stage'], ['apply_files', 'migrate', 'clear_cache', 'cleanup'], true);
+    ?>
+    <section class="lp-admin__panel lp-update__unfinished">
+        <h2>An Update Did Not Finish</h2>
+        <p>
+            The update <?= $unfinishedIsPlugin ? 'of <strong>' . esc_html((string) $unfinishedInstall['plugin_name']) . '</strong> ' : '' ?>from
+            <strong><?= esc_html($unfinishedInstall['from_version']) ?></strong> to
+            <strong><?= esc_html($unfinishedInstall['to_version']) ?></strong> stopped at
+            &ldquo;<?= esc_html(rtrim($updateStageLabels[$unfinishedInstall['stage']] ?? $unfinishedInstall['stage'], '…')) ?>&rdquo;
+            (last progress <?= esc_html(date('M j, Y g:i A T', $unfinishedInstall['updated_at'])) ?>).
+            New updates can't be installed until it is resumed or discarded.
+        </p>
+        <p class="lp-field__hint">
+            <?php if ($unfinishedFilesApplied): ?>
+                Some of the new files may already be in place. Resuming finishes the update; discarding restores the backup taken at the start of this attempt.
+            <?php else: ?>
+                Nothing on the site has been changed yet. Resuming carries on from the backup step; discarding simply cancels it.
+            <?php endif; ?>
+            If this update is still running in another browser tab, leave it to finish there instead.
+        </p>
+        <p>
+            <a class="lp-button lp-button--primary" href="<?= esc_url($unfinishedResumeUrl) ?>">Resume Update</a>
+        </p>
+        <form method="post" action="<?= esc_url(admin_url('maintenance/updates')) ?>" data-lp-confirm="<?= esc_attr($unfinishedFilesApplied ? 'Discard this update and restore the backup taken before it started?' : 'Discard this update?') ?>">
+            <?= Csrf::field('update_discard_install') ?>
+            <input type="hidden" name="form" value="discard_install">
+            <input type="hidden" name="token" value="<?= esc_attr($unfinishedInstall['token']) ?>">
+            <button type="submit" class="lp-button lp-button--danger">Discard Update</button>
+        </form>
+    </section>
+<?php endif; ?>
 
 <?php if ($installProgress !== null): ?>
     <section class="lp-admin__panel">

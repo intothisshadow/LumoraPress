@@ -2,6 +2,12 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Interrupted updates (LP-174): if an update stopped partway through (the browser tab was closed or a request timed out), starting a fresh one could run on top of it, and until one finished the next update wrongly warned that files it had just installed had been "modified since they were installed". Maintenance &rsaquo; Updates now shows an "An Update Did Not Finish" notice with **Resume Update** and **Discard Update** buttons. Discarding restores the backup taken at the start of that attempt if its new files may already be in place, or just cancels it if nothing had changed yet, and is recorded in the Update History. Uploading or downloading another update, or updating a bundled plugin, is refused with an explanation until the interrupted one is resumed or discarded.
+
 ## [0.19.0] — 2026-09-28
 
 ### Added
