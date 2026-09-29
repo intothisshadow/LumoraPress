@@ -36,7 +36,7 @@ final class ContentImageRewriter
 
     // WordPress's size-slug classes — meaningless since this import never
     // generates those derivative sizes. Alignment classes are kept since the
-    // default theme's WYSIWYG editor already outputs/styles the same names.
+    // core WYSIWYG editor already outputs/styles the same names.
     private const SIZE_CLASS_PATTERN = '/^size-[a-z0-9_-]+$/i';
 
     /**
@@ -225,7 +225,7 @@ final class ContentImageRewriter
     /**
      * WordPress's `[caption]` shortcode has no Lumora Press analog, so it's
      * converted to `<figure class="lp-caption {align}"><img>...<figcaption>`
-     * (see default theme's matching `figure.lp-caption.align*` rules) —
+     * (see Lumora Classic's matching `figure.lp-caption.align*` rules) —
      * as a plain string transform before the DOM pass, since DOMDocument
      * would otherwise see the brackets as ordinary text around the `<img>`.
      */

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template for the homepage post listing.
+ * Lumora Classic template for the homepage post listing.
  *
  * @package LumoraPress
  * @subpackage Themes

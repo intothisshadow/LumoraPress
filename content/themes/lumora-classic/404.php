@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template for a page-not-found response.
+ * Lumora Classic template for a page-not-found response.
  *
  * @package LumoraPress
  * @subpackage Themes

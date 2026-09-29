@@ -206,7 +206,7 @@ final class ThemeOptions
             label: 'Content width',
             default: '',
             cssVariable: '--lp-max-width',
-            help: 'Leave set to "Use theme default" to keep the active theme\'s own chosen width (e.g. duskline\'s own 1160px) — only pick a specific width here to force every theme to that same value regardless of its own design.',
+            help: 'Leave set to "Use theme default" to keep the active theme\'s own chosen width — only pick a specific width here to force every theme to that same value regardless of its own design.',
             choices: [
                 '' => 'Use theme default',
                 '720px' => 'Narrow',

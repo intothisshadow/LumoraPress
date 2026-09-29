@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme setup: registers widget areas and navigation menu locations.
+ * Lumora Classic setup: registers widget areas and navigation menu locations.
  *
  * @package LumoraPress
  * @subpackage Themes

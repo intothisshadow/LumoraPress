@@ -286,6 +286,13 @@ $theme = new ThemeRenderer(
     themesPath: $themesPath,
     themesUrl: $themesUrl,
 );
+
+// A missing theme folder (deleted by hand, or the pre-0.10.0 "default" theme
+// an update removed) must fall back to the bundled theme, not break every page.
+if (!$theme->hasTheme($activeThemeSlug)) {
+    $activeThemeSlug = 'lumora-classic';
+}
+
 $theme->setActiveTheme($activeThemeSlug);
 ActiveTheme::set($theme);
 require LUMORA_ROOT . '/include/theme.php';

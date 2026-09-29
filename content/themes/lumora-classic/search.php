@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template for search results.
+ * Lumora Classic template for search results.
  *
  * @package LumoraPress
  * @subpackage Themes

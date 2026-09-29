@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme sidebar template: renders the primary widget area when it has widgets assigned.
+ * Lumora Classic sidebar template: renders the primary widget area when it has widgets assigned.
  *
  * @package LumoraPress
  * @subpackage Themes

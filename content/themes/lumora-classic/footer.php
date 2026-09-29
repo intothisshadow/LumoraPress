@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme footer template: closing HTML, footer navigation, and conditional third-party script tags.
+ * Lumora Classic footer template: closing HTML, footer navigation, and conditional third-party script tags.
  *
  * @package LumoraPress
  * @subpackage Themes

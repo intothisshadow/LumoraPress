@@ -21,7 +21,7 @@ LumoraPress/
 ├── config/          Generated config.php (never committed; contains credentials)
 ├── content/
 │   ├── plugins/      Installed plugins
-│   ├── themes/        Installed themes (default theme ships here)
+│   ├── themes/        Installed themes (the bundled Lumora Classic theme ships here)
 │   └── uploads/       Media library uploads
 ├── docs/            Project documentation (this folder)
 ├── include/         Bootstrap and procedural helper APIs (hooks, theme, widgets, menus)

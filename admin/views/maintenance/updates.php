@@ -938,12 +938,12 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
         <li>Update check results are cached; use the button above to force a refresh, or adjust the check frequency in Update settings.</li>
         <li>No site content, media, or user data is ever transmitted during an update check.</li>
         <li>Release source: GitHub Releases (<code><?= esc_html($githubRepo) ?></code>), or a manually uploaded ZIP.</li>
-        <li>Your own themes and plugins are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the default theme, the plugins bundled with Lumora Press, and the root PHP files are replaced.</li>
+        <li>Your own themes and plugins are preserved during an update — only <code>app/</code>, <code>admin/</code>, <code>include/</code>, <code>install/</code>, <code>docs/</code>, the bundled Lumora Classic theme, the plugins bundled with Lumora Press, and the root PHP files are replaced.</li>
         <li>A bundled plugin can also be updated on its own from the Plugins screen when a release includes a newer version of it — only that plugin's folder is replaced, with the same backup and automatic rollback.</li>
         <li>An automatic file and database backup is created before any update is applied. Use the Backups panel above to create one on demand, or restore/delete an existing one.</li>
         <li>Maintenance mode is automatically enabled for the duration of an update and restored to its previous state afterward — the admin area itself always stays reachable.</li>
         <li>If the <code>install/</code> directory is present when an update completes, it is automatically removed during cleanup.</li>
-        <li>If a folder or file that made up an older release is no longer part of a newer one, it's automatically removed once the update finishes — this only ever applies to Lumora Press's own core paths (<code>app/</code>, <code>admin/</code>, <code>include/</code>, etc.); themes other than the default theme, plugins, uploads, and <code>config/</code> are never touched.</li>
+        <li>If a folder or file that made up an older release is no longer part of a newer one, it's automatically removed once the update finishes — this only ever applies to Lumora Press's own core paths (<code>app/</code>, <code>admin/</code>, <code>include/</code>, etc.); themes other than the bundled Lumora Classic theme, plugins, uploads, and <code>config/</code> are never touched.</li>
         <li>SHA-256 checksum verification is used when the release source provides one.</li>
     </ul>
 </section>

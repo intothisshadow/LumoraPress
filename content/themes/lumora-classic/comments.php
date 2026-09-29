@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme partial rendering a post's or page's comment thread and comment form.
+ * Lumora Classic partial rendering a post's or page's comment thread and comment form.
  *
  * @package LumoraPress
  * @subpackage Themes

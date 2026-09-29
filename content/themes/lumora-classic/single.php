@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template for a single post.
+ * Lumora Classic template for a single post.
  *
  * @package LumoraPress
  * @subpackage Themes

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme template for category/tag/date/author archive listings.
+ * Lumora Classic template for category/tag/date/author archive listings.
  *
  * @package LumoraPress
  * @subpackage Themes

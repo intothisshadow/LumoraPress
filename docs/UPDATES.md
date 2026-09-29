@@ -54,7 +54,7 @@ point of failure stays visible.
 
 Every attempt (success, failure, or rollback) is recorded and listed on
 the Updates page, tagged with its source (GitHub or manual). Only the
-application code, the default theme, and the bundled plugins (Font
+application code, the bundled Lumora Classic theme, and the bundled plugins (Font
 Awesome, Dummy Content, WordPress Importer, Downloads, Contact Forms) are
 ever replaced — `config/`, `content/uploads/`, any user-installed plugin,
 any theme other than the default, and `storage/` are never touched. If a

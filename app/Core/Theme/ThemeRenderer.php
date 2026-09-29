@@ -34,6 +34,11 @@ final class ThemeRenderer
     ) {
     }
 
+    public function hasTheme(string $theme): bool
+    {
+        return $theme !== '' && is_file(rtrim($this->themesPath, '/') . '/' . $theme . '/style.css');
+    }
+
     public function setActiveTheme(string $theme): void
     {
         $this->activeTheme = $theme;

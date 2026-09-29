@@ -58,7 +58,7 @@ version.
 ## PhotoSwipe
 
 - **Purpose:** Lightbox/gallery viewer for images (LP-031), used both in the
-  admin Media Manager and in the default theme's public-facing image
+  admin Media Manager and in the Lumora Classic theme's public-facing image
   galleries.
 - **Current version:** 5.4.4
 - **Date added:** 2026-07-25 (v0.3.0 "Admin")

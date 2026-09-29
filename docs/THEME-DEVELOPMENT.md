@@ -42,6 +42,8 @@ Requires PHP: 8.2
 */
 ```
 
+If the active theme's folder or its `style.css` is missing (deleted by hand, for example), the site falls back to the bundled Lumora Classic theme rather than failing, until another theme is activated.
+
 Every field is optional (a theme with no `Theme Name:` still shows up,
 titled from its directory slug) and only the first 8192 bytes of
 `style.css` are read for the header, mirroring classic WordPress's own
@@ -50,7 +52,7 @@ titled from its directory slug) and only the first 8192 bytes of
 Themes admin screen's thumbnail/gallery.
 
 Beyond `style.css`, the templates below are what `SiteController` and
-`ThemeRenderer` actually request. The default theme
+`ThemeRenderer` actually request. The bundled Lumora Classic theme
 (`content/themes/lumora-classic/`) is a complete, working reference
 implementation — copy it as a starting point rather than building from
 this document alone.
@@ -207,7 +209,7 @@ return.
 | `page_permalink(Page $page): string` | A page's URL, reflecting its position in the parent/child hierarchy (e.g. `/about/team`) — pages have no *configurable* structure (unlike posts), but their URL is never flat. Always use this, never hand-build `'page/' . $page->slug` — that old flat form still resolves (a permanent redirect to the real URL), but only for back-compat with pre-existing links. |
 | `category_permalink(Category $category): string` / `tag_permalink(Tag $tag): string` | Category/tag archive URLs, honoring the configured base prefix. |
 | `search_result_permalink(SearchResult $result): string` | Dispatches by the result's type to the right permalink builder above, or returns the result's own `url` when a plugin's search provider set one. |
-| `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it is up to the theme — the default theme's `footer.php` calls this and renders a "Privacy Policy" link (`.lp-site-footer__privacy-link`) only when it returns non-`null`, but nothing forces a theme to do the same. |
+| `privacy_policy_url(): ?string` | The URL of the Page named on Settings › Privacy, or `null` if none is set or the configured page no longer exists/isn't publicly visible. Whether and where to link it is up to the theme — Lumora Classic's `footer.php` calls this and renders a "Privacy Policy" link (`.lp-site-footer__privacy-link`) only when it returns non-`null`, but nothing forces a theme to do the same. |
 | `post_categories(Post $post): array` | The Categories `$post` belongs to (alphabetical). Empty array for an uncategorized post, never `null`. |
 | `the_post_categories(Post $post, string $separator = ', ')` | `post_categories()`, echoed as a `$separator`-joined list of links. Outputs nothing at all for an uncategorized post, so it's safe to call unconditionally. |
 | `has_category_image(Category $category): bool` | Whether `$category` has an image assigned (Categories admin's "Category Image" field). |
@@ -511,7 +513,7 @@ the only contract theme-toggle.js looks for:
 
 Which icon is visible is driven purely by CSS (the same `data-theme`/
 `prefers-color-scheme` guard as the color tokens above), not JS — see
-the default theme's `style.css` for the `.lp-theme-toggle__icon--*`
+Lumora Classic's `style.css` for the `.lp-theme-toggle__icon--*`
 rules to copy.
 
 Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`)
@@ -531,7 +533,7 @@ project's Content-Security-Policy `script-src` has no
 blocked by every browser. A click on any `[data-lp-theme-toggle]`
 button only ever switches between an explicit Light and Dark — never
 back to "follow the system" — mirroring the admin sidebar's own quick
-theme toggle. See the default theme's `header.php`/`style.css` for a
+theme toggle. See Lumora Classic's `header.php`/`style.css` for a
 complete real example, and `xena-central`'s/`duskline`'s for how the same
 three pieces (CSS guard, script tag, toggle button) adapt to a theme
 with its own token names and header layout.

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Default theme header template: opening HTML, site branding, and primary navigation.
+ * Lumora Classic header template: opening HTML, site branding, and primary navigation.
  *
  * @package LumoraPress
  * @subpackage Themes
