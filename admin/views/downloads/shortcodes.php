@@ -14,6 +14,7 @@
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
+/** @var bool $wordPressImporterActive */
 
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 
@@ -115,3 +116,21 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
     <p class="lp-field__hint">One category, 5 per page, with file sizes:</p>
     <pre><code>[lumora_recent_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" per_page="5" show_size="1"]</code></pre>
 </section>
+
+<?php if ($wordPressImporterActive ?? false): ?>
+    <section class="lp-admin__panel">
+        <h2>Imported Simple Download Monitor shortcodes</h2>
+        <p class="lp-field__hint">
+            Provided by the WordPress Importer plugin, so content imported from a WordPress site that used
+            Simple Download Monitor keeps working. They read the same downloads, Media folders and counts the
+            import brought across. New content should use <code>[lumora_downloads]</code> or
+            <code>[lumora_recent_downloads]</code> above instead.
+        </p>
+
+        <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
+            <li><span><code>[sdm_show_dl_from_category category_slug="game-of-thrones" show_size="1"]</code></span><span>Every download filed in the Media folder whose name matches <code>category_slug</code> (the folder name in lower case with dashes). <code>show_size="1"</code> adds each file's size.</span></li>
+            <li><span><code>[sdm_download id="12"]</code></span><span>A single imported download, by its original WordPress ID.</span></li>
+            <li><span><code>[sdm_latest_downloads number="5" category_slug="game-of-thrones"]</code></span><span>The newest <em>number</em> imported downloads (default 5), optionally limited to one folder.</span></li>
+        </ul>
+    </section>
+<?php endif; ?>

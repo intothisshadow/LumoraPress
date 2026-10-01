@@ -347,6 +347,7 @@ $menu = [
             'upload' => ['label' => 'Upload', 'icon' => '⬆️', 'capability' => 'upload_files'],
             'import' => ['label' => 'Import from Server', 'icon' => '📥', 'capability' => 'upload_files'],
             'thumbnails' => ['label' => 'Thumbnails', 'icon' => '🔲', 'capability' => 'upload_files'],
+            'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
         ],
     ],
     ...($downloadsActive ? [
