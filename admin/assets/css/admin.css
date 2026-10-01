@@ -3573,6 +3573,77 @@ body.lp-admin-login {
     border-bottom: none;
 }
 
+/* Maintenance > Import: each stage of an import is its own card. */
+
+.lp-import-step {
+    margin: 0 0 1.25rem;
+    padding: 1rem 1.25rem 1.1rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: color-mix(in srgb, var(--lp-admin-text) 3%, var(--lp-admin-panel-bg));
+}
+
+.lp-import-step--optional {
+    border-style: dashed;
+}
+
+.lp-import-step--resume {
+    border-left: 4px solid var(--lp-admin-warning-border);
+}
+
+.lp-import-step--summary {
+    border-left: 4px solid var(--lp-admin-success-border);
+}
+
+.lp-import-step__title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 0.9rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+    font-size: 1.05rem;
+}
+
+.lp-import-step__number {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 50%;
+    background: var(--lp-admin-accent);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.lp-import-step > h4 {
+    margin: 1.25rem 0 0.5rem;
+}
+
+.lp-import-step > h4:first-of-type {
+    margin-top: 0;
+}
+
+.lp-import-help {
+    margin: 0 0 1rem;
+}
+
+.lp-import-help > summary {
+    cursor: pointer;
+    color: var(--lp-admin-accent);
+}
+
+.lp-import-about > summary {
+    cursor: pointer;
+}
+
+.lp-import-about[open] > summary {
+    margin-bottom: 1rem;
+}
+
 /* Forms */
 
 .lp-field {

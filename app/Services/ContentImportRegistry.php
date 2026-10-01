@@ -133,6 +133,9 @@ final class ContentImportRegistry
             $params['content_type'] = $contentType;
         }
 
+        // A stable order lets a resumable stage walk this list by offset across requests.
+        $sql .= ' ORDER BY id ASC';
+
         $rows = $this->database->fetchAll($sql, $params);
 
         return array_map(

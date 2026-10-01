@@ -71,13 +71,13 @@ use Throwable;
  *
  * Only one 'wordpress_import' batch may be in progress at a time (removeAll() clears it).
  * Progress and cross-stage id maps persist after every stage so an interrupted import can
- * resume via startOrResume()/runNextStage(), but the source database password is never stored.
+ * resume via startOrResume()/runNextStage(), with the source database password kept only in encrypted form.
  */
 final class WordPressImportService
 {
     public const SOURCE = 'wordpress_import';
 
-    /** Connection fields remembered for a resumable import — never the database password. */
+    /** Connection fields remembered in plain form for a resumable import; the password is stored separately, encrypted. */
     private const CONNECTION_FIELDS = ['source_type', 'db_host', 'db_port', 'db_name', 'db_user', 'db_prefix', 'wxr_path', 'uploads_path', 'gallery_path', 'wp_config_path'];
 
     /** WordPress attachments always use post_status 'inherit', not the caller-selectable $statuses option. */
@@ -421,12 +421,12 @@ final class WordPressImportService
         // 0 (no delay) unless the admin explicitly set it.
         $delayMs = (int) ($options['stage_delay_ms'] ?? 0);
 
-        if ($delayMs > 0 && $completed !== [] && !isset($stageProgress[$stage])) {
+        if ($delayMs > 0 && $completed !== [] && ($stageProgress[$stage] ?? []) === []) {
             usleep($delayMs * 1000);
         }
 
         $stageComplete = $this->executeStage($batchId, $stage, $options, $maps, $stageProgress, $deadline);
-        $progress = isset($stageProgress[$stage]) ? ['processed' => (int) $stageProgress[$stage]['offset'], 'total' => (int) $stageProgress[$stage]['total']] : null;
+        $progress = isset($stageProgress[$stage]['offset']) ? ['processed' => (int) $stageProgress[$stage]['offset'], 'total' => (int) $stageProgress[$stage]['total']] : null;
 
         if ($stageComplete) {
             $completed[] = $stage;
@@ -440,6 +440,8 @@ final class WordPressImportService
             'maps' => $maps,
             'stageProgress' => $stageProgress,
             'connection' => $state['connection'] ?? [],
+            // Nothing left to resume once every stage has run, so the stored password goes too.
+            'connection_password' => array_diff($planned, $completed) === [] ? null : ($state['connection_password'] ?? null),
         ]);
 
         return [
@@ -454,8 +456,8 @@ final class WordPressImportService
 
     /**
      * Remembers where $batchId's source lives so Resume Import can pre-fill it. The database
-     * password is deliberately never stored — it would sit in the database in plain text —
-     * so only the fields in CONNECTION_FIELDS are kept and the admin re-enters the password.
+     * password is kept only encrypted (see encryptSecret()), and not at all when the install
+     * has no secret key or libsodium is unavailable.
      *
      * @param array<string, mixed> $connection
      */
@@ -476,6 +478,15 @@ final class WordPressImportService
         }
 
         $state['connection'] = $remembered;
+        unset($state['connection_password']);
+
+        $password = $connection['db_password'] ?? '';
+        $encrypted = is_string($password) && $password !== '' ? $this->encryptSecret($password) : null;
+
+        if ($encrypted !== null) {
+            $state['connection_password'] = $encrypted;
+        }
+
         $this->persistState($batchId, $state);
     }
 
@@ -493,7 +504,65 @@ final class WordPressImportService
             }
         }
 
+        if (isset($state['connection_password']) && is_string($state['connection_password'])) {
+            $password = $this->decryptSecret($state['connection_password']);
+
+            if ($password !== null) {
+                $connection['db_password'] = $password;
+            }
+        }
+
         return $connection;
+    }
+
+    /**
+     * The key is derived from the install's secret key, so a copy of the database or a backup
+     * alone doesn't reveal the password; anyone who can also read config.php still could.
+     */
+    private function secretBoxKey(): ?string
+    {
+        try {
+            $secretKey = (string) $this->config->get('secret_key', '');
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        if ($secretKey === '' || !function_exists('sodium_crypto_secretbox')) {
+            return null;
+        }
+
+        return hash('sha256', 'wordpress-importer-connection|' . $secretKey, true);
+    }
+
+    private function encryptSecret(string $plain): ?string
+    {
+        $key = $this->secretBoxKey();
+
+        if ($key === null) {
+            return null;
+        }
+
+        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+
+        return base64_encode($nonce . sodium_crypto_secretbox($plain, $nonce, $key));
+    }
+
+    private function decryptSecret(string $encoded): ?string
+    {
+        $key = $this->secretBoxKey();
+        $raw = base64_decode($encoded, true);
+
+        if ($key === null || $raw === false || strlen($raw) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
+            return null;
+        }
+
+        $plain = sodium_crypto_secretbox_open(
+            substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),
+            $key,
+        );
+
+        return $plain === false ? null : $plain;
     }
 
     /**
@@ -694,11 +763,17 @@ final class WordPressImportService
 
                 return $finished;
             case 'nextgen_galleries':
-                $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
-                break;
+                $cursor = $stageProgress['nextgen_galleries'] ?? [];
+                $finished = $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode, $cursor, $deadline);
+                $stageProgress['nextgen_galleries'] = $cursor;
+
+                return $finished;
             case 'downloads':
-                $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
-                break;
+                $cursor = $stageProgress['downloads'] ?? [];
+                $finished = $this->importDownloads($batchId, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode, $cursor, $deadline);
+                $stageProgress['downloads'] = $cursor;
+
+                return $finished;
             case 'pages':
                 $maps['wpPageIdToLocalId'] = $this->importPages($batchId, $statuses, $maps['wpUserIdToLocalId'] ?? [], $maps['wpAttachmentIdToLocalMediaId'] ?? [], $maps['oldRelativePathToNewUrl'] ?? [], $existingContentMode);
 
@@ -723,12 +798,17 @@ final class WordPressImportService
                 $this->importWidgets($batchId);
                 break;
             case 'internal_links':
-                $this->rewriteInternalLinks($statuses, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? []);
-                $this->importOldSlugRedirects($batchId, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? []);
-                break;
+                $cursor = $stageProgress['internal_links'] ?? [];
+                $finished = $this->updateInternalLinks($batchId, $statuses, $maps['wpPageIdToLocalId'] ?? [], $maps['wpPostIdToLocalId'] ?? [], $cursor, $deadline);
+                $stageProgress['internal_links'] = $cursor;
+
+                return $finished;
             case 'thumbnails':
-                $this->regenerateThumbnails($batchId);
-                break;
+                $cursor = $stageProgress['thumbnails'] ?? [];
+                $finished = $this->regenerateThumbnails($batchId, $cursor, $deadline);
+                $stageProgress['thumbnails'] = $cursor;
+
+                return $finished;
             case 'verify':
                 $this->verifyImport($batchId);
                 $this->reportUnsupportedContent();
@@ -740,96 +820,151 @@ final class WordPressImportService
 
     /**
      * Rewrites in-content `<a href>` links between imported posts/pages to point at the new
-     * local URL. Runs after both 'pages' and 'posts' as a separate pass — unlike image URLs,
-     * a link's target post/page might not be imported yet if it comes later in iteration
-     * order, so every local id must already exist. Category/tag/author archive links are a
-     * deliberate scope boundary and are left untouched.
+     * local URL, then creates redirects for their old slugs. Runs after both 'pages' and
+     * 'posts' as a separate pass — unlike image URLs, a link's target post/page might not be
+     * imported yet if it comes later in iteration order, so every local id must already
+     * exist. Category/tag/author archive links are a deliberate scope boundary and are left
+     * untouched.
+     *
+     * Walks one list (every post then page to rewrite, then every post then page to redirect)
+     * by offset, so it can stop at $deadline and resume. The link maps are built once and kept
+     * in the cursor, since rebuilding them per call costs a query per post.
      *
      * @param array<int, string> $statuses
      * @param array<string, int> $wpPageIdToLocalId
      * @param array<int, int> $wpPostIdToLocalId
+     * @param array<string, mixed> $cursor
      */
-    private function rewriteInternalLinks(array $statuses, array $wpPageIdToLocalId, array $wpPostIdToLocalId): void
+    private function updateInternalLinks(string $batchId, array $statuses, array $wpPageIdToLocalId, array $wpPostIdToLocalId, array &$cursor, ?float $deadline): bool
     {
-        if ($wpPageIdToLocalId === [] && $wpPostIdToLocalId === []) {
+        $items = [];
+
+        foreach ($wpPostIdToLocalId as $wpId => $localId) {
+            $items[] = ['rewrite', 'post', (int) $wpId, (int) $localId];
+        }
+
+        foreach ($wpPageIdToLocalId as $wpId => $localId) {
+            $items[] = ['rewrite', 'page', (int) $wpId, (int) $localId];
+        }
+
+        foreach ($wpPostIdToLocalId as $wpId => $localId) {
+            $items[] = ['redirect', 'post', (int) $wpId, (int) $localId];
+        }
+
+        foreach ($wpPageIdToLocalId as $wpId => $localId) {
+            $items[] = ['redirect', 'page', (int) $wpId, (int) $localId];
+        }
+
+        if ($cursor === []) {
+            $cursor = ['offset' => 0, 'total' => count($items), 'maps' => null];
+        }
+
+        if ($items === []) {
+            return true;
+        }
+
+        if ($cursor['maps'] === null) {
+            $cursor['maps'] = [
+                'sourceHost' => (string) (parse_url($this->source->siteOptions()['home'] ?? '', PHP_URL_HOST) ?: parse_url($this->source->siteOptions()['siteurl'] ?? '', PHP_URL_HOST) ?: ''),
+                'posts' => $this->buildPostLinkMaps($statuses, $wpPostIdToLocalId),
+                'pages' => $this->buildPageLinkMaps($statuses, $wpPageIdToLocalId),
+            ];
+        }
+
+        $rewriter = new InternalLinkRewriter(
+            $cursor['maps']['sourceHost'],
+            ...$cursor['maps']['posts'],
+            ...$cursor['maps']['pages'],
+        );
+
+        $processed = 0;
+
+        for ($index = (int) $cursor['offset']; $index < count($items); $index++) {
+            if ($this->budgetSpent($deadline, $processed)) {
+                return false;
+            }
+
+            $cursor['offset'] = $index + 1;
+            $processed++;
+            [$action, $kind, $wpId, $localId] = $items[$index];
+
+            if ($action === 'rewrite') {
+                $kind === 'post' ? $this->rewritePostLinks($localId, $rewriter) : $this->rewritePageLinks($localId, $rewriter);
+            } else {
+                $kind === 'post' ? $this->createOldSlugRedirectsForPost($batchId, $wpId, $localId) : $this->createOldSlugRedirectsForPage($batchId, $wpId, $localId);
+            }
+        }
+
+        return true;
+    }
+
+    /** True once $deadline has passed — but never before one item was handled, so every call makes progress. */
+    private function budgetSpent(?float $deadline, int $processed): bool
+    {
+        return $deadline !== null && $processed > 0 && microtime(true) >= $deadline;
+    }
+
+    private function rewritePostLinks(int $localPostId, InternalLinkRewriter $rewriter): void
+    {
+        $post = $this->posts->findById($localPostId);
+
+        if ($post === null) {
             return;
         }
 
-        $sourceHost = (string) (parse_url($this->source->siteOptions()['home'] ?? '', PHP_URL_HOST) ?: parse_url($this->source->siteOptions()['siteurl'] ?? '', PHP_URL_HOST) ?: '');
+        $rewritten = $rewriter->rewrite($post->content);
 
-        [$postIdToNewUrl, $postSlugToNewUrl, $postGuidToNewUrl] = $this->buildPostLinkMaps($statuses, $wpPostIdToLocalId);
-        [$pageIdToNewUrl, $pageSlugToNewUrl, $pageGuidToNewUrl] = $this->buildPageLinkMaps($statuses, $wpPageIdToLocalId);
+        if (!$rewritten['changed']) {
+            return;
+        }
 
-        $rewriter = new InternalLinkRewriter(
-            $sourceHost,
-            $postIdToNewUrl,
-            $postSlugToNewUrl,
-            $postGuidToNewUrl,
-            $pageIdToNewUrl,
-            $pageSlugToNewUrl,
-            $pageGuidToNewUrl,
+        $this->posts->update(
+            id: $post->id,
+            title: $post->title,
+            content: $rewritten['content'],
+            excerpt: $post->excerpt,
+            status: $post->status,
+            publishedAt: $post->publishedAt,
+            featuredImageId: $post->featuredImageId,
+            slug: $post->slug,
+            commentsOpen: $post->commentsOpen,
+            contentFormat: $post->contentFormat,
+            featuredImageCrop: $post->featuredImageCrop,
+            visibility: $post->visibility,
+            isSticky: $post->isSticky,
+            unpublishAt: $post->unpublishAt,
         );
+    }
 
-        foreach ($wpPostIdToLocalId as $localPostId) {
-            $post = $this->posts->findById($localPostId);
+    private function rewritePageLinks(int $localPageId, InternalLinkRewriter $rewriter): void
+    {
+        $page = $this->pages->findById($localPageId);
 
-            if ($post === null) {
-                continue;
-            }
-
-            $rewritten = $rewriter->rewrite($post->content);
-
-            if (!$rewritten['changed']) {
-                continue;
-            }
-
-            $this->posts->update(
-                id: $post->id,
-                title: $post->title,
-                content: $rewritten['content'],
-                excerpt: $post->excerpt,
-                status: $post->status,
-                publishedAt: $post->publishedAt,
-                featuredImageId: $post->featuredImageId,
-                slug: $post->slug,
-                commentsOpen: $post->commentsOpen,
-                contentFormat: $post->contentFormat,
-                featuredImageCrop: $post->featuredImageCrop,
-                visibility: $post->visibility,
-                isSticky: $post->isSticky,
-                unpublishAt: $post->unpublishAt,
-            );
+        if ($page === null) {
+            return;
         }
 
-        foreach ($wpPageIdToLocalId as $localPageId) {
-            $page = $this->pages->findById($localPageId);
+        $rewritten = $rewriter->rewrite($page->content);
 
-            if ($page === null) {
-                continue;
-            }
-
-            $rewritten = $rewriter->rewrite($page->content);
-
-            if (!$rewritten['changed']) {
-                continue;
-            }
-
-            $this->pages->update(
-                id: $page->id,
-                title: $page->title,
-                content: $rewritten['content'],
-                excerpt: $page->excerpt,
-                status: $page->status,
-                publishedAt: $page->publishedAt,
-                parentId: $page->parentId,
-                featuredImageId: $page->featuredImageId,
-                slug: $page->slug,
-                contentFormat: $page->contentFormat,
-                featuredImageCrop: $page->featuredImageCrop,
-                visibility: $page->visibility,
-                commentsOpen: $page->commentsOpen,
-            );
+        if (!$rewritten['changed']) {
+            return;
         }
+
+        $this->pages->update(
+            id: $page->id,
+            title: $page->title,
+            content: $rewritten['content'],
+            excerpt: $page->excerpt,
+            status: $page->status,
+            publishedAt: $page->publishedAt,
+            parentId: $page->parentId,
+            featuredImageId: $page->featuredImageId,
+            slug: $page->slug,
+            contentFormat: $page->contentFormat,
+            featuredImageCrop: $page->featuredImageCrop,
+            visibility: $page->visibility,
+            commentsOpen: $page->commentsOpen,
+        );
     }
 
     /**
@@ -917,50 +1052,47 @@ final class WordPressImportService
      * post types. A redirect that would collide with an existing one or the current path is
      * skipped with a warning rather than overwritten.
      *
-     * @param array<string, int> $wpPageIdToLocalId
-     * @param array<int, int> $wpPostIdToLocalId
      */
-    private function importOldSlugRedirects(string $batchId, array $wpPageIdToLocalId, array $wpPostIdToLocalId): void
+    private function createOldSlugRedirectsForPost(string $batchId, int $wpPostId, int $localPostId): void
     {
-        foreach ($wpPostIdToLocalId as $wpPostId => $localPostId) {
-            $post = $this->posts->findById($localPostId);
+        $post = $this->posts->findById($localPostId);
 
-            if ($post === null) {
-                continue;
-            }
-
-            $currentUrl = post_permalink($post);
-
-            foreach ($this->source->oldSlugs($wpPostId) as $oldSlug) {
-                $oldUrl = Permalinks::service()->postUrlForSlugAndDate($oldSlug, $post->publishedAt);
-                $this->createOldSlugRedirect($batchId, $wpPostId, $post->title, $oldUrl, $currentUrl);
-            }
+        if ($post === null) {
+            return;
         }
 
-        foreach ($wpPageIdToLocalId as $wpPageIdString => $localPageId) {
-            $page = $this->pages->findById($localPageId);
+        $currentUrl = post_permalink($post);
 
-            if ($page === null) {
-                continue;
-            }
+        foreach ($this->source->oldSlugs($wpPostId) as $oldSlug) {
+            $oldUrl = Permalinks::service()->postUrlForSlugAndDate($oldSlug, $post->publishedAt);
+            $this->createOldSlugRedirect($batchId, $wpPostId, $post->title, $oldUrl, $currentUrl);
+        }
+    }
 
-            $currentUrl = page_permalink($page);
+    private function createOldSlugRedirectsForPage(string $batchId, int $wpPageId, int $localPageId): void
+    {
+        $page = $this->pages->findById($localPageId);
 
-            // A page's URL is its ancestor chain plus its own slug, not
-            // a flat 'page/{slug}' — a previous WordPress slug
-            // is swapped in for the page's own slug only, keeping the
-            // same (current) ancestor chain, since WP's own slug history
-            // has nothing to say about Lumora Press's parent/child URL
-            // structure.
-            $ancestorSegments = array_map(
-                static fn (\LumoraPress\Models\Page $ancestor): string => $ancestor->slug,
-                $this->pages->ancestors($page->id),
-            );
+        if ($page === null) {
+            return;
+        }
 
-            foreach ($this->source->oldSlugs((int) $wpPageIdString) as $oldSlug) {
-                $oldUrl = home_url(implode('/', [...$ancestorSegments, $oldSlug]));
-                $this->createOldSlugRedirect($batchId, (int) $wpPageIdString, $page->title, $oldUrl, $currentUrl);
-            }
+        $currentUrl = page_permalink($page);
+
+        // A page's URL is its ancestor chain plus its own slug, not
+        // a flat 'page/{slug}' — a previous WordPress slug
+        // is swapped in for the page's own slug only, keeping the
+        // same (current) ancestor chain, since WP's own slug history
+        // has nothing to say about Lumora Press's parent/child URL
+        // structure.
+        $ancestorSegments = array_map(
+            static fn (\LumoraPress\Models\Page $ancestor): string => $ancestor->slug,
+            $this->pages->ancestors($page->id),
+        );
+
+        foreach ($this->source->oldSlugs($wpPageId) as $oldSlug) {
+            $oldUrl = home_url(implode('/', [...$ancestorSegments, $oldSlug]));
+            $this->createOldSlugRedirect($batchId, $wpPageId, $page->title, $oldUrl, $currentUrl);
         }
     }
 
@@ -1007,12 +1139,31 @@ final class WordPressImportService
      * upload, the import path (MediaImporter::importFromLocalFile()) never calls
      * ThumbnailService, so imported images have no thumbnail rows until this runs.
      * regenerate() already no-ops safely for non-images, so ids aren't pre-filtered here.
+     * Resumable by offset so it can stop at $deadline.
+     *
+     * @param array<string, mixed> $cursor
      */
-    private function regenerateThumbnails(string $batchId): void
+    private function regenerateThumbnails(string $batchId, array &$cursor, ?float $deadline): bool
     {
-        foreach ($this->registry->idsForBatch($batchId, 'media') as $entry) {
-            $this->thumbnails->regenerate($entry['contentId']);
+        $entries = $this->registry->idsForBatch($batchId, 'media');
+
+        if ($cursor === []) {
+            $cursor = ['offset' => 0, 'total' => count($entries)];
         }
+
+        $processed = 0;
+
+        for ($index = (int) $cursor['offset']; $index < count($entries); $index++) {
+            if ($this->budgetSpent($deadline, $processed)) {
+                return false;
+            }
+
+            $cursor['offset'] = $index + 1;
+            $processed++;
+            $this->thumbnails->regenerate($entries[$index]['contentId']);
+        }
+
+        return true;
     }
 
     /**
@@ -1941,12 +2092,35 @@ final class WordPressImportService
      * @param array<int, int> $wpAttachmentIdToLocalMediaId
      * @param array<string, string> $oldRelativePathToNewUrl
      */
-    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl, ?ExistingContentMode $existingContentMode = null): void
+    private function importDownloads(string $batchId, array $wpUserIdToLocalId, array $wpAttachmentIdToLocalMediaId, array $oldRelativePathToNewUrl, ?ExistingContentMode $existingContentMode, array &$cursor, ?float $deadline): bool
     {
-        $wpCategoryIdByWpTermId = $this->importDownloadCategories($batchId, $existingContentMode);
-        $imageRewriter = new ContentImageRewriter();
+        $downloads = array_values($this->source->posts(['sdm_downloads'], ['publish']));
 
-        foreach ($this->source->posts(['sdm_downloads'], ['publish']) as $download) {
+        // Categories are created once, on the first call, and carried in the cursor — a
+        // later call re-creating them would duplicate every one.
+        if ($cursor === []) {
+            $cursor = ['offset' => 0, 'total' => count($downloads), 'categories' => $this->importDownloadCategories($batchId, $existingContentMode)];
+        }
+
+        $wpCategoryIdByWpTermId = $cursor['categories'];
+        $imageRewriter = new ContentImageRewriter();
+        $processed = 0;
+
+        for ($index = (int) $cursor['offset']; $index < count($downloads); $index++) {
+            if ($this->budgetSpent($deadline, $processed)) {
+                return false;
+            }
+
+            $download = $downloads[$index];
+            $cursor['offset'] = $index + 1;
+            $processed++;
+
+            // With no existing-content mode, a registry hit can only be this same batch's
+            // earlier work (a call cut off before its cursor was saved) — don't create it twice.
+            if ($existingContentMode === null && $this->downloadAlreadyImported((string) $download['ID'])) {
+                continue;
+            }
+
             $meta = $this->source->postMeta($download['ID']);
             $uploadUrl = $meta['sdm_upload'] ?? null;
             $thumbnailMediaId = isset($meta['_thumbnail_id'])
@@ -2108,6 +2282,19 @@ final class WordPressImportService
                 $this->warnings[] = "Download #{$download['ID']} (\"{$download['post_title']}\"): {$exception->getMessage()}";
             }
         }
+
+        return true;
+    }
+
+    private function downloadAlreadyImported(string $wpDownloadId): bool
+    {
+        foreach (['download', 'redirect', 'media'] as $contentType) {
+            if ($this->registry->existingLocalId(self::SOURCE, $contentType, $wpDownloadId) !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -2341,67 +2528,104 @@ final class WordPressImportService
      *
      * @param array<int, int> $wpUserIdToLocalId
      */
-    private function importNextGenGalleries(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode = null): void
+    private function importNextGenGalleries(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode, array &$cursor, ?float $deadline): bool
     {
         if ($this->sourceGalleryPath === null || $this->sourceGalleryPath === '') {
-            return;
+            return true;
         }
 
-        $albums = $this->source->nextGenAlbums();
-        $wpAlbumIdToLocalFolderId = [];
+        $galleries = array_values($this->source->nextGenGalleries());
 
-        foreach ($albums as $album) {
-            $albumName = $album['name'] !== '' ? $album['name'] : $album['slug'];
-            $wpAlbumIdToLocalFolderId[$album['id']] = $this->createOrUpdateFolder($batchId, $albumName, null, (string) $album['id'], $existingContentMode);
+        // Album and gallery folders are created once, on the first call, and carried in the
+        // cursor — a later call re-creating them would duplicate every folder.
+        if ($cursor === []) {
+            $albums = $this->source->nextGenAlbums();
+            $wpAlbumIdToLocalFolderId = [];
+
+            foreach ($albums as $album) {
+                $albumName = $album['name'] !== '' ? $album['name'] : $album['slug'];
+                $wpAlbumIdToLocalFolderId[$album['id']] = $this->createOrUpdateFolder($batchId, $albumName, null, (string) $album['id'], $existingContentMode);
+            }
+
+            $wpGalleryGidToAlbumId = $this->buildGalleryIdToAlbumId($albums);
+            $folders = [];
+
+            foreach ($galleries as $gallery) {
+                $folderName = $gallery['title'] !== '' ? $gallery['title'] : $gallery['name'];
+                $parentAlbumId = $wpGalleryGidToAlbumId[$gallery['gid']] ?? null;
+                $parentFolderId = $parentAlbumId !== null ? ($wpAlbumIdToLocalFolderId[$parentAlbumId] ?? null) : null;
+                $folders[$gallery['gid']] = $this->createOrUpdateFolder($batchId, $folderName, $parentFolderId, (string) $gallery['gid'], $existingContentMode);
+            }
+
+            $cursor = ['offset' => 0, 'total' => 0, 'folders' => $folders];
         }
 
-        $wpGalleryGidToAlbumId = $this->buildGalleryIdToAlbumId($albums);
+        // One flat, stable list of every picture to copy, so the walk can stop and resume by offset.
+        $items = [];
 
-        foreach ($this->source->nextGenGalleries() as $gallery) {
+        foreach ($galleries as $gallery) {
+            foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
+                if ($picture['exclude'] !== 1) {
+                    $items[] = [$gallery, $picture];
+                }
+            }
+        }
+
+        $cursor['total'] = count($items);
+        $processed = 0;
+
+        for ($index = (int) $cursor['offset']; $index < count($items); $index++) {
+            if ($this->budgetSpent($deadline, $processed)) {
+                return false;
+            }
+
+            [$gallery, $picture] = $items[$index];
+            $cursor['offset'] = $index + 1;
+            $processed++;
+
+            // With no existing-content mode, a registry hit can only be this same batch's
+            // earlier work (a call cut off before its cursor was saved) — don't copy it twice.
+            if ($existingContentMode === null && $this->registry->existingLocalId(self::SOURCE, 'media', 'ngg-' . $picture['pid']) !== null) {
+                continue;
+            }
+
             $galleryDirName = basename(rtrim($gallery['path'], '/'));
             $absoluteGalleryDir = rtrim($this->sourceGalleryPath, '/') . '/' . $galleryDirName;
             $authorId = $wpUserIdToLocalId[$gallery['author']] ?? 1;
             $folderName = $gallery['title'] !== '' ? $gallery['title'] : $gallery['name'];
-            $parentAlbumId = $wpGalleryGidToAlbumId[$gallery['gid']] ?? null;
-            $parentFolderId = $parentAlbumId !== null ? ($wpAlbumIdToLocalFolderId[$parentAlbumId] ?? null) : null;
-            $folderId = $this->createOrUpdateFolder($batchId, $folderName, $parentFolderId, (string) $gallery['gid'], $existingContentMode);
+            $folderId = $cursor['folders'][$gallery['gid']] ?? null;
+            $absolutePath = $absoluteGalleryDir . '/' . $picture['filename'];
 
-            foreach ($this->source->nextGenPictures($gallery['gid']) as $picture) {
-                if ($picture['exclude'] === 1) {
-                    continue;
-                }
+            if (!is_file($absolutePath)) {
+                $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): file not found at {$absolutePath}, skipped.";
+                continue;
+            }
 
-                $absolutePath = $absoluteGalleryDir . '/' . $picture['filename'];
+            $data = new ImportedMedia(
+                absolutePath: $absolutePath,
+                uploadedByUserId: $authorId,
+                fileName: $picture['filename'],
+                altText: $picture['alttext'] !== '' ? $picture['alttext'] : null,
+                description: $picture['description'] !== '' ? $picture['description'] : null,
+                folderId: $folderId,
+                // Prefixed to keep NextGEN's own pid numbering from
+                // colliding with a WordPress attachment ID in the
+                // same batch's 'media' provenance records — the two
+                // are entirely separate id spaces that can (and in
+                // practice do) overlap numerically.
+                externalId: 'ngg-' . $picture['pid'],
+                uploadedAt: $this->parseWpDate($picture['imagedate']),
+                relativeDirectory: $galleryDirName,
+            );
 
-                if (!is_file($absolutePath)) {
-                    $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): file not found at {$absolutePath}, skipped.";
-                    continue;
-                }
-
-                $data = new ImportedMedia(
-                    absolutePath: $absolutePath,
-                    uploadedByUserId: $authorId,
-                    fileName: $picture['filename'],
-                    altText: $picture['alttext'] !== '' ? $picture['alttext'] : null,
-                    description: $picture['description'] !== '' ? $picture['description'] : null,
-                    folderId: $folderId,
-                    // Prefixed to keep NextGEN's own pid numbering from
-                    // colliding with a WordPress attachment ID in the
-                    // same batch's 'media' provenance records — the two
-                    // are entirely separate id spaces that can (and in
-                    // practice do) overlap numerically.
-                    externalId: 'ngg-' . $picture['pid'],
-                    uploadedAt: $this->parseWpDate($picture['imagedate']),
-                    relativeDirectory: $galleryDirName,
-                );
-
-                try {
-                    $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
-                } catch (Throwable $exception) {
-                    $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): {$exception->getMessage()}";
-                }
+            try {
+                $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
+            } catch (Throwable $exception) {
+                $this->warnings[] = "NextGEN picture #{$picture['pid']} (gallery \"{$folderName}\"): {$exception->getMessage()}";
             }
         }
+
+        return true;
     }
 
     /**

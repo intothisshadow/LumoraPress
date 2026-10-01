@@ -12,13 +12,14 @@
  *   <ul id="some-id" class="lp-update-progress" hidden></ul>
  *   <p data-lp-import-detail hidden></p>   (sibling of the list)
  *
- * A dry run is left to submit normally, as is anything without fetch(): the server
+ * Test Connection and a dry run are left to submit normally, as is anything without fetch(): the server
  * then runs one slice and the page offers Resume Import for the rest.
  */
 (function () {
     'use strict';
 
     var NEXT_ROUND_DELAY_MS = 250;
+    var BUSY_RETRY_DELAY_MS = 2000;
 
     function renderStages(listEl, stages) {
         listEl.innerHTML = '';
@@ -68,6 +69,16 @@
             return;
         }
 
+        // The clicked button's name/value isn't part of FormData(form), and the form
+        // has two submit buttons, so the handler to run is set explicitly.
+        function formData() {
+            var data = new FormData(form);
+
+            data.set('form', 'start_wordpress_import');
+
+            return data;
+        }
+
         function stop(message) {
             setDetail(detailEl, message, true);
 
@@ -79,31 +90,40 @@
         function round() {
             fetch(form.getAttribute('action') || window.location.href, {
                 method: 'POST',
-                body: new FormData(form),
+                body: formData(),
                 credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'fetch' },
             })
                 .then(function (response) {
-                    var isJson = (response.headers.get('Content-Type') || '').indexOf('application/json') !== -1;
+                    // Decided by the body, not the Content-Type header: some hosts
+                    // and proxies rewrite that header, and a JSON reply labelled
+                    // text/html would otherwise be printed as a page.
+                    return response.text().then(function (text) {
+                        var parsed = null;
 
-                    if (!isJson) {
+                        try {
+                            parsed = JSON.parse(text);
+                        } catch (error) {
+                            parsed = null;
+                        }
+
+                        if (parsed !== null && typeof parsed === 'object' && 'done' in parsed) {
+                            return parsed;
+                        }
+
                         // A validation error re-renders the whole page, and a
                         // timeout from a proxy returns its own error page; show
                         // either rather than leaving the form looking stuck.
-                        return response.text().then(function (html) {
-                            if (response.ok) {
-                                document.open();
-                                document.write(html);
-                                document.close();
+                        if (response.ok) {
+                            document.open();
+                            document.write(text);
+                            document.close();
 
-                                return null;
-                            }
+                            return null;
+                        }
 
-                            throw new Error('Unexpected response status: ' + response.status);
-                        });
-                    }
-
-                    return response.json();
+                        throw new Error('Unexpected response status: ' + response.status);
+                    });
                 })
                 .then(function (data) {
                     if (data === null) {
@@ -127,6 +147,14 @@
 
                     if (data.error) {
                         stop(data.error);
+
+                        return;
+                    }
+
+                    // Another request holds the import; try again shortly.
+                    if (data.busy) {
+                        setDetail(detailEl, data.detail || '', false);
+                        window.setTimeout(round, BUSY_RETRY_DELAY_MS);
 
                         return;
                     }
@@ -157,6 +185,11 @@
 
         document.querySelectorAll('[data-lp-import-form]').forEach(function (form) {
             form.addEventListener('submit', function (event) {
+                // Test Connection and a dry run are ordinary page submissions.
+                if (event.submitter && event.submitter.value === 'test_wordpress_connection') {
+                    return;
+                }
+
                 if (form.querySelector('input[name="dry_run"]:checked')) {
                     return;
                 }

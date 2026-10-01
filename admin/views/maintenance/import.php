@@ -21,6 +21,7 @@ use LumoraPress\Core\Filesystem\SiblingDirectoryScanner;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
+use LumoraPress\Plugins\WordPressImporter\ImportLock;
 use LumoraPress\Plugins\WordPressImporter\ImportProgress;
 use LumoraPress\Plugins\WordPressImporter\WordPressConfigParser;
 use LumoraPress\Plugins\WordPressImporter\WordPressImportService;
@@ -368,7 +369,7 @@ if ($wordPressImporterActive) {
         }
     }
 
-    if ($form === 'test_wordpress_connection' && Csrf::verify('test_wordpress_connection', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if ($form === 'test_wordpress_connection' && Csrf::verify('start_wordpress_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         try {
             $source = $buildSource();
 
@@ -468,90 +469,106 @@ if ($wordPressImporterActive) {
             // observe progress instead of queuing behind this request.
             session_write_close();
 
-            try {
-                $service = $buildImportService();
-                $submittedOptions = $importOptionsToRun;
+            // Two requests driving one import (a form submitted from two tabs) would each
+            // try to run the same stage. The second one waits; the lock frees itself when
+            // the first one's process ends.
+            $importLock = new ImportLock(LUMORA_ROOT);
 
-                // A resumable batch continues with its own original
-                // options, reflected here so the progress bar's stage
-                // list matches what actually runs, not the Resume form.
-                $preExisting = $service->inProgressBatch();
-                $plannedStages = $preExisting['plannedStages'] ?? $service->plannedStages($submittedOptions);
-                $completedStages = $preExisting['completedStages'] ?? [];
-
-                $importProgress->reset(array_map(
-                    static fn (string $stage): array => ['key' => $stage, 'label' => WordPressImportService::stageLabel($stage)],
-                    $plannedStages,
-                ));
-
-                foreach ($completedStages as $alreadyDoneStage) {
-                    $importProgress->stage($alreadyDoneStage);
-                }
-
-                $started = $service->startOrResume($submittedOptions);
-                $service->rememberConnection($started['batchId'], $formValues);
-
-                do {
-                    $remainingStages = array_values(array_diff($plannedStages, $completedStages));
-
-                    if ($remainingStages !== []) {
-                        $importProgress->stage($remainingStages[0]);
-                    }
-
-                    $result = $service->runNextStage($started['batchId'], max(0.5, $sliceDeadline - microtime(true)));
-
-                    if ($result['stageComplete'] && $result['stage'] !== null) {
-                        $completedStages[] = $result['stage'];
-                    }
-                } while ($result['done'] === false && microtime(true) < $sliceDeadline);
-
-                if ($result['done'] === false) {
-                    // Budget spent with work left. A JavaScript client posts
-                    // again straight away; without it the page below shows
-                    // the Resume panel for the same batch.
-                    session_start();
-
-                    if ($isAjaxImportRequest) {
-                        $respondImportJson([
-                            'done' => false,
-                            'stages' => $importProgress->read()['stages'],
-                            'detail' => $result['progress'] !== null
-                                ? WordPressImportService::stageLabel((string) $result['stage']) . ': ' . number_format($result['progress']['processed']) . ' of ' . number_format($result['progress']['total'])
-                                : '',
-                            // A fresh single-use token for the next round, since
-                            // a JSON response has no form to read one from.
-                            'csrf_token' => Csrf::token('start_wordpress_import'),
-                        ]);
-                    }
-
-                    $importPaused = true;
-                } else {
-                    $importProgress->complete();
-
-                    // The service's in-memory warnings() log doesn't survive
-                    // the redirect, so it's stashed in the session for one read.
-                    session_start();
-                    $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
-
-                    $importedUrl = admin_url('maintenance/import') . '?imported=1';
-
-                    if ($isAjaxImportRequest) {
-                        $respondImportJson(['done' => true, 'redirect' => $importedUrl]);
-                    }
-
-                    header('Location: ' . $importedUrl);
-                    exit;
-                }
-            } catch (\Throwable $exception) {
-                $importProgress->complete();
-                $importError = $exception->getMessage();
-
-                // Needed before the rest of the page renders, and before a
-                // JSON error reply that needs a fresh token to retry with.
+            if (!$importLock->acquire()) {
                 session_start();
+                $busyMessage = 'Another request is already working on this import — waiting for it to finish…';
 
                 if ($isAjaxImportRequest) {
-                    $respondImportJson(['done' => false, 'error' => $importError, 'csrf_token' => Csrf::token('start_wordpress_import')]);
+                    $respondImportJson(['done' => false, 'busy' => true, 'detail' => $busyMessage, 'csrf_token' => Csrf::token('start_wordpress_import')]);
+                }
+
+                $importError = 'Another request is already working on this import. Wait a moment, then reload this page.';
+            } else {
+                try {
+                    $service = $buildImportService();
+                    $submittedOptions = $importOptionsToRun;
+
+                    // A resumable batch continues with its own original
+                    // options, reflected here so the progress bar's stage
+                    // list matches what actually runs, not the Resume form.
+                    $preExisting = $service->inProgressBatch();
+                    $plannedStages = $preExisting['plannedStages'] ?? $service->plannedStages($submittedOptions);
+                    $completedStages = $preExisting['completedStages'] ?? [];
+
+                    $importProgress->reset(array_map(
+                        static fn (string $stage): array => ['key' => $stage, 'label' => WordPressImportService::stageLabel($stage)],
+                        $plannedStages,
+                    ));
+
+                    foreach ($completedStages as $alreadyDoneStage) {
+                        $importProgress->stage($alreadyDoneStage);
+                    }
+
+                    $started = $service->startOrResume($submittedOptions);
+                    $service->rememberConnection($started['batchId'], $formValues);
+
+                    do {
+                        $remainingStages = array_values(array_diff($plannedStages, $completedStages));
+
+                        if ($remainingStages !== []) {
+                            $importProgress->stage($remainingStages[0]);
+                        }
+
+                        $result = $service->runNextStage($started['batchId'], max(0.5, $sliceDeadline - microtime(true)));
+
+                        if ($result['stageComplete'] && $result['stage'] !== null) {
+                            $completedStages[] = $result['stage'];
+                        }
+                    } while ($result['done'] === false && microtime(true) < $sliceDeadline);
+
+                    if ($result['done'] === false) {
+                        // Budget spent with work left. A JavaScript client posts
+                        // again straight away; without it the page below shows
+                        // the Resume panel for the same batch.
+                        session_start();
+
+                        if ($isAjaxImportRequest) {
+                            $respondImportJson([
+                                'done' => false,
+                                'stages' => $importProgress->read()['stages'],
+                                'detail' => $result['progress'] !== null
+                                    ? WordPressImportService::stageLabel((string) $result['stage']) . ': ' . number_format($result['progress']['processed']) . ' of ' . number_format($result['progress']['total'])
+                                    : '',
+                                // A fresh single-use token for the next round, since
+                                // a JSON response has no form to read one from.
+                                'csrf_token' => Csrf::token('start_wordpress_import'),
+                            ]);
+                        }
+
+                        $importPaused = true;
+                    } else {
+                        $importProgress->complete();
+
+                        // The service's in-memory warnings() log doesn't survive
+                        // the redirect, so it's stashed in the session for one read.
+                        session_start();
+                        $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
+
+                        $importedUrl = admin_url('maintenance/import') . '?imported=1';
+
+                        if ($isAjaxImportRequest) {
+                            $respondImportJson(['done' => true, 'redirect' => $importedUrl]);
+                        }
+
+                        header('Location: ' . $importedUrl);
+                        exit;
+                    }
+                } catch (\Throwable $exception) {
+                    $importProgress->complete();
+                    $importError = $exception->getMessage();
+
+                    // Needed before the rest of the page renders, and before a
+                    // JSON error reply that needs a fresh token to retry with.
+                    session_start();
+
+                    if ($isAjaxImportRequest) {
+                        $respondImportJson(['done' => false, 'error' => $importError, 'csrf_token' => Csrf::token('start_wordpress_import')]);
+                    }
                 }
             }
         }
@@ -589,7 +606,7 @@ if ($wordPressImporterActive) {
 
     // Pre-fills the Resume form from what the interrupted import was started
     // with, except for anything the current request itself supplied. The
-    // password is never remembered, so that field stays blank.
+    // password is only there when it could be stored encrypted.
     if ($inProgress !== null) {
         foreach ($inProgress['connection'] as $field => $value) {
             if (array_key_exists($field, $formValues) && !isset($_POST[$field]) && !isset($_GET[$field])) {
@@ -827,7 +844,8 @@ endif;
                 <input type="hidden" name="form" value="import_lumora_press_export">
                 <input type="hidden" id="lumora-import-source" name="import_source" value="<?= esc_attr($nativeSource) ?>">
 
-                <h3>1. Choose the export file</h3>
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">1</span>Choose the export file</h3>
 
                 <div class="lp-tabs" data-lp-tabs-input="lumora-import-source">
                     <div class="lp-tabs__list" role="tablist" aria-label="Where the export file is">
@@ -879,7 +897,10 @@ endif;
                     </div>
                 </div>
 
-                <h3 id="lumora-import-uploads">2. Uploaded files kept separately (optional)</h3>
+                </div>
+
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title" id="lumora-import-uploads"><span class="lp-import-step__number" aria-hidden="true">2</span>Uploaded files kept separately (optional)</h3>
 
                 <p class="lp-field__hint">
                     Building an export that includes every uploaded file can be too much for
@@ -912,7 +933,10 @@ endif;
                     <input type="text" id="lumora-import-uploads-folder" name="uploads_folder" value="<?= esc_attr($nativeUploadsFolder) ?>" placeholder="/path/to/other-site/content/uploads">
                 </p>
 
-                <h3>3. Import</h3>
+                </div>
+
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">3</span>Import</h3>
 
                 <p class="lp-field">
                     <label for="lumora-import-existing">When content was already imported from the same site</label>
@@ -932,6 +956,7 @@ endif;
                 </div>
 
                 <button type="submit" class="lp-button lp-button--primary">Import</button>
+                </div>
             </form>
         </section>
 
@@ -992,8 +1017,8 @@ endif;
         </div>
     <?php endif; ?>
 
-    <section class="lp-admin__panel">
-        <h2>WordPress Importer</h2>
+    <details class="lp-admin__panel lp-import-about">
+        <summary><strong>About the WordPress Importer</strong> — what it imports and what it needs</summary>
 
         <h3>Supported WordPress versions</h3>
 
@@ -1062,6 +1087,10 @@ endif;
                 equivalent and are listed in the warnings below instead.
             </li>
         </ul>
+    </details>
+
+    <section class="lp-admin__panel">
+        <h2>Import from WordPress</h2>
 
         <?php
         // Shared by the Resume, Test Connection, and Import forms — each
@@ -1072,6 +1101,20 @@ endif;
 
         $renderConnectionFields = static function (string $idPrefix) use ($formValues): void {
             ?>
+
+            <p class="lp-field lp-field--radio">
+                <label>
+                    <input type="radio" name="source_type" value="database" <?= $formValues['source_type'] === 'database' ? 'checked' : '' ?>>
+                    Direct database connection
+                </label>
+                <label>
+                    <input type="radio" name="source_type" value="wxr" <?= $formValues['source_type'] === 'wxr' ? 'checked' : '' ?>>
+                    WordPress WXR (.xml) export file
+                </label>
+            </p>
+
+            <details class="lp-import-help">
+                <summary>Which one should I use?</summary>
             <ul class="lp-field__hint">
                 <li>
                     <strong>Direct database connection</strong> when you can reach the source site's
@@ -1093,17 +1136,7 @@ endif;
                     only record where each file used to live, not the file itself.
                 </li>
             </ul>
-
-            <p class="lp-field lp-field--radio">
-                <label>
-                    <input type="radio" name="source_type" value="database" <?= $formValues['source_type'] === 'database' ? 'checked' : '' ?>>
-                    Direct database connection
-                </label>
-                <label>
-                    <input type="radio" name="source_type" value="wxr" <?= $formValues['source_type'] === 'wxr' ? 'checked' : '' ?>>
-                    WordPress WXR (.xml) export file
-                </label>
-            </p>
+            </details>
 
             <p class="lp-field">
                 <label for="<?= esc_attr($idPrefix) ?>-db-host">Database host</label>
@@ -1141,6 +1174,8 @@ endif;
         ?>
 
         <?php if ($summary !== null): ?>
+            <div class="lp-import-step lp-import-step--summary">
+            <h3 class="lp-import-step__title">Previous import</h3>
             <?php
             $pluralLabels = [
                 'post' => 'posts', 'page' => 'pages', 'user' => 'users',
@@ -1204,25 +1239,29 @@ endif;
                 <input type="hidden" name="form" value="remove_wordpress_import">
                 <button type="submit" class="lp-button lp-button--danger">Remove All Imported Content</button>
             </form>
+            </div>
         <?php endif; ?>
 
-        <?php if ($inProgress !== null && $importPaused): ?>
+        <?php if ($inProgress !== null): ?>
+            <div class="lp-import-step lp-import-step--resume">
+            <h3 class="lp-import-step__title">Resume the unfinished import</h3>
+            <?php if ($importPaused): ?>
             <div class="lp-alert lp-alert--info">
                 The import is part-way through (<?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s) finished).
                 Choose Resume Import to carry on from where it stopped — the source connection details
-                are filled in below, but the database password has to be entered again; the content
+                are filled in below<?= isset($inProgress['connection']['db_password']) || ($inProgress['connection']['source_type'] ?? '') === 'wxr' ? '' : ', but the database password has to be entered again' ?>; the content
                 types originally selected are used again.
             </div>
-        <?php elseif ($inProgress !== null): ?>
+            <?php else: ?>
             <div class="lp-alert lp-alert--warning">
                 A previous import was interrupted after
-                <?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s)
-                (<?= esc_html(implode(', ', array_map([WordPressImportService::class, 'stageLabel'], $inProgress['completedStages']))) ?> completed so far).
+                <?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s)<?= $inProgress['completedStages'] === [] ? '' : ' (' . esc_html(implode(', ', array_map([WordPressImportService::class, 'stageLabel'], $inProgress['completedStages']))) . ' completed so far)' ?>.
                 The source connection details are filled in below from that
-                import — only the database password has to be entered again.
+                import<?= isset($inProgress['connection']['db_password']) || ($inProgress['connection']['source_type'] ?? '') === 'wxr' ? '' : ' — enter the database password again' ?>.
                 The content types originally selected are used again
                 automatically; they can't be changed for a resumed import.
             </div>
+            <?php endif; ?>
 
             <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-import-form data-lp-import-target="lp-import-progress-resume">
                 <?= Csrf::field('start_wordpress_import') ?>
@@ -1251,13 +1290,15 @@ endif;
                 <input type="hidden" name="form" value="remove_wordpress_import">
                 <button type="submit" class="lp-button lp-button--danger">Discard This Import</button>
             </form>
+            </div>
         <?php else: ?>
             <?php
             // Separate forms, each with its own CSRF action name, rather
             // than one form with buttons sharing a token — a shared name
             // across buttons silently breaks all but the last rendered.
             ?>
-            <h3>Auto-detect from wp-config.php</h3>
+            <div class="lp-import-step lp-import-step--optional">
+            <h3 class="lp-import-step__title">Optional shortcut: fill in from wp-config.php</h3>
 
             <p class="lp-field__hint">
                 Only relevant for a direct database connection below — a WXR export needs no
@@ -1341,15 +1382,23 @@ endif;
                 </ul>
             <?php endif; ?>
 
-            <h3>Source</h3>
+            </div>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-test-form">
-                <?= Csrf::field('test_wordpress_connection') ?>
-                <input type="hidden" name="form" value="test_wordpress_connection">
+            <?php
+            // One form for the whole screen, so the source details only appear once.
+            // Test Connection and Import are the two submit buttons: each one's
+            // name/value picks the handler, and both share one CSRF action.
+            ?>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" id="wp-import-form" data-lp-import-form data-lp-import-target="lp-import-progress">
+                <?= Csrf::field('start_wordpress_import') ?>
 
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">1</span>Where the content comes from</h3>
                 <?php $renderConnectionFields('wp-import'); ?>
+                </div>
 
-                <h3>Source files</h3>
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">2</span>Source files and connection check</h3>
 
                 <?php
                 // Same "find a candidate, don't parse anything" shape as
@@ -1393,32 +1442,9 @@ endif;
                     <span class="lp-field__hint">An absolute path this server's PHP process can read — the source site's <code>wp-content/uploads</code> folder.</span>
                 </p>
 
-                <?php
-                // Carried forward so Test Connection doesn't blank out
-                // fields that live only on the Detect/Import forms.
-                ?>
-                <input type="hidden" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>">
-                <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
-
-                <button type="submit" class="lp-button lp-button--secondary">Test Connection</button>
-            </form>
-
-            <?php
-            // Renders once via this closure, inside the single Import
-            // form below. Dry run and a real Start/Resume Import share
-            // one form/CSRF action; a "Dry run" checkbox decides which
-            // the server does. This closure avoids duplicating the
-            // id-prefixing logic the smaller Resume form above also needs.
-            $renderSharedImportFields = static function (string $idPrefix) use ($formValues, $renderConnectionFields): void {
-                $renderConnectionFields($idPrefix);
-                ?>
                 <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-uploads-path">Uploads folder path (server filesystem)</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-uploads-path" name="uploads_path" value="<?= esc_attr($formValues['uploads_path']) ?>" required placeholder="/path/to/wp-content/uploads">
-                </p>
-                <p class="lp-field">
-                    <label for="<?= esc_attr($idPrefix) ?>-gallery-path">Gallery folder path (server filesystem)</label>
-                    <input type="text" id="<?= esc_attr($idPrefix) ?>-gallery-path" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>" placeholder="/path/to/wp-content/gallery">
+                    <label for="wp-import-gallery-path">Gallery folder path (server filesystem)</label>
+                    <input type="text" id="wp-import-gallery-path" name="gallery_path" value="<?= esc_attr($formValues['gallery_path']) ?>" placeholder="/path/to/wp-content/gallery">
                     <span class="lp-field__hint">
                         Only needed for "NextGEN Gallery" below — a local filesystem copy of the source
                         site's <code>wp-content/gallery</code> folder (a sibling of <code>wp-content/uploads</code>
@@ -1427,11 +1453,24 @@ endif;
                 </p>
 
                 <?php
-                // Carried forward so submitting Import doesn't blank out
-                // the wp-config.php path field that lives only on the
-                // Detect form.
+                // Carried forward so submitting doesn't blank out the wp-config.php
+                // path field, which lives only on the Detect form.
                 ?>
                 <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
+
+                <button type="submit" name="form" value="test_wordpress_connection" class="lp-button lp-button--secondary">Test Connection</button>
+                <span class="lp-field__hint">Checks the source and the uploads folder without importing anything.</span>
+                </div>
+
+            <?php
+            // Renders once via this closure, inside the single Import
+            // form below. Dry run and a real Start/Resume Import share
+            // one form/CSRF action; a "Dry run" checkbox decides which
+            // the server does. This closure avoids duplicating the
+            // id-prefixing logic the smaller Resume form above also needs.
+            $renderSharedImportFields = static function (string $idPrefix) use ($formValues, $renderConnectionFields): void {
+                ?>
+
 
                 <h4>Site settings</h4>
 
@@ -1536,14 +1575,13 @@ endif;
             };
             ?>
 
-            <h3>Import</h3>
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">3</span>What to import</h3>
+            <?php $renderSharedImportFields('wp-import-run'); ?>
+                </div>
 
-            <p class="lp-field__hint">Connection details from Test Connection above are already filled in below — double-check them before importing.</p>
-
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-import-form data-lp-import-target="lp-import-progress">
-                <?= Csrf::field('start_wordpress_import') ?>
-                <input type="hidden" name="form" value="start_wordpress_import">
-                <?php $renderSharedImportFields('wp-import-run'); ?>
+                <div class="lp-import-step">
+                <h3 class="lp-import-step__title"><span class="lp-import-step__number" aria-hidden="true">4</span>Run the import</h3>
 
                 <p class="lp-field">
                     <label class="lp-field--checkbox">
@@ -1568,7 +1606,8 @@ endif;
                 <ul id="lp-import-progress" class="lp-update-progress" hidden></ul>
                 <p class="lp-field__hint" data-lp-import-detail hidden></p>
 
-                <button type="submit" class="lp-button lp-button--primary">Import</button>
+                <button type="submit" name="form" value="start_wordpress_import" class="lp-button lp-button--primary">Import</button>
+                </div>
             </form>
         <?php endif; ?>
     </section>

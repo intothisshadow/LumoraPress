@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: WordPress Importer
  * Plugin URI: https://lumorapress.org/plugins/wordpress-importer
  * Description: Imports an existing WordPress site's users, categories, tags, media, pages, posts, and comments via a direct database connection or a WXR export file, plus a local copy of its uploads folder. Supports WordPress 3.5 and later — tested with WordPress 7.1.
- * Version: 1.1.0
+ * Version: 1.1.2
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
@@ -43,6 +43,7 @@ require_once __DIR__ . '/src/WordPressConfigParser.php';
 require_once __DIR__ . '/src/ContentImageRewriter.php';
 require_once __DIR__ . '/src/InternalLinkRewriter.php';
 require_once __DIR__ . '/src/ImportProgress.php';
+require_once __DIR__ . '/src/ImportLock.php';
 require_once __DIR__ . '/src/WordPressImportService.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 require_once __DIR__ . '/src/NextGenGalleryShortcode.php';
