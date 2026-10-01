@@ -49,6 +49,11 @@
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
         var pickerUrl = container.dataset.pickerUrl;
         var pickerCsrf = container.dataset.pickerCsrf;
+        // Each picker on a screen has its own request name, since Csrf::token()
+        // keeps one token per name; "multiple" keeps the dialog open so several
+        // images can be added in one go.
+        var pickerAction = container.dataset.pickerAction || 'featured_image_picker_query';
+        var multiple = container.dataset.pickerMultiple === '1';
 
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-featured-image-picker-dialog';
@@ -108,7 +113,12 @@
 
             button.addEventListener('click', function () {
                 onSelect(item);
-                dialog.close();
+
+                if (multiple) {
+                    button.classList.add('is-added');
+                } else {
+                    dialog.close();
+                }
             });
 
             grid.appendChild(button);
@@ -128,7 +138,7 @@
             loadMoreButton.hidden = true;
 
             var formData = new FormData();
-            formData.append('form', 'featured_image_picker_query');
+            formData.append('form', pickerAction);
             formData.append('csrf_token', pickerCsrf);
             formData.append('term', state.term);
             formData.append('folder_id', String(state.folderId));
@@ -193,7 +203,7 @@
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
         closeButton.className = 'lp-button lp-featured-image-picker-dialog__close';
-        closeButton.textContent = 'Cancel';
+        closeButton.textContent = multiple ? 'Done' : 'Cancel';
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         dialog.appendChild(header);
@@ -214,6 +224,18 @@
             var valueInput = container.querySelector('[data-picker-value]');
             var chosenLabel = container.querySelector('[data-picker-chosen]');
             var removeButton = container.querySelector('[data-picker-remove]');
+
+            // A multiple picker has no single value: each choice is announced
+            // for whatever list the page keeps (see header-images.js).
+            if (trigger && container.dataset.pickerMultiple === '1') {
+                trigger.addEventListener('click', function () {
+                    openFeaturedImagePicker(container, function (item) {
+                        container.dispatchEvent(new CustomEvent('lp:picker-select', { bubbles: true, detail: item }));
+                    });
+                });
+
+                return;
+            }
 
             if (!trigger || !valueInput) {
                 return;

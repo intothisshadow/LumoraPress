@@ -6,6 +6,9 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Appearance &rsaquo; Customize: the options a theme adds for itself (for Lumora Classic: homepage layout and the Google Fonts switch) now have their own tab after Footer, named for the theme, instead of sitting at the bottom of the Body tab.
+- Featured image defaults moved (LP-184): the default featured image and the featured image crop size are now on Appearance &rsaquo; Customize &rsaquo; Body, in a new "Featured Image Defaults" panel, instead of Media &rsaquo; Thumbnails. They still apply to every theme, and nothing needs re-saving. Media &rsaquo; Thumbnails keeps only the thumbnail sizes, quality and maintenance tools.
+- New option "Use the default featured image on pages" (on by default). Turn it off to show no automatic image on pages; a page's own featured image, set on New Page or Edit Page, still shows. Posts are unaffected, and the setting is included when you export and import settings.
 - Lumora Classic: the homepage no longer shows the "The latest from the archive / Stories worth keeping" heading block above the posts.
 - Lumora Classic: the sidebar is wider (340px instead of 280px) and the gap between it and the main content is smaller (1.5rem instead of 2.5rem).
 - Lumora Classic: the content and sidebar area is now as wide as the header and welcome message above it, instead of being inset by a side margin.
@@ -17,6 +20,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Multiple header images (LP-186): the Header tab on Appearance &rsaquo; Customize now holds a list of header images instead of one. Add as many as you like from the Media Manager (the picker stays open so you can pick several in one go) or by uploading new files, and remove any of them. A new "Header image order" setting shows them in the order they were added (each page view shows the next one) or in random order (never the same image twice in a row). A site's existing single header image becomes the first item. The order is remembered in the session the site already sets, so no new cookie is added. Themes need no change: `header_image_url()` returns the image chosen for the current page view.
 - Downloads: a new `[lumora_recent_downloads]` shortcode (LPP-029) lists downloads newest first, a page at a time, with page links below the list. Options: `per_page` (1–100, default 10), `category` or `category_id` to limit it to one category, and `show_size="1"`. Downloads in the Trash, and downloads with no file or link attached yet, never appear. It's in the shortcode picker and documented under Downloads &rsaquo; Shortcodes. Downloads is now version 0.2.0.
 - Theme authors: `render_pagination()` takes an optional third argument naming the page query parameter (default `paged`), for a second paged list on the same page.
 - Edit Image in the editors (LP-185): select an image in the Visual editor and use the new Edit Image button (or double-click it, or use the small toolbar that appears over a selected image), or put the cursor inside an image in the Markdown editor and use its Edit Image button, to change the image's alt text, caption, alignment, link, width and height without inserting it again.

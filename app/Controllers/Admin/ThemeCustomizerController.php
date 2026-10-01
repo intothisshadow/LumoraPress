@@ -110,6 +110,12 @@ final class ThemeCustomizerController
 
         foreach ($this->themeOptions->fieldsForSection('header') as $field) {
             $postKey = 'opt_' . $field->key;
+
+            // A choice that wasn't submitted keeps its current value rather than failing validation.
+            if ($field->type === ThemeOptionType::Select && !isset($post[$postKey])) {
+                continue;
+            }
+
             $rawValue = $field->type === ThemeOptionType::Checkbox
                 ? (isset($post[$postKey]) ? '1' : '0')
                 : (string) ($post[$postKey] ?? '');
@@ -119,22 +125,70 @@ final class ThemeCustomizerController
             }
         }
 
+        // The Header tab posts the images still in its list (and says so with
+        // header_images_submitted, so an emptied list clears them); a caller
+        // that doesn't keeps the current images and only adds to them.
+        $ids = isset($post['header_images_submitted'])
+            ? (is_array($post['header_image_ids'] ?? null) ? $post['header_image_ids'] : [])
+            : $this->themeOptions->headerImageMediaIds();
+
         if (($post['remove_header_image'] ?? '') === '1') {
-            $this->themeOptions->removeHeaderImage();
-        } elseif (isset($files['header_image']) && $files['header_image']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploaded = $this->media->upload($files['header_image'], $currentUserId);
-                $this->themeOptions->setHeaderImageMediaId((int) $uploaded['id']);
-            } catch (Throwable $exception) {
-                $errors[] = 'Header image (' . $exception->getMessage() . ')';
+            $ids = [];
+        } else {
+            foreach ($this->uploadedHeaderFiles($files) as $file) {
+                try {
+                    $uploaded = $this->media->upload($file, $currentUserId);
+                    $ids[] = (int) $uploaded['id'];
+                } catch (Throwable $exception) {
+                    $errors[] = 'Header image (' . $exception->getMessage() . ')';
+                }
             }
         }
+
+        $this->themeOptions->setHeaderImageMediaIds($ids);
 
         if ($errors !== []) {
             return AdminActionResult::error("Couldn't save: " . implode(', ', $errors) . ' — please check the value(s) and try again.');
         }
 
         return AdminActionResult::redirect($this->redirectTarget('header'));
+    }
+
+    /**
+     * Every file chosen in the Header tab's upload field, as the single-file
+     * arrays MediaService::upload() takes. `header_images` is the multiple-file
+     * field; `header_image` is the older single one.
+     *
+     * @param array<string, mixed> $files
+     * @return array<int, array<string, mixed>>
+     */
+    private function uploadedHeaderFiles(array $files): array
+    {
+        $uploads = [];
+
+        if (isset($files['header_image']) && is_array($files['header_image']) && ($files['header_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $uploads[] = $files['header_image'];
+        }
+
+        $multiple = $files['header_images'] ?? null;
+
+        if (is_array($multiple) && is_array($multiple['name'] ?? null)) {
+            foreach (array_keys($multiple['name']) as $index) {
+                if (($multiple['error'][$index] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                    continue;
+                }
+
+                $uploads[] = [
+                    'name' => $multiple['name'][$index],
+                    'type' => $multiple['type'][$index] ?? '',
+                    'tmp_name' => $multiple['tmp_name'][$index] ?? '',
+                    'error' => $multiple['error'][$index],
+                    'size' => $multiple['size'][$index] ?? 0,
+                ];
+            }
+        }
+
+        return $uploads;
     }
 
     public function resetAll(?string $csrfToken): AdminActionResult
@@ -150,11 +204,13 @@ final class ThemeCustomizerController
 
     private function redirectTarget(string $sectionKey): string
     {
+        // Built-in sections live in the first tabs; anything a theme registered has its own.
         $tab = match ($sectionKey) {
             'header' => 'header',
             'welcome_message' => 'welcome_message',
             'footer' => 'footer',
-            default => 'body',
+            'colors', 'typography', 'layout', 'post_display', 'featured_image' => 'body',
+            default => 'theme',
         };
 
         return admin_url('appearance/customize') . '?tab=' . $tab . '&saved=1';

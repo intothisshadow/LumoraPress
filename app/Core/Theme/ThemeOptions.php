@@ -307,6 +307,18 @@ final class ThemeOptions
             help: 'Only applies when a header image is set below. Leave blank to use the active theme\'s own height.',
             allowEmpty: true,
         ));
+        $this->registerField(new ThemeOptionField(
+            key: 'header_image_order',
+            section: 'header',
+            type: ThemeOptionType::Select,
+            label: 'Header image order',
+            default: 'added',
+            choices: [
+                'added' => 'In the order added',
+                'random' => 'Random',
+            ],
+            help: 'Only matters with more than one header image: each page view shows the next image in the order added, or a random one.',
+        ));
 
         $this->registerSection('welcome_message', 'Welcome Message', 'An optional message shown near the top of your site.');
 
@@ -374,21 +386,74 @@ final class ThemeOptions
      */
     public function headerImageMediaId(): int
     {
-        return (int) ($this->loadValues()['header_image_media_id'] ?? 0);
+        return $this->headerImageMediaIds()[0] ?? 0;
+    }
+
+    /**
+     * The header images in the order they were added. A site that only has
+     * the older single-image value is read as a list of one.
+     *
+     * @return array<int, int>
+     */
+    public function headerImageMediaIds(): array
+    {
+        $values = $this->loadValues();
+        $raw = (string) ($values['header_image_media_ids'] ?? '');
+
+        if ($raw === '' && (int) ($values['header_image_media_id'] ?? 0) > 0) {
+            $raw = (string) (int) $values['header_image_media_id'];
+        }
+
+        return $this->cleanMediaIds(explode(',', $raw));
+    }
+
+    /**
+     * @param array<int, int|string> $mediaIds
+     */
+    public function setHeaderImageMediaIds(array $mediaIds): void
+    {
+        $values = $this->loadValues();
+        $ids = $this->cleanMediaIds($mediaIds);
+
+        // The older single-image value is superseded by the list.
+        unset($values['header_image_media_id']);
+
+        if ($ids === []) {
+            unset($values['header_image_media_ids']);
+        } else {
+            $values['header_image_media_ids'] = implode(',', $ids);
+        }
+
+        $this->persist($values);
     }
 
     public function setHeaderImageMediaId(int $mediaId): void
     {
-        $values = $this->loadValues();
-        $values['header_image_media_id'] = (string) $mediaId;
-        $this->persist($values);
+        $this->setHeaderImageMediaIds($mediaId > 0 ? [$mediaId] : []);
     }
 
     public function removeHeaderImage(): void
     {
-        $values = $this->loadValues();
-        unset($values['header_image_media_id']);
-        $this->persist($values);
+        $this->setHeaderImageMediaIds([]);
+    }
+
+    /**
+     * @param array<int, int|string> $candidates
+     * @return array<int, int>
+     */
+    private function cleanMediaIds(array $candidates): array
+    {
+        $ids = [];
+
+        foreach ($candidates as $candidate) {
+            $id = (int) $candidate;
+
+            if ($id > 0 && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -479,7 +544,7 @@ final class ThemeOptions
         // Has no ThemeOptionField of its own, so fieldsForSection() never
         // covers it — clear it explicitly so resetting Header reaches it too.
         if ($sectionKey === 'header') {
-            unset($values['header_image_media_id']);
+            unset($values['header_image_media_id'], $values['header_image_media_ids']);
         }
 
         $this->persist($values);

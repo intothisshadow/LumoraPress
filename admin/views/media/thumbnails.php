@@ -23,79 +23,6 @@ if (!isset($kernel)) {
 }
 
 $thumbnailService = $kernel->thumbnails;
-$mediaService = $kernel->media;
-
-// "Default featured image" setting's grid picker (featured-image-picker.js).
-// This page has no controller of its own, so the query stays inline here,
-// matching other JSON-sub-action views (posts/new.php, pages/new.php).
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'featured_image_picker_query') {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    header('Content-Type: application/json');
-
-    if (!$currentUser->can('upload_files') || !Csrf::verify('featured_image_picker_query', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Not permitted.']);
-        exit;
-    }
-
-    $term = trim((string) ($_POST['term'] ?? ''));
-    $folderId = (int) ($_POST['folder_id'] ?? 0);
-    $page = max(1, (int) ($_POST['page'] ?? 1));
-    $perPage = 40;
-
-    $filters = ['type' => 'image'];
-
-    if ($term !== '') {
-        $filters['term'] = $term;
-    }
-
-    if ($folderId > 0) {
-        $filters['folderIds'] = [$folderId];
-    }
-
-    $result = $mediaService->query($filters, $perPage, ($page - 1) * $perPage);
-    $thumbnailsByMediaId = $thumbnailService->thumbnailsForMany(
-        array_map(static fn (array $item): int => (int) $item['id'], $result['items']),
-    );
-
-    echo json_encode([
-        'items' => array_map(
-            static function (array $item) use ($mediaService, $thumbnailService, $thumbnailsByMediaId): array {
-                $sizes = [
-                    'full' => [
-                        'url' => $mediaService->url($item),
-                        'width' => (int) ($item['width'] ?? 0),
-                        'height' => (int) ($item['height'] ?? 0),
-                    ],
-                ];
-
-                foreach ($thumbnailsByMediaId[(int) $item['id']] ?? [] as $thumbnail) {
-                    $sizes[(string) $thumbnail['size_name']] = [
-                        'url' => $thumbnailService->url($item, (string) $thumbnail['size_name']),
-                        'width' => (int) $thumbnail['width'],
-                        'height' => (int) $thumbnail['height'],
-                    ];
-                }
-
-                return [
-                    'id' => (int) $item['id'],
-                    'url' => $mediaService->url($item),
-                    'name' => (string) $item['file_name'],
-                    'alt' => (string) ($item['alt_text'] ?? ''),
-                    'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
-                    'sizes' => $sizes,
-                ];
-            },
-            $result['items'],
-        ),
-        'total' => $result['total'],
-        'csrfToken' => Csrf::token('featured_image_picker_query'),
-    ]);
-    exit;
-}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -133,16 +60,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('thumbnail_webp_quality', (string) max(0, min(100, (int) ($_POST['thumbnail_webp_quality'] ?? 80))));
         $kernel->config->setOption('thumbnail_sharpen', ($_POST['thumbnail_sharpen'] ?? '') === '1' ? '1' : '0');
         $kernel->config->setOption('thumbnail_max_pixels', (string) max(1, (int) ($_POST['thumbnail_max_pixels'] ?? 25_000_000)));
-        $kernel->config->setOption('default_featured_image_media_id', (string) max(0, (int) ($_POST['default_featured_image_media_id'] ?? 0)));
-
-        // The manually-cropped featured image's output-width cap.
-        // Validated against the currently *enabled* size names (same
-        // pattern lightbox_large_size already establishes on Settings >
-        // Media) so an invalid/removed size can never be stored.
-        $allowedCropSizes = array_keys(array_filter($thumbnailService->sizes(), static fn (array $size): bool => $size['enabled']));
-        $submittedCropSize = is_string($_POST['featured_image_crop_size'] ?? null) ? $_POST['featured_image_crop_size'] : '';
-        $kernel->config->setOption('featured_image_crop_size', in_array($submittedCropSize, $allowedCropSizes, true) ? $submittedCropSize : 'large');
-
         header('Location: ' . admin_url('media/thumbnails') . '?saved=1');
         exit;
     }
@@ -235,50 +152,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <label for="thumbnail-max-pixels">Maximum source image pixels (memory safeguard)</label>
                 <input type="number" id="thumbnail-max-pixels" name="thumbnail_max_pixels" min="1" value="<?= esc_attr((string) $kernel->config->option('thumbnail_max_pixels', '25000000')) ?>">
                 <span class="lp-field__hint">Images larger than this are skipped (logged) rather than generating thumbnails for them.</span>
-            </p>
-
-            <?php
-            $defaultFeaturedImageId = (int) $kernel->config->option('default_featured_image_media_id', '0');
-            $defaultFeaturedImage = $defaultFeaturedImageId > 0 ? $mediaService->find($defaultFeaturedImageId) : null;
-            $thumbnailsFolderTree = array_map(
-                static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
-                $kernel->folders->listAllForTree(),
-            );
-            ?>
-            <fieldset class="lp-field">
-                <legend>Default featured image</legend>
-                <div
-                    class="lp-featured-image-picker"
-                    data-lp-featured-image-picker
-                    data-picker-url="<?= esc_url(admin_url('media/thumbnails')) ?>"
-                    data-picker-csrf="<?= esc_attr(Csrf::token('featured_image_picker_query')) ?>"
-                    data-media-folders="<?= esc_attr((string) json_encode($thumbnailsFolderTree)) ?>"
-                >
-                    <input type="hidden" name="default_featured_image_media_id" data-picker-value value="<?= $defaultFeaturedImageId ?>">
-                    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Media Manager&hellip;</button>
-                    <button type="button" class="lp-button lp-button--link" data-picker-remove <?= $defaultFeaturedImage === null ? 'hidden' : '' ?>>Remove</button>
-                    <span class="lp-featured-image-picker__chosen" data-picker-chosen>
-                        <?php if ($defaultFeaturedImage !== null): ?>
-                            <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url($mediaService->url($defaultFeaturedImage)) ?>" alt="">
-                            <?= esc_html((string) $defaultFeaturedImage['file_name']) ?>
-                        <?php endif; ?>
-                    </span>
-                </div>
-                <p class="lp-field__hint">Used as the featured image (and Open Graph/Twitter Card image) for posts/pages that don't have one of their own.</p>
-            </fieldset>
-
-            <?php
-            $currentCropSize = (string) $kernel->config->option('featured_image_crop_size', 'large');
-            $enabledCropSizeNames = array_keys(array_filter($thumbnailService->sizes(), static fn (array $size): bool => $size['enabled']));
-            ?>
-            <p class="lp-field">
-                <label for="featured-image-crop-size">Featured image crop size</label>
-                <select id="featured-image-crop-size" name="featured_image_crop_size">
-                    <?php foreach ($enabledCropSizeNames as $cropSizeName): ?>
-                        <option value="<?= esc_attr($cropSizeName) ?>" <?= $currentCropSize === $cropSizeName ? 'selected' : '' ?>><?= esc_html(ucfirst($cropSizeName)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <span class="lp-field__hint">The maximum width a manually-cropped featured image (drawn in the post/page editor, or created from an existing image below) is generated at. Defaults to <strong>Large</strong>.</span>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save</button>

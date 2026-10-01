@@ -235,7 +235,7 @@ All of these accept `Post|Page|SearchResult $item` — anything with a
 
 | Function | Purpose |
 |---|---|
-| `has_post_thumbnail($item): bool` | Whether a featured image resolves for `$item` (including the site-wide default featured image fallback). |
+| `has_post_thumbnail($item): bool` | Whether a featured image resolves for `$item` (including the site-wide default featured image fallback; a Page gets no fallback when an administrator turned off "Use the default featured image on pages"). |
 | `the_post_thumbnail($item, string $size = 'medium', array $attrs = []): void` | Echoes an `<img>` with a real `srcset`/`sizes`, or a fixed-size `<img>` if a manual crop applies. No-op if there's no image. |
 | `the_post_thumbnail_lightbox($item, string $size = 'medium', ?string $largeSize = null, array $attrs = []): void` | Same as above, wrapped in a PhotoSwipe-lightbox `<a>`. **Prefer this over `the_post_thumbnail()`** on any listing/single template — it's what marks the page as needing the lightbox JS/CSS (via `footer_assets`), so using the plain version means clicking the image does nothing. |
 | `post_thumbnail_url($item, string $size = 'medium', bool $absolute = false): ?string` | Just the URL, for OG tags/RSS/manual `<img>` construction. |
@@ -409,7 +409,7 @@ for the exact pattern to follow for your own rich-content field.
 
 ### Appearance > Customize screen sections
 
-The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). A custom section your theme/plugin registers (like `my_theme` above) is not one of the six built-in tabs and currently has no dedicated tab of its own on the Customize screen — see `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
+The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**, plus a theme tab after them when the theme registers sections of its own. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). Every custom section your theme/plugin registers (like `my_theme` above) is shown in one more tab after Footer, named for the active theme; the tab only appears when at least one custom section exists. See `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
 
 Core's `header`/`welcome_message`/`footer` sections come with matching
 template tags a theme calls directly — no hook required for the common
@@ -419,7 +419,9 @@ case:
 // Header section
 show_site_title(): bool                 // whether to render your title/logo block
 has_header_image(): bool
-header_image_url(): ?string
+header_image_url(): ?string             // the one header image chosen for this page view: the site can
+                                         // hold several and rotates them in order or at random, so
+                                         // call it once per page and don't cache the result
 header_height(): string                 // bare value, '' when the admin hasn't set an
                                          // override (so your theme's own default height
                                          // wins); also flows through theme_options_css()

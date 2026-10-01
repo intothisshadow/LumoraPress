@@ -49,6 +49,11 @@ if (!function_exists('post_thumbnail_media')) {
             }
         }
 
+        // Pages can opt out of the automatic default image; a page's own image is handled above.
+        if ($item instanceof Page && FeaturedImages::config()->option('default_featured_image_on_pages', '1') === '0') {
+            return null;
+        }
+
         $defaultId = (int) FeaturedImages::config()->option('default_featured_image_media_id', '');
 
         return $defaultId > 0 ? $media->find($defaultId) : null;

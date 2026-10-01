@@ -105,6 +105,7 @@ final class SettingsPortabilityService
         'thumbnail_jpeg_quality' => 'int',
         'thumbnail_webp_quality' => 'int',
         'featured_image_crop_size' => 'string',
+        'default_featured_image_on_pages' => 'bool',
         // General — portable subset only, see class docblock
         'timezone' => 'string',
         'date_format_preset' => 'string',

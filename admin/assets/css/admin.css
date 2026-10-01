@@ -2376,6 +2376,44 @@ body.lp-admin-login {
     margin-top: 1rem;
 }
 
+/* Appearance > Customize > Header: the list of header images. */
+.lp-header-images__list {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.lp-header-images__empty[hidden] {
+    display: none;
+}
+
+.lp-header-images__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-header-images__thumb {
+    width: 96px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--lp-admin-radius);
+    border: 1px solid var(--lp-admin-border);
+}
+
+.lp-header-images__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.lp-featured-image-picker-dialog__item.is-added {
+    outline: 3px solid var(--lp-admin-accent);
+    outline-offset: -3px;
+}
+
 /* Width/height with a px/% unit in the Insert Image and Edit Image dialogs. */
 .lp-editor-dimension__row {
     display: flex;

@@ -71,6 +71,7 @@ use LumoraPress\Core\Theme\SearchAssets;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptions;
+use LumoraPress\Core\Theme\HeaderImageRotation;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
@@ -373,10 +374,15 @@ SiteBranding::set(
     discourageSearchEngines: ((string) $config->option('discourage_search_engines', '0')) === '1',
 );
 
-// header_image_media_id lives inside ThemeOptions' own per-theme values,
-// not a plain PressConfig option, but still needs $resolveMediaUrl above
-// to become a URL.
-ThemeOptionsBridge::setHeaderImageUrl($resolveMediaUrl($themeOptions->headerImageMediaId()));
+// The header images live inside ThemeOptions' own per-theme values, not a
+// plain PressConfig option, but still need $resolveMediaUrl above to become
+// URLs; one is chosen for this page view. A deleted image resolves to null
+// and is skipped.
+$headerImageUrls = array_values(array_filter(
+    array_map(static fn (int $mediaId): ?string => $resolveMediaUrl($mediaId), $themeOptions->headerImageMediaIds()),
+    static fn (?string $url): bool => $url !== null,
+));
+ThemeOptionsBridge::setHeaderImageUrl(HeaderImageRotation::pick($headerImageUrls, $themeOptions->value('header_image_order'), $_SESSION));
 
 $posts = new PostService($database, $tablePrefix, $hooks);
 $pages = new PageService($database, $tablePrefix, $hooks);
