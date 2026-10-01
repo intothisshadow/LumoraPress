@@ -572,6 +572,46 @@ final class DownloadService
     }
 
     /**
+     * One page of live downloads, newest first, for [lumora_recent_downloads].
+     * Only downloads with a file or link attached are included, so the total
+     * (and so the page count) matches what visitors can actually see.
+     *
+     * @return array{downloads: array<int, Download>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateNewest(?int $categoryId, int $page, int $perPage): array
+    {
+        $perPage = max(1, $perPage);
+        $page = max(1, $page);
+
+        $where = "trashed_at IS NULL AND ((type = 'file' AND media_id IS NOT NULL) OR (type = 'url' AND redirect_id IS NOT NULL))";
+        $params = [];
+
+        if ($categoryId !== null) {
+            $where .= ' AND category_id = :category_id';
+            $params['category_id'] = $categoryId;
+        }
+
+        $total = (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}", $params);
+        $totalPages = (int) max(1, ceil($total / $perPage));
+        $page = min($page, $totalPages);
+        $offset = ($page - 1) * $perPage;
+
+        // id DESC as the tiebreaker — downloads created within the same second would otherwise page in an undefined order.
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE {$where} ORDER BY created_at DESC, id DESC LIMIT {$perPage} OFFSET {$offset}",
+            $params,
+        );
+
+        return [
+            'downloads' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
+        ];
+    }
+
+    /**
      * A download's click count is not stored here — read from whichever
      * existing counter applies: MediaStatsService for File, the Redirect's
      * hit_count for Url. Returns 0 when neither applies.

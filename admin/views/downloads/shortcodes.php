@@ -89,3 +89,29 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
         <p class="lp-admin__widget-placeholder">No categories yet &mdash; create one from <a href="<?= esc_url(admin_url('downloads/add-new')) ?>">Downloads &rsaquo; Add New</a>.</p>
     <?php endif; ?>
 </section>
+
+<section class="lp-admin__panel">
+    <h2><code>[lumora_recent_downloads]</code></h2>
+    <p class="lp-field__hint">
+        Lists the newest live downloads first and pages through them, for a
+        &ldquo;latest downloads&rdquo; page that keeps growing. The current page is
+        chosen with a <code>downloads_page</code> address parameter, and page links
+        appear below the list when there is more than one page. Trashed
+        downloads, and downloads with no file or link attached yet, never appear.
+    </p>
+
+    <h3>Attributes</h3>
+    <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
+        <li><span><code>per_page</code></span><span>How many downloads to show per page, from 1 to 100. Defaults to 10.</span></li>
+        <li><span><code>category</code></span><span>A category name, matched case-insensitively, to list only that category. Leave out for every category.</span></li>
+        <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
+        <li><span><code>show_size</code></span><span>Set to <code>"1"</code> to show each file download's size next to its link.</span></li>
+    </ul>
+
+    <h3>Examples</h3>
+    <p class="lp-field__hint">Every download, newest first, 10 per page:</p>
+    <pre><code>[lumora_recent_downloads]</code></pre>
+
+    <p class="lp-field__hint">One category, 5 per page, with file sizes:</p>
+    <pre><code>[lumora_recent_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" per_page="5" show_size="1"]</code></pre>
+</section>

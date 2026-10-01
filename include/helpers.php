@@ -145,9 +145,12 @@ if (!function_exists('render_pagination')) {
      * page ranges to the pages nearest the start, end, and current page,
      * joined by ellipses, rather than a button per page.
      *
+     * $pageParam names the query parameter, so a second paged list on the
+     * same page (a shortcode) can use its own.
+     *
      * @param array{page: int, totalPages: int} $pagination
      */
-    function render_pagination(array $pagination, string $label = 'Posts pagination'): void
+    function render_pagination(array $pagination, string $label = 'Posts pagination', string $pageParam = 'paged'): void
     {
         $current = $pagination['page'];
         $total = $pagination['totalPages'];
@@ -160,11 +163,11 @@ if (!function_exists('render_pagination')) {
         $path = (string) parse_url($requestUri, PHP_URL_PATH);
         parse_str((string) parse_url($requestUri, PHP_URL_QUERY), $query);
 
-        $urlForPage = static function (int $page) use ($path, $query): string {
+        $urlForPage = static function (int $page) use ($path, $query, $pageParam): string {
             if ($page > 1) {
-                $query['paged'] = $page;
+                $query[$pageParam] = $page;
             } else {
-                unset($query['paged']);
+                unset($query[$pageParam]);
             }
 
             return $path . ($query !== [] ? '?' . http_build_query($query) : '');

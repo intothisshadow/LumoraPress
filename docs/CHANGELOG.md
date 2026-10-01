@@ -17,6 +17,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Downloads: a new `[lumora_recent_downloads]` shortcode (LPP-029) lists downloads newest first, a page at a time, with page links below the list. Options: `per_page` (1–100, default 10), `category` or `category_id` to limit it to one category, and `show_size="1"`. Downloads in the Trash, and downloads with no file or link attached yet, never appear. It's in the shortcode picker and documented under Downloads &rsaquo; Shortcodes. Downloads is now version 0.2.0.
+- Theme authors: `render_pagination()` takes an optional third argument naming the page query parameter (default `paged`), for a second paged list on the same page.
 - Edit Image in the editors (LP-185): select an image in the Visual editor and use the new Edit Image button (or double-click it, or use the small toolbar that appears over a selected image), or put the cursor inside an image in the Markdown editor and use its Edit Image button, to change the image's alt text, caption, alignment, link, width and height without inserting it again.
 - Width and height in pixels or percent (LP-185): Insert Image and Edit Image have optional Width and Height fields, each with a px or % unit (a percentage is of the content width). Leave both empty to keep the size as before. In Markdown a size is written as trailing markers, for example `![alt](url){width=50%}{height=200px}`, and it is kept when you switch between the Markdown and Visual editors.
 - Keyboard shortcuts reference (LP-015): the Markdown editor toolbar has a new Keyboard Shortcuts button that lists every shortcut.

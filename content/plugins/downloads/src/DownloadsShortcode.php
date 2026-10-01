@@ -38,6 +38,11 @@ final class DownloadsShortcode
 {
     private const PATTERN = '/\[lumora_downloads([^\]]*)\]/i';
 
+    private const RECENT_PATTERN = '/\[lumora_recent_downloads([^\]]*)\]/i';
+
+    /** Its own query parameter, so it can't clash with a post list's `paged`. */
+    public const PAGE_PARAM = 'downloads_page';
+
     /**
      * $injectedDownloads/$injectedCategories are given together or not at
      * all (tests use SQLite fixtures; the plugin's bootstrap passes none,
@@ -55,7 +60,7 @@ final class DownloadsShortcode
 
     public function renderShortcodes(string $html): string
     {
-        if (!str_contains($html, '[lumora_downloads')) {
+        if (!str_contains($html, '[lumora_downloads') && !str_contains($html, '[lumora_recent_downloads')) {
             return $html;
         }
 
@@ -63,9 +68,13 @@ final class DownloadsShortcode
             self::PATTERN,
             fn (array $matches): string => $this->renderOne($this->parseAttributes($matches[1])),
             $html,
-        );
+        ) ?? $html;
 
-        return $result ?? $html;
+        return preg_replace_callback(
+            self::RECENT_PATTERN,
+            fn (array $matches): string => $this->renderRecent($this->parseAttributes($matches[1])),
+            $result,
+        ) ?? $result;
     }
 
     /**
@@ -119,6 +128,49 @@ final class DownloadsShortcode
         $showSize = ($attributes['show_size'] ?? '0') === '1';
 
         return $this->renderList($category, $items, $showSize);
+    }
+
+    /**
+     * `[lumora_recent_downloads]`: live downloads newest first, a page at a
+     * time, with the current page taken from the `downloads_page` query
+     * parameter.
+     *
+     * @param array<string, string> $attributes
+     */
+    private function renderRecent(array $attributes): string
+    {
+        [$downloads, $categories] = $this->services();
+
+        $category = null;
+
+        if (($attributes['category_id'] ?? '') !== '' || trim($attributes['category'] ?? '') !== '') {
+            $category = $this->resolveCategory($categories, $attributes);
+
+            // A category that was asked for but doesn't exist shows nothing, rather than every download.
+            if ($category === null) {
+                return '';
+            }
+        }
+
+        $perPage = (int) ($attributes['per_page'] ?? 10);
+        $perPage = $perPage > 0 ? min($perPage, 100) : 10;
+        $requestedPage = isset($_GET[self::PAGE_PARAM]) && is_string($_GET[self::PAGE_PARAM]) ? (int) $_GET[self::PAGE_PARAM] : 1;
+
+        $result = $downloads->paginateNewest($category?->id, $requestedPage, $perPage);
+
+        if ($result['downloads'] === []) {
+            return '';
+        }
+
+        $html = $this->renderList($category, $result['downloads'], ($attributes['show_size'] ?? '0') === '1');
+
+        if ($result['totalPages'] > 1 && function_exists('render_pagination')) {
+            ob_start();
+            render_pagination(['page' => $result['page'], 'totalPages' => $result['totalPages']], 'Downloads pagination', self::PAGE_PARAM);
+            $html .= (string) ob_get_clean();
+        }
+
+        return $html;
     }
 
     /**

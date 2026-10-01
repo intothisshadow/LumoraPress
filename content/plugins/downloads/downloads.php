@@ -18,8 +18,8 @@ declare(strict_types=1);
 /*
  * Plugin Name: Downloads
  * Plugin URI: https://lumorapress.org/plugins/downloads
- * Description: A dedicated admin screen to manage downloadable files and links — add a new download (an uploaded file or an external URL), give it a title, description, and category, and see every download grouped by category in one place. Show them anywhere with the [lumora_downloads] shortcode.
- * Version: 0.1.0
+ * Description: A dedicated admin screen to manage downloadable files and links — add a new download (an uploaded file or an external URL), give it a title, description, and category, and see every download grouped by category in one place. Show them anywhere with the [lumora_downloads] shortcode, or list the newest ones a page at a time with [lumora_recent_downloads].
+ * Version: 0.2.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
@@ -62,6 +62,12 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
 
     register_shortcode('lumora_downloads', 'Downloads from Category', [
         new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: $categoryChoices),
+        new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+    ]);
+
+    register_shortcode('lumora_recent_downloads', 'Recent Downloads', [
+        new ShortcodeField('category_id', 'Category (optional)', ShortcodeFieldType::Select, choices: ['' => 'Every category'] + $categoryChoices),
+        new ShortcodeField('per_page', 'Downloads per page', ShortcodeFieldType::Number, default: '10'),
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);
 });
