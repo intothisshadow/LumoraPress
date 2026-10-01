@@ -4,8 +4,8 @@
 
 # Session, log, and cache files written at runtime. The .gitkeep
 # placeholders stay tracked so these directories still exist after a
-# fresh clone — RequirementsCheck expects them to already be present
-# and writable, it does not create them.
+# fresh clone. RequirementsCheck creates a missing storage/ folder
+# itself, but shipping them keeps a fresh upload working regardless.
 /storage/sessions/*
 !/storage/sessions/.gitkeep
 /storage/logs/*

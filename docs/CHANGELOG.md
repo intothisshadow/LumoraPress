@@ -11,6 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A new install no longer stops at "The storage/sessions directory does not exist" (the folder was missing from the download, and the install wizard needed it). The wizard now creates a missing folder under `storage/` itself, and the folder is included in the download again.
 - WordPress import no longer fails with a connection timeout while importing a large media library (LPP-028): the import now runs as a series of short requests, so a host's, proxy's, or Cloudflare's request time limit can't cut it off. The progress list shows how many media files are done (for example "1,486 of 3,214"), and an interrupted import resumes from the exact file it stopped at instead of starting Media over. A new `wordpress_importer_request_seconds` filter sets how long each step runs (default 15 seconds). WordPress Importer is now version 1.1.0.
 - The WordPress Importer's Discover buttons (wp-config.php, and the uploads folder) now also look in the folder Lumora Press is installed in, the folder above it, and the folders directly inside either, not only the folders next to the install (LPP-028).
 - Resuming an interrupted or failed WordPress import now fills in the source connection (host, port, database, username, table prefix, and file paths) from that import, so only the database password has to be entered again. The password itself is never saved (LPP-028).

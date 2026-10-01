@@ -64,6 +64,8 @@ final class RequirementsCheck
         }
 
         foreach ($this->requiredDirectories() as $label => $path) {
+            $this->createRuntimeDirectoryIfMissing($label, $path);
+
             if (!is_dir($path)) {
                 $problems[] = "The \"{$label}\" directory does not exist ({$path}).";
             } elseif (!is_writable($path)) {
@@ -72,6 +74,20 @@ final class RequirementsCheck
         }
 
         return $problems;
+    }
+
+    /**
+     * Empty directories are easily lost when an install is uploaded (FTP clients and some
+     * archive tools skip them), and the folders under storage/ hold only runtime files, so
+     * a missing one is created rather than failing the install over it.
+     */
+    private function createRuntimeDirectoryIfMissing(string $label, string $path): void
+    {
+        if (is_dir($path) || !str_starts_with($label, 'storage/') || !is_writable(dirname($path))) {
+            return;
+        }
+
+        mkdir($path, 0755, true);
     }
 
     private function isExtensionLoaded(string $extension): bool
