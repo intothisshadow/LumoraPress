@@ -469,6 +469,12 @@ choices take precedence over generic core defaults" for the full
 reasoning (this bit Lumora Press's own `content_width` field once — see
 `DECISIONS.md`'s LP-095 entry).
 
+The built-in "Body font" field follows the same rule: its default is an
+empty "Theme default" choice, so a theme's own `--lp-font-body` (Lumora
+Classic uses Lora) shows unless an admin explicitly picks Georgia, sans-serif,
+and so on. A theme that wants a separate title font can define its own
+variable, as Lumora Classic does with `--lp-font-heading`.
+
 ## Dark mode
 
 The base convention still lives entirely in `style.css`: define your

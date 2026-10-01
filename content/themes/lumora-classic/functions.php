@@ -48,4 +48,13 @@ add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOpti
         ],
         help: 'The magazine layout gives the first post visual priority and places the remaining posts in a two-column grid.',
     ));
+
+    $options->registerField(new \LumoraPress\Core\Theme\ThemeOptionField(
+        key: 'lumora_classic_load_fonts',
+        section: 'lumora_classic',
+        type: \LumoraPress\Core\Theme\ThemeOptionType::Checkbox,
+        label: 'Load Lora and Playfair Display from Google Fonts',
+        default: '1',
+        help: 'Lora is used for body text and Playfair Display for titles. Turning this off stops visitors\' browsers contacting Google for fonts; the theme then falls back to Georgia.',
+    ));
 });

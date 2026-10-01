@@ -139,9 +139,11 @@ final class ThemeOptions
             section: 'typography',
             type: ThemeOptionType::Select,
             label: 'Body font',
-            default: 'serif',
+            default: '',
             cssVariable: '--lp-font-body',
+            allowEmpty: true,
             choices: [
+                '' => 'Theme default',
                 'serif' => 'Serif (Georgia)',
                 'sans' => 'Sans-serif',
                 'system' => 'System UI',

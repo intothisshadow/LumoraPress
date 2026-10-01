@@ -52,9 +52,15 @@ $meta_description = $seo_description ?? meta_description();
         <meta name="robots" content="noindex,nofollow">
     <?php endif; ?>
     <link rel="canonical" href="<?= esc_url(canonical_url()) ?>">
-    <?php if (theme_option('google_fonts_url') !== ''): ?>
+    <?php $lpLoadThemeFonts = theme_option('lumora_classic_load_fonts') !== '0'; ?>
+    <?php if ($lpLoadThemeFonts || theme_option('google_fonts_url') !== ''): ?>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <?php endif; ?>
+    <?php if ($lpLoadThemeFonts): ?>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&amp;family=Playfair+Display:wght@500..800&amp;display=swap">
+    <?php endif; ?>
+    <?php if (theme_option('google_fonts_url') !== ''): ?>
         <link rel="stylesheet" href="<?= esc_url(theme_option('google_fonts_url')) ?>">
     <?php endif; ?>
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">

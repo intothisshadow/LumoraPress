@@ -8,7 +8,8 @@ Lumora Press deliberately vendors none of these locally. Each is loaded from
 jsDelivr at a version pinned in the code (never a floating `@latest`), and the
 Content-Security-Policy built in [`include/bootstrap.php`](../include/bootstrap.php)
 only allow-lists `cdn.jsdelivr.net` for `script-src`, `style-src`, and
-`font-src` — no other third-party origin is reachable from a page. This keeps
+`font-src`, plus Google Fonts for `style-src` and `font-src` — no other
+third-party origin is reachable from a page. This keeps
 core's own PHP dependency-free while still avoiding an unreviewed floating
 version.
 
@@ -306,11 +307,26 @@ None beyond Font Awesome above (editor-toolbar-only, CDN-loaded). No icon
 font or SVG icon set is bundled locally or used in the public-facing themes
 or the rest of the admin UI.
 
-## Bundled fonts
+## Fonts
 
-None. Every theme and the admin UI rely on the visitor's/admin's system font
-stack (`font-family` falls back through generic system fonts) rather than
-bundling or CDN-loading a webfont.
+Nothing is bundled locally. The admin UI and every theme except Lumora Classic
+rely on the visitor's/admin's system font stack unless a site owner adds a
+Google Fonts URL under Appearance › Theme Options › Typography.
+
+### Lora and Playfair Display (Lumora Classic)
+
+- **Purpose:** Body text (Lora) and titles/headings (Playfair Display) in the
+  bundled Lumora Classic theme.
+- **Loaded from:** Google Fonts (`fonts.googleapis.com` stylesheet, font files
+  from `fonts.gstatic.com`) — the only third-party origin besides jsDelivr
+  that the Content-Security-Policy allows, and only for styles and fonts.
+- **License:** SIL Open Font License 1.1
+- **Local installation path:** N/A — not bundled
+- **Notes:** Loaded by `content/themes/lumora-classic/header.php`. A visitor's
+  browser contacts Google when this is on, so it can be turned off with
+  Theme Options › Lumora Classic › "Load Lora and Playfair Display from Google
+  Fonts"; the theme then falls back to Georgia. Both fonts are variable
+  fonts, requested as weight ranges with `display=swap`.
 
 ## Any future JavaScript libraries
 

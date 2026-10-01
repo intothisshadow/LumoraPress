@@ -428,6 +428,9 @@ a.lp-post-list__comments:focus {
    ========================================================= */
 
 .lp-post__content :is(h1, h2, h3, h4, h5, h6) {
+    /* A heading starts below any floated image above it instead of wrapping beside it. */
+    clear: both;
+    font-family: var(--lp-font-heading);
     margin: 1.5em 0 0.5em;
     line-height: 1.3;
 }
@@ -765,7 +768,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-post-list__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-heading);
     font-size: 1.5rem;
     margin: 0 0 0.35rem;
 }
@@ -1361,12 +1364,24 @@ a.lp-post-list__comments:focus {
    subcategory's own <ul> lives inside its parent's <li>, indented by
    padding rather than margin so the parent's own bottom border (if a
    theme adds one later) wouldn't get cut short by a child list sitting
-   outside it. */
+   outside it. Children are marked with bullets, not rules. */
 
-.lp-widget__list--nested {
+/* A top-level category or page in a nested Categories/Pages widget list is set
+   slightly heavier than its bulleted children. */
+.lp-widget__list:not(.lp-widget__list--nested):has(> li > .lp-widget__list--nested) > li > a {
+    font-weight: 600;
+}
+
+/* Doubled class so these beat the plain .lp-widget__list rules further down. */
+.lp-widget__list.lp-widget__list--nested {
     margin-top: 0.5rem;
-    padding-left: 1.25rem;
-    border-left: 1px solid var(--lp-border);
+    padding-left: 2.1rem;
+    list-style: disc;
+}
+
+.lp-widget__list.lp-widget__list--nested li {
+    padding: 0.3rem 0;
+    border-bottom: 0;
 }
 
 .lp-widget__nav-menu {
@@ -2570,7 +2585,8 @@ img.lp-gallery-shortcode__thumb {
     --lp-accent-hover: #09696b;
     --lp-radius: 16px;
     --lp-max-width: 1180px;
-    --lp-font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --lp-font-body: "Lora", Georgia, "Times New Roman", serif;
+    --lp-font-heading: "Playfair Display", Georgia, "Times New Roman", serif;
     --lp-font-size-base: 16px;
     --lp-line-height-base: 1.65;
     --lp-surface-shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
@@ -2893,11 +2909,11 @@ body.lp-site {
 .lp-layout {
     margin: 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
     max-width: var(--lp-max-width);
     padding: 2.75rem 1.5rem 3.5rem;
-    gap: 2.5rem;
+    gap: 1.5rem;
 }
 
 .lp-content--home .lp-main-header {
@@ -2917,9 +2933,9 @@ body.lp-site {
 .lp-page-title {
     margin: 0;
     color: var(--lp-text);
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-heading);
     font-size: clamp(1.8rem, 3.5vw, 2.65rem);
-    letter-spacing: -0.045em;
+    letter-spacing: -0.015em;
     line-height: 1.08;
 }
 
@@ -3109,9 +3125,9 @@ body.lp-site {
 
 .lp-post__title {
     margin-top: 0;
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-heading);
     font-size: clamp(2rem, 5vw, 3.35rem);
-    letter-spacing: -0.05em;
+    letter-spacing: -0.015em;
     line-height: 1.06;
 }
 

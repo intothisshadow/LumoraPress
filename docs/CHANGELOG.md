@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Lumora Classic: the sidebar is wider (340px instead of 280px) and the gap between it and the main content is smaller (1.5rem instead of 2.5rem).
+- Lumora Classic now uses Lora for body text and Playfair Display for page and post titles, post-list titles, and headings inside content, loaded from Google Fonts. A new Theme Options › Lumora Classic setting, "Load Lora and Playfair Display from Google Fonts", turns this off (visitors' browsers then no longer contact Google, and the theme falls back to Georgia).
+- Appearance › Theme Options › Typography › Body font has a new default, "Theme default", so a theme's own body font shows until a font is picked here. Sites that had saved the old default ("Serif (Georgia)") keep Georgia until they choose "Theme default".
+- Lumora Classic: a heading in a post or page now always starts below any left- or right-aligned image above it, instead of squeezing in beside the image.
+- Lumora Classic: sub-categories and child pages in the Categories and Pages widgets are indented further and marked with bullets instead of a vertical line and dividers, and the top-level categories or pages above them are set slightly bolder.
 - Lumora Classic: quotes (blockquotes) in posts and pages are a little narrower than the text around them, and a page's title has more space before its content.
 
 ### Added
