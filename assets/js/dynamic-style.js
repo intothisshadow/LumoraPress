@@ -17,14 +17,27 @@
 
     var ATTRIBUTE_PROPERTIES = {
         'data-style-font-size': 'fontSize',
+        'data-style-width': 'width',
+        'data-style-height': 'height',
     };
+
+    // An author-chosen image size must be `auto` or a whole number with px or %;
+    // anything else is ignored rather than handed to the CSS parser.
+    var SIZE_PATTERN = /^(?:auto|[1-9][0-9]{0,3}(?:px|%))$/;
+    var SIZE_PROPERTIES = { width: true, height: true };
 
     document.addEventListener('DOMContentLoaded', function () {
         Object.keys(ATTRIBUTE_PROPERTIES).forEach(function (attribute) {
             var property = ATTRIBUTE_PROPERTIES[attribute];
 
             document.querySelectorAll('[' + attribute + ']').forEach(function (el) {
-                el.style[property] = el.getAttribute(attribute);
+                var value = el.getAttribute(attribute);
+
+                if (SIZE_PROPERTIES[property] && !SIZE_PATTERN.test(value)) {
+                    return;
+                }
+
+                el.style[property] = value;
             });
         });
     });

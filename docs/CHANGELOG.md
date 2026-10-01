@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Lumora Classic: the homepage no longer shows the "The latest from the archive / Stories worth keeping" heading block above the posts.
 - Lumora Classic: the sidebar is wider (340px instead of 280px) and the gap between it and the main content is smaller (1.5rem instead of 2.5rem).
 - Lumora Classic: the content and sidebar area is now as wide as the header and welcome message above it, instead of being inset by a side margin.
 - Lumora Classic now uses Lora for body text and Playfair Display for page and post titles, post-list titles, and headings inside content, loaded from Google Fonts. A new Theme Options › Lumora Classic setting, "Load Lora and Playfair Display from Google Fonts", turns this off (visitors' browsers then no longer contact Google, and the theme falls back to Georgia).
@@ -16,6 +17,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Edit Image in the editors (LP-185): select an image in the Visual editor and use the new Edit Image button (or double-click it, or use the small toolbar that appears over a selected image), or put the cursor inside an image in the Markdown editor and use its Edit Image button, to change the image's alt text, caption, alignment, link, width and height without inserting it again.
+- Width and height in pixels or percent (LP-185): Insert Image and Edit Image have optional Width and Height fields, each with a px or % unit (a percentage is of the content width). Leave both empty to keep the size as before. In Markdown a size is written as trailing markers, for example `![alt](url){width=50%}{height=200px}`, and it is kept when you switch between the Markdown and Visual editors.
 - Keyboard shortcuts reference (LP-015): the Markdown editor toolbar has a new Keyboard Shortcuts button that lists every shortcut.
 - Markdown editor toolbar API (LP-015): plugins can hide built-in toolbar buttons with the `markdown_editor_hidden_buttons` filter, add simple wrap-the-selection buttons with `markdown_editor_buttons`, and change the draft autosave interval (15 seconds by default) with `markdown_editor_autosave_seconds` (see "Markdown Editor API" in `docs/DEVELOPER-APIS.md`).
 

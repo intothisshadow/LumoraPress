@@ -238,8 +238,9 @@ final class ContentRenderer
                 // The link IS the <img>'s own src (same file) — its
                 // width/height describe that exact file even when
                 // resolveImageDimensions() can't read it off disk.
-                $width = (int) $img->getAttribute('width');
-                $height = (int) $img->getAttribute('height');
+                // A percentage size says nothing about the file's own pixels.
+                $width = ctype_digit($img->getAttribute('width')) ? (int) $img->getAttribute('width') : 0;
+                $height = ctype_digit($img->getAttribute('height')) ? (int) $img->getAttribute('height') : 0;
             } else {
                 // Linked to a different file (e.g. a full-size original
                 // on a companion site's own domain) we have no way to

@@ -129,7 +129,33 @@ final class HtmlToMarkdownConverter
         }
 
         return '![' . $img->getAttribute('alt') . '](' . $img->getAttribute('src') . $title . ')'
-            . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $markers));
+            . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $markers))
+            . $this->sizeMarkers($img);
+    }
+
+    /**
+     * Only an explicit size becomes a `{width=…}` / `{height=…}` marker: the
+     * data-style-* copy, or a percentage attribute. The natural pixel width
+     * and height an editor adds to every image are not a choice.
+     */
+    private function sizeMarkers(DOMElement $img): string
+    {
+        $markers = '';
+
+        foreach (['width', 'height'] as $dimension) {
+            $spec = $img->getAttribute('data-style-' . $dimension);
+
+            if ($spec === '' || $spec === 'auto') {
+                $attribute = $img->getAttribute($dimension);
+                $spec = preg_match('/^[1-9][0-9]{0,3}%$/', $attribute) === 1 ? $attribute : '';
+            }
+
+            if (preg_match('/^[1-9][0-9]{0,3}(?:px|%)$/', $spec) === 1) {
+                $markers .= '{' . $dimension . '=' . $spec . '}';
+            }
+        }
+
+        return $markers;
     }
 
     /**

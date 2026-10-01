@@ -181,6 +181,125 @@
         return String(value).replace(/"/g, '');
     }
 
+    // A Width/Height input with a px/% unit, shared by Insert Image and Edit
+    // Image. spec() is '' (leave the natural size) or a whole number with a
+    // unit, e.g. '300px' / '50%' — the form the server-side image markers
+    // and data-style attributes accept.
+    function createDimensionField(labelText, idSuffix) {
+        var field = document.createElement('p');
+        field.className = 'lp-field lp-editor-dimension';
+
+        var label = document.createElement('label');
+        label.textContent = labelText;
+
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.max = '9999';
+        input.step = '1';
+        input.placeholder = 'Auto';
+        input.id = 'lp-editor-image-' + idSuffix;
+        label.htmlFor = input.id;
+
+        var unit = document.createElement('select');
+        unit.setAttribute('aria-label', labelText + ' unit');
+
+        [['px', 'px'], ['%', '%']].forEach(function (pair) {
+            var option = document.createElement('option');
+            option.value = pair[0];
+            option.textContent = pair[1];
+            unit.appendChild(option);
+        });
+
+        var row = document.createElement('span');
+        row.className = 'lp-editor-dimension__row';
+        row.appendChild(input);
+        row.appendChild(unit);
+
+        field.appendChild(label);
+        field.appendChild(row);
+
+        return {
+            element: field,
+            setSpec: function (spec) {
+                var match = /^([1-9][0-9]{0,3})(px|%)$/.exec(spec || '');
+                input.value = match ? match[1] : '';
+                unit.value = match ? match[2] : 'px';
+            },
+            spec: function () {
+                var number = parseInt(input.value, 10);
+
+                if (!number || number < 1) {
+                    return '';
+                }
+
+                return (unit.value === '%' ? Math.min(number, 100) : number) + unit.value;
+            },
+        };
+    }
+
+    // The attribute map for an image's size. With an explicit width and/or
+    // height: width/height attributes (a bare number for pixels) plus the
+    // data-style-* copies dynamic-style.js applies, since a theme's
+    // `height: auto` would ignore a height and inline styles are blocked by
+    // the CSP. A dimension left out is "auto", so one can't distort the other.
+    // Without either, the natural width/height of the chosen size, as before.
+    function imageSizeAttributes(widthSpec, heightSpec, naturalWidth, naturalHeight) {
+        var attributes = {};
+
+        if (!widthSpec && !heightSpec) {
+            if (naturalWidth) {
+                attributes.width = String(naturalWidth);
+            }
+
+            if (naturalHeight) {
+                attributes.height = String(naturalHeight);
+            }
+
+            return attributes;
+        }
+
+        [['width', widthSpec], ['height', heightSpec]].forEach(function (pair) {
+            if (pair[1]) {
+                attributes[pair[0]] = pair[1].slice(-1) === '%' ? pair[1] : String(parseInt(pair[1], 10));
+                attributes['data-style-' + pair[0]] = pair[1];
+            } else {
+                attributes['data-style-' + pair[0]] = 'auto';
+            }
+        });
+
+        return attributes;
+    }
+
+    function imageSizeHtml(payload) {
+        var attributes = imageSizeAttributes(payload.widthSpec, payload.heightSpec, payload.width, payload.height);
+
+        return Object.keys(attributes).map(function (name) {
+            return ' ' + name + '="' + attributes[name] + '"';
+        }).join('');
+    }
+
+    // Markdown has no attribute syntax, so a size rides in the same trailing
+    // {…} marker convention as alignment (MarkdownParser::parseImages()).
+    function imageSizeMarkdown(payload) {
+        return (payload.widthSpec ? '{width=' + payload.widthSpec + '}' : '') + (payload.heightSpec ? '{height=' + payload.heightSpec + '}' : '');
+    }
+
+    // The Markdown for one image from an Insert/Edit Image payload. A caption
+    // rides in the image title plus a {.caption} marker and only becomes a
+    // <figure> when the image is a paragraph of its own; a straight double
+    // quote would end the title early.
+    function buildMarkdownImage(payload) {
+        var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
+        var optedOut = payload.noLightbox !== undefined ? payload.noLightbox : !payload.linkUrl;
+        var noLightboxMarker = optedOut ? '{.no-lightbox}' : '';
+        var title = payload.caption ? ' "' + payload.caption.replace(/"/g, '\u201D') + '"' : '';
+        var captionMarker = payload.caption ? '{.caption}' : '';
+        var image = '![' + payload.alt + '](' + payload.url + title + ')' + alignMarker + noLightboxMarker + captionMarker + imageSizeMarkdown(payload);
+
+        return payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image;
+    }
+
     // Prefers the smallest generated thumbnail for the grid tile — the
     // full-size original (possibly several megapixels) would otherwise
     // load 40-at-a-time for nothing more than a small square preview.
@@ -449,6 +568,12 @@
             alignField.appendChild(alignLabelEl);
             alignField.appendChild(alignSelect);
 
+            var widthField = createDimensionField('Width', 'insert-width');
+            var heightField = createDimensionField('Height', 'insert-height');
+            var dimensionHint = document.createElement('p');
+            dimensionHint.className = 'lp-field__hint';
+            dimensionHint.textContent = 'Optional. Leave both empty to use the size chosen above; a percentage is of the content width.';
+
             // Pre-filled from the media item's own Caption field, but
             // editable per insertion, like classic WordPress. Left empty,
             // the image is inserted exactly as before (no <figure>).
@@ -483,6 +608,8 @@
                     size: sizeSelect.value,
                     align: alignSelect.value,
                     alt: item.alt || item.name,
+                    widthSpec: widthField.spec(),
+                    heightSpec: heightField.spec(),
                     caption: captionInput.value.replace(/\s+/g, ' ').trim(),
                     linkUrl: linkSelect.value === 'file' ? full.url : null,
                     // The *linked* file's own dimensions — only
@@ -508,6 +635,9 @@
             actions.appendChild(backButton);
 
             settings.appendChild(sizeField);
+            settings.appendChild(widthField.element);
+            settings.appendChild(heightField.element);
+            settings.appendChild(dimensionHint);
             settings.appendChild(linkField);
             settings.appendChild(alignField);
             settings.appendChild(captionField);
@@ -531,6 +661,375 @@
         dialog.showModal();
 
         fetchPage(true);
+    }
+
+    /**
+     * "Edit Image": the settings an existing image can change in place —
+     * alt text, caption, alignment, link, and width/height. Shared by both
+     * editors; each supplies the current values and applies the result.
+     * Changing which file is shown means inserting the image again.
+     *
+     * @param {{alt: string, caption: string, align: string, linked: boolean, widthSpec: string, heightSpec: string}} current
+     * @param {function(Object): void} onApply
+     */
+    function openImageEditDialog(current, onApply) {
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-media-dialog lp-editor-media-dialog--edit-image';
+
+        var heading = document.createElement('h2');
+        heading.className = 'lp-editor-media-dialog__title';
+        heading.textContent = 'Edit Image';
+
+        var settings = document.createElement('div');
+        settings.className = 'lp-editor-media-dialog__settings';
+
+        function textField(labelText, id, value) {
+            var field = document.createElement('p');
+            field.className = 'lp-field';
+            var label = document.createElement('label');
+            label.textContent = labelText;
+            label.htmlFor = id;
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.id = id;
+            input.value = value;
+            field.appendChild(label);
+            field.appendChild(input);
+
+            return { element: field, input: input };
+        }
+
+        function selectField(labelText, id, pairs, value) {
+            var field = document.createElement('p');
+            field.className = 'lp-field';
+            var label = document.createElement('label');
+            label.textContent = labelText;
+            label.htmlFor = id;
+            var select = document.createElement('select');
+            select.id = id;
+
+            pairs.forEach(function (pair) {
+                var option = document.createElement('option');
+                option.value = pair[0];
+                option.textContent = pair[1];
+                select.appendChild(option);
+            });
+
+            select.value = value;
+            field.appendChild(label);
+            field.appendChild(select);
+
+            return { element: field, select: select };
+        }
+
+        var alt = textField('Alternative text', 'lp-editor-edit-image-alt', current.alt);
+
+        var captionField = document.createElement('p');
+        captionField.className = 'lp-field';
+        var captionLabel = document.createElement('label');
+        captionLabel.textContent = 'Caption';
+        var captionInput = document.createElement('textarea');
+        captionInput.rows = 2;
+        captionInput.id = 'lp-editor-edit-image-caption';
+        captionInput.value = current.caption;
+        captionLabel.htmlFor = captionInput.id;
+        captionField.appendChild(captionLabel);
+        captionField.appendChild(captionInput);
+
+        var align = selectField('Alignment', 'lp-editor-edit-image-align', [['alignnone', 'None'], ['alignleft', 'Left'], ['aligncenter', 'Center'], ['alignright', 'Right']], current.align);
+        var link = selectField('Link To', 'lp-editor-edit-image-link', [['none', 'None'], ['file', 'Media File']], current.linked ? 'file' : 'none');
+        var widthField = createDimensionField('Width', 'edit-width');
+        var heightField = createDimensionField('Height', 'edit-height');
+        widthField.setSpec(current.widthSpec);
+        heightField.setSpec(current.heightSpec);
+
+        var hint = document.createElement('p');
+        hint.className = 'lp-field__hint';
+        hint.textContent = 'Leave width and height empty to keep the image\u2019s natural size; a percentage is of the content width.';
+
+        var actions = document.createElement('div');
+        actions.className = 'lp-editor-media-dialog__settings-actions';
+
+        var updateButton = document.createElement('button');
+        updateButton.type = 'button';
+        updateButton.className = 'lp-button lp-button--primary';
+        updateButton.textContent = 'Update';
+        updateButton.addEventListener('click', function () {
+            onApply({
+                alt: alt.input.value.trim(),
+                caption: captionInput.value.replace(/\s+/g, ' ').trim(),
+                align: align.select.value,
+                link: link.select.value,
+                widthSpec: widthField.spec(),
+                heightSpec: heightField.spec(),
+            });
+            dialog.close();
+        });
+
+        var cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'lp-button';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.addEventListener('click', function () { dialog.close(); });
+
+        actions.appendChild(updateButton);
+        actions.appendChild(cancelButton);
+
+        [alt.element, captionField, align.element, link.element, widthField.element, heightField.element, hint, actions].forEach(function (node) {
+            settings.appendChild(node);
+        });
+
+        dialog.appendChild(heading);
+        dialog.appendChild(settings);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+        alt.input.focus();
+    }
+
+    var IMAGE_ALIGN_CLASSES = ['alignleft', 'aligncenter', 'alignright'];
+
+    function isEditableImage(node) {
+        return !!node && node.nodeName === 'IMG' && !node.hasAttribute('data-mce-object') && !node.classList.contains('mce-pagebreak');
+    }
+
+    // Reads an editor image's current settings back out of its markup: the
+    // alignment lives on the <figure> when captioned, the link is its
+    // wrapping <a>, and an explicit size is the data-style copy (or a
+    // percentage attribute) rather than the natural pixel size.
+    function readTinyMceImage(editor, img) {
+        var figure = editor.dom.getParent(img, 'figure.lp-caption');
+        var link = editor.dom.getParent(img, 'a');
+        var classes = String((figure || img).className).split(/\s+/);
+        var captionElement = figure ? figure.querySelector('figcaption') : null;
+
+        function sizeSpec(dimension) {
+            var styled = img.getAttribute('data-style-' + dimension);
+
+            if (styled && styled !== 'auto') {
+                return styled;
+            }
+
+            var attribute = img.getAttribute(dimension) || '';
+
+            return /^[1-9][0-9]{0,3}%$/.test(attribute) ? attribute : '';
+        }
+
+        return {
+            alt: img.getAttribute('alt') || '',
+            caption: captionElement ? captionElement.textContent.replace(/\s+/g, ' ').trim() : '',
+            align: IMAGE_ALIGN_CLASSES.filter(function (name) { return classes.indexOf(name) !== -1; })[0] || 'alignnone',
+            // No link and no no-lightbox class: the image opens in the lightbox by itself.
+            linked: link !== null || !img.classList.contains('no-lightbox'),
+            widthSpec: sizeSpec('width'),
+            heightSpec: sizeSpec('height'),
+        };
+    }
+
+    // Rewrites the selected image in place, as a single undo step. Alt, size,
+    // alignment, caption (the <figure>) and link (the <a>, or no-lightbox
+    // when unlinked) mirror what Insert Image produces.
+    function applyTinyMceImage(editor, img, settings) {
+        var dom = editor.dom;
+
+        editor.undoManager.transact(function () {
+            dom.setAttrib(img, 'alt', settings.alt);
+
+            ['width', 'height', 'data-style-width', 'data-style-height'].forEach(function (name) {
+                img.removeAttribute(name);
+            });
+
+            var attributes = imageSizeAttributes(settings.widthSpec, settings.heightSpec, img.naturalWidth, img.naturalHeight);
+            Object.keys(attributes).forEach(function (name) {
+                img.setAttribute(name, attributes[name]);
+            });
+
+            var link = dom.getParent(img, 'a');
+            var figure = dom.getParent(img, 'figure.lp-caption');
+            var hadNoLightbox = img.classList.contains('no-lightbox');
+
+            IMAGE_ALIGN_CLASSES.forEach(function (name) {
+                dom.removeClass(img, name);
+
+                if (figure) {
+                    dom.removeClass(figure, name);
+                }
+            });
+
+            if (settings.link === 'none') {
+                if (link) {
+                    link.parentNode.insertBefore(img, link);
+                    link.parentNode.removeChild(link);
+                    link = null;
+                }
+
+                dom.addClass(img, 'no-lightbox');
+            } else {
+                dom.removeClass(img, 'no-lightbox');
+
+                // An image that already opens in the lightbox by itself needs no link added.
+                if (!link && hadNoLightbox) {
+                    link = dom.create('a', { href: img.getAttribute('src') });
+
+                    if (img.naturalWidth) {
+                        link.setAttribute('data-pswp-width', String(img.naturalWidth));
+                        link.setAttribute('data-pswp-height', String(img.naturalHeight));
+                    }
+
+                    img.parentNode.insertBefore(link, img);
+                    link.appendChild(img);
+                }
+
+                if (link) {
+                    link.setAttribute('data-pswp-caption', settings.caption || settings.alt);
+                }
+            }
+
+            var outer = link || img;
+            figure = dom.getParent(outer, 'figure.lp-caption');
+
+            if (settings.caption) {
+                if (!figure) {
+                    figure = dom.create('figure', { 'class': 'lp-caption' });
+                    outer.parentNode.insertBefore(figure, outer);
+                    figure.appendChild(outer);
+
+                    // A figure can't sit inside a paragraph; replace one that held only the image.
+                    var holder = figure.parentNode;
+
+                    if (holder && holder.nodeName === 'P' && holder.childNodes.length === 1) {
+                        holder.parentNode.insertBefore(figure, holder);
+                        holder.parentNode.removeChild(holder);
+                    }
+                }
+
+                var captionElement = figure.querySelector('figcaption');
+
+                if (!captionElement) {
+                    captionElement = dom.create('figcaption');
+                    figure.appendChild(captionElement);
+                }
+
+                captionElement.textContent = settings.caption;
+
+                if (settings.align !== 'alignnone') {
+                    dom.addClass(figure, settings.align);
+                }
+            } else {
+                if (figure) {
+                    var paragraph = dom.create('p');
+                    figure.parentNode.insertBefore(paragraph, figure);
+                    paragraph.appendChild(outer);
+                    figure.parentNode.removeChild(figure);
+                }
+
+                if (settings.align !== 'alignnone') {
+                    dom.addClass(img, settings.align);
+                }
+            }
+        });
+
+        editor.selection.select(img);
+        editor.nodeChanged();
+    }
+
+    function openTinyMceImageEditor(editor) {
+        var img = editor.selection.getNode();
+
+        if (!isEditableImage(img)) {
+            return;
+        }
+
+        openImageEditDialog(readTinyMceImage(editor, img), function (settings) {
+            editor.focus();
+            applyTinyMceImage(editor, img, settings);
+        });
+    }
+
+    // Finds the Markdown image (optionally wrapped in a link) the cursor is
+    // in, on the cursor's own line: ![alt](url "caption") plus trailing
+    // {…} markers. Returns null when the cursor isn't inside one.
+    function findMarkdownImageAtCursor(cm) {
+        var cursor = cm.getCursor();
+        var text = cm.getLine(cursor.line);
+        var markers = '((?:\\{\\.(?:alignleft|aligncenter|alignright|no-lightbox|caption)\\}|\\{(?:width|height)=[0-9]{1,4}(?:px|%)?\\})*)';
+        var image = '!\\[([^\\]]*)\\]\\(\\s*(<[^>]*>|[^\\s)]+)(?:\\s+"([^"]*)")?\\s*\\)' + markers;
+        var patterns = [
+            { regex: new RegExp('\\[' + image + '\\]\\(\\s*(<[^>]*>|[^\\s)]+)\\s*\\)', 'g'), linked: true },
+            { regex: new RegExp(image, 'g'), linked: false },
+        ];
+
+        for (var index = 0; index < patterns.length; index++) {
+            var match;
+            patterns[index].regex.lastIndex = 0;
+
+            while ((match = patterns[index].regex.exec(text)) !== null) {
+                var start = match.index;
+                var end = start + match[0].length;
+
+                if (cursor.ch >= start && cursor.ch <= end) {
+                    return {
+                        line: cursor.line,
+                        start: start,
+                        end: end,
+                        alt: match[1],
+                        url: match[2].replace(/^<|>$/g, ''),
+                        caption: match[3] || '',
+                        markers: match[4] || '',
+                        linkUrl: patterns[index].linked ? match[5].replace(/^<|>$/g, '') : null,
+                        wholeLine: start === 0 && end === text.length,
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function openMarkdownImageEditor(cm) {
+        var found = findMarkdownImageAtCursor(cm);
+
+        if (found === null) {
+            window.alert('Place the cursor inside an image to edit it.');
+
+            return;
+        }
+
+        var align = (/\{\.(alignleft|aligncenter|alignright)\}/.exec(found.markers) || [])[1] || 'alignnone';
+        var width = /\{width=([0-9]{1,4})(px|%)?\}/.exec(found.markers);
+        var height = /\{height=([0-9]{1,4})(px|%)?\}/.exec(found.markers);
+
+        openImageEditDialog({
+            alt: found.alt,
+            caption: found.caption,
+            align: align,
+            // An image with no link and no {.no-lightbox} marker opens in the
+            // lightbox on its own, which is the same as linking to its file.
+            linked: found.linkUrl !== null || found.markers.indexOf('{.no-lightbox}') === -1,
+            widthSpec: width ? width[1] + (width[2] || 'px') : '',
+            heightSpec: height ? height[1] + (height[2] || 'px') : '',
+        }, function (settings) {
+            var replacement = buildMarkdownImage({
+                url: found.url,
+                alt: settings.alt,
+                caption: settings.caption,
+                align: settings.align,
+                // A link kept is the one already there. With none, the image either
+                // keeps opening in the lightbox by itself or is opted out of it.
+                linkUrl: settings.link === 'file' ? found.linkUrl : null,
+                noLightbox: settings.link === 'file' ? false : true,
+                widthSpec: settings.widthSpec,
+                heightSpec: settings.heightSpec,
+            });
+
+            // A caption only makes a figure when the image is a paragraph of its own.
+            if (settings.caption && !found.wholeLine) {
+                replacement = '\n\n' + replacement + '\n\n';
+            }
+
+            cm.replaceRange(replacement, { line: found.line, ch: found.start }, { line: found.line, ch: found.end });
+            cm.focus();
+        });
     }
 
     /**
@@ -2007,43 +2506,22 @@
                     action: function () {
                         openMediaPicker(container, function (payload) {
                             var cm = editor.codemirror;
-                            // Markdown has no attribute syntax, so the
-                            // chosen size is expressed purely by which
-                            // file's URL gets inserted (LP-075) — no
-                            // width/height survives into the rendered
-                            // <img> for Markdown-authored content, a
-                            // hard limitation of the format. Alignment
-                            // (LP-016) is the one exception: a trailing
-                            // {.alignleft/aligncenter/alignright} marker
-                            // (MarkdownParser::parseImages()) does
-                            // survive, the same minimal convention
-                            // wrapSelectionWithAlignment() uses for
-                            // heading/paragraph alignment above.
-                            //
-                            // LP-080: "Link To: None" means no link at
-                            // all, not just "no link to something
-                            // different than what's displayed" — a
-                            // {.no-lightbox} marker opts the image out
-                            // of ContentRenderer::addLightboxAttributes()'s
-                            // automatic self-link, which would otherwise
-                            // still wrap even an unlinked image in an
-                            // <a> so PhotoSwipe can open it.
-                            var alignMarker = payload.align && payload.align !== 'alignnone' ? '{.' + payload.align + '}' : '';
-                            var noLightboxMarker = payload.linkUrl ? '' : '{.no-lightbox}';
-                            // A caption rides in the image title plus a
-                            // {.caption} marker, and only becomes a <figure>
-                            // when the image is a paragraph of its own, hence
-                            // the surrounding blank lines. A straight double
-                            // quote would end the title early.
-                            var title = payload.caption ? ' "' + payload.caption.replace(/"/g, '\u201D') + '"' : '';
-                            var captionMarker = payload.caption ? '{.caption}' : '';
-                            var image = '![' + payload.alt + '](' + payload.url + title + ')' + alignMarker + noLightboxMarker + captionMarker;
-                            var inserted = payload.linkUrl ? '[' + image + '](' + payload.linkUrl + ')' : image;
+                            // The chosen display size is which file's URL gets
+                            // inserted; alignment, "no link" ({.no-lightbox}) and
+                            // an explicit width/height are trailing {…} markers —
+                            // see buildMarkdownImage().
+                            var inserted = buildMarkdownImage(payload);
                             cm.replaceSelection(payload.caption ? '\n\n' + inserted + '\n\n' : inserted);
                         });
                     },
                     className: 'fa fa-photo',
                     title: 'Insert Image',
+                },
+                {
+                    name: 'edit-image',
+                    action: function () { openMarkdownImageEditor(editor.codemirror); },
+                    className: 'fa fa-pencil-square-o',
+                    title: 'Edit Image (cursor inside an image)',
                 },
                 {
                     name: 'folder-gallery',
@@ -2273,7 +2751,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraFolderGallery lumoraAudio lumoraVideo '
+                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraEditImage lumoraFolderGallery lumoraAudio lumoraVideo '
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
                         + 'searchreplace fullscreen table help',
                     // Default 'floating' collapses whatever doesn't fit
@@ -2293,7 +2771,7 @@
                     // disabled since neither applies here.
                     quickbars_insert_toolbar: false,
                     quickbars_selection_toolbar: false,
-                    quickbars_image_toolbar: 'lumoraLink',
+                    quickbars_image_toolbar: 'lumoraEditImage lumoraLink',
                     // LP-079: visually distinguishes the More tag marker
                     // (span.lp-more-tag) while editing — never on the public
                     // site (the marker itself is always stripped before
@@ -2421,8 +2899,7 @@
                                     // floats the image and caption together.
                                     var classAttr = 'size-' + payload.size + (payload.caption ? '' : ' ' + payload.align) + (payload.linkUrl ? '' : ' no-lightbox');
                                     var image = '<img src="' + escapeHtmlAttr(payload.url) + '" alt="' + escapeHtmlAttr(payload.alt) + '"'
-                                        + (payload.width ? ' width="' + payload.width + '"' : '')
-                                        + (payload.height ? ' height="' + payload.height + '"' : '')
+                                        + imageSizeHtml(payload)
                                         + ' class="' + classAttr + '">';
                                     // Inserting with the cursor inside an existing
                                     // captioned image would nest the new image in
@@ -2473,6 +2950,32 @@
                                     editor.insertContent(withCaption(link));
                                 });
                             },
+                        });
+
+                        editor.ui.registry.addButton('lumoraEditImage', {
+                            icon: 'edit-image',
+                            tooltip: 'Edit Image',
+                            onAction: function () {
+                                openTinyMceImageEditor(editor);
+                            },
+                            onSetup: function (buttonApi) {
+                                var update = function () {
+                                    buttonApi.setEnabled(isEditableImage(editor.selection.getNode()));
+                                };
+
+                                editor.on('NodeChange', update);
+                                update();
+
+                                return function () { editor.off('NodeChange', update); };
+                            },
+                        });
+
+                        // Double-clicking an image is the usual shortcut for editing it.
+                        editor.on('dblclick', function (event) {
+                            if (isEditableImage(event.target)) {
+                                editor.selection.select(event.target);
+                                openTinyMceImageEditor(editor);
+                            }
                         });
 
                         editor.ui.registry.addButton('lumoraFolderGallery', {

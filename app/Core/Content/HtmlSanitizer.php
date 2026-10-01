@@ -56,7 +56,8 @@ final class HtmlSanitizer
         // Media File" insert can link to a size the inline <img> doesn't show.
         'a' => ['href', 'title', 'rel', 'target', 'id', 'class', 'aria-label', 'data-pswp-width', 'data-pswp-height', 'data-pswp-caption'],
         // 'class' carries the "no-lightbox" opt-out and "size-{name}" display classes.
-        'img' => ['src', 'alt', 'title', 'width', 'height', 'loading', 'class'],
+        // data-style-width/height carry an author-chosen size for dynamic-style.js (inline style attributes are blocked by the CSP).
+        'img' => ['src', 'alt', 'title', 'width', 'height', 'loading', 'class', 'data-style-width', 'data-style-height'],
         'table' => [], 'thead' => [], 'tbody' => [], 'tr' => [], 'th' => ['class', 'scope'], 'td' => ['class'],
         'nav' => ['class', 'aria-label'],
         'section' => ['class'],
@@ -364,6 +365,19 @@ final class HtmlSanitizer
             }
 
             if (($name === 'data-pswp-width' || $name === 'data-pswp-height') && !preg_match('/^[1-9][0-9]*$/', $attribute->nodeValue ?? '')) {
+                $element->removeAttribute($attribute->nodeName);
+
+                continue;
+            }
+
+            // Pixels, or a percentage; anything else could carry markup or an odd CSS value.
+            if (($name === 'width' || $name === 'height') && !preg_match('/^[1-9][0-9]{0,4}%?$/', $attribute->nodeValue ?? '')) {
+                $element->removeAttribute($attribute->nodeName);
+
+                continue;
+            }
+
+            if (($name === 'data-style-width' || $name === 'data-style-height') && !preg_match('/^(?:auto|[1-9][0-9]{0,3}(?:px|%))$/', $attribute->nodeValue ?? '')) {
                 $element->removeAttribute($attribute->nodeName);
 
                 continue;

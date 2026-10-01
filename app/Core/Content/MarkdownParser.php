@@ -35,7 +35,8 @@ namespace LumoraPress\Core\Content;
 final class MarkdownParser
 {
     /** Trailing `{.marker}` names an image accepts. */
-    private const IMAGE_MARKERS = 'alignleft|aligncenter|alignright|no-lightbox|caption';
+    /** One trailing image marker: a class like `{.alignleft}` or a size like `{width=50%}` / `{height=200px}`. */
+    private const IMAGE_MARKER_PATTERN = '\{\.(?:alignleft|aligncenter|alignright|no-lightbox|caption)\}|\{(?:width|height)=[0-9]{1,4}(?:px|%)?\}';
 
     /**
      * Fixed font-color palette, mirrored by content-editor.js's swatch
@@ -651,12 +652,14 @@ final class MarkdownParser
             [, $text, $linkUrl] = $link;
         }
 
-        if (preg_match('/^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)\s+"([^"]*)"\s*\)((?:\{\.(?:' . self::IMAGE_MARKERS . ')\})+)$/', $text, $m) !== 1) {
+        if (preg_match('/^!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)\s+"([^"]*)"\s*\)((?:' . self::IMAGE_MARKER_PATTERN . ')+)$/', $text, $m) !== 1) {
             return null;
         }
 
         preg_match_all('/\{\.([a-z-]+)\}/', $m[4], $markerMatches);
         $markers = $markerMatches[1];
+        // A size stays on the image itself, not on the figure.
+        preg_match_all('/\{(?:width|height)=[0-9]{1,4}(?:px|%)?\}/', $m[4], $sizeMatches);
         $caption = trim($m[3]);
 
         if (!in_array('caption', $markers, true) || $caption === '') {
@@ -665,7 +668,9 @@ final class MarkdownParser
 
         $align = array_values(array_intersect($markers, ['alignleft', 'aligncenter', 'alignright']))[0] ?? null;
         $imageMarkers = array_diff($markers, ['caption', 'alignleft', 'aligncenter', 'alignright']);
-        $image = '![' . $m[1] . '](' . $m[2] . ')' . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $imageMarkers));
+        $image = '![' . $m[1] . '](' . $m[2] . ')'
+            . implode('', array_map(static fn (string $marker): string => '{.' . $marker . '}', $imageMarkers))
+            . implode('', $sizeMatches[0]);
 
         return '<figure class="lp-caption' . ($align !== null ? ' ' . $align : '') . '">'
             . $this->parseInline($linkUrl !== null ? '[' . $image . '](' . $linkUrl . ')' : $image)
@@ -684,7 +689,7 @@ final class MarkdownParser
     private function parseImages(string $text): string
     {
         return (string) preg_replace_callback(
-            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)((?:\{\.(?:' . self::IMAGE_MARKERS . ')\})+)?/',
+            '/!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)((?:' . self::IMAGE_MARKER_PATTERN . ')+)?/',
             function (array $m): string {
                 $alt = htmlspecialchars($m[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $url = $this->sanitizeUrl(trim($m[2], '<>'));
@@ -700,10 +705,53 @@ final class MarkdownParser
 
                 $classAttr = $classes !== [] ? ' class="' . htmlspecialchars(implode(' ', $classes), ENT_QUOTES, 'UTF-8') . '"' : '';
 
-                return $this->storePlaceholder('<img src="' . $url . '" alt="' . $alt . '"' . $titleAttr . $classAttr . ' loading="lazy">');
+                return $this->storePlaceholder('<img src="' . $url . '" alt="' . $alt . '"' . $titleAttr . $classAttr . $this->imageSizeAttributes($m[4] ?? '') . ' loading="lazy">');
             },
             $text,
         );
+    }
+
+    /**
+     * `{width=50%}` / `{height=200px}` markers become width/height attributes
+     * plus `data-style-*` copies that dynamic-style.js applies, since a
+     * theme's `height: auto` would otherwise ignore a height. A bare number
+     * means pixels. The dimension left out is set to `auto` so the other
+     * one can't stretch the image.
+     */
+    private function imageSizeAttributes(string $markers): string
+    {
+        $sizes = [];
+
+        if (preg_match_all('/\{(width|height)=([0-9]{1,4})(px|%)?\}/', $markers, $matches, PREG_SET_ORDER) > 0) {
+            foreach ($matches as $match) {
+                $number = (int) $match[2];
+
+                if ($number < 1) {
+                    continue;
+                }
+
+                $sizes[$match[1]] = ['unit' => ($match[3] ?? '') !== '' ? $match[3] : 'px', 'number' => $number];
+            }
+        }
+
+        if ($sizes === []) {
+            return '';
+        }
+
+        $html = '';
+
+        foreach (['width', 'height'] as $dimension) {
+            if (isset($sizes[$dimension])) {
+                $unit = $sizes[$dimension]['unit'];
+                $number = $sizes[$dimension]['number'];
+                $html .= ' ' . $dimension . '="' . $number . ($unit === '%' ? '%' : '') . '"'
+                    . ' data-style-' . $dimension . '="' . $number . $unit . '"';
+            } else {
+                $html .= ' data-style-' . $dimension . '="auto"';
+            }
+        }
+
+        return $html;
     }
 
     private function parseLinks(string $text): string

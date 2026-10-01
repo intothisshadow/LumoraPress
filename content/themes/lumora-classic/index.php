@@ -41,13 +41,6 @@ $comment_counts ??= [];
 <?php $lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? ' lp-content--thumbnail-above' : ''; ?>
 <div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?><?= esc_attr($lpThumbnailAboveClass) ?> lp-layout">
     <main class="lp-main">
-        <?php if ($page_title === null && $posts !== []): ?>
-            <header class="lp-main-header">
-                <p class="lp-eyebrow">The latest from the archive</p>
-                <h1 class="lp-page-title">Stories worth keeping</h1>
-                <p class="lp-main-header__intro">A considered collection of notes, discoveries, and details from the Lumora Press archive.</p>
-            </header>
-        <?php endif; ?>
         <?php if ($posts === []): ?>
             <p class="lp-empty-state">No posts have been published yet.</p>
         <?php else: ?>

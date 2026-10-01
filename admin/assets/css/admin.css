@@ -2376,6 +2376,22 @@ body.lp-admin-login {
     margin-top: 1rem;
 }
 
+/* Width/height with a px/% unit in the Insert Image and Edit Image dialogs. */
+.lp-editor-dimension__row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.lp-editor-dimension__row input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.lp-editor-media-dialog__title {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+}
+
 @media (max-width: 782px) {
     .lp-editor-media-dialog {
         height: 90vh;
