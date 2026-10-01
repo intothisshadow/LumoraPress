@@ -2912,7 +2912,9 @@ body.lp-site {
     grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
     max-width: var(--lp-max-width);
-    padding: 2.75rem 1.5rem 3.5rem;
+    /* No side padding: the content edges line up with the header and welcome
+       message above, which also span the full max width. */
+    padding: 2.75rem 0 3.5rem;
     gap: 1.5rem;
 }
 
