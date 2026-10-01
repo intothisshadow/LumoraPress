@@ -78,7 +78,7 @@ if ((int) $comment_count === 0 && !$comments_open) {
         <div class="lp-alert lp-alert--error">Please fill in your name, a valid email address, and a comment.</div>
     <?php endif; ?>
 
-    <?php comment_list($comment_tree, $content, $current_user, $guestFieldOptions, 0, $maxNesting, $avatarsEnabled, $avatarRating, $avatarDefault); ?>
+    <?php comment_list($comment_tree, $content, $current_user, $guestFieldOptions, 0, $maxNesting, $avatarsEnabled, $avatarRating, $avatarDefault, 10, $comments_open); ?>
 
     <?php
     $contentPermalink = isset($page) ? page_permalink($content) : post_permalink($content);

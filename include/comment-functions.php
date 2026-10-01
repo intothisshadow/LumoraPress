@@ -186,6 +186,9 @@ if (!function_exists('comment_list')) {
      * replies in a collapsed-by-default `<details>`, the same pattern the
      * per-comment Reply form below already uses — long-running threads on
      * an old post stay readable without an ever-growing page.
+     * $commentsOpen says whether the thread still accepts comments (null
+     * falls back to the item's own comments-open flag); when it doesn't,
+     * no Reply form is offered.
      *
      * @param array<int, array{comment: \LumoraPress\Models\Comment, children: array<mixed>}> $tree
      * @param array{cookieConsent?: bool, savedName?: string, savedEmail?: string, savedUrl?: string, nameRequired?: bool, emailRequired?: bool, urlEnabled?: bool} $guestFieldOptions
@@ -201,10 +204,13 @@ if (!function_exists('comment_list')) {
         string $avatarRating = 'g',
         string $avatarDefault = 'mp',
         int $collapseThreshold = 10,
+        ?bool $commentsOpen = null,
     ): void {
         if ($tree === []) {
             return;
         }
+
+        $repliesOpen = $commentsOpen ?? $content->commentsOpen;
 
         if ($depth === 0) {
             CommentExtras::markUsed();
@@ -238,10 +244,12 @@ if (!function_exists('comment_list')) {
                             <button type="button" class="lp-comment__quote-button" data-lp-comment-quote data-quote-author="<?= esc_attr($comment->guestName) ?>" data-quote-text="<?= esc_attr(comment_quotable_text($comment->content)) ?>" data-quote-target="comment-form-reply-<?= (int) $comment->id ?>-content" hidden><?= esc_html(__('Quote')) ?></button>
                             <?= comment_report_form($comment) ?>
                         </div>
-                        <details class="lp-comment__reply">
-                            <summary>Reply</summary>
-                            <?php comment_form($content, $currentUser, $guestFieldOptions, $comment->id, 'Post Reply'); ?>
-                        </details>
+                        <?php if ($repliesOpen): ?>
+                            <details class="lp-comment__reply">
+                                <summary>Reply</summary>
+                                <?php comment_form($content, $currentUser, $guestFieldOptions, $comment->id, 'Post Reply'); ?>
+                            </details>
+                        <?php endif; ?>
                     </article>
                     <?php
                     $nextDepth = $depth < $maxDepth ? $depth + 1 : $depth;
@@ -250,10 +258,10 @@ if (!function_exists('comment_list')) {
                     <?php if ($descendantCount > $collapseThreshold): ?>
                         <details class="lp-comment__thread">
                             <summary><?= (int) $descendantCount ?> repl<?= $descendantCount === 1 ? 'y' : 'ies' ?></summary>
-                            <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold); ?>
+                            <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold, $commentsOpen); ?>
                         </details>
                     <?php else: ?>
-                        <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold); ?>
+                        <?php comment_list($node['children'], $content, $currentUser, $guestFieldOptions, $nextDepth, $maxDepth, $avatarsEnabled, $avatarRating, $avatarDefault, $collapseThreshold, $commentsOpen); ?>
                     <?php endif; ?>
                 </li>
             <?php endforeach; ?>
