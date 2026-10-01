@@ -50,6 +50,7 @@ final class HtmlSanitizer
         'pre' => [],
         'blockquote' => [],
         'ul' => ['class'], 'ol' => ['class'], 'li' => ['class', 'id'],
+        'dl' => ['class'], 'dt' => ['class'], 'dd' => ['class'],
         'input' => ['type', 'disabled', 'checked'],
         // data-pswp-width/height/caption let the editor embed a linked
         // image's real dimensions at authoring time, since a "Link To:
@@ -78,7 +79,7 @@ final class HtmlSanitizer
      * @var array<int, string>
      */
     private const BLOCK_LEVEL_TAGS = [
-        'p', 'div', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+        'p', 'div', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
         'blockquote', 'pre', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'section', 'nav', 'figure', 'figcaption', 'header', 'footer', 'form',
         'article', 'aside', 'details', 'summary', 'fieldset',

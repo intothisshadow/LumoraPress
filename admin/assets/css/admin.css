@@ -5865,3 +5865,9 @@ a.lp-button--link.lp-button--link--view:hover {
 .lp-comment-reply-original__text {
     overflow-wrap: anywhere;
 }
+
+.lp-content-editor__autosave-status {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}

@@ -439,6 +439,8 @@ final class PostsController
             $this->categories->assignToPost($savedPost->id, is_array($post['category_ids'] ?? null) ? $post['category_ids'] : []);
             $this->tags->assignToPost($savedPost->id, explode(',', (string) ($post['tags'] ?? '')));
             $this->posts->updateSeo($savedPost->id, $metaTitle, $metaDescription);
+            // The explicit save supersedes any server-side autosave of this draft.
+            $this->revisions->deleteAutosave(RevisionableType::Post, $savedPost->id, $currentUserId);
 
             // Editor/Administrator only, same gate that lets them edit another author's post at all.
             if ($canEditOthersPosts) {

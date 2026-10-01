@@ -574,6 +574,19 @@ a.lp-post-list__comments:focus {
     margin: 0.25em 0;
 }
 
+.lp-post__content dl {
+    margin: 0 0 1em;
+}
+
+.lp-post__content dt {
+    margin-top: 0.75em;
+    font-weight: 600;
+}
+
+.lp-post__content dd {
+    margin: 0.25em 0 0 1.5em;
+}
+
 .lp-post__content .lp-task-list-item {
     list-style: none;
     margin-left: -1.5em;

@@ -28,8 +28,16 @@ All notable changes to Lumora Press are documented in this file.
 - Theme authors: `render_pagination()` takes an optional third argument naming the page query parameter (default `paged`), for a second paged list on the same page.
 - Edit Image in the editors (LP-185): select an image in the Visual editor and use the new Edit Image button (or double-click it, or use the small toolbar that appears over a selected image), or put the cursor inside an image in the Markdown editor and use its Edit Image button, to change the image's alt text, caption, alignment, link, width and height without inserting it again.
 - Width and height in pixels or percent (LP-185): Insert Image and Edit Image have optional Width and Height fields, each with a px or % unit (a percentage is of the content width). Leave both empty to keep the size as before. In Markdown a size is written as trailing markers, for example `![alt](url){width=50%}{height=200px}`, and it is kept when you switch between the Markdown and Visual editors.
+- Server-side draft autosave (LP-015): while you edit an existing post or page, the editor sends your unsaved title and content to the server once a minute. If your browser loses the draft, the editor shows a "Load autosave" link when you reopen the post. Autosaves don't appear in the revision history, and saving the post clears them.
+- Insert File (LP-015): the Markdown and Visual editors have an Insert File button that adds a link to a document or archive from the Media Manager.
+- Definition lists (LP-015): Markdown supports a term line followed by `: definition` lines, shown as a definition list. They convert to and from the Visual editor, and all bundled themes style them.
 - Keyboard shortcuts reference (LP-015): the Markdown editor toolbar has a new Keyboard Shortcuts button that lists every shortcut.
 - Markdown editor toolbar API (LP-015): plugins can hide built-in toolbar buttons with the `markdown_editor_hidden_buttons` filter, add simple wrap-the-selection buttons with `markdown_editor_buttons`, and change the draft autosave interval (15 seconds by default) with `markdown_editor_autosave_seconds` (see "Markdown Editor API" in `docs/DEVELOPER-APIS.md`).
+
+### Changed
+
+- Faster Markdown editing on long posts (LP-015): the word count and preview refresh after a short pause in typing instead of on every keystroke, and preview images load lazily.
+- Images pasted or dropped into the editor are inserted at the Large size when one exists, instead of the full-size original.
 
 ### Fixed
 

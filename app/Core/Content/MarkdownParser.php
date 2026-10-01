@@ -216,6 +216,38 @@ final class MarkdownParser
                 continue;
             }
 
+            // Definition list: a term line directly followed by ": definition" lines.
+            if (isset($lines[$i + 1]) && preg_match('/^ {0,3}:\s+\S/', $lines[$i + 1]) === 1) {
+                $items = [];
+
+                while (
+                    $i + 1 < $count
+                    && trim($lines[$i]) !== ''
+                    && preg_match('/^ {0,3}:\s/', $lines[$i]) !== 1
+                    && preg_match('/^ {0,3}:\s+\S/', $lines[$i + 1]) === 1
+                ) {
+                    $term = trim($lines[$i]);
+                    $definitions = [];
+                    $i++;
+
+                    while ($i < $count && preg_match('/^ {0,3}:\s+(\S.*)$/', $lines[$i], $m) === 1) {
+                        $definitions[] = trim($m[1]);
+                        $i++;
+                    }
+
+                    $items[] = ['term' => $term, 'definitions' => $definitions];
+
+                    // One blank line between entries still belongs to the same list.
+                    if ($i + 2 < $count && trim($lines[$i]) === '' && trim($lines[$i + 1]) !== '' && preg_match('/^ {0,3}:\s+\S/', $lines[$i + 2]) === 1) {
+                        $i++;
+                    }
+                }
+
+                $blocks[] = ['type' => 'definition_list', 'items' => $items];
+
+                continue;
+            }
+
             // Paragraph: gather consecutive non-blank lines that don't start a new block
             $paragraphLines = [$line];
             $i++;
@@ -394,6 +426,7 @@ final class MarkdownParser
             'blockquote' => '<blockquote>' . $this->renderBlocks($this->parseBlocks((array) $block['lines'])) . "</blockquote>\n",
             'hr' => "<hr>\n",
             'list' => $this->renderList((array) $block['items'], (bool) $block['ordered']),
+            'definition_list' => $this->renderDefinitionList((array) $block['items']),
             'table' => $this->renderTable((array) $block['header'], (array) $block['align'], (array) $block['rows']),
             'toc' => "\x02TOC\x03\n",
             default => '',
@@ -484,6 +517,24 @@ final class MarkdownParser
      * @param array<int, string> $align
      * @param array<int, array<int, string>> $rows
      */
+    /**
+     * @param array<int, array{term: string, definitions: array<int, string>}> $items
+     */
+    private function renderDefinitionList(array $items): string
+    {
+        $html = "<dl>\n";
+
+        foreach ($items as $item) {
+            $html .= '<dt>' . $this->parseInline($item['term']) . "</dt>\n";
+
+            foreach ($item['definitions'] as $definition) {
+                $html .= '<dd>' . $this->parseInline($definition) . "</dd>\n";
+            }
+        }
+
+        return $html . "</dl>\n";
+    }
+
     private function renderTable(array $header, array $align, array $rows): string
     {
         $alignClass = static fn (int $index): string => isset($align[$index]) && $align[$index] !== ''

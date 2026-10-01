@@ -478,6 +478,8 @@ final class PagesController
                 : $this->pages->update($id, $title, $content, $excerpt, $status, $publishedAt, $parentId > 0 ? $parentId : null, $featuredImageId, $slug !== '' ? $slug : null, $contentFormat, featuredImageCrop: $featuredImageCrop, visibility: $visibility, commentsOpen: $commentsOpen);
 
             $this->pages->updateSeo($savedPage->id, $metaTitle, $metaDescription);
+            // The explicit save supersedes any server-side autosave of this draft.
+            $this->revisions->deleteAutosave(RevisionableType::Page, $savedPage->id, $currentUserId);
 
             return AdminActionResult::redirect(admin_url('pages/new') . '?id=' . $savedPage->id . '&saved=1');
         } catch (\InvalidArgumentException $exception) {

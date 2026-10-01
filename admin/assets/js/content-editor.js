@@ -1162,19 +1162,24 @@
      * {id}.
      */
     function openMediaPlayerPicker(container, type, onInsert) {
-        var items = JSON.parse(container.dataset['media' + (type === 'audio' ? 'Audio' : 'Video')] || '[]');
+        var labels = {
+            audio: { key: 'mediaAudio', heading: 'Insert Audio', field: 'Audio File', empty: 'No audio files in the Media Manager yet.' },
+            video: { key: 'mediaVideo', heading: 'Insert Video', field: 'Video File', empty: 'No video files in the Media Manager yet.' },
+            file: { key: 'mediaFiles', heading: 'Insert File', field: 'File', empty: 'No documents or archives in the Media Manager yet.' },
+        }[type];
+        var items = JSON.parse(container.dataset[labels.key] || '[]');
 
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-editor-media-dialog';
 
         var heading = document.createElement('h2');
-        heading.textContent = type === 'audio' ? 'Insert Audio' : 'Insert Video';
+        heading.textContent = labels.heading;
         heading.className = 'lp-editor-media-dialog__heading';
 
         var fileField = document.createElement('p');
         fileField.className = 'lp-field';
         var fileLabelEl = document.createElement('label');
-        fileLabelEl.textContent = type === 'audio' ? 'Audio File' : 'Video File';
+        fileLabelEl.textContent = labels.field;
         var fileSelect = document.createElement('select');
 
         items.forEach(function (item) {
@@ -1196,7 +1201,9 @@
         insertButton.textContent = 'Insert';
         insertButton.disabled = items.length === 0;
         insertButton.addEventListener('click', function () {
-            onInsert({ id: parseInt(fileSelect.value, 10) || 0 });
+            var id = parseInt(fileSelect.value, 10) || 0;
+            var chosen = items.filter(function (item) { return item.id === id; })[0] || {};
+            onInsert({ id: id, name: chosen.name || '', url: chosen.url || '' });
             dialog.close();
         });
 
@@ -1214,9 +1221,7 @@
         if (items.length === 0) {
             var status = document.createElement('p');
             status.className = 'lp-editor-media-dialog__status';
-            status.textContent = type === 'audio'
-                ? 'No audio files in the Media Manager yet.'
-                : 'No video files in the Media Manager yet.';
+            status.textContent = labels.empty;
             dialog.appendChild(status);
         } else {
             dialog.appendChild(fileField);
@@ -2212,6 +2217,15 @@
     // Upload helper — shared by both editors.
     // ------------------------------------------------------------------
 
+    // Pasted/dropped images go in at the Large size when one was generated,
+    // so a multi-megabyte original isn't loaded for every reader. Falls back
+    // to the original when no Large thumbnail exists (image already small).
+    function insertableImageUrl(json) {
+        var sizes = json.item && json.item.sizes ? json.item.sizes : {};
+
+        return sizes.large && sizes.large.url ? sizes.large.url : json.url;
+    }
+
     function uploadFile(container, file) {
         var formData = new FormData();
         formData.append('form', 'editor_upload');
@@ -2555,6 +2569,19 @@
                     className: 'fa fa-file-video-o',
                     title: 'Insert Video',
                 },
+                {
+                    name: 'insert-file',
+                    action: function () {
+                        openMediaPlayerPicker(container, 'file', function (payload) {
+                            var cm = editor.codemirror;
+                            // Square brackets in a file name would end the link text early.
+                            var label = cm.getSelection() || payload.name.replace(/[\[\]]/g, '');
+                            cm.replaceSelection('[' + label + '](' + payload.url + ')');
+                        });
+                    },
+                    className: 'fa fa-file-text-o',
+                    title: 'Insert File',
+                },
             ];
 
             if (iconPickerEnabled) {
@@ -2628,6 +2655,8 @@
             });
             markdownToolbar = filterToolbar(markdownToolbar, editorConfig.hide || []);
 
+            var previewTimer = null;
+
             var editor = new EasyMDE({
                 element: textarea,
                 // Font Awesome is loaded explicitly above (loadStyle(
@@ -2639,7 +2668,7 @@
                 uploadImage: true,
                 imageUploadFunction: function (file, onSuccess, onError) {
                     uploadFile(container, file).then(function (json) {
-                        onSuccess(json.url);
+                        onSuccess(insertableImageUrl(json));
                     }).catch(function (error) {
                         onError(error.message || 'Upload failed.');
                     });
@@ -2662,24 +2691,67 @@
                     delay: editorConfig.autosaveDelay || 15000,
                 } : { enabled: false },
                 toolbar: markdownToolbar,
+                previewRender: function (plainText, preview) {
+                    var render = function () {
+                        // Lazy-load so a long post's images load as they scroll into view.
+                        return editor.markdown(plainText).replace(/<img /g, '<img loading="lazy" ');
+                    };
+
+                    // Side-by-side re-renders on every keystroke; past a few
+                    // thousand characters that parse is batched instead.
+                    if (plainText.length < 5000) {
+                        return render();
+                    }
+
+                    window.clearTimeout(previewTimer);
+                    previewTimer = window.setTimeout(function () { preview.innerHTML = render(); }, 300);
+
+                    return null;
+                },
             });
 
             // EasyMDE hides the original <textarea> behind its CodeMirror
             // UI and does not keep its .value live-synced on every
-            // keystroke — only writing it back here (rather than relying
-            // on form-submit-time syncing alone) guarantees the real form
-            // field is always current, including for the format-switch
-            // conversion flow below, which reads the textarea directly.
+            // keystroke, so it's written back here. editor.value() copies
+            // the whole document, so on a long post the copy and word
+            // count are batched after a pause in typing; form submit and
+            // getValue() flush any pending one first so nothing is lost.
+            var syncTimer = null;
+
+            function syncTextarea() {
+                if (syncTimer !== null) {
+                    window.clearTimeout(syncTimer);
+                    syncTimer = null;
+                }
+
+                var value = editor.value();
+                textarea.value = value;
+                updateStats(statsEl, value);
+
+                return value;
+            }
+
             editor.codemirror.on('change', function () {
-                textarea.value = editor.value();
-                updateStats(statsEl, editor.value());
+                if (syncTimer === null) {
+                    syncTimer = window.setTimeout(syncTextarea, 200);
+                }
             });
-            textarea.value = editor.value();
-            updateStats(statsEl, editor.value());
+
+            if (textarea.form) {
+                textarea.form.addEventListener('submit', syncTextarea);
+            }
+
+            syncTextarea();
 
             return {
-                getValue: function () { return editor.value(); },
-                destroy: function () { editor.toTextArea(); },
+                getValue: syncTextarea,
+                destroy: function () {
+                    syncTextarea();
+                    if (textarea.form) {
+                        textarea.form.removeEventListener('submit', syncTextarea);
+                    }
+                    editor.toTextArea();
+                },
             };
         });
     }
@@ -2751,7 +2823,7 @@
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
                     toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
                         + 'aligncenter alignleft alignright alignjustify | '
-                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraEditImage lumoraFolderGallery lumoraAudio lumoraVideo '
+                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraEditImage lumoraFolderGallery lumoraAudio lumoraVideo lumoraFile '
                         + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
                         + 'searchreplace fullscreen table help',
                     // Default 'floating' collapses whatever doesn't fit
@@ -2823,7 +2895,7 @@
                     relative_urls: false,
                     images_upload_handler: function (blobInfo) {
                         return uploadFile(container, blobInfo.blob()).then(function (json) {
-                            return json.url;
+                            return insertableImageUrl(json);
                         });
                     },
                     autosave_interval: '15s',
@@ -3009,6 +3081,17 @@
                             },
                         });
 
+                        editor.ui.registry.addButton('lumoraFile', {
+                            icon: 'document-properties',
+                            tooltip: 'Insert File',
+                            onAction: function () {
+                                openMediaPlayerPicker(container, 'file', function (payload) {
+                                    var selected = editor.selection.getContent({ format: 'text' });
+                                    editor.insertContent('<a href="' + escapeHtmlAttr(payload.url) + '">' + escapeHtmlAttr(selected || payload.name) + '</a>');
+                                });
+                            },
+                        });
+
                         if (iconPickerEnabled) {
                             editor.ui.registry.addButton('lumoraIcon', {
                                 icon: 'insert-character',
@@ -3114,6 +3197,63 @@
     // Wiring
     // ------------------------------------------------------------------
 
+    // Sends the unsaved title/content to the server every minute while it
+    // differs from the last copy sent, so a lost browser profile or a
+    // cleared localStorage doesn't lose the draft. Only for an existing
+    // post/page (the server rejects anything else); getValue() reads the
+    // live editor.
+    var SERVER_AUTOSAVE_INTERVAL = 60000;
+
+    function startServerAutosave(container, textarea, statusEl, getValue) {
+        var form = textarea.form;
+        var titleInput = form ? form.querySelector('[name="title"]') : null;
+        var targetId = /^(?:post|page)-(\d+)$/.exec(container.dataset.autosaveId || '');
+
+        if (!form || !titleInput || !targetId || !container.dataset.autosaveCsrf) {
+            return;
+        }
+
+        var snapshot = function () { return titleInput.value + '\u0000' + getValue(); };
+        var lastSent = snapshot();
+        var sending = false;
+
+        window.setInterval(function () {
+            var current = snapshot();
+
+            if (sending || current === lastSent) {
+                return;
+            }
+
+            sending = true;
+
+            var data = new FormData();
+            data.append('form', 'editor_autosave');
+            data.append('csrf_token', container.dataset.autosaveCsrf);
+            data.append('id', targetId[1]);
+            data.append('title', titleInput.value);
+            data.append('content', getValue());
+            data.append('content_format', container.dataset.format || '');
+
+            fetch(container.dataset.uploadUrl, { method: 'POST', body: data })
+                .then(function (response) { return response.json(); })
+                .then(function (json) {
+                    // Single-use token: every response carries the next one.
+                    if (json.csrfToken) {
+                        container.dataset.autosaveCsrf = json.csrfToken;
+                    }
+
+                    if (json.savedAt) {
+                        lastSent = current;
+                        statusEl.textContent = 'Draft autosaved at ' + json.savedAt + '.';
+                    }
+                })
+                .catch(function () {
+                    statusEl.textContent = 'Autosave failed. Your changes are still kept in this browser.';
+                })
+                .then(function () { sending = false; });
+        }, SERVER_AUTOSAVE_INTERVAL);
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         var containers = document.querySelectorAll('[data-lp-content-editor]');
 
@@ -3129,6 +3269,14 @@
             container.appendChild(statsEl);
 
             var current = null;
+
+            var autosaveStatusEl = document.createElement('p');
+            autosaveStatusEl.className = 'lp-content-editor__autosave-status';
+            autosaveStatusEl.setAttribute('role', 'status');
+            container.appendChild(autosaveStatusEl);
+            startServerAutosave(container, textarea, autosaveStatusEl, function () {
+                return current ? current.getValue() : textarea.value;
+            });
 
             function boot(format) {
                 initEditorForFormat(format, container, textarea, statsEl).then(function (instance) {

@@ -81,6 +81,61 @@ final class RevisionService
         return $revision;
     }
 
+    /**
+     * Keeps the editor's latest unsaved draft on the server, one per
+     * person and post/page, replacing the previous one. Autosaves live in
+     * the revisions table but are excluded from history, counts and
+     * pruning, so they never push real revisions out.
+     */
+    public function saveAutosave(
+        RevisionableType $contentType,
+        int $contentId,
+        string $title,
+        string $content,
+        string $excerpt,
+        ContentFormat $contentFormat,
+        int $authorId,
+    ): void {
+        $this->deleteAutosave($contentType, $contentId, $authorId);
+
+        $this->database->insertGetId(
+            'INSERT INTO ' . $this->table() . '
+                (content_type, content_id, title, content, excerpt, content_format, author_id, is_autosave, created_at)
+             VALUES (:content_type, :content_id, :title, :content, :excerpt, :content_format, :author_id, 1, :created_at)',
+            [
+                'content_type' => $contentType->value,
+                'content_id' => $contentId,
+                'title' => $title,
+                'content' => $content,
+                'excerpt' => $excerpt,
+                'content_format' => $contentFormat->value,
+                'author_id' => $authorId,
+                'created_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ],
+        );
+    }
+
+    public function findAutosave(RevisionableType $contentType, int $contentId, int $authorId): ?Revision
+    {
+        $row = $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . '
+                WHERE content_type = :content_type AND content_id = :content_id AND author_id = :author_id AND is_autosave = 1
+             ORDER BY id DESC LIMIT 1',
+            ['content_type' => $contentType->value, 'content_id' => $contentId, 'author_id' => $authorId],
+        );
+
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    public function deleteAutosave(RevisionableType $contentType, int $contentId, int $authorId): void
+    {
+        $this->database->execute(
+            'DELETE FROM ' . $this->table() . '
+                WHERE content_type = :content_type AND content_id = :content_id AND author_id = :author_id AND is_autosave = 1',
+            ['content_type' => $contentType->value, 'content_id' => $contentId, 'author_id' => $authorId],
+        );
+    }
+
     public function find(int $id): ?Revision
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]);
@@ -95,7 +150,7 @@ final class RevisionService
     {
         $rows = $this->database->fetchAll(
             'SELECT * FROM ' . $this->table() . '
-                WHERE content_type = :content_type AND content_id = :content_id
+                WHERE content_type = :content_type AND content_id = :content_id AND is_autosave = 0
              ORDER BY created_at DESC, id DESC',
             ['content_type' => $contentType->value, 'content_id' => $contentId],
         );
@@ -106,7 +161,7 @@ final class RevisionService
     public function countFor(RevisionableType $contentType, int $contentId): int
     {
         return (int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE content_type = :content_type AND content_id = :content_id',
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE content_type = :content_type AND content_id = :content_id AND is_autosave = 0',
             ['content_type' => $contentType->value, 'content_id' => $contentId],
         );
     }
@@ -134,7 +189,7 @@ final class RevisionService
 
         $ids = $this->database->fetchAll(
             'SELECT id FROM ' . $this->table() . '
-                WHERE content_type = :content_type AND content_id = :content_id
+                WHERE content_type = :content_type AND content_id = :content_id AND is_autosave = 0
              ORDER BY created_at DESC, id DESC',
             ['content_type' => $contentType->value, 'content_id' => $contentId],
         );

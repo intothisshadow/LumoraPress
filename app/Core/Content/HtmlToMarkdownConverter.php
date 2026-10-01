@@ -99,6 +99,10 @@ final class HtmlToMarkdownConverter
             'figure' => $this->renderFigure($node, $inner),
             'ul' => "\n" . $this->renderListItems($node, false) . "\n",
             'ol' => "\n" . $this->renderListItems($node, true) . "\n",
+            // Whitespace between the <dt>/<dd> tags would otherwise become blank lines that split the list.
+            'dl' => "\n" . trim((string) preg_replace('/\n+/', "\n", $inner)) . "\n\n",
+            'dt' => trim($inner) . "\n",
+            'dd' => ': ' . trim($inner) . "\n",
             'table' => "\n" . $this->renderTable($node) . "\n",
             'input' => '',
             default => $inner,

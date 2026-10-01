@@ -205,6 +205,39 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'editor_autosave') {
+    // Server-side copy of the editor's unsaved draft (existing pages only),
+    // offered back as "Load autosave" if the browser or session is lost.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    $autosaveTarget = $kernel->pages->findById((int) ($_POST['id'] ?? 0));
+    $autosaveAllowed = $autosaveTarget !== null
+        && ($currentUser->can('edit_others_posts') || $autosaveTarget->authorId === $currentUser->id);
+
+    if (!$autosaveAllowed || !Csrf::verify('editor_autosave', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted.']);
+        exit;
+    }
+
+    $kernel->revisions->saveAutosave(
+        RevisionableType::Page,
+        $autosaveTarget->id,
+        mb_substr(trim((string) ($_POST['title'] ?? '')), 0, 191),
+        (string) ($_POST['content'] ?? ''),
+        $autosaveTarget->excerpt,
+        ContentFormat::tryFrom((string) ($_POST['content_format'] ?? '')) ?? $autosaveTarget->contentFormat,
+        $currentUser->id,
+    );
+
+    echo json_encode(['savedAt' => date('H:i'), 'csrfToken' => Csrf::token('editor_autosave')]);
+    exit;
+}
+
 // "Insert/Edit Link" dialog's "Or link to existing content" search —
 // spans both PostService and PageService rather than a single controller.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'link_picker_query') {
@@ -400,8 +433,39 @@ if ($editingId !== null) {
         exit;
     }
 }
+
+// A server-side autosave only matters if it is newer than the saved copy
+// and actually differs from it.
+$autosave = null;
+
+if ($editingPage !== null) {
+    $foundAutosave = $kernel->revisions->findAutosave(RevisionableType::Page, $editingPage->id, $currentUser->id);
+
+    if (
+        $foundAutosave !== null
+        && $foundAutosave->createdAt > $editingPage->updatedAt
+        && $foundAutosave->contentFormat === $editingPage->contentFormat
+        && ($foundAutosave->content !== $editingPage->content || $foundAutosave->title !== $editingPage->title)
+    ) {
+        $autosave = $foundAutosave;
+    }
+}
+
+$useAutosave = $autosave !== null && isset($_GET['autosave']);
 ?>
 <h1 class="lp-admin__title"><?= $editingPage !== null ? 'Edit Page' : 'Add New Page' ?></h1>
+
+<?php if ($autosave !== null && !$useAutosave): ?>
+    <div class="lp-alert lp-alert--info">
+        An autosaved draft from <?= esc_html($autosave->createdAt->format('Y/m/d \a\t H:i')) ?> is newer than the saved version.
+        <a href="<?= esc_url(admin_url('pages/new') . '?id=' . $editingPage->id . '&autosave=1') ?>">Load autosave</a>
+    </div>
+<?php endif; ?>
+
+<?php if ($useAutosave): ?>
+    <div class="lp-alert lp-alert--info">Autosaved draft loaded. It isn't saved to the page until you save.</div>
+<?php endif; ?>
+
 
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
@@ -440,6 +504,14 @@ $editorAudioMedia = array_map(
 $editorVideoMedia = array_map(
     static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']],
     $kernel->media->query(['type' => 'video'], 500)['items'],
+);
+// Documents and archives for "Insert File", inserted as plain links.
+$editorFileMedia = array_map(
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name'], 'url' => $kernel->media->url($item)],
+    array_merge(
+        $kernel->media->query(['type' => 'document'], 250)['items'],
+        $kernel->media->query(['type' => 'archive'], 250)['items'],
+    ),
 );
 ?>
 <?php
@@ -482,7 +554,7 @@ if ($savedLayout['order'] === []) {
             <div class="lp-editor-layout__main">
                 <p class="lp-field">
                     <label for="page-title">Title</label>
-                    <input type="text" id="page-title" name="title" value="<?= esc_attr($page->title ?? '') ?>" required>
+                    <input type="text" id="page-title" name="title" value="<?= esc_attr($useAutosave ? $autosave->title : ($page->title ?? '')) ?>" required>
                 </p>
 
                 <?php if ($page !== null && $page->status === PageStatus::Published): ?>
@@ -524,6 +596,7 @@ if ($savedLayout['order'] === []) {
                     data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
                     data-media-audio="<?= esc_attr((string) json_encode($editorAudioMedia)) ?>"
                     data-media-video="<?= esc_attr((string) json_encode($editorVideoMedia)) ?>"
+                    data-media-files="<?= esc_attr((string) json_encode($editorFileMedia)) ?>"
                     <?php if (lp_fontawesome_enabled()): ?>
                         data-icon-picker-csrf="<?= esc_attr(Csrf::token('font_awesome_icon_query')) ?>"
                         data-icon-picker-css="<?= esc_attr((string) json_encode((array) apply_filters('lp_fontawesome_css_urls', []))) ?>"
@@ -540,9 +613,12 @@ if ($savedLayout['order'] === []) {
                     data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
                     data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
+                    <?php if ($page !== null): ?>
+                        data-autosave-csrf="<?= esc_attr(Csrf::token('editor_autosave')) ?>"
+                    <?php endif; ?>
                 >
                     <label for="page-content">Content</label>
-                    <textarea id="page-content" name="content" rows="12"><?= esc_html($page->content ?? '') ?></textarea>
+                    <textarea id="page-content" name="content" rows="12"><?= esc_html($useAutosave ? $autosave->content : ($page->content ?? '')) ?></textarea>
                 </div>
 
                 <p class="lp-field">
