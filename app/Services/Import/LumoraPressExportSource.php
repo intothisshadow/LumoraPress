@@ -38,10 +38,134 @@ final class LumoraPressExportSource
     /** Guards against a manifest crafted to exhaust memory on json_decode(). */
     private const MAX_MANIFEST_BYTES = 256 * 1024 * 1024;
 
+    private ?string $lastExtracted = null;
+
     private function __construct(
         private readonly string $directory,
         private readonly ExportContent $content,
+        private readonly ?ZipArchive $lazyZip = null,
+        private readonly string $lazyPrefix = '',
+        private readonly ?string $lazyUploadsFolder = null,
     ) {
+    }
+
+    /**
+     * Like open(), but extracts nothing up front: each media file is taken
+     * out of the archive (or read from $uploadsFolder) only when
+     * resolveMedia() is called for it, so an import can be spread over
+     * several requests. The caller keeps the ZIP in place until it's done,
+     * and calls cleanup() at the end of every request.
+     */
+    public static function openStaged(string $zipPath, string $workingDirectory, ?string $uploadsFolder = null): self
+    {
+        $resolvedUploadsFolder = $uploadsFolder !== null && trim($uploadsFolder) !== '' ? self::resolveUploadsFolder($uploadsFolder) : null;
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath, ZipArchive::RDONLY) !== true) {
+            throw new RuntimeException('That file is not a valid ZIP archive.');
+        }
+
+        try {
+            [$prefix, $manifestJson] = self::readManifest($zip);
+
+            try {
+                $data = json_decode($manifestJson, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                throw new RuntimeException('The export\'s manifest.json is damaged and could not be read.');
+            }
+
+            if (!is_array($data)) {
+                throw new RuntimeException('The export\'s manifest.json is damaged and could not be read.');
+            }
+
+            $directory = rtrim($workingDirectory, '/') . '/files';
+
+            if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+                throw new RuntimeException('Unable to create a temporary folder for the import.');
+            }
+
+            return new self($directory, ExportManifest::decode($data, $directory), $zip, $prefix, $resolvedUploadsFolder);
+        } catch (\Throwable $exception) {
+            $zip->close();
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Makes one media file readable for the importer: extracted from the
+     * archive when it holds the file, otherwise found in the uploads
+     * folder, otherwise returned unchanged (the importer reports it missing).
+     * The previously extracted file is deleted first, since the importer
+     * has already copied it.
+     */
+    public function resolveMedia(ImportedMedia $media, ExportContent $content): ImportedMedia
+    {
+        if ($this->lazyZip === null) {
+            return $media;
+        }
+
+        if ($this->lastExtracted !== null && is_file($this->lastExtracted)) {
+            unlink($this->lastExtracted);
+        }
+
+        $this->lastExtracted = null;
+        $relativePath = ExportManifest::safeRelativePath($content->mediaFiles[(int) $media->externalId]['filePath'] ?? '');
+
+        if ($relativePath === '') {
+            return $media;
+        }
+
+        $entry = $this->lazyZip->statName($this->lazyPrefix . LumoraPressZipWriter::UPLOADS_PREFIX . $relativePath);
+
+        if ($entry !== false) {
+            $target = $this->directory . '/' . $relativePath;
+
+            if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0755, true) && !is_dir(dirname($target))) {
+                throw new RuntimeException('Unable to create a temporary folder for the import.');
+            }
+
+            $in = $this->lazyZip->getStream($entry['name']);
+            $out = fopen($target, 'wb');
+
+            if ($in === false || $out === false) {
+                throw new RuntimeException("Unable to extract \"{$relativePath}\" from the export.");
+            }
+
+            stream_copy_to_stream($in, $out);
+            fclose($in);
+            fclose($out);
+
+            $this->lastExtracted = $target;
+
+            return self::withPath($media, $target);
+        }
+
+        if ($this->lazyUploadsFolder !== null) {
+            $candidate = realpath($this->lazyUploadsFolder . '/' . $relativePath);
+
+            if ($candidate !== false && is_file($candidate) && str_starts_with($candidate, rtrim($this->lazyUploadsFolder, '/') . '/')) {
+                return self::withPath($media, $candidate);
+            }
+        }
+
+        return $media;
+    }
+
+    private static function withPath(ImportedMedia $media, string $absolutePath): ImportedMedia
+    {
+        return new ImportedMedia(
+            absolutePath: $absolutePath,
+            uploadedByUserId: $media->uploadedByUserId,
+            fileName: $media->fileName,
+            altText: $media->altText,
+            caption: $media->caption,
+            description: $media->description,
+            folderId: $media->folderId,
+            externalId: $media->externalId,
+            uploadedAt: $media->uploadedAt,
+            relativeDirectory: $media->relativeDirectory,
+        );
     }
 
     /**
@@ -198,6 +322,7 @@ final class LumoraPressExportSource
 
     public function cleanup(): void
     {
+        $this->lazyZip?->close();
         self::removeDirectory($this->directory);
     }
 

@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Importing a Lumora Press export (LP-190) now runs in short steps, with each stage and a count (for example "Importing posts: 1,200 of 8,400") shown in place, instead of in one long request that could time out. An import that is interrupted can be resumed or cancelled from the Import screen. Without JavaScript it still imports in one request.
 - Lumora Press export with uploaded files (LP-189) is now built in steps, with a progress bar showing how many files have been added, instead of in one long request that could time out. Without JavaScript it still builds in one request.
 - A format can opt in to stepped building by implementing `StagedExportFormatWriter` (see "Content Export API" in `docs/DEVELOPER-APIS.md`).
 - Bulk thumbnail regeneration (LP-188) now shows its progress in place instead of reloading the Thumbnails page after every batch of 10 images.

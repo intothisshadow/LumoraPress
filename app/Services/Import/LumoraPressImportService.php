@@ -70,6 +70,26 @@ final class LumoraPressImportService
 
     private int $missingFeaturedImages = 0;
 
+    /** @var array<string, int> */
+    private array $pageExternalMap = [];
+
+    /** @var array<string, int> */
+    private array $commentExternalMap = [];
+
+    /** Stage id => label, in the order they run. */
+    public const STAGES = [
+        'users' => 'Users',
+        'folders' => 'Media folders',
+        'media' => 'Media',
+        'categories' => 'Categories',
+        'tags' => 'Tags',
+        'pages' => 'Pages',
+        'posts' => 'Posts',
+        'comments' => 'Comments',
+        'menus' => 'Menus',
+        'widgets' => 'Widgets',
+    ];
+
     public function __construct(
         private readonly UserImporter $userImporter,
         private readonly PostImporter $postImporter,
@@ -88,40 +108,201 @@ final class LumoraPressImportService
         private readonly string $siteUrl,
         private readonly string $uploadsUrl,
         private readonly int $fallbackUserId,
+        private readonly ?\Closure $mediaResolver = null,
     ) {
     }
 
     /**
+     * Runs the whole import in this call.
+     *
      * @return array{batchId: string, counts: array<string, int>, warnings: array<int, string>}
      */
     public function import(ExportContent $content, ExistingContentMode $mode = ExistingContentMode::Overwrite): array
     {
-        $this->reset($content);
-        $batchId = $this->registry->newBatch();
+        $state = $this->begin($content);
 
-        $this->importUsers($batchId, $content);
-        $this->importFolders($batchId, $content);
-        $this->importMedia($batchId, $content, $mode);
-        $this->buildUrlReplacements($content);
-        $this->importCategories($batchId, $content, $mode);
-        $this->importTags($batchId, $content);
-        $this->importPages($batchId, $content, $mode);
-        $this->importPosts($batchId, $content, $mode);
-        $this->importComments($batchId, $content, $mode);
-        $this->importMenus($batchId, $content);
-        $this->importWidgets($batchId, $content);
+        while (!$state['done']) {
+            $state = $this->step($content, $mode, $state);
+        }
+
+        return $this->result($state);
+    }
+
+    /**
+     * Starts an import that is carried out over several step() calls.
+     * The state is plain JSON-safe data, so it can be kept between requests.
+     *
+     * @return array<string, mixed>
+     */
+    public function begin(ExportContent $content): array
+    {
+        $this->reset($content);
+
+        return $this->snapshot($this->registry->newBatch(), 0, 0, false);
+    }
+
+    /**
+     * Imports until $seconds have passed (at least one item), or to the end
+     * when $seconds is null. $content must be the same export on every call.
+     *
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
+    public function step(ExportContent $content, ExistingContentMode $mode, array $state, ?float $seconds = null): array
+    {
+        $this->restore($state);
+        $batchId = (string) $state['batchId'];
+        $stage = (int) $state['stage'];
+        $cursor = (int) $state['cursor'];
+        $stageIds = array_keys(self::STAGES);
+        $deadline = $seconds === null ? null : microtime(true) + $seconds;
+
+        while ($stage < count($stageIds)) {
+            $next = match ($stageIds[$stage]) {
+                'users' => $this->importUsers($batchId, $content, $cursor, $deadline),
+                'folders' => $this->importFolders($batchId, $content, $cursor, $deadline),
+                'media' => $this->importMedia($batchId, $content, $mode, $cursor, $deadline),
+                'categories' => $this->importCategories($batchId, $content, $mode, $cursor, $deadline),
+                'tags' => $this->importTags($batchId, $content, $cursor, $deadline),
+                'pages' => $this->importPages($batchId, $content, $mode, $cursor, $deadline),
+                'posts' => $this->importPosts($batchId, $content, $mode, $cursor, $deadline),
+                'comments' => $this->importComments($batchId, $content, $mode, $cursor, $deadline),
+                'menus' => $this->importMenus($batchId, $content),
+                'widgets' => $this->importWidgets($batchId, $content),
+            };
+
+            if ($next !== null) {
+                return $this->snapshot($batchId, $stage, $next, false);
+            }
+
+            if ($stageIds[$stage] === 'media') {
+                $this->buildUrlReplacements($content);
+            }
+
+            $stage++;
+            $cursor = 0;
+
+            if ($deadline !== null && $stage < count($stageIds) && microtime(true) >= $deadline) {
+                return $this->snapshot($batchId, $stage, 0, false);
+            }
+        }
 
         if ($this->missingFeaturedImages > 0) {
             $this->warnings[] = "{$this->missingFeaturedImages} post(s)/page(s) had a featured image that wasn't imported, so no featured image is set on them.";
+            $this->missingFeaturedImages = 0;
         }
 
+        return $this->snapshot($batchId, $stage, 0, true);
+    }
+
+    /**
+     * @param array<string, mixed> $state a finished state
+     * @return array{batchId: string, counts: array<string, int>, warnings: array<int, string>}
+     */
+    public function result(array $state): array
+    {
+        $batchId = (string) $state['batchId'];
         $counts = array_filter(
             $this->registry->countsForBatch($batchId),
             static fn (string $type): bool => !str_ends_with($type, '_snap'),
             ARRAY_FILTER_USE_KEY,
         );
 
-        return ['batchId' => $batchId, 'counts' => $counts, 'warnings' => $this->warnings];
+        return ['batchId' => $batchId, 'counts' => $counts, 'warnings' => array_values((array) $state['warnings'])];
+    }
+
+    /**
+     * What the progress display shows for a state: every stage with its status, and a line about the current one.
+     *
+     * @param array<string, mixed> $state
+     * @return array{stages: array<int, array{label: string, status: string}>, detail: string}
+     */
+    public function progress(ExportContent $content, array $state): array
+    {
+        $stages = [];
+        $detail = '';
+        $current = (int) $state['stage'];
+
+        foreach (array_keys(self::STAGES) as $index => $id) {
+            $status = $index < $current || $state['done'] ? 'done' : ($index === $current ? 'running' : 'pending');
+            $stages[] = ['label' => self::STAGES[$id], 'status' => $status];
+
+            if ($status === 'running') {
+                $total = $this->stageTotal($content, $id);
+                $detail = $total > 0
+                    ? 'Importing ' . strtolower(self::STAGES[$id]) . ': ' . number_format(min((int) $state['cursor'], $total)) . ' of ' . number_format($total)
+                    : 'Importing ' . strtolower(self::STAGES[$id]) . '…';
+            }
+        }
+
+        return ['stages' => $stages, 'detail' => $detail];
+    }
+
+    private function stageTotal(ExportContent $content, string $stageId): int
+    {
+        return match ($stageId) {
+            'users' => count($content->users),
+            'folders' => count($content->folders),
+            'media' => count($content->media),
+            'categories' => count($content->categories),
+            'tags' => count($content->tags),
+            'pages' => count($content->pages),
+            'posts' => count($content->posts),
+            'comments' => count($content->comments),
+            'menus' => count($content->menus),
+            'widgets' => count($content->widgets),
+            default => 0,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function snapshot(string $batchId, int $stage, int $cursor, bool $done): array
+    {
+        return [
+            'batchId' => $batchId,
+            'stage' => $stage,
+            'cursor' => $cursor,
+            'done' => $done,
+            'siteKey' => $this->siteKey,
+            'warnings' => $this->warnings,
+            'userMap' => $this->userMap,
+            'folderMap' => $this->folderMap,
+            'mediaMap' => $this->mediaMap,
+            'categoryMap' => $this->categoryMap,
+            'pageMap' => $this->pageMap,
+            'postMap' => $this->postMap,
+            'urlReplacements' => $this->urlReplacements,
+            'missingFeaturedImages' => $this->missingFeaturedImages,
+            'pageExternalMap' => $this->pageExternalMap,
+            'commentExternalMap' => $this->commentExternalMap,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    private function restore(array $state): void
+    {
+        $this->siteKey = (string) $state['siteKey'];
+        $this->warnings = (array) $state['warnings'];
+        $this->userMap = (array) $state['userMap'];
+        $this->folderMap = (array) $state['folderMap'];
+        $this->mediaMap = (array) $state['mediaMap'];
+        $this->categoryMap = (array) $state['categoryMap'];
+        $this->pageMap = (array) $state['pageMap'];
+        $this->postMap = (array) $state['postMap'];
+        $this->urlReplacements = (array) $state['urlReplacements'];
+        $this->missingFeaturedImages = (int) $state['missingFeaturedImages'];
+        $this->pageExternalMap = (array) $state['pageExternalMap'];
+        $this->commentExternalMap = (array) $state['commentExternalMap'];
+    }
+
+    /** Checked between items, so every call still gets through at least one. */
+    private function outOfTime(?float $deadline): bool
+    {
+        return $deadline !== null && microtime(true) >= $deadline;
     }
 
     private function reset(ExportContent $content): void
@@ -136,6 +317,8 @@ final class LumoraPressImportService
         $this->postMap = [];
         $this->urlReplacements = [];
         $this->missingFeaturedImages = 0;
+        $this->pageExternalMap = [];
+        $this->commentExternalMap = [];
     }
 
     private function externalId(string|int|null $sourceId): string
@@ -148,9 +331,16 @@ final class LumoraPressImportService
         return $this->userMap[$sourceUserId] ?? $this->fallbackUserId;
     }
 
-    private function importUsers(string $batchId, ExportContent $content): void
+    private function importUsers(string $batchId, ExportContent $content, int $start, ?float $deadline): ?int
     {
-        foreach ($content->users as $user) {
+        $items = array_values($content->users);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $user = $items[$index];
             try {
                 $local = $this->userImporter->importOrReuse($batchId, LumoraPressExportSource::SOURCE, new ImportedUser(
                     username: $user->username,
@@ -164,6 +354,8 @@ final class LumoraPressImportService
                 $this->warnings[] = "User \"{$user->username}\": {$exception->getMessage()} Their content is credited to you instead.";
             }
         }
+
+        return null;
     }
 
     /**
@@ -171,7 +363,7 @@ final class LumoraPressImportService
      * importing into a site that already has "Wallpapers" doesn't create
      * a second one next to it.
      */
-    private function importFolders(string $batchId, ExportContent $content): void
+    private function importFolders(string $batchId, ExportContent $content, int $start, ?float $deadline): ?int
     {
         $existing = [];
 
@@ -179,7 +371,14 @@ final class LumoraPressImportService
             $existing[($folder->parentId ?? 0) . '|' . mb_strtolower($folder->name)] = $folder->id;
         }
 
-        foreach ($content->folders as $folder) {
+        $items = array_values($content->folders);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $folder = $items[$index];
             $parentId = $folder['parentId'] !== null ? ($this->folderMap[$folder['parentId']] ?? null) : null;
             $key = ($parentId ?? 0) . '|' . mb_strtolower($folder['name']);
             $previousId = $this->registry->existingLocalId(LumoraPressExportSource::SOURCE, 'folder', $this->externalId($folder['id']));
@@ -199,16 +398,26 @@ final class LumoraPressImportService
                 }
             }
         }
+
+        return null;
     }
 
-    private function importMedia(string $batchId, ExportContent $content, ExistingContentMode $mode): void
+    private function importMedia(string $batchId, ExportContent $content, ExistingContentMode $mode, int $start, ?float $deadline): ?int
     {
-        foreach ($content->media as $media) {
+        $items = array_values($content->media);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $media = $items[$index];
             $sourceId = (int) $media->externalId;
             $oldPath = $content->mediaFiles[(int) $media->externalId]['filePath'] ?? '';
             $name = $media->fileName ?? basename($oldPath);
 
             try {
+                $media = $this->mediaResolver !== null ? ($this->mediaResolver)($media, $content) : $media;
                 $row = $this->mediaImporter->importFromLocalFile($batchId, LumoraPressExportSource::SOURCE, new ImportedMedia(
                     absolutePath: $media->absolutePath,
                     uploadedByUserId: $this->localUserId($media->uploadedByUserId),
@@ -233,11 +442,20 @@ final class LumoraPressImportService
                     : "Media #{$sourceId} (\"{$name}\"): {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
-    private function importCategories(string $batchId, ExportContent $content, ExistingContentMode $mode): void
+    private function importCategories(string $batchId, ExportContent $content, ExistingContentMode $mode, int $start, ?float $deadline): ?int
     {
-        foreach ($content->categories as $category) {
+        $items = array_values($content->categories);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $category = $items[$index];
             $parentId = $category['parentId'] !== null ? ($this->categoryMap[$category['parentId']] ?? null) : null;
             $imageId = $category['imageId'] !== null ? ($this->mediaMap[$category['imageId']] ?? null) : null;
             $previousId = $this->registry->existingLocalId(LumoraPressExportSource::SOURCE, 'category', $this->externalId($category['id']));
@@ -266,15 +484,24 @@ final class LumoraPressImportService
                 $this->warnings[] = "Category \"{$category['name']}\": {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
     /**
      * Posts assign tags by name, so this only needs every tag to exist
      * with its original slug and description before the posts arrive.
      */
-    private function importTags(string $batchId, ExportContent $content): void
+    private function importTags(string $batchId, ExportContent $content, int $start, ?float $deadline): ?int
     {
-        foreach ($content->tags as $tag) {
+        $items = array_values($content->tags);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $tag = $items[$index];
             if ($this->registry->existingLocalId(LumoraPressExportSource::SOURCE, 'tag', $this->externalId($tag['id'])) !== null || $this->tags->findBySlug($tag['slug']) !== null) {
                 continue;
             }
@@ -286,14 +513,20 @@ final class LumoraPressImportService
                 $this->warnings[] = "Tag \"{$tag['name']}\": {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
-    private function importPages(string $batchId, ExportContent $content, ExistingContentMode $mode): void
+    private function importPages(string $batchId, ExportContent $content, ExistingContentMode $mode, int $start, ?float $deadline): ?int
     {
-        /** @var array<string, int> $externalMap */
-        $externalMap = [];
+        $items = array_values($content->pages);
 
-        foreach ($content->pages as $page) {
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $page = $items[$index];
             $featuredImageId = $this->localFeaturedImageId($page->featuredImageId);
 
             try {
@@ -314,19 +547,28 @@ final class LumoraPressImportService
                     commentsOpen: $page->commentsOpen,
                     metaTitle: $page->metaTitle,
                     metaDescription: $page->metaDescription,
-                ), $externalMap, $mode);
+                ), $this->pageExternalMap, $mode);
 
-                $externalMap[$this->externalId($page->externalId)] = $local->id;
+                $this->pageExternalMap[$this->externalId($page->externalId)] = $local->id;
                 $this->pageMap[(int) $page->externalId] = $local->id;
             } catch (Throwable $exception) {
                 $this->warnings[] = "Page \"{$page->title}\": {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
-    private function importPosts(string $batchId, ExportContent $content, ExistingContentMode $mode): void
+    private function importPosts(string $batchId, ExportContent $content, ExistingContentMode $mode, int $start, ?float $deadline): ?int
     {
-        foreach ($content->posts as $post) {
+        $items = array_values($content->posts);
+
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $post = $items[$index];
             $featuredImageId = $this->localFeaturedImageId($post->featuredImageId);
             $categoryIds = array_values(array_filter(array_map(
                 fn (int $sourceId): ?int => $this->categoryMap[$sourceId] ?? null,
@@ -363,14 +605,20 @@ final class LumoraPressImportService
                 $this->warnings[] = "Post \"{$post->title}\": {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
-    private function importComments(string $batchId, ExportContent $content, ExistingContentMode $mode): void
+    private function importComments(string $batchId, ExportContent $content, ExistingContentMode $mode, int $start, ?float $deadline): ?int
     {
-        /** @var array<string, int> $externalMap */
-        $externalMap = [];
+        $items = array_values($content->comments);
 
-        foreach ($content->comments as $comment) {
+        for ($index = $start; $index < count($items); $index++) {
+            if ($index > $start && $this->outOfTime($deadline)) {
+                return $index;
+            }
+
+            $comment = $items[$index];
             $postId = $comment->postId !== null ? ($this->postMap[$comment->postId] ?? null) : null;
             $pageId = $comment->pageId !== null ? ($this->pageMap[$comment->pageId] ?? null) : null;
 
@@ -392,13 +640,15 @@ final class LumoraPressImportService
                     externalId: $this->externalId($comment->externalId),
                     commentedAt: $comment->commentedAt,
                     pageId: $pageId,
-                ), $externalMap, $mode);
+                ), $this->commentExternalMap, $mode);
 
-                $externalMap[$this->externalId($comment->externalId)] = $local->id;
+                $this->commentExternalMap[$this->externalId($comment->externalId)] = $local->id;
             } catch (Throwable $exception) {
                 $this->warnings[] = "Comment #{$comment->externalId}: {$exception->getMessage()}";
             }
         }
+
+        return null;
     }
 
     /**
@@ -407,10 +657,10 @@ final class LumoraPressImportService
      * duplicated. A theme location is only filled if it's currently
      * empty here — an import never replaces a menu the admin chose.
      */
-    private function importMenus(string $batchId, ExportContent $content): void
+    private function importMenus(string $batchId, ExportContent $content): ?int
     {
         if ($content->menus === []) {
-            return;
+            return null;
         }
 
         $this->registry->record($batchId, LumoraPressExportSource::SOURCE, 'nav_menus_snap', 0, null, (string) $this->config->option('nav_menus', '{}'));
@@ -466,6 +716,8 @@ final class LumoraPressImportService
 
             $this->config->setOption('nav_menu_locations', json_encode($assignments));
         }
+
+        return null;
     }
 
     /**
@@ -474,10 +726,10 @@ final class LumoraPressImportService
      * Widgets, and one whose type isn't available here (a plugin's widget
      * with that plugin inactive) is skipped.
      */
-    private function importWidgets(string $batchId, ExportContent $content): void
+    private function importWidgets(string $batchId, ExportContent $content): ?int
     {
         if ($content->widgets === []) {
-            return;
+            return null;
         }
 
         $this->registry->record($batchId, LumoraPressExportSource::SOURCE, 'widgets_snap', 0, null, (string) $this->config->option('widgets_config', '{}'));
@@ -514,7 +766,7 @@ final class LumoraPressImportService
         }
 
         if ($instances === []) {
-            return;
+            return null;
         }
 
         $this->widgetImporter->import($batchId, LumoraPressExportSource::SOURCE, $instances);
@@ -526,6 +778,8 @@ final class LumoraPressImportService
         }
 
         $this->config->setOption('widgets_config', json_encode($config));
+
+        return null;
     }
 
     private function localFeaturedImageId(?int $sourceMediaId): ?int

@@ -55,9 +55,30 @@ if ($wordPressImporterActive && ($_GET['ajax'] ?? null) === 'progress') {
 // WordPress import below; the extracted archive is always removed after.
 $nativeImportError = null;
 
+$makeNativeImportService = static fn (?\Closure $mediaResolver): LumoraPressImportService => new LumoraPressImportService(
+    userImporter: $kernel->userImporter,
+    postImporter: $kernel->postImporter,
+    pageImporter: $kernel->pageImporter,
+    mediaImporter: $kernel->mediaImporter,
+    commentImporter: $kernel->commentImporter,
+    menuImporter: $kernel->menuImporter,
+    widgetImporter: $kernel->widgetImporter,
+    categories: $kernel->categories,
+    tags: $kernel->tags,
+    folders: $kernel->folders,
+    menus: $kernel->menus,
+    widgets: $kernel->widgets,
+    config: $kernel->config,
+    registry: $kernel->contentImportRegistry,
+    siteUrl: home_url(),
+    uploadsUrl: home_url('content/uploads'),
+    fallbackUserId: $currentUser->id,
+    mediaResolver: $mediaResolver,
+);
+
 // Shared by the upload and server-path forms. Returns an error message,
 // or redirects to the summary on success.
-$runNativeImport = static function (string $zipPath) use ($kernel, $currentUser): string {
+$runNativeImport = static function (string $zipPath) use ($kernel, $currentUser, $makeNativeImportService): string {
     set_time_limit(0);
     $skip = ($_POST['existing_content'] ?? null) === 'skip';
     $exportSource = null;
@@ -69,25 +90,7 @@ $runNativeImport = static function (string $zipPath) use ($kernel, $currentUser)
             LUMORA_ROOT . '/storage/imports',
             is_string($_POST['uploads_folder'] ?? null) ? $_POST['uploads_folder'] : null,
         );
-        $result = (new LumoraPressImportService(
-            userImporter: $kernel->userImporter,
-            postImporter: $kernel->postImporter,
-            pageImporter: $kernel->pageImporter,
-            mediaImporter: $kernel->mediaImporter,
-            commentImporter: $kernel->commentImporter,
-            menuImporter: $kernel->menuImporter,
-            widgetImporter: $kernel->widgetImporter,
-            categories: $kernel->categories,
-            tags: $kernel->tags,
-            folders: $kernel->folders,
-            menus: $kernel->menus,
-            widgets: $kernel->widgets,
-            config: $kernel->config,
-            registry: $kernel->contentImportRegistry,
-            siteUrl: home_url(),
-            uploadsUrl: home_url('content/uploads'),
-            fallbackUserId: $currentUser->id,
-        ))->import($exportSource->content(), $skip ? ExistingContentMode::Skip : ExistingContentMode::Overwrite);
+        $result = $makeNativeImportService(null)->import($exportSource->content(), $skip ? ExistingContentMode::Skip : ExistingContentMode::Overwrite);
         $result['siteName'] = $exportSource->content()->siteName;
         $result['mode'] = $skip ? 'skip' : 'overwrite';
     } catch (\RuntimeException $exception) {
@@ -101,6 +104,216 @@ $runNativeImport = static function (string $zipPath) use ($kernel, $currentUser)
     header('Location: ' . admin_url('maintenance/import') . '?lumora_imported=1');
     exit;
 };
+
+// native-import-continue.js runs the import in steps and marks its requests
+// with this header; they get JSON back. Without JavaScript the form still
+// imports everything in one request ($runNativeImport above).
+$isAjaxNativeRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+$nativeImportsDirectory = LUMORA_ROOT . '/storage/imports';
+
+// A step in progress lives in its own folder (the ZIP, when it was uploaded,
+// plus job.json); the session only holds the token naming it.
+$nativeJobDirectory = static fn (string $token): string => $nativeImportsDirectory . '/job-' . $token;
+
+$validNativeToken = static fn (mixed $token): bool => is_string($token) && preg_match('/^[a-f0-9]{32}$/', $token) === 1;
+
+$removeNativeTree = static function (string $path): void {
+    if (!is_dir($path) || is_link($path)) {
+        return;
+    }
+
+    foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $inner) {
+        $inner->isDir() && !$inner->isLink() ? rmdir($inner->getPathname()) : unlink($inner->getPathname());
+    }
+
+    rmdir($path);
+};
+
+$discardNativeJob = static function () use ($nativeJobDirectory, $validNativeToken, $removeNativeTree): void {
+    $job = is_array($_SESSION['lp_native_import_job'] ?? null) ? $_SESSION['lp_native_import_job'] : null;
+    unset($_SESSION['lp_native_import_job']);
+
+    if ($job !== null && $validNativeToken($job['token'] ?? null)) {
+        $removeNativeTree($nativeJobDirectory($job['token']));
+    }
+};
+
+// An import nobody came back to leaves its folder (and a copy of an uploaded ZIP) behind.
+foreach (glob($nativeImportsDirectory . '/job-*', GLOB_ONLYDIR) ?: [] as $staleJob) {
+    $sessionToken = is_array($_SESSION['lp_native_import_job'] ?? null) ? (string) ($_SESSION['lp_native_import_job']['token'] ?? '') : '';
+
+    if (basename($staleJob) !== 'job-' . $sessionToken && is_file($staleJob . '/job.json') && filemtime($staleJob . '/job.json') < time() - 6 * 3600) {
+        $removeNativeTree($staleJob);
+    }
+}
+
+$respondNativeJson = static function (array $payload): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
+/**
+ * Opens the staged import for a job's saved settings. The caller must
+ * cleanup() the source when the request is done.
+ *
+ * @param array<string, mixed> $job
+ */
+$openNativeJobSource = static fn (array $job, string $directory): LumoraPressExportSource => LumoraPressExportSource::openStaged(
+    (string) $job['zip'],
+    $directory,
+    is_string($job['uploadsFolder'] ?? null) && $job['uploadsFolder'] !== '' ? $job['uploadsFolder'] : null,
+);
+
+$nativeJobProgress = static function (LumoraPressImportService $service, LumoraPressExportSource $source, array $state): array {
+    return ['done' => false, ...$service->progress($source->content(), $state), 'csrf_token' => Csrf::token('continue_lumora_press_import')];
+};
+
+if ($isAjaxNativeRequest && ($_POST['form'] ?? null) === 'import_lumora_press_export') {
+    $formToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+    if (!Csrf::verify('import_lumora_press_export', $formToken)) {
+        $respondNativeJson(['error' => 'Your session expired or the request could not be verified. Reload the page and try again.', 'form_csrf_token' => Csrf::token('import_lumora_press_export')]);
+    }
+
+    $discardNativeJob();
+    $jobToken = bin2hex(random_bytes(16));
+    $directory = $nativeJobDirectory($jobToken);
+    $failure = null;
+
+    try {
+        if (!mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new \RuntimeException('Unable to create a temporary folder for the import.');
+        }
+
+        if (($_POST['import_source'] ?? null) === 'server') {
+            $zipPath = LumoraPressExportSource::resolveServerPath(is_string($_POST['export_path'] ?? null) ? $_POST['export_path'] : '');
+            $ownsZip = false;
+        } else {
+            $upload = $_FILES['export_file'] ?? null;
+            $uploadError = is_array($upload) ? (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) : UPLOAD_ERR_NO_FILE;
+
+            if ($uploadError === UPLOAD_ERR_INI_SIZE || $uploadError === UPLOAD_ERR_FORM_SIZE) {
+                throw new \RuntimeException('That file is larger than this server accepts for uploads (' . ini_get('upload_max_filesize') . '). Copy it onto the server instead and use the "File on This Server" tab.');
+            }
+
+            if ($uploadError === UPLOAD_ERR_NO_FILE) {
+                throw new \RuntimeException('Choose a Lumora Press export file to upload.');
+            }
+
+            if ($uploadError !== UPLOAD_ERR_OK || !is_uploaded_file((string) $upload['tmp_name'])) {
+                throw new \RuntimeException('The upload failed. Please try again.');
+            }
+
+            $zipPath = $directory . '/source.zip';
+
+            if (!move_uploaded_file((string) $upload['tmp_name'], $zipPath)) {
+                throw new \RuntimeException('The upload could not be saved on this server.');
+            }
+
+            $ownsZip = true;
+        }
+
+        $job = [
+            'zip' => $zipPath,
+            'ownsZip' => $ownsZip,
+            'uploadsFolder' => is_string($_POST['uploads_folder'] ?? null) ? trim($_POST['uploads_folder']) : '',
+            'mode' => ($_POST['existing_content'] ?? null) === 'skip' ? 'skip' : 'overwrite',
+        ];
+
+        $source = $openNativeJobSource($job, $directory);
+
+        try {
+            $service = $makeNativeImportService(null);
+            $job['siteName'] = $source->content()->siteName;
+            $job['state'] = $service->begin($source->content());
+            file_put_contents($directory . '/job.json', json_encode($job, JSON_THROW_ON_ERROR), LOCK_EX);
+            $_SESSION['lp_native_import_job'] = ['token' => $jobToken];
+            $startPayload = $nativeJobProgress($service, $source, $job['state']);
+        } finally {
+            $source->cleanup();
+        }
+
+        $respondNativeJson($startPayload);
+    } catch (\RuntimeException | \JsonException $exception) {
+        $failure = 'Could not import this file: ' . $exception->getMessage();
+    }
+
+    // Only reached on a failure; a successful start has already answered.
+    $_SESSION['lp_native_import_job'] = ['token' => $jobToken];
+    $discardNativeJob();
+    $respondNativeJson(['error' => $failure, 'form_csrf_token' => Csrf::token('import_lumora_press_export')]);
+}
+
+if ($isAjaxNativeRequest && ($_POST['form'] ?? null) === 'continue_lumora_press_import') {
+    $job = is_array($_SESSION['lp_native_import_job'] ?? null) ? $_SESSION['lp_native_import_job'] : null;
+    $token = $job !== null ? ($job['token'] ?? null) : null;
+
+    if (!Csrf::verify('continue_lumora_press_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null) || !$validNativeToken($token) || !is_file($nativeJobDirectory($token) . '/job.json')) {
+        $discardNativeJob();
+        $respondNativeJson(['error' => 'The import was interrupted and can\'t be resumed. Start it again.']);
+    }
+
+    $directory = $nativeJobDirectory($token);
+    $lock = fopen($directory . '/.lock', 'c');
+
+    // One request at a time: a second tab or a retry waits instead of running the same step twice.
+    if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+        $respondNativeJson(['done' => false, 'busy' => true, 'stages' => [], 'detail' => 'Another request is still working on this import…', 'csrf_token' => Csrf::token('continue_lumora_press_import')]);
+    }
+
+    set_time_limit(0);
+    $source = null;
+    $finished = false;
+
+    try {
+        $job = json_decode((string) file_get_contents($directory . '/job.json'), true, 512, JSON_THROW_ON_ERROR);
+        $source = $openNativeJobSource($job, $directory);
+        $service = $makeNativeImportService(static fn ($media, $content) => $source->resolveMedia($media, $content));
+        $state = $service->step($source->content(), $job['mode'] === 'skip' ? ExistingContentMode::Skip : ExistingContentMode::Overwrite, $job['state'], 8.0);
+
+        if ($state['done']) {
+            $result = $service->result($state);
+            $result['siteName'] = (string) $job['siteName'];
+            $result['mode'] = (string) $job['mode'];
+            $_SESSION['lp_lumora_press_import'] = $result;
+            $finished = true;
+            $payload = ['done' => true, 'redirect' => admin_url('maintenance/import') . '?lumora_imported=1'];
+        } else {
+            $job['state'] = $state;
+            file_put_contents($directory . '/job.json', json_encode($job, JSON_THROW_ON_ERROR), LOCK_EX);
+            $payload = $nativeJobProgress($service, $source, $state);
+        }
+    } catch (\RuntimeException | \JsonException $exception) {
+        // The job is kept so a transient failure can be resumed.
+        $payload = ['error' => 'The import stopped: ' . $exception->getMessage() . ' Reload this page to resume or cancel it.'];
+    }
+
+    $source?->cleanup();
+    flock($lock, LOCK_UN);
+    fclose($lock);
+
+    if ($finished) {
+        if ($job['ownsZip'] && is_file((string) $job['zip'])) {
+            unlink((string) $job['zip']);
+        }
+
+        $discardNativeJob();
+    }
+
+    $respondNativeJson($payload);
+}
+
+if (($_POST['form'] ?? null) === 'cancel_lumora_press_import' && Csrf::verify('cancel_lumora_press_import', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $discardNativeJob();
+
+    header('Location: ' . admin_url('maintenance/import') . '?tab=lumora-press');
+    exit;
+}
 
 // One form for both sources, like Maintenance > Updates: the "Upload a
 // File" / "File on This Server" tabs set import_source. A server file is
@@ -839,7 +1052,23 @@ endif;
                 contains. Nothing already on this site is removed.
             </p>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" enctype="multipart/form-data">
+            <?php
+            $pendingNativeJob = is_array($_SESSION['lp_native_import_job'] ?? null) && $validNativeToken($_SESSION['lp_native_import_job']['token'] ?? null)
+                && is_file($nativeJobDirectory($_SESSION['lp_native_import_job']['token']) . '/job.json');
+            ?>
+            <?php if ($pendingNativeJob): ?>
+                <div class="lp-alert lp-alert--warning" data-lp-native-import-resume data-continue-token="<?= esc_attr(Csrf::token('continue_lumora_press_import')) ?>">
+                    <p>An import is partly done. Everything imported so far is kept.</p>
+                    <button type="button" class="lp-button lp-button--primary" data-lp-native-import-resume-button>Resume Import</button>
+                    <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" class="lp-admin__inline-form" data-lp-confirm="Cancel this import? What was imported so far stays on the site.">
+                        <?= Csrf::field('cancel_lumora_press_import') ?>
+                        <input type="hidden" name="form" value="cancel_lumora_press_import">
+                        <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Cancel Import</button>
+                    </form>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" enctype="multipart/form-data" data-lp-native-import-form>
                 <?= Csrf::field('import_lumora_press_export') ?>
                 <input type="hidden" name="form" value="import_lumora_press_export">
                 <input type="hidden" id="lumora-import-source" name="import_source" value="<?= esc_attr($nativeSource) ?>">
@@ -954,6 +1183,9 @@ endif;
                 <div class="lp-alert lp-alert--warning">
                     A large export can take a while. Keep this tab open until the import finishes.
                 </div>
+
+                <ul id="lp-native-import-progress" class="lp-update-progress" hidden></ul>
+                <p class="lp-field__hint" data-lp-native-import-detail hidden></p>
 
                 <button type="submit" class="lp-button lp-button--primary">Import</button>
                 </div>
