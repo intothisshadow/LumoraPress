@@ -549,6 +549,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-post__content blockquote {
+    max-width: 88%;
     margin: 0 0 1em;
     padding: 0.25em 1em;
     border-left: 4px solid var(--lp-border);
@@ -2920,6 +2921,12 @@ body.lp-site {
     font-size: clamp(1.8rem, 3.5vw, 2.65rem);
     letter-spacing: -0.045em;
     line-height: 1.08;
+}
+
+/* A page's own title gets room before its content; archive, search and
+   other headers keep their tighter spacing. */
+.lp-page > .lp-page-title {
+    margin-bottom: clamp(1.25rem, 3vw, 2rem);
 }
 
 .lp-main-header__intro {

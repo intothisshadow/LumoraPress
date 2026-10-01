@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Lumora Classic: quotes (blockquotes) in posts and pages are a little narrower than the text around them, and a page's title has more space before its content.
+
 ### Added
 
 - Keyboard shortcuts reference (LP-015): the Markdown editor toolbar has a new Keyboard Shortcuts button that lists every shortcut.
