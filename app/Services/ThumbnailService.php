@@ -114,9 +114,10 @@ final class ThumbnailService
      * `skipped`, never thrown, so one bad file can't abort a bulk run.
      *
      * @param array<string, mixed> $media
+     * @param array<int, string>|null $onlySizes size names to generate; null means every enabled size
      * @return array{generated: array<string, array{width: int, height: int, path: string}>, skipped: array<string, string>}
      */
-    public function generate(array $media): array
+    public function generate(array $media, ?array $onlySizes = null): array
     {
         $generated = [];
         $skipped = [];
@@ -140,7 +141,7 @@ final class ThumbnailService
             $this->log("Media #{$mediaId}: unable to read image dimensions, skipping all sizes.");
 
             foreach ($this->sizes() as $name => $size) {
-                if ($size['enabled']) {
+                if ($size['enabled'] && ($onlySizes === null || in_array($name, $onlySizes, true))) {
                     $skipped[$name] = 'Unable to read image dimensions.';
                 }
             }
@@ -155,7 +156,7 @@ final class ThumbnailService
             $this->log("Media #{$mediaId}: {$reason}");
 
             foreach ($this->sizes() as $name => $size) {
-                if ($size['enabled']) {
+                if ($size['enabled'] && ($onlySizes === null || in_array($name, $onlySizes, true))) {
                     $skipped[$name] = $reason;
                 }
             }
@@ -164,7 +165,7 @@ final class ThumbnailService
         }
 
         foreach ($this->sizes() as $sizeName => $size) {
-            if (!$size['enabled']) {
+            if (!$size['enabled'] || ($onlySizes !== null && !in_array($sizeName, $onlySizes, true))) {
                 continue;
             }
 
@@ -190,11 +191,13 @@ final class ThumbnailService
     }
 
     /**
-     * Deletes any existing thumbnails for this media id, then regenerates.
+     * Deletes the existing thumbnails for this media id (only the named sizes when
+     * $onlySizes is given, leaving the others untouched), then regenerates them.
      *
+     * @param array<int, string>|null $onlySizes
      * @return array{generated: array<string, array{width: int, height: int, path: string}>, skipped: array<string, string>}
      */
-    public function regenerate(int $mediaId): array
+    public function regenerate(int $mediaId, ?array $onlySizes = null): array
     {
         $media = $this->media->find($mediaId);
 
@@ -202,22 +205,32 @@ final class ThumbnailService
             return ['generated' => [], 'skipped' => []];
         }
 
-        $this->deleteForMedia($mediaId);
+        $this->deleteForMedia($mediaId, $onlySizes);
 
-        return $this->generate($media);
+        return $this->generate($media, $onlySizes);
     }
 
-    public function deleteForMedia(int $mediaId): void
+    /**
+     * @param array<int, string>|null $onlySizes size names to delete; null means all of them
+     */
+    public function deleteForMedia(int $mediaId, ?array $onlySizes = null): void
     {
         foreach ($this->thumbnailsFor($mediaId) as $thumbnail) {
+            if ($onlySizes !== null && !in_array((string) $thumbnail['size_name'], $onlySizes, true)) {
+                continue;
+            }
+
             $path = rtrim($this->uploadsPath, '/') . '/' . $thumbnail['file_path'];
 
             if (is_file($path)) {
                 unlink($path);
             }
-        }
 
-        $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE media_id = :media_id', ['media_id' => $mediaId]);
+            $this->database->execute(
+                'DELETE FROM ' . $this->table() . ' WHERE media_id = :media_id AND size_name = :size_name',
+                ['media_id' => $mediaId, 'size_name' => (string) $thumbnail['size_name']],
+            );
+        }
 
         unset($this->thumbnailsForCache[$mediaId]);
     }
@@ -561,9 +574,10 @@ final class ThumbnailService
      * loop this across requests, incrementing $offset by $batchSize each
      * time until `done` is true — no queue/cron infrastructure exists here.
      *
+     * @param array<int, string>|null $onlySizes size names to regenerate; null means every enabled size
      * @return array{processed: int, total: int, done: bool}
      */
-    public function queueForBulkRegeneration(bool $missingOnly, int $offset, int $batchSize = 10): array
+    public function queueForBulkRegeneration(bool $missingOnly, int $offset, int $batchSize = 10, ?array $onlySizes = null): array
     {
         $result = $this->media->query(['type' => 'image'], $batchSize, $offset);
         $total = $result['total'];
@@ -572,11 +586,11 @@ final class ThumbnailService
         foreach ($result['items'] as $item) {
             $mediaId = (int) $item['id'];
 
-            if ($missingOnly && $this->hasAllEnabledSizes($mediaId)) {
+            if ($missingOnly && $this->hasAllEnabledSizes($mediaId, $onlySizes)) {
                 continue;
             }
 
-            $this->regenerate($mediaId);
+            $this->regenerate($mediaId, $onlySizes);
             $processed++;
         }
 
@@ -587,10 +601,17 @@ final class ThumbnailService
         ];
     }
 
-    private function hasAllEnabledSizes(int $mediaId): bool
+    /**
+     * @param array<int, string>|null $onlySizes
+     */
+    private function hasAllEnabledSizes(int $mediaId, ?array $onlySizes = null): bool
     {
         $existing = array_column($this->thumbnailsFor($mediaId), 'size_name');
         $enabledNames = array_keys(array_filter($this->sizes(), static fn (array $size): bool => $size['enabled']));
+
+        if ($onlySizes !== null) {
+            $enabledNames = array_values(array_intersect($enabledNames, $onlySizes));
+        }
 
         return array_diff($enabledNames, $existing) === [];
     }

@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Bulk thumbnail regeneration (LP-188) now shows its progress in place instead of reloading the Thumbnails page after every batch of 10 images.
 - Lumora Classic: a post or page with no comments no longer shows a "0 Comments" heading above the comment form, and the "Comments are closed." notice is gone. When comments are closed and there are none, no comments area is shown at all; when they are closed but there are some, the existing comments still show.
 - Appearance &rsaquo; Customize: the options a theme adds for itself (for Lumora Classic: homepage layout and the Google Fonts switch) now have their own tab after Footer, named for the theme, instead of sitting at the bottom of the Body tab.
 - Featured image defaults moved (LP-184): the default featured image and the featured image crop size are now on Appearance &rsaquo; Customize &rsaquo; Body, in a new "Featured Image Defaults" panel, instead of Media &rsaquo; Thumbnails. They still apply to every theme, and nothing needs re-saving. Media &rsaquo; Thumbnails keeps only the thumbnail sizes, quality and maintenance tools.
@@ -21,6 +22,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Choose which thumbnail sizes to regenerate (LP-187): Media Manager &rsaquo; Thumbnails has a new "Sizes to regenerate" list, so you can redo just one or two sizes instead of all of them. Sizes you don't tick are left as they are.
 - Change the default category: the Edit Category screen has a new "Use as the default category" option. Posts saved without a category go to the default one, which can't be trashed or deleted. The Categories list also has a "Make Default" action on each row.
 - Media Manager &rsaquo; Shortcodes: a new reference page for the shortcodes built into core (`[lumora_folder_gallery]`, `[lumora_audio]`, `[lumora_video]`) with their attributes and examples, plus links to the shortcodes each active plugin provides (`[icon]`, `[contact_form]`, downloads, link directory, Lumora Gallery).
 - Downloads &rsaquo; Shortcodes now also documents the imported Simple Download Monitor shortcodes (`[sdm_show_dl_from_category]`, `[sdm_download]`, `[sdm_latest_downloads]`) while the WordPress Importer plugin is active, and the new `[lumora_recent_downloads]`.

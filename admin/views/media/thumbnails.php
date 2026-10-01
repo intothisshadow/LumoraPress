@@ -23,6 +23,25 @@ if (!isset($kernel)) {
 }
 
 $thumbnailService = $kernel->thumbnails;
+$enabledSizeNames = array_keys(array_filter($thumbnailService->sizes(), static fn (array $size): bool => $size['enabled']));
+
+/**
+ * Size names ticked in the regenerate form (or carried through the
+ * "Continue" form), limited to sizes that exist and are enabled.
+ *
+ * @param mixed $raw
+ * @return array<int, string>
+ */
+$selectedSizeNames = static function (mixed $raw) use ($enabledSizeNames): array {
+    $names = is_array($raw) ? $raw : (is_string($raw) && $raw !== '' ? explode(',', $raw) : []);
+
+    return array_values(array_intersect($enabledSizeNames, array_map('strval', $names)));
+};
+
+// thumbnail-bulk.js drives the "Continue" batches via fetch() so the page
+// doesn't reload for every batch; it marks its requests with this header
+// and gets JSON back. A plain form submit (no JavaScript) still redirects.
+$isAjaxContinueRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -35,7 +54,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($form === 'bulk_regenerate_thumbnails' && Csrf::verify('bulk_regenerate_thumbnails', $token)) {
         $missingOnly = ($_POST['missing_only'] ?? '') === '1';
         $offset = max(0, (int) ($_POST['offset'] ?? 0));
-        $batch = $thumbnailService->queueForBulkRegeneration($missingOnly, $offset, 10);
+        $chosenSizes = $selectedSizeNames($_POST['sizes'] ?? []);
+
+        if ($chosenSizes === []) {
+            header('Location: ' . admin_url('media/thumbnails') . '?thumb_error=no_sizes');
+            exit;
+        }
+
+        // Every enabled size chosen is the same as no restriction.
+        $onlySizes = count($chosenSizes) === count($enabledSizeNames) ? null : $chosenSizes;
+        $batch = $thumbnailService->queueForBulkRegeneration($missingOnly, $offset, 10, $onlySizes);
+
+        if ($isAjaxContinueRequest) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            $processedSoFar = min($offset + $batch['processed'], $batch['total']);
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'done' => $batch['done'],
+                'processed' => $processedSoFar,
+                'total' => $batch['total'],
+                'percent' => $batch['total'] > 0 ? (int) round(min(100, $processedSoFar / $batch['total'] * 100)) : 100,
+                'next_offset' => $offset + 10,
+                // Single-use token for the script's next request.
+                'csrf_token' => Csrf::token('bulk_regenerate_thumbnails'),
+            ]);
+            exit;
+        }
 
         $query = http_build_query([
             'thumb_progress' => $offset + $batch['processed'],
@@ -43,6 +91,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'thumb_done' => $batch['done'] ? '1' : '0',
             'missing_only' => $missingOnly ? '1' : '0',
             'next_offset' => $offset + 10,
+            'sizes' => implode(',', $chosenSizes),
         ]);
         header('Location: ' . admin_url('media/thumbnails') . '?' . $query);
         exit;
@@ -75,6 +124,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <div class="lp-alert lp-alert--success">Removed <?= (int) $_GET['orphans_removed'] ?> orphaned thumbnail(s).</div>
 <?php endif; ?>
 
+<?php if (($_GET['thumb_error'] ?? '') === 'no_sizes'): ?>
+    <div class="lp-alert lp-alert--error">Choose at least one thumbnail size to regenerate.</div>
+<?php endif; ?>
+
 <?php if (isset($_GET['thumb_progress'])): ?>
     <?php
     $thumbProgress = (int) $_GET['thumb_progress'];
@@ -82,12 +135,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $thumbDone = ($_GET['thumb_done'] ?? '0') === '1';
     $thumbMissingOnly = ($_GET['missing_only'] ?? '0') === '1';
     $thumbNextOffset = (int) ($_GET['next_offset'] ?? 0);
+    $thumbSizes = $selectedSizeNames($_GET['sizes'] ?? '');
     $thumbPercent = $thumbTotal > 0 ? (int) round(min(100, $thumbProgress / $thumbTotal * 100)) : 100;
     ?>
     <div class="lp-alert lp-alert--success">
-        <p>Regenerating thumbnails: <?= $thumbProgress ?> of <?= $thumbTotal ?> processed.</p>
-        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $thumbPercent ?>" aria-valuemin="0" aria-valuemax="100">
-            <div class="lp-thumbnails__progress-bar" data-style-width="<?= $thumbPercent ?>%"></div>
+        <p>Regenerating thumbnails: <span data-lp-thumb-progress><?= $thumbProgress ?></span> of <span data-lp-thumb-total><?= $thumbTotal ?></span> processed.</p>
+        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="<?= $thumbPercent ?>" aria-valuemin="0" aria-valuemax="100" data-lp-thumb-bar-wrap>
+            <div class="lp-thumbnails__progress-bar" data-style-width="<?= $thumbPercent ?>%" data-lp-thumb-bar></div>
         </div>
         <?php if (!$thumbDone): ?>
             <form method="post" action="<?= esc_url(admin_url('media/thumbnails')) ?>" id="thumb-bulk-continue">
@@ -95,11 +149,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <input type="hidden" name="form" value="bulk_regenerate_thumbnails">
                 <input type="hidden" name="missing_only" value="<?= $thumbMissingOnly ? '1' : '0' ?>">
                 <input type="hidden" name="offset" value="<?= $thumbNextOffset ?>">
+                <?php foreach ($thumbSizes as $thumbSizeName): ?>
+                    <input type="hidden" name="sizes[]" value="<?= esc_attr($thumbSizeName) ?>">
+                <?php endforeach; ?>
                 <button type="submit" class="lp-button lp-button--primary">Continue</button>
             </form>
-        <?php else: ?>
-            <p>Done.</p>
         <?php endif; ?>
+        <p data-lp-thumb-done <?= $thumbDone ? '' : 'hidden' ?>>Done.</p>
     </div>
 <?php endif; ?>
 
@@ -165,6 +221,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         <?= Csrf::field('bulk_regenerate_thumbnails') ?>
         <input type="hidden" name="form" value="bulk_regenerate_thumbnails">
         <input type="hidden" name="offset" value="0">
+        <fieldset class="lp-field">
+            <legend>Sizes to regenerate</legend>
+            <?php foreach ($thumbnailService->sizes() as $sizeName => $size): ?>
+                <?php if ($size['enabled']): ?>
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="sizes[]" value="<?= esc_attr($sizeName) ?>" checked>
+                        <?= esc_html(ucfirst($sizeName)) ?> (<?= (int) $size['width'] ?>&times;<?= (int) $size['height'] ?>, <?= $size['mode'] === 'crop' ? 'crop' : 'fit' ?>)
+                    </label>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </fieldset>
         <label class="lp-field--checkbox">
             <input type="checkbox" name="missing_only" value="1" checked>
             Only generate missing thumbnails
