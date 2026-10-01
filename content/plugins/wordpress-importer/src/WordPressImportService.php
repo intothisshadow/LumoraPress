@@ -71,11 +71,14 @@ use Throwable;
  *
  * Only one 'wordpress_import' batch may be in progress at a time (removeAll() clears it).
  * Progress and cross-stage id maps persist after every stage so an interrupted import can
- * resume via startOrResume()/runNextStage(), but source DB credentials are never stored.
+ * resume via startOrResume()/runNextStage(), but the source database password is never stored.
  */
 final class WordPressImportService
 {
     public const SOURCE = 'wordpress_import';
+
+    /** Connection fields remembered for a resumable import — never the database password. */
+    private const CONNECTION_FIELDS = ['source_type', 'db_host', 'db_port', 'db_name', 'db_user', 'db_prefix', 'wxr_path', 'uploads_path', 'gallery_path', 'wp_config_path'];
 
     /** WordPress attachments always use post_status 'inherit', not the caller-selectable $statuses option. */
     private const ATTACHMENT_STATUSES = ['inherit'];
@@ -375,9 +378,15 @@ final class WordPressImportService
      * progress survives independently of whether a *later* stage in the
      * same run ever gets the chance to execute at all.
      *
-     * @return array{stage: ?string, done: bool, counts: array<string, int>, warnings: array<int, string>}
+     * $timeBudgetSeconds lets a stage that copies many files (Media) stop early and
+     * resume from its own cursor on the next call, so a single web request never has to
+     * outlast the host's request timeout. Null (the default) always finishes the stage.
+     * An unfinished stage returns `stageComplete: false` with `done: false`; calling
+     * again continues it.
+     *
+     * @return array{stage: ?string, done: bool, stageComplete: bool, progress: ?array{processed: int, total: int}, counts: array<string, int>, warnings: array<int, string>}
      */
-    public function runNextStage(string $batchId): array
+    public function runNextStage(string $batchId, ?float $timeBudgetSeconds = null): array
     {
         if ($this->source === null) {
             throw new RuntimeException('No source database connection was provided.');
@@ -397,11 +406,13 @@ final class WordPressImportService
         $this->warnings = $state['warnings'] ?? [];
 
         if ($remaining === []) {
-            return ['stage' => null, 'done' => true, 'counts' => $this->registry->countsForBatch($batchId), 'warnings' => $this->warnings];
+            return ['stage' => null, 'done' => true, 'stageComplete' => true, 'progress' => null, 'counts' => $this->registry->countsForBatch($batchId), 'warnings' => $this->warnings];
         }
 
         $stage = $remaining[0];
         $maps = $state['maps'] ?? [];
+        $stageProgress = $state['stageProgress'] ?? [];
+        $deadline = $timeBudgetSeconds !== null ? microtime(true) + max(0.0, $timeBudgetSeconds) : null;
 
         // Only delays *between* stages, never before the very first one —
         // $completed being non-empty is exactly "a previous stage in this
@@ -410,27 +421,79 @@ final class WordPressImportService
         // 0 (no delay) unless the admin explicitly set it.
         $delayMs = (int) ($options['stage_delay_ms'] ?? 0);
 
-        if ($delayMs > 0 && $completed !== []) {
+        if ($delayMs > 0 && $completed !== [] && !isset($stageProgress[$stage])) {
             usleep($delayMs * 1000);
         }
 
-        $this->executeStage($batchId, $stage, $options, $maps);
+        $stageComplete = $this->executeStage($batchId, $stage, $options, $maps, $stageProgress, $deadline);
+        $progress = isset($stageProgress[$stage]) ? ['processed' => (int) $stageProgress[$stage]['offset'], 'total' => (int) $stageProgress[$stage]['total']] : null;
 
-        $completed[] = $stage;
+        if ($stageComplete) {
+            $completed[] = $stage;
+            unset($stageProgress[$stage]);
+        }
 
         $this->persistState($batchId, [
             'options' => $options,
             'completedStages' => $completed,
             'warnings' => $this->warnings,
             'maps' => $maps,
+            'stageProgress' => $stageProgress,
+            'connection' => $state['connection'] ?? [],
         ]);
 
         return [
             'stage' => $stage,
             'done' => array_diff($planned, $completed) === [],
+            'stageComplete' => $stageComplete,
+            'progress' => $progress,
             'counts' => $this->registry->countsForBatch($batchId),
             'warnings' => $this->warnings,
         ];
+    }
+
+    /**
+     * Remembers where $batchId's source lives so Resume Import can pre-fill it. The database
+     * password is deliberately never stored — it would sit in the database in plain text —
+     * so only the fields in CONNECTION_FIELDS are kept and the admin re-enters the password.
+     *
+     * @param array<string, mixed> $connection
+     */
+    public function rememberConnection(string $batchId, array $connection): void
+    {
+        $state = $this->loadState($batchId);
+
+        if ($state === null) {
+            return;
+        }
+
+        $remembered = [];
+
+        foreach (self::CONNECTION_FIELDS as $field) {
+            if (isset($connection[$field]) && is_string($connection[$field])) {
+                $remembered[$field] = $connection[$field];
+            }
+        }
+
+        $state['connection'] = $remembered;
+        $this->persistState($batchId, $state);
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, string>
+     */
+    private function connectionFromState(array $state): array
+    {
+        $connection = [];
+
+        foreach (self::CONNECTION_FIELDS as $field) {
+            if (isset($state['connection'][$field]) && is_string($state['connection'][$field])) {
+                $connection[$field] = $state['connection'][$field];
+            }
+        }
+
+        return $connection;
     }
 
     /**
@@ -442,7 +505,7 @@ final class WordPressImportService
      * complete rather than resumable, matching that version's own
      * always-fully-synchronous behavior.
      *
-     * @return array{batchId: string, completedStages: array<int, string>, plannedStages: array<int, string>}|null
+     * @return array{batchId: string, completedStages: array<int, string>, plannedStages: array<int, string>, connection: array<string, string>}|null
      */
     public function inProgressBatch(): ?array
     {
@@ -457,7 +520,7 @@ final class WordPressImportService
             $completed = $state['completedStages'] ?? [];
 
             if (array_diff($planned, $completed) !== []) {
-                return ['batchId' => $batchId, 'completedStages' => $completed, 'plannedStages' => $planned];
+                return ['batchId' => $batchId, 'completedStages' => $completed, 'plannedStages' => $planned, 'connection' => $this->connectionFromState($state)];
             }
         }
 
@@ -601,10 +664,14 @@ final class WordPressImportService
     }
 
     /**
+     * Returns false only when a resumable stage stopped at $deadline with work left; its
+     * cursor is then in $stageProgress[$stage] for the next call to continue from.
+     *
      * @param array<string, string> $options
      * @param array<string, mixed> $maps
+     * @param array<string, array<string, mixed>> $stageProgress
      */
-    private function executeStage(string $batchId, string $stage, array $options, array &$maps): void
+    private function executeStage(string $batchId, string $stage, array $options, array &$maps, array &$stageProgress, ?float $deadline): bool
     {
         $statuses = $options['statuses'] ?? ['publish', 'draft', 'pending', 'future', 'private'];
         $existingContentMode = $this->resolveExistingContentMode($options);
@@ -621,8 +688,11 @@ final class WordPressImportService
                 $maps['wpTagTermIdToLocalId'] = $this->importTags($batchId, $existingContentMode);
                 break;
             case 'media':
-                [$maps['wpAttachmentIdToLocalMediaId'], $maps['oldRelativePathToNewUrl']] = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
-                break;
+                $cursor = $stageProgress['media'] ?? [];
+                $finished = $this->importMedia($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode, $maps, $cursor, $deadline);
+                $stageProgress['media'] = $cursor;
+
+                return $finished;
             case 'nextgen_galleries':
                 $this->importNextGenGalleries($batchId, $maps['wpUserIdToLocalId'] ?? [], $existingContentMode);
                 break;
@@ -664,6 +734,8 @@ final class WordPressImportService
                 $this->reportUnsupportedContent();
                 break;
         }
+
+        return true;
     }
 
     /**
@@ -2152,13 +2224,34 @@ final class WordPressImportService
      * @param array<int, int> $wpUserIdToLocalId
      * @return array{0: array<int, int>, 1: array<string, string>} [wpAttachmentId => local media id, old _wp_attached_file relative path (e.g. "2020/03/cover.png") => new Lumora media URL]
      */
-    private function importMedia(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode = null): array
+    private function importMedia(string $batchId, array $wpUserIdToLocalId, ?ExistingContentMode $existingContentMode, array &$maps, array &$cursor, ?float $deadline): bool
     {
-        $wpAttachmentIdToLocalMediaId = [];
-        $oldRelativePathToNewUrl = [];
-        $wpMediaFolderIdToLocalId = $this->importMediaFolders($batchId, $existingContentMode);
+        $wpAttachmentIdToLocalMediaId = $maps['wpAttachmentIdToLocalMediaId'] ?? [];
+        $oldRelativePathToNewUrl = $maps['oldRelativePathToNewUrl'] ?? [];
+        $attachments = array_values($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES));
 
-        foreach ($this->source->posts(['attachment'], self::ATTACHMENT_STATUSES) as $attachment) {
+        // Folders are created once, on the first call, and carried in the cursor — a
+        // later call re-creating them would duplicate every folder.
+        if ($cursor === []) {
+            $cursor = ['offset' => 0, 'total' => count($attachments), 'folders' => $this->importMediaFolders($batchId, $existingContentMode)];
+        }
+
+        $wpMediaFolderIdToLocalId = $cursor['folders'];
+        $processedThisCall = 0;
+        $total = count($attachments);
+        $finished = true;
+
+        for ($index = (int) $cursor['offset']; $index < $total; $index++) {
+            // Always process at least one attachment per call, so a tiny budget still
+            // makes progress.
+            if ($deadline !== null && $processedThisCall > 0 && microtime(true) >= $deadline) {
+                $finished = false;
+                break;
+            }
+
+            $attachment = $attachments[$index];
+            $cursor['offset'] = $index + 1;
+            $processedThisCall++;
             $meta = $this->source->postMeta($attachment['ID']);
             $relativePath = $meta['_wp_attached_file'] ?? null;
 
@@ -2175,9 +2268,12 @@ final class WordPressImportService
             // so a source whose uploads copy no longer has this file
             // (or never did) must not block a Skip/Overwrite re-import
             // over a file that was only ever needed the first time.
-            $existingId = $existingContentMode !== null
-                ? $this->registry->existingLocalId(self::SOURCE, 'media', (string) $attachment['ID'])
-                : null;
+            //
+            // With no existing-content mode, a registry hit can only be this same batch's
+            // earlier work (a new batch is refused while any exists), e.g. a call that was
+            // cut off before its cursor was saved — reuse it instead of copying it twice.
+            $existingId = $this->registry->existingLocalId(self::SOURCE, 'media', (string) $attachment['ID']);
+            $attachmentMode = $existingContentMode ?? ($existingId !== null ? ExistingContentMode::Skip : null);
 
             if ($existingId === null && !is_file($absolutePath)) {
                 $this->warnings[] = "Attachment #{$attachment['ID']}: file not found at {$absolutePath}, skipped.";
@@ -2218,7 +2314,7 @@ final class WordPressImportService
             );
 
             try {
-                $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $existingContentMode);
+                $media = $this->mediaImporter->importFromLocalFile($batchId, self::SOURCE, $data, $attachmentMode);
             } catch (RuntimeException $exception) {
                 $this->warnings[] = "Attachment #{$attachment['ID']}: {$exception->getMessage()}";
                 continue;
@@ -2228,7 +2324,10 @@ final class WordPressImportService
             $oldRelativePathToNewUrl[$relativePath] = $this->media->url($media);
         }
 
-        return [$wpAttachmentIdToLocalMediaId, $oldRelativePathToNewUrl];
+        $maps['wpAttachmentIdToLocalMediaId'] = $wpAttachmentIdToLocalMediaId;
+        $maps['oldRelativePathToNewUrl'] = $oldRelativePathToNewUrl;
+
+        return $finished;
     }
 
     /**

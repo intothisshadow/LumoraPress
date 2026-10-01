@@ -365,6 +365,7 @@ if ($savedLayout['order'] === []) {
                     data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                     data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                     data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
+                    data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
                 >
                     <label for="post-content">Content</label>
                     <textarea id="post-content" name="content" rows="12"><?= esc_html($post->content ?? '') ?></textarea>

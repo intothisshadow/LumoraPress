@@ -151,9 +151,31 @@ $nativeDiscovered = isset($_GET['discover_exports'])
     ])
     : null;
 
+// WordPress is often installed alongside Lumora Press, but also in the directory
+// Lumora Press itself sits in, or the one above it, so all of those are searched.
+// $marker is a path that only a real WordPress root contains.
+$discoverWordPressDirectories = static function (string $marker): array {
+    $candidates = [];
+
+    foreach ([LUMORA_ROOT, dirname(LUMORA_ROOT)] as $directory) {
+        $resolved = realpath($directory);
+
+        if ($resolved !== false && file_exists($resolved . '/' . $marker)) {
+            $candidates[] = $resolved;
+        }
+    }
+
+    return array_values(array_unique([
+        ...$candidates,
+        ...SiblingDirectoryScanner::scan(LUMORA_ROOT, $marker),
+        ...SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), $marker, [LUMORA_ROOT]),
+    ]));
+};
+
 $nativeImportResult = isset($_GET['lumora_imported']) && is_array($_SESSION['lp_lumora_press_import'] ?? null) ? $_SESSION['lp_lumora_press_import'] : null;
 
 $importError = null;
+$importPaused = false;
 $testResult = null;
 $detectResult = null;
 $sitePreview = null;
@@ -413,11 +435,32 @@ if ($wordPressImporterActive) {
                 $importError = 'Could not preview: ' . $exception->getMessage();
             }
         } else {
-            // Runs as one long synchronous request rather than timing out
-            // at PHP's default execution limit. Each stage's progress is
-            // persisted as it completes, so an interruption leaves a
+            // Each request runs stages only until a time budget is spent,
+            // then answers; import-continue.js posts the form again until
+            // everything is done. A long import therefore never depends on
+            // the host's request timeout, and a stage that copies many files
+            // (Media) stops and resumes at its own cursor. Progress is
+            // persisted after every call, so an interruption leaves a
             // resumable batch behind rather than losing all progress.
+            $isAjaxImportRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+            $sliceSeconds = max(1.0, (float) apply_filters('wordpress_importer_request_seconds', 15.0));
+            $sliceDeadline = microtime(true) + $sliceSeconds;
+
+            // A single non-resumable stage (a big Posts import) can still run
+            // past the budget, and a proxy dropping the connection must not
+            // abort the call before its progress is saved.
             set_time_limit(0);
+            ignore_user_abort(true);
+
+            $respondImportJson = static function (array $payload): never {
+                while (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+
+                header('Content-Type: application/json');
+                echo json_encode($payload);
+                exit;
+            };
 
             $importProgress = new ImportProgress(LUMORA_ROOT);
 
@@ -446,6 +489,7 @@ if ($wordPressImporterActive) {
                 }
 
                 $started = $service->startOrResume($submittedOptions);
+                $service->rememberConnection($started['batchId'], $formValues);
 
                 do {
                     $remainingStages = array_values(array_diff($plannedStages, $completedStages));
@@ -454,29 +498,61 @@ if ($wordPressImporterActive) {
                         $importProgress->stage($remainingStages[0]);
                     }
 
-                    $result = $service->runNextStage($started['batchId']);
+                    $result = $service->runNextStage($started['batchId'], max(0.5, $sliceDeadline - microtime(true)));
 
-                    if ($result['stage'] !== null) {
+                    if ($result['stageComplete'] && $result['stage'] !== null) {
                         $completedStages[] = $result['stage'];
                     }
-                } while ($result['done'] === false);
+                } while ($result['done'] === false && microtime(true) < $sliceDeadline);
 
-                $importProgress->complete();
+                if ($result['done'] === false) {
+                    // Budget spent with work left. A JavaScript client posts
+                    // again straight away; without it the page below shows
+                    // the Resume panel for the same batch.
+                    session_start();
 
-                // The service's in-memory warnings() log doesn't survive
-                // the redirect, so it's stashed in the session for one read.
-                session_start();
-                $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
+                    if ($isAjaxImportRequest) {
+                        $respondImportJson([
+                            'done' => false,
+                            'stages' => $importProgress->read()['stages'],
+                            'detail' => $result['progress'] !== null
+                                ? WordPressImportService::stageLabel((string) $result['stage']) . ': ' . number_format($result['progress']['processed']) . ' of ' . number_format($result['progress']['total'])
+                                : '',
+                            // A fresh single-use token for the next round, since
+                            // a JSON response has no form to read one from.
+                            'csrf_token' => Csrf::token('start_wordpress_import'),
+                        ]);
+                    }
 
-                header('Location: ' . admin_url('maintenance/import') . '?imported=1');
-                exit;
+                    $importPaused = true;
+                } else {
+                    $importProgress->complete();
+
+                    // The service's in-memory warnings() log doesn't survive
+                    // the redirect, so it's stashed in the session for one read.
+                    session_start();
+                    $_SESSION['lp_wordpress_import_warnings'] = $result['warnings'];
+
+                    $importedUrl = admin_url('maintenance/import') . '?imported=1';
+
+                    if ($isAjaxImportRequest) {
+                        $respondImportJson(['done' => true, 'redirect' => $importedUrl]);
+                    }
+
+                    header('Location: ' . $importedUrl);
+                    exit;
+                }
             } catch (\Throwable $exception) {
                 $importProgress->complete();
                 $importError = $exception->getMessage();
 
-                // Needed before the rest of the page renders — only
-                // reached on failure, since success already redirected.
+                // Needed before the rest of the page renders, and before a
+                // JSON error reply that needs a fresh token to retry with.
                 session_start();
+
+                if ($isAjaxImportRequest) {
+                    $respondImportJson(['done' => false, 'error' => $importError, 'csrf_token' => Csrf::token('start_wordpress_import')]);
+                }
             }
         }
     }
@@ -510,6 +586,17 @@ if ($wordPressImporterActive) {
 
     $registryOnlyService = $buildRegistryOnlyService();
     $inProgress = $registryOnlyService->inProgressBatch();
+
+    // Pre-fills the Resume form from what the interrupted import was started
+    // with, except for anything the current request itself supplied. The
+    // password is never remembered, so that field stays blank.
+    if ($inProgress !== null) {
+        foreach ($inProgress['connection'] as $field => $value) {
+            if (array_key_exists($field, $formValues) && !isset($_POST[$field]) && !isset($_GET[$field])) {
+                $formValues[$field] = $value;
+            }
+        }
+    }
     $summary = $inProgress === null ? $registryOnlyService->lastImportSummary() : null;
     $redirectMappingReport = $summary !== null ? $registryOnlyService->redirectMappingReport($summary['batchId']) : [];
 
@@ -1119,17 +1206,25 @@ endif;
             </form>
         <?php endif; ?>
 
-        <?php if ($inProgress !== null): ?>
+        <?php if ($inProgress !== null && $importPaused): ?>
+            <div class="lp-alert lp-alert--info">
+                The import is part-way through (<?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s) finished).
+                Choose Resume Import to carry on from where it stopped — the source connection details
+                are filled in below, but the database password has to be entered again; the content
+                types originally selected are used again.
+            </div>
+        <?php elseif ($inProgress !== null): ?>
             <div class="lp-alert lp-alert--warning">
                 A previous import was interrupted after
                 <?= count($inProgress['completedStages']) ?> of <?= count($inProgress['plannedStages']) ?> stage(s)
                 (<?= esc_html(implode(', ', array_map([WordPressImportService::class, 'stageLabel'], $inProgress['completedStages']))) ?> completed so far).
-                Re-enter the same source connection details to continue —
-                the content types originally selected are used again
+                The source connection details are filled in below from that
+                import — only the database password has to be entered again.
+                The content types originally selected are used again
                 automatically; they can't be changed for a resumed import.
             </div>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/import')) ?>?ajax=progress" data-lp-update-progress-target="lp-import-progress-resume">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-import-form data-lp-import-target="lp-import-progress-resume">
                 <?= Csrf::field('start_wordpress_import') ?>
                 <input type="hidden" name="form" value="start_wordpress_import">
 
@@ -1146,6 +1241,7 @@ endif;
                 <input type="hidden" name="wp_config_path" value="<?= esc_attr($formValues['wp_config_path']) ?>">
 
                 <ul id="lp-import-progress-resume" class="lp-update-progress" hidden></ul>
+                <p class="lp-field__hint" data-lp-import-detail hidden></p>
 
                 <button type="submit" class="lp-button lp-button--primary">Resume Import</button>
             </form>
@@ -1205,18 +1301,18 @@ endif;
             <?php
             // Finds a *candidate path* to type above — distinct from the
             // "Detect from wp-config.php" button above, which parses a
-            // path already known to be correct. Rooted at dirname(LUMORA_ROOT),
-            // the same directory Maintenance > Updates shows as "Installed At".
+            // path already known to be correct.
             $wpConfigDiscovered = isset($_GET['discover_wp_config'])
-                ? SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'wp-config.php', [LUMORA_ROOT])
+                ? $discoverWordPressDirectories('wp-config.php')
                 : null;
             ?>
             <?php if ($wpConfigDiscovered === null): ?>
+                <p class="lp-field__hint">Lumora Press is installed in <code><?= esc_html(rtrim(LUMORA_ROOT, '/')) ?></code> — Discover also looks there, in the folder above it, and in the folders directly inside either.</p>
                 <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?discover_wp_config=1#wp-import-wp-config-path">Discover wp-config.php</a></p>
             <?php elseif ($wpConfigDiscovered === []): ?>
                 <p class="lp-admin__widget-placeholder">
-                    No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
-                    contains a <code>wp-config.php</code> — either the WordPress site isn't on this same
+                    No <code>wp-config.php</code> was found in this install's own folder, the folder above it,
+                    or any folder directly inside either — either the WordPress site isn't on this same
                     server, or this host's permissions don't allow reading that location.
                 </p>
             <?php else: ?>
@@ -1265,15 +1361,16 @@ endif;
                 // natural anchor for both wp-content/uploads and its
                 // sibling wp-content/gallery.
                 $uploadsDiscovered = isset($_GET['discover_uploads'])
-                    ? SiblingDirectoryScanner::scan(dirname(LUMORA_ROOT), 'wp-content/uploads', [LUMORA_ROOT])
+                    ? $discoverWordPressDirectories('wp-content/uploads')
                     : null;
                 ?>
                 <?php if ($uploadsDiscovered === null): ?>
+                    <p class="lp-field__hint">Lumora Press is installed in <code><?= esc_html(rtrim(LUMORA_ROOT, '/')) ?></code> — Discover also looks there, in the folder above it, and in the folders directly inside either.</p>
                     <p><a class="lp-button" href="<?= esc_url(admin_url('maintenance/import')) ?>?discover_uploads=1#wp-import-uploads-path">Discover Source Files</a></p>
                 <?php elseif ($uploadsDiscovered === []): ?>
                     <p class="lp-admin__widget-placeholder">
-                        No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
-                        contains a <code>wp-content/uploads</code> folder.
+                        No <code>wp-content/uploads</code> folder was found in this install's own folder, the folder
+                        above it, or any folder directly inside either.
                     </p>
                 <?php else: ?>
                     <ul class="lp-import-scan__list">
@@ -1443,7 +1540,7 @@ endif;
 
             <p class="lp-field__hint">Connection details from Test Connection above are already filled in below — double-check them before importing.</p>
 
-            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('maintenance/import')) ?>?ajax=progress" data-lp-update-progress-target="lp-import-progress">
+            <form method="post" action="<?= esc_url(admin_url('maintenance/import')) ?>" data-lp-import-form data-lp-import-target="lp-import-progress">
                 <?= Csrf::field('start_wordpress_import') ?>
                 <input type="hidden" name="form" value="start_wordpress_import">
                 <?php $renderSharedImportFields('wp-import-run'); ?>
@@ -1461,14 +1558,15 @@ endif;
 
                 <div class="lp-alert lp-alert--warning">
                     A real site's content can take a long time to import.
-                    This runs as one request — do not navigate away or
-                    close the tab while it's in progress. If it's interrupted
-                    anyway, revisiting this page offers to resume from where
-                    it left off. (Doesn't apply to a dry run above, which
-                    finishes immediately.)
+                    It runs in short steps, so a slow host's request timeout
+                    won't cut it off — keep this tab open while it works.
+                    If it's interrupted anyway, revisiting this page offers
+                    to resume from where it left off. (Doesn't apply to a
+                    dry run above, which finishes immediately.)
                 </div>
 
                 <ul id="lp-import-progress" class="lp-update-progress" hidden></ul>
+                <p class="lp-field__hint" data-lp-import-detail hidden></p>
 
                 <button type="submit" class="lp-button lp-button--primary">Import</button>
             </form>

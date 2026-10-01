@@ -1846,6 +1846,87 @@
         dialog.showModal();
     }
 
+    // EasyMDE's own default key bindings (the library registers no others).
+    var MARKDOWN_SHORTCUTS = [
+        ['Bold', 'Ctrl+B'],
+        ['Italic', 'Ctrl+I'],
+        ['Insert link', 'Ctrl+K'],
+        ['Insert image', 'Ctrl+Alt+I'],
+        ['Smaller heading', 'Ctrl+H'],
+        ['Bigger heading', 'Shift+Ctrl+H'],
+        ['Quote', "Ctrl+'"],
+        ['Bulleted list', 'Ctrl+L'],
+        ['Numbered list', 'Ctrl+Alt+L'],
+        ['Code block', 'Ctrl+Alt+C'],
+        ['Clean block formatting', 'Ctrl+E'],
+        ['Toggle preview', 'Ctrl+P'],
+        ['Toggle side-by-side', 'F9'],
+        ['Toggle full screen', 'F11'],
+    ];
+
+    function openShortcutsReference() {
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-editor-shortcuts-dialog';
+        dialog.setAttribute('aria-labelledby', 'lp-editor-shortcuts-title');
+
+        var title = document.createElement('h2');
+        title.id = 'lp-editor-shortcuts-title';
+        title.className = 'lp-editor-shortcuts-dialog__title';
+        title.textContent = 'Keyboard Shortcuts';
+
+        var table = document.createElement('table');
+        table.className = 'lp-editor-shortcuts-dialog__table';
+        MARKDOWN_SHORTCUTS.forEach(function (row) {
+            var tr = document.createElement('tr');
+            var th = document.createElement('th');
+            th.scope = 'row';
+            th.textContent = row[0];
+            var td = document.createElement('td');
+            var kbd = document.createElement('kbd');
+            kbd.textContent = row[1];
+            td.appendChild(kbd);
+            tr.appendChild(th);
+            tr.appendChild(td);
+            table.appendChild(tr);
+        });
+
+        var note = document.createElement('p');
+        note.className = 'lp-field__hint';
+        note.textContent = 'On a Mac, use Cmd in place of Ctrl.';
+
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'lp-button';
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', function () { dialog.close(); });
+
+        dialog.appendChild(title);
+        dialog.appendChild(table);
+        dialog.appendChild(note);
+        dialog.appendChild(closeButton);
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
+    // Drops hidden built-in buttons, then any separator left leading,
+    // trailing or doubled up by the removals.
+    function filterToolbar(toolbar, hidden) {
+        var kept = toolbar.filter(function (item) {
+            var name = typeof item === 'string' ? item : item.name;
+
+            return name === '|' || hidden.indexOf(name) === -1;
+        });
+
+        return kept.filter(function (item, index) {
+            if (item !== '|') {
+                return true;
+            }
+
+            return index > 0 && index < kept.length - 1 && kept[index - 1] !== '|';
+        });
+    }
+
     function initMarkdownEditor(container, textarea, statsEl) {
         loadStyle(EASYMDE_CSS);
         loadStyle(FONT_AWESOME_CSS);
@@ -1856,6 +1937,7 @@
             var iconPickerEnabled = !!container.dataset.iconPickerCsrf;
             var emojiPickerEnabled = container.dataset.emojiMarkdownEnabled === '1';
             var shortcodesEnabled = Object.keys(JSON.parse(container.dataset.shortcodes || '{}')).length > 0;
+            var editorConfig = JSON.parse(container.dataset.editorConfig || '{}');
 
             // Built as its own variable (rather than inline in the options
             // object below) so the icon-picker button — only wired up when
@@ -2041,7 +2123,32 @@
                 });
             }
 
-            markdownToolbar.push('table', 'horizontal-rule', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide');
+            (editorConfig.buttons || []).forEach(function (custom) {
+                markdownToolbar.push({
+                    name: custom.name,
+                    action: function () {
+                        var cm = editor.codemirror;
+                        var selected = cm.getSelection();
+                        cm.replaceSelection(custom.before + selected + custom.after);
+                        // Park the cursor between the markers when nothing was selected.
+                        if (selected === '' && custom.after !== '') {
+                            var cursor = cm.getCursor();
+                            cm.setCursor({ line: cursor.line, ch: cursor.ch - custom.after.length });
+                        }
+                        cm.focus();
+                    },
+                    className: 'fa ' + custom.icon,
+                    title: custom.title,
+                });
+            });
+
+            markdownToolbar.push('table', 'horizontal-rule', '|', 'preview', 'side-by-side', 'fullscreen', '|', 'guide', {
+                name: 'keyboard-shortcuts',
+                action: function () { openShortcutsReference(); },
+                className: 'fa fa-keyboard-o',
+                title: 'Keyboard Shortcuts',
+            });
+            markdownToolbar = filterToolbar(markdownToolbar, editorConfig.hide || []);
 
             var editor = new EasyMDE({
                 element: textarea,
@@ -2074,7 +2181,7 @@
                 autosave: autosaveId !== '' ? {
                     enabled: true,
                     uniqueId: 'lp-autosave-' + autosaveId,
-                    delay: 15000,
+                    delay: editorConfig.autosaveDelay || 15000,
                 } : { enabled: false },
                 toolbar: markdownToolbar,
             });

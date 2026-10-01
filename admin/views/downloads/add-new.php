@@ -606,6 +606,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                 data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                 data-autosave-id="<?= esc_attr('download-' . $editingDownload->id) ?>"
+                data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
             >
                 <label for="download-description">Description</label>
                 <textarea id="download-description" name="description" rows="4"><?= esc_html($editingDownload->description) ?></textarea>
@@ -720,6 +721,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
                 data-theme-stylesheet="<?= esc_url(theme_url('style.css')) ?>"
                 data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                 data-autosave-id=""
+                data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
             >
                 <label for="download-description">Description</label>
                 <textarea id="download-description" name="description" rows="4"></textarea>

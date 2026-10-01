@@ -4,8 +4,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Keyboard shortcuts reference (LP-015): the Markdown editor toolbar has a new Keyboard Shortcuts button that lists every shortcut.
+- Markdown editor toolbar API (LP-015): plugins can hide built-in toolbar buttons with the `markdown_editor_hidden_buttons` filter, add simple wrap-the-selection buttons with `markdown_editor_buttons`, and change the draft autosave interval (15 seconds by default) with `markdown_editor_autosave_seconds` (see "Markdown Editor API" in `docs/DEVELOPER-APIS.md`).
+
 ### Fixed
 
+- WordPress import no longer fails with a connection timeout while importing a large media library (LPP-028): the import now runs as a series of short requests, so a host's, proxy's, or Cloudflare's request time limit can't cut it off. The progress list shows how many media files are done (for example "1,486 of 3,214"), and an interrupted import resumes from the exact file it stopped at instead of starting Media over. A new `wordpress_importer_request_seconds` filter sets how long each step runs (default 15 seconds). WordPress Importer is now version 1.1.0.
+- The WordPress Importer's Discover buttons (wp-config.php, and the uploads folder) now also look in the folder Lumora Press is installed in, the folder above it, and the folders directly inside either, not only the folders next to the install (LPP-028).
+- Resuming an interrupted or failed WordPress import now fills in the source connection (host, port, database, username, table prefix, and file paths) from that import, so only the database password has to be entered again. The password itself is never saved (LPP-028).
 - Interrupted updates (LP-174): if an update stopped partway through (the browser tab was closed or a request timed out), starting a fresh one could run on top of it, and until one finished the next update wrongly warned that files it had just installed had been "modified since they were installed". Maintenance &rsaquo; Updates now shows an "An Update Did Not Finish" notice with **Resume Update** and **Discard Update** buttons. Discarding restores the backup taken at the start of that attempt if its new files may already be in place, or just cancels it if nothing had changed yet, and is recorded in the Update History. Uploading or downloading another update, or updating a bundled plugin, is refused with an explanation until the interrupted one is resumed or discarded.
 - Sites installed before 0.10.0 that never changed theme stopped showing any public pages after updating, because the update removed the old "Default" theme they were still set to use. Those sites are now switched to Lumora Classic automatically, keeping their Theme Options (unless Lumora Classic already has its own saved options). More generally, if the active theme's folder is ever missing, the site now falls back to Lumora Classic instead of showing an error on every page.
 - Leftover references to the old "Default" theme, which Lumora Classic replaced in 0.10.0: the notes on Maintenance &rsaquo; Updates now name Lumora Classic as the bundled theme an update replaces, and the Content width option's help text on Appearance &rsaquo; Customize no longer mentions a theme that doesn't ship with Lumora Press.
