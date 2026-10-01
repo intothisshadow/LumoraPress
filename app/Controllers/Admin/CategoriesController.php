@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Controllers\Admin;
 
+use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\MediaService;
@@ -51,6 +52,7 @@ final class CategoriesController
         private readonly CategoryService $categories,
         private readonly MediaService $media,
         private readonly ThumbnailService $thumbnails,
+        private readonly ?PressConfig $config = null,
     ) {
     }
 
@@ -100,6 +102,12 @@ final class CategoriesController
                 ? $this->categories->create($name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode)
                 : $this->categories->update($id, $name, $description, $parentId > 0 ? $parentId : null, $slug !== '' ? $slug : null, $imageId, $archiveDisplayMode);
 
+            // Persisted as an option and applied to the live service so the rest of this request agrees.
+            if ($this->config !== null && !empty($post['make_default'])) {
+                $this->config->setOption('default_category_id', $category->id);
+                $this->categories->setDefaultCategoryId($category->id);
+            }
+
             return AdminActionResult::redirect(admin_url('posts/categories') . '?action=edit&id=' . $category->id . '&saved=1');
         } catch (\InvalidArgumentException $exception) {
             return AdminActionResult::error($exception->getMessage());
@@ -126,6 +134,30 @@ final class CategoriesController
         }
 
         return AdminActionResult::redirect(admin_url('posts/categories') . '?trashed=1');
+    }
+
+    /**
+     * @param array<string, mixed> $post
+     */
+    public function makeDefault(array $post, ?string $csrfToken): AdminActionResult
+    {
+        $id = (int) ($post['id'] ?? 0);
+
+        if (!Csrf::verify('category_make_default_' . $id, $csrfToken)) {
+            return $this->invalidRequest();
+        }
+
+        $category = $id > 0 ? $this->categories->findById($id) : null;
+
+        // A trashed category can't be the fallback for new posts.
+        if ($category === null || $category->trashedAt !== null || $this->config === null) {
+            return AdminActionResult::redirect(admin_url('posts/categories') . '?error=forbidden');
+        }
+
+        $this->config->setOption('default_category_id', $category->id);
+        $this->categories->setDefaultCategoryId($category->id);
+
+        return AdminActionResult::redirect(admin_url('posts/categories') . '?default_set=1');
     }
 
     /**

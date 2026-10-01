@@ -110,10 +110,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
 
     if ($form !== '') {
-        $controller = new CategoriesController($categoryService, $kernel->media, $kernel->thumbnails);
+        $controller = new CategoriesController($categoryService, $kernel->media, $kernel->thumbnails, $kernel->config);
 
         $result = match ($form) {
             'save' => $controller->save($_POST, $_FILES, $currentUser->id, $csrfToken),
+            'make_default' => $controller->makeDefault($_POST, $csrfToken),
             'trash' => $controller->trash($_POST, $canDeleteCategories, $csrfToken),
             'restore_category' => $controller->restoreCategory($_POST, $canDeleteCategories, $csrfToken),
             'delete_permanently' => $controller->deletePermanently($_POST, $canDeleteCategories, $csrfToken),
@@ -169,6 +170,10 @@ if ($action === 'edit') {
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Category saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['default_set'])): ?>
+    <div class="lp-alert lp-alert--success">Default category changed.</div>
 <?php endif; ?>
 
 <?php if (isset($_GET['trashed'])): ?>
@@ -275,6 +280,15 @@ if ($action === 'edit') {
                     <option value="full" <?= ($category?->archiveDisplayMode ?? '') === 'full' ? 'selected' : '' ?>>Full Content</option>
                 </select>
                 <span class="lp-field__hint">Overrides the theme's site-wide "Post display" setting for this category's own archive page only.</span>
+            </p>
+
+            <?php $isDefaultCategoryBeingEdited = $category !== null && $categoryService->isDefaultCategory($category->id); ?>
+            <p class="lp-field">
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="make_default" value="1" <?= $isDefaultCategoryBeingEdited ? 'checked disabled' : '' ?>>
+                    Use as the default category
+                </label>
+                <span class="lp-field__hint">Posts saved without a category are assigned to the default category, which can't be trashed or deleted.</span>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Category</button>
@@ -503,6 +517,13 @@ if ($action === 'edit') {
                                             <?php elseif ($categoryService->isDefaultCategory($listedCategory->id)): ?>
                                                 <span class="lp-admin__row-actions-note">Cannot be trashed</span>
                                             <?php else: ?>
+                                                <?php $makeDefaultFormId = 'category-make-default-form-' . $listedCategory->id; ?>
+                                                <span class="lp-admin__inline-form">
+                                                    <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_make_default_' . $listedCategory->id)) ?>" form="<?= esc_attr($makeDefaultFormId) ?>">
+                                                    <input type="hidden" name="form" value="make_default" form="<?= esc_attr($makeDefaultFormId) ?>">
+                                                    <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($makeDefaultFormId) ?>">
+                                                    <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($makeDefaultFormId) ?>">Make Default</button>
+                                                </span>
                                                 <?php $trashFormId = 'category-trash-form-' . $listedCategory->id; ?>
                                                 <span class="lp-admin__inline-form">
                                                     <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_trash_' . $listedCategory->id)) ?>" form="<?= esc_attr($trashFormId) ?>">
@@ -564,6 +585,13 @@ if ($action === 'edit') {
                             <?php if ($canDeleteCategories && $categoryService->isDefaultCategory($listedCategory->id)): ?>
                                 <span class="lp-admin__row-actions-note">Cannot be trashed</span>
                             <?php elseif ($canDeleteCategories): ?>
+                                <?php $treeMakeDefaultFormId = 'category-make-default-form-' . $listedCategory->id; ?>
+                                <span class="lp-admin__inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_make_default_' . $listedCategory->id)) ?>" form="<?= esc_attr($treeMakeDefaultFormId) ?>">
+                                    <input type="hidden" name="form" value="make_default" form="<?= esc_attr($treeMakeDefaultFormId) ?>">
+                                    <input type="hidden" name="id" value="<?= (int) $listedCategory->id ?>" form="<?= esc_attr($treeMakeDefaultFormId) ?>">
+                                    <button type="submit" class="lp-button lp-button--link" form="<?= esc_attr($treeMakeDefaultFormId) ?>">Make Default</button>
+                                </span>
                                 <?php $treeTrashFormId = 'category-trash-form-' . $listedCategory->id; ?>
                                 <span class="lp-admin__inline-form">
                                     <input type="hidden" name="csrf_token" value="<?= esc_attr(Csrf::token('category_trash_' . $listedCategory->id)) ?>" form="<?= esc_attr($treeTrashFormId) ?>">
@@ -597,6 +625,7 @@ if ($action === 'edit') {
                         <form id="category-delete-permanently-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
                     <?php else: ?>
                         <form id="category-trash-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
+                        <form id="category-make-default-form-<?= (int) $listedCategory->id ?>" method="post" action="<?= esc_url(admin_url('posts/categories')) ?>"></form>
                     <?php endif; ?>
                     <?php
                 endforeach;
