@@ -169,6 +169,22 @@ final class CacheManager
         return false;
     }
 
+    /**
+     * Options the application writes about its own housekeeping (index
+     * refresh times, update checks, the install ping). Changing one never
+     * changes what a visitor sees, so it must not empty the page cache.
+     */
+    public static function isBookkeepingOption(string $key): bool
+    {
+        foreach (['search_index_', 'search_vocabulary_', 'update_last_', 'install_ping_'] as $prefix) {
+            if (str_starts_with($key, $prefix)) {
+                return true;
+            }
+        }
+
+        return $key === 'install_uuid';
+    }
+
     public function purgeUrl(string $url): void
     {
         $this->driver->purgeUrl($url);

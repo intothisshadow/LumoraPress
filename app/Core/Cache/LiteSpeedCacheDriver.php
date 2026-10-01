@@ -66,6 +66,13 @@ final class LiteSpeedCacheDriver implements CacheDriverInterface
      */
     private function sendPurgeHeader(string $value): void
     {
+        // A purge triggered after the response has gone out (e.g. from a
+        // shutdown task) can't carry a header any more; header() would
+        // raise a warning instead of doing anything useful.
+        if (headers_sent()) {
+            return;
+        }
+
         header('X-LiteSpeed-Purge: ' . $value, false);
     }
 }

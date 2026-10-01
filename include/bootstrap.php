@@ -746,12 +746,17 @@ foreach ([
     'tag_saved', 'tag_deleted',
     'comment_posted', 'comment_status_changed', 'comment_deleted',
     'media_saved', 'media_deleted',
-    'option_changed',
 ] as $cachePurgeAction) {
     $hooks->addAction($cachePurgeAction, static function () use ($cache): void {
         $cache->purgeAll();
     });
 }
+
+$hooks->addAction('option_changed', static function (mixed $key = null) use ($cache): void {
+    if (!is_string($key) || !CacheManager::isBookkeepingOption($key)) {
+        $cache->purgeAll();
+    }
+});
 
 // UpdateService::install() empties storage/cache/ itself, but an
 // external edge cache (LiteSpeed, via $cacheDriver) also needs purging
