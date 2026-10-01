@@ -41,6 +41,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Saving a post or page failed with "Your session expired or the request could not be verified" when another post or page was open in a second tab. Each open tab now keeps its own valid form token, so any of them can save.
 - A thread with comments closed no longer offers a Reply link and form on each existing comment, in Lumora Classic and the custom themes' comment templates. Theme authors: `comment_list()` takes an optional last argument, `$commentsOpen`.
 - "Watch this thread" (LP-183) is no longer offered once comments are closed on a post or page, or site-wide, since a closed thread can't get new comments to be notified about. Someone already watching a thread that later closes still sees "Stop watching", and a stale page can no longer start a watch on a closed thread.
 - A new install no longer stops at "The storage/sessions directory does not exist" (the folder was missing from the download, and the install wizard needed it). The wizard now creates a missing folder under `storage/` itself, and the folder is included in the download again.
