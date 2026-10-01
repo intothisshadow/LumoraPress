@@ -53,11 +53,18 @@ $guestFieldOptions = [
     'emailRequired' => $comment_author_email_required ?? true,
     'urlEnabled' => $comment_author_url_enabled ?? true,
 ];
+
+// Nothing to read and no way to add to it: show no comments area at all.
+if ((int) $comment_count === 0 && !$comments_open) {
+    return;
+}
 ?>
 <section id="comments" class="lp-comments">
-    <h2 class="lp-comments__title">
-        <?= (int) $comment_count === 1 ? '1 Comment' : esc_html((string) $comment_count) . ' Comments' ?>
-    </h2>
+    <?php if ((int) $comment_count > 0): ?>
+        <h2 class="lp-comments__title">
+            <?= (int) $comment_count === 1 ? '1 Comment' : esc_html((string) $comment_count) . ' Comments' ?>
+        </h2>
+    <?php endif; ?>
 
     <?php if ($flag === 'posted'): ?>
         <div class="lp-alert lp-alert--success">Your comment has been posted.</div>
@@ -91,7 +98,5 @@ $guestFieldOptions = [
     <?php if ($comments_open): ?>
         <h3 class="lp-comments__form-title">Leave a Comment</h3>
         <?php comment_form($content, $current_user, $guestFieldOptions); ?>
-    <?php else: ?>
-        <p class="lp-comments__closed">Comments are closed.</p>
     <?php endif; ?>
 </section>

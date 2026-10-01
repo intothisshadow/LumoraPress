@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Lumora Classic: a post or page with no comments no longer shows a "0 Comments" heading above the comment form, and the "Comments are closed." notice is gone. When comments are closed and there are none, no comments area is shown at all; when they are closed but there are some, the existing comments still show.
 - Appearance &rsaquo; Customize: the options a theme adds for itself (for Lumora Classic: homepage layout and the Google Fonts switch) now have their own tab after Footer, named for the theme, instead of sitting at the bottom of the Body tab.
 - Featured image defaults moved (LP-184): the default featured image and the featured image crop size are now on Appearance &rsaquo; Customize &rsaquo; Body, in a new "Featured Image Defaults" panel, instead of Media &rsaquo; Thumbnails. They still apply to every theme, and nothing needs re-saving. Media &rsaquo; Thumbnails keeps only the thumbnail sizes, quality and maintenance tools.
 - New option "Use the default featured image on pages" (on by default). Turn it off to show no automatic image on pages; a page's own featured image, set on New Page or Edit Page, still shows. Posts are unaffected, and the setting is included when you export and import settings.
