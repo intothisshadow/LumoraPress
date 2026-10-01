@@ -42,6 +42,8 @@ Requires PHP: 8.2
 */
 ```
 
+`Version:` also drives updates for a theme bundled with Lumora Press: a release can carry a newer package, and Appearance &rsaquo; Themes offers it only when its version is higher than the installed `style.css`'s. `Requires at least:` and `Requires PHP:` are enforced as blocking checks at that point, so an update that needs a newer Lumora Press (or PHP) than the site runs is refused. Themes you install yourself are never offered updates this way, but these two fields still show in the theme's Details panel. Only the theme's folder is replaced; Theme Options live in the database and survive.
+
 If the active theme's folder or its `style.css` is missing (deleted by hand, for example), the site falls back to the bundled Lumora Classic theme rather than failing, until another theme is activated.
 
 Every field is optional (a theme with no `Theme Name:` still shows up,

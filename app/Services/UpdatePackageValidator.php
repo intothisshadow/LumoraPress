@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Plugin\PluginRegistry;
+use LumoraPress\Core\Theme\ThemeRegistry;
 use RuntimeException;
 use ZipArchive;
 
@@ -235,13 +236,58 @@ final class UpdatePackageValidator
      */
     public function validateAndStagePlugin(string $zipPath, string $slug, string $installedVersion): array
     {
+        return $this->validateAndStageComponent('plugin', $zipPath, $slug, $installedVersion);
+    }
+
+    /**
+     * The theme-scoped counterpart to validateAndStagePlugin(): accepts a
+     * ZIP holding just one bundled theme (`{slug}/style.css` or
+     * `style.css` at the archive root). Same return shape.
+     *
+     * @return array{
+     *     blocking: array<int, string>,
+     *     warnings: array<int, string>,
+     *     from_version: string,
+     *     to_version: string,
+     *     token: string,
+     *     staging_path: string,
+     *     root_prefix: string,
+     *     name: string,
+     *     requires_at_least: string,
+     *     requires_php: string,
+     * }
+     */
+    public function validateAndStageTheme(string $zipPath, string $slug, string $installedVersion): array
+    {
+        return $this->validateAndStageComponent('theme', $zipPath, $slug, $installedVersion);
+    }
+
+    /**
+     * @param 'plugin'|'theme' $kind
+     *
+     * @return array{
+     *     blocking: array<int, string>,
+     *     warnings: array<int, string>,
+     *     from_version: string,
+     *     to_version: string,
+     *     token: string,
+     *     staging_path: string,
+     *     root_prefix: string,
+     *     name: string,
+     *     requires_at_least: string,
+     *     requires_php: string,
+     * }
+     */
+    private function validateAndStageComponent(string $kind, string $zipPath, string $slug, string $installedVersion): array
+    {
         if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1) {
-            throw new RuntimeException('Invalid plugin identifier.');
+            throw new RuntimeException("Invalid {$kind} identifier.");
         }
 
         [$zip, $names, $totalUncompressed] = $this->openArchive($zipPath);
 
-        $mainFile = $slug . '.php';
+        // A theme's identity lives in style.css's header; a plugin's in its {slug}.php.
+        $mainFile = $kind === 'theme' ? 'style.css' : $slug . '.php';
 
         if (in_array($mainFile, $names, true)) {
             $packagePrefix = '';
@@ -250,7 +296,7 @@ final class UpdatePackageValidator
         } else {
             $zip->close();
 
-            throw new RuntimeException("The archive does not look like an update package for this plugin (missing {$mainFile}).");
+            throw new RuntimeException("The archive does not look like an update package for this {$kind} (missing {$mainFile}).");
         }
 
         $freeSpace = disk_free_space($this->installRoot);
@@ -283,13 +329,14 @@ final class UpdatePackageValidator
         $zip->close();
 
         $rootPrefix = 'package/' . $packagePrefix;
-        $header = PluginRegistry::parseHeader(rtrim($stagingPath . '/' . $rootPrefix, '/') . '/' . $mainFile);
+        $mainPath = rtrim($stagingPath . '/' . $rootPrefix, '/') . '/' . $mainFile;
+        $header = $kind === 'theme' ? ThemeRegistry::parseHeader($mainPath) : PluginRegistry::parseHeader($mainPath);
         $toVersion = $header['version'];
 
         if (preg_match('/^\d+\.\d+\.\d+/', $toVersion) !== 1) {
             $this->removeDirectory($stagingPath);
 
-            throw new RuntimeException('The plugin package does not declare a valid Version.');
+            throw new RuntimeException("The {$kind} package does not declare a valid Version.");
         }
 
         $blocking = [];
@@ -299,12 +346,13 @@ final class UpdatePackageValidator
 
         if ($comparison < 0) {
             $blocking[] = sprintf(
-                'This package (version %s) is older than the installed version of the plugin (%s).',
+                'This package (version %s) is older than the installed version of the %s (%s).',
                 $toVersion,
+                $kind,
                 $installedVersion,
             );
         } elseif ($comparison === 0) {
-            $warnings[] = sprintf('This package is the same version (%s) of the plugin that is already installed.', $toVersion);
+            $warnings[] = sprintf('This package is the same version (%s) of the %s that is already installed.', $toVersion, $kind);
         }
 
         if (preg_match('/-(dev|alpha|beta|rc)(\.|$|\d)/i', $toVersion) === 1) {
@@ -314,12 +362,13 @@ final class UpdatePackageValidator
             );
         }
 
-        $pluginsDirectory = rtrim($this->installRoot, '/') . '/content/plugins';
-        $pluginDirectory = $pluginsDirectory . '/' . $slug;
+        $parentRelative = $kind === 'theme' ? 'content/themes' : 'content/plugins';
+        $parentDirectory = rtrim($this->installRoot, '/') . '/' . $parentRelative;
+        $componentDirectory = $parentDirectory . '/' . $slug;
 
         // Replacing the directory wholesale needs its parent writable too, not just the directory itself.
-        if (!is_writable($pluginsDirectory) || (is_dir($pluginDirectory) && !is_writable($pluginDirectory))) {
-            $blocking[] = "\"content/plugins/{$slug}\" is not writable by the web server.";
+        if (!is_writable($parentDirectory) || (is_dir($componentDirectory) && !is_writable($componentDirectory))) {
+            $blocking[] = "\"{$parentRelative}/{$slug}\" is not writable by the web server.";
         }
 
         if ($blocking !== []) {

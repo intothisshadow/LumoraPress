@@ -706,6 +706,7 @@ $updates = new UpdateService(
     checksums: $updateChecksums,
     progress: $updateProgress,
     pluginVersions: new PluginVersionManifest(LUMORA_ROOT),
+    themeVersions: new PluginVersionManifest(LUMORA_ROOT, 'theme-versions.json'),
 );
 
 $githubUpdates = new GitHubReleaseProvider($config);

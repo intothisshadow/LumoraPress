@@ -30,10 +30,16 @@ namespace LumoraPress\Services;
  */
 final class PluginVersionManifest
 {
-    private const PATH_SUFFIX = '/storage/updates/plugin-versions.json';
+    private const DIRECTORY_SUFFIX = '/storage/updates/';
 
-    public function __construct(private readonly string $installRoot)
-    {
+    /**
+     * @param string $fileName Lets the same record format back bundled
+     *     themes (`theme-versions.json`) without a second class.
+     */
+    public function __construct(
+        private readonly string $installRoot,
+        private readonly string $fileName = 'plugin-versions.json',
+    ) {
     }
 
     /**
@@ -134,6 +140,6 @@ final class PluginVersionManifest
 
     private function path(): string
     {
-        return rtrim($this->installRoot, '/') . self::PATH_SUFFIX;
+        return rtrim($this->installRoot, '/') . self::DIRECTORY_SUFFIX . $this->fileName;
     }
 }

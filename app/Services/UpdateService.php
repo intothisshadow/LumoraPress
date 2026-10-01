@@ -23,6 +23,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\InstallerCleanup;
 use LumoraPress\Core\Plugin\PluginRegistry;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Models\UpdateStatus;
 use RuntimeException;
 use Throwable;
@@ -65,6 +66,8 @@ final class UpdateService
     private const MAX_MODIFIED_FILES_SHOWN = 10;
 
     private const PLUGINS_PATH_PREFIX = 'content/plugins/';
+
+    private const THEMES_PATH_PREFIX = 'content/themes/';
 
     /**
      * An unfinished update whose progress record changed this recently may
@@ -111,6 +114,7 @@ final class UpdateService
         private readonly ?UpdateChecksumManifest $checksums = null,
         private readonly ?UpdateProgress $progress = null,
         private readonly ?PluginVersionManifest $pluginVersions = null,
+        private readonly ?PluginVersionManifest $themeVersions = null,
     ) {
     }
 
@@ -122,14 +126,22 @@ final class UpdateService
      */
     public function bundledPluginSlugs(): array
     {
+        return $this->bundledSlugs(self::PLUGINS_PATH_PREFIX);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function bundledSlugs(string $pathPrefix): array
+    {
         $slugs = [];
 
         foreach ($this->corePaths as $corePath) {
-            if (!str_starts_with($corePath, self::PLUGINS_PATH_PREFIX)) {
+            if (!str_starts_with($corePath, $pathPrefix)) {
                 continue;
             }
 
-            $slug = substr($corePath, strlen(self::PLUGINS_PATH_PREFIX));
+            $slug = substr($corePath, strlen($pathPrefix));
 
             if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) === 1) {
                 $slugs[] = $slug;
@@ -155,7 +167,7 @@ final class UpdateService
         $headerVersions = [];
 
         foreach ($this->bundledPluginSlugs() as $slug) {
-            $mainFile = $this->pluginMainFile($slug);
+            $mainFile = $this->componentMainFile('plugin', $slug);
 
             if (is_file($mainFile)) {
                 $headerVersions[$slug] = PluginRegistry::parseHeader($mainFile)['version'];
@@ -173,14 +185,55 @@ final class UpdateService
     }
 
     /**
-     * Blocking problems with installing a plugin package whose header
+     * Bundled themes are exactly the `content/themes/{slug}` entries in
+     * core-paths.php — the same rule bundledPluginSlugs() applies.
+     *
+     * @return array<int, string>
+     */
+    public function bundledThemeSlugs(): array
+    {
+        return $this->bundledSlugs(self::THEMES_PATH_PREFIX);
+    }
+
+    public function isBundledTheme(string $slug): bool
+    {
+        return in_array($slug, $this->bundledThemeSlugs(), true);
+    }
+
+    /**
+     * Installed versions of every bundled theme present on disk, synced
+     * against each theme's own style.css header (which stays authoritative).
+     *
+     * @return array<string, string>
+     */
+    public function installedThemeVersions(): array
+    {
+        $headerVersions = [];
+
+        foreach ($this->bundledThemeSlugs() as $slug) {
+            $styleFile = $this->componentMainFile('theme', $slug);
+
+            if (is_file($styleFile)) {
+                $headerVersions[$slug] = ThemeRegistry::parseHeader($styleFile)['version'];
+            }
+        }
+
+        if ($this->themeVersions === null) {
+            return array_filter($headerVersions, static fn (string $version): bool => $version !== '');
+        }
+
+        return array_intersect_key($this->themeVersions->sync($headerVersions), $headerVersions);
+    }
+
+    /**
+     * Blocking problems with installing a plugin (or, via $component, theme) package whose header
      * declares these requirements. Pure logic, split out so it's
      * unit-testable; an unrecognisable version string fails open, the
      * same as isDatabaseVersionSupported().
      *
      * @return array<int, string>
      */
-    public static function pluginRequirementProblems(string $requiresAtLeast, string $requiresPhp, string $coreVersion, string $phpVersion = PHP_VERSION): array
+    public static function pluginRequirementProblems(string $requiresAtLeast, string $requiresPhp, string $coreVersion, string $phpVersion = PHP_VERSION, string $component = 'plugin'): array
     {
         $problems = [];
         $requiresAtLeast = trim($requiresAtLeast);
@@ -188,7 +241,8 @@ final class UpdateService
 
         if (preg_match('/^\d+(\.\d+)*$/', $requiresAtLeast) === 1 && version_compare($coreVersion, $requiresAtLeast, '<')) {
             $problems[] = sprintf(
-                'This version of the plugin requires Lumora Press %s or higher; this site is running %s. Update Lumora Press itself first.',
+                'This version of the %s requires Lumora Press %s or higher; this site is running %s. Update Lumora Press itself first.',
+                $component,
                 $requiresAtLeast,
                 $coreVersion,
             );
@@ -196,7 +250,8 @@ final class UpdateService
 
         if (preg_match('/^\d+(\.\d+)*$/', $requiresPhp) === 1 && version_compare($phpVersion, $requiresPhp, '<')) {
             $problems[] = sprintf(
-                'This version of the plugin requires PHP %s or higher; the server is running PHP %s.',
+                'This version of the %s requires PHP %s or higher; the server is running PHP %s.',
+                $component,
                 $requiresPhp,
                 $phpVersion,
             );
@@ -255,6 +310,72 @@ final class UpdateService
                 'to_version' => $result['to_version'],
                 'root_prefix' => $result['root_prefix'],
                 'source' => 'plugin',
+                'created_at' => time(),
+            ], JSON_THROW_ON_ERROR));
+        } else {
+            $this->removeDirectory($result['staging_path']);
+        }
+
+        return [
+            'blocking' => $result['blocking'],
+            'warnings' => $result['warnings'],
+            'slug' => $slug,
+            'name' => $result['name'],
+            'from_version' => $result['from_version'],
+            'to_version' => $result['to_version'],
+            'token' => $result['token'],
+        ];
+    }
+
+    /**
+     * The theme-scoped counterpart to checkPluginPackage(): validates and
+     * stages a single bundled theme's package for the same staged pipeline.
+     *
+     * @return array{
+     *     blocking: array<int, string>,
+     *     warnings: array<int, string>,
+     *     slug: string,
+     *     name: string,
+     *     from_version: string,
+     *     to_version: string,
+     *     token: string,
+     * }
+     */
+    public function checkThemePackage(string $slug, string $zipPath, ?int $currentUserId = null): array
+    {
+        if (!$this->isBundledTheme($slug)) {
+            throw new RuntimeException('Only themes bundled with Lumora Press can be updated this way.');
+        }
+
+        $fromVersion = $this->installedThemeVersions()[$slug] ?? '0.0.0';
+
+        $this->progress?->stage('validate');
+
+        $result = $this->validator->validateAndStageTheme($zipPath, $slug, $fromVersion);
+
+        $this->progress?->stage('compatibility');
+
+        array_push($result['blocking'], ...$this->unfinishedInstallProblems());
+        array_push($result['blocking'], ...self::pluginRequirementProblems($result['requires_at_least'], $result['requires_php'], $this->installedVersion(), PHP_VERSION, 'theme'));
+        array_push($result['blocking'], ...$this->backupLocationProblems());
+
+        array_push($result['warnings'], ...$this->activeUserProblems($currentUserId));
+        array_push($result['warnings'], ...$this->modifiedCoreFileProblems(self::THEMES_PATH_PREFIX . $slug . '/'));
+
+        $this->progress?->complete(
+            $result['blocking'] === [],
+            $result['blocking'] === [] ? 'Ready to install.' : 'Please resolve the issues below and try again.',
+        );
+
+        if ($result['blocking'] === []) {
+            file_put_contents(rtrim($result['staging_path'], '/') . '/' . self::PENDING_FILE, json_encode([
+                'scope' => 'theme',
+                'theme_slug' => $slug,
+                'theme_name' => $result['name'],
+                'from_version' => $result['from_version'],
+                'to_version' => $result['to_version'],
+                'root_prefix' => $result['root_prefix'],
+                'source' => 'theme',
                 'created_at' => time(),
             ], JSON_THROW_ON_ERROR));
         } else {
@@ -552,7 +673,7 @@ final class UpdateService
         $pending = $this->readPending($stagingPath);
 
         if ($pending['scope'] !== 'core') {
-            throw new RuntimeException('Plugin updates must be installed through the staged update pipeline.');
+            throw new RuntimeException('Plugin and theme updates must be installed through the staged update pipeline.');
         }
 
         $fromVersion = $pending['from_version'];
@@ -652,7 +773,9 @@ final class UpdateService
                 'scope' => $pending['scope'],
                 'plugin_slug' => $pending['plugin_slug'],
                 'plugin_name' => $pending['plugin_name'],
-                // Backups always capture the whole core tree, so they're labelled with the core version even for a plugin update.
+                'theme_slug' => $pending['theme_slug'],
+                'theme_name' => $pending['theme_name'],
+                // Backups always capture the whole core tree, so they're labelled with the core version even for a plugin or theme update.
                 'backup_version' => $this->installedVersion(),
                 'from_version' => $pending['from_version'],
                 'to_version' => $pending['to_version'],
@@ -706,7 +829,12 @@ final class UpdateService
         $this->validateToken($token);
         $state = $this->readInstallState($token);
         $stagingPath = $this->stagingPathFor($token);
-        $pluginSlug = ($state['scope'] ?? 'core') === 'plugin' ? (string) $state['plugin_slug'] : null;
+        $scope = (string) ($state['scope'] ?? 'core');
+        $componentSlug = match ($scope) {
+            'plugin' => (string) $state['plugin_slug'],
+            'theme' => (string) $state['theme_slug'],
+            default => null,
+        };
         $backupVersion = (string) ($state['backup_version'] ?? $state['from_version']);
 
         try {
@@ -737,9 +865,9 @@ final class UpdateService
                     break;
 
                 case 'apply_files':
-                    if ($pluginSlug !== null) {
-                        $state['effective_core_paths'] = $this->applyPluginFilesStage($stagingPath, $state['root_prefix'], $pluginSlug);
-                        // A plugin package carries no migrations — its schema ships with core, which is what Requires at least guards.
+                    if ($componentSlug !== null) {
+                        $state['effective_core_paths'] = $this->applyComponentFilesStage($stagingPath, $state['root_prefix'], $scope, $componentSlug);
+                        // A plugin or theme package carries no migrations — its schema ships with core, which is what Requires at least guards.
                         $state['stage'] = 'clear_cache';
                         $this->progress?->stage('clear_cache');
                     } else {
@@ -758,8 +886,8 @@ final class UpdateService
                     break;
 
                 case 'clear_cache':
-                    if ($pluginSlug !== null) {
-                        $this->clearCacheAndVerifyPluginStage($pluginSlug, $state['to_version']);
+                    if ($componentSlug !== null) {
+                        $this->clearCacheAndVerifyComponentStage($scope, $componentSlug, $state['to_version']);
                     } else {
                         $this->clearCacheAndVerifyStage($state['to_version']);
                     }
@@ -770,14 +898,15 @@ final class UpdateService
                     break;
 
                 case 'cleanup':
-                    if ($pluginSlug !== null) {
-                        $this->cleanupPluginStage($pluginSlug, $state['to_version'], $stagingPath);
+                    if ($componentSlug !== null) {
+                        $this->cleanupComponentStage($scope, $componentSlug, $state['to_version'], $stagingPath);
                     } else {
                         $this->cleanupStage($state['effective_core_paths'] ?? [], $stagingPath);
                     }
 
-                    $message = $pluginSlug !== null
-                        ? "Successfully updated {$state['plugin_name']} from {$state['from_version']} to {$state['to_version']}."
+                    $componentName = $scope === 'theme' ? ($state['theme_name'] ?? null) : ($state['plugin_name'] ?? null);
+                    $message = $componentSlug !== null
+                        ? "Successfully updated {$componentName} from {$state['from_version']} to {$state['to_version']}."
                         : "Successfully updated from {$state['from_version']} to {$state['to_version']}.";
                     $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], UpdateStatus::Success, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
                     $this->fireAfterUpdateHook($state, UpdateStatus::Success);
@@ -923,21 +1052,24 @@ final class UpdateService
      * pipeline's current stage — for the admin view's GET render between
      * continueInstall() calls. Never advances anything.
      *
-     * @return array{stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string}
+     * @return array{stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string, theme_slug: ?string, theme_name: ?string}
      */
     public function installProgress(string $token): array
     {
         $this->validateToken($token);
         $state = $this->readInstallState($token);
         $isPlugin = ($state['scope'] ?? 'core') === 'plugin';
+        $isTheme = ($state['scope'] ?? 'core') === 'theme';
 
         return [
             'stage' => (string) $state['stage'],
             'from_version' => (string) $state['from_version'],
             'to_version' => (string) $state['to_version'],
-            'scope' => $isPlugin ? 'plugin' : 'core',
+            'scope' => $isPlugin ? 'plugin' : ($isTheme ? 'theme' : 'core'),
             'plugin_slug' => $isPlugin ? (string) $state['plugin_slug'] : null,
             'plugin_name' => $isPlugin ? (string) $state['plugin_name'] : null,
+            'theme_slug' => $isTheme ? (string) $state['theme_slug'] : null,
+            'theme_name' => $isTheme ? (string) $state['theme_name'] : null,
         ];
     }
 
@@ -946,7 +1078,7 @@ final class UpdateService
      * result — normally the one running right now, or one abandoned when a
      * browser tab closed or a request timed out partway through.
      *
-     * @return array{token: string, stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string, updated_at: int}|null
+     * @return array{token: string, stage: string, from_version: string, to_version: string, scope: string, plugin_slug: ?string, plugin_name: ?string, theme_slug: ?string, theme_name: ?string, updated_at: int}|null
      */
     public function unfinishedInstall(): ?array
     {
@@ -1036,8 +1168,8 @@ final class UpdateService
     }
 
     /**
-     * Plugin updates get their own hooks: firing the core ones with plugin
-     * version numbers would mislead every listener expecting core versions.
+     * Plugin and theme updates get their own hooks: firing the core ones with
+     * a component's version numbers would mislead every listener expecting core versions.
      *
      * @param array<string, mixed> $state
      */
@@ -1045,6 +1177,12 @@ final class UpdateService
     {
         if (($state['scope'] ?? 'core') === 'plugin') {
             $this->hooks->doAction('lumora_press_before_plugin_update', $state['plugin_slug'], $state['from_version'], $state['to_version']);
+
+            return;
+        }
+
+        if (($state['scope'] ?? 'core') === 'theme') {
+            $this->hooks->doAction('lumora_press_before_theme_update', $state['theme_slug'], $state['from_version'], $state['to_version']);
 
             return;
         }
@@ -1059,6 +1197,12 @@ final class UpdateService
     {
         if (($state['scope'] ?? 'core') === 'plugin') {
             $this->hooks->doAction('lumora_press_after_plugin_update', $state['plugin_slug'], $state['from_version'], $state['to_version'], $status);
+
+            return;
+        }
+
+        if (($state['scope'] ?? 'core') === 'theme') {
+            $this->hooks->doAction('lumora_press_after_theme_update', $state['theme_slug'], $state['from_version'], $state['to_version'], $status);
 
             return;
         }
@@ -1132,26 +1276,27 @@ final class UpdateService
     }
 
     /**
-     * Replaces one bundled plugin's directory wholesale, the same way
-     * applyFilesStage() replaces each corePath.
+     * Replaces one bundled plugin's or theme's directory wholesale, the same
+     * way applyFilesStage() replaces each corePath.
      *
      * @return array<int, string> the single path overlaid
      */
-    private function applyPluginFilesStage(string $stagingPath, string $rootPrefix, string $slug): array
+    private function applyComponentFilesStage(string $stagingPath, string $rootPrefix, string $scope, string $slug): array
     {
         $source = rtrim($stagingPath . '/' . $rootPrefix, '/');
+        $mainFileName = $scope === 'theme' ? 'style.css' : $slug . '.php';
 
-        if (!is_file($source . '/' . $slug . '.php')) {
-            throw new RuntimeException('The staged plugin package is missing its main file.');
+        if (!is_file($source . '/' . $mainFileName)) {
+            throw new RuntimeException("The staged {$scope} package is missing its main file.");
         }
 
-        $relativePath = self::PLUGINS_PATH_PREFIX . $slug;
+        $relativePath = $this->componentRelativePath($scope, $slug);
         $this->overlayPath($source, rtrim($this->installRoot, '/') . '/' . $relativePath);
 
         return [$relativePath];
     }
 
-    private function clearCacheAndVerifyPluginStage(string $slug, string $toVersion): void
+    private function clearCacheAndVerifyComponentStage(string $scope, string $slug, string $toVersion): void
     {
         if (function_exists('opcache_reset')) {
             opcache_reset();
@@ -1159,18 +1304,21 @@ final class UpdateService
 
         $this->clearCache();
 
-        if (PluginRegistry::parseHeader($this->pluginMainFile($slug))['version'] !== $toVersion) {
-            throw new RuntimeException('The installed plugin version did not match the update package after applying it.');
+        $mainFile = $this->componentMainFile($scope, $slug);
+        $installed = $scope === 'theme' ? ThemeRegistry::parseHeader($mainFile)['version'] : PluginRegistry::parseHeader($mainFile)['version'];
+
+        if ($installed !== $toVersion) {
+            throw new RuntimeException("The installed {$scope} version did not match the update package after applying it.");
         }
     }
 
     /**
-     * Refreshes only this plugin's slice of the checksum baseline — the
+     * Refreshes only this component's slice of the checksum baseline — the
      * rest of core wasn't touched, so its recorded checksums stay valid.
      */
-    private function cleanupPluginStage(string $slug, string $toVersion, string $stagingPath): void
+    private function cleanupComponentStage(string $scope, string $slug, string $toVersion, string $stagingPath): void
     {
-        $relativePath = self::PLUGINS_PATH_PREFIX . $slug;
+        $relativePath = $this->componentRelativePath($scope, $slug);
 
         if ($this->checksums !== null) {
             $prefix = $relativePath . '/';
@@ -1183,14 +1331,19 @@ final class UpdateService
             $this->checksums->write(array_merge($kept, $this->checksums->computeForCorePaths([$relativePath])));
         }
 
-        $this->pluginVersions?->record($slug, $toVersion);
+        ($scope === 'theme' ? $this->themeVersions : $this->pluginVersions)?->record($slug, $toVersion);
 
         $this->removeDirectory($stagingPath);
     }
 
-    private function pluginMainFile(string $slug): string
+    private function componentRelativePath(string $scope, string $slug): string
     {
-        return rtrim($this->installRoot, '/') . '/' . self::PLUGINS_PATH_PREFIX . $slug . '/' . $slug . '.php';
+        return ($scope === 'theme' ? self::THEMES_PATH_PREFIX : self::PLUGINS_PATH_PREFIX) . $slug;
+    }
+
+    private function componentMainFile(string $scope, string $slug): string
+    {
+        return rtrim($this->installRoot, '/') . '/' . $this->componentRelativePath($scope, $slug) . '/' . ($scope === 'theme' ? 'style.css' : $slug . '.php');
     }
 
     private function migrateStage(): void
@@ -1259,8 +1412,9 @@ final class UpdateService
         $this->removeObsoleteCorePaths($effectiveCorePaths);
         $this->checksums?->write($this->checksums->computeForCorePaths($effectiveCorePaths));
 
-        // A core release can carry newer bundled plugins too, so their recorded versions must follow.
+        // A core release can carry newer bundled plugins and themes too, so their recorded versions must follow.
         $this->installedPluginVersions();
+        $this->installedThemeVersions();
 
         $this->removeDirectory($stagingPath);
     }
@@ -1712,6 +1866,8 @@ final class UpdateService
      *     scope: string,
      *     plugin_slug: ?string,
      *     plugin_name: ?string,
+     *     theme_slug: ?string,
+     *     theme_name: ?string,
      * }
      */
     private function readPending(string $stagingPath): array
@@ -1738,8 +1894,15 @@ final class UpdateService
         $isPlugin = ($pending['scope'] ?? 'core') === 'plugin';
         $pluginSlug = $isPlugin && is_string($pending['plugin_slug'] ?? null) ? $pending['plugin_slug'] : null;
 
+        $isTheme = ($pending['scope'] ?? 'core') === 'theme';
+        $themeSlug = $isTheme && is_string($pending['theme_slug'] ?? null) ? $pending['theme_slug'] : null;
+
         // Re-checked here since the slug ends up in a filesystem path during apply_files.
         if ($isPlugin && ($pluginSlug === null || !$this->isBundledPlugin($pluginSlug))) {
+            throw new RuntimeException('The pending update record is corrupt. Please start the update again.');
+        }
+
+        if ($isTheme && ($themeSlug === null || !$this->isBundledTheme($themeSlug))) {
             throw new RuntimeException('The pending update record is corrupt. Please start the update again.');
         }
 
@@ -1749,9 +1912,11 @@ final class UpdateService
             'root_prefix' => (string) $pending['root_prefix'],
             'source' => is_string($pending['source'] ?? null) ? $pending['source'] : 'manual',
             'created_at' => (int) $pending['created_at'],
-            'scope' => $isPlugin ? 'plugin' : 'core',
+            'scope' => $isPlugin ? 'plugin' : ($isTheme ? 'theme' : 'core'),
             'plugin_slug' => $pluginSlug,
             'plugin_name' => $isPlugin ? (string) ($pending['plugin_name'] ?? $pluginSlug) : null,
+            'theme_slug' => $themeSlug,
+            'theme_name' => $isTheme ? (string) ($pending['theme_name'] ?? $themeSlug) : null,
         ];
     }
 

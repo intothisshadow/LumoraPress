@@ -533,15 +533,19 @@ $activeTab = ($checkResult !== null && ($checkResult['source'] ?? 'manual') === 
 <?php if ($unfinishedInstall !== null): ?>
     <?php
     $unfinishedIsPlugin = $unfinishedInstall['scope'] === 'plugin';
-    $unfinishedResumeUrl = $unfinishedIsPlugin
-        ? admin_url('plugins') . '?plugin_update_token=' . urlencode($unfinishedInstall['token'])
-        : admin_url('maintenance/updates') . '?update_token=' . urlencode($unfinishedInstall['token']);
+    $unfinishedIsTheme = $unfinishedInstall['scope'] === 'theme';
+    $unfinishedComponentName = $unfinishedIsTheme ? (string) $unfinishedInstall['theme_name'] : (string) $unfinishedInstall['plugin_name'];
+    $unfinishedResumeUrl = match ($unfinishedInstall['scope']) {
+        'plugin' => admin_url('plugins') . '?plugin_update_token=' . urlencode($unfinishedInstall['token']),
+        'theme' => admin_url('appearance/themes') . '?theme_update_token=' . urlencode($unfinishedInstall['token']),
+        default => admin_url('maintenance/updates') . '?update_token=' . urlencode($unfinishedInstall['token']),
+    };
     $unfinishedFilesApplied = in_array($unfinishedInstall['stage'], ['apply_files', 'migrate', 'clear_cache', 'cleanup'], true);
     ?>
     <section class="lp-admin__panel lp-update__unfinished">
         <h2>An Update Did Not Finish</h2>
         <p>
-            The update <?= $unfinishedIsPlugin ? 'of <strong>' . esc_html((string) $unfinishedInstall['plugin_name']) . '</strong> ' : '' ?>from
+            The update <?= $unfinishedIsPlugin || $unfinishedIsTheme ? 'of <strong>' . esc_html($unfinishedComponentName) . '</strong> ' : '' ?>from
             <strong><?= esc_html($unfinishedInstall['from_version']) ?></strong> to
             <strong><?= esc_html($unfinishedInstall['to_version']) ?></strong> stopped at
             &ldquo;<?= esc_html(rtrim($updateStageLabels[$unfinishedInstall['stage']] ?? $unfinishedInstall['stage'], '…')) ?>&rdquo;

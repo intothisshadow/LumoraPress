@@ -114,6 +114,8 @@ Administrators can update Lumora Press entirely from within the admin panel — 
 
 The plugins bundled with Lumora Press can also be updated on their own, without updating Lumora Press itself. When a release includes a newer version of one, the **Plugins** screen marks it "Update available" with an **Update** button (use **Check for Updates** there, or on Maintenance &rsaquo; Updates, to look for new releases). The same backup, checks, and automatic rollback apply, but only that plugin's folder is replaced. If the new plugin version needs a newer Lumora Press than you're running, it's refused until you update Lumora Press first.
 
+The same applies to the theme bundled with Lumora Press (Lumora Classic): **Appearance** &rsaquo; **Themes** shows an "Update available" badge and an **Update** button when a release includes a newer version of it, with a **Check for Updates** button there too. Only that theme's folder is replaced, and your Theme Options are kept. A theme version that needs a newer Lumora Press (or PHP) than you're running is refused. Themes you installed yourself are never touched; update those with a new ZIP as before.
+
 Update history, backup management, and full mechanics are documented in [`docs/UPDATES.md`](docs/UPDATES.md).
 
 ## Moving Your Content

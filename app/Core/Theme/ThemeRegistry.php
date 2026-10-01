@@ -99,7 +99,7 @@ final class ThemeRegistry
 
     private function buildInfo(string $slug, string $dir): ThemeInfo
     {
-        $header = $this->parseHeader($dir . '/style.css');
+        $header = self::parseHeader($dir . '/style.css');
         $screenshots = $this->findScreenshots($slug, $dir);
         $tags = $header['tags'] === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $header['tags']))));
 
@@ -132,7 +132,7 @@ final class ThemeRegistry
      *     requiresAtLeast: string, requiresPhp: string, tags: string
      * }
      */
-    private function parseHeader(string $styleCssPath): array
+    public static function parseHeader(string $styleCssPath): array
     {
         $result = [
             'name' => '', 'description' => '', 'version' => '', 'author' => '',
