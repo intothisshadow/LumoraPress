@@ -6,6 +6,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Lumora Press export with uploaded files (LP-189) is now built in steps, with a progress bar showing how many files have been added, instead of in one long request that could time out. Without JavaScript it still builds in one request.
+- A format can opt in to stepped building by implementing `StagedExportFormatWriter` (see "Content Export API" in `docs/DEVELOPER-APIS.md`).
 - Bulk thumbnail regeneration (LP-188) now shows its progress in place instead of reloading the Thumbnails page after every batch of 10 images.
 - Lumora Classic: a post or page with no comments no longer shows a "0 Comments" heading above the comment form, and the "Comments are closed." notice is gone. When comments are closed and there are none, no comments area is shown at all; when they are closed but there are some, the existing comments still show.
 - Appearance &rsaquo; Customize: the options a theme adds for itself (for Lumora Classic: homepage layout and the Google Fonts switch) now have their own tab after Footer, named for the theme, instead of sitting at the bottom of the Body tab.

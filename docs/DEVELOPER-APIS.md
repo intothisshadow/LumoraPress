@@ -502,6 +502,7 @@ add_filter('export_formats', static function (array $writers): array {
 });
 ```
 
+- **Building in steps.** A format that bundles files can also implement [`StagedExportFormatWriter`](../app/Services/Export/StagedExportFormatWriter.php): `begin()` starts the file and returns a JSON-safe state (including `total`, `cursor`, and `fileName`), `addBatch()` does the next batch and returns the updated state, and `finish()` returns the finished path and sets `notices()`. When "Include uploaded files" is ticked, the Export screen calls these across several requests and shows progress in place; a format without the interface is built by one `write()` call. The state is kept in a file under `storage/exports/` between requests.
 - **The Lumora Press format.** [`ExportManifest`](../app/Services/Export/ExportManifest.php) defines `manifest.json` (`format: "lumora-press-content-export"`, `format_version: 1`) and is the only code that encodes or decodes it; [`LumoraPressZipWriter`](../app/Services/Export/LumoraPressZipWriter.php) stores it at the ZIP root with media under `uploads/{relative path}`. The importer ([`LumoraPressExportSource`](../app/Services/Import/LumoraPressExportSource.php) + [`LumoraPressImportService`](../app/Services/Import/LumoraPressImportService.php)) records everything in `ContentImportRegistry` under the source `lumora_press_export`, with external ids of the form `{site key}:{id}` (the key is derived from the exporting site's URL).
 
 ## Plugin structure & lifecycle

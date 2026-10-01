@@ -18,8 +18,10 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Services\ContentExportService;
 use LumoraPress\Services\Export\ExportFormatRegistry;
+use LumoraPress\Services\Export\ExportFormatWriter;
 use LumoraPress\Services\Export\ExportOptions;
 use LumoraPress\Services\Export\LumoraPressZipWriter;
+use LumoraPress\Services\Export\StagedExportFormatWriter;
 use LumoraPress\Services\Export\WordPressXmlWriter;
 
 if (!isset($kernel)) {
@@ -72,6 +74,109 @@ if (is_string($_GET['download'] ?? null) && $pendingExport !== null && hash_equa
 $exportError = null;
 $selectedFormat = is_string($_POST['format'] ?? null) && isset($exportFormats[$_POST['format']]) ? $_POST['format'] : (string) array_key_first($exportFormats);
 
+// export-continue.js builds the file in steps and marks its requests with
+// this header; they get JSON back. A plain form submit (no JavaScript)
+// still builds the whole file in one request and redirects.
+$isAjaxRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+$respondJson = static function (array $payload): never {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode($payload);
+    exit;
+};
+
+// A step in progress keeps its state in a file next to the partly built
+// export (so the one-hour cleanup above removes both if it's abandoned);
+// the session only holds the token that names it.
+$jobFile = static fn (string $token): string => $exportDirectory . '/' . $token . '.job.json';
+
+$discardJob = static function () use ($jobFile): void {
+    $job = is_array($_SESSION['lp_content_export_job'] ?? null) ? $_SESSION['lp_content_export_job'] : null;
+    unset($_SESSION['lp_content_export_job']);
+
+    if ($job === null || preg_match('/^[a-f0-9]{32}$/', (string) ($job['token'] ?? '')) !== 1) {
+        return;
+    }
+
+    $state = is_file($jobFile($job['token'])) ? json_decode((string) file_get_contents($jobFile($job['token'])), true) : null;
+
+    if (is_array($state) && is_string($state['path'] ?? null) && is_file($state['path'])) {
+        unlink($state['path']);
+    }
+
+    if (is_file($jobFile($job['token']))) {
+        unlink($jobFile($job['token']));
+    }
+};
+
+// Makes a finished file the one pending download, replacing (and deleting) any earlier one never downloaded.
+$publishExport = static function (string $path, string $fileName, ExportFormatWriter $writer) use (&$pendingExport): void {
+    if ($pendingExport !== null && is_file((string) $pendingExport['path'])) {
+        unlink((string) $pendingExport['path']);
+    }
+
+    $_SESSION['lp_content_export'] = [
+        'token' => bin2hex(random_bytes(16)),
+        'path' => $path,
+        'fileName' => $fileName,
+        'mimeType' => $writer->mimeType(),
+        'label' => $writer->label(),
+        'size' => (int) filesize($path),
+        'notices' => $writer->notices(),
+    ];
+};
+
+$progressPayload = static fn (array $state): array => [
+    'done' => false,
+    'processed' => (int) $state['cursor'],
+    'total' => (int) $state['total'],
+    'percent' => (int) $state['total'] > 0 ? (int) round(min(100, (int) $state['cursor'] / (int) $state['total'] * 100)) : 100,
+    // Single-use token for the script's next request.
+    'csrf_token' => Csrf::token('export_continue'),
+];
+
+if ($isAjaxRequest && ($_POST['form'] ?? null) === 'export_continue') {
+    $job = is_array($_SESSION['lp_content_export_job'] ?? null) ? $_SESSION['lp_content_export_job'] : null;
+    $writer = $job !== null ? ($exportFormats[(string) ($job['format'] ?? '')] ?? null) : null;
+    $token = $job !== null ? (string) ($job['token'] ?? '') : '';
+
+    if (
+        !Csrf::verify('export_continue', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)
+        || !$writer instanceof StagedExportFormatWriter
+        || preg_match('/^[a-f0-9]{32}$/', $token) !== 1
+        || !is_file($jobFile($token))
+    ) {
+        $discardJob();
+        $respondJson(['error' => 'The export was interrupted. Start it again.']);
+    }
+
+    set_time_limit(0);
+
+    try {
+        $state = json_decode((string) file_get_contents($jobFile($token)), true, 512, JSON_THROW_ON_ERROR);
+        $state = $writer->addBatch($state);
+
+        if ((int) $state['cursor'] >= (int) $state['total']) {
+            $path = $writer->finish($state);
+            unlink($jobFile($token));
+            unset($_SESSION['lp_content_export_job']);
+            $publishExport($path, (string) $state['fileName'], $writer);
+
+            $respondJson(['done' => true, 'redirect' => admin_url('maintenance/export') . '?generated=1']);
+        }
+
+        file_put_contents($jobFile($token), json_encode($state, JSON_THROW_ON_ERROR), LOCK_EX);
+        $respondJson($progressPayload($state));
+    } catch (\RuntimeException | \JsonException $exception) {
+        $discardJob();
+        $respondJson(['error' => 'The export could not be created: ' . $exception->getMessage()]);
+    }
+}
+
 if (($_POST['form'] ?? null) === 'export_content' && Csrf::verify('export_content', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $writer = $exportFormats[$selectedFormat] ?? null;
     $requestedTypes = is_array($_POST['content_types'] ?? null) ? array_values(array_filter($_POST['content_types'], 'is_string')) : [];
@@ -81,7 +186,7 @@ if (($_POST['form'] ?? null) === 'export_content' && Csrf::verify('export_conten
     } elseif ($requestedTypes === []) {
         $exportError = 'Choose at least one type of content to export.';
     } else {
-        // A large site's export is built in one request.
+        // Without JavaScript a large site's export is built in one request.
         set_time_limit(0);
 
         try {
@@ -103,31 +208,43 @@ if (($_POST['form'] ?? null) === 'export_content' && Csrf::verify('export_conten
             );
             $options = (new ExportOptions($requestedTypes, isset($_POST['include_uploads'])))->restrictedTo($writer);
             $content = $exportService->build($options);
-            $path = $writer->write($content, $options);
+            $discardJob();
 
-            // Replaces (and deletes) any earlier export this session never downloaded.
-            if ($pendingExport !== null && is_file((string) $pendingExport['path'])) {
-                unlink((string) $pendingExport['path']);
+            // Uploaded files are added in batches by the script; everything else builds in this request.
+            if ($isAjaxRequest && $writer instanceof StagedExportFormatWriter && $options->includeUploads) {
+                $state = $writer->begin($content, $options);
+                $jobToken = bin2hex(random_bytes(16));
+                file_put_contents($jobFile($jobToken), json_encode($state, JSON_THROW_ON_ERROR), LOCK_EX);
+                $_SESSION['lp_content_export_job'] = ['token' => $jobToken, 'format' => $writer->id()];
+
+                $respondJson($progressPayload($state));
             }
 
-            $_SESSION['lp_content_export'] = [
-                'token' => bin2hex(random_bytes(16)),
-                'path' => $path,
-                'fileName' => $writer->downloadFileName($content),
-                'mimeType' => $writer->mimeType(),
-                'label' => $writer->label(),
-                'size' => (int) filesize($path),
-                'notices' => $writer->notices(),
-            ];
+            $path = $writer->write($content, $options);
+            $publishExport($path, $writer->downloadFileName($content), $writer);
+
+            if ($isAjaxRequest) {
+                $respondJson(['done' => true, 'redirect' => admin_url('maintenance/export') . '?generated=1']);
+            }
 
             header('Location: ' . admin_url('maintenance/export') . '?generated=1');
             exit;
-        } catch (\RuntimeException $exception) {
+        } catch (\RuntimeException | \JsonException $exception) {
             // Only the export classes' own, user-facing failures are shown;
             // anything unexpected reaches the global handler, which logs it.
             $exportError = 'The export could not be created: ' . $exception->getMessage();
         }
     }
+
+    if ($isAjaxRequest && $exportError !== null) {
+        // The form's own single-use token was just spent, so hand back a fresh one.
+        $respondJson(['error' => $exportError, 'form_csrf_token' => Csrf::token('export_content')]);
+    }
+}
+
+if ($isAjaxRequest && ($_POST['form'] ?? null) === 'export_content') {
+    // Only reachable when the form's security token didn't verify.
+    $respondJson(['error' => 'Your session expired or the request could not be verified. Reload the page and try again.', 'form_csrf_token' => Csrf::token('export_content')]);
 }
 
 $contentTypeLabels = [
@@ -254,4 +371,12 @@ $showGenerated = isset($_GET['generated']) && $pendingExport !== null;
 
         <button type="submit" class="lp-button lp-button--primary">Create Export File</button>
     </form>
+
+    <div class="lp-export-progress" data-lp-export-progress hidden>
+        <p data-lp-export-status role="status"></p>
+        <div class="lp-thumbnails__progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" data-lp-export-bar-wrap>
+            <div class="lp-thumbnails__progress-bar" data-lp-export-bar></div>
+        </div>
+    </div>
+    <div class="lp-alert lp-alert--error" data-lp-export-error role="alert" hidden></div>
 </section>
