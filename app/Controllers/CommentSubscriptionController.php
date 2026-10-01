@@ -23,6 +23,7 @@ use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
 use LumoraPress\Models\User;
 use LumoraPress\Services\CommentFollowupService;
+use LumoraPress\Services\CommentModerationService;
 use LumoraPress\Services\CommentSubscriptionService;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
@@ -50,6 +51,7 @@ final class CommentSubscriptionController
         private readonly PageService $pages,
         private readonly Auth $auth,
         private readonly SiteController $site,
+        private readonly CommentModerationService $commentModeration,
     ) {
     }
 
@@ -137,6 +139,15 @@ final class CommentSubscriptionController
         }
 
         if ($action === 'watch') {
+            $content = $contentType === 'page' ? $this->pages->findById($contentId) : $this->posts->findById($contentId);
+
+            // A thread that no longer takes comments has nothing to notify about.
+            if ($content === null || !$this->commentsOpen($content)) {
+                $this->redirect($url . '#comments');
+
+                return;
+            }
+
             $this->subscriptions->subscribe($contentType, $contentId, $user->email, $user->id, true);
             $result = 'watching';
         } else {
@@ -190,11 +201,12 @@ final class CommentSubscriptionController
         $watch = null;
 
         if ($user !== null && $manage === null) {
-            $watch = [
-                'watching' => ($this->subscriptions->findFor($contentType, $content->id, $user->email)['status'] ?? null) === CommentSubscriptionService::STATUS_ACTIVE,
-                'contentType' => $contentType,
-                'contentId' => $content->id,
-            ];
+            $watching = ($this->subscriptions->findFor($contentType, $content->id, $user->email)['status'] ?? null) === CommentSubscriptionService::STATUS_ACTIVE;
+
+            // Closed threads only keep the control for someone already watching, so they can stop.
+            if ($watching || $this->commentsOpen($content)) {
+                $watch = ['watching' => $watching, 'contentType' => $contentType, 'contentId' => $content->id];
+            }
         }
 
         return ['notice' => $notice, 'manage' => $manage, 'watch' => $watch, 'formAction' => home_url('comment-subscription')];
@@ -227,6 +239,13 @@ final class CommentSubscriptionController
         $post = ($subscription['post_id'] ?? null) !== null ? $this->posts->findById((int) $subscription['post_id']) : null;
 
         return $post !== null && $post->isPubliclyVisible() ? post_permalink($post) : null;
+    }
+
+    private function commentsOpen(Post|Page $content): bool
+    {
+        return $content instanceof Page
+            ? $this->commentModeration->commentsOpenForPage($content)
+            : $this->commentModeration->commentsOpenFor($content);
     }
 
     private function redirect(string $url): void

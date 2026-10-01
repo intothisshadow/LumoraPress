@@ -842,7 +842,7 @@ $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments
 // fire comment_status_changed, are covered by the same code path.
 $commentSubscriptions = new CommentSubscriptionService($database, $tablePrefix);
 $commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, new NotificationService($database, $tablePrefix, $hooks));
-$commentSubscriptionController = new CommentSubscriptionController($commentSubscriptions, $commentFollowups, $posts, $pages, $auth, $site);
+$commentSubscriptionController = new CommentSubscriptionController($commentSubscriptions, $commentFollowups, $posts, $pages, $auth, $site, $commentModeration);
 
 // Subscribing must happen before onCommentPosted() so an immediately
 // approved guest comment sends its confirmation email in the same request.
