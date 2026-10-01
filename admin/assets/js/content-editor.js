@@ -309,6 +309,29 @@
         return (sizes.small || sizes.medium || sizes.large || sizes.full || { url: item.url }).url;
     }
 
+    // Restores a <select>'s last-used value (when it is still one of its
+    // options) and remembers each change. Per-browser convenience only, so
+    // storage being unavailable just means the default is used.
+    function rememberSelectChoice(select, storageKey) {
+        try {
+            var saved = window.localStorage.getItem(storageKey);
+
+            if (saved !== null && Array.prototype.some.call(select.options, function (option) { return option.value === saved; })) {
+                select.value = saved;
+            }
+        } catch (error) {
+            // Storage blocked; keep the default.
+        }
+
+        select.addEventListener('change', function () {
+            try {
+                window.localStorage.setItem(storageKey, select.value);
+            } catch (error) {
+                // Storage blocked; nothing to remember.
+            }
+        });
+    }
+
     function openMediaPicker(container, onSelect) {
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
         var pickerUrl = container.dataset.uploadUrl;
@@ -535,6 +558,7 @@
 
             sizeField.appendChild(sizeLabelEl);
             sizeField.appendChild(sizeSelect);
+            rememberSelectChoice(sizeSelect, 'lp-editor-image-size');
 
             var linkField = document.createElement('p');
             linkField.className = 'lp-field';
@@ -551,6 +575,7 @@
 
             linkField.appendChild(linkLabelEl);
             linkField.appendChild(linkSelect);
+            rememberSelectChoice(linkSelect, 'lp-editor-image-link');
 
             var alignField = document.createElement('p');
             alignField.className = 'lp-field';
@@ -1094,6 +1119,7 @@
 
         sizeField.appendChild(sizeLabelEl);
         sizeField.appendChild(sizeSelect);
+        rememberSelectChoice(sizeSelect, 'lp-editor-folder-size');
 
         var linkField = document.createElement('p');
         linkField.className = 'lp-field';
@@ -1110,6 +1136,7 @@
 
         linkField.appendChild(linkLabelEl);
         linkField.appendChild(linkSelect);
+        rememberSelectChoice(linkSelect, 'lp-editor-folder-link');
 
         var actions = document.createElement('div');
         actions.className = 'lp-editor-media-dialog__settings-actions';

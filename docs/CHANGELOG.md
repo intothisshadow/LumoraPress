@@ -36,6 +36,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- The editor's Insert Image and Insert Folder dialogs remember the Size and Link To you used last in this browser.
+- The "Or link to existing content" list in the Insert Link dialog is taller and shows up to 40 results instead of 20.
 - Faster Markdown editing on long posts (LP-015): the word count and preview refresh after a short pause in typing instead of on every keystroke, and preview images load lazily.
 - Images pasted or dropped into the editor are inserted at the Large size when one exists, instead of the full-size original.
 

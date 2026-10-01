@@ -189,7 +189,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
 
     $linkPickerItems = [];
 
-    foreach ($kernel->posts->paginateForAdmin(1, 15, null, $linkPickerFilters)['posts'] as $resultPost) {
+    foreach ($kernel->posts->paginateForAdmin(1, 25, null, $linkPickerFilters)['posts'] as $resultPost) {
         $linkPickerDate = $resultPost->publishedAt ?? $resultPost->updatedAt;
         $linkPickerItems[] = [
             'title' => $resultPost->title,
@@ -200,7 +200,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
         ];
     }
 
-    foreach ($kernel->pages->paginateForAdmin(1, 15, null, $linkPickerFilters)['pages'] as $resultPage) {
+    foreach ($kernel->pages->paginateForAdmin(1, 25, null, $linkPickerFilters)['pages'] as $resultPage) {
         $linkPickerDate = $resultPage->publishedAt ?? $resultPage->updatedAt;
         $linkPickerItems[] = [
             'title' => $resultPage->title,
@@ -216,7 +216,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     echo json_encode([
         'items' => array_map(
             static fn (array $item): array => ['title' => $item['title'], 'url' => $item['url'], 'type' => $item['type'], 'date' => $item['date']],
-            array_slice($linkPickerItems, 0, 20),
+            array_slice($linkPickerItems, 0, 40),
         ),
         'csrfToken' => Csrf::token('link_picker_query'),
     ]);
