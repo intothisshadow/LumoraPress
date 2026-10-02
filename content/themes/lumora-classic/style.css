@@ -1599,11 +1599,6 @@ a.lp-post-list__comments:focus {
     font-size: 1.1rem;
 }
 
-.lp-comments__closed {
-    color: var(--lp-text-muted);
-    font-style: italic;
-}
-
 .lp-comment-list {
     list-style: none;
     margin: 0 0 2rem;
@@ -2933,6 +2928,11 @@ body.lp-site {
 
 .lp-content--home .lp-main-header {
     margin: 0 0 1.6rem;
+}
+
+/* Archive titles sit directly in .lp-main rather than in a header block. */
+.lp-content--home .lp-main > .lp-page-title {
+    margin-bottom: 1.6rem;
 }
 
 .lp-eyebrow {

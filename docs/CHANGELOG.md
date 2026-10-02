@@ -7,6 +7,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - Maintenance &rsaquo; Updates no longer shows "An Update Did Not Finish" for an old core update that a later successful update has already superseded. The leftover record of the abandoned attempt is now cleared automatically.
+- Lumora Classic: posts on category, tag, author and date archive pages now use the same card layout as the homepage, including its background, instead of a plain list.
 
 ## [0.20.0] — 2026-10-01
 

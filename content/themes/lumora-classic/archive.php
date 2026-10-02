@@ -27,8 +27,12 @@ $archive_image_url ??= null;
 $archive_category ??= null;
 $archive_category_ancestors ??= [];
 $comment_counts ??= [];
+
+// Same wrapper classes as index.php so archive listings get the homepage's card styling.
+$lpHomeLayout = theme_option('lumora_classic_home_layout') === 'classic' ? 'classic' : 'magazine';
+$lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? ' lp-content--thumbnail-above' : '';
 ?>
-<div id="lp-content" class="lp-content lp-layout">
+<div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?><?= esc_attr($lpThumbnailAboveClass) ?> lp-layout">
     <main class="lp-main">
         <?php if ($archive_category !== null): ?>
             <?php the_category_breadcrumbs($archive_category, $archive_category_ancestors); ?>
