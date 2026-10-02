@@ -4,6 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-10-01
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Classic 0.3.0, WordPress Importer 1.1.2, and Downloads 0.2.0. Each can be updated on its own from its screen when a release carries its package.
+
 ### Changed
 
 - Importing a Lumora Press export (LP-190) now runs in short steps, with each stage and a count (for example "Importing posts: 1,200 of 8,400") shown in place, instead of in one long request that could time out. An import that is interrupted can be resumed or cancelled from the Import screen. Without JavaScript it still imports in one request.

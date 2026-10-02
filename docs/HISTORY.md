@@ -16735,3 +16735,578 @@ A Lumora Press export with "Include uploaded files" checked bundles every upload
 - [x] Export screen hint and README/CHANGELOG updated.
 - [x] Unit tests: folder fallback, a bundled file taking precedence, containment (traversal/symlink), an invalid folder, and a native round trip exported without uploads + imported with the folder bringing every media file across.
 - [x] Verified on the dev install.
+
+## 0.20.0 (2026-10-01)
+
+### LP-015. Markdown Editor
+
+**Status:** Complete
+
+### Goal
+
+Provide a modern, distraction-free Markdown editor as the primary writing experience for Lumora Press. The editor should produce clean, portable Markdown while offering conveniences typically found in modern writing applications, making it suitable for bloggers, fansite owners, and technical users alike.
+
+The editor should prioritize speed, keyboard-driven workflows, accessibility, and standards-compliant Markdown.
+
+### Features
+
+1. EasyMDE recommended
+
+### Editor Features
+
+- [x] Integrate EasyMDE as the default Markdown editor
+- [x] Live preview
+- [x] Split editor/preview mode
+- [x] Full-screen editing
+- [x] Autosave drafts
+- [x] Restore unsaved drafts after browser crash
+- [x] Drag-and-drop image upload
+- [x] Paste images directly from the clipboard
+- [x] Insert images from the Media Manager
+- [x] Insert galleries from the Media Manager (the "Insert Folder" toolbar button inserts a `[lumora_folder_gallery]` shortcode)
+- [x] Insert files/documents from the Media Manager (an "Insert File" button in both editors adds a link to a document or archive)
+- [x] Support image captions and alt text (alt text comes from the media item's own alt text, falling back to the filename; the Insert Image step's Caption field writes `![alt](url "Caption"){.caption}`, which renders as a captioned `<figure class="lp-caption">` when the image is a paragraph of its own — 2026-09-28)
+- [x] Table editor (EasyMDE's basic table-skeleton button, not a full grid editor)
+- [x] Task list support
+- [x] Emoji support (optional)
+- [x] Footnotes
+- [x] Table of Contents generation
+- [x] Word count
+- [x] Character count
+- [x] Estimated reading time
+- [x] Keyboard shortcuts reference (a toolbar button opens a dialog listing EasyMDE's shortcuts)
+- [x] Customizable toolbar (`markdown_editor_hidden_buttons` filter)
+- [x] Light and dark editor themes matching the admin interface
+- [x] Side-by-side diff view for revisions (optional) — revisions (LP-017) shipped with a "Compare" view on the post/page editor (`TextDiff`); it's a line-by-line diff rather than two columns
+
+### Lumora Integration
+
+Insert-shortcode-from-the-toolbar: see LP-110, which consolidates this
+with WYSIWYG Editor's (LP-016) identical request now that a real
+shortcode system exists (Font Awesome's `[icon]`, WordPress Importer's
+`[sdm_show_dl_from_category]`, Downloads' `[lumora_downloads]`).
+
+- [x] Media Manager browser integration (image picker only)
+- [x] Theme-aware editor styling
+- [x] Plugin API for adding custom toolbar buttons (`markdown_editor_buttons` filter: declarative wrap-the-selection buttons, no plugin JavaScript because of the admin CSP)
+- [x] Developer hooks for extending the editor (`markdown_html`/`content_html` filters)
+
+#### Markdown Support
+
+- [x] Headings
+- [x] Paragraphs
+- [x] Bold
+- [x] Italic
+- [x] Strikethrough
+- [x] Underline — `++text++` (no native Markdown syntax; mirrors the existing `~~strikethrough~~` marker convention)
+- [x] Font color (fixed palette) — `[text]{.color}` renders `<span class="has-{color}-color">`, matching the WYSIWYG editor's palette; a free-pick color would need an inline `style` attribute, which `HtmlSanitizer` never allows
+- [x] Inline code
+- [x] Fenced code blocks
+- [x] Tables
+- [x] Blockquotes
+- [x] Horizontal rules
+- [x] Ordered lists
+- [x] Unordered lists
+- [x] Task lists
+- [x] Links
+- [x] Images
+- [x] Footnotes (future)
+- [x] Definition lists (`Term` followed by `: definition` lines)
+
+#### Writing Tools
+
+- [x] Keyboard shortcuts
+- [x] Toolbar
+- [x] Drag-and-drop image insertion
+- [x] Paste image upload
+- [x] Automatic image uploads
+- [x] Link insertion
+- [x] Table generator
+- [x] Emoji picker (optional)
+
+#### Content Assistance
+
+- [x] Automatic slug generation (pre-existing, unrelated to this ticket)
+- [x] Reading time estimate
+- [x] Word count
+- [x] Character count
+- [x] Auto-save drafts
+- [x] Restore unsaved changes
+- [x] Spell checking (browser/native)
+
+#### Preview
+
+- [x] Accurate Markdown rendering
+- [x] Theme styling preview (WYSIWYG/TinyMCE loads the active theme's stylesheet into its editing iframe via `content_css`; the Markdown/EasyMDE preview pane uses an admin-styled approximation, not the literal theme CSS)
+- [x] Responsive preview
+- [x] Image rendering
+
+#### Security
+
+- [x] Safe HTML handling
+- [x] HTML sanitization
+- [x] XSS protection
+- [x] Safe link generation
+
+---
+
+### Task List
+
+#### Research
+
+- [x] Evaluate existing Markdown editor libraries
+- [x] Select editor framework
+- [x] Select Markdown parser
+
+#### Backend
+
+- [x] Implement Markdown parser
+- [x] Implement HTML sanitization
+- [x] Implement image upload handling
+- [x] Implement auto-save endpoint (existing posts/pages are autosaved to the server every minute, with a "Load autosave" notice on reopening)
+- [x] Implement preview rendering
+
+#### Editor
+
+- [x] Build Markdown editor UI
+- [x] Implement toolbar
+- [x] Implement live preview
+- [x] Implement split view
+- [x] Implement fullscreen mode
+- [x] Implement distraction-free mode
+- [x] Add keyboard shortcuts
+- [x] Add drag-and-drop uploads
+
+#### Performance
+
+- [x] Optimize live preview rendering (preview of long documents is batched after a pause in typing)
+- [x] Minimize editor latency (textarea sync and word count are batched instead of running on every keystroke)
+- [x] Lazy-load large previews (preview images use `loading="lazy"`)
+- [x] Optimize image handling (pasted/dropped images are inserted at the Large size when one exists)
+
+#### Security
+
+- [x] Sanitize generated HTML
+- [x] Validate uploaded images (reuses MediaService's existing extension/MIME allow-list)
+- [x] Prevent XSS
+- [x] Validate Markdown rendering
+
+#### Testing
+
+- [x] Markdown rendering tests
+- [x] Image upload tests (`PostsControllerTest`: successful upload, missing upload capability, CSRF failure)
+- [x] Auto-save tests (server-side autosave storage is unit-tested; the browser timer was verified by hand)
+- [x] Browser compatibility tests
+- [x] PHP 8.2 compatibility (Docker matrix green, e.g. the v0.18.0 Release run on 2026-09-25)
+- [x] PHP 8.3 compatibility (same as above)
+- [x] PHP 8.4 compatibility (dev environment default; full suite green)
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Document supported Markdown features
+- [x] Document keyboard shortcuts
+
+#### Success Criteria
+
+- [x] The editor provides a fast, distraction-free writing experience.
+- [x] Markdown renders accurately and consistently.
+- [x] Live preview remains responsive even for large documents. (checked by hand with a 400-paragraph post)
+- [x] Generated HTML is secure and standards-compliant.
+
+**Status (2026-07-25): Implemented.** Shared backend (used by both LP-015
+and LP-016) lives under `LumoraPress\Core\Content`: `MarkdownParser`
+(hand-rolled, dependency-free — no Composer/npm per CLAUDE.md — covering
+headings/bold/italic/strikethrough/code/fences/tables/blockquotes/
+hr/lists/task-lists/links/images/footnotes/`[[toc]]`, deliberately escaping
+rather than passing through any raw HTML typed in Markdown source) and
+`HtmlSanitizer` (DOMDocument-based allowlist — the single XSS boundary
+both this ticket and LP-016 share, verified against `<script>`,
+`onerror=`, `javascript:`/`data:`/scheme-relative URLs, and disallowed
+tags). A new `content_format` column (`markdown`/`html`/`plain`,
+migration `0016`) on posts and pages, plus `LumoraPress\Services\
+ContentRenderer` (Kernel service) and a static `ActiveContentRenderer`
+bridge (mirrors `SiteBranding`/`ThemePreview`) for the theme-facing
+`render_content()`/`content_plain_text()` helpers, replace the old
+`nl2br(esc_html($content))` render path everywhere content is shown:
+single/page templates, RSS/Atom feed content, search excerpts, and the
+REST API (`content_format` + rendered `content_html` added to post/page
+responses). Pre-existing rows default to `plain` (identical rendering to
+before this ticket); new content defaults to `markdown`.
+
+EasyMDE and TinyMCE (LP-016) are both loaded from jsDelivr at a pinned
+version — same "CDN, not vendored" precedent
+`admin/assets/js/media-viewer.js` already established for PhotoSwipe —
+gated through a new `add_filter('csp_directives', ...)` registration in
+`include/bootstrap.php` (the app's Content-Security-Policy is same-origin
+by default and explicitly documents this filter as the correct way to
+loosen it; without this, EasyMDE/TinyMCE and PhotoSwipe alike silently
+fail to load — a CSP violation doesn't throw a catchable JS error, so
+this bug is easy to miss without checking the browser console).
+`admin/assets/js/content-editor.js` orchestrates both editors from one
+`data-lp-content-editor` container: initializes the right one for the
+post/page's current `content_format`, keeps the real `<textarea>`
+synced (content still submits even if a CDN library fails to load),
+and drives format-switching (a confirm prompt, then a server round-trip
+to a new `convert_content` JSON action for best-effort Markdown⇄HTML
+conversion — see LP-016). A shared media picker (`<dialog>`, built from
+data already fetched for the page's Featured Image field, no extra
+endpoint) and upload handler (`editor_upload` JSON action, reusing
+`MediaService::upload()`) back both editors' image insertion.
+
+Deferred, with reasons noted inline above: document/file insertion
+and image captions (shortcode insertion later shipped via LP-110;
+folder galleries, audio, and video via their own toolbar buttons), actual syntax-highlighting of code
+blocks (the parser tags `language-x` for a future highlighter to
+consume), a filterable/customizable toolbar, find-and-replace, and
+server-side draft autosave (client-side localStorage autosave covers
+crash recovery already).
+
+**Text and image alignment (LP-016 feature parity), added in a later
+session**: `MarkdownParser` gained a minimal, kramdown-inspired trailing
+marker syntax — Markdown has no native attribute syntax, so this is a
+project-defined convention, not CommonMark. `{.left|center|right|justify}`
+on a heading/paragraph's last line renders the same `has-text-align-*`
+class the WYSIWYG editor's TinyMCE `formats` config produces (see
+LP-016); `{.alignleft|aligncenter|alignright}` directly after image
+syntax (`![alt](url){.aligncenter}`, including inside a linked image)
+renders the same classic-WordPress class LP-016's Insert Media
+"Alignment" step applies. EasyMDE's toolbar gained 4 alignment buttons
+(`content-editor.js`'s `wrapSelectionWithAlignment()`, wrapping the
+current line/selection with the marker, swapping any marker already
+there rather than stacking), and the existing Insert Media button now
+appends the image marker from the shared picker's Alignment select
+(previously ignored in Markdown mode, since it had nothing to do with
+it).
+
+**Underline and fixed-palette font color, added in a later session**:
+`MarkdownParser` gained `++text++` for underline (`<u>`) — no CommonMark
+syntax exists for this, so it mirrors the existing `~~strikethrough~~`
+marker — and `[text]{.color}` for font color, extending the same
+trailing-marker convention alignment already uses to an inline span
+(`<span class="has-{color}-color">`). Only a fixed, hardcoded palette of
+7 color names (red/orange/yellow/green/blue/purple/gray — `MarkdownParser::
+FONT_COLORS`) is recognized; an unlisted name is left as literal text
+rather than ever being interpolated into a class attribute, since
+`HtmlSanitizer` never allows a `style` attribute at all and this is the
+one inline construct that turns author-controlled text into a class
+name. EasyMDE's toolbar gained an Underline button and a Font Color
+button opening a small swatch-grid `<dialog>` (`content-editor.js`'s
+`wrapSelectionWithUnderline()`/`wrapSelectionWithColor()`/
+`openColorPicker()`); TinyMCE's toolbar already had Underline, and
+gained a matching `lumoraFontColor` menu button applying the same
+`has-{color}-color` classes through custom `formats` entries instead of
+its default inline-style `forecolor`. Both editors' swatch palette and
+`content/themes/default/style.css`'s `--lp-color-*` tokens (redefined
+under `prefers-color-scheme: dark` for contrast) share the same 7
+names; `custom themes/duskline` got the equivalent tokens and
+`.has-{color}-color` rules added additively. Blockquote was already
+implemented in both editors before this session (EasyMDE's `quote`
+button, TinyMCE's `blockquote` button) and needed no new work.
+
+---
+
+### LP-162. Independent Per-Plugin Updates for Bundled Plugins
+
+**Status:** Complete
+
+**Implemented 2026-09-25.** `PluginVersionManifest` (`storage/updates/plugin-versions.json`, synced from each plugin's `Version:` header via `UpdateService::installedPluginVersions()`, which also runs at the end of every core update's cleanup stage); `UpdatePackageValidator::validateAndStagePlugin()` (accepts `{slug}/{slug}.php` or `{slug}.php` at the root, extracts into `{staging}/package/` so `pending.json` never travels with the plugin directory, blocks downgrades, shares the archive-safety checks via a new private `openArchive()`); `UpdateService::checkPluginPackage()` + a `scope: plugin` branch through the existing `beginInstall()`/`continueInstall()` (skips the migrate stage, verifies the plugin header instead of `version.php`, refreshes only that plugin's slice of the checksum baseline, logs `source = 'plugin'`, fires new `lumora_press_before/after_plugin_update` hooks instead of the core ones; the synchronous `install()` refuses plugin tokens); `UpdateService::pluginRequirementProblems()` enforces `Requires at least`/`Requires PHP`; `GitHubReleaseProvider` parses `{slug}-v{version}.zip` (+`.sha256`) assets into a `plugins` map, caches it as the `update_last_known_plugins` option, and exposes `cachedPluginUpdates()`/`downloadPluginRelease()`; `PluginRegistry::parseHeader()` is now public static. `build-release.sh` emits plugin ZIPs for bundled plugins whose `Version:` differs from the most recent previous `Releases/LumoraPress-v*.zip` (tested in a scratch copy: bumping only emoji-picker produced only `emoji-picker-v0.1.1.zip`). Plugins screen: status bar with count + "Check for Updates", per-plugin badge + Update button in list/grid/Details, the previously dead "Update Available" filter now works, summary/confirm panel and the fetch-driven progress panel (reuses `update-continue.js` via `id="update-install-continue"`). Deviation from the Design text: the indicator shows for every installed bundled plugin with an update, not only active ones (an inactive plugin's files still matter). Known limit: only the *latest* release's assets are consulted, so a plugin package attached to an older release is invisible once a newer release that doesn't re-attach it ships (a full core update still delivers it).
+
+Browser-verified on the dev install with a simulated cached check result (badge, count, filter, grid card, and the Update click reaching GitHub and cleanly reporting "The latest release does not include an update package for this plugin." against the real v0.18.0 release). The full download → summary → apply path was **not** run on the dev install: it needs a real release carrying a plugin asset, and a real run would also prune the dev install's oldest backup (it already holds five). The pipeline itself is covered end-to-end by two new Integration tests against MariaDB.
+
+Every bundled plugin ships and updates as part of one monolithic core release: `version.php` tracks a single installed version for the whole application, `GitHubReleaseProvider` checks GitHub for exactly one curated ZIP asset (`LumoraPress-v{version}.zip`) per release, and `UpdateService`/`UpdatePackageValidator` apply it as one all-or-nothing operation. A plugin-only fix (like LPP-021's Gallery multi-connection work, or a future one-line bug fix in a single bundled plugin) can't reach an existing install without a full core version bump and the administrator downloading/applying the entire application again. Ariane asked for a way to update just a plugin when core itself hasn't changed.
+
+### Design
+
+The core update pipeline already has the right shape at its lowest layer to build this on: `core-paths.php` lists every bundled plugin as its own independent top-level path entry (`content/plugins/{slug}`), and `UpdateService::overlayPath()`/backup/rollback already operate generically on whatever path list they're given — nothing in that machinery is actually core-specific except the layer above it (one version number, one release asset, one "corePaths" list always meaning "everything"). The plan generalizes that layer rather than rewriting the pipeline:
+
+- **Per-plugin installed-version tracking:** a new small JSON record (`storage/updates/plugin-versions.json`, same fail-safe read/write convention as `UpdateManifest`) mapping `slug => installed version`. Seeded from each plugin's own already-present `Version:` header the first time this ships, so upgrading to this feature needs no migration prompt. Updated whenever a plugin-scoped update installs, and kept in sync whenever a full core update happens to overlay that plugin's directory too (a core release can still legitimately bundle a newer plugin version).
+- **Per-plugin release artifacts:** extend `build-release.sh` to also emit `{slug}-v{version}.zip` + `.sha256` for any bundled plugin whose `Version:` changed since the last release, attached to the *same* GitHub Release the core version ships in (no second tag/release scheme needed) — alongside the existing full `LumoraPress-v{version}.zip`.
+- **`GitHubReleaseProvider`:** extend the existing "read the latest release's `assets` array" logic (already fetched for the curated core asset) to also collect any `{slug}-v{version}.zip`/`.sha256` pairs it finds, returning a `plugins: array<slug, {version, download, sha256}>` alongside today's `latest_version`.
+- **Compatibility gate:** before staging a plugin package, compare its own `Requires at least` header (already parsed by `PluginRegistry`/`PluginInfo` today, but display-only — see `admin/views/plugins.php`'s "Requires Lumora Press X.Y.Z+" line) against the installed core version via `version_compare()`, the same pattern `UpdateService::isDatabaseVersionSupported()` already uses — block the update if core is too old. This is the first real enforcement `requiresAtLeast` gets anywhere in the app.
+- **Scoped apply path:** a new `UpdateService` entry point mirroring `checkUpload()`/`beginInstall()`/`continueInstall()`'s existing staged pipeline, but `resolveEffectiveCorePaths()` returns a single-item list (`['content/plugins/{slug}']`) instead of the full corePaths union, and version bookkeeping reads/writes the new per-plugin manifest instead of `version.php`. Every other stage (files backup, apply, migrate, verify, cleanup, rollback-on-failure) reuses the existing generic implementation unchanged.
+- **Settings › Plugins UI:** each active bundled plugin gets an "Update available (vX.Y.Z)" indicator and button, mirroring Settings › Updates' existing panel — reads from `GitHubReleaseProvider`'s cached plugin-asset list compared against the plugin-versions manifest, and drives the same staged `beginInstall()`/`continueInstall()`-style progress UI, just pointed at the plugin-scoped pipeline above.
+
+### Non-goals / limits (matter enough to state up front)
+
+- Only applies to **bundled** plugins (`core-paths.php`'s existing `content/plugins/{slug}` entries). A user-installed, non-bundled plugin already updates independently today (the administrator replaces its files directly) and needs no change here.
+- Doesn't remove the coupling `Requires at least` already implies — a plugin version that needs a core feature that doesn't exist yet still can't install standalone; the gate gets *enforced* by this ticket, not removed. The payoff is specifically for plugin-only fixes that don't touch core.
+- v1 accepts a full-tree files backup before a plugin-scoped update rather than a plugin-directory-only backup (heavier than strictly necessary, but reuses `UpdateBackupService::backupFiles()` unchanged) — scoping the backup itself to just the one plugin path is a reasonable follow-up, not a blocker for v1.
+
+### Checklist
+
+- [x] `PluginVersionManifest` (or similar): per-plugin installed-version JSON record, seeded from each bundled plugin's `Version:` header, read/write-fail-safe like `UpdateManifest`.
+- [x] `build-release.sh`: emit a `{slug}-v{version}.zip`/`.sha256` pair per bundled plugin whose version changed since the last release, alongside the existing core ZIP.
+- [x] `GitHubReleaseProvider`: parse plugin asset pairs off the latest release's `assets` array into a `plugins` map; cache/expose it the same way `cachedUpdateStatus()` does for core.
+- [x] Enforce `requiresAtLeast` (core version) as a real blocking check on a plugin-scoped update — first real use of that already-parsed header.
+- [x] `UpdateService`: a plugin-scoped staged install pipeline reusing the existing apply/backup/migrate/verify/rollback stages, resolving effective paths to the one plugin directory and bookkeeping against the new per-plugin manifest instead of `version.php`.
+- [x] Settings › Plugins: per-plugin "Update available" indicator + button, driving the scoped pipeline with the same progress-polling UX the core Updates page already has.
+- [x] Unit tests: manifest seeding/read/write, `resolveEffectiveCorePaths()`-equivalent scoping to one plugin path, the `requiresAtLeast` compatibility gate (blocks when core too old, allows when not), `GitHubReleaseProvider`'s plugin-asset parsing.
+- [x] Verify live on the dev install: publish a throwaway GitHub Release carrying both a core asset and a single plugin asset with a bumped `Version:`, confirm Settings › Plugins shows only that plugin as updatable, apply it, confirm only that plugin's directory changed on disk and the per-plugin manifest recorded the new version, and that a plugin-scoped update whose `Requires at least` exceeds the installed core version is correctly blocked. Partly done 2026-09-28 against the throwaway repo `intothisshadow/lumorapress-update-test` (release `v0.19.0`, plugin assets only; local copies in `Update Test Releases/v0.19.0/`): with the dev install's repository pointed at it, the Plugins screen showed exactly the two plugins in the release as updatable; the font-awesome 0.1.1 update downloaded, passed its checksum, installed, and reported success; emoji-picker 0.1.1 with a deliberately wrong `.sha256` was refused ("failed checksum verification") and left untouched. Afterward the dev install was set back to `intothisshadow/LumoraPress` and its `font-awesome.php` restored from source. Finished 2026-09-28 with release `v0.19.1` (core `LumoraPress-v0.19.1.zip` built from `7a114c1`, font-awesome 0.1.2, and emoji-picker 0.1.2 with `Requires at least: 9.9.9`, all with valid checksums; local copies in `Update Test Releases/v0.19.1/`). Maintenance › Updates offered core 0.19.1, and the Plugins screen listed only Font Awesome and Emoji Picker. The font-awesome update succeeded: a sha256 diff of all 552 dev-install files (outside `storage/`, `content/uploads/`, `config/`) showed only `content/plugins/font-awesome/font-awesome.php` changed, `plugin-versions.json` recorded 0.1.2, and the checksum baseline matched the new file. Emoji Picker was refused at the summary ("requires Lumora Press 9.9.9 or higher; this site is running 0.19.0") with no Confirm button, and was left on 0.1.0. The summary also correctly warned that `font-awesome.php` was modified, because the first test's cleanup had restored it by hand. Cleaned up afterward (repository back to `intothisshadow/LumoraPress`, re-checked, `font-awesome.php` restored).
+
+### LP-174. Stale Update Checksum Baseline After a Stalled/Retried Update
+
+**Status:** Complete
+
+Investigated 2026-09-14 after Ariane saw a live "core file(s) appear to have been modified since they were installed" warning during the 0.14.0 → 0.15.0 update, naming `content/plugins/dummy-content/*` and `content/plugins/wordpress-importer/*` files that hadn't actually changed — confirmed byte-identical between the `v0.14.0` and `v0.15.0` git tags, and the post-0.15.0 `storage/updates/checksums.json` baseline matches `v0.15.0` exactly. No FTP/file-manager access had touched the live site; every deploy goes through the in-app Maintenance › Updates pipeline (`UpdateService`), and Ariane confirmed the preceding 0.14.0 update stalled and needed a retry.
+
+### Root cause (working theory, not yet confirmed against live logs)
+
+`UpdateChecksumManifest::write()` only runs from `UpdateService::cleanupStage()`, the final stage of the `beginInstall()`/`continueInstall()` pipeline (`backup_files` → `backup_database` → `apply_files` → `migrate` → `clear_cache` → `cleanup`). `apply_files` already writes the new release's files to disk; if an update stalls (timeout, reload, abandoned browser tab) after `apply_files` but before `cleanup` runs, and the admin then starts a fresh update rather than resuming the same token, the live files can end up correct while `checksums.json` still reflects an older baseline. That gap stays invisible until the next update's pre-flight `modifiedCoreFileProblems()` check compares live files against the stale baseline and reports a false "modified by someone" for files nobody actually touched.
+
+### Checklist
+
+- [x] Confirm the theory against real data: reproduce a stalled `apply_files`-then-fresh-retry sequence in `Integration/UpdateServiceIntegrationTest.php` and check whether `checksums.json` ends up stale afterward. **Result (2026-09-28): not confirmed.** A fresh retry that runs through to `cleanup` always leaves a baseline matching disk. The stale window only exists while the abandoned attempt is left unfinished: its new files are live, the previous release's baseline is still in place, and the next pre-flight (the retry's own `checkUpload()`, or the next release's if nothing ever finishes) reports those files as modified. The retry also can't start until the abandoned attempt's `update.lock` goes stale (`LOCK_STALE_SECONDS`, 10 minutes).
+- [x] If confirmed, make the `cleanup` stage's checksum write resilient to this — e.g. always recompute checksums from whatever's actually on disk for `$effectiveCorePaths` right before writing, regardless of which stage the current pipeline run resumed from, so a fresh retry's own successful `cleanup` always produces a baseline that matches disk exactly. No change needed: `cleanupStage()` already does exactly this (`computeForCorePaths($effectiveCorePaths)` from disk, every run).
+- [x] Add a regression test covering the stall-then-fresh-retry path specifically (distinct from the existing resume-same-token coverage), asserting the resulting baseline matches the actually-installed files. `testAFreshRetryAfterAStalledInstallRecordsABaselineMatchingTheInstalledFiles` — also asserts the false positive exists in the stalled window.
+- [x] Consider whether `beginInstall()` should refuse to start a brand-new token while an abandoned `install-state-*.json` from an incomplete prior attempt still exists, prompting the admin to resume or explicitly discard it instead of silently starting over. Given the result above, this is the item that addresses the real gap: an abandoned post-`apply_files` attempt is the only way the baseline goes stale. **Done 2026-09-28:** `UpdateService::unfinishedInstall()` finds the newest leftover `install-state-*.json`; `beginInstall()` refuses any other token while one exists, and `checkUpload()`/`checkPluginPackage()` report it as a blocking problem (so the misleading modified-files warning never shows in that state). New `discardUnfinishedInstall()` rolls back from the attempt's own backups when its stage is `apply_files` or later, otherwise just deletes the half-written DB dump, then logs, fires the after-update hook, restores maintenance mode, releases the lock, and removes staging/state. It refuses while the state file changed in the last 60 s (possibly still running in another tab). Maintenance › Updates shows an "An Update Did Not Finish" panel with Resume (core → `?update_token=`, plugin → Plugins `?plugin_update_token=`) and Discard buttons.
+
+Not urgent — the live site's baseline self-corrected on the very next update and no data was lost — but leaving it unfixed means the same confusing false positive can recur any time an update stalls and gets retried instead of resumed.
+
+### LP-182. Independent GitHub Updates for Bundled Themes
+
+**Status:** Complete
+
+Requested 2026-09-28: bundled themes should be updatable from GitHub on their own, the way LP-162 made bundled plugins updatable without a full core update. Today the only bundled theme is Lumora Classic (`content/themes/lumora-classic`, `Version: 0.2.0` in its `style.css` header), and it only changes when a full core release overlays it, since it is a `core-paths.php` entry like the bundled plugins. A theme-only fix (a CSS bug, a template tweak) currently needs a full core version bump to reach existing sites.
+
+LP-034's "Theme update notifications (future)" item is related but broader (update notices for any theme, including user-installed ones); this ticket covers only themes bundled with Lumora Press, and should be linked from LP-034 once it ships.
+
+### Design
+
+Mirror LP-162's plugin pipeline rather than building a second one, generalizing its "bundled plugin" scope into "bundled component" where that keeps the code simpler:
+
+- **Which themes qualify:** exactly the `content/themes/{slug}` entries in `core-paths.php`, the same rule `UpdateService::bundledPluginSlugs()` uses for plugins. Custom/user-installed themes are never touched.
+- **Installed-version tracking:** record each bundled theme's installed version alongside the plugin versions (either a theme section in `PluginVersionManifest`'s file or a sibling `theme-versions.json`), synced from the theme's `style.css` `Version:` header via `ThemeRegistry`'s existing header parsing, and refreshed at the end of every core update's cleanup stage like `installedPluginVersions()`.
+- **Release artifacts:** `build-release.sh` emits a theme package for every bundled theme whose `Version:` changed since the previous release, attached to the same GitHub Release as the core ZIP. Asset naming must not collide with plugin assets, which `GitHubReleaseProvider::mapPluginAssets()` currently matches on `{slug}-v{version}.zip` alone. Use a distinct pattern (e.g. `theme-{slug}-v{version}.zip`) and make sure the plugin matcher ignores it. The Release step's version-bump check (CLAUDE.md step 8) extends to bundled themes too.
+- **`GitHubReleaseProvider`:** parse theme asset pairs into a `themes` map, cache it (like `update_last_known_plugins`), and expose `cachedThemeUpdates()`/`downloadThemeRelease()`.
+- **Compatibility gate:** enforce the theme header's `Requires at least` and `Requires PHP` (already parsed by `ThemeRegistry`) as blocking checks, reusing `UpdateService::pluginRequirementProblems()`'s logic.
+- **Apply path:** a `scope: theme` branch through `checkUpload()`-style validation and the staged `beginInstall()`/`continueInstall()` pipeline: replace only `content/themes/{slug}`, skip migrations, verify the theme header version afterwards, refresh only that theme's slice of the checksum baseline, log `source = 'theme'`, and roll back automatically on failure. The LP-174 unfinished-update detection must cover theme-scoped attempts too (Resume should return to the Themes screen).
+- **Theme Options survive:** options are stored in the database keyed by field key, so replacing theme files keeps them. Confirm that, and confirm the active theme keeps working mid-update.
+- **Appearance › Themes UI:** an "Update available (vX.Y.Z)" badge and Update button on each bundled theme with an update, a count plus "Check for Updates", then the same summary/confirm and in-place progress panel as the Plugins screen (reuse `update-continue.js`).
+- **Hooks:** `lumora_press_before_theme_update` / `lumora_press_after_theme_update` (slug, from, to, status), fired instead of the core hooks, matching the plugin ones.
+
+### Checklist
+
+- [x] Installed-version record for bundled themes, seeded from each theme's `style.css` `Version:` header and kept in sync by core updates.
+- [x] `build-release.sh`: emit `theme-{slug}-v{version}.zip` + `.sha256` for each bundled theme whose version changed since the previous release, and stop on a changed-but-unbumped bundled theme the same way it does for plugins.
+- [x] `GitHubReleaseProvider`: parse theme assets into a `themes` map (the plugin matcher must not pick them up), cache it, and expose cached updates and download.
+- [x] Enforce the theme's `Requires at least` / `Requires PHP` as blocking checks.
+- [x] `UpdateService`: theme-scoped staged install reusing the existing backup/apply/verify/cleanup/rollback stages, including checksum-baseline refresh, logging, hooks, and LP-174's unfinished-update handling.
+- [x] Appearance › Themes: update badge, count, "Check for Updates", summary/confirm and in-place progress UI.
+- [x] Unit and Integration tests: version record, asset parsing (including no collision with plugin assets), requirement gate, the theme-scoped pipeline (success and rollback), and Theme Options surviving an update.
+- [x] Docs: README (Updating section), `docs/DEVELOPER-APIS.md` (new hooks), `docs/THEME-DEVELOPMENT.md` (how bundled theme versions and `Requires at least` are used), CLAUDE.md Release step 8 (theme version bumps).
+- [x] Verify live on the dev install with a release on the test repo `intothisshadow/lumorapress-update-test` (see CLAUDE.md "Live Update Testing"): a bumped Lumora Classic package installs and only its directory changes; a package with a too-new `Requires at least` is refused; a bad checksum is refused.
+
+### LP-183. Hide "Watch this thread" When Comments Are Closed
+
+**Status:** Complete
+
+Reported 2026-10-01. When comments are closed on a post or page, the comments area still offers a "Watch this thread" button (`include/comment-functions.php`, the `$state['watch']` block in the comment-subscription panel). A closed thread can't get new comments, so watching it can never produce a notification and the button is just noise.
+
+The rule: the "Watch this thread" button (and any other way to start watching) is only offered while the thread accepts comments. Someone who is already watching a thread that later closes keeps their "You're watching this thread." line and the "Stop watching" button, so they can still unsubscribe from the thread (and the Watched Threads list on the Notifications screen keeps working either way).
+
+### Checklist
+
+- [x] Find where the watch state is built (`CommentSubscriptionService` / the `$state['watch']` array behind `comment_subscription_state`-style data passed to the comment template) and leave out the "can start watching" state when comments are closed for that post/page, covering both the per-post/page "Comments open" setting and the site-wide "Allow comments site-wide" setting.
+- [x] Server side too: reject a `subscription_action=watch` POST for a thread with comments closed (a stale page or a crafted request), while still allowing `unwatch`.
+- [x] Check the guest "notify me of follow-up comments" checkbox on the comment form is also absent when comments are closed (the form itself should already be hidden), and that it still shows on a normal open thread.
+- [x] Check every theme's rendering (lumora-classic and each theme under `custom themes/`) needs no change; the markup comes from the shared template tag, so none is expected.
+- [x] Unit tests: watch offered on an open thread; not offered once comments are closed (per-post and site-wide); an existing watcher still sees "Stop watching"; a `watch` POST on a closed thread is refused and `unwatch` still works.
+- [x] Docs: CHANGELOG entry; `docs/DEVELOPER-APIS.md` only if a hook or filter changes.
+
+### LP-184. Featured Image Defaults on Appearance › Customize, With a Pages Option
+
+**Status:** Complete
+
+Requested 2026-10-01. The two site-wide featured-image settings, "Default featured image" (the automatic image shown for a post or page that has none of its own) and "Featured image crop size", live on Media › Thumbnails, next to unrelated thumbnail generation settings. They are about how the site looks, so they belong on Appearance › Customize, in the Body tab beside the theme's own Featured Image options. Separately, the automatic image is wrong for some pages: add a setting to show it on pages or not. A page can still have its own featured image set on New Page / Edit Page, whatever the setting says.
+
+### Design
+
+- A new "Featured Image Defaults" panel in the Customize Body tab, right after the existing Featured Image section: the default image picker (moved), the crop size select (moved), and a new checkbox "Use the default featured image on pages" (new option `default_featured_image_on_pages`, on by default so existing sites don't change).
+- These stay site-wide options (`default_featured_image_media_id`, `featured_image_crop_size`), not per-theme Theme Options, so the panel says they apply to every theme. Nothing moves in the database.
+- When the checkbox is off, `post_thumbnail_media()` skips the default for a Page only; a page's own featured image, and posts, are unchanged. The default Open Graph image setting is separate and keeps working for pages shared on social sites.
+- The save handler and the picker's JSON query move out of `admin/views/media/thumbnails.php` into a small admin controller, still limited to administrators (`manage_options`), as the old save was.
+- Media › Thumbnails keeps only thumbnail sizes, quality, bulk regenerate and cleanup.
+
+### Checklist
+
+- [x] `FeaturedImageDefaultsController` (Controllers/Admin): `save()` for the default image, crop size (validated against enabled sizes) and the new pages option; `pickerQuery()` for the media picker.
+- [x] Customize › Body: the new panel, picker wired to the Customize screen.
+- [x] Remove the default featured image and crop size fields, their save handling and the picker query from Media › Thumbnails.
+- [x] `post_thumbnail_media()`: no default fallback for a Page when the new option is off.
+- [x] Add `default_featured_image_on_pages` to the settings export/import list.
+- [x] Unit tests: controller save/validation and permission; the resolver with the option on and off for pages and posts.
+- [x] Docs: CHANGELOG; `docs/THEME-DEVELOPMENT.md` (default image behaviour for pages); README where Thumbnails or featured images are described.
+- [x] Verify in the browser on the dev install: panel saves, picker works, Thumbnails page no longer shows the fields, a page shows or hides the default image, and a page's own image still shows.
+
+### LP-185. Edit Image in the Editors, and Width/Height in Pixels or Percent
+
+**Status:** Complete
+
+Requested 2026-10-01. Once an image is in a post or page there is no way to change its alt text, caption, alignment, link or size short of deleting it and inserting it again. Add an "Edit Image" action to the Visual and Markdown editors. Insert Image (and Edit Image) also gain a Width and Height, each in pixels or as a percentage of the content width.
+
+### Design
+
+- **Fields (Insert and Edit):** Width and Height, each a number plus a `px` / `%` unit, both optional. Left empty, an image keeps the size it has today. Edit Image also shows alt text, caption, alignment and link.
+- **Visual editor:** an "Edit Image" toolbar button, enabled when an image is selected, opens a dialog pre-filled from the image (alt, caption from its `<figure>`, alignment class, surrounding link, current size) and rewrites the image in place as one undo step.
+- **Markdown editor:** an "Edit Image" toolbar button works on the image markup under the cursor and rewrites it. Markdown has no attribute syntax, so sizes use the same trailing-marker convention as alignment: `![alt](url){width=50%}{height=200px}`. `MarkdownParser` renders them and `HtmlToMarkdownConverter` writes them back, so switching between the editors keeps the size.
+- **Rendering:** an image with a size gets `width`/`height` attributes (a bare number for pixels, `50%` for percent) plus `data-style-width` / `data-style-height`, which core's `dynamic-style.js` applies through the CSSOM, because a theme's `height: auto` would otherwise ignore a height and inline `style` attributes are blocked by the site's CSP. A dimension left empty is set to `auto` so the other one can't distort the image. No theme changes are needed: every theme already loads `dynamic-style.js`.
+- **Safety:** `HtmlSanitizer` only accepts `width`/`height` as digits with an optional `%`, and the two `data-style-*` attributes only as `auto` or a whole number with `px` or `%`. The lightbox code must not read a percentage as a pixel size.
+
+### Checklist
+
+- [x] `MarkdownParser`: parse `{width=…}` / `{height=…}` image markers (also on captioned and linked images) into the attributes above.
+- [x] `HtmlToMarkdownConverter`: write a sized image's markers back (only for an explicit size, not for the natural width and height the editor adds by default).
+- [x] `HtmlSanitizer`: validate `width`/`height`, allow and validate `data-style-width` / `data-style-height` on `<img>`.
+- [x] `ContentRenderer`: the lightbox ignores a percentage `width`/`height` on the image.
+- [x] `assets/js/dynamic-style.js`: apply `data-style-width` / `data-style-height`, only for `auto` or whole `px` / `%` values.
+- [x] Insert Image: Width and Height fields with a unit, in both editors, producing the markup above.
+- [x] Visual editor: Edit Image button and dialog (alt, caption, alignment, link, width, height).
+- [x] Markdown editor: Edit Image button and dialog working on the markup at the cursor.
+- [x] Unit tests for the parser, converter (round trip), sanitizer and lightbox guard.
+- [x] Docs: CHANGELOG; the Markdown image marker syntax wherever it is documented.
+- [x] Verify in the browser on the dev install: insert with a size, edit an existing image in both editors, switch between editors, and check the public page.
+
+### LP-186. Multiple Header Images on Appearance › Customize, in Added or Random Order
+
+**Status:** Complete
+
+Requested 2026-10-01. The Header tab holds a single header image, uploaded from the computer. Allow several: pick any number from the Media Manager or upload new ones, then choose whether they show in the order they were added or in random order.
+
+### Design
+
+- **Storage:** the list lives in the active theme's own Theme Options values (like the single image does today), as a reserved key holding the Media ids in the order added. A site that already has one header image keeps it: the old single-image key is read as a list of one and replaced the next time the Header tab is saved. Resetting the Header section clears both.
+- **Order setting:** a new "Header image order" select in the Header section: "In the order added" (the default) or "Random". It only matters with two or more images.
+- **Which image shows:** one image per page view, chosen once at startup and handed to the theme as before, so `header_image_url()` and every theme work unchanged. "In the order added" steps to the next image on each page view for that visitor, remembered in the session the site already sets (no new cookie, nothing to add to the cookie list). "Random" picks at random and avoids repeating the previous image when there is more than one. An image deleted from the Media Manager is skipped; with none left, there is no header image.
+- **Admin:** the Header tab shows the current images as a list with thumbnails and a Remove button each, a "Choose from Media Manager…" button that can add several in one go, and an upload field that accepts several files. The list order is the order added.
+- **Picker:** the existing featured-image picker gains a "multiple" mode and its own request name, so two pickers on the Customize screen don't invalidate each other's security token.
+
+### Checklist
+
+- [x] `ThemeOptions`: read and write the ordered list of header image ids (with the old single key as a fallback), clear both on reset, and a "Header image order" select field.
+- [x] A small class that chooses the image for this page view (in order or random) from the usable URLs, using the session; wired in at startup in place of the single image.
+- [x] `ThemeCustomizerController::saveHeader()`: save the list of ids from the form, add several uploaded files, and keep accepting the old single upload and remove checkbox.
+- [x] Header tab: the image list, Media Manager picker (multiple) and multi-file upload; the single upload field and remove checkbox go.
+- [x] `featured-image-picker.js`: `data-picker-multiple` mode that keeps the dialog open and reports each choice, and a configurable request name; the picker query accepts that name.
+- [x] Unit tests: list storage and the old-key fallback, the chooser (order, wrap-around, random without immediate repeat, skipped images), the controller save.
+- [x] Docs: CHANGELOG; `docs/THEME-DEVELOPMENT.md` (`header_image_url()` and the order option); the README if the Header tab or cookies are described.
+- [x] Verify in the browser on the dev install: add from the Media Manager and by upload, remove, save, and watch the header change across page views in both orders.
+
+### LP-187. Choose Which Thumbnail Sizes to Regenerate
+
+**Status:** Complete
+
+Requested 2026-10-01. Media Manager › Thumbnails can only regenerate every size at once. Add a choice of which size or sizes to regenerate, so changing one size's dimensions doesn't redo the others.
+
+### Checklist
+
+- [x] `ThumbnailService`: `generate()`, `regenerate()`, `deleteForMedia()` and `queueForBulkRegeneration()` take an optional list of size names; the other sizes' files and rows are left untouched, and "only missing" checks just the chosen sizes.
+- [x] Thumbnails screen: a "Sizes to regenerate" checkbox group (all enabled sizes ticked by default) on the bulk regenerate form, carried through the Continue step, with a message when none is ticked.
+- [x] Unit tests for limiting generate, regenerate, bulk and missing-only runs to the chosen sizes.
+- [x] CHANGELOG.
+- [x] Verify in the browser on the dev install.
+
+### LP-188. Bulk Thumbnail Regeneration Without Page Reloads
+
+**Status:** Complete
+
+Requested 2026-10-01. Bulk thumbnail regeneration reloaded the whole Thumbnails page for every batch of 10 images (about 500 reloads for a 5,000-image library). It now updates the progress text and bar in place, like the Updates, GeoIP import and Media server import flows.
+
+### Checklist
+
+- [x] Thumbnails screen: a batch request sent by the script (marked with the `X-Requested-With: fetch` header) returns JSON with progress, percent, the next offset and a fresh security token; a normal form submit still redirects, so the page works without JavaScript.
+- [x] `thumbnail-bulk.js`: drive the Continue form with fetch() and update the progress counts, bar and "Done." message in place, falling back to a normal form submit if a request fails.
+- [x] CHANGELOG.
+- [x] Verify in the browser on the dev install: progress advances without the page reloading.
+
+### LP-189. Staged Lumora Press Export With In-Place Progress
+
+**Status:** Complete
+
+Requested 2026-10-01. Maintenance › Export builds the whole file in one request (`set_time_limit(0)`), so a large site depends on the host allowing a long request, and the page shows nothing until it finishes. Build it in steps instead, with progress shown in place like the Updates, Media server import and Search index rebuild flows.
+
+### Design
+
+- **Steps:** one request per step, driven by a script that updates the page in place and falls back to the normal single-request build without JavaScript. As built, the first request reads the content and writes the manifest (database reads, the quick part), then the uploaded files are added to the ZIP in batches (up to 500 files or 256 MB each, since ZipArchive rewrites the archive when closed). Without uploads there is nothing slow to split, so it still finishes in one request.
+- **State:** the in-progress export keeps its position in a file next to the partly written ZIP under `storage/exports/`, named by a token the session holds (the existing one-hour cleanup of abandoned files still applies).
+- **Formats:** the Lumora Press ZIP gets the staged build first. The WordPress XML format is one document, so it can build its content in steps but keeps a single write at the end. Plugin-added formats (the `export_formats` filter) keep working through a single-request path unless they opt in.
+- **Result:** unchanged: a "generated" notice with one download for the session that built it.
+
+### Checklist
+
+- [x] A `StagedExportFormatWriter` interface (`begin()`, `addBatch()`, `finish()`) that the Lumora Press ZIP writer implements, with a progress cursor in JSON-safe state.
+- [x] Add the uploaded files to the ZIP in batches, resuming where the last request stopped.
+- [x] Export screen: JSON responses for the script's step requests (progress, percent, fresh security token), the same markup contract as `media-import-continue.js`, and the existing redirect flow when JavaScript is off.
+- [x] A script that drives the steps and updates the progress in place, falling back to a normal form submit on error.
+- [x] Keep the one-hour cleanup, the single-download rule and the "only the generating session can download" rule for partly built files too.
+- [x] Unit tests for the stepped build (resuming, batches of uploads, a plugin format without staging).
+- [x] CHANGELOG; `docs/DEVELOPER-APIS.md` if the export format interface changes.
+- [x] Verify in the browser on the dev install with and without uploads.
+
+### LP-190. Staged Lumora Press Import With In-Place Progress
+
+**Status:** Complete
+
+Requested 2026-10-01. Importing a Lumora Press export (Maintenance › Import › Lumora Press Import) runs the whole import in one request (`set_time_limit(0)`), so a large export can hit the host's request limit and the page shows nothing until it finishes. Run it in steps with progress shown in place, the way the WordPress Importer already does.
+
+### Design
+
+- **Steps:** follow the order `LumoraPressImportService::import()` already uses (users, categories and tags, media folders, media, posts, pages, comments, menus, widgets), each content type processed in batches, with a cursor saved between requests so an interrupted import can resume.
+- **Reuse:** model the loop on the WordPress Importer's `import-continue.js` flow (short time budget per request, stage list, detail line such as "Importing posts: 1,200 of 8,400", fresh token in each response), and keep the existing no-JavaScript behaviour of running one slice and offering Resume.
+- **State:** as built, the stage, the position within it and the id maps needed to link imported items (parents, categories, media, pages, posts, comments) are kept in `job.json` in a per-import folder under `storage/imports/`, named by a token the session holds. Each request imports for about 8 seconds, then answers with the stage list and a detail line.
+- **Sources:** both "Upload a File" and "File on This Server" work. An uploaded file is moved into the job folder so later requests can read it; a server file is left where it is. Media files are taken out of the ZIP one at a time as each is imported (or read from the uploads folder), instead of extracting everything first. The job folder is removed when the import finishes or is cancelled, and one nobody returned to is removed after six hours.
+- **Existing content mode and uploads folder:** unchanged; every request uses the options chosen when the import started.
+
+### Checklist
+
+- [x] Make `LumoraPressImportService::import()` resumable: a cursor per stage, batches within each stage, and id maps kept between requests.
+- [x] Persist the import state and the uploaded file between requests, and clean both up on completion or cancel.
+- [x] Import screen: JSON responses for the script's requests (stage list, detail line, fresh security token) and a Resume option after an interruption.
+- [x] Drive it with the same script as the WordPress Importer, or a shared one, updating the stages and detail line in place.
+- [x] Keep the "Existing content" mode, the uploads folder option and the warnings summary working across steps.
+- [x] Unit and integration tests: resuming mid-stage, linking items across requests, and the cleanup of the stored file.
+- [x] CHANGELOG.
+- [x] Verify in the browser on the dev install with a real export, including interrupting and resuming.
+
+### LPP-028. WordPress Importer: Chunked, Timeout-Proof Media Import
+
+**Status:** Complete
+
+The import used to run every stage inside one HTTP request, so a large media library hit the host's/proxy's request timeout ("Connection Timeout" on a live site) and a retry restarted the whole Media stage. Now each request runs stages only until a time budget (default 15 s, filter `wordpress_importer_request_seconds`) is spent and answers with JSON; `admin/assets/js/import-continue.js` posts the same form again until done (the in-place pattern from Maintenance › Updates). `WordPressImportService::runNextStage($batchId, ?float $timeBudgetSeconds)` returns `stageComplete`/`progress`; the Media stage keeps a cursor (`stageProgress.media`: offset, total, created-folder map) in the batch's `progress_snap` state and merges its id/URL maps across calls. A retry from an older cursor reuses rows the same batch already imported (registry hit with no existing-content mode is treated as Skip) instead of copying them twice. Without JavaScript a click does one slice and the page offers Resume Import. Plugin bumped to 1.1.0.
+
+- [x] Time-budgeted `runNextStage()` with a resumable cursor for the Media stage
+- [x] Duplicate-safe retry after a request killed before its cursor was saved
+- [x] Admin Import/Resume forms run as a fetch loop with live stage list and "N of M" media progress
+- [x] `wordpress_importer_request_seconds` filter, documented in `docs/DEVELOPER-APIS.md`
+- [x] Unit tests (budgeted resume, no-budget single call, retry without duplicates); browser-verified on the dev install with the 3,214-attachment WXR fixture
+- [x] README, CHANGELOG, plugin version bump (1.1.1)
+- [x] Updating internal links (incl. old-slug redirects) and Regenerating thumbnails also run in steps with their own cursors; `ContentImportRegistry::idsForBatch()` now orders by id so offsets are stable
+- [x] Resume Import pre-fills the interrupted import's connection details (never the password) from the batch state (`rememberConnection()`, `inProgressBatch()['connection']`)
+- [x] Live check: the real so-obsessed.com import finished successfully on the production host (2026-10-01)
+- [x] Downloads and NextGEN Gallery images run in steps too (categories/folders created once and kept in the cursor; a retry skips items this batch already imported; plugin 1.1.2)
+- [x] Guard against two requests driving the same batch at once (`ImportLock`, a non-blocking file lock; the second request gets a "busy" reply and `import-continue.js` retries)
+
+### LPP-029. Downloads: Recent Downloads Shortcode With Pagination
+
+**Status:** Complete
+
+Requested 2026-10-01. `[lumora_downloads count="5"]` can show the newest N downloads, but only as one fixed list. Add a second shortcode, `[lumora_recent_downloads]`, that lists live downloads newest first and pages through them, for a "latest downloads" page that grows over time.
+
+### Design
+
+- **Shortcode:** `[lumora_recent_downloads per_page="10" category="…" category_id="…" show_size="1"]`. `per_page` defaults to 10 and is limited to 1–100. `category` / `category_id` limit it to one category (the id wins), exactly as in `[lumora_downloads]`; leave both out for every category. `show_size` is the same as in `[lumora_downloads]`.
+- **Order:** newest first (created date, then id as the tiebreaker, so a bulk import pages predictably). Trashed downloads and downloads with no file or link attached never appear, and are left out of the page count too.
+- **Pagination:** the page is chosen with a `downloads_page` query parameter, so it can't clash with the `paged` parameter a post list uses. The controls are core's existing `.lp-pagination` markup, so every theme already styles them. `render_pagination()` gets an optional parameter naming the query parameter (default `paged`, so nothing else changes). Nothing is shown below the list when there is only one page.
+- **Output:** the same `.lp-downloads-list` markup as `[lumora_downloads]`, so no new CSS is needed.
+- **Admin:** listed in the shortcode picker, and documented with examples on Downloads › Shortcodes.
+
+### Checklist
+
+- [x] `DownloadService::paginateNewest()`: newest-first page of live downloads that have a file or link, optionally in one category, with the total.
+- [x] `render_pagination()` takes an optional page query parameter name.
+- [x] `[lumora_recent_downloads]` in `DownloadsShortcode`, with the paging controls and a page number beyond the last clamped to the last page.
+- [x] Registered for the shortcode picker with category, per page and show size fields.
+- [x] Downloads › Shortcodes documents it, with examples.
+- [x] Plugin README and version bump; CHANGELOG; `docs/THEME-DEVELOPMENT.md` for the `render_pagination()` parameter.
+- [x] Unit tests: the service query, the shortcode output and paging, the clamped page, and `render_pagination()` with a custom parameter.
+- [x] Verify in the browser on the dev install with real downloads.
