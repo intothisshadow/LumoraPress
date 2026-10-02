@@ -3939,8 +3939,11 @@ select:focus {
 
 .lp-visual-choice__caption {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.4rem;
+    justify-content: center;
+    gap: 0.25rem 0.4rem;
+    text-align: center;
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--lp-admin-text);
@@ -3951,6 +3954,7 @@ select:focus {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
     padding: 0.1rem 0.45rem;
     border-radius: 999px;
     background: var(--lp-admin-success-bg);
