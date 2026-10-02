@@ -813,11 +813,40 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
         $totalPages = (int) max(1, ceil($result['total'] / $perPage));
     }
 
+    // Built once from the full folder list (not the search-filtered tree),
+    // so each folder's "Move to" picker can exclude its own descendants
+    // without a FolderService::descendantIds() query per folder.
+    $folderChildIds = [];
+
+    foreach ($allFolders as $treeFolder) {
+        if ($treeFolder->parentId !== null) {
+            $folderChildIds[$treeFolder->parentId][] = $treeFolder->id;
+        }
+    }
+
+    $collectDescendantIds = static function (int $id) use ($folderChildIds): array {
+        $descendants = [];
+        $queue = $folderChildIds[$id] ?? [];
+
+        while ($queue !== []) {
+            $childId = array_shift($queue);
+            $descendants[] = $childId;
+            array_push($queue, ...($folderChildIds[$childId] ?? []));
+        }
+
+        return $descendants;
+    };
+
+    // One token shared by every "New subfolder" form and the main "New
+    // Folder" form: each action's token pool holds only 30, so issuing one
+    // per folder would evict earlier tokens on a large tree.
+    $createFolderToken = Csrf::token('create_folder');
+
     /**
-     * @param array<int, Folder> $allFolders
+     * @param array<int, Folder> $treeFolders
      */
-    $renderFolderTree = function (array $allFolders, ?int $parentId = null) use (&$renderFolderTree, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
-        $children = array_values(array_filter($allFolders, static fn (Folder $f): bool => $f->parentId === $parentId));
+    $renderFolderTree = function (array $treeFolders, ?int $parentId = null) use (&$renderFolderTree, $allFolders, $buildFolderOptions, $collectDescendantIds, $createFolderToken, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
+        $children = array_values(array_filter($treeFolders, static fn (Folder $f): bool => $f->parentId === $parentId));
 
         if ($children === []) {
             return;
@@ -828,51 +857,85 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
         foreach ($children as $folder) {
             $isActive = $currentFolderRaw === (string) $folder->id;
             $folderCount = $mediaCumulativeCounts[$folder->id] ?? 0;
-            $hasChildren = array_filter($allFolders, static fn (Folder $f): bool => $f->parentId === $folder->id) !== [];
-            // The quick delete button and the Manage panel's delete form
-            // share one issued token — a second Csrf::token() call under
-            // the same action would invalidate the first.
-            $deleteToken = Csrf::token('delete_folder_' . $folder->id);
+            $hasChildren = array_filter($treeFolders, static fn (Folder $f): bool => $f->parentId === $folder->id) !== [];
+            $mediaUrl = esc_url(admin_url('media/media'));
+            $folderName = esc_attr($folder->name);
+            $currentFolderField = '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
+            // Rename and Move post to the same handler, so they share one
+            // issued token.
+            $renameToken = esc_attr(Csrf::token('rename_folder_' . $folder->id));
+            $deleteToken = esc_attr(Csrf::token('delete_folder_' . $folder->id));
+            $moveOptions = $buildFolderOptions($allFolders, [$folder->id, ...$collectDescendantIds($folder->id)]);
 
-            echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . '">';
-            echo '<span class="lp-folder-tree__row">';
-            echo '<a href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" draggable="true" data-lp-folder-drag data-folder-id="' . (int) $folder->id . '">' . esc_html($folder->name) . '</a> ';
-            echo '<span class="lp-folder-tree__count">' . (int) $folderCount . '</span> ';
+            echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . ($hasChildren ? ' has-children' : '') . '">';
+            echo '<div class="lp-folder-tree__row">';
+            echo '<a class="lp-folder-tree__link" href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" title="' . $folderName . '" draggable="true" data-lp-folder-drag data-folder-id="' . (int) $folder->id . '"' . ($isActive ? ' aria-current="page"' : '') . '>';
+            echo '<span class="lp-folder-tree__name">' . esc_html($folder->name) . '</span></a>';
+            echo '<span class="lp-folder-tree__count">' . (int) $folderCount . '</span>';
 
-            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" class="lp-folder-tree__delete-form" data-lp-confirm="Delete this folder? It must be empty.">';
-            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($deleteToken) . '">';
-            echo '<input type="hidden" name="form" value="delete_folder">';
-            echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
-            echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
-            echo '<button type="submit" class="lp-folder-tree__delete-button" aria-label="Delete folder &ldquo;' . esc_attr($folder->name) . '&rdquo;">&times;</button>';
-            echo '</form>';
+            echo '<details class="lp-folder-tree__actions" data-lp-dropdown>';
+            echo '<summary class="lp-folder-tree__actions-toggle" aria-label="Actions for folder &ldquo;' . $folderName . '&rdquo;"><span aria-hidden="true">&hellip;</span></summary>';
+            echo '<div class="lp-folder-tree__menu">';
 
-            echo '<details class="lp-folder-tree__manage lp-folder-actions"><summary>Manage</summary>';
-            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-folder-move-form data-folder-id="' . (int) $folder->id . '">';
-            echo Csrf::field('rename_folder_' . $folder->id);
+            echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form" data-lp-folder-move-form data-folder-id="' . (int) $folder->id . '">';
+            echo '<input type="hidden" name="csrf_token" value="' . $renameToken . '">';
             echo '<input type="hidden" name="form" value="rename_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
             echo '<input type="hidden" name="parent_id" value="' . (int) ($folder->parentId ?? 0) . '">';
-            echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
-            echo '<input type="text" name="name" value="' . esc_attr($folder->name) . '">';
-            echo '<button type="submit" class="lp-button lp-button--primary">Rename</button>';
-            echo '</form>';
-            echo '<form method="post" action="' . esc_url(admin_url('media/media')) . '" data-lp-confirm="Delete this folder? It must be empty.">';
-            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($deleteToken) . '">';
+            echo $currentFolderField;
+            echo '<label for="folder-rename-' . (int) $folder->id . '">Rename</label>';
+            echo '<span class="lp-folder-tree__menu-inline">';
+            echo '<input type="text" id="folder-rename-' . (int) $folder->id . '" name="name" value="' . $folderName . '" required>';
+            echo '<button type="submit" class="lp-button lp-button--primary">Save</button>';
+            echo '</span></form>';
+
+            echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form">';
+            echo '<input type="hidden" name="csrf_token" value="' . $renameToken . '">';
+            echo '<input type="hidden" name="form" value="rename_folder">';
+            echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
+            echo '<input type="hidden" name="name" value="' . $folderName . '">';
+            echo $currentFolderField;
+            echo '<label for="folder-move-' . (int) $folder->id . '">Move to</label>';
+            echo '<span class="lp-folder-tree__menu-inline">';
+            echo '<select id="folder-move-' . (int) $folder->id . '" name="parent_id">';
+            echo '<option value="0"' . ($folder->parentId === null ? ' selected' : '') . '>(Top level)</option>';
+
+            foreach ($moveOptions as $option) {
+                echo '<option value="' . (int) $option['id'] . '"' . ($folder->parentId === $option['id'] ? ' selected' : '') . '>' . esc_html($option['label']) . '</option>';
+            }
+
+            echo '</select>';
+            echo '<button type="submit" class="lp-button">Move</button>';
+            echo '</span></form>';
+
+            echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form">';
+            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($createFolderToken) . '">';
+            echo '<input type="hidden" name="form" value="create_folder">';
+            echo '<input type="hidden" name="parent_id" value="' . (int) $folder->id . '">';
+            echo $currentFolderField;
+            echo '<label for="folder-subfolder-' . (int) $folder->id . '">New subfolder</label>';
+            echo '<span class="lp-folder-tree__menu-inline">';
+            echo '<input type="text" id="folder-subfolder-' . (int) $folder->id . '" name="name" required>';
+            echo '<button type="submit" class="lp-button">Create</button>';
+            echo '</span></form>';
+
+            echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form" data-lp-confirm="Delete this folder? It must be empty.">';
+            echo '<input type="hidden" name="csrf_token" value="' . $deleteToken . '">';
             echo '<input type="hidden" name="form" value="delete_folder">';
             echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
-            echo '<input type="hidden" name="current_folder" value="' . esc_attr($currentFolderRaw) . '">';
-            echo '<button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete</button>';
+            echo $currentFolderField;
+            echo '<button type="submit" class="lp-button lp-button--link lp-button--link--danger">Delete folder</button>';
             echo '</form>';
-            echo '</details>';
-            echo '</span>';
+
+            echo '</div></details>';
+            echo '</div>';
 
             if ($hasChildren) {
                 $isCollapsed = in_array($folder->id, $collapsedFolderIds, true)
                     && !in_array($folder->id, $activeFolderAncestorIds, true);
                 echo '<details class="lp-folder-tree__toggle" data-lp-folder-toggle data-folder-id="' . (int) $folder->id . '"' . ($isCollapsed ? '' : ' open') . '>';
-                echo '<summary class="lp-folder-tree__toggle-summary" aria-label="Expand or collapse subfolders of &ldquo;' . esc_attr($folder->name) . '&rdquo;"></summary>';
-                $renderFolderTree($allFolders, $folder->id);
+                echo '<summary class="lp-folder-tree__toggle-summary" aria-label="Show or hide subfolders of &ldquo;' . $folderName . '&rdquo;"></summary>';
+                $renderFolderTree($treeFolders, $folder->id);
                 echo '</details>';
             }
 
@@ -883,38 +946,59 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     };
     ?>
 
+    <?php
+    // The first few views show as chips; the rest sit under "More" so the
+    // chip row stays one line on a typical desktop width.
+    $primaryViews = [
+        '' => 'All Files',
+        'recently_uploaded' => 'Recently Uploaded',
+        'unused' => 'Unused Media',
+        'missing_alt' => 'Missing Alt Text',
+        'large_files' => 'Large Files',
+    ];
+    $moreViews = [
+        'zip_downloads' => 'ZIP Downloads',
+        'featured_images' => 'Featured Images',
+        'most_downloaded' => 'Most Downloaded',
+        'recently_downloaded' => 'Recently Downloaded',
+        'never_downloaded' => 'Never Downloaded',
+    ];
+    $viewUrl = static fn (string $viewValue): string => admin_url('media/media') . ($viewValue !== '' ? '?view=' . $viewValue : '');
+    // "All Files" only reads as the current view when no folder is open
+    // either; inside a folder the sidebar row carries the highlight.
+    $isCurrentView = static fn (string $viewValue): bool => $view === $viewValue && ($viewValue !== '' || $currentFolderRaw === '');
+    $activeMoreLabel = $moreViews[$view] ?? null;
+
+    $activeFolderName = null;
+
+    if ($currentFolderRaw === '0') {
+        $activeFolderName = 'General Uploads';
+    } elseif ($currentFolderId !== null) {
+        foreach ($allFolders as $treeFolder) {
+            if ($treeFolder->id === $currentFolderId) {
+                $activeFolderName = $treeFolder->name;
+                break;
+            }
+        }
+    }
+    ?>
+
     <div class="lp-media-manager">
         <aside class="lp-media-manager__sidebar">
-            <h2>Views</h2>
-            <ul class="lp-folder-tree">
-                <?php foreach ([
-                    '' => 'All Files',
-                    'recently_uploaded' => 'Recently Uploaded',
-                    'unused' => 'Unused Media',
-                    'missing_alt' => 'Missing Alt Text',
-                    'large_files' => 'Large Files',
-                    'zip_downloads' => 'ZIP Downloads',
-                    'featured_images' => 'Featured Images',
-                    'most_downloaded' => 'Most Downloaded',
-                    'recently_downloaded' => 'Recently Downloaded',
-                    'never_downloaded' => 'Never Downloaded',
-                ] as $viewValue => $viewLabel): ?>
-                    <li class="lp-folder-tree__item<?= $view === $viewValue ? ' is-active' : '' ?>">
-                        <a href="<?= esc_url(admin_url('media/media') . ($viewValue !== '' ? '?view=' . $viewValue : '')) ?>"><?= esc_html($viewLabel) ?></a>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
+            <details class="lp-media-manager__folders" open data-lp-media-folders>
+                <summary class="lp-media-manager__folders-summary">
+                    Folders<?php if ($activeFolderName !== null): ?>: <span class="lp-media-manager__folders-current"><?= esc_html($activeFolderName) ?></span><?php endif; ?>
+                </summary>
 
             <h2
+                class="lp-media-manager__folders-heading"
                 data-lp-folder-root-drop
                 data-lp-folder-tree-state-url="<?= esc_url(admin_url('media/media')) ?>"
                 data-lp-folder-tree-state-csrf="<?= esc_attr(Csrf::token('save_folder_tree_state')) ?>"
             >Folders</h2>
-            <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-admin__inline-form">
-                <p class="lp-field">
-                    <label for="folder-q">Search folders</label>
-                    <input type="text" id="folder-q" name="folder_q" value="<?= esc_attr($folderSearchTerm) ?>" placeholder="Folder name&hellip;">
-                </p>
+            <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-folder-search" role="search">
+                <label for="folder-q" class="lp-visually-hidden">Search folders</label>
+                <input type="search" id="folder-q" name="folder_q" value="<?= esc_attr($folderSearchTerm) ?>" placeholder="Search folders&hellip;">
                 <button type="submit" class="lp-button">Search</button>
                 <?php if ($folderSearchTerm !== ''): ?>
                     <a class="lp-button" href="<?= esc_url(admin_url('media/media') . ($currentFolderRaw !== '' ? '?folder=' . urlencode($currentFolderRaw) : '')) ?>">Clear</a>
@@ -923,14 +1007,18 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
             <?php if ($folderSearchTerm !== '' && $folderTreeFolders === []): ?>
                 <p class="lp-admin__widget-placeholder">No folders match &ldquo;<?= esc_html($folderSearchTerm) ?>&rdquo;.</p>
             <?php endif; ?>
-            <ul class="lp-folder-tree">
+            <ul class="lp-folder-tree lp-folder-tree--fixed">
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '' ? ' is-active' : '' ?>">
-                    <a href="<?= esc_url(admin_url('media/media')) ?>">All Files</a>
-                    <span class="lp-folder-tree__count"><?= (int) $mediaTotalCount ?></span>
+                    <div class="lp-folder-tree__row">
+                        <a class="lp-folder-tree__link lp-folder-tree__link--all" href="<?= esc_url(admin_url('media/media')) ?>"<?= $currentFolderRaw === '' ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name">All Files</span></a>
+                        <span class="lp-folder-tree__count"><?= (int) $mediaTotalCount ?></span>
+                    </div>
                 </li>
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '0' ? ' is-active' : '' ?>">
-                    <a href="<?= esc_url(admin_url('media/media')) ?>?folder=0">General Uploads</a>
-                    <span class="lp-folder-tree__count"><?= (int) $unassignedMediaCount ?></span>
+                    <div class="lp-folder-tree__row">
+                        <a class="lp-folder-tree__link lp-folder-tree__link--unassigned" href="<?= esc_url(admin_url('media/media')) ?>?folder=0"<?= $currentFolderRaw === '0' ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name">General Uploads</span></a>
+                        <span class="lp-folder-tree__count"><?= (int) $unassignedMediaCount ?></span>
+                    </div>
                 </li>
             </ul>
             <?php $renderFolderTree($folderTreeFolders); ?>
@@ -938,7 +1026,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
             <details class="lp-folder-tree__manage lp-folder-actions lp-folder-actions--primary">
                 <summary>New Folder</summary>
                 <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
-                    <?= Csrf::field('create_folder') ?>
+                    <input type="hidden" name="csrf_token" value="<?= esc_attr($createFolderToken) ?>">
                     <input type="hidden" name="form" value="create_folder">
                     <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
                     <p class="lp-field">
@@ -957,9 +1045,40 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                     <button type="submit" class="lp-button lp-button--primary">Create</button>
                 </form>
             </details>
+            </details>
         </aside>
 
         <div class="lp-media-manager__main">
+            <nav class="lp-media-views" aria-label="Media views">
+                <ul class="lp-media-views__list">
+                    <?php foreach ($primaryViews as $viewValue => $viewLabel): ?>
+                        <li>
+                            <a
+                                class="lp-media-views__chip<?= $isCurrentView($viewValue) ? ' is-active' : '' ?>"
+                                href="<?= esc_url($viewUrl($viewValue)) ?>"
+                                <?= $isCurrentView($viewValue) ? 'aria-current="page"' : '' ?>
+                            ><?= esc_html($viewLabel) ?></a>
+                        </li>
+                    <?php endforeach; ?>
+                    <li>
+                        <details class="lp-media-views__more" data-lp-dropdown>
+                            <summary class="lp-media-views__chip<?= $activeMoreLabel !== null ? ' is-active' : '' ?>"><?= esc_html($activeMoreLabel ?? 'More') ?></summary>
+                            <ul class="lp-media-views__menu">
+                                <?php foreach ($moreViews as $viewValue => $viewLabel): ?>
+                                    <li>
+                                        <a
+                                            class="lp-media-views__menu-link<?= $isCurrentView($viewValue) ? ' is-active' : '' ?>"
+                                            href="<?= esc_url($viewUrl($viewValue)) ?>"
+                                            <?= $isCurrentView($viewValue) ? 'aria-current="page"' : '' ?>
+                                        ><?= esc_html($viewLabel) ?></a>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </details>
+                    </li>
+                </ul>
+            </nav>
+
             <?php
             // Swapping just the "layout" param preserves the rest of the
             // current query string instead of resetting filters.
