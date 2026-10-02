@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Maintenance &rsaquo; Updates no longer shows "An Update Did Not Finish" for an old core update that a later successful update has already superseded. The leftover record of the abandoned attempt is now cleared automatically.
+
 ## [0.20.0] — 2026-10-01
 
 ### Bundled versions

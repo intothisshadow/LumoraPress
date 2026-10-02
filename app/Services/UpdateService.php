@@ -828,6 +828,14 @@ final class UpdateService
     {
         $this->validateToken($token);
         $state = $this->readInstallState($token);
+
+        // Refuse a stale token (old bookmark or open tab) rather than replaying an old attempt's stages over a newer install.
+        if ($this->isSupersededCoreInstall((string) ($state['scope'] ?? 'core'), (string) $state['to_version'])) {
+            $this->deleteInstallState($token);
+
+            throw new RuntimeException('This update was replaced by a later one and can no longer be resumed.');
+        }
+
         $stagingPath = $this->stagingPathFor($token);
         $scope = (string) ($state['scope'] ?? 'core');
         $componentSlug = match ($scope) {
@@ -1101,10 +1109,24 @@ final class UpdateService
                 continue;
             }
 
+            // A core attempt targeting a version older than the one now installed was
+            // superseded by a later successful update, so resuming it would only
+            // reapply stale files. Drop the leftover instead of nagging forever.
+            if ($this->isSupersededCoreInstall($progress['scope'], $progress['to_version'])) {
+                $this->deleteStateFile($path);
+
+                continue;
+            }
+
             $newest = ['token' => $matches[1], ...$progress, 'updated_at' => $updatedAt];
         }
 
         return $newest;
+    }
+
+    private function isSupersededCoreInstall(string $scope, string $toVersion): bool
+    {
+        return $scope === 'core' && version_compare($toVersion, $this->installedVersion(), '<');
     }
 
     /**
