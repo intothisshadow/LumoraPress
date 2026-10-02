@@ -1004,6 +1004,32 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                     <a class="lp-button" href="<?= esc_url(admin_url('media/media') . ($currentFolderRaw !== '' ? '?folder=' . urlencode($currentFolderRaw) : '')) ?>">Clear</a>
                 <?php endif; ?>
             </form>
+            <div class="lp-folder-toolbar">
+                <details class="lp-folder-tree__manage lp-folder-actions lp-folder-actions--primary lp-folder-toolbar__new">
+                    <summary>New Folder</summary>
+                    <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
+                        <input type="hidden" name="csrf_token" value="<?= esc_attr($createFolderToken) ?>">
+                        <input type="hidden" name="form" value="create_folder">
+                        <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
+                        <p class="lp-field">
+                            <label for="new-folder-name">Name</label>
+                            <input type="text" id="new-folder-name" name="name" required>
+                        </p>
+                        <p class="lp-field">
+                            <label for="new-folder-parent">Parent</label>
+                            <select id="new-folder-parent" name="parent_id">
+                                <option value="0">(Top level)</option>
+                                <?php foreach ($buildFolderOptions($allFolders, []) as $option): ?>
+                                    <option value="<?= (int) $option['id'] ?>" <?= $currentFolderId === $option['id'] ? 'selected' : '' ?>><?= esc_html($option['label']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </p>
+                        <button type="submit" class="lp-button lp-button--primary">Create</button>
+                    </form>
+                </details>
+                <?php // Only shown once folder-tree-toggle.js is running, since it needs script to work. ?>
+                <button type="button" class="lp-button lp-folder-toolbar__collapse" data-lp-folder-collapse-all hidden>Collapse all</button>
+            </div>
             <?php if ($folderSearchTerm !== '' && $folderTreeFolders === []): ?>
                 <p class="lp-admin__widget-placeholder">No folders match &ldquo;<?= esc_html($folderSearchTerm) ?>&rdquo;.</p>
             <?php endif; ?>
@@ -1022,29 +1048,6 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                 </li>
             </ul>
             <?php $renderFolderTree($folderTreeFolders); ?>
-
-            <details class="lp-folder-tree__manage lp-folder-actions lp-folder-actions--primary">
-                <summary>New Folder</summary>
-                <form method="post" action="<?= esc_url(admin_url('media/media')) ?>">
-                    <input type="hidden" name="csrf_token" value="<?= esc_attr($createFolderToken) ?>">
-                    <input type="hidden" name="form" value="create_folder">
-                    <input type="hidden" name="current_folder" value="<?= esc_attr($currentFolderRaw) ?>">
-                    <p class="lp-field">
-                        <label for="new-folder-name">Name</label>
-                        <input type="text" id="new-folder-name" name="name" required>
-                    </p>
-                    <p class="lp-field">
-                        <label for="new-folder-parent">Parent</label>
-                        <select id="new-folder-parent" name="parent_id">
-                            <option value="0">(Top level)</option>
-                            <?php foreach ($buildFolderOptions($allFolders, []) as $option): ?>
-                                <option value="<?= (int) $option['id'] ?>" <?= $currentFolderId === $option['id'] ? 'selected' : '' ?>><?= esc_html($option['label']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </p>
-                    <button type="submit" class="lp-button lp-button--primary">Create</button>
-                </form>
-            </details>
             </details>
         </aside>
 

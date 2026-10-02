@@ -15,6 +15,8 @@
  *     <summary>...</summary>
  *     <ul class="lp-folder-tree__children">...</ul>
  *   </details>
+ *   <button data-lp-folder-collapse-all hidden> — optional; shown and wired
+ *   up here as a "Collapse all"/"Expand all" toggle.
  */
 (function () {
     'use strict';
@@ -60,8 +62,48 @@
                 });
         }
 
+        // "Collapse all" fires one toggle event per folder; coalescing them
+        // into a single save matters because each response's CSRF token is
+        // single-use, so parallel saves would all but one be rejected.
+        var persistTimer = null;
+
+        function schedulePersist() {
+            window.clearTimeout(persistTimer);
+            persistTimer = window.setTimeout(persist, 150);
+        }
+
+        var collapseAll = document.querySelector('[data-lp-folder-collapse-all]');
+
+        function anyOpen() {
+            return Array.prototype.some.call(toggles, function (details) {
+                return details.open;
+            });
+        }
+
+        function updateCollapseLabel() {
+            if (collapseAll) {
+                collapseAll.textContent = anyOpen() ? 'Collapse all' : 'Expand all';
+            }
+        }
+
         toggles.forEach(function (details) {
-            details.addEventListener('toggle', persist);
+            details.addEventListener('toggle', function () {
+                schedulePersist();
+                updateCollapseLabel();
+            });
         });
+
+        if (collapseAll) {
+            collapseAll.hidden = false;
+            updateCollapseLabel();
+
+            collapseAll.addEventListener('click', function () {
+                var open = !anyOpen();
+
+                toggles.forEach(function (details) {
+                    details.open = open;
+                });
+            });
+        }
     });
 }());

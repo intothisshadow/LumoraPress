@@ -2991,6 +2991,47 @@ body.lp-admin-login {
     margin: 0 0 0.75rem;
 }
 
+/*
+ * Both controls share the first grid row: New Folder spans the full width
+ * (so its form opens full width underneath) and the collapse toggle sits
+ * over the empty right end of that row, beside the New Folder summary.
+ */
+.lp-folder-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    margin: 0 0 0.75rem;
+}
+
+.lp-folder-toolbar__new {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+
+.lp-folder-toolbar__collapse {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+/* .lp-folder-tree__manage lays its forms out inline for the bulk bar;
+   here the New Folder form should stack at the full sidebar width. */
+.lp-folder-toolbar .lp-folder-toolbar__new form {
+    display: block;
+}
+
+.lp-folder-toolbar .lp-folder-toolbar__new input[type="text"],
+.lp-folder-toolbar .lp-folder-toolbar__new select {
+    width: 100%;
+}
+
+/* Sized to match the New Folder summary beside it; scoped under the
+   toolbar so it outranks the general .lp-button padding defined later. */
+.lp-folder-toolbar .lp-folder-toolbar__collapse {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
 /* These inputs sit outside .lp-field, so they need the field chrome
    (and its dark-mode colors) applied directly. */
 .lp-folder-search input,
