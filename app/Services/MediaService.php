@@ -735,6 +735,59 @@ final class MediaService
     }
 
     /**
+     * Size and dimensions the Media pickers show beside each file.
+     * Dimensions stay 0 for non-images so a picker can omit them.
+     *
+     * @param array<string, mixed> $media
+     * @return array{fileSize: int, width: int, height: int}
+     */
+    public function pickerMeta(array $media): array
+    {
+        return [
+            'fileSize' => (int) ($media['file_size'] ?? 0),
+            'width' => (int) ($media['width'] ?? 0),
+            'height' => (int) ($media['height'] ?? 0),
+        ];
+    }
+
+    /**
+     * Same B/KB/MB/GB rounding as admin/assets/js/file-meta.js, so
+     * server-rendered pickers read the same as the JS-built ones.
+     */
+    public static function formatFileSize(int $bytes): string
+    {
+        $value = (float) max(0, $bytes);
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $unit = 0;
+
+        while ($value >= 1024 && $unit < count($units) - 1) {
+            $value /= 1024;
+            $unit++;
+        }
+
+        $text = $unit === 0 ? (string) round($value) : rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.');
+
+        return $text . ' ' . $units[$unit];
+    }
+
+    /**
+     * "photo.jpg (1.2 MB · 800 × 600 px)" for plain <select> pickers.
+     *
+     * @param array<string, mixed> $media
+     */
+    public function describeFile(array $media): string
+    {
+        $meta = $this->pickerMeta($media);
+        $parts = [self::formatFileSize($meta['fileSize'])];
+
+        if ($meta['width'] > 0 && $meta['height'] > 0) {
+            $parts[] = $meta['width'] . ' × ' . $meta['height'] . ' px';
+        }
+
+        return (string) $media['file_name'] . ' (' . implode(' · ', $parts) . ')';
+    }
+
+    /**
      * @param array<string, mixed> $media
      */
     public function url(array $media): string

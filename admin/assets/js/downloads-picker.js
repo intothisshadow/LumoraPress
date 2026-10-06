@@ -109,6 +109,12 @@
             name.textContent = item.name;
             button.appendChild(name);
 
+            var meta = window.lpFileMeta.element(item, 'lp-download-picker-dialog__item-meta');
+
+            if (meta) {
+                button.appendChild(meta);
+            }
+
             button.addEventListener('click', function () {
                 onSelect(item);
                 dialog.close();

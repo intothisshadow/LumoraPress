@@ -73,7 +73,7 @@ $buildEditorPickerItem = static function (array $item, array $thumbnailsForItem)
         'caption' => (string) ($item['caption'] ?? ''),
         'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
         'sizes' => $sizes,
-    ];
+    ] + $kernel->media->pickerMeta($item);
 };
 
 // The Description field's editor image upload/format-switch conversion:
@@ -316,7 +316,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
                 'url' => $kernel->media->url($item),
                 'mimeType' => (string) $item['mime_type'],
                 'typeCategory' => $kernel->media->typeCategory((string) $item['mime_type']),
-            ],
+            ] + $kernel->media->pickerMeta($item),
             $result['items'],
         ),
         'total' => $result['total'],

@@ -111,6 +111,13 @@
             img.alt = item.name;
             button.appendChild(img);
 
+            var meta = window.lpFileMeta.element(item, 'lp-picker-meta');
+
+            if (meta) {
+                button.appendChild(meta);
+                button.title = item.name + ' — ' + meta.textContent;
+            }
+
             button.addEventListener('click', function () {
                 onSelect(item);
 

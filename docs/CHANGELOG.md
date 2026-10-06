@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Every Media-library picker now shows each file's size (B, KB, MB or GB) and, for images, its dimensions in px (LP-196). This covers Insert Image, Insert Audio/Video/File, Featured Image, header and category image pickers, the Downloads file picker, and the Media Manager's poster, caption-track and default sharing-image dropdowns.
+
 ### Changed
 
 - Media Manager folder sidebar redesigned (LP-191): it's wider, and each folder now fits on one line, with its expand/collapse arrow, name, and file count. Long names are shortened with "…", and the full name shows on hover. Rename, Move to, New subfolder, and Delete are now in a "…" menu on each folder, which appears when you point at the folder (it's always shown on touch screens). That menu replaces the separate × and "Manage" buttons. The built-in views (Recently Uploaded, Unused Media, Missing Alt Text, and so on) moved out of the sidebar into a row of buttons above the file list, with the less-used ones under "More". On phones, the folder list folds into a "Folders" panel above the files, showing the folder you're in. "New Folder" now sits just under the folder search instead of at the bottom of a long list, next to a new "Collapse all" / "Expand all" button that opens or closes every folder at once and remembers your choice.

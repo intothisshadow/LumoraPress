@@ -407,6 +407,13 @@
             img.alt = item.name;
             button.appendChild(img);
 
+            var meta = window.lpFileMeta.element(item, 'lp-picker-meta');
+
+            if (meta) {
+                button.appendChild(meta);
+                button.title = item.name + ' — ' + meta.textContent;
+            }
+
             button.addEventListener('click', function () {
                 showSettingsStep(item);
             });
@@ -1212,7 +1219,8 @@
         items.forEach(function (item) {
             var option = document.createElement('option');
             option.value = String(item.id);
-            option.textContent = item.name;
+            var optionMeta = window.lpFileMeta.describe(item);
+            option.textContent = optionMeta !== '' ? item.name + ' (' + optionMeta + ')' : item.name;
             fileSelect.appendChild(option);
         });
 

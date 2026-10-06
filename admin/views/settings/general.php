@@ -262,7 +262,7 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
                 <option value="0">(None)</option>
                 <?php foreach ($ogImageOptions as $ogImageOption): ?>
                     <option value="<?= (int) $ogImageOption['id'] ?>" <?= $currentOgImageId === (int) $ogImageOption['id'] ? 'selected' : '' ?>>
-                        <?= esc_html((string) $ogImageOption['file_name']) ?>
+                        <?= esc_html($kernel->media->describeFile($ogImageOption)) ?>
                     </option>
                 <?php endforeach; ?>
             </select>

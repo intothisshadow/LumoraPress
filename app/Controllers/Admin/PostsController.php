@@ -677,7 +677,7 @@ final class PostsController
             'caption' => (string) ($item['caption'] ?? ''),
             'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
             'sizes' => $sizes,
-        ];
+        ] + $this->media->pickerMeta($item);
     }
 
     /**

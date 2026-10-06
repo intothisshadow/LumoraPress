@@ -89,7 +89,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
                     'alt' => (string) ($item['alt_text'] ?? ''),
                     'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
                     'sizes' => $sizes,
-                ];
+                ] + $kernel->media->pickerMeta($item);
             },
             $result['items'],
         ),

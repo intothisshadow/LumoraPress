@@ -554,7 +554,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                         <option value="0">(None)</option>
                         <?php foreach ($mediaService->query(['type' => 'image'], 500, 0)['items'] as $posterOption): ?>
                             <option value="<?= (int) $posterOption['id'] ?>" <?= (int) ($editingMedia['poster_media_id'] ?? 0) === (int) $posterOption['id'] ? 'selected' : '' ?>>
-                                <?= esc_html((string) $posterOption['file_name']) ?>
+                                <?= esc_html($mediaService->describeFile($posterOption)) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -568,7 +568,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                         <?php foreach ($mediaService->query(['term' => '.vtt'], 500, 0)['items'] as $trackOption): ?>
                             <?php if (!str_ends_with((string) $trackOption['file_name'], '.vtt')) { continue; } ?>
                             <option value="<?= (int) $trackOption['id'] ?>" <?= (int) ($editingMedia['caption_track_media_id'] ?? 0) === (int) $trackOption['id'] ? 'selected' : '' ?>>
-                                <?= esc_html((string) $trackOption['file_name']) ?>
+                                <?= esc_html($mediaService->describeFile($trackOption)) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>

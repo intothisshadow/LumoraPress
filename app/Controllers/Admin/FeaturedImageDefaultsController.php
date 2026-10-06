@@ -151,6 +151,6 @@ final class FeaturedImageDefaultsController
             'alt' => (string) ($item['alt_text'] ?? ''),
             'folderId' => $item['folder_id'] !== null ? (int) $item['folder_id'] : null,
             'sizes' => $sizes,
-        ];
+        ] + $this->media->pickerMeta($item);
     }
 }

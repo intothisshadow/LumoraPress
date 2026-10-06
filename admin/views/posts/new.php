@@ -312,16 +312,16 @@ $editorFolderTree = array_map(
 // tree above — an audio/video library is typically far smaller than an
 // image library, so a paginated grid query isn't needed.
 $editorAudioMedia = array_map(
-    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']],
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']] + $kernel->media->pickerMeta($item),
     $kernel->media->query(['type' => 'audio'], 500)['items'],
 );
 $editorVideoMedia = array_map(
-    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']],
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name']] + $kernel->media->pickerMeta($item),
     $kernel->media->query(['type' => 'video'], 500)['items'],
 );
 // Documents and archives for "Insert File", inserted as plain links.
 $editorFileMedia = array_map(
-    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name'], 'url' => $kernel->media->url($item)],
+    static fn (array $item): array => ['id' => (int) $item['id'], 'name' => (string) $item['file_name'], 'url' => $kernel->media->url($item)] + $kernel->media->pickerMeta($item),
     array_merge(
         $kernel->media->query(['type' => 'document'], 250)['items'],
         $kernel->media->query(['type' => 'archive'], 250)['items'],
