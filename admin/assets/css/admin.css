@@ -6240,17 +6240,18 @@ a.lp-button--link.lp-button--link--view:hover {
     font-size: 0.7rem;
     line-height: 1.3;
     text-align: left;
+    pointer-events: none;
+}
+
+.lp-file-meta__row {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    pointer-events: none;
 }
 
 .lp-download-picker-dialog__item-meta {
     display: block;
     font-size: 0.7rem;
     color: var(--lp-admin-sidebar-fg-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }

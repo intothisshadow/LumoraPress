@@ -411,7 +411,7 @@
 
             if (meta) {
                 button.appendChild(meta);
-                button.title = item.name + ' — ' + meta.textContent;
+                button.title = item.name + ' — ' + window.lpFileMeta.describe(item);
             }
 
             button.addEventListener('click', function () {

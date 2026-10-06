@@ -28,32 +28,43 @@
         return text + ' ' + UNITS[unit];
     }
 
-    function describe(item) {
-        var parts = [];
+    function parts(item) {
+        var rows = [];
 
         if (item && item.fileSize !== undefined && item.fileSize !== null) {
-            parts.push(formatBytes(item.fileSize));
+            rows.push(formatBytes(item.fileSize));
         }
 
         if (item && item.width > 0 && item.height > 0) {
-            parts.push(item.width + ' × ' + item.height + ' px');
+            rows.push(item.width + ' × ' + item.height + ' px');
         }
 
-        return parts.filter(Boolean).join(' · ');
+        return rows.filter(Boolean);
     }
 
-    function element(item, className) {
-        var text = describe(item);
+    function describe(item) {
+        return parts(item).join(' · ');
+    }
 
-        if (text === '') {
+    // Size and dimensions go on separate rows so a narrow grid tile never has to truncate one of them.
+    function element(item, className) {
+        var rows = parts(item);
+
+        if (rows.length === 0) {
             return null;
         }
 
-        var span = document.createElement('span');
-        span.className = className || 'lp-file-meta';
-        span.textContent = text;
+        var wrapper = document.createElement('span');
+        wrapper.className = className || 'lp-file-meta';
 
-        return span;
+        rows.forEach(function (text) {
+            var row = document.createElement('span');
+            row.className = 'lp-file-meta__row';
+            row.textContent = text;
+            wrapper.appendChild(row);
+        });
+
+        return wrapper;
     }
 
     window.lpFileMeta = { formatBytes: formatBytes, describe: describe, element: element };
