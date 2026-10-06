@@ -24,6 +24,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Visual editor: a code block's language is no longer lost when the post is saved, so it stays selected when the post is reopened and survives switching to Markdown (it now becomes the code fence's language).
+- Switching from the visual editor to Markdown now keeps paragraph and heading alignment (as `{.center}`, `{.right}` and so on) and the Read More marker (as `<!--more-->`). Switching from Markdown to the visual editor turns `<!--more-->` back into a Read More marker instead of showing it as text.
 - Maintenance &rsaquo; Updates no longer shows "An Update Did Not Finish" for an old core update that a later successful update has already superseded. The leftover record of the abandoned attempt is now cleared automatically.
 - Lumora Classic: posts on category, tag, author and date archive pages now use the same card layout as the homepage, including its background, instead of a plain list.
 - Lumora Classic: with "Show featured image above title" on, a single post's or page's featured image is now cropped to a 320px banner on wide screens, as intended, instead of showing at its full height.

@@ -357,9 +357,15 @@ final class ContentRenderer
 
         // $to is never Plain here — guarded above — so only the Html and
         // Markdown conversion directions remain.
-        return $to === ContentFormat::Html
-            ? $this->sanitizer->clean($this->markdown->toHtml($content))
-            : $this->htmlToMarkdown->toMarkdown($this->sanitizer->clean($content));
+        if ($to === ContentFormat::Html) {
+            // The Markdown parser escapes the Read More comment into visible text; the visual
+            // editor needs its own marker element instead.
+            $html = str_replace('<p>&lt;!--more--&gt;</p>', '<p><span class="lp-more-tag">Read More</span></p>', $this->markdown->toHtml($content));
+
+            return $this->sanitizer->clean($html);
+        }
+
+        return $this->htmlToMarkdown->toMarkdown($this->sanitizer->clean($content));
     }
 
     /**

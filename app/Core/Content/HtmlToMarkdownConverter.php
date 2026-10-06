@@ -77,13 +77,13 @@ final class HtmlToMarkdownConverter
         $inner = $this->renderChildren($node);
 
         return match ($tag) {
-            'h1' => "\n# " . trim($inner) . "\n\n",
-            'h2' => "\n## " . trim($inner) . "\n\n",
-            'h3' => "\n### " . trim($inner) . "\n\n",
-            'h4' => "\n#### " . trim($inner) . "\n\n",
-            'h5' => "\n##### " . trim($inner) . "\n\n",
-            'h6' => "\n###### " . trim($inner) . "\n\n",
-            'p', 'div' => "\n" . trim($inner) . "\n\n",
+            'h1' => "\n# " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'h2' => "\n## " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'h3' => "\n### " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'h4' => "\n#### " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'h5' => "\n##### " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'h6' => "\n###### " . trim($inner) . $this->alignmentMarker($node) . "\n\n",
+            'p', 'div' => "\n" . trim($inner) . $this->alignmentMarker($node) . "\n\n",
             'br' => "  \n",
             'hr' => "\n---\n\n",
             'strong', 'b' => '**' . trim($inner) . '**',
@@ -197,6 +197,26 @@ final class HtmlToMarkdownConverter
     }
 
     /**
+     * The trailing `{.center}`-style marker MarkdownParser reads back as
+     * alignment, for a block carrying one of the editor's has-text-align-*
+     * classes. Empty text has nothing to align, so it gets no marker.
+     */
+    private function alignmentMarker(DOMElement $block): string
+    {
+        if (trim($block->textContent) === '') {
+            return '';
+        }
+
+        foreach (preg_split('/\s+/', $block->getAttribute('class'), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $class) {
+            if (preg_match('/^has-text-align-(left|center|right|justify)$/', $class, $match) === 1) {
+                return ' {.' . $match[1] . '}';
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Superscript/subscript only converts when the marker syntax can carry
      * it: text containing whitespace or the marker itself would not parse
      * back, and a footnote reference (`<sup id>` wrapping a link) is
@@ -226,6 +246,11 @@ final class HtmlToMarkdownConverter
     private function renderSpan(DOMElement $span, string $inner): string
     {
         foreach (explode(' ', $span->getAttribute('class')) as $class) {
+            // The editor's Read More marker; the Markdown editor inserts the same comment.
+            if ($class === 'lp-more-tag') {
+                return '<!--more-->';
+            }
+
             if (str_starts_with($class, 'has-') && str_ends_with($class, '-color')) {
                 $color = substr($class, 4, -6);
 
@@ -253,8 +278,9 @@ final class HtmlToMarkdownConverter
         $lang = '';
         $text = $codeChild !== null ? $codeChild->textContent : $pre->textContent;
 
-        if ($codeChild !== null) {
-            foreach (explode(' ', $codeChild->getAttribute('class')) as $class) {
+        // The editor's code sample puts the language on the <pre>; Markdown-rendered blocks put it on the <code>.
+        foreach ([$pre, $codeChild] as $element) {
+            foreach ($element === null ? [] : explode(' ', $element->getAttribute('class')) as $class) {
                 if (str_starts_with($class, 'language-')) {
                     $lang = substr($class, strlen('language-'));
                 }

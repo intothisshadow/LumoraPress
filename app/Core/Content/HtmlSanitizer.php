@@ -47,7 +47,9 @@ final class HtmlSanitizer
         'del' => [], 's' => [],
         'sup' => ['id'], 'sub' => [],
         'code' => ['class'],
-        'pre' => [],
+        // 'class' carries the code sample's language (language-php), which the editor
+        // and the Markdown converter read back from the <pre>.
+        'pre' => ['class'],
         'blockquote' => [],
         'ul' => ['class'], 'ol' => ['class'], 'li' => ['class', 'id'],
         'dl' => ['class'], 'dt' => ['class'], 'dd' => ['class'],
