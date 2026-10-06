@@ -10,7 +10,7 @@
  */
 
 @media (max-width: 840px) {
-    .lp-content--home .lp-post-list__item:first-child {
+    .lp-content--home--magazine .lp-post-list__item:first-child {
         grid-template-columns: minmax(0, 1fr) minmax(220px, 0.85fr);
     }
 }
@@ -68,7 +68,7 @@
         gap: 0.2rem 0.85rem;
     }
 
-    .lp-nav-menu__item a {
+    :is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__item a {
         font-size: 0.72rem;
     }
 
@@ -86,57 +86,40 @@
         padding: 2rem 1rem 2.5rem;
     }
 
-    .lp-content--home .lp-post-list {
+    .lp-content--home--magazine .lp-post-list {
         grid-template-columns: 1fr;
     }
 
-    .lp-content--home .lp-post-list__item:first-child {
+    .lp-content--home--magazine .lp-post-list__item:first-child {
         display: flex;
         flex-direction: column;
     }
 
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail,
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail img {
+    .lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__thumbnail,
+    .lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__thumbnail img {
         min-height: 220px;
         height: 220px;
     }
 
-    .lp-content--home .lp-post-list__item:first-child .lp-post-list__body {
+    .lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__body {
         padding: 1.4rem;
     }
 
-    .lp-content--home--classic .lp-post-list__item,
-    .lp-content--home--classic .lp-post-list__item:first-child,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) {
+    .lp-content--home--classic .lp-post-list__item {
         flex-direction: column;
     }
 
-    .lp-content--home--classic .lp-post-list__thumbnail,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
+    .lp-content--home--classic .lp-post-list__thumbnail {
         flex-basis: auto;
-        width: 100%;
     }
 
-    .lp-content--home--classic .lp-post-list__thumbnail img,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-        height: 210px;
-    }
-
-    /* Overrides the desktop .lp-content--thumbnail-above height (320px)
-       back down to the same 200px every other mobile hero image on this
-       site uses — its 3-class selector otherwise outranks the 210px rule
-       just above, which is scoped to plain .lp-content--home--classic. */
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
+    /* Brings the desktop .lp-content--thumbnail-above banner (320px) down
+       to the same 200px every other mobile banner image on this site uses. */
+    .lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img {
         height: 200px;
     }
 
-    .lp-content--home--classic .lp-post-list__body,
-    .lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__body,
-    .lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__body {
+    .lp-content--home--classic .lp-post-list__body {
         padding: 0;
     }
 }

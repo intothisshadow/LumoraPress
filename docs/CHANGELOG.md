@@ -13,11 +13,18 @@ All notable changes to Lumora Press are documented in this file.
 ### Changed
 
 - Media Manager folder sidebar redesigned (LP-191): it's wider, and each folder now fits on one line, with its expand/collapse arrow, name, and file count. Long names are shortened with "…", and the full name shows on hover. Rename, Move to, New subfolder, and Delete are now in a "…" menu on each folder, which appears when you point at the folder (it's always shown on touch screens). That menu replaces the separate × and "Manage" buttons. The built-in views (Recently Uploaded, Unused Media, Missing Alt Text, and so on) moved out of the sidebar into a row of buttons above the file list, with the less-used ones under "More". On phones, the folder list folds into a "Folders" panel above the files, showing the folder you're in. "New Folder" now sits just under the folder search instead of at the bottom of a long list, next to a new "Collapse all" / "Expand all" button that opens or closes every folder at once and remembers your choice.
+- Lumora Classic 0.3.1: stylesheet cleanup. Unused rules were removed and repeated ones combined, so the file is about 220 lines shorter. Card shadows are now a little stronger in dark mode, so cards stand out from the background.
 
 ### Fixed
 
 - Maintenance &rsaquo; Updates no longer shows "An Update Did Not Finish" for an old core update that a later successful update has already superseded. The leftover record of the abandoned attempt is now cleared automatically.
 - Lumora Classic: posts on category, tag, author and date archive pages now use the same card layout as the homepage, including its background, instead of a plain list.
+- Lumora Classic: with "Show featured image above title" on, a single post's or page's featured image is now cropped to a 320px banner on wide screens, as intended, instead of showing at its full height.
+- Lumora Classic: links in a sidebar Navigation Menu widget are readable again in light mode. They had picked up the header menu's white text, which was nearly invisible on the light widget card.
+- Lumora Classic: buttons in the comment subscription panel and the comment Report form no longer show the browser's default raised border, and show a pointer cursor.
+- Lumora Classic: secondary buttons (comment page links, Watch this thread, Unsubscribe, Send report) now look different from primary ones, as an outlined button that fills in on hover.
+- Lumora Classic: in the footer, text inside widget cards is dark on the light card instead of inheriting the footer's light text; the Privacy Policy link keeps a readable color on hover; the extra footer text (Customize › Footer) is readable on the dark footer; and footer menu dropdowns use the dark menu style and open upward.
+- Lumora Classic: in the Classic homepage layout, every post title is now the same size. The first post's title used to be slightly larger than the rest.
 
 ## [0.20.0] — 2026-10-01
 

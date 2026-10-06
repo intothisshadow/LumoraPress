@@ -1,12 +1,53 @@
 /*
 Theme Name: Lumora Classic
 Description: A magazine-like archive theme with a strong visual masthead, featured stories, and editorial card layout.
-Version: 0.3.0
+Version: 0.3.1
 */
 
 /* =========================================================
    Tokens
    ========================================================= */
+
+:root {
+    --lp-bg: #e8efed;
+    --lp-bg-alt: #fbfcfa;
+    --lp-text: #172033;
+    --lp-text-muted: #667085;
+    --lp-border: #d4dfdc;
+    --lp-accent: #0f8b8d;
+    --lp-accent-hover: #09696b;
+    --lp-radius: 16px;
+    --lp-max-width: 1180px;
+    --lp-font-body: "Lora", Georgia, "Times New Roman", serif;
+    --lp-font-heading: "Playfair Display", Georgia, "Times New Roman", serif;
+    --lp-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --lp-font-display: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --lp-font-size-base: 16px;
+    --lp-line-height-base: 1.65;
+    --lp-surface-shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
+    --lp-card-shadow: 0 8px 22px rgba(23, 32, 51, 0.055);
+    /* The masthead, featured card and footer stay dark in both modes, so
+       their accent is fixed rather than following --lp-accent. */
+    --lp-header-ink: #172033;
+    --lp-header-accent: #61d0c2;
+    --lp-header-accent-hover: #8be1d5;
+    --lp-success-bg: #edfaef;
+    --lp-success-border: #00a32a;
+    --lp-success-text: #005c15;
+    --lp-error-bg: #fcf0f1;
+    --lp-error-border: #d63638;
+    --lp-error-text: #7a1a1c;
+    /* Fixed font-color palette (both editors) — see the .has-{color}-color
+       rules below for why this is a hardcoded set of named colors rather
+       than a free-pick color. */
+    --lp-color-red: #c0392b;
+    --lp-color-orange: #d35400;
+    --lp-color-yellow: #9a7d0a;
+    --lp-color-green: #1e8449;
+    --lp-color-blue: #2471a3;
+    --lp-color-purple: #7d3c98;
+    --lp-color-gray: #616a6b;
+}
 
 /*
  * Dark tokens are declared twice on purpose — once gated by the
@@ -21,13 +62,16 @@ Version: 0.3.0
  */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --lp-bg: #15171a;
-        --lp-bg-alt: #1c1f22;
-        --lp-text: #e4e6e8;
-        --lp-text-muted: #9aa0a6;
-        --lp-border: #33383d;
-        --lp-accent: #4c9be8;
-        --lp-accent-hover: #6cb0ef;
+        --lp-bg: #111821;
+        --lp-bg-alt: #1b2530;
+        --lp-text: #edf3f1;
+        --lp-text-muted: #a6b4b5;
+        --lp-border: #33434b;
+        --lp-accent: #61d0c2;
+        --lp-accent-hover: #8be1d5;
+        --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
+        --lp-card-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+        --lp-header-ink: #0e141d;
         --lp-success-bg: #16281a;
         --lp-success-border: #2fae4a;
         --lp-success-text: #7fd996;
@@ -44,6 +88,32 @@ Version: 0.3.0
         --lp-color-purple: #b07fd0;
         --lp-color-gray: #9aa0a6;
     }
+}
+
+:root[data-theme="dark"] {
+    --lp-bg: #111821;
+    --lp-bg-alt: #1b2530;
+    --lp-text: #edf3f1;
+    --lp-text-muted: #a6b4b5;
+    --lp-border: #33434b;
+    --lp-accent: #61d0c2;
+    --lp-accent-hover: #8be1d5;
+    --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
+    --lp-card-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+    --lp-header-ink: #0e141d;
+    --lp-success-bg: #16281a;
+    --lp-success-border: #2fae4a;
+    --lp-success-text: #7fd996;
+    --lp-error-bg: #3a1f20;
+    --lp-error-border: #d63638;
+    --lp-error-text: #f2b8b9;
+    --lp-color-red: #e57368;
+    --lp-color-orange: #e8954a;
+    --lp-color-yellow: #d9b93d;
+    --lp-color-green: #4fbb7d;
+    --lp-color-blue: #5fa8dd;
+    --lp-color-purple: #b07fd0;
+    --lp-color-gray: #9aa0a6;
 }
 
 /* =========================================================
@@ -135,19 +205,6 @@ img {
     border: none;
     padding: 0.35rem 0 0 1rem;
     background: none;
-}
-
-/* =========================================================
-   Search form (site header)
-   ========================================================= */
-
-.lp-search-form__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
 }
 
 /* =========================================================
@@ -284,7 +341,7 @@ img {
 .lp-post__meta,
 .lp-post-list__meta {
     color: var(--lp-text-muted);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
     margin: 0 0 1rem;
 }
@@ -319,19 +376,29 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
-/* get_the_tags()/the_tags() rendered as a pill list below a
-   single post's own content, distinct from .lp-widget__tag-cloud-item
+/* Tag pill lists: a single post's tags (below its content), a listing
+   card's tags, and a 'post'-type search result's tags. Each keeps its own
+   class so a theme can restyle one without the others; only the top
+   margin differs by default. Distinct from .lp-widget__tag-cloud-item
    (different component, even though visually similar). */
-.lp-post__tags {
+.lp-post__tags,
+.lp-post-list__tags,
+.lp-search-results__tags {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     list-style: none;
-    margin: 1.5rem 0 0;
+    margin: 0.75rem 0 0;
     padding: 0;
 }
 
-.lp-post__tags-item a {
+.lp-post__tags {
+    margin-top: 1.5rem;
+}
+
+.lp-post__tags-item a,
+.lp-post-list__tags-item a,
+.lp-search-results__tags-item a {
     background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
     border-radius: 999px;
@@ -343,7 +410,11 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-post__tags-item a:hover,
-.lp-post__tags-item a:focus {
+.lp-post__tags-item a:focus,
+.lp-post-list__tags-item a:hover,
+.lp-post-list__tags-item a:focus,
+.lp-search-results__tags-item a:hover,
+.lp-search-results__tags-item a:focus {
     border-color: var(--lp-accent);
     color: var(--lp-accent);
 }
@@ -358,7 +429,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-related-posts__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 1.25rem;
     margin: 0 0 1rem;
 }
@@ -384,8 +455,6 @@ a.lp-post-list__comments:focus {
 .lp-related-posts__thumbnail img {
     border-radius: var(--lp-radius);
     display: block;
-    height: auto;
-    max-width: 100%;
 }
 
 .lp-related-posts__link {
@@ -443,48 +512,14 @@ a.lp-post-list__comments:focus {
     margin: 0 0 1em;
 }
 
-.lp-post__content a {
-    color: var(--lp-accent);
-}
-
-.lp-post__content a:hover {
-    color: var(--lp-accent-hover);
-}
-
 .lp-post__content img {
-    max-width: 100%;
-    height: auto;
     border-radius: var(--lp-radius);
 }
 
 /*
- * Image alignment — classes the WYSIWYG editor's Insert Media
- * "Alignment" step adds directly to the <img> (content-editor.js).
- * .alignnone needs no rule of its own: an inline <img> with no float is
- * already the "no alignment" default.
- */
-.lp-post__content img.alignleft {
-    float: left;
-    margin: 0.25em 1.5em 1em 0;
-}
-
-.lp-post__content img.alignright {
-    float: right;
-    margin: 0.25em 0 1em 1.5em;
-}
-
-.lp-post__content img.aligncenter {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-/*
- * WordPress Importer's [caption] shortcode conversion wraps a
- * migrated image and its caption text in <figure class="lp-caption
- * {align}"><img ...><figcaption>...</figcaption></figure> — the align.*
- * rules here mirror the plain img.align* rules above so a captioned
- * image floats/centers exactly like an unwrapped one would.
+ * A captioned image (the editors' Insert Image caption, or the WordPress
+ * Importer's [caption] conversion) is a <figure class="lp-caption {align}">
+ * wrapping the <img> and its <figcaption>.
  */
 .lp-post__content figure.lp-caption {
     max-width: 100%;
@@ -493,21 +528,32 @@ a.lp-post-list__comments:focus {
 
 .lp-post__content figure.lp-caption img {
     display: block;
-    max-width: 100%;
-    height: auto;
     margin: 0;
 }
 
+/*
+ * Image alignment — the editors put the align* class on the <img>
+ * itself, or on its figure when it has a caption, so both float/center
+ * the same way. .alignnone needs no rule of its own: an inline <img>
+ * with no float is already the "no alignment" default.
+ */
+.lp-post__content img.alignleft,
 .lp-post__content figure.lp-caption.alignleft {
     float: left;
     margin: 0.25em 1.5em 1em 0;
 }
 
+.lp-post__content img.alignright,
 .lp-post__content figure.lp-caption.alignright {
     float: right;
     margin: 0.25em 0 1em 1.5em;
 }
 
+.lp-post__content img.aligncenter {
+    display: block;
+}
+
+.lp-post__content img.aligncenter,
 .lp-post__content figure.lp-caption.aligncenter {
     margin-left: auto;
     margin-right: auto;
@@ -626,21 +672,26 @@ a.lp-post-list__comments:focus {
  * alignment classes (renderTable() in MarkdownParser). TinyMCE's align
  * toolbar is configured (content-editor.js) to apply these
  * has-text-align-* classes rather than an inline style="text-align:...",
- * since HtmlSanitizer never allows a style attribute at all.
+ * since HtmlSanitizer never allows a style attribute at all. Text/HTML
+ * widgets use the same editor, so .lp-widget__content gets them too.
  */
-.lp-post__content .has-text-align-left {
+.lp-post__content .has-text-align-left,
+.lp-widget__content .has-text-align-left {
     text-align: left;
 }
 
-.lp-post__content .has-text-align-center {
+.lp-post__content .has-text-align-center,
+.lp-widget__content .has-text-align-center {
     text-align: center;
 }
 
-.lp-post__content .has-text-align-right {
+.lp-post__content .has-text-align-right,
+.lp-widget__content .has-text-align-right {
     text-align: right;
 }
 
-.lp-post__content .has-text-align-justify {
+.lp-post__content .has-text-align-justify,
+.lp-widget__content .has-text-align-justify {
     text-align: justify;
 }
 
@@ -718,9 +769,15 @@ a.lp-post-list__comments:focus {
     margin: 0 0 1.5rem;
 }
 
+.lp-post__thumbnail img {
+    display: block;
+    border-radius: 12px;
+}
+
 /* "Show featured image above title" Theme Option — same full-width
    banner treatment as .lp-post-list__thumbnail's own hero-banner
-   image, applied to a single post/page instead of a listing card. */
+   image, applied to a single post/page instead of a listing card. Must
+   stay after .lp-post__thumbnail img, which is equally specific. */
 .lp-post__thumbnail--hero {
     width: 100%;
 }
@@ -786,6 +843,12 @@ a.lp-post-list__comments:focus {
     margin: 0 0 0.35rem;
 }
 
+.lp-post-list__title a {
+    text-decoration: none;
+    color: var(--lp-text);
+    transition: color 0.15s ease;
+}
+
 .lp-post-list__title a:hover,
 .lp-post-list__title a:focus {
     color: var(--lp-accent);
@@ -804,7 +867,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-post-list__more {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.9rem;
     color: var(--lp-accent);
     text-decoration: none;
@@ -813,35 +876,6 @@ a.lp-post-list__comments:focus {
 .lp-post-list__more:hover,
 .lp-post-list__more:focus {
     text-decoration: underline;
-}
-
-/* A card's own tags, shown on index.php/archive.php's post
-   listings. Same pill treatment as .lp-post__tags on a single post,
-   just a tighter top margin to fit a compact card. */
-.lp-post-list__tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    list-style: none;
-    margin: 0.75rem 0 0;
-    padding: 0;
-}
-
-.lp-post-list__tags-item a {
-    background: var(--lp-bg-alt);
-    border: 1px solid var(--lp-border);
-    border-radius: 999px;
-    color: var(--lp-text);
-    display: inline-block;
-    font-size: 0.8rem;
-    padding: 0.25rem 0.75rem;
-    text-decoration: none;
-}
-
-.lp-post-list__tags-item a:hover,
-.lp-post-list__tags-item a:focus {
-    border-color: var(--lp-accent);
-    color: var(--lp-accent);
 }
 
 /* =========================================================
@@ -885,7 +919,7 @@ a.lp-post-list__comments:focus {
 
 .lp-search-results__type {
     color: var(--lp-text-muted);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -893,7 +927,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-search-results__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 1.5rem;
     margin: 0 0 0.35rem;
 }
@@ -910,42 +944,13 @@ a.lp-post-list__comments:focus {
 
 .lp-search-results__meta {
     color: var(--lp-text-muted);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
     margin: 0 0 0.5rem;
 }
 
 .lp-search-results__excerpt {
     margin: 0;
-}
-
-/* A 'post'-type result's own tags. Same pill treatment as
-   .lp-post-list__tags, its own class since search results aren't post
-   listing cards (a Page/Category/Tag/Author result never has one). */
-.lp-search-results__tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    list-style: none;
-    margin: 0.75rem 0 0;
-    padding: 0;
-}
-
-.lp-search-results__tags-item a {
-    background: var(--lp-bg-alt);
-    border: 1px solid var(--lp-border);
-    border-radius: 999px;
-    color: var(--lp-text);
-    display: inline-block;
-    font-size: 0.8rem;
-    padding: 0.25rem 0.75rem;
-    text-decoration: none;
-}
-
-.lp-search-results__tags-item a:hover,
-.lp-search-results__tags-item a:focus {
-    border-color: var(--lp-accent);
-    color: var(--lp-accent);
 }
 
 .lp-search-highlight {
@@ -960,7 +965,7 @@ a.lp-post-list__comments:focus {
 .lp-search-filters {
     background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius, 8px);
+    border-radius: var(--lp-radius);
     margin: 0 0 2rem;
     padding: 0.75rem 1rem;
 }
@@ -1048,7 +1053,7 @@ a.lp-post-list__comments:focus {
 
 .lp-search-filters__button:hover,
 .lp-search-filters__button:focus {
-    background: var(--lp-accent-hover, var(--lp-accent));
+    background: var(--lp-accent-hover);
 }
 
 .lp-search-filters__reset {
@@ -1103,7 +1108,7 @@ a.lp-post-list__comments:focus {
     overflow-y: auto;
     background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius, 8px);
+    border-radius: var(--lp-radius);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
     color: var(--lp-text);
     font-size: 0.95rem;
@@ -1232,7 +1237,7 @@ a.lp-post-list__comments:focus {
     gap: 0.5rem;
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.9rem;
 }
 
@@ -1285,6 +1290,7 @@ a.lp-post-list__comments:focus {
     background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
+    box-shadow: var(--lp-card-shadow);
     padding: 1.25rem;
 }
 
@@ -1293,9 +1299,6 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
-/* The optional Welcome Message, either below the header (a
-   full-width band) or inside .lp-sidebar (styled like a .lp-widget so it
-   reads as part of that same list rather than a mismatched extra box). */
 /*
  * Text/HTML widget WYSIWYG output, plus the Custom HTML widget's
  * hand-authored markup — both render into this same .lp-widget__content
@@ -1322,14 +1325,6 @@ a.lp-post-list__comments:focus {
     margin-bottom: 0;
 }
 
-.lp-widget__content a {
-    color: var(--lp-accent);
-}
-
-.lp-widget__content a:hover {
-    color: var(--lp-accent-hover);
-}
-
 .lp-widget__content :is(ul, ol) {
     margin: 0 0 0.85em;
     padding-left: 1.35em;
@@ -1347,22 +1342,6 @@ a.lp-post-list__comments:focus {
     border-top: 1px solid var(--lp-border);
 }
 
-.lp-widget__content .has-text-align-left {
-    text-align: left;
-}
-
-.lp-widget__content .has-text-align-center {
-    text-align: center;
-}
-
-.lp-widget__content .has-text-align-right {
-    text-align: right;
-}
-
-.lp-widget__content .has-text-align-justify {
-    text-align: justify;
-}
-
 /* Core widgets: Pages, Categories, Recent Posts, Recent
    Comments, Archives, and the Navigation Menu widget all render a plain
    link list; Tag Cloud and Meta reuse the same list/count building
@@ -1373,19 +1352,16 @@ a.lp-post-list__comments:focus {
     font-size: 0.85em;
 }
 
-/* Nested Pages/Categories widget output — a child page's or
-   subcategory's own <ul> lives inside its parent's <li>, indented by
-   padding rather than margin so the parent's own bottom border (if a
-   theme adds one later) wouldn't get cut short by a child list sitting
-   outside it. Children are marked with bullets, not rules. */
-
 /* A top-level category or page in a nested Categories/Pages widget list is set
    slightly heavier than its bulleted children. */
 .lp-widget__list:not(.lp-widget__list--nested):has(> li > .lp-widget__list--nested) > li > a {
     font-weight: 600;
 }
 
-/* Doubled class so these beat the plain .lp-widget__list rules further down. */
+/* Nested Pages/Categories widget output — a child's own <ul> lives inside
+   its parent's <li>, indented by padding and marked with bullets rather
+   than rules. Doubled class so these beat the plain .lp-widget__list rules
+   further down. */
 .lp-widget__list.lp-widget__list--nested {
     margin-top: 0.5rem;
     padding-left: 2.1rem;
@@ -1429,7 +1405,7 @@ a.lp-post-list__comments:focus {
    Users" rows. */
 
 .lp-widget__stats {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
 }
 
 .lp-widget__stats li {
@@ -1463,7 +1439,7 @@ a.lp-post-list__comments:focus {
     border: 1px solid var(--lp-border);
     color: var(--lp-text);
     text-decoration: none;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
 }
 
@@ -1486,14 +1462,16 @@ a.lp-post-list__comments:focus {
    by the Social Links widget so a platform without an icon (Font Awesome
    inactive) still reads its full name to screen readers, while a
    platform with an icon keeps that name available without showing it
-   twice. */
+   twice, and by the header search form's label. */
 
-.lp-visually-hidden {
+.lp-visually-hidden,
+.lp-search-form__label {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
     white-space: nowrap;
 }
 
@@ -1501,20 +1479,39 @@ a.lp-post-list__comments:focus {
    Buttons
    ========================================================= */
 
+/* Used on both <a> and <button> (core's comment subscription and report
+   forms), so the button's native border and cursor are reset here. */
 .lp-button {
     display: inline-block;
     padding: 0.55rem 1.1rem;
+    border: 0;
     border-radius: var(--lp-radius);
     background: var(--lp-accent);
     color: #fff;
+    cursor: pointer;
     text-decoration: none;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.95rem;
+    line-height: inherit;
 }
 
 .lp-button:hover,
 .lp-button:focus {
     background: var(--lp-accent-hover);
+    color: #fff;
+}
+
+/* Outline variant for the less prominent action in a pair. An inset
+   shadow draws the outline so it stays the same size as .lp-button. */
+.lp-button--secondary {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--lp-accent);
+    color: var(--lp-accent);
+}
+
+.lp-button--secondary:hover,
+.lp-button--secondary:focus {
+    background: var(--lp-accent);
     color: #fff;
 }
 
@@ -1528,7 +1525,7 @@ a.lp-post-list__comments:focus {
 
 .lp-field label {
     display: block;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
     font-weight: 600;
     margin-bottom: 0.35rem;
@@ -1589,13 +1586,13 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-comments__title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 1.4rem;
     margin: 0 0 1.5rem;
 }
 
 .lp-comments__form-title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 1.1rem;
 }
 
@@ -1628,7 +1625,7 @@ a.lp-post-list__comments:focus {
     flex-wrap: wrap;
     gap: 0.75rem;
     align-items: baseline;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
     margin: 0 0 0.35rem;
 }
@@ -1658,7 +1655,7 @@ a.lp-post-list__comments:focus {
 .lp-comment__reply summary {
     cursor: pointer;
     color: var(--lp-accent);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
 }
 
@@ -1670,7 +1667,10 @@ a.lp-post-list__comments:focus {
     max-width: 60ch;
 }
 
-.lp-comment-form__honeypot {
+/* Anti-spam honeypot fields (comment form, Contact Forms plugin) — moved
+   off-screen so a real visitor never sees or fills them. */
+.lp-comment-form__honeypot,
+.lp-contact-form__honeypot {
     position: absolute;
     left: -9999px;
 }
@@ -1993,7 +1993,7 @@ a.lp-post-list__comments:focus {
 .lp-comment__thread > summary {
     cursor: pointer;
     color: var(--lp-accent);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.85rem;
 }
 
@@ -2003,7 +2003,7 @@ a.lp-post-list__comments:focus {
     justify-content: space-between;
     gap: 1rem;
     margin: 1.5rem 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.9rem;
 }
 
@@ -2034,15 +2034,13 @@ a.lp-post-list__comments:focus {
     flex: 1 1 220px;
 }
 
-/* .lp-widget__title has no color of its own, so on the dark footer
-   background it would otherwise inherit .lp-site-footer's light text
-   color even though the widget card itself stays light. */
-.lp-site-footer__widgets .lp-widget__title {
+/* The footer is dark in both modes but its widget cards stay light, so
+   text inside a card must not inherit .lp-site-footer's light color. */
+.lp-site-footer__widgets .lp-widget {
     color: var(--lp-text);
 }
 
 .lp-site-footer__powered-by {
-    color: var(--lp-text-muted);
     font-size: 0.85rem;
     margin: 0;
 }
@@ -2053,9 +2051,15 @@ a.lp-post-list__comments:focus {
 
 /* Shown only when Settings > Privacy has a Privacy Policy Page
    configured — see footer.php's own privacy_policy_url() check. */
+.lp-site-footer__privacy-link {
+    font-size: 0.85rem;
+    text-decoration: none;
+    color: var(--lp-header-accent-hover);
+}
+
 .lp-site-footer__privacy-link:hover,
 .lp-site-footer__privacy-link:focus {
-    color: var(--lp-accent-hover);
+    color: var(--lp-header-accent);
     text-decoration: underline;
 }
 
@@ -2066,8 +2070,8 @@ a.lp-post-list__comments:focus {
     width: 100%;
     margin-top: 0.75rem;
     padding-top: 0.75rem;
-    border-top: 1px solid var(--lp-border);
-    color: var(--lp-text-muted);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    color: inherit;
     font-size: 0.85rem;
 }
 
@@ -2251,11 +2255,6 @@ a.lp-post-list__comments:focus {
     margin-bottom: 0;
 }
 
-.lp-downloads-list__description img {
-    max-width: 100%;
-    height: auto;
-}
-
 .lp-downloads-list__description img.alignleft {
     float: left;
     margin: 0.25em 1.25em 1em 0;
@@ -2277,12 +2276,9 @@ a.lp-post-list__comments:focus {
    ========================================================= */
 /*
  * Rendered by the Link Directory plugin's LinkDirectoryShortcode for the
- * [lumora_link_directory] shortcode (LPP-026). Shipped with no styling of
- * its own at first, which is why a long, unbroken description (a bare
- * URL, a long word with no spaces) could push .lp-link-directory-item__description
- * past its box and scroll sideways on a theme with no global word-wrapping
- * rule of its own (LPP-027) — overflow-wrap below is the fix, mirroring
- * .lp-downloads-list__description's own img constraints above.
+ * [lumora_link_directory] shortcode. overflow-wrap on the description and
+ * URL stops a long unbroken string (a bare URL, a long word) from pushing
+ * past its box and scrolling the page sideways.
  */
 .lp-link-directory-categories {
     margin: 0;
@@ -2335,8 +2331,6 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-link-directory-item__thumbnail {
-    max-width: 100%;
-    height: auto;
     margin: 0 0 0.75em;
 }
 
@@ -2344,11 +2338,6 @@ a.lp-post-list__comments:focus {
     margin: 0 0 0.5em;
     overflow-wrap: break-word;
     word-break: break-word;
-}
-
-.lp-link-directory-item__description img {
-    max-width: 100%;
-    height: auto;
 }
 
 .lp-link-directory-item__url {
@@ -2389,21 +2378,11 @@ a.lp-post-list__comments:focus {
     display: block;
 }
 
-/*
- * "img.lp-folder-gallery__thumb", not just ".lp-folder-gallery__thumb"
- * — this shortcode's output usually lands inside .lp-post__content,
- * whose own "img { max-width: 100%; height: auto; }" rule (above) is
- * equally specific to a single-class selector and would otherwise win
- * on source order alone. Matching its own "class + element" specificity
- * tier is what makes source order (this rule comes later) decide it
- * instead — the same mechanism .lp-downloads-list__description img's
- * own alignment rules above already rely on.
- */
+/* "img." prefix matches .lp-post__content img's specificity, so this
+   later rule wins inside post content, where the shortcode usually renders. */
 img.lp-folder-gallery__thumb {
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
-    max-width: 100%;
-    height: auto;
 }
 
 /*
@@ -2475,20 +2454,13 @@ img.lp-folder-gallery__thumb--small.is-cropped {
  * Rendered by the Contact Forms plugin's [contact_form] shortcode. Reuses
  * the shared .lp-field/.lp-alert/.lp-button classes above wherever they
  * already fit (field rows, success/error messages, the submit button) —
- * only what's genuinely new here (the form wrapper, the honeypot's
- * hiding technique, a checkbox-field layout, and the CAPTCHA widget's
- * spacing) gets its own class.
+ * only what's genuinely new here (the form wrapper, a checkbox-field
+ * layout, and the CAPTCHA widget's spacing) gets its own class. Its
+ * honeypot shares .lp-comment-form__honeypot's rule.
  */
 .lp-contact-form {
     max-width: 60ch;
     margin: 1.5em 0;
-}
-
-/* Mirrors .lp-comment-form__honeypot's identical off-screen technique —
-   a real visitor never sees or fills this field. */
-.lp-contact-form__honeypot {
-    position: absolute;
-    left: -9999px;
 }
 
 .lp-contact-form__required {
@@ -2506,7 +2478,7 @@ img.lp-folder-gallery__thumb--small.is-cropped {
     display: flex;
     align-items: center;
     gap: 0.5em;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-ui);
     font-size: 0.95rem;
     font-weight: normal;
 }
@@ -2553,9 +2525,7 @@ img.lp-folder-gallery__thumb--small.is-cropped {
     display: block;
 }
 
-/* "img.lp-gallery-shortcode__thumb" — see img.lp-folder-gallery__thumb's
-   own comment above for why the element selector is needed to win
-   against .lp-post__content img's lower-specificity max-width rule. */
+/* "img." prefix for the same reason as img.lp-folder-gallery__thumb. */
 img.lp-gallery-shortcode__thumb {
     width: 150px;
     height: 150px;
@@ -2567,11 +2537,6 @@ img.lp-gallery-shortcode__thumb {
 .lp-gallery-shortcode__view-link {
     display: inline-block;
     font-size: 0.9rem;
-    color: var(--lp-accent);
-}
-
-.lp-gallery-shortcode__view-link:hover {
-    color: var(--lp-accent-hover);
 }
 
 /* =========================================================
@@ -2582,79 +2547,6 @@ img.lp-gallery-shortcode__thumb {
    and supporting content alongside it. The palette and surface treatment
    are intentionally original to Lumora Press.
    ========================================================= */
-
-:root {
-    --lp-bg: #e8efed;
-    --lp-bg-alt: #fbfcfa;
-    --lp-text: #172033;
-    --lp-text-muted: #667085;
-    --lp-border: #d4dfdc;
-    --lp-accent: #0f8b8d;
-    --lp-accent-hover: #09696b;
-    --lp-radius: 16px;
-    --lp-max-width: 1180px;
-    --lp-font-body: "Lora", Georgia, "Times New Roman", serif;
-    --lp-font-heading: "Playfair Display", Georgia, "Times New Roman", serif;
-    --lp-font-size-base: 16px;
-    --lp-line-height-base: 1.65;
-    --lp-surface-shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
-    --lp-header-ink: #172033;
-    --lp-success-bg: #edfaef;
-    --lp-success-border: #00a32a;
-    --lp-success-text: #005c15;
-    --lp-error-bg: #fcf0f1;
-    --lp-error-border: #d63638;
-    --lp-error-text: #7a1a1c;
-    /* Fixed font-color palette (both editors) — see the
-       .has-{color}-color rules below for why this is a hardcoded set of
-       named colors rather than a free-pick color. */
-    --lp-color-red: #c0392b;
-    --lp-color-orange: #d35400;
-    --lp-color-yellow: #9a7d0a;
-    --lp-color-green: #1e8449;
-    --lp-color-blue: #2471a3;
-    --lp-color-purple: #7d3c98;
-    --lp-color-gray: #616a6b;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        --lp-bg: #111821;
-        --lp-bg-alt: #1b2530;
-        --lp-text: #edf3f1;
-        --lp-text-muted: #a6b4b5;
-        --lp-border: #33434b;
-        --lp-accent: #61d0c2;
-        --lp-accent-hover: #8be1d5;
-        --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
-        --lp-header-ink: #0e141d;
-    }
-}
-
-:root[data-theme="dark"] {
-    --lp-bg: #111821;
-    --lp-bg-alt: #1b2530;
-    --lp-text: #edf3f1;
-    --lp-text-muted: #a6b4b5;
-    --lp-border: #33434b;
-    --lp-accent: #61d0c2;
-    --lp-accent-hover: #8be1d5;
-    --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
-    --lp-header-ink: #0e141d;
-    --lp-success-bg: #16281a;
-    --lp-success-border: #2fae4a;
-    --lp-success-text: #7fd996;
-    --lp-error-bg: #3a1f20;
-    --lp-error-border: #d63638;
-    --lp-error-text: #f2b8b9;
-    --lp-color-red: #e57368;
-    --lp-color-orange: #e8954a;
-    --lp-color-yellow: #d9b93d;
-    --lp-color-green: #4fbb7d;
-    --lp-color-blue: #5fa8dd;
-    --lp-color-purple: #b07fd0;
-    --lp-color-gray: #9aa0a6;
-}
 
 body.lp-site {
     margin: 0;
@@ -2671,7 +2563,6 @@ body.lp-site {
     max-width: var(--lp-max-width);
     margin: 1.25rem auto 0;
     overflow: hidden;
-    border: 0;
     border-radius: 22px 22px 0 0;
     background: var(--lp-header-ink);
     box-shadow: var(--lp-surface-shadow);
@@ -2679,8 +2570,6 @@ body.lp-site {
 
 .lp-site-header__image-wrap {
     position: relative;
-    margin: 0 auto;
-    max-width: none;
     overflow: hidden;
     background: #25364a;
 }
@@ -2708,13 +2597,10 @@ body.lp-site {
     position: relative;
     z-index: 1;
     align-items: center;
-    justify-content: space-between;
     display: grid;
     grid-template:
         "brand search toggle" auto
         "nav nav nav" auto / minmax(0, 1fr) auto auto;
-    max-width: none;
-    margin: 0 auto;
     padding: 1.35rem 1.75rem 1.1rem;
     gap: 1rem 1.25rem;
     border-top: 1px solid rgba(255, 255, 255, 0.14);
@@ -2738,7 +2624,7 @@ body.lp-site {
     align-items: center;
     text-decoration: none;
     color: #fff;
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
     font-size: clamp(1.35rem, 2.4vw, 2rem);
     font-weight: 800;
     letter-spacing: -0.035em;
@@ -2746,7 +2632,7 @@ body.lp-site {
 
 .lp-site-header__brand a:hover,
 .lp-site-header__brand a:focus {
-    color: #a9eee3;
+    color: var(--lp-header-accent-hover);
 }
 
 .lp-site-header__logo {
@@ -2760,7 +2646,7 @@ body.lp-site {
     font-weight: 400;
     margin-top: 0.2rem;
     color: rgba(255, 255, 255, 0.68);
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
     font-size: 0.78rem;
     letter-spacing: 0.04em;
 }
@@ -2780,24 +2666,27 @@ body.lp-site {
     gap: 0.3rem 1.35rem;
 }
 
-.lp-nav-menu__item a {
+/* The header and footer menus sit on the dark masthead and footer. The
+   Navigation Menu widget reuses .lp-nav-menu__item on a light card, so
+   these light link colors are limited to those two places. */
+:is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__item a {
     text-decoration: none;
     display: inline-block;
     padding: 0.2rem 0;
     color: rgba(255, 255, 255, 0.82);
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
     font-size: 0.82rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
-.lp-nav-menu__item a:hover,
-.lp-nav-menu__item a:focus {
-    color: #8be1d5;
+:is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__item a:hover,
+:is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__item a:focus {
+    color: var(--lp-header-accent-hover);
 }
 
-.lp-site-header .lp-nav-menu__submenu {
+:is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__submenu {
     padding: 0.55rem 0;
     border-color: rgba(255, 255, 255, 0.16);
     border-radius: 10px;
@@ -2805,9 +2694,21 @@ body.lp-site {
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
 }
 
-.lp-site-header .lp-nav-menu__submenu .lp-nav-menu__item a {
+:is(.lp-site-header, .lp-site-footer__nav) .lp-nav-menu__submenu .lp-nav-menu__item a {
+    display: block;
     width: 100%;
     padding: 0.42rem 0.9rem;
+}
+
+/* The footer is the end of the page, so its dropdowns open upward. */
+.lp-site-footer__nav .lp-nav-menu__submenu {
+    top: auto;
+    bottom: 100%;
+    text-align: left;
+}
+
+.lp-site-footer__nav .lp-nav-menu__submenu .lp-nav-menu__submenu {
+    bottom: 0;
 }
 
 .lp-search-form {
@@ -2819,15 +2720,14 @@ body.lp-site {
 }
 
 .lp-search-form__input {
-    border: 1px solid var(--lp-border);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     padding: 0.4rem 0.6rem;
     font-size: 0.9rem;
     width: 10rem;
-    border-color: rgba(255, 255, 255, 0.22);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.1);
     color: #fff;
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
 }
 
 .lp-search-form__input::placeholder {
@@ -2840,17 +2740,15 @@ body.lp-site {
     cursor: pointer;
     border: 0;
     border-radius: 999px;
-    background: #61d0c2;
+    background: var(--lp-header-accent);
     color: #10252a;
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
     font-weight: 700;
 }
 
 .lp-search-form__button:hover,
 .lp-search-form__button:focus {
-    border-color: transparent;
-    background: #8be1d5;
-    color: #10252a;
+    background: var(--lp-header-accent-hover);
 }
 
 .lp-theme-toggle {
@@ -2861,7 +2759,7 @@ body.lp-site {
     width: 2.25rem;
     height: 2.25rem;
     padding: 0;
-    border: 1px solid var(--lp-border);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 50%;
     font-size: 1rem;
     line-height: 1;
@@ -2869,13 +2767,12 @@ body.lp-site {
     transition: border-color 0.15s ease;
     grid-area: toggle;
     align-self: center;
-    border-color: rgba(255, 255, 255, 0.22);
     background: rgba(255, 255, 255, 0.08);
 }
 
 .lp-theme-toggle:hover,
 .lp-theme-toggle:focus-visible {
-    border-color: #61d0c2;
+    border-color: var(--lp-header-accent);
 }
 
 .lp-welcome-message {
@@ -2926,25 +2823,6 @@ body.lp-site {
     gap: 1.5rem;
 }
 
-.lp-content--home .lp-main-header {
-    margin: 0 0 1.6rem;
-}
-
-/* Archive titles sit directly in .lp-main rather than in a header block. */
-.lp-content--home .lp-main > .lp-page-title {
-    margin-bottom: 1.6rem;
-}
-
-.lp-eyebrow {
-    margin: 0 0 0.4rem;
-    color: var(--lp-accent);
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 0.75rem;
-    font-weight: 800;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-}
-
 .lp-page-title {
     margin: 0;
     color: var(--lp-text);
@@ -2960,97 +2838,35 @@ body.lp-site {
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
 }
 
-.lp-main-header__intro {
-    max-width: 55ch;
-    margin: 0.7rem 0 0;
-    color: var(--lp-text-muted);
+/* =========================================================
+   Homepage & archive listings
+
+   index.php and archive.php add .lp-content--home plus one layout class,
+   .lp-content--home--magazine or .lp-content--home--classic (the
+   "Homepage layout" Theme Option). Rules both layouts share sit on
+   .lp-content--home; each layout's own rules sit on its own class, so
+   neither has to undo the other.
+   ========================================================= */
+
+/* Archive titles sit directly in .lp-main rather than in a header block. */
+.lp-content--home .lp-main > .lp-page-title {
+    margin-bottom: 1.6rem;
 }
 
 .lp-content--home .lp-post-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.15rem;
 }
 
 .lp-content--home .lp-post-list__item {
     min-width: 0;
-    gap: 0;
-    padding: 0;
     overflow: hidden;
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
     background: var(--lp-bg-alt);
-    box-shadow: 0 8px 22px rgba(23, 32, 51, 0.055);
+    box-shadow: var(--lp-card-shadow);
 }
 
-.lp-content--home .lp-post-list__item:first-child {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
-    border-color: transparent;
-    background: var(--lp-header-ink);
-    box-shadow: var(--lp-surface-shadow);
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail {
-    min-height: 320px;
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__thumbnail img {
-    width: 100%;
-    height: 100%;
-    min-height: 320px;
-    object-fit: cover;
-    border-radius: 0;
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__body {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 2.1rem;
-    background: linear-gradient(145deg, var(--lp-header-ink), #23404b);
-    color: #edf3f1;
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__title {
-    font-size: clamp(1.55rem, 3vw, 2.2rem);
-    line-height: 1.1;
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__title a {
-    color: #fff;
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__meta {
-    color: rgba(237, 243, 241, 0.68);
-}
-
-.lp-content--home .lp-post-list__item:first-child .lp-post-list__more {
-    color: #8be1d5;
-}
-
-.lp-content--home .lp-post-list__item:not(:first-child) {
-    display: flex;
-    flex-direction: column;
-}
-
-.lp-content--home .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
-    order: -1;
-}
-
-.lp-content--home .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-    width: 100%;
-    height: 170px;
-    object-fit: cover;
-    border-radius: 0;
-}
-
-.lp-content--home .lp-post-list__item:not(:first-child) .lp-post-list__body {
-    padding: 1.15rem 1.2rem 1.3rem;
-}
-
-.lp-content--home .lp-post-list__item:not(:first-child) .lp-post-list__title {
+.lp-content--home .lp-post-list__title {
     font-size: 1.25rem;
     line-height: 1.18;
 }
@@ -3063,11 +2879,115 @@ body.lp-site {
     color: var(--lp-text-muted);
 }
 
-.lp-post-list__title a {
-    text-decoration: none;
-    color: var(--lp-text);
-    transition: color 0.15s ease;
+/* Magazine: the newest post is a wide featured card on the dark masthead
+   color, with the rest in a two-column grid of smaller cards below it. */
+.lp-content--home--magazine .lp-post-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+.lp-content--home--magazine .lp-post-list__item {
+    gap: 0;
+    padding: 0;
+}
+
+.lp-content--home--magazine .lp-post-list__thumbnail img {
+    height: 170px;
+    border-radius: 0;
+}
+
+.lp-content--home--magazine .lp-post-list__body {
+    padding: 1.15rem 1.2rem 1.3rem;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+    border-color: transparent;
+    background: var(--lp-header-ink);
+    box-shadow: var(--lp-surface-shadow);
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__thumbnail {
+    min-height: 320px;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__thumbnail img {
+    height: 100%;
+    min-height: 320px;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2.1rem;
+    background: linear-gradient(145deg, var(--lp-header-ink), #23404b);
+    color: #edf3f1;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__title {
+    font-size: clamp(1.55rem, 3vw, 2.2rem);
+    line-height: 1.1;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__title a {
+    color: #fff;
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__meta {
+    color: rgba(237, 243, 241, 0.68);
+}
+
+.lp-content--home--magazine .lp-post-list__item:first-child .lp-post-list__more {
+    color: var(--lp-header-accent-hover);
+}
+
+/* Classic: the familiar archive rhythm — every post gets one row, with
+   its image beside the title and excerpt. */
+.lp-content--home--classic .lp-post-list__item {
+    flex-direction: row;
+    padding: 1.15rem;
+}
+
+.lp-content--home--classic .lp-post-list__thumbnail {
+    flex: 0 0 32%;
+}
+
+.lp-content--home--classic .lp-post-list__thumbnail img {
+    height: 210px;
+    border-radius: 10px;
+}
+
+.lp-content--home--classic .lp-post-list__body {
+    padding: 0.35rem 0.4rem 0.35rem 0;
+}
+
+/* "Show featured image above title" Theme Option, applied to the Classic
+   layout: the image goes back above the title as a full-width banner,
+   the same as single posts/pages, so the option has one consistent
+   effect across the whole site. */
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item {
+    flex-direction: column;
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail {
+    flex: none;
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img {
+    height: 320px;
+    border-radius: var(--lp-radius);
+}
+
+.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__body {
+    padding: 0;
+}
+
+/* =========================================================
+   Sidebar, single posts & pages, footer
+   ========================================================= */
 
 .lp-sidebar {
     display: flex;
@@ -3075,21 +2995,16 @@ body.lp-site {
     gap: 1rem;
 }
 
-.lp-widget,
-.lp-sidebar .lp-welcome-message {
-    border-color: var(--lp-border);
-    border-radius: var(--lp-radius);
-    background: var(--lp-bg-alt);
-    box-shadow: 0 8px 22px rgba(23, 32, 51, 0.045);
-}
-
+/* The optional Welcome Message placed inside the sidebar instead of below
+   the header: styled like a .lp-widget card so it reads as part of the
+   same list rather than a mismatched extra box. */
 .lp-sidebar .lp-welcome-message {
     max-width: none;
     margin: 0;
     padding: 1.25rem;
-    background: var(--lp-bg-alt);
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
+    box-shadow: var(--lp-card-shadow);
 }
 
 .lp-sidebar .lp-welcome-message::before {
@@ -3103,7 +3018,7 @@ body.lp-site {
 .lp-widget__title {
     margin-top: 0;
     margin-bottom: 0.9rem;
-    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--lp-font-display);
     font-size: 0.78rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -3130,7 +3045,6 @@ body.lp-site {
 
 .lp-post,
 .lp-page {
-    max-width: none;
     padding: clamp(1.5rem, 4vw, 2.75rem);
     border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
@@ -3146,15 +3060,7 @@ body.lp-site {
     line-height: 1.06;
 }
 
-.lp-post__thumbnail img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    border-radius: 12px;
-}
-
 .lp-site-footer {
-    margin-top: 0;
     border-top: 1px solid var(--lp-border);
     background: var(--lp-header-ink);
     color: #edf3f1;
@@ -3169,134 +3075,11 @@ body.lp-site {
     max-width: var(--lp-max-width);
     padding: 2.25rem 1.5rem;
     gap: 0.75rem;
-}
-
-.lp-site-footer__powered-by,
-.lp-site-footer__powered-by a,
-.lp-site-footer__inner {
     color: rgba(237, 243, 241, 0.68);
-}
-
-.lp-site-footer__privacy-link {
-    font-size: 0.85rem;
-    text-decoration: none;
-    color: #8be1d5;
 }
 
 @media (prefers-reduced-motion: reduce) {
     .lp-post-list__title a {
         transition: none;
     }
-}
-
-/* =========================================================
-   Homepage layout switch
-   ========================================================= */
-
-/* The classic option restores the familiar archive rhythm: every post
-   gets one row, with its image beside the title and excerpt. */
-.lp-content--home--classic .lp-post-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1.15rem;
-}
-
-.lp-content--home--classic .lp-post-list__item,
-.lp-content--home--classic .lp-post-list__item:first-child,
-.lp-content--home--classic .lp-post-list__item:not(:first-child) {
-    display: flex;
-    flex-direction: row;
-    grid-column: auto;
-    gap: 1.25rem;
-    min-height: 0;
-    padding: 1.15rem;
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
-    background: var(--lp-bg-alt);
-    color: var(--lp-text);
-    box-shadow: 0 8px 22px rgba(23, 32, 51, 0.055);
-}
-
-.lp-content--home--classic .lp-post-list__thumbnail,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail,
-.lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
-    flex: 0 0 32%;
-    min-height: 0;
-    order: 0;
-}
-
-.lp-content--home--classic .lp-post-list__thumbnail img,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-.lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-    width: 100%;
-    height: 210px;
-    min-height: 0;
-    object-fit: cover;
-    border-radius: 10px;
-}
-
-.lp-content--home--classic .lp-post-list__body,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__body,
-.lp-content--home--classic .lp-post-list__item:not(:first-child) .lp-post-list__body {
-    display: block;
-    flex: 1;
-    min-width: 0;
-    padding: 0.35rem 0.4rem 0.35rem 0;
-    background: transparent;
-    color: var(--lp-text);
-}
-
-.lp-content--home--classic .lp-post-list__title,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__title {
-    font-size: 1.5rem;
-}
-
-.lp-content--home--classic .lp-post-list__title a,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__title a {
-    color: var(--lp-text);
-}
-
-.lp-content--home--classic .lp-post-list__meta,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__meta {
-    color: var(--lp-text-muted);
-}
-
-.lp-content--home--classic .lp-post-list__more,
-.lp-content--home--classic .lp-post-list__item:first-child .lp-post-list__more {
-    color: var(--lp-accent);
-}
-
-/* "Show featured image above title" Theme Option, applied to the
-   Classic homepage layout: overrides its own image-beside-text
-   arrangement back to the same full-width, above-the-title hero
-   banner Magazine and single posts/pages use, so the option has one
-   consistent effect across the whole site rather than stopping at
-   the homepage. Higher specificity (three classes) than the plain
-   .lp-content--home--classic rules above, so no !important needed. */
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) {
-    flex-direction: column;
-}
-
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail {
-    flex: none;
-    width: 100%;
-}
-
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__thumbnail img,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__thumbnail img,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__thumbnail img {
-    width: 100%;
-    height: 320px;
-    object-fit: cover;
-    border-radius: var(--lp-radius);
-}
-
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__body,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:first-child .lp-post-list__body,
-.lp-content--home--classic.lp-content--thumbnail-above .lp-post-list__item:not(:first-child) .lp-post-list__body {
-    padding: 0;
 }
