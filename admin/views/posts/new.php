@@ -439,6 +439,7 @@ if ($savedLayout['order'] === []) {
                     data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                     data-autosave-id="<?= $post !== null ? esc_attr('post-' . $post->id) : '' ?>"
                     data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
+                    data-wysiwyg-config="<?= esc_attr(lp_wysiwyg_editor_config()) ?>"
                     <?php if ($post !== null): ?>
                         data-autosave-csrf="<?= esc_attr(Csrf::token('editor_autosave')) ?>"
                     <?php endif; ?>

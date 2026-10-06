@@ -90,6 +90,8 @@ final class HtmlToMarkdownConverter
             'em', 'i' => '*' . trim($inner) . '*',
             'del', 's' => '~~' . trim($inner) . '~~',
             'u' => '++' . trim($inner) . '++',
+            'sup' => $this->renderScript($node, $inner, '^'),
+            'sub' => $this->renderScript($node, $inner, '~'),
             'span' => $this->renderSpan($node, $inner),
             'code' => str_contains($inner, "\n") ? $this->renderFencedCode($node, $inner) : '`' . $inner . '`',
             'pre' => $this->renderPre($node),
@@ -192,6 +194,28 @@ final class HtmlToMarkdownConverter
         }
 
         return "\n" . $image . "\n\n";
+    }
+
+    /**
+     * Superscript/subscript only converts when the marker syntax can carry
+     * it: text containing whitespace or the marker itself would not parse
+     * back, and a footnote reference (`<sup id>` wrapping a link) is
+     * rebuilt by the parser from its own `[^id]` syntax, so both fall
+     * through to plain inner text.
+     */
+    private function renderScript(DOMElement $node, string $inner, string $marker): string
+    {
+        $text = trim($inner);
+
+        if (
+            $text === ''
+            || $node->hasAttribute('id')
+            || preg_match('/[\s^~\[\]]/', $text) === 1
+        ) {
+            return $inner;
+        }
+
+        return $marker . $text . $marker;
     }
 
     /**

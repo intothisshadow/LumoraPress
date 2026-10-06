@@ -613,6 +613,7 @@ if ($savedLayout['order'] === []) {
                     data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
                     data-autosave-id="<?= $page !== null ? esc_attr('page-' . $page->id) : '' ?>"
                     data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
+                    data-wysiwyg-config="<?= esc_attr(lp_wysiwyg_editor_config()) ?>"
                     <?php if ($page !== null): ?>
                         data-autosave-csrf="<?= esc_attr(Csrf::token('editor_autosave')) ?>"
                     <?php endif; ?>

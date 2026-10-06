@@ -437,12 +437,246 @@ final class ThumbnailService
     }
 
     /**
+     * One image in the shape the admin pickers consume: every generated size plus the
+     * original as "full", so a picker can resolve sizes without another request.
+     *
+     * @param array<string, mixed> $media
+     * @return array<string, mixed>
+     */
+    public function pickerItem(array $media): array
+    {
+        $sizes = [
+            'full' => [
+                'url' => $this->media->url($media),
+                'width' => (int) ($media['width'] ?? 0),
+                'height' => (int) ($media['height'] ?? 0),
+            ],
+        ];
+
+        foreach ($this->thumbnailsFor((int) $media['id']) as $thumbnail) {
+            $sizes[(string) $thumbnail['size_name']] = [
+                'url' => $this->url($media, (string) $thumbnail['size_name']),
+                'width' => (int) $thumbnail['width'],
+                'height' => (int) $thumbnail['height'],
+            ];
+        }
+
+        return [
+            'id' => (int) $media['id'],
+            'url' => $this->media->url($media),
+            'name' => (string) $media['file_name'],
+            'alt' => (string) ($media['alt_text'] ?? ''),
+            'caption' => (string) ($media['caption'] ?? ''),
+            'folderId' => $media['folder_id'] !== null ? (int) $media['folder_id'] : null,
+            'sizes' => $sizes,
+        ] + $this->media->pickerMeta($media);
+    }
+
+    /**
+     * Whether editImage() can handle this item. GIFs are excluded because GD only reads a
+     * GIF's first frame, so an edit would silently destroy an animation.
+     *
+     * @param array<string, mixed> $media
+     */
+    public function canEditImage(array $media): bool
+    {
+        if (!function_exists('imageflip') || !function_exists('imagerotate')) {
+            return false;
+        }
+
+        return match ((string) $media['mime_type']) {
+            'image/jpeg', 'image/png' => true,
+            'image/webp' => function_exists('imagecreatefromwebp') && function_exists('imagewebp'),
+            'image/avif' => function_exists('imagecreatefromavif') && function_exists('imageavif'),
+            default => false,
+        };
+    }
+
+    /**
+     * Flips, rotates and/or crops an image, saved either as a new Media Library item or in
+     * place over the original (keeping its id and URL). The order is part of the contract —
+     * flip, then rotate clockwise, then crop — because the editor draws its preview the same
+     * way, so the crop rectangle is expressed against the transformed image.
+     *
+     * @param array<string, mixed> $media
+     * @param array{rotate: int, flipH: bool, flipV: bool, crop: array{x: int, y: int, width: int, height: int}|null, maxWidth: int|null} $edit
+     *     rotate is clockwise degrees (a multiple of 90); maxWidth null keeps full resolution.
+     * @return array<string, mixed>|null the new item, or the updated original when replacing;
+     *     null if the image can't be edited or the edit failed (the original is left untouched)
+     */
+    public function editImage(array $media, array $edit, bool $replaceOriginal, int $uploadedByUserId): ?array
+    {
+        if (!$this->canEditImage($media)) {
+            return null;
+        }
+
+        $mediaId = (int) $media['id'];
+        $mimeType = (string) $media['mime_type'];
+        $relativeSource = (string) $media['file_path'];
+        $sourcePath = rtrim($this->uploadsPath, '/') . '/' . $relativeSource;
+        $dimensions = is_file($sourcePath) ? @getimagesize($sourcePath) : false;
+
+        if ($dimensions === false) {
+            return null;
+        }
+
+        // Same decompression-bomb safeguard generate() applies: decoding a huge image into GD
+        // can exhaust memory before any edit happens.
+        $configuredMaxPixels = (int) $this->config->option('thumbnail_max_pixels', (string) self::DEFAULT_MAX_PIXELS);
+        $maxPixels = (int) $this->hooks->applyFilters('thumbnail_max_pixels', $configuredMaxPixels);
+
+        if ($dimensions[0] * $dimensions[1] > $maxPixels) {
+            $this->log("Media #{$mediaId}: image edit refused, {$dimensions[0]}x{$dimensions[1]} exceeds the {$maxPixels}-pixel safeguard.");
+
+            return null;
+        }
+
+        // Written beside the source so the final rename never crosses filesystems.
+        $temporaryPath = $sourcePath . '.edit-' . bin2hex(random_bytes(4)) . '.tmp';
+
+        try {
+            $output = $this->renderEdit($sourcePath, $mimeType, $edit, $temporaryPath);
+        } catch (Throwable $exception) {
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
+
+            $this->log("Media #{$mediaId}: image edit failed: {$exception->getMessage()}");
+
+            return null;
+        }
+
+        if ($replaceOriginal) {
+            if (!rename($temporaryPath, $sourcePath)) {
+                unlink($temporaryPath);
+                $this->log("Media #{$mediaId}: unable to move the edited image over the original.");
+
+                return null;
+            }
+
+            // A cached manual featured crop is keyed by its rectangle, not the file's content,
+            // so it would keep serving the pre-edit pixels.
+            $this->deleteFeaturedCropCache($relativeSource);
+            $updated = $this->media->refreshImageFile($mediaId, $output['width'], $output['height']);
+            $this->regenerate($mediaId);
+
+            return $updated;
+        }
+
+        $extension = strtolower(pathinfo($relativeSource, PATHINFO_EXTENSION));
+        $directory = dirname($relativeSource);
+        $fileName = pathinfo($relativeSource, PATHINFO_FILENAME) . '-edit-' . bin2hex(random_bytes(4)) . '.' . $extension;
+        $relativePath = ($directory === '.' ? '' : $directory . '/') . $fileName;
+        $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
+
+        if (!rename($temporaryPath, $destination)) {
+            unlink($temporaryPath);
+            $this->log("Media #{$mediaId}: unable to store the edited copy.");
+
+            return null;
+        }
+
+        $newMedia = $this->media->registerExistingFile(
+            relativePath: $relativePath,
+            fileName: $fileName,
+            mimeType: $mimeType,
+            fileSize: (int) (filesize($destination) ?: 0),
+            width: $output['width'],
+            height: $output['height'],
+            uploadedByUserId: $uploadedByUserId,
+            folderId: $media['folder_id'] !== null ? (int) $media['folder_id'] : null,
+        );
+
+        $sourceAltText = (string) ($media['alt_text'] ?? '');
+
+        if ($sourceAltText !== '') {
+            $this->media->updateMetadata((int) $newMedia['id'], $sourceAltText, null, null, null);
+            $newMedia = $this->media->find((int) $newMedia['id']) ?? $newMedia;
+        }
+
+        $this->generate($newMedia);
+
+        return $newMedia;
+    }
+
+    /**
+     * @param array{rotate: int, flipH: bool, flipV: bool, crop: array{x: int, y: int, width: int, height: int}|null, maxWidth: int|null} $edit
+     * @return array{width: int, height: int}
+     */
+    private function renderEdit(string $sourcePath, string $mimeType, array $edit, string $destination): array
+    {
+        $image = $this->loadImage($sourcePath, $mimeType);
+
+        // The browser previews the EXIF-oriented image, so the edit is expressed against it too.
+        if ($this->isRotatedByExif($sourcePath, $mimeType)) {
+            $image = $this->applyExifOrientation($image, $sourcePath);
+        }
+
+        $flip = ($edit['flipH'] ? IMG_FLIP_HORIZONTAL : 0) | ($edit['flipV'] ? IMG_FLIP_VERTICAL : 0);
+
+        if ($flip !== 0) {
+            imageflip($image, $flip);
+        }
+
+        $rotate = (($edit['rotate'] % 360) + 360) % 360;
+
+        if ($rotate !== 0) {
+            $background = imagecolorallocatealpha($image, 0, 0, 0, 127);
+            // GD turns counter-clockwise, the editor's buttons clockwise.
+            $rotated = $background === false ? false : imagerotate($image, 360 - $rotate, $background);
+
+            if ($rotated === false) {
+                throw new RuntimeException('Unable to rotate the image.');
+            }
+
+            imagealphablending($rotated, false);
+            imagesavealpha($rotated, true);
+            $image = $rotated;
+        }
+
+        $sourceWidth = imagesx($image);
+        $sourceHeight = imagesy($image);
+        [$x, $y, $width, $height] = $this->clampCrop(
+            $edit['crop'] ?? ['x' => 0, 'y' => 0, 'width' => $sourceWidth, 'height' => $sourceHeight],
+            $sourceWidth,
+            $sourceHeight,
+        );
+
+        $outputWidth = $edit['maxWidth'] === null ? $width : min($width, max(1, $edit['maxWidth']));
+        $outputHeight = max(1, (int) round($outputWidth * ($height / $width)));
+
+        $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
+        $this->preserveTransparency($canvas);
+        imagecopyresampled($canvas, $image, 0, 0, $x, $y, $outputWidth, $outputHeight, $width, $height);
+
+        // Higher than the thumbnail quality setting: this is the image itself, not a derivative.
+        $this->encode($canvas, $destination, $mimeType, 92);
+
+        return ['width' => $outputWidth, 'height' => $outputHeight];
+    }
+
+    private function deleteFeaturedCropCache(string $relativePath): void
+    {
+        $directory = rtrim($this->uploadsPath, '/') . '/' . (dirname($relativePath) === '.' ? '' : dirname($relativePath));
+        $pattern = '/^' . preg_quote(pathinfo($relativePath, PATHINFO_FILENAME) . '-featured-', '/')
+            . '[0-9a-f]{12}\.' . preg_quote(pathinfo($relativePath, PATHINFO_EXTENSION), '/') . '$/';
+
+        foreach (is_dir($directory) ? (scandir($directory) ?: []) : [] as $entry) {
+            $path = rtrim($directory, '/') . '/' . $entry;
+
+            if (preg_match($pattern, $entry) === 1 && is_file($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    /**
      * The output width every manually-cropped featured image is capped
      * to — the `featured_image_crop_size` option, naming one of the
      * currently enabled thumbnail sizes. Falls back to `large`, then a
      * fixed 1024px, if the configured size was since disabled or removed.
      */
-    private function featuredCropMaxWidth(): int
+    public function featuredCropMaxWidth(): int
     {
         $sizes = $this->sizes();
         $configuredName = (string) $this->config->option('featured_image_crop_size', 'large');
@@ -816,10 +1050,10 @@ final class ThumbnailService
         return $rotated;
     }
 
-    private function encode(GdImage $canvas, string $destination, string $mimeType): void
+    private function encode(GdImage $canvas, string $destination, string $mimeType, ?int $qualityOverride = null): void
     {
-        $jpegQuality = max(0, min(100, (int) $this->config->option('thumbnail_jpeg_quality', '82')));
-        $webpQuality = max(0, min(100, (int) $this->config->option('thumbnail_webp_quality', '80')));
+        $jpegQuality = $qualityOverride ?? max(0, min(100, (int) $this->config->option('thumbnail_jpeg_quality', '82')));
+        $webpQuality = $qualityOverride ?? max(0, min(100, (int) $this->config->option('thumbnail_webp_quality', '80')));
 
         $success = match ($mimeType) {
             'image/jpeg' => imagejpeg($canvas, $destination, $jpegQuality),

@@ -18,6 +18,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\MediaViewer;
 use LumoraPress\Models\Folder;
+use LumoraPress\Services\ImageEditRequest;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -80,6 +81,49 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         echo json_encode(['success' => true, 'csrfToken' => Csrf::token('save_folder_tree_state')]);
         exit;
+    } elseif ($form === 'edit_image_ajax') {
+        // The image editor dialog used by the editors and image pickers on
+        // other admin screens. Every response, error or not, carries the
+        // next single-use token.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json');
+
+        $respond = static function (int $status, array $body): never {
+            http_response_code($status);
+            echo json_encode($body + ['csrfToken' => Csrf::token('edit_image_ajax')]);
+            exit;
+        };
+
+        if (!$currentUser->can('upload_files') || !Csrf::verify('edit_image_ajax', $token)) {
+            $respond(403, ['error' => 'Your session expired. Reload the page and try again.']);
+        }
+
+        $sourceMedia = $mediaService->find((int) ($_POST['id'] ?? 0));
+
+        if ($sourceMedia === null) {
+            $respond(404, ['error' => 'Media item not found.']);
+        }
+
+        if (!$thumbnailService->canEditImage($sourceMedia)) {
+            $respond(422, ['error' => 'This image type can\'t be edited.']);
+        }
+
+        $parsed = ImageEditRequest::parse($_POST, $sourceMedia, $thumbnailService->featuredCropMaxWidth());
+
+        if ($parsed['error'] !== null) {
+            $respond(422, ['error' => $parsed['error']]);
+        }
+
+        $edited = $thumbnailService->editImage($sourceMedia, $parsed['edit'], $parsed['replace'], $currentUser->id);
+
+        if ($edited === null) {
+            $respond(500, ['error' => 'Could not edit the image. The original has not been changed.']);
+        }
+
+        $respond(200, ['item' => $thumbnailService->pickerItem($edited), 'replaced' => $parsed['replace']]);
     } elseif ($form === 'create_folder' && Csrf::verify('create_folder', $token)) {
         $name = trim((string) ($_POST['name'] ?? ''));
         $parentId = (int) ($_POST['parent_id'] ?? 0);
@@ -163,36 +207,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $thumbnailService->regenerate($id);
         header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $id . '&saved=1');
         exit;
-    } elseif ($form === 'create_cropped_featured_image' && Csrf::verify('create_cropped_featured_image', $token)) {
-        $id = (int) ($_POST['id'] ?? 0);
-        $sourceMedia = $mediaService->find($id);
-        $cropX = $_POST['crop_x'] ?? '';
-        $cropY = $_POST['crop_y'] ?? '';
-        $cropWidth = $_POST['crop_width'] ?? '';
-        $cropHeight = $_POST['crop_height'] ?? '';
+    } elseif ($form === 'edit_image' && Csrf::verify('edit_image', $token)) {
+        $sourceMedia = $mediaService->find((int) ($_POST['id'] ?? 0));
 
         if ($sourceMedia === null) {
             $error = 'Media item not found.';
-        } elseif (
-            !is_numeric($cropX) || !is_numeric($cropY) || !is_numeric($cropWidth) || !is_numeric($cropHeight)
-            || (int) $cropWidth <= 0 || (int) $cropHeight <= 0
-        ) {
-            $error = 'Please select a crop area first.';
+        } elseif (!$thumbnailService->canEditImage($sourceMedia)) {
+            $error = 'This image type can\'t be edited.';
         } else {
-            $crop = [
-                'x' => max(0, (int) $cropX),
-                'y' => max(0, (int) $cropY),
-                'width' => (int) $cropWidth,
-                'height' => (int) $cropHeight,
-            ];
-            $sourceFolderId = $sourceMedia['folder_id'] !== null ? (int) $sourceMedia['folder_id'] : null;
-            $newMedia = $thumbnailService->createCroppedFeaturedMedia($sourceMedia, $crop, $currentUser->id, $sourceFolderId);
+            $parsed = ImageEditRequest::parse($_POST, $sourceMedia, $thumbnailService->featuredCropMaxWidth());
 
-            if ($newMedia === null) {
-                $error = 'Could not create the cropped featured image.';
+            if ($parsed['error'] !== null) {
+                $error = $parsed['error'];
             } else {
-                header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $newMedia['id'] . '&saved=1');
-                exit;
+                $edited = $thumbnailService->editImage($sourceMedia, $parsed['edit'], $parsed['replace'], $currentUser->id);
+
+                if ($edited === null) {
+                    $error = 'Could not edit the image. The original has not been changed.';
+                } else {
+                    header('Location: ' . admin_url('media/media') . '?action=edit&id=' . $edited['id'] . '&saved=1');
+                    exit;
+                }
             }
         }
     } elseif ($form === 'set_default_featured_image' && $currentUser->can('manage_options') && Csrf::verify('set_default_featured_image', $token)) {
@@ -466,39 +501,20 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                 </form>
             </div>
 
-            <div class="lp-featured-crop-create">
-                <h3>Create Cropped Featured Image</h3>
-                <p class="lp-field__hint">
-                    Crops this image and adds the result as a new, separate item in the Media Library — the
-                    original is never modified. Select it as any post's or page's featured image afterward.
-                </p>
-
-                <div class="lp-featured-crop" data-lp-featured-crop>
-                    <button type="button" class="lp-button lp-button--secondary" data-lp-featured-crop-toggle>Choose Crop Area</button>
-
-                    <form method="post" action="<?= esc_url(admin_url('media/media')) ?>" data-lp-featured-crop-editor hidden>
-                        <?= Csrf::field('create_cropped_featured_image') ?>
-                        <input type="hidden" name="form" value="create_cropped_featured_image">
-                        <input type="hidden" name="id" value="<?= (int) $editingMedia['id'] ?>">
-
-                        <div class="lp-featured-crop__stage" data-lp-featured-crop-stage>
-                            <img src="<?= esc_url($mediaService->url($editingMedia)) ?>" alt="" data-lp-featured-crop-image>
-                            <div class="lp-featured-crop__rect" data-lp-featured-crop-rect hidden>
-                                <div class="lp-featured-crop__handle" data-lp-featured-crop-handle></div>
-                            </div>
-                        </div>
-                        <p class="lp-field__hint">Drag to select the area to use. Drag inside the selection to move it, or its bottom-right corner to resize it.</p>
-                        <button type="button" class="lp-button lp-button--link" data-lp-featured-crop-clear>Clear</button>
-
-                        <input type="hidden" name="crop_x" data-lp-featured-crop-x value="">
-                        <input type="hidden" name="crop_y" data-lp-featured-crop-y value="">
-                        <input type="hidden" name="crop_width" data-lp-featured-crop-width value="">
-                        <input type="hidden" name="crop_height" data-lp-featured-crop-height value="">
-
-                        <button type="submit" class="lp-button lp-button--primary">Create Cropped Featured Image</button>
-                    </form>
+            <?php if ($thumbnailService->canEditImage($editingMedia)): ?>
+                <div class="lp-image-editor-section">
+                    <h3>Edit Image</h3>
+                    <p class="lp-field__hint">
+                        Crop, rotate, or flip this image. Save the result as a new copy in the Media Library, or
+                        replace the original file. A replaced file keeps its address, so everything using it updates.
+                    </p>
+                    <?php
+                    $imageEditorInline = true;
+                    $imageEditorMedia = $editingMedia;
+                    require __DIR__ . '/../partials/image-editor.php';
+                    ?>
                 </div>
-            </div>
+            <?php endif; ?>
 
             <?php if ($currentUser->can('manage_options')): ?>
                 <?php

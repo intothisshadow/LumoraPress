@@ -115,9 +115,10 @@ implementation-level detail on each area.
   content), download statistics for document/archive/audio/video files,
   and usage tracking with delete-time warnings.
 - **Featured images** — per-post/page featured images with manual
-  cropping (with a configurable output size), or crop any already-
-  uploaded image directly from its Media Manager edit screen into a new,
-  independently reusable featured-image-ready Library item. A site-wide
+  cropping (with a configurable output size). Any JPEG, PNG, or WebP
+  in the Media Manager can also be cropped, rotated, and flipped from
+  its edit screen, saved either as a new Library item or over the
+  original. A site-wide
   Customize option chooses whether a featured image appears above the
   title or beside it, with the front page's Classic layout following
   the same choice.

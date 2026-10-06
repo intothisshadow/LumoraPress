@@ -2475,6 +2475,23 @@
         });
     }
 
+    // TinyMCE counterpart of filterToolbar(): drops hidden buttons from a
+    // space/pipe toolbar string, then any separator left leading,
+    // trailing or doubled up.
+    function filterToolbarString(toolbar, hidden) {
+        var tokens = toolbar.split(/\s+/).filter(function (token) {
+            return token !== '' && (token === '|' || hidden.indexOf(token) === -1);
+        });
+
+        return tokens.filter(function (token, index) {
+            if (token !== '|') {
+                return true;
+            }
+
+            return index > 0 && index < tokens.length - 1 && tokens[index - 1] !== '|';
+        }).join(' ');
+    }
+
     function initMarkdownEditor(container, textarea, statsEl) {
         loadStyle(EASYMDE_CSS);
         loadStyle(FONT_AWESOME_CSS);
@@ -2840,10 +2857,34 @@
                 fontColorFormats['fontcolor-' + color.name] = { inline: 'span', classes: 'has-' + color.name + '-color' };
             });
 
+            var wysiwygConfig = JSON.parse(container.dataset.wysiwygConfig || '{}');
+            var customButtons = wysiwygConfig.buttons || [];
+
+            var toolbar = filterToolbarString(
+                'undo redo | blocks | bold italic underline strikethrough superscript subscript lumoraInlineCode lumoraFontColor | '
+                    + 'aligncenter alignleft alignright alignjustify | '
+                    + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraEditImage lumoraFolderGallery lumoraAudio lumoraVideo lumoraFile '
+                    + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
+                    + 'pastetext searchreplace fullscreen table help',
+                wysiwygConfig.hide || []
+            );
+
+            if (customButtons.length > 0) {
+                toolbar += ' | ' + customButtons.map(function (button) { return button.name; }).join(' ');
+            }
+
+            // Only the editing chrome follows the admin's dark mode; the
+            // content iframe keeps the theme stylesheet's own colors, since
+            // that is what the published page will look like.
+            var adminTheme = document.documentElement.getAttribute('data-theme');
+            var adminIsDark = adminTheme === 'dark'
+                || (adminTheme !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
             return new Promise(function (resolve) {
                 tinymce.init({
                     target: textarea,
                     license_key: 'gpl',
+                    skin: adminIsDark ? 'oxide-dark' : 'oxide',
                     height: 420,
                     menubar: false,
                     // Only enabled (and only added to the plugin list) once
@@ -2856,11 +2897,7 @@
                     // otherwise still hit the same bug EasyMDE's autosave
                     // had (LP-068).
                     plugins: basePlugins + (autosaveId !== '' ? ' autosave' : ''),
-                    toolbar: 'undo redo | blocks | bold italic underline strikethrough lumoraFontColor | '
-                        + 'aligncenter alignleft alignright alignjustify | '
-                        + 'lumoraMoreTag bullist numlist | blockquote hr | lumoraLink lumoraMedia lumoraEditImage lumoraFolderGallery lumoraAudio lumoraVideo lumoraFile '
-                        + (iconPickerEnabled ? 'lumoraIcon ' : '') + (emojiPickerEnabled ? 'lumoraEmoji ' : '') + (shortcodesEnabled ? 'lumoraShortcode ' : '') + 'code codesample | '
-                        + 'searchreplace fullscreen table help',
+                    toolbar: toolbar,
                     // Default 'floating' collapses whatever doesn't fit
                     // the editor's width behind a "..." overflow button —
                     // this toolbar's full button set never fits, so most
@@ -2933,7 +2970,7 @@
                             return insertableImageUrl(json);
                         });
                     },
-                    autosave_interval: '15s',
+                    autosave_interval: wysiwygConfig.autosaveInterval || '15s',
                     autosave_prefix: 'lp-tinymce-autosave-' + autosaveId + '-',
                     setup: function (editor) {
                         // Fixed-palette font color (LP-016 parity with
@@ -2974,6 +3011,34 @@
 
                                 callback(items);
                             },
+                        });
+
+                        // No bundled button for the <code> format, and the
+                        // 'code' toolbar button is the HTML source dialog.
+                        editor.ui.registry.addToggleButton('lumoraInlineCode', {
+                            text: '</>',
+                            tooltip: 'Inline Code',
+                            onAction: function () {
+                                editor.execCommand('mceToggleFormat', false, 'code');
+                            },
+                            onSetup: function (api) {
+                                return editor.formatter.formatChanged('code', function (state) {
+                                    api.setActive(state);
+                                }).unbind;
+                            },
+                        });
+
+                        // Plugin-supplied wrap-the-selection buttons (see
+                        // wysiwyg_editor_buttons); the HTML they insert
+                        // still goes through the server-side sanitizer.
+                        customButtons.forEach(function (custom) {
+                            editor.ui.registry.addButton(custom.name, {
+                                text: custom.text,
+                                tooltip: custom.title,
+                                onAction: function () {
+                                    editor.selection.setContent(custom.before + editor.selection.getContent() + custom.after);
+                                },
+                            });
                         });
 
                         editor.ui.registry.addButton('lumoraLink', {

@@ -670,6 +670,7 @@ final class MarkdownParser
         $text = $this->parseFootnoteReferences($text);
         $text = $this->parseBoldItalic($text);
         $text = $this->parseStrikethrough($text);
+        $text = $this->parseSuperSubscript($text);
         $text = $this->parseUnderline($text);
         $text = $this->parseFontColor($text);
         $text = str_replace("\x04BR\x04", "<br>\n", $text);
@@ -864,6 +865,19 @@ final class MarkdownParser
     private function parseStrikethrough(string $text): string
     {
         return (string) preg_replace('/~~(?=\S)(.+?)(?<=\S)~~/s', '<del>$1</del>', $text);
+    }
+
+    /**
+     * `^sup^` and `~sub~` (Pandoc-style). Whitespace and brackets are
+     * excluded inside the markers so a stray caret or the literal text of an
+     * undefined `[^footnote]` is never mistaken for a pair, and the
+     * single-tilde form skips `~~strikethrough~~`, which runs first.
+     */
+    private function parseSuperSubscript(string $text): string
+    {
+        $text = (string) preg_replace('/\^([^\s^\[\]]+)\^/', '<sup>$1</sup>', $text);
+
+        return (string) preg_replace('/(?<!~)~([^\s~]+)~(?!~)/', '<sub>$1</sub>', $text);
     }
 
     private function parseUnderline(string $text): string

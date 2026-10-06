@@ -338,6 +338,9 @@ LP-040's manual featured-image cropping — a single drag/move/resize
 rectangle over one `<img>` is straightforward plain-DOM/mouse-event code
 (`admin/assets/js/featured-image-crop.js`), so it didn't clear the bar for
 a new CDN dependency the way EasyMDE/TinyMCE/CodeMirror's much larger
-surface area did. Revisit this note if a future ticket needs real
-multi-touch gestures, aspect-ratio locking, or rotation — genuine
-justification for reaching for a library instead.
+surface area did. The Media Manager's image editor
+(`admin/assets/js/image-editor.js`) later added rotation, flipping,
+aspect-ratio locking, and touch support on top of the same approach
+(a canvas preview plus pointer events), and still didn't need a library.
+Revisit this note if a future ticket needs something that code can't
+reasonably cover, such as free-angle rotation or pinch-zoom.

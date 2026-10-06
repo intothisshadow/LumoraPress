@@ -815,6 +815,25 @@ if (!function_exists('lp_markdown_editor_config')) {
     }
 }
 
+if (!function_exists('lp_wysiwyg_editor_config')) {
+    /**
+     * JSON for the editor container's data-wysiwyg-config attribute
+     * (already safe to pass through esc_attr()). Plugins adjust it via the
+     * wysiwyg_editor_hidden_buttons, wysiwyg_editor_buttons and
+     * wysiwyg_editor_autosave_seconds filters.
+     */
+    function lp_wysiwyg_editor_config(): string
+    {
+        $config = \LumoraPress\Core\Content\WysiwygEditorConfig::normalize(
+            apply_filters('wysiwyg_editor_hidden_buttons', []),
+            apply_filters('wysiwyg_editor_buttons', []),
+            apply_filters('wysiwyg_editor_autosave_seconds', 15),
+        );
+
+        return (string) json_encode($config);
+    }
+}
+
 // Emoji Picker developer API — mirrors the Font Awesome hook-based
 // facade pattern above.
 

@@ -340,6 +340,48 @@ final class MediaService
         return $updated;
     }
 
+    /**
+     * Re-reads size and hash after an image file was rewritten in place (same path, same
+     * MIME type), so the row matches what's now on disk.
+     *
+     * @return array<string, mixed>
+     */
+    public function refreshImageFile(int $id, int $width, int $height): array
+    {
+        $media = $this->find($id);
+
+        if ($media === null) {
+            throw new RuntimeException('Media item not found.');
+        }
+
+        $absolutePath = $this->absolutePath($media);
+        clearstatcache(true, $absolutePath);
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . '
+                SET file_size = :file_size, width = :width, height = :height, file_hash = :file_hash
+              WHERE id = :id',
+            [
+                'file_size' => (int) (filesize($absolutePath) ?: 0),
+                'width' => $width,
+                'height' => $height,
+                'file_hash' => hash_file('sha256', $absolutePath) ?: null,
+                'id' => $id,
+            ],
+        );
+
+        unset($this->findCache[$id]);
+        $updated = $this->find($id);
+
+        if ($updated === null) {
+            throw new RuntimeException('Failed to load the media item after editing its image.');
+        }
+
+        $this->hooks?->doAction('media_saved', $updated);
+
+        return $updated;
+    }
+
     /** Exposed publicly so MediaImportService validates against the same allow-list upload() uses. */
     public function isAllowedExtension(string $extension): bool
     {
