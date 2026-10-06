@@ -570,6 +570,40 @@ final class DownloadService
     }
 
     /**
+     * One page of a category's live downloads, alphabetical by title, for
+     * [lumora_downloads per_page="N"]. Like paginateNewest(), only downloads
+     * with a file or link attached count, so page totals match what visitors see.
+     *
+     * @return array{downloads: array<int, Download>, total: int, page: int, perPage: int, totalPages: int}
+     */
+    public function paginateByCategory(int $categoryId, int $page, int $perPage): array
+    {
+        $perPage = max(1, $perPage);
+        $page = max(1, $page);
+
+        $where = "trashed_at IS NULL AND category_id = :category_id AND ((type = 'file' AND media_id IS NOT NULL) OR (type = 'url' AND redirect_id IS NOT NULL))";
+        $params = ['category_id' => $categoryId];
+
+        $total = (int) $this->database->fetchColumn('SELECT COUNT(*) FROM ' . $this->table() . " WHERE {$where}", $params);
+        $totalPages = (int) max(1, ceil($total / $perPage));
+        $page = min($page, $totalPages);
+        $offset = ($page - 1) * $perPage;
+
+        $rows = $this->database->fetchAll(
+            'SELECT * FROM ' . $this->table() . " WHERE {$where} ORDER BY title ASC, id ASC LIMIT {$perPage} OFFSET {$offset}",
+            $params,
+        );
+
+        return [
+            'downloads' => array_map($this->hydrate(...), $rows),
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
+        ];
+    }
+
+    /**
      * The newest $limit live downloads, optionally filtered to one
      * category — backs [lumora_downloads]'s "newest"/"newest N" variants;
      * $categoryId null means "across all downloads".

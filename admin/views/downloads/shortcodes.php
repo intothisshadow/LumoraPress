@@ -48,6 +48,7 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
         <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
         <li><span><code>download_id</code></span><span>Show a single download by its exact numeric ID. Wins over every other attribute.</span></li>
         <li><span><code>count</code></span><span>Show the newest <em>N</em> live downloads, sorted most-recent-first, instead of every download in a category. Combine with <code>category</code>/<code>category_id</code> to limit to one category; omit them for the newest across every category. <code>count="1"</code> is "the single newest download".</span></li>
+        <li><span><code>per_page</code></span><span>Split a category's downloads into pages of this many (1 to 100), with page links below the list. The current page is chosen with a <code>downloads_page</code> address parameter. Leave out to show every download on one page. Has no effect with <code>count</code> or <code>download_id</code>.</span></li>
         <li><span><code>show_size</code></span><span>Set to <code>"1"</code> to show each file download's size next to its link. Ignored for URL-type downloads, which have no file size.</span></li>
     </ul>
 
@@ -57,6 +58,9 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
 
     <p class="lp-field__hint">Everything in a category, by ID, with file sizes shown:</p>
     <pre><code>[lumora_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" show_size="1"]</code></pre>
+
+    <p class="lp-field__hint">Everything in a category, 10 per page:</p>
+    <pre><code>[lumora_downloads category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" per_page="10"]</code></pre>
 
     <p class="lp-field__hint">A single download by ID:</p>
     <pre><code>[lumora_downloads download_id="1"]</code></pre>

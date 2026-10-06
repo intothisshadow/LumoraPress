@@ -80,7 +80,8 @@ final class DownloadsShortcode
     /**
      * Three variants, checked in order: `download_id` (single download by
      * id), `count` (newest N, optionally filtered to a category, sorted
-     * newest-first), or neither (list a category's downloads, alphabetical).
+     * newest-first), or neither (list a category's downloads, alphabetical,
+     * paged when `per_page` is given).
      *
      * @param array<string, string> $attributes
      */
@@ -119,15 +120,43 @@ final class DownloadsShortcode
             return '';
         }
 
+        $showSize = ($attributes['show_size'] ?? '0') === '1';
+        $perPage = (int) ($attributes['per_page'] ?? 0);
+
+        if ($perPage > 0) {
+            $requestedPage = isset($_GET[self::PAGE_PARAM]) && is_string($_GET[self::PAGE_PARAM]) ? (int) $_GET[self::PAGE_PARAM] : 1;
+            $result = $downloads->paginateByCategory($category->id, $requestedPage, min($perPage, 100));
+
+            return $this->renderPaged($category, $result, $showSize);
+        }
+
         $items = $downloads->listByCategory($category->id);
 
         if ($items === []) {
             return '';
         }
 
-        $showSize = ($attributes['show_size'] ?? '0') === '1';
-
         return $this->renderList($category, $items, $showSize);
+    }
+
+    /**
+     * @param array{downloads: array<int, Download>, page: int, totalPages: int} $result
+     */
+    private function renderPaged(?DownloadCategory $category, array $result, bool $showSize): string
+    {
+        if ($result['downloads'] === []) {
+            return '';
+        }
+
+        $html = $this->renderList($category, $result['downloads'], $showSize);
+
+        if ($result['totalPages'] > 1 && function_exists('render_pagination')) {
+            ob_start();
+            render_pagination(['page' => $result['page'], 'totalPages' => $result['totalPages']], 'Downloads pagination', self::PAGE_PARAM);
+            $html .= (string) ob_get_clean();
+        }
+
+        return $html;
     }
 
     /**
@@ -162,15 +191,7 @@ final class DownloadsShortcode
             return '';
         }
 
-        $html = $this->renderList($category, $result['downloads'], ($attributes['show_size'] ?? '0') === '1');
-
-        if ($result['totalPages'] > 1 && function_exists('render_pagination')) {
-            ob_start();
-            render_pagination(['page' => $result['page'], 'totalPages' => $result['totalPages']], 'Downloads pagination', self::PAGE_PARAM);
-            $html .= (string) ob_get_clean();
-        }
-
-        return $html;
+        return $this->renderPaged($category, $result, ($attributes['show_size'] ?? '0') === '1');
     }
 
     /**
