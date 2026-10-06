@@ -29,7 +29,15 @@ $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
 $linkCategories = new LinkDirectoryCategoryService($kernel->database, $tablePrefix);
 $links = new LinkService($kernel->database, $tablePrefix);
 $appVersion = require LUMORA_ROOT . '/version.php';
-$portability = new LinkDirectoryPortabilityService($linkCategories, $links, (string) $appVersion['version']);
+$portability = new LinkDirectoryPortabilityService(
+    $linkCategories,
+    $links,
+    (string) $appVersion['version'],
+    $kernel->media,
+    $kernel->thumbnails,
+    LUMORA_ROOT . '/content/uploads',
+    $currentUser->id,
+);
 
 // A plain GET with no state change needs no CSRF check, but it does need
 // to clear admin/index.php's output buffer before sending a raw file
@@ -85,7 +93,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <?php if ($importResult !== null): ?>
     <div class="lp-alert lp-alert--success">
         Imported <?= (int) $importResult['categoriesCreated'] ?> categor<?= $importResult['categoriesCreated'] === 1 ? 'y' : 'ies' ?>
-        and <?= (int) $importResult['linksCreated'] ?> link<?= $importResult['linksCreated'] === 1 ? '' : 's' ?>.
+        and <?= (int) $importResult['linksCreated'] ?> link<?= $importResult['linksCreated'] === 1 ? '' : 's' ?><?php if ($importResult['imagesImported'] > 0): ?>,
+        with <?= (int) $importResult['imagesImported'] ?> image<?= $importResult['imagesImported'] === 1 ? '' : 's' ?> added to the Media Library<?php endif; ?>.
+        <?php if ($importResult['imagesSkipped'] > 0): ?>
+            <?= (int) $importResult['imagesSkipped'] ?> image<?= $importResult['imagesSkipped'] === 1 ? ' was' : 's were' ?> skipped because <?= $importResult['imagesSkipped'] === 1 ? 'it' : 'they' ?> couldn't be read or weren't a supported image.
+        <?php endif; ?>
     </div>
 <?php endif; ?>
 
@@ -94,9 +106,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <p class="lp-field__hint">
         Downloads every category and link currently in your Link Directory
         as one JSON file — useful as a backup, or to copy your whole
-        directory into a different Lumora Press install. Thumbnails aren't
-        included, since a thumbnail is a Media Library reference specific
-        to this install; re-add one after importing if a link needs it.
+        directory into a different Lumora Press install. Each link's
+        thumbnail and link button are included inside the file (images over
+        5 MB are left out), and are added to the Media Library when the
+        file is imported.
     </p>
     <a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('link-directory/export-import') . '?export=1') ?>">Download Link Directory File</a>
 </section>

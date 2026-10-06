@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\FeaturedImageDefaultsController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Plugins\LinkDirectory\LinkDirectoryCategoryService;
@@ -36,6 +37,51 @@ $error = null;
 // "Add New" and "Edit", switched on ?id= — there is no separate edit.php
 // for Link Directory either.
 $editingLink = ($_GET['id'] ?? null) !== null ? $links->findById((int) $_GET['id']) : null;
+
+// The button picker (featured-image-picker.js) queries this page for JSON.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === FeaturedImageDefaultsController::LINK_BUTTON_PICKER_CSRF_ACTION) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $pickerResponse = (new FeaturedImageDefaultsController($kernel->config, $kernel->media, $kernel->thumbnails))->pickerQuery(
+        $_POST,
+        $currentUser->can('upload_files'),
+        is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null,
+        FeaturedImageDefaultsController::LINK_BUTTON_PICKER_CSRF_ACTION,
+    );
+    http_response_code($pickerResponse['status']);
+    header('Content-Type: application/json');
+    echo json_encode($pickerResponse['body']);
+    exit;
+}
+
+/**
+ * Which Media item the submitted form wants as the link button: an upload
+ * wins over the picker's value, which wins over keeping $current. Only an
+ * existing image is accepted, so a stale or tampered id can't point the
+ * button at a non-image.
+ */
+$resolveButtonMediaId = static function (?int $current) use ($kernel, $currentUser): ?int {
+    $submitted = isset($_POST['button_media_id']) ? (int) $_POST['button_media_id'] : (int) $current;
+    $buttonMediaId = $submitted > 0 ? $submitted : null;
+
+    if ($buttonMediaId !== null) {
+        $item = $kernel->media->find($buttonMediaId);
+
+        if ($item === null || !str_starts_with((string) ($item['mime_type'] ?? ''), 'image/')) {
+            $buttonMediaId = null;
+        }
+    }
+
+    if (isset($_FILES['button_upload']) && $_FILES['button_upload']['error'] === UPLOAD_ERR_OK) {
+        $uploadedButton = $kernel->media->upload($_FILES['button_upload'], $currentUser->id);
+        $kernel->thumbnails->generate($uploadedButton);
+        $buttonMediaId = (int) $uploadedButton['id'];
+    }
+
+    return $buttonMediaId;
+};
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -80,6 +126,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     descriptionFormat: $descriptionFormat,
                     categoryId: $categoryId > 0 ? $categoryId : null,
                     thumbnailMediaId: $thumbnailMediaId,
+                    buttonMediaId: $resolveButtonMediaId(null),
                 );
 
                 // Lands on this screen's Edit view (not All Links) so the
@@ -128,6 +175,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     descriptionFormat: $descriptionFormat,
                     categoryId: $categoryId > 0 ? $categoryId : null,
                     thumbnailMediaId: $thumbnailMediaId,
+                    buttonMediaId: $resolveButtonMediaId($editingLink->buttonMediaId),
                 );
 
                 header('Location: ' . admin_url('link-directory/all-links') . '?saved=1');
@@ -139,6 +187,53 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $allLinkCategories = $linkCategories->listAllForTree();
 $currentThumbnail = $editingLink?->thumbnailMediaId !== null ? $kernel->media->find($editingLink->thumbnailMediaId) : null;
+
+/**
+ * The 100×50 button field, shared by the Add and Edit forms. Any image is
+ * accepted and never resized on disk; a differently sized one only earns a hint.
+ *
+ * @param array<string, mixed>|null $currentButton
+ */
+$renderButtonField = static function (?array $currentButton) use ($kernel): void {
+    $folderTree = array_map(
+        static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
+        $kernel->folders->listAllForTree(),
+    );
+    $wrongSize = $currentButton !== null
+        && ((int) ($currentButton['width'] ?? 0) !== 100 || (int) ($currentButton['height'] ?? 0) !== 50);
+    ?>
+    <fieldset class="lp-field lp-link-button-field">
+        <legend>Link button (100&times;50)</legend>
+        <div
+            class="lp-featured-image-picker lp-link-button-picker"
+            data-lp-featured-image-picker
+            data-picker-url="<?= esc_url(admin_url('link-directory/add-new')) ?>"
+            data-picker-action="<?= esc_attr(FeaturedImageDefaultsController::LINK_BUTTON_PICKER_CSRF_ACTION) ?>"
+            data-picker-csrf="<?= esc_attr(Csrf::token(FeaturedImageDefaultsController::LINK_BUTTON_PICKER_CSRF_ACTION)) ?>"
+            data-media-folders="<?= esc_attr((string) json_encode($folderTree)) ?>"
+        >
+            <input type="hidden" name="button_media_id" data-picker-value value="<?= (int) ($currentButton['id'] ?? 0) ?>">
+            <button type="button" class="lp-button lp-button--secondary" data-picker-trigger>Choose from Media Manager&hellip;</button>
+            <button type="button" class="lp-button lp-button--link lp-button--link--danger" data-picker-remove <?= $currentButton === null ? 'hidden' : '' ?>>Remove</button>
+            <span class="lp-featured-image-picker__chosen" data-picker-chosen>
+                <?php if ($currentButton !== null): ?>
+                    <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url($kernel->media->url($currentButton)) ?>" alt="">
+                    <?= esc_html((string) $currentButton['file_name']) ?>
+                <?php endif; ?>
+            </span>
+        </div>
+        <p class="lp-field">
+            <label for="link-directory-button-upload">Or upload a button</label>
+            <input type="file" id="link-directory-button-upload" name="button_upload" accept="image/*">
+        </p>
+        <span class="lp-field__hint">The classic badge other sites trade for linking. It's shown at 100&times;50 pixels; an image of another size is scaled, not cropped.</span>
+        <?php if ($wrongSize): ?>
+            <span class="lp-field__hint lp-link-button-field__warning">The chosen image is <?= (int) $currentButton['width'] ?>&times;<?= (int) $currentButton['height'] ?> pixels, so it will look stretched or squashed at 100&times;50.</span>
+        <?php endif; ?>
+    </fieldset>
+    <?php
+};
+$currentButton = $editingLink?->buttonMediaId !== null ? $kernel->media->find($editingLink->buttonMediaId) : null;
 ?>
 <h1 class="lp-admin__title"><?= $editingLink !== null ? 'Edit Link' : 'Add New Link' ?></h1>
 
@@ -193,6 +288,8 @@ $currentThumbnail = $editingLink?->thumbnailMediaId !== null ? $kernel->media->f
                 </p>
             </fieldset>
 
+            <?php $renderButtonField($currentButton); ?>
+
             <p class="lp-field">
                 <label for="link-directory-description-format">Description format</label>
                 <select id="link-directory-description-format" name="description_format">
@@ -242,6 +339,8 @@ $currentThumbnail = $editingLink?->thumbnailMediaId !== null ? $kernel->media->f
                 <label for="link-directory-thumbnail">Thumbnail</label>
                 <input type="file" id="link-directory-thumbnail" name="thumbnail" accept="image/*">
             </p>
+
+            <?php $renderButtonField(null); ?>
 
             <p class="lp-field">
                 <label for="link-directory-description-format">Description format</label>

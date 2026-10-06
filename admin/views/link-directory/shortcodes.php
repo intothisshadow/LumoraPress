@@ -55,6 +55,7 @@ $exampleCategory = $allLinkCategories[0] ?? null;
         <li><span><code>category</code></span><span>A category name, matched case-insensitively.</span></li>
         <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
         <li><span><code>link_id</code></span><span>Show a single link by its exact numeric ID. Wins over <code>category</code>/<code>category_id</code>.</span></li>
+        <li><span><code>buttons</code></span><span>Set to <code>1</code> to show each link's 100&times;50 button image above its title, for links that have one.</span></li>
     </ul>
 
     <h3>Examples</h3>
@@ -69,6 +70,12 @@ $exampleCategory = $allLinkCategories[0] ?? null;
 
     <p class="lp-field__hint">A single link by ID:</p>
     <pre><code>[lumora_link_directory link_id="1"]</code></pre>
+
+    <p class="lp-field__hint">A category with its link buttons:</p>
+    <pre><code>[lumora_link_directory category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" buttons="1"]</code></pre>
+
+    <p class="lp-field__hint">To list links in a sidebar or footer instead, add the <strong>Links</strong> widget under
+        <a href="<?= esc_url(admin_url('appearance/widgets')) ?>">Appearance &rsaquo; Widgets</a>.</p>
 
     <?php if ($allLinkCategories !== []): ?>
         <h3>Your categories</h3>

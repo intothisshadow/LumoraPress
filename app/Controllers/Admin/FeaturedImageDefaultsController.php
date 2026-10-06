@@ -38,6 +38,9 @@ final class FeaturedImageDefaultsController
      */
     public const HEADER_PICKER_CSRF_ACTION = 'header_image_picker_query';
 
+    /** The Link Directory's link-button picker reuses this image query under its own request name, for the same reason. */
+    public const LINK_BUTTON_PICKER_CSRF_ACTION = 'link_button_picker_query';
+
     private const PICKER_PAGE_SIZE = 40;
 
     public function __construct(
@@ -84,7 +87,7 @@ final class FeaturedImageDefaultsController
      */
     public function pickerQuery(array $post, bool $canUploadFiles, ?string $csrfToken, string $action = self::PICKER_CSRF_ACTION): array
     {
-        if (!in_array($action, [self::PICKER_CSRF_ACTION, self::HEADER_PICKER_CSRF_ACTION], true)) {
+        if (!in_array($action, [self::PICKER_CSRF_ACTION, self::HEADER_PICKER_CSRF_ACTION, self::LINK_BUTTON_PICKER_CSRF_ACTION], true)) {
             return ['status' => 403, 'body' => ['error' => 'Not permitted.']];
         }
 

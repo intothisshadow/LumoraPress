@@ -2760,6 +2760,16 @@ body.lp-admin-login {
     border: 1px solid var(--lp-admin-border);
 }
 
+/* Link Directory's link button picker: the chosen image previews at the badge's real 100x50 size. */
+.lp-link-button-picker .lp-featured-image-picker__chosen-thumb {
+    width: 100px;
+    height: 50px;
+}
+
+.lp-link-button-field__warning {
+    color: var(--lp-admin-error-text);
+}
+
 /* Font color swatch picker (Markdown editor's toolbar button) — same fixed palette TinyMCE's lumoraFontColor menu offers. */
 .lp-editor-color-dialog {
     width: min(260px, 92vw);

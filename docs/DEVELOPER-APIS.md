@@ -329,6 +329,14 @@ route-registration hook exists.
 | `lumora_press_after_theme_update` | action | `string $slug, string $fromVersion, string $toVersion, UpdateStatus $status` | `UpdateService::continueInstall()`, when a bundled theme update finishes — on success **and** on failure/rollback (including when an interrupted theme update is discarded). |
 | `wordpress_importer_request_seconds` | filter | `float $seconds` (default `15.0`, minimum `1.0`) | Maintenance &rsaquo; Import (`admin/views/maintenance/import.php`). How long one WordPress Importer request keeps running stages before it answers and the page's script asks for the next step. Lower it on a host with a short request timeout; raise it where timeouts are generous. The Media stage stops at this limit and resumes from its own cursor; other stages always finish once started. |
 
+### Widgets
+
+A plugin adds a widget type with `register_widget($type, $label, $render)`. Plugin files load before the widget registry exists, so call it from a `lumora_press_loaded` listener; saved assignments are matched to a type by name when the widget renders, so registering that late is safe. `$render` receives the widget's saved `array $settings` and echoes its markup.
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `widget_settings_fields` | filter | `array $fields, string $widgetType` | Appearance › Widgets ([`admin/views/appearance/widgets.php`](../admin/views/appearance/widgets.php)) when it draws a widget's settings form, and [`WidgetsController`](../app/Controllers/Admin/WidgetsController.php)`::updateWidget()` when it saves one. `$fields` is the core field list for that type (only a Title field for a type core doesn't know). A listener for its own `$widgetType` returns the full replacement list and returns `$fields` untouched for every other type. Each field is `['key' => string, 'label' => string, 'type' => string, 'options' => array<string, string>, 'empty_label' => string, 'hint' => string]`, where `type` is `text`, `number`, `checkbox`, `select`, `textarea`, `code`, or `wysiwyg`; `options` and `empty_label` (the text of a select's blank first option, `(None)` by default) apply to `select`. Only the declared keys are saved (a checkbox as `'1'`/`'0'`, everything else trimmed), so validate the values again when rendering. |
+
 ### Navigation menus
 
 | Name | Type | Args | Fires in |

@@ -18,8 +18,8 @@ declare(strict_types=1);
 /*
  * Plugin Name: Link Directory
  * Plugin URI: https://lumorapress.org/plugins/link-directory
- * Description: An admin-organized directory of links to other sites — a title, category/sub-category, URL, thumbnail, and description per entry. Show a category's links, or every category and its link count, anywhere with the [lumora_link_directory] shortcode.
- * Version: 0.1.0
+ * Description: An admin-organized directory of links to other sites — a title, category/sub-category, URL, thumbnail, optional 100×50 link button, and description per entry. Show a category's links, or every category and its link count, anywhere with the [lumora_link_directory] shortcode, or list links in a sidebar or footer with the Links widget.
+ * Version: 0.2.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
@@ -40,7 +40,10 @@ require_once __DIR__ . '/src/Link.php';
 require_once __DIR__ . '/src/LinkDirectoryCategory.php';
 require_once __DIR__ . '/src/LinkDirectoryCategoryService.php';
 require_once __DIR__ . '/src/LinkService.php';
+require_once __DIR__ . '/src/LinkDirectoryConnection.php';
+require_once __DIR__ . '/src/LinkButtonRenderer.php';
 require_once __DIR__ . '/src/LinkDirectoryShortcode.php';
+require_once __DIR__ . '/src/LinkDirectoryWidget.php';
 require_once __DIR__ . '/src/LinkDirectoryPortabilityService.php';
 
 // Needs no Kernel services until content actually contains
@@ -62,7 +65,34 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
 
     register_shortcode('lumora_link_directory', 'Link Directory', [
         new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, choices: $categoryChoices, help: 'Leave blank to list every category with its link count instead of one category\'s links.'),
+        new ShortcodeField('buttons', 'Show link buttons', ShortcodeFieldType::Checkbox, default: '0', help: 'Show each link\'s 100×50 button image, when it has one.'),
     ]);
+});
+
+// Widget types register on lumora_press_loaded: the widget registry doesn't
+// exist yet while plugin files load, and assignments are matched to a type
+// by name at render time, so a late registration is safe.
+add_action('lumora_press_loaded', static function (): void {
+    $widget = new LinkDirectoryWidget();
+
+    register_widget(LinkDirectoryWidget::TYPE, 'Links', $widget->render(...));
+});
+
+// The Widgets screen only knows core widgets' settings fields; this adds ours
+// (and lets the save handler keep them).
+add_filter('widget_settings_fields', static function (array $fields, string $widgetType): array {
+    if ($widgetType !== LinkDirectoryWidget::TYPE) {
+        return $fields;
+    }
+
+    [$database, $tablePrefix] = LinkDirectoryConnection::open();
+    $categoryChoices = [];
+
+    foreach ((new LinkDirectoryCategoryService($database, $tablePrefix))->listAll() as $category) {
+        $categoryChoices[(string) $category->id] = $category->name;
+    }
+
+    return LinkDirectoryWidget::settingsFields($categoryChoices);
 });
 
 // One-click access to this plugin's own top-level menu — worth having even

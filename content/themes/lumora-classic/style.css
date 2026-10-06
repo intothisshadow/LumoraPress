@@ -2911,6 +2911,52 @@ a.lp-post-list__comments:focus {
     word-break: break-word;
 }
 
+/*
+ * 100x50 link buttons: a link's badge image in the Links widget
+ * (.lp-link-buttons) and on the directory page ([lumora_link_directory
+ * buttons="1"]). A link with no badge falls back to a same-sized text
+ * tile (--text) so a mixed row stays even.
+ */
+.lp-link-directory-item__button {
+    margin: 0 0 0.5em;
+}
+
+.lp-link-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.lp-link-button {
+    display: inline-block;
+    max-width: 100%;
+    line-height: 0;
+}
+
+.lp-link-button__img {
+    display: block;
+    width: 100px;
+    height: 50px;
+    object-fit: contain;
+}
+
+.lp-link-button--text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100px;
+    height: 50px;
+    padding: 0.2em 0.3em;
+    border: 1px solid var(--lp-border);
+    font-size: 0.75em;
+    line-height: 1.15;
+    text-align: center;
+    overflow: hidden;
+    overflow-wrap: break-word;
+}
+
 /* =========================================================
    Folder Gallery
    ========================================================= */

@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Link Directory (plugin): 100×50 link buttons. Add or edit a link and choose a "Link button" from the Media Manager (or upload one) to give it the classic badge other sites trade for linking. It previews at 100×50 and warns, without blocking, when the image is another size. `[lumora_link_directory buttons="1"]` shows each link's button above its title, and the shortcode picker has a "Show link buttons" checkbox. Link Directory 0.2.0.
+- Link Directory (plugin): Export / Import now carries each link's thumbnail and link button. The images are stored inside the export file and added to the Media Library when it's imported (images over 5 MB are left out, and an unreadable or non-image file is skipped with a note).
+- Link Directory (plugin): a Links widget for any widget area. Choose a category (or all), how many links, the order (alphabetical, newest, or random), and whether to show plain text links or a wrapping row of 100×50 buttons; a link without a button shows its title in a same-sized tile.
+- Plugin API: `widget_settings_fields`, a filter that lets a plugin-registered widget declare its own settings on Appearance › Widgets (see "Widgets" in `docs/DEVELOPER-APIS.md`). Before this, a plugin widget could only have a Title.
 - Every Media-library picker now shows each file's size (B, KB, MB or GB) and, for images, its dimensions in px (LP-196). This covers Insert Image, Insert Audio/Video/File, Featured Image, header and category image pickers, the Downloads file picker, and the Media Manager's poster, caption-track and default sharing-image dropdowns.
 - Downloads (plugin): `[lumora_downloads]` accepts `per_page` to split a category's downloads into pages, with page links below the list.
 - Downloads (plugin): a "No file attached" tab on All Downloads lists only the downloads with nothing to serve, with a count, so incomplete entries are easy to find and finish.

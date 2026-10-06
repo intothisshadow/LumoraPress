@@ -375,7 +375,7 @@ final class WidgetsController
     {
         $title = ['title' => 'text'];
 
-        return match ($widgetType) {
+        $coreTypes = match ($widgetType) {
             'text' => [...$title, 'text' => 'wysiwyg'],
             'custom_html' => [...$title, 'html' => 'code'],
             'custom_php' => [...$title, 'code' => 'code'],
@@ -401,6 +401,23 @@ final class WidgetsController
             ],
             default => $title,
         };
+
+        // Same filter as the Widgets screen's own field list, so a plugin
+        // widget's settings are saved with the types it declared there.
+        $fields = array_map(
+            static fn (string $key, string $type): array => ['key' => $key, 'label' => '', 'type' => $type],
+            array_keys($coreTypes),
+            $coreTypes,
+        );
+        $types = [];
+
+        foreach ((array) apply_filters('widget_settings_fields', $fields, $widgetType) as $field) {
+            if (is_array($field) && is_string($field['key'] ?? null) && is_string($field['type'] ?? null)) {
+                $types[$field['key']] = $field['type'];
+            }
+        }
+
+        return $types !== [] ? $types : $coreTypes;
     }
 
     /**

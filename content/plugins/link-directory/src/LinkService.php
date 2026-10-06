@@ -47,13 +47,14 @@ final class LinkService
         ContentFormat $descriptionFormat,
         ?int $categoryId,
         ?int $thumbnailMediaId,
+        ?int $buttonMediaId = null,
     ): Link {
         $now = date('Y-m-d H:i:s');
 
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (title, url, description, description_format, category_id, thumbnail_media_id, created_at, updated_at)
-             VALUES (:title, :url, :description, :description_format, :category_id, :thumbnail_media_id, :created_at, :updated_at)',
+                (title, url, description, description_format, category_id, thumbnail_media_id, button_media_id, created_at, updated_at)
+             VALUES (:title, :url, :description, :description_format, :category_id, :thumbnail_media_id, :button_media_id, :created_at, :updated_at)',
             [
                 'title' => $title,
                 'url' => $url,
@@ -61,6 +62,7 @@ final class LinkService
                 'description_format' => $descriptionFormat->value,
                 'category_id' => $categoryId,
                 'thumbnail_media_id' => $thumbnailMediaId,
+                'button_media_id' => $buttonMediaId,
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -83,11 +85,13 @@ final class LinkService
         ContentFormat $descriptionFormat,
         ?int $categoryId,
         ?int $thumbnailMediaId,
+        ?int $buttonMediaId = null,
     ): bool {
         return $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET title = :title, url = :url, description = :description, description_format = :description_format,
-                    category_id = :category_id, thumbnail_media_id = :thumbnail_media_id, updated_at = :updated_at
+                    category_id = :category_id, thumbnail_media_id = :thumbnail_media_id,
+                    button_media_id = :button_media_id, updated_at = :updated_at
               WHERE id = :id',
             [
                 'title' => $title,
@@ -96,6 +100,7 @@ final class LinkService
                 'description_format' => $descriptionFormat->value,
                 'category_id' => $categoryId,
                 'thumbnail_media_id' => $thumbnailMediaId,
+                'button_media_id' => $buttonMediaId,
                 'updated_at' => date('Y-m-d H:i:s'),
                 'id' => $id,
             ],
@@ -145,6 +150,7 @@ final class LinkService
             $original->descriptionFormat,
             $original->categoryId,
             $original->thumbnailMediaId,
+            $original->buttonMediaId,
         );
     }
 
@@ -235,6 +241,47 @@ final class LinkService
     }
 
     /**
+     * Live links for the Links widget: optionally one category's own links,
+     * ordered alphabetically, newest first, or randomly.
+     *
+     * Random order shuffles in PHP instead of using ORDER BY RAND(): a
+     * hand-curated directory is small, and RAND() isn't portable across the
+     * MySQL production and SQLite test databases.
+     *
+     * @param 'title'|'newest'|'random' $order
+     * @return array<int, Link>
+     */
+    public function listForWidget(?int $categoryId, int $limit, string $order = 'title'): array
+    {
+        $limit = max(1, $limit);
+        $sql = 'SELECT * FROM ' . $this->table() . ' WHERE trashed_at IS NULL';
+        $params = [];
+
+        if ($categoryId !== null) {
+            $sql .= ' AND category_id = :category_id';
+            $params['category_id'] = $categoryId;
+        }
+
+        $sql .= match ($order) {
+            'newest' => ' ORDER BY created_at DESC, id DESC',
+            default => ' ORDER BY title ASC',
+        };
+
+        if ($order !== 'random') {
+            $sql .= ' LIMIT ' . $limit;
+        }
+
+        $links = array_map($this->hydrate(...), $this->database->fetchAll($sql, $params));
+
+        if ($order === 'random') {
+            shuffle($links);
+            $links = array_slice($links, 0, $limit);
+        }
+
+        return $links;
+    }
+
+    /**
      * Every non-trashed link, regardless of category — LinkDirectoryPortabilityService's
      * export data source (LPP-027). Grouping by category_id first keeps a
      * re-imported file's own link order close to how it reads in the admin.
@@ -266,6 +313,7 @@ final class LinkService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             trashedAt: $row['trashed_at'] !== null ? new DateTimeImmutable((string) $row['trashed_at']) : null,
+            buttonMediaId: ($row['button_media_id'] ?? null) !== null ? (int) $row['button_media_id'] : null,
         );
     }
 

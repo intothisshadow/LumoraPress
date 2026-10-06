@@ -37,6 +37,10 @@ final class Link
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?DateTimeImmutable $trashedAt = null,
+        // The classic 100x50 "link button" badge. Separate from the
+        // thumbnail: that one illustrates the listing, this one is a
+        // fixed-size image other sites exchange for webring-style linking.
+        public readonly ?int $buttonMediaId = null,
     ) {
     }
 

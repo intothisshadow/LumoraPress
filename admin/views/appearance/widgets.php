@@ -28,12 +28,12 @@ if (!isset($kernel)) {
  * Field definitions per widget type, shared by the render form and the
  * save handler so they can't drift out of sync.
  *
- * @return array<int, array{key: string, label: string, type: string, options?: array<string, string>, hint?: string}>
+ * @return array<int, array{key: string, label: string, type: string, options?: array<string, string>, empty_label?: string, hint?: string}>
  */
 $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
     $titleField = ['key' => 'title', 'label' => 'Title', 'type' => 'text'];
 
-    return match ($widgetType) {
+    $coreFields = match ($widgetType) {
         'text' => [$titleField, ['key' => 'text', 'label' => 'Content', 'type' => 'wysiwyg']],
         'custom_html' => [$titleField, ['key' => 'html', 'label' => 'Content', 'type' => 'code']],
         'custom_php' => [$titleField, [
@@ -66,6 +66,10 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
         ],
         default => [$titleField],
     };
+
+    // Lets a plugin-registered widget declare its own settings fields;
+    // without a listener an unknown type only gets the Title field.
+    return (array) apply_filters('widget_settings_fields', $coreFields, $widgetType);
 };
 
 /**
@@ -73,7 +77,7 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
  * and the Inactive Widgets list below.
  *
  * @param array{id: string, type: string, settings: array<string, mixed>} $widget
- * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>, hint?: string}> $fields
+ * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>, empty_label?: string, hint?: string}> $fields
  */
 $renderWidgetSettingsFields = static function (array $widget, array $fields): void {
     foreach ($fields as $field) {
@@ -102,9 +106,9 @@ $renderWidgetSettingsFields = static function (array $widget, array $fields): vo
                 </label>
             <?php elseif ($field['type'] === 'select'): ?>
                 <select id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]">
-                    <option value="">(None)</option>
+                    <option value=""><?= esc_html((string) ($field['empty_label'] ?? '(None)')) ?></option>
                     <?php foreach (($field['options'] ?? []) as $optionValue => $optionLabel): ?>
-                        <option value="<?= esc_attr($optionValue) ?>" <?= $value === $optionValue ? 'selected' : '' ?>><?= esc_html($optionLabel) ?></option>
+                        <option value="<?= esc_attr($optionValue) ?>" <?= (string) $value === (string) $optionValue ? 'selected' : '' ?>><?= esc_html($optionLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
             <?php else: ?>

@@ -19,7 +19,6 @@ namespace LumoraPress\Plugins\LinkDirectory;
 
 use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
-use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\MediaService;
@@ -87,6 +86,7 @@ final class LinkDirectoryShortcode
     private function renderOne(array $attributes): string
     {
         [$links, $categories] = $this->services();
+        $showButtons = in_array(strtolower($attributes['buttons'] ?? ''), ['1', 'true', 'yes'], true);
 
         if (($attributes['link_id'] ?? '') !== '') {
             $link = $links->findById((int) $attributes['link_id']);
@@ -95,7 +95,7 @@ final class LinkDirectoryShortcode
                 return '';
             }
 
-            return $this->renderLinks([$link]);
+            return $this->renderLinks([$link], $showButtons);
         }
 
         if (($attributes['category_id'] ?? '') !== '' || ($attributes['category'] ?? '') !== '') {
@@ -107,7 +107,7 @@ final class LinkDirectoryShortcode
 
             $items = $links->listByCategory($category->id);
 
-            return $items === [] ? '' : $this->renderLinks($items);
+            return $items === [] ? '' : $this->renderLinks($items, $showButtons);
         }
 
         $requestedCategoryId = $this->requestedCategoryId();
@@ -116,7 +116,7 @@ final class LinkDirectoryShortcode
             $category = $categories->findById($requestedCategoryId);
 
             if ($category !== null && $category->trashedAt === null) {
-                return $this->renderCategoryDetail($categories, $links, $category);
+                return $this->renderCategoryDetail($categories, $links, $category, $showButtons);
             }
         }
 
@@ -132,7 +132,7 @@ final class LinkDirectoryShortcode
      * something here — the admin clicked into it and needs to see *why*
      * it's empty, not have the whole shortcode vanish.
      */
-    private function renderCategoryDetail(LinkDirectoryCategoryService $categories, LinkService $links, LinkDirectoryCategory $category): string
+    private function renderCategoryDetail(LinkDirectoryCategoryService $categories, LinkService $links, LinkDirectoryCategory $category, bool $showButtons): string
     {
         $childCategories = $categories->directChildren($category->id);
         $items = $links->listByCategory($category->id);
@@ -156,7 +156,7 @@ final class LinkDirectoryShortcode
 
         $html .= $items === []
             ? '<p class="lp-link-directory-category__empty">No links in this category yet.</p>'
-            : $this->renderLinks($items);
+            : $this->renderLinks($items, $showButtons);
 
         $html .= '</div>';
 
@@ -245,18 +245,30 @@ final class LinkDirectoryShortcode
     /**
      * The "show listings in a single category" (or single-link) rendering:
      * one card per link with its title, thumbnail, description, and URL.
+     * With $showButtons, a link that has a 100×50 button image shows it
+     * above the title; links without one render exactly as before.
      *
      * @param array<int, Link> $items
      */
-    private function renderLinks(array $items): string
+    private function renderLinks(array $items, bool $showButtons = false): string
     {
         $content = $this->content();
         $media = $this->media();
+        $buttons = $showButtons ? new LinkButtonRenderer($media) : null;
 
         $html = '<div class="lp-link-directory-list">';
 
         foreach ($items as $item) {
             $html .= '<article class="lp-link-directory-item">';
+
+            if ($buttons !== null && $item->buttonMediaId !== null) {
+                $button = $buttons->image($item);
+
+                if ($button !== null) {
+                    $html .= '<p class="lp-link-directory-item__button"><a class="lp-link-button" href="' . esc_url($item->url) . '" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">' . $button . '</a></p>';
+                }
+            }
+
             $html .= '<h3 class="lp-link-directory-item__title"><a href="' . esc_url($item->url) . '" target="_blank" rel="noopener noreferrer">' . esc_html($item->title) . '</a></h3>';
 
             $thumbnail = $item->thumbnailMediaId !== null ? $media->find($item->thumbnailMediaId) : null;
@@ -318,17 +330,7 @@ final class LinkDirectoryShortcode
             return $this->injectedMedia;
         }
 
-        $config = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $config['db_host'],
-            database: (string) $config['db_name'],
-            username: (string) $config['db_user'],
-            password: (string) $config['db_password'],
-            port: (int) ($config['db_port'] ?? 3306),
-        );
-        $tablePrefix = (string) $config['table_prefix'];
-
-        return new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', \LumoraPress\Core\Http\BasePath::get() . '/content/uploads');
+        return LinkDirectoryConnection::media();
     }
 
     /**
@@ -357,15 +359,7 @@ final class LinkDirectoryShortcode
             return [$this->injectedLinks, $this->injectedCategories];
         }
 
-        $config = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $config['db_host'],
-            database: (string) $config['db_name'],
-            username: (string) $config['db_user'],
-            password: (string) $config['db_password'],
-            port: (int) ($config['db_port'] ?? 3306),
-        );
-        $tablePrefix = (string) $config['table_prefix'];
+        [$database, $tablePrefix] = LinkDirectoryConnection::open();
 
         return [new LinkService($database, $tablePrefix), new LinkDirectoryCategoryService($database, $tablePrefix)];
     }
