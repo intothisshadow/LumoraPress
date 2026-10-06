@@ -129,10 +129,21 @@
             var x = Math.max(0, Math.round(box.left * ratio));
             var y = Math.max(0, Math.round(box.top * ratio));
 
+            var width = Math.max(1, Math.min(Math.round(box.width * ratio), size.width - x));
+            var height = Math.max(1, Math.min(Math.round(box.height * ratio), size.height - y));
+            var shape = aspectRatio();
+
+            // Clamping to the image edge can leave the two sides a pixel or two apart;
+            // a locked shape must stay exact.
+            if (shape) {
+                width = Math.max(1, Math.min(width, Math.round(height * shape)));
+                height = Math.max(1, Math.min(height, Math.round(width / shape)));
+            }
+
             cropInputs.x.value = x;
             cropInputs.y.value = y;
-            cropInputs.width.value = Math.max(1, Math.min(Math.round(box.width * ratio), size.width - x));
-            cropInputs.height.value = Math.max(1, Math.min(Math.round(box.height * ratio), size.height - y));
+            cropInputs.width.value = width;
+            cropInputs.height.value = height;
         }
 
         function updateStatus() {

@@ -26,6 +26,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Markdown editor: keyboard users can now leave the editor. Tab indents (nested lists need it), which used to trap the keyboard; pressing Esc, then Tab (or Shift+Tab) now moves focus on to the next field, and a hint under the editor says so.
 - Visual editor: typing in a very long post no longer stutters. Copying the text and counting words used to run after every keystroke, taking about a tenth of a second per key in a 400 KB post; it now waits for a pause in typing.
 - Accessibility: the word-count line under the editor, the hint links, and primary buttons in dark mode now have readable contrast; category checkboxes are large enough to tap; the Markdown editor's input has a label; the editor's resize handle has a role; and the Media Manager's preview image has a text alternative.
 - Visual editor: a code block's language is no longer lost when the post is saved, so it stays selected when the post is reopened and survives switching to Markdown (it now becomes the code fence's language).

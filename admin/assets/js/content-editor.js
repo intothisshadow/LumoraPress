@@ -2923,6 +2923,35 @@
             // CodeMirror's hidden input is the one real form control here and ships unlabeled.
             editor.codemirror.getInputField().setAttribute('aria-label', 'Content (Markdown)');
 
+            // Tab indents here (nested lists need it), which would otherwise trap
+            // keyboard users. Esc followed by Tab hands the key back to the browser
+            // so focus can move on, and the hint says so.
+            var tabHint = document.createElement('p');
+            tabHint.className = 'lp-field__hint lp-content-editor__tab-hint';
+            tabHint.id = 'lp-markdown-tab-hint-' + Math.random().toString(36).slice(2, 8);
+            tabHint.textContent = 'Tab indents in this editor. To move on to the next field, press Esc, then Tab.';
+            container.insertBefore(tabHint, statsEl && statsEl.parentNode === container ? statsEl : null);
+            editor.codemirror.getInputField().setAttribute('aria-describedby', tabHint.id);
+
+            var escapePressed = false;
+
+            editor.codemirror.on('keydown', function (cm, event) {
+                // Shift+Tab sends a bare Shift keydown first; it must not cancel the pending Esc.
+                if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') {
+                    return;
+                }
+
+                if (event.key === 'Tab' && escapePressed) {
+                    event.codemirrorIgnore = true;
+                }
+
+                escapePressed = event.key === 'Escape';
+            });
+
+            editor.codemirror.on('blur', function () {
+                escapePressed = false;
+            });
+
             editor.codemirror.on('change', function () {
                 if (syncTimer === null) {
                     syncTimer = window.setTimeout(syncTextarea, 200);
@@ -2943,6 +2972,7 @@
                         textarea.form.removeEventListener('submit', syncTextarea);
                     }
                     editor.toTextArea();
+                    tabHint.remove();
                 },
             };
         });

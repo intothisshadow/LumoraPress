@@ -52,12 +52,15 @@ Last run 2026-10-06 with axe-core 4.10.2 against WCAG 2.0/2.1/2.2 A and AA: no v
 
 To re-run: open the screen in a dev install, paste `await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js'; s.onload = r; document.head.appendChild(s); }); const r = await axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']}}); r.violations` into the browser console, open each dialog and repeat with the dialog element as the first argument to `axe.run`. The admin's CSP blocks injected style tags, so to rule out a frozen colour transition in a hidden pane, run `document.querySelectorAll('*').forEach(e => e.style.setProperty('transition', 'none', 'important'))` first.
 
+Run 2026-10-06 in the in-app browser (a Chromium engine) with real keystrokes: the visual editor's formatting, alignment, color, Read More, list, blockquote, rule, table, code sample, paste-as-text, find and replace, source, fullscreen, and help controls all worked; toolbar and dialog keyboard navigation worked as described below; and the Markdown editor's keyboard trap was found and fixed. Also run the same day on Firefox 157 and Waterfox 6.5.10 (Gecko 128) with a scripted harness (`PHP Test Suite/browser-checks/gecko_checks.py`, Marionette, no installs): 50 of 50 checks passed on each after two fixes it found (Esc then Shift+Tab did not leave the Markdown editor in any browser, and a square crop touching the image edge could come out a pixel or two off). Not run: a screen reader (NVDA, VoiceOver, Orca) and Safari/WebKit.
+
 Known third-party item: at phone width TinyMCE switches its toolbar to a scrolling strip that axe flags as a scrollable region without a tab stop. TinyMCE's own keyboard model reaches the toolbar with Alt+F10, listed in its Help panel.
 
 ## Appearance and access
 
 - [ ] Dark mode: the editor chrome and every dialog (picker, Edit Image, image editor) are readable. The editing area keeps the theme's own colors.
 - [ ] Phone width (375px): the toolbar wraps, dialogs fit the screen with no horizontal scrolling, and the crop handles can be dragged by touch.
-- [ ] Keyboard only: Tab reaches every toolbar button and dialog control, Escape closes dialogs, and focus returns to where it was.
+- [ ] Keyboard only, visual editor: Alt+F10 moves focus into the toolbar, the arrow keys move between buttons within a group, Tab moves to the next group, Enter or Space activates a button, and Escape returns to the text. Dialogs trap focus, close with Escape, and give focus back (the Insert Image dialog returns it to the text area, where the image goes; the image editor dialog returns it to the button that opened it).
+- [ ] Keyboard only, Markdown editor: Tab indents, and Esc then Tab (or Shift+Tab) moves focus on to the next field. There must be no keyboard trap.
 - [ ] Screen reader: toolbar buttons announce their names and pressed state; the image editor announces its status line.
 - [ ] Browsers: repeat the visual editor and image sections in current Firefox and Chromium; Safari if available.
