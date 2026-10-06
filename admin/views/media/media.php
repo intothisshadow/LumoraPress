@@ -469,7 +469,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                     <?php endif; ?>
                     data-pswp-filename="<?= esc_attr((string) $editingMedia['file_name']) ?>"
                 >
-                    <img class="lp-media-edit__preview" src="<?= esc_url($mediaService->url($editingMedia)) ?>" alt="">
+                    <img class="lp-media-edit__preview" src="<?= esc_url($mediaService->url($editingMedia)) ?>" alt="<?= esc_attr((string) (($editingMedia['alt_text'] ?? '') !== '' ? $editingMedia['alt_text'] : $editingMedia['file_name'])) ?>">
                 </a>
             </div>
 

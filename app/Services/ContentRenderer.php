@@ -84,6 +84,7 @@ final class ContentRenderer
             ContentFormat::Plain => nl2br(htmlspecialchars($content, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
         };
 
+        $html = $this->addLazyLoading($html);
         $html = $this->addLightboxAttributes($html);
         $html = $this->hooks->applyFilters('content_html', $html, $content, $format);
 
@@ -164,6 +165,25 @@ final class ContentRenderer
         }
 
         return null;
+    }
+
+    /**
+     * Defers loading of images below the fold. Markdown images already carry the attribute;
+     * visual-editor images never did, so a long post loaded every picture up front.
+     */
+    private function addLazyLoading(string $html): string
+    {
+        if (!str_contains($html, '<img')) {
+            return $html;
+        }
+
+        return (string) preg_replace_callback('/<img\b[^>]*>/i', static function (array $match): string {
+            if (preg_match('/\sloading\s*=/i', $match[0]) === 1) {
+                return $match[0];
+            }
+
+            return rtrim(substr($match[0], 0, -1), '/ ') . ' loading="lazy">';
+        }, $html);
     }
 
     private function addLightboxAttributes(string $html): string

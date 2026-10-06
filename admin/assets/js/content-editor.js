@@ -2920,6 +2920,9 @@
                 return value;
             }
 
+            // CodeMirror's hidden input is the one real form control here and ships unlabeled.
+            editor.codemirror.getInputField().setAttribute('aria-label', 'Content (Markdown)');
+
             editor.codemirror.on('change', function () {
                 if (syncTimer === null) {
                     syncTimer = window.setTimeout(syncTextarea, 200);
@@ -3087,6 +3090,10 @@
                         // already allows instead.
                         underline: { inline: 'u', exact: true },
                     }, fontColorFormats),
+                    // Off by default in TinyMCE, which marks the editing area
+                    // spellcheck="false"; on, the browser's own checker (the writer's
+                    // language and personal dictionary) works with no download.
+                    browser_spellcheck: true,
                     branding: false,
                     promotion: false,
                     // TinyMCE's default (relative_urls: true) silently
@@ -3384,12 +3391,45 @@
                             },
                         });
 
-                        editor.on('change keyup', function () {
+                        // Copying the content to the textarea and counting words both
+                        // serialize the whole document, which freezes typing in a long
+                        // post when done per keystroke. Wait for a pause instead; a form
+                        // submit or leaving the editor flushes a pending one first.
+                        var syncTimer = null;
+
+                        function syncTextarea() {
+                            if (syncTimer !== null) {
+                                window.clearTimeout(syncTimer);
+                                syncTimer = null;
+                            }
+
                             editor.save();
                             updateStats(statsEl, editor.getContent({ format: 'text' }));
+                        }
+
+                        editor.on('change keyup', function () {
+                            if (syncTimer !== null) {
+                                window.clearTimeout(syncTimer);
+                            }
+
+                            syncTimer = window.setTimeout(syncTextarea, 300);
+                        });
+
+                        editor.on('blur submit', function () {
+                            if (syncTimer !== null) {
+                                syncTextarea();
+                            }
                         });
 
                         editor.on('init', function () {
+                            // TinyMCE labels its keyboard-operable resize handle but gives
+                            // it no role, so the label is ignored; a button role fits.
+                            var resizeHandle = editor.getContainer().querySelector('.tox-statusbar__resize-handle');
+
+                            if (resizeHandle && !resizeHandle.hasAttribute('role')) {
+                                resizeHandle.setAttribute('role', 'button');
+                            }
+
                             updateStats(statsEl, editor.getContent({ format: 'text' }));
                             resolve({
                                 getValue: function () { return editor.getContent(); },

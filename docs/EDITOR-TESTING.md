@@ -15,6 +15,7 @@ Open Posts › Add New and set the editor to Visual / HTML.
 - [ ] Lists, blockquote, horizontal rule, and tables (insert, add and remove rows and columns) behave normally.
 - [ ] Code sample: choose a language, type code, save, reopen the post. The language is still selected.
 - [ ] Paste as text turns pasted rich content into plain text while on, and off restores normal paste. Pasting from Word or Google Docs gives clean paragraphs with no stray styling.
+- [ ] Misspelled words are underlined while typing, and right-click offers suggestions (this is the browser's own checker, so check it in each browser).
 - [ ] Find and replace, word and character count, reading time, fullscreen, and the keyboard shortcuts panel (Help) all work.
 - [ ] Source code view shows clean HTML with no inline `style` attributes, and edits made there appear in the editor.
 - [ ] Autosave: type, wait 20 seconds, reload without saving, and confirm the draft is offered back. The "Draft autosaved" message appears for an existing post.
@@ -44,6 +45,14 @@ Open Posts › Add New and set the editor to Visual / HTML.
 
 - [ ] The toolbar buttons insert the expected syntax. Syntax with no button (`^sup^`, `~sub~`, `{.center}` after a paragraph) renders in the preview when typed by hand.
 - [ ] The preview matches the saved result, and the cursor-in-image Edit Image button works, including "Crop, Rotate or Flip…".
+
+## Automated accessibility audit
+
+Last run 2026-10-06 with axe-core 4.10.2 against WCAG 2.0/2.1/2.2 A and AA: no violations on Posts › Add New (Markdown and Visual, light and dark), the Insert Image dialog, the Edit Image dialog, the image editor dialog, and the Media Manager's inline image editor. Automated checks cover roughly a third of WCAG, so the manual items below still matter.
+
+To re-run: open the screen in a dev install, paste `await new Promise(r => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js'; s.onload = r; document.head.appendChild(s); }); const r = await axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa']}}); r.violations` into the browser console, open each dialog and repeat with the dialog element as the first argument to `axe.run`. The admin's CSP blocks injected style tags, so to rule out a frozen colour transition in a hidden pane, run `document.querySelectorAll('*').forEach(e => e.style.setProperty('transition', 'none', 'important'))` first.
+
+Known third-party item: at phone width TinyMCE switches its toolbar to a scrolling strip that axe flags as a scrollable region without a tab stop. TinyMCE's own keyboard model reaches the toolbar with Alt+F10, listed in its Help panel.
 
 ## Appearance and access
 

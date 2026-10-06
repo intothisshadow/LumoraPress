@@ -9,6 +9,7 @@
     --lp-admin-sidebar-fg-muted: #b4b9be;
     --lp-admin-accent: #2271b1;
     --lp-admin-accent-hover: #135e96;
+    --lp-admin-on-accent: #fff;
     --lp-admin-text: #1d2327;
     --lp-admin-border: #dcdcde;
     --lp-admin-panel-bg: #ffffff;
@@ -68,6 +69,7 @@
         --lp-admin-sidebar-fg-muted: #9aa0a6;
         --lp-admin-accent: #4c9be8;
         --lp-admin-accent-hover: #6cb0ef;
+        --lp-admin-on-accent: #0b1520;
         --lp-admin-text: #e4e6e8;
         --lp-admin-border: #33383d;
         --lp-admin-panel-bg: #1b1e21;
@@ -106,6 +108,7 @@
     --lp-admin-sidebar-fg-muted: #9aa0a6;
     --lp-admin-accent: #4c9be8;
     --lp-admin-accent-hover: #6cb0ef;
+    --lp-admin-on-accent: #0b1520;
     --lp-admin-text: #e4e6e8;
     --lp-admin-border: #33383d;
     --lp-admin-panel-bg: #1b1e21;
@@ -2099,7 +2102,15 @@ body.lp-admin-login {
 .lp-content-editor__stats {
     margin: 0.35rem 0 0;
     font-size: 0.8rem;
-    color: var(--lp-admin-sidebar-fg-muted);
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
+}
+
+/* Checklist boxes (categories) meet the 24px minimum touch target. */
+.lp-field--checklist input[type="checkbox"] {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 0 0.35rem 0 0;
+    vertical-align: middle;
 }
 
 /* Text/HTML widget WYSIWYG (LP-112) — the textarea's own fallback sizing
@@ -3854,7 +3865,7 @@ summary.lp-media-views__chip::after {
 .lp-image-editor__toolbar [aria-pressed="true"] {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
-    color: #fff;
+    color: var(--lp-admin-on-accent);
 }
 
 .lp-image-editor__stage {
@@ -4442,6 +4453,10 @@ select:focus {
     font-weight: 400;
 }
 
+.lp-field__hint a {
+    color: var(--lp-admin-accent);
+}
+
 .lp-field__hint {
     display: block;
     margin-top: 0.35rem;
@@ -4684,14 +4699,14 @@ select:focus {
 .lp-button--primary {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
-    color: #fff;
+    color: var(--lp-admin-on-accent);
     box-shadow: 0 1px 2px rgba(34, 113, 177, 0.25);
 }
 
 .lp-button--primary:hover {
     background: var(--lp-admin-accent-hover);
     border-color: var(--lp-admin-accent-hover);
-    color: #fff;
+    color: var(--lp-admin-on-accent);
     box-shadow: 0 2px 6px rgba(34, 113, 177, 0.3);
 }
 
