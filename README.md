@@ -45,7 +45,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 ### Media
 - Media library with virtual folders and metadata
 - Featured images with manual cropping
-- Image editing in the Media Manager: crop (with aspect-ratio presets), rotate, and flip, saved as a new copy or over the original
+- Image editing: crop (with aspect-ratio presets), rotate, and flip, saved as a new copy or over the original, from the Media Manager or from a dialog wherever an image is chosen (the editors' Insert Image and Edit Image dialogs, featured images, category images)
 - Multi-file uploads with per-file progress
 - FTP media import
 - Image captions, added while inserting an image in either editor and shown under the image, in the lightbox, and under featured images

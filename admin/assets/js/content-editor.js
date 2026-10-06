@@ -271,6 +271,32 @@
         return attributes;
     }
 
+    // Whether two image addresses name the same file, whatever scheme or host each was written with.
+    function sameImagePath(a, b) {
+        try {
+            return new URL(a, window.location.href).pathname === new URL(b, window.location.href).pathname;
+        } catch (error) {
+            return a === b;
+        }
+    }
+
+    // The size entry for the address that was edited, falling back to the original when the
+    // edited copy has no thumbnail of that size (a small crop is never upscaled to one).
+    function editedSizeEntry(item, sizeName) {
+        return (item && item.sizes && (item.sizes[sizeName] || item.sizes.full)) || null;
+    }
+
+    // An explicit width AND height would stretch a picture whose proportions just changed;
+    // keep the width and let the height follow.
+    function specsAfterPixelEdit(widthSpec, heightSpec, previousEntry, newEntry) {
+        if (widthSpec && heightSpec && previousEntry && newEntry && previousEntry.height && newEntry.height
+            && Math.abs(previousEntry.width / previousEntry.height - newEntry.width / newEntry.height) > 0.01) {
+            return { widthSpec: widthSpec, heightSpec: '' };
+        }
+
+        return { widthSpec: widthSpec, heightSpec: heightSpec };
+    }
+
     function imageSizeHtml(payload) {
         var attributes = imageSizeAttributes(payload.widthSpec, payload.heightSpec, payload.width, payload.height);
 
@@ -666,6 +692,25 @@
             actions.appendChild(insertButton);
             actions.appendChild(backButton);
 
+            // Crop, rotate or flip the chosen image first. A new copy or the
+            // edited original comes back and replaces this step's image.
+            if (window.lpImageEditor && /\.(jpe?g|png|webp)$/i.test(item.url)) {
+                var editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.className = 'lp-button';
+                editButton.textContent = 'Edit Image…';
+                editButton.addEventListener('click', function () {
+                    window.lpImageEditor.open({
+                        id: item.id,
+                        src: window.lpImageEditor.bust(item.url),
+                        onSaved: function (result) {
+                            showSettingsStep(result.item);
+                        },
+                    });
+                });
+                actions.appendChild(editButton);
+            }
+
             settings.appendChild(sizeField);
             settings.appendChild(widthField.element);
             settings.appendChild(heightField.element);
@@ -703,8 +748,11 @@
      *
      * @param {{alt: string, caption: string, align: string, linked: boolean, widthSpec: string, heightSpec: string}} current
      * @param {function(Object): void} onApply
+     * @param {{url: string, onChanged: function(Object): void}=} pixelEdit When given, the dialog also
+     *     offers crop/rotate/flip of the picture itself: `url` is the image's address in the content,
+     *     onChanged receives the image editor's result ({item, replaced, previousItem, size}).
      */
-    function openImageEditDialog(current, onApply) {
+    function openImageEditDialog(current, onApply, pixelEdit) {
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-editor-media-dialog lp-editor-media-dialog--edit-image';
 
@@ -806,6 +854,23 @@
 
         actions.appendChild(updateButton);
         actions.appendChild(cancelButton);
+
+        if (pixelEdit && pixelEdit.url && window.lpImageEditor) {
+            var pictureButton = document.createElement('button');
+            pictureButton.type = 'button';
+            pictureButton.className = 'lp-button';
+            pictureButton.textContent = 'Crop, Rotate or Flip\u2026';
+            pictureButton.addEventListener('click', function () {
+                window.lpImageEditor.open({
+                    url: pixelEdit.url,
+                    onSaved: function (result) {
+                        dialog.close();
+                        pixelEdit.onChanged(result);
+                    },
+                });
+            });
+            actions.appendChild(pictureButton);
+        }
 
         [alt.element, captionField, align.element, link.element, widthField.element, heightField.element, hint, actions].forEach(function (node) {
             settings.appendChild(node);
@@ -975,7 +1040,51 @@
         openImageEditDialog(readTinyMceImage(editor, img), function (settings) {
             editor.focus();
             applyTinyMceImage(editor, img, settings);
+        }, {
+            url: img.getAttribute('data-mce-src') || img.getAttribute('src') || '',
+            onChanged: function (result) {
+                editor.focus();
+                applyTinyMcePixelEdit(editor, img, result);
+            },
         });
+    }
+
+    // Points the selected image (and a link to its file) at the edited picture, keeping its other
+    // settings. A replaced file keeps its address, so the editor shows a fresh copy while the saved
+    // content keeps the clean address.
+    function applyTinyMcePixelEdit(editor, img, result) {
+        var entry = editedSizeEntry(result.item, result.size);
+        var full = result.item.sizes.full;
+        var previousEntry = editedSizeEntry(result.previousItem, result.size);
+        var previousFullUrl = result.previousItem ? result.previousItem.sizes.full.url : '';
+        var current = readTinyMceImage(editor, img);
+        var specs = specsAfterPixelEdit(current.widthSpec, current.heightSpec, previousEntry, entry);
+
+        editor.undoManager.transact(function () {
+            ['width', 'height', 'data-style-width', 'data-style-height'].forEach(function (name) {
+                img.removeAttribute(name);
+            });
+
+            var attributes = imageSizeAttributes(specs.widthSpec, specs.heightSpec, entry.width, entry.height);
+            Object.keys(attributes).forEach(function (name) {
+                img.setAttribute(name, attributes[name]);
+            });
+
+            img.setAttribute('src', result.replaced ? window.lpImageEditor.bust(entry.url) : entry.url);
+            img.setAttribute('data-mce-src', entry.url);
+
+            var link = editor.dom.getParent(img, 'a');
+
+            if (link && previousFullUrl !== '' && sameImagePath(link.getAttribute('href') || '', previousFullUrl)) {
+                link.setAttribute('href', full.url);
+                link.setAttribute('data-mce-href', full.url);
+                link.setAttribute('data-pswp-width', String(full.width));
+                link.setAttribute('data-pswp-height', String(full.height));
+            }
+        });
+
+        editor.selection.select(img);
+        editor.nodeChanged();
     }
 
     // Finds the Markdown image (optionally wrapped in a link) the cursor is
@@ -1031,7 +1140,7 @@
         var width = /\{width=([0-9]{1,4})(px|%)?\}/.exec(found.markers);
         var height = /\{height=([0-9]{1,4})(px|%)?\}/.exec(found.markers);
 
-        openImageEditDialog({
+        var current = {
             alt: found.alt,
             caption: found.caption,
             align: align,
@@ -1040,15 +1149,19 @@
             linked: found.linkUrl !== null || found.markers.indexOf('{.no-lightbox}') === -1,
             widthSpec: width ? width[1] + (width[2] || 'px') : '',
             heightSpec: height ? height[1] + (height[2] || 'px') : '',
-        }, function (settings) {
+        };
+
+        // Writes the image back over the one under the cursor; `url`/`linkUrl` let an edited
+        // picture point somewhere new while every other setting stays as it was.
+        function writeImage(settings, url, linkUrl) {
             var replacement = buildMarkdownImage({
-                url: found.url,
+                url: url,
                 alt: settings.alt,
                 caption: settings.caption,
                 align: settings.align,
                 // A link kept is the one already there. With none, the image either
                 // keeps opening in the lightbox by itself or is opted out of it.
-                linkUrl: settings.link === 'file' ? found.linkUrl : null,
+                linkUrl: settings.link === 'file' ? linkUrl : null,
                 noLightbox: settings.link === 'file' ? false : true,
                 widthSpec: settings.widthSpec,
                 heightSpec: settings.heightSpec,
@@ -1061,6 +1174,30 @@
 
             cm.replaceRange(replacement, { line: found.line, ch: found.start }, { line: found.line, ch: found.end });
             cm.focus();
+        }
+
+        openImageEditDialog(current, function (settings) {
+            writeImage(settings, found.url, found.linkUrl);
+        }, {
+            url: new URL(found.url, window.location.href).href,
+            onChanged: function (result) {
+                var entry = editedSizeEntry(result.item, result.size);
+                var previousEntry = editedSizeEntry(result.previousItem, result.size);
+                var previousFullUrl = result.previousItem ? result.previousItem.sizes.full.url : '';
+                var specs = specsAfterPixelEdit(current.widthSpec, current.heightSpec, previousEntry, entry);
+                var linkUrl = found.linkUrl !== null && previousFullUrl !== '' && sameImagePath(found.linkUrl, previousFullUrl)
+                    ? result.item.sizes.full.url
+                    : found.linkUrl;
+
+                writeImage({
+                    alt: current.alt,
+                    caption: current.caption,
+                    align: current.align,
+                    link: current.linked ? 'file' : 'none',
+                    widthSpec: specs.widthSpec,
+                    heightSpec: specs.heightSpec,
+                }, entry.url, linkUrl);
+            },
         });
     }
 

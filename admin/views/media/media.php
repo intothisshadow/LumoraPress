@@ -101,14 +101,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $respond(403, ['error' => 'Your session expired. Reload the page and try again.']);
         }
 
-        $sourceMedia = $mediaService->find((int) ($_POST['id'] ?? 0));
+        // An image already placed in content is known only by its address: find
+        // the media item and which size that address is.
+        $matchedSize = null;
+        $lookupUrl = is_string($_POST['lookup_url'] ?? null) ? $_POST['lookup_url'] : '';
+
+        if ($lookupUrl !== '') {
+            $match = $thumbnailService->findByUrl($lookupUrl);
+            $sourceMedia = $match['media'] ?? null;
+            $matchedSize = $match['size'] ?? null;
+        } else {
+            $sourceMedia = $mediaService->find((int) ($_POST['id'] ?? 0));
+        }
 
         if ($sourceMedia === null) {
-            $respond(404, ['error' => 'Media item not found.']);
+            $respond(404, ['error' => $lookupUrl !== '' ? 'This image isn\'t in the Media Library, so it can\'t be edited here.' : 'Media item not found.']);
         }
 
         if (!$thumbnailService->canEditImage($sourceMedia)) {
             $respond(422, ['error' => 'This image type can\'t be edited.']);
+        }
+
+        // The dialog asks for the image's details first when opened with only an id or address.
+        if (($_POST['lookup'] ?? '') === '1' || $lookupUrl !== '') {
+            $respond(200, ['item' => $thumbnailService->pickerItem($sourceMedia), 'size' => $matchedSize]);
         }
 
         $parsed = ImageEditRequest::parse($_POST, $sourceMedia, $thumbnailService->featuredCropMaxWidth());

@@ -14,6 +14,8 @@
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
 
+use LumoraPress\Core\Security\Csrf;
+
 if (!isset($kernel)) {
     http_response_code(403);
     exit('Direct access is not permitted.');
@@ -21,6 +23,17 @@ if (!isset($kernel)) {
 ?>
     </main>
 </div>
+<?php if (isset($currentUser) && $currentUser->can('upload_files')): ?>
+    <?php // Config and markup for the image editor dialog that image pickers and the editors open (image-editor.js). ?>
+    <div hidden data-lp-image-editor-config data-url="<?= esc_url(admin_url('media/media')) ?>" data-csrf="<?= esc_attr(Csrf::token('edit_image_ajax')) ?>"></div>
+    <template id="lp-image-editor-template">
+        <?php
+        $imageEditorInline = false;
+        $imageEditorMedia = null;
+        require __DIR__ . '/partials/image-editor.php';
+        ?>
+    </template>
+<?php endif; ?>
 <script src="<?= esc_url(admin_asset_url('js/nav-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/sidebar-mode.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/flyout-nav.js')) ?>" defer></script>

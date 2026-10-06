@@ -248,7 +248,8 @@
                 return;
             }
 
-            function showChosen(item) {
+            // "fresh" skips the browser's cached copy, for an image just edited in place.
+            function showChosen(item, fresh) {
                 if (!chosenLabel) {
                     return;
                 }
@@ -257,10 +258,37 @@
 
                 var thumb = document.createElement('img');
                 thumb.className = 'lp-featured-image-picker__chosen-thumb';
-                thumb.src = gridThumbnailUrl(item);
+                thumb.src = fresh ? window.lpImageEditor.bust(gridThumbnailUrl(item)) : gridThumbnailUrl(item);
                 thumb.alt = '';
                 chosenLabel.appendChild(thumb);
                 chosenLabel.appendChild(document.createTextNode(item.name));
+            }
+
+            // Crop, rotate or flip the chosen image. A new copy becomes the
+            // choice; an edited original keeps its id.
+            var editButton = null;
+
+            function hasChoice() {
+                return valueInput.value !== '' && valueInput.value !== '0';
+            }
+
+            if (window.lpImageEditor) {
+                editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.className = 'lp-button lp-button--link';
+                editButton.textContent = 'Edit Image…';
+                editButton.hidden = !hasChoice();
+                trigger.parentNode.insertBefore(editButton, trigger.nextSibling);
+
+                editButton.addEventListener('click', function () {
+                    window.lpImageEditor.open({
+                        id: parseInt(valueInput.value, 10),
+                        onSaved: function (result) {
+                            valueInput.value = String(result.item.id);
+                            showChosen(result.item, result.replaced);
+                        },
+                    });
+                });
             }
 
             trigger.addEventListener('click', function () {
@@ -270,6 +298,10 @@
 
                     if (removeButton) {
                         removeButton.hidden = false;
+                    }
+
+                    if (editButton) {
+                        editButton.hidden = false;
                     }
                 });
             });
@@ -283,6 +315,10 @@
                     }
 
                     removeButton.hidden = true;
+
+                    if (editButton) {
+                        editButton.hidden = true;
+                    }
                 });
             }
         });

@@ -117,8 +117,9 @@ implementation-level detail on each area.
 - **Featured images** — per-post/page featured images with manual
   cropping (with a configurable output size). Any JPEG, PNG, or WebP
   in the Media Manager can also be cropped, rotated, and flipped from
-  its edit screen, saved either as a new Library item or over the
-  original. A site-wide
+  its edit screen, or from the Edit Image dialog on the editors' Insert
+  Image step and the featured/category image pickers, saved either as a
+  new Library item or over the original. A site-wide
   Customize option chooses whether a featured image appears above the
   title or beside it, with the front page's Classic layout following
   the same choice.

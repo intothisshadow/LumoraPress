@@ -473,6 +473,44 @@ final class ThumbnailService
     }
 
     /**
+     * Finds the media item behind an image address used in content, and which of its
+     * sizes that address is ("full" for the original, otherwise a thumbnail size name).
+     *
+     * @return array{media: array<string, mixed>, size: string}|null null for an address that
+     *     isn't inside the uploads folder or belongs to no media item
+     */
+    public function findByUrl(string $url): ?array
+    {
+        $path = rawurldecode((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+        $base = rtrim((string) (parse_url($this->uploadsUrl, PHP_URL_PATH) ?? ''), '/') . '/';
+        $position = strpos($path, $base);
+
+        if ($position === false) {
+            return null;
+        }
+
+        $relativePath = substr($path, $position + strlen($base));
+
+        if ($relativePath === '' || str_contains($relativePath, '..')) {
+            return null;
+        }
+
+        $original = $this->media->findByFilePath($relativePath);
+
+        if ($original !== null) {
+            return ['media' => $original, 'size' => 'full'];
+        }
+
+        $row = $this->database->fetchOne(
+            'SELECT media_id, size_name FROM ' . $this->table() . ' WHERE file_path = :file_path LIMIT 1',
+            ['file_path' => $relativePath],
+        );
+        $media = $row === null ? null : $this->media->find((int) $row['media_id']);
+
+        return $media === null ? null : ['media' => $media, 'size' => (string) $row['size_name']];
+    }
+
+    /**
      * Whether editImage() can handle this item. GIFs are excluded because GD only reads a
      * GIF's first frame, so an edit would silently destroy an animation.
      *

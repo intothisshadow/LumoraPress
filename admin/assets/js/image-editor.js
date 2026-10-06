@@ -35,7 +35,7 @@
             height: wrapper.querySelector('[data-lp-image-editor-height]'),
         };
 
-        if (!toggle || !form || !stage || !canvas || !rect || !ratioSelect || !statusEl
+        if (!form || !stage || !canvas || !rect || !ratioSelect || !statusEl
             || !rotateInput || !flipHInput || !flipVInput
             || !cropInputs.x || !cropInputs.y || !cropInputs.width || !cropInputs.height) {
             return;
@@ -364,10 +364,7 @@
             updateStatus();
         }
 
-        function open() {
-            form.hidden = false;
-            toggle.setAttribute('aria-expanded', 'true');
-
+        function load(src) {
             if (source !== null) {
                 return;
             }
@@ -381,17 +378,23 @@
             source.addEventListener('error', function () {
                 statusEl.textContent = 'The image could not be loaded for editing.';
             });
-            source.src = wrapper.dataset.src || '';
+            source.src = src;
         }
 
-        toggle.addEventListener('click', function () {
-            if (form.hidden) {
-                open();
-            } else {
-                form.hidden = true;
-                toggle.setAttribute('aria-expanded', 'false');
-            }
-        });
+        // The inline editor (Media Manager) starts collapsed behind a toggle
+        // button; the dialog's copy has none and is always showing.
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                if (form.hidden) {
+                    form.hidden = false;
+                    toggle.setAttribute('aria-expanded', 'true');
+                    load(wrapper.dataset.src || '');
+                } else {
+                    form.hidden = true;
+                    toggle.setAttribute('aria-expanded', 'false');
+                }
+            });
+        }
 
         wrapper.addEventListener('click', function (event) {
             var button = event.target.closest('[data-lp-image-editor-action]');
@@ -411,7 +414,173 @@
         stage.addEventListener('pointermove', onPointerMove);
         stage.addEventListener('pointerup', onPointerUp);
         stage.addEventListener('pointercancel', onPointerUp);
+
+        return { form: form, load: load };
     }
+
+    /**
+     * Opens the editor in a dialog for the media item `id` and saves over
+     * fetch, for the editors and image pickers on other admin screens.
+     * onSaved receives {item, replaced}: item is the picker-shaped media
+     * row (a new copy, or the original after a replace) and `replaced` says
+     * which. Does nothing if this page has no editor template (the user
+     * cannot upload).
+     *
+     * Pass `id` (and optionally `src`), or the `url` of an image already placed
+     * in content; with a url, onSaved also gets `size` (which size of the media
+     * item that address was) and `previousItem` (the item before the edit).
+     *
+     * @param {{id: number, src: string, url: string, onSaved: function(Object): void}} options
+     */
+    function openDialog(options) {
+        var config = document.querySelector('[data-lp-image-editor-config]');
+        var template = document.getElementById('lp-image-editor-template');
+
+        if (!config || !template || !options || (!options.id && !options.url)) {
+            return;
+        }
+
+        var dialog = document.createElement('dialog');
+        dialog.className = 'lp-image-editor-dialog';
+        dialog.setAttribute('aria-labelledby', 'lp-image-editor-dialog-title');
+
+        var heading = document.createElement('h2');
+        heading.id = 'lp-image-editor-dialog-title';
+        heading.className = 'lp-image-editor-dialog__title';
+        heading.textContent = 'Edit Image';
+
+        dialog.appendChild(heading);
+        dialog.appendChild(template.content.cloneNode(true));
+
+        var wrapper = dialog.querySelector('[data-lp-image-editor]');
+        var controller = enhance(wrapper);
+
+        if (!controller) {
+            return;
+        }
+
+        var errorEl = wrapper.querySelector('[data-lp-image-editor-error]');
+        var busy = false;
+        var mediaId = options.id || 0;
+        var previousItem = null;
+        var matchedSize = null;
+
+        function showError(message) {
+            errorEl.textContent = message;
+            errorEl.hidden = false;
+        }
+
+        // Single-use tokens: every response hands back the next one.
+        function send(formData, retried) {
+            formData.set('csrf_token', config.dataset.csrf);
+
+            return fetch(config.dataset.url, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'fetch' },
+            }).then(function (response) {
+                return response.json().then(function (json) {
+                    if (json.csrfToken) {
+                        config.dataset.csrf = json.csrfToken;
+                    }
+
+                    // Another tab may have used the token; the response
+                    // carries a fresh one, so one retry is safe.
+                    if (response.status === 403 && !retried && json.csrfToken) {
+                        return send(formData, true);
+                    }
+
+                    return { ok: response.ok, json: json };
+                });
+            });
+        }
+
+        controller.form.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            if (busy) {
+                return;
+            }
+
+            var formData = new FormData(controller.form);
+            formData.set('form', 'edit_image_ajax');
+            formData.set('id', String(mediaId));
+
+            if (event.submitter && event.submitter.name) {
+                formData.set(event.submitter.name, event.submitter.value);
+            }
+
+            busy = true;
+            errorEl.hidden = true;
+            wrapper.classList.add('is-busy');
+
+            send(formData, false).then(function (result) {
+                if (!result.ok || !result.json.item) {
+                    showError(result.json.error || 'The image could not be edited.');
+
+                    return;
+                }
+
+                dialog.close();
+
+                if (options.onSaved) {
+                    options.onSaved({ item: result.json.item, replaced: !!result.json.replaced, previousItem: previousItem, size: matchedSize });
+                }
+            }).catch(function () {
+                showError('The image could not be edited. Check your connection and try again.');
+            }).then(function () {
+                busy = false;
+                wrapper.classList.remove('is-busy');
+            });
+        });
+
+        wrapper.querySelector('[data-lp-image-editor-cancel]').addEventListener('click', function () {
+            dialog.close();
+        });
+        dialog.addEventListener('close', function () { dialog.remove(); });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+
+        if (options.src) {
+            controller.load(options.src);
+
+            return;
+        }
+
+        // Opened with just an id or a content address: look the image up first.
+        var lookup = new FormData();
+        lookup.set('form', 'edit_image_ajax');
+
+        if (options.url) {
+            lookup.set('lookup_url', options.url);
+        } else {
+            lookup.set('id', String(mediaId));
+            lookup.set('lookup', '1');
+        }
+
+        send(lookup, false).then(function (result) {
+            if (!result.ok || !result.json.item) {
+                showError(result.json.error || 'The image could not be loaded for editing.');
+
+                return;
+            }
+
+            mediaId = result.json.item.id;
+            previousItem = result.json.item;
+            matchedSize = result.json.size || null;
+            controller.load(bust(result.json.item.url));
+        }).catch(function () {
+            showError('The image could not be loaded. Check your connection and try again.');
+        });
+    }
+
+    // The same picture again at a new address, for previews that must not
+    // show a cached copy after the file was replaced in place.
+    function bust(url) {
+        return url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + Date.now();
+    }
+
+    window.lpImageEditor = { open: openDialog, bust: bust };
 
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('[data-lp-image-editor]').forEach(enhance);
