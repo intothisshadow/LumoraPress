@@ -117,18 +117,21 @@ $isTrashView = $statusFilter === DownloadStatus::Trashed;
 
 $categoryFilter = (int) ($_GET['category_id'] ?? 0);
 $termFilter = trim((string) ($_GET['q'] ?? ''));
+$noFileFilter = !$isTrashView && isset($_GET['no_file']);
 $orderBy = (string) ($_GET['orderby'] ?? 'title');
 $orderDir = (string) ($_GET['order'] ?? 'asc');
 
-$listFilters = ['term' => $termFilter, 'categoryId' => $categoryFilter];
+$listFilters = ['term' => $termFilter, 'categoryId' => $categoryFilter, 'noFile' => $noFileFilter];
 $pagination = $downloads->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
 
 $statusCounts = [
     DownloadStatus::Live->value => $downloads->countByStatus(DownloadStatus::Live),
     DownloadStatus::Trashed->value => $downloads->countByStatus(DownloadStatus::Trashed),
 ];
+$noFileCount = $downloads->countWithoutFile();
 $statusLinks = [
     '' => 'Live (' . $statusCounts[DownloadStatus::Live->value] . ')',
+    'no_file' => 'No file attached (' . $noFileCount . ')',
     'trashed' => 'Trash (' . $statusCounts[DownloadStatus::Trashed->value] . ')',
 ];
 
@@ -139,7 +142,7 @@ foreach ($allCategories as $category) {
     $categoriesById[$category->id] = $category;
 }
 
-$sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFilter, $categoryFilter): string {
+$sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFilter, $categoryFilter, $noFileFilter): string {
     $nextDir = $orderBy === $column && $orderDir === 'asc' ? 'desc' : 'asc';
     $query = ['orderby' => $column, 'order' => $nextDir];
 
@@ -151,15 +154,27 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         $query['category_id'] = $categoryFilter;
     }
 
+    if ($noFileFilter) {
+        $query['no_file'] = 1;
+    }
+
     return admin_url('downloads/all-downloads') . '?' . http_build_query($query);
 };
 ?>
 
 <p class="lp-admin__filters">
     <?php foreach ($statusLinks as $value => $label): ?>
+        <?php
+        $linkQuery = match ($value) {
+            'trashed' => '?status=trashed',
+            'no_file' => '?no_file=1',
+            default => '',
+        };
+        $isActiveLink = $value === 'no_file' ? $noFileFilter : (!$noFileFilter && ($statusFilter?->value ?? '') === $value);
+        ?>
         <a
-            href="<?= esc_url(admin_url('downloads/all-downloads')) ?><?= $value !== '' ? '?status=' . esc_attr($value) : '' ?>"
-            class="<?= ($statusFilter?->value ?? '') === $value ? 'is-active' : '' ?>"
+            href="<?= esc_url(admin_url('downloads/all-downloads') . $linkQuery) ?>"
+            class="<?= $isActiveLink ? 'is-active' : '' ?>"
         ><?= esc_html($label) ?></a>
     <?php endforeach; ?>
 </p>
@@ -168,6 +183,9 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
     <form method="get" action="<?= esc_url(admin_url('downloads/all-downloads')) ?>" class="lp-admin__filter-form">
         <?php if ($statusFilter !== null): ?>
             <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
+        <?php endif; ?>
+        <?php if ($noFileFilter): ?>
+            <input type="hidden" name="no_file" value="1">
         <?php endif; ?>
         <p class="lp-field">
             <label for="downloads-category-filter">Category</label>
@@ -188,7 +206,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
 
 <section class="lp-admin__panel">
     <?php if ($pagination['downloads'] === []): ?>
-        <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : 'No downloads yet.' ?></p>
+        <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : ($noFileFilter ? 'Every download has a file attached.' : 'No downloads yet.') ?></p>
     <?php else: ?>
         <form method="post" action="<?= esc_url(admin_url('downloads/all-downloads')) ?>" data-lp-bulk-form>
             <?= Csrf::field('downloads_bulk_action') ?>

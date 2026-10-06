@@ -374,6 +374,27 @@ final class DownloadService
     }
 
     /**
+     * Live downloads with nothing to serve. Mirrors hydrate()'s empty-$url
+     * rule, so a row whose Media/Redirect target has since been deleted counts
+     * too, not just one that never had an id.
+     */
+    public function countWithoutFile(): int
+    {
+        return (int) $this->database->fetchColumn(
+            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE trashed_at IS NULL AND ' . $this->noFileCondition(),
+        );
+    }
+
+    private function noFileCondition(): string
+    {
+        $media = $this->tablePrefix . 'media';
+        $redirects = $this->tablePrefix . 'redirects';
+
+        return "NOT ((type = 'file' AND media_id IS NOT NULL AND EXISTS (SELECT 1 FROM {$media} m WHERE m.id = media_id))"
+            . " OR (type = 'url' AND redirect_id IS NOT NULL AND EXISTS (SELECT 1 FROM {$redirects} r WHERE r.id = redirect_id)))";
+    }
+
+    /**
      * A duplicate shares the original's media_id/redirect_id rather than
      * copying the file — delete()'s reference-counting guard makes this safe.
      */
@@ -404,7 +425,7 @@ final class DownloadService
      * Flat, paginated, sortable admin-list method — distinct from
      * listAllGroupedByCategory(), the public-facing data source.
      *
-     * @param array{term?: string, folderId?: int, categoryId?: int} $filters
+     * @param array{term?: string, folderId?: int, categoryId?: int, noFile?: bool} $filters
      * @return array{downloads: array<int, Download>, total: int, page: int, perPage: int, totalPages: int}
      */
     public function paginateForAdmin(
@@ -434,6 +455,10 @@ final class DownloadService
         if (($filters['categoryId'] ?? 0) > 0) {
             $conditions[] = 'category_id = :category_id';
             $params['category_id'] = (int) $filters['categoryId'];
+        }
+
+        if (!empty($filters['noFile'])) {
+            $conditions[] = $this->noFileCondition();
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);

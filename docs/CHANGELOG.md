@@ -6,7 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
-- Every Media-library picker now shows each file's size (B, KB, MB or GB) and, for images, its dimensions in px (LP-196). This covers Insert Image, Insert Audio/Video/File, Featured Image, header and category image pickers, the Downloads file picker, and the Media Manager's poster, caption-track and default sharing-image dropdowns.
+- Downloads (plugin): a "No file attached" tab on All Downloads lists only the downloads with nothing to serve, with a count, so incomplete entries are easy to find and finish.
 
 ### Changed
 
