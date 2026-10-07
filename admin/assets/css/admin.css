@@ -2684,14 +2684,20 @@ body.lp-admin-login {
     margin-bottom: 1rem;
 }
 
+/*
+ * No `overflow: hidden` on the item: it zeroes the item's contribution to
+ * `auto` grid row sizing, so each "Load More" page collapses the rows
+ * above it and the thumbnails shrink. The image rounds its own corners
+ * instead, as in .lp-editor-media-dialog__item.
+ */
 .lp-featured-image-picker-dialog__item {
     display: block;
+    aspect-ratio: 1 / 1;
     padding: 0;
     border: 1px solid var(--lp-admin-border);
     border-radius: var(--lp-admin-radius);
     cursor: pointer;
     background: none;
-    overflow: hidden;
 }
 
 .lp-featured-image-picker-dialog__item:hover,
@@ -2702,7 +2708,8 @@ body.lp-admin-login {
 .lp-featured-image-picker-dialog__item img {
     display: block;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    height: 100%;
+    border-radius: calc(var(--lp-admin-radius) - 1px);
     object-fit: cover;
 }
 
