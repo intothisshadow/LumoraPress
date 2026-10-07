@@ -2382,7 +2382,7 @@ body.lp-admin-login {
 .lp-editor-emoji-dialog__category.is-active {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
-    color: #fff;
+    color: var(--lp-admin-on-accent);
 }
 
 .lp-editor-emoji-dialog__grid {

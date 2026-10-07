@@ -8,6 +8,10 @@ All notable changes to Lumora Press are documented in this file.
 
 - Bundled plugin update packages attached to a release are now named `plugin-{slug}-v{version}.zip`, matching the `theme-{slug}-v{version}.zip` names bundled themes already use. Releases that use the older unprefixed names are still read, so nothing changes for a release already published. A site on 0.21.0 or older looks only for the old name, so it sees a plugin update from a newer release once it has updated Lumora Press itself.
 
+### Fixed
+
+- Emoji picker: in the dark admin theme the selected category tab was hard to read (white text on a light blue background). It now uses the same readable text color as primary buttons.
+
 ## [0.21.0] — 2026-10-07
 
 ### Bundled versions
