@@ -19,6 +19,7 @@ namespace LumoraPress\Plugins\LumoraShield;
 
 use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
+use LumoraPress\Models\Comment;
 
 /**
  * Three modules: Stop User Enumeration, Monitoring, and Comment Analysis.
@@ -45,6 +46,9 @@ final class LumoraShieldService
     private const NOTIFY_COOLDOWN_SECONDS = 3600;
 
     private static ?self $instance = null;
+
+    /** @var array<string, array<int, string>> rules that flagged a comment, keyed by commentKey() and held until comment_posted supplies the real comment ID and final status. */
+    private array $pendingCommentRules = [];
 
     /** @var array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool}|null */
     private ?array $settingsCache = null;
@@ -141,7 +145,42 @@ final class LumoraShieldService
             return $default;
         }
 
-        return (new CommentAnalyzer())->analyze($content, null, $guestEmail !== '' ? $guestEmail : null, $ipAddress)['isSpam'];
+        $result = (new CommentAnalyzer())->analyze($content, null, $guestEmail !== '' ? $guestEmail : null, $ipAddress);
+
+        if ($result['isSpam']) {
+            // The comment row doesn't exist yet, so the record is written from comment_posted instead.
+            $this->pendingCommentRules[$this->commentKey($ipAddress, $content)] = $result['reasons'];
+        }
+
+        return $result['isSpam'];
+    }
+
+    /**
+     * The `comment_posted` action listener: completes the spam record for a comment this
+     * plugin flagged, now that its ID, author, and final status (which another listener may
+     * have changed after this plugin ran) are known. Best-effort, like every other log write.
+     */
+    public function recordFlaggedComment(Comment $comment): void
+    {
+        $key = $this->commentKey((string) $comment->ipAddress, $comment->content);
+        $rules = $this->pendingCommentRules[$key] ?? null;
+
+        if ($rules === null) {
+            return;
+        }
+
+        unset($this->pendingCommentRules[$key]);
+
+        $this->writeSpamEvent(
+            'comment',
+            $rules,
+            $comment->status->value,
+            (string) $comment->ipAddress,
+            $comment->guestName,
+            $comment->guestEmail,
+            $comment->id,
+            $comment->userId,
+        );
     }
 
     /**
@@ -158,7 +197,28 @@ final class LumoraShieldService
             return $default;
         }
 
-        return (new CommentAnalyzer())->contentReasons(implode("\n", $data)) !== [];
+        $reasons = (new CommentAnalyzer())->contentReasons(implode("\n", $data));
+
+        if ($reasons === []) {
+            return $default;
+        }
+
+        [$name, $email] = $this->contactIdentity($data);
+        $this->writeSpamEvent('contact_form', $reasons, 'spam', $ipAddress, $name, $email);
+
+        return true;
+    }
+
+    /**
+     * @return array<int, array{id: int, source: string, commentId: ?int, userId: ?int, authorName: string, authorEmail: string, ipAddress: string, spamScore: int, rules: array<int, string>, action: string, createdAt: string}>
+     */
+    public function recentSpamEvents(int $limit = 25): array
+    {
+        try {
+            return $this->spamLog()->recent($limit);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -288,6 +348,60 @@ final class LumoraShieldService
             // Best-effort — a failed notification must never break the
             // request that triggered it.
         }
+    }
+
+    /**
+     * @param array<int, string> $rules
+     */
+    private function writeSpamEvent(string $source, array $rules, string $action, string $ipAddress, string $name, string $email, ?int $commentId = null, ?int $userId = null): void
+    {
+        try {
+            $log = $this->spamLog();
+            $log->record($source, $rules, $action, $ipAddress, $name, $email, $commentId, $userId);
+
+            // Same probabilistic retention as the enumeration log, sharing its retention setting.
+            if (random_int(1, self::CLEANUP_CHANCE) === 1) {
+                $log->deleteOlderThan($this->settings()['log_retention_days']);
+            }
+        } catch (\Throwable) {
+            // A logging failure must never break the submission that triggered it.
+        }
+    }
+
+    private function spamLog(): SpamEventLog
+    {
+        $kernel = ActiveKernel::instance();
+
+        return new SpamEventLog($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+    }
+
+    private function commentKey(string $ipAddress, string $content): string
+    {
+        return hash('sha256', $ipAddress . "\0" . $content);
+    }
+
+    /**
+     * Contact form fields are arbitrary, so name and email are guessed from field keys.
+     *
+     * @param array<string, string> $data
+     * @return array{0: string, 1: string}
+     */
+    private function contactIdentity(array $data): array
+    {
+        $name = '';
+        $email = '';
+
+        foreach ($data as $key => $value) {
+            $key = strtolower((string) $key);
+
+            if ($email === '' && str_contains($key, 'mail') && filter_var($value, FILTER_VALIDATE_EMAIL) !== false) {
+                $email = $value;
+            } elseif ($name === '' && str_contains($key, 'name')) {
+                $name = $value;
+            }
+        }
+
+        return [$name, $email];
     }
 
     private function table(): string

@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Lumora Shield (plugin): a Spam Analysis Log on Maintenance › Logs. Each comment or contact form submission Shield flags as spam is recorded with the time, source, author name and email, IP address, a score (how many checks fired), the checks that caught it, and what happened to it. A flagged comment links to its entry in Comments, so a legitimate message that landed in Spam can be traced to the check responsible. It follows the existing log retention setting, and a migration adds its table.
+
 ### Changed
 
 - Bundled plugin update packages attached to a release are now named `plugin-{slug}-v{version}.zip`, matching the `theme-{slug}-v{version}.zip` names bundled themes already use. Releases that use the older unprefixed names are still read, so nothing changes for a release already published. A site on 0.21.0 or older looks only for the old name, so it sees a plugin update from a newer release once it has updated Lumora Press itself.

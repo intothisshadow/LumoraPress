@@ -107,6 +107,24 @@ $shieldReasonLabels = [
     'hidden_by_setting' => 'Hidden (setting)',
 ];
 
+$spamLimit = max(25, min(500, (int) ($_GET['spam_limit'] ?? 25)));
+$spamEvents = $lumoraShieldActive ? LumoraShieldService::instance()->recentSpamEvents($spamLimit) : [];
+
+$spamRuleLabels = [
+    'extremely_short' => 'Extremely short',
+    'extremely_long' => 'Extremely long',
+    'excessive_links' => 'Excessive links',
+    'excessive_uppercase' => 'Excessive uppercase',
+    'excessive_punctuation' => 'Excessive punctuation',
+    'repeated_phrase' => 'Repeated phrase',
+    'hidden_characters' => 'Hidden characters',
+    'previous_spam_history' => 'Previous spam history',
+    'posting_frequency' => 'Posting frequency',
+    'duplicate_comment' => 'Duplicate comment',
+];
+
+$spamSourceLabels = ['comment' => 'Comment', 'contact_form' => 'Contact form'];
+
 // requested_slug repeats across rows for a single brute-force run — same
 // per-IP-memoized idiom this file's own $lockoutStatus already uses,
 // applied here to the attempt count instead.
@@ -346,6 +364,68 @@ $shieldAttemptCountForIp = static function (string $ip) use ($lumoraShieldActive
         <?php if (count($shieldAttempts) >= $shieldLimit): ?>
             <p>
                 <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . $loginLimit . '&shield_limit=' . ($shieldLimit + 25) . '#enumeration-attempts') ?>">
+                    Show 25 more
+                </a>
+            </p>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
+
+<section class="lp-admin__panel" id="spam-events">
+    <h2>Spam Analysis Log</h2>
+    <p class="lp-field__hint">
+        Every comment or contact form submission Lumora Shield flagged as spam, newest first, with the checks that caught it.
+        A comment that landed in Spam by mistake can be restored from
+        <a href="<?= esc_url(admin_url('comments')) ?>">Comments</a>;
+        this log shows which check to blame. Retention follows the log retention setting on
+        <a href="<?= esc_url(admin_url('settings/security') . '?tab=lumora-shield#monitoring') ?>">Settings &rsaquo; Security &rsaquo; Lumora Shield</a>.
+    </p>
+
+    <?php if ($spamEvents === []): ?>
+        <p class="lp-admin__widget-placeholder">No spam has been flagged by Lumora Shield.</p>
+    <?php else: ?>
+        <table class="lp-table">
+            <thead>
+                <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Author</th>
+                    <th scope="col">IP Address</th>
+                    <th scope="col">Score</th>
+                    <th scope="col">Triggered Rules</th>
+                    <th scope="col">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($spamEvents as $event): ?>
+                    <tr>
+                        <td><?= esc_html($event['createdAt']) ?></td>
+                        <td>
+                            <?= esc_html($spamSourceLabels[$event['source']] ?? $event['source']) ?>
+                            <?php if ($event['commentId'] !== null): ?>
+                                <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&amp;id=<?= (int) $event['commentId'] ?>">#<?= (int) $event['commentId'] ?></a>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?= esc_html($event['authorName'] !== '' ? $event['authorName'] : '—') ?>
+                            <?php if ($event['authorEmail'] !== ''): ?>
+                                <br><span class="lp-field__hint"><?= esc_html($event['authorEmail']) ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td><code><?= esc_html($event['ipAddress']) ?></code></td>
+                        <td><?= esc_html((string) $event['spamScore']) ?></td>
+                        <td>
+                            <?= esc_html(implode(', ', array_map(static fn (string $rule): string => $spamRuleLabels[$rule] ?? $rule, $event['rules']))) ?>
+                        </td>
+                        <td><?= esc_html(ucfirst($event['action'])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <?php if (count($spamEvents) >= $spamLimit): ?>
+            <p>
+                <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . $loginLimit . '&shield_limit=' . $shieldLimit . '&spam_limit=' . ($spamLimit + 25) . '#spam-events') ?>">
                     Show 25 more
                 </a>
             </p>

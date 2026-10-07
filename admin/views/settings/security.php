@@ -370,7 +370,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                 <p class="lp-field">
                     <label for="log-retention-days">Log retention (days)</label>
                     <input type="number" id="log-retention-days" name="log_retention_days" min="1" value="<?= esc_attr((string) $shieldSettings['log_retention_days']) ?>">
-                    <span class="lp-field__hint">Attempts older than this are removed automatically.</span>
+                    <span class="lp-field__hint">Enumeration attempts and spam analysis records older than this are removed automatically.</span>
                 </p>
 
                 <p class="lp-field">
@@ -405,7 +405,9 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                 comment toward Spam via the same <code>comment_is_spam</code>
                 filter Akismet already uses. Any one check tripping is enough to
                 flag Spam — this can only push a comment <em>toward</em> Spam,
-                never un-spam one another check already flagged.
+                never un-spam one another check already flagged. Each flagged
+                comment is recorded with the checks that caught it — see
+                <a href="<?= esc_url(admin_url('maintenance/logs') . '#spam-events') ?>">Maintenance &rsaquo; Logs</a>.
             </p>
 
             <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">

@@ -21,6 +21,10 @@ Every blocked author-archive request is logged at **Maintenance &rsaquo; Logs**:
 
 Runs independent content checks (excessive links, excessive uppercase/punctuation, hidden Unicode characters, repeated phrases, extremely short/long comments) and behavioral checks (posting frequency, prior spam history, duplicate content) on every comment — any one tripping pushes the comment toward Spam. This can only push a comment *toward* Spam, never un-spam one another check (or Akismet) already flagged. Toggled independently via **Enable Comment Analysis** at **Settings &rsaquo; Security &rsaquo; Lumora Shield**.
 
+### Spam Analysis Log
+
+Every comment or contact form submission Lumora Shield flags is recorded at **Maintenance &rsaquo; Logs &rsaquo; Spam Analysis Log**: time, source, author name and email, IP address, a score (how many checks fired), the checks that caught it, and the action taken. A flagged comment links to its entry in Comments, so if a real message ends up in Spam you can see which check was responsible. Only submissions flagged by Lumora Shield appear here, not ones caught by Akismet or core's own checks. Records follow the same retention period as the enumeration log.
+
 ### Contact Form Protection
 
 Applies the same content checks Comment Analysis uses to comments, against every field of a Contact Forms plugin submission — closing the one gap that plugin's own CSRF/honeypot/rate-limiting/CAPTCHA/Akismet protection doesn't cover on its own. Toggled independently via **Enable Contact Form Protection** at **Settings &rsaquo; Security &rsaquo; Lumora Shield**. Only takes effect while the Contact Forms plugin is active.

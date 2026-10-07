@@ -33,6 +33,7 @@ namespace LumoraPress\Plugins\LumoraShield;
 
 require_once __DIR__ . '/src/LumoraShieldService.php';
 require_once __DIR__ . '/src/CommentAnalyzer.php';
+require_once __DIR__ . '/src/SpamEventLog.php';
 
 $lumoraShield = LumoraShieldService::instance();
 
@@ -75,6 +76,17 @@ add_filter(
 );
 
 /*
+ * Completes the spam record for a comment this plugin flagged, once the
+ * comment has an ID — see LumoraShieldService::recordFlaggedComment().
+ */
+add_action(
+    'comment_posted',
+    static function (\LumoraPress\Models\Comment $comment) use ($lumoraShield): void {
+        $lumoraShield->recordFlaggedComment($comment);
+    },
+);
+
+/*
  * Contact Form Protection: the Contact Forms plugin's own
  * 'contact_form_is_spam' filter (ContactFormSubmissionHandler::handle(),
  * the one gap that plugin's own already-thorough CSRF/honeypot/
@@ -96,4 +108,5 @@ add_filter('plugin_action_links_lumora-shield', static fn (array $links): array 
     ...$links,
     ['label' => 'Settings', 'url' => admin_url('settings/security') . '?tab=lumora-shield'],
     ['label' => 'Logs', 'url' => admin_url('maintenance/logs') . '#enumeration-attempts'],
+    ['label' => 'Spam Log', 'url' => admin_url('maintenance/logs') . '#spam-events'],
 ]);
