@@ -17310,3 +17310,1003 @@ Requested 2026-10-01. `[lumora_downloads count="5"]` can show the newest N downl
 - [x] Plugin README and version bump; CHANGELOG; `docs/THEME-DEVELOPMENT.md` for the `render_pagination()` parameter.
 - [x] Unit tests: the service query, the shortcode output and paging, the clamped page, and `render_pagination()` with a custom parameter.
 - [x] Verify in the browser on the dev install with real downloads.
+
+## 0.21.0 (2026-10-07)
+
+### LP-016. WYSIWYG Editor
+
+**Status:** Complete
+
+### Goal
+
+Provide an optional rich text (WYSIWYG) editor for users who prefer visual editing over Markdown. The editor should generate clean, semantic HTML while integrating seamlessly with Lumora Press's content system and allowing users to switch between Markdown and visual editing whenever practical.
+
+The WYSIWYG editor should complement—not replace—the Markdown editor.
+
+### Features
+
+### Editor Features
+
+- [x] Integrate TinyMCE as the default WYSIWYG editor (recommended)
+- [x] Classic toolbar with configurable button layout — plugins hide built-in buttons with the `wysiwyg_editor_hidden_buttons` filter (no admin settings screen for it)
+- [x] Full-screen editing
+- [x] Autosave drafts
+- [x] Restore unsaved drafts after browser crash
+- [x] Drag-and-drop image upload
+- [x] Paste images directly from the clipboard
+- [x] Insert images from the Media Manager
+- [x] Insert galleries from the Media Manager (the "Insert Folder" toolbar button inserts a `[lumora_folder_gallery]` shortcode)
+- [x] Insert files/documents from the Media Manager — the "Insert File" toolbar button links documents and archives (audio and video have their own buttons)
+- [x] Image alignment, resizing, captions, and alt text — resize + alt
+      text via TinyMCE's built-in image dialog; alignment (None/Left/
+      Center/Right) added to the Insert Media picker's Attachment
+      Display Settings step (LP-075), applying classic-WordPress
+      `alignleft`/`aligncenter`/`alignright` classes to the `<img>`.
+      Captions added 2026-09-28: a Caption field on the same step
+      inserts `<figure class="lp-caption {align}">…<figcaption>`.
+- [x] Responsive image support (theme CSS caps inserted images at `max-width: 100%`)
+- [x] Table editor
+- [x] Syntax-highlighted code blocks (`codesample` plugin, Prism-based)
+- [x] Code block language selector (`codesample`'s language dropdown)
+- [x] Blockquote (toolbar button)
+- [x] Horizontal rule insertion
+- [x] Emoji picker (optional) — `lumoraEmoji` toolbar button, shown when the emoji picker is enabled
+- [x] Find and replace
+- [x] Word count
+- [x] Character count
+- [x] Estimated reading time
+- [x] Keyboard shortcuts reference (`help` plugin's shortcuts panel)
+- [x] Configurable toolbar (same plugin-filter mechanism as "Classic toolbar" above)
+- [x] Light and dark editor themes matching the admin interface — the editing chrome uses TinyMCE's `oxide-dark` skin when the admin is in dark mode; the content area keeps the theme stylesheet's colors so it matches the published page
+- [x] Theme-aware content styling to closely match frontend appearance
+- [x] Source (HTML) editing mode (`code` plugin)
+- [x] Paste as plain text option ("Paste as text" toolbar toggle)
+- [x] Automatic cleanup of pasted content from Microsoft Word and Google Docs (TinyMCE 6+ core default paste behavior)
+
+### Lumora Integration
+
+Insert-shortcode-from-the-toolbar: see LP-110, which consolidates this
+with Markdown Editor's (LP-015) identical request now that a real
+shortcode system exists (Font Awesome's `[icon]`, WordPress Importer's
+`[sdm_show_dl_from_category]`, Downloads' `[lumora_downloads]`).
+
+- [x] Media Manager browser integration (images, folder galleries, audio, and video; not other file types)
+- [x] Theme-aware editor CSS
+- [x] Preview content using the active theme (`content_css` loads the real theme stylesheet into TinyMCE's editing iframe)
+- [x] Plugin API for adding custom toolbar buttons (`wysiwyg_editor_buttons` filter: declarative wrap-the-selection buttons)
+- [x] Developer hooks for extending the editor (`wysiwyg_html`/`content_html` filters)
+
+#### Editing
+
+- [x] Rich text editing
+- [x] Clean semantic HTML output
+- [x] Fullscreen mode
+- [x] Distraction-free mode
+- [x] Undo/Redo
+- [x] Copy/Paste support
+
+#### Formatting
+
+- [x] Headings
+- [x] Paragraphs
+- [x] Bold
+- [x] Italic
+- [x] Underline
+- [x] Strikethrough
+- [x] Superscript (toolbar button; Markdown `^text^`)
+- [x] Subscript (toolbar button; Markdown `~text~`)
+- [x] Text alignment — left/center/right/justify toolbar, applies
+      `has-text-align-{left,center,right,justify}` classes (not inline
+      `style`, which `HtmlSanitizer` never allows) to the containing
+      block element.
+- [x] Font formatting (optional) — fixed-palette font color via a
+      `lumoraFontColor` menu button, applying `has-{color}-color`
+      classes through custom TinyMCE `formats` (not inline `style`,
+      same reasoning as text alignment above); matches the Markdown
+      editor's `[text]{.color}` marker (LP-015) so both editors produce
+      interchangeable output
+
+#### Content
+
+- [x] Tables
+- [x] Code blocks
+- [x] Inline code ("Inline Code" toolbar toggle)
+- [x] Blockquotes
+- [x] Horizontal rules
+- [x] Ordered lists
+- [x] Unordered lists
+- [x] Links
+- [x] Images
+- [x] Embedded media — LP-023's Auto-Embed: pasting a bare YouTube/Vimeo/SoundCloud/Spotify/CodePen link on its own line embeds it automatically, in both Markdown and HTML/WYSIWYG content, no dedicated TinyMCE toolbar button needed
+
+#### Media
+
+- [x] Media insertion
+- [x] Upload images
+- [x] Select existing media
+- [x] Resize images
+- [x] Crop images — Media Manager's Edit Image tool (crop with aspect-ratio presets, plus rotate and flip), saved as a new copy or over the original; reached from the item's edit screen, not from inside the TinyMCE image dialog
+- [x] Image alignment — see the "Image alignment, resizing, captions,
+      and alt text" line above for the same detail.
+- [x] Captions — Caption field on the Insert Image step (pre-filled from the media item's Caption), inserting `<figure class="lp-caption">`; the lightbox shows the caption; captions survive switching to Markdown and back (2026-09-28)
+- [x] Alt text editing
+
+#### Editor Tools
+
+- [x] Toolbar
+- [x] Keyboard shortcuts
+- [x] Find and replace
+- [x] Auto-save drafts
+- [x] Word count
+- [x] Character count
+
+#### Accessibility
+
+- [x] Keyboard navigation
+- [x] Screen reader support
+- [x] Accessible toolbar
+- [x] Accessible dialogs
+- [x] WCAG compliance — audited 2026-10-06 with axe-core 4.10.2 (WCAG 2.2 A and AA) across the editor screens and every dialog in light, dark, and phone width; the findings (two contrast failures, an unlabeled Markdown input, 13 undersized checkboxes, an unnamed preview image, a resize handle without a role, and dark-mode primary buttons and hint links) are fixed and re-verified clean. One third-party item remains by design (TinyMCE's scrolling toolbar at phone width, reachable with Alt+F10). Automated checks catch only part of WCAG; keyboard and screen-reader checks stay on the manual checklist in `docs/EDITOR-TESTING.md`.
+
+#### Markdown Integration
+
+- [x] Switch between Markdown and WYSIWYG
+- [x] Preserve formatting during conversion
+- [x] Import existing Markdown
+- [x] Export clean Markdown where possible
+
+#### Security
+
+- [x] Clean HTML output
+- [x] HTML sanitization
+- [x] XSS protection
+- [x] Safe media handling
+
+---
+
+### Task List
+
+#### Research
+
+- [x] Evaluate WYSIWYG editor libraries
+- [x] Select editor framework
+- [x] Evaluate Markdown interoperability
+
+#### Backend
+
+- [x] Implement HTML sanitization
+- [x] Implement media upload integration
+- [x] Implement auto-save
+- [x] Implement conversion layer
+
+#### Editor
+
+- [x] Build editor interface
+- [x] Implement toolbar
+- [x] Implement dialogs
+- [x] Implement image editing (crop, rotate, flip; resize via TinyMCE's own image dialog)
+- [x] Implement table editor
+- [x] Implement code block support
+- [x] Implement Markdown switching
+
+#### Performance
+
+- [x] Optimize editor startup — measured rather than guessed: the page loads in about 110 ms and the visual editor is ready in about 90 ms with its files cached; only the editor in use is loaded, and nothing blocks it. The one sizeable download is the Markdown editor's built-in spell-checker dictionary (about 250 KB from the CDN, fetched after the editor is already usable); left as is, since dropping it would change spell-checking behavior. No code change.
+- [x] Optimize large document editing — the visual editor copied the content to the textarea and counted words on every keystroke, costing about 110 ms per key in a 420 KB post and 430 ms at 1.7 MB. It now waits for a 300 ms pause and flushes on blur and submit (the Markdown editor already batched this). Twenty keystrokes in a 420 KB post now cost about 4 ms in total.
+- [x] Optimize image handling — editor uploads already generated thumbnails and inserted the Large size (the note was out of date). Added render-time `loading="lazy"` for every content image, since visual-editor images had none. Responsive `srcset` for placed images was not added: it needs a database lookup per image on every render.
+
+#### Security
+
+- [x] Sanitize generated HTML
+- [x] Validate uploaded media
+- [x] Prevent XSS
+- [x] Prevent unsafe HTML injection
+
+#### Testing
+
+- [x] Rich text editing tests — the browser-only behavior has a repeatable manual checklist (`docs/EDITOR-TESTING.md`); the server side of every shape the editor emits is covered by `EditorMarkupTest` (saving unchanged, and switching to Markdown and back), which also caught and now guards four bugs: code sample language lost on save and on switching to Markdown, paragraph and heading alignment lost on switching to Markdown, and the Read More marker in both directions. An automated browser harness was not added, to avoid a Node dependency.
+- [x] HTML sanitization tests
+- [x] Markdown conversion tests
+- [x] Accessibility testing — run 2026-10-06 with axe-core (WCAG 2.2 AA, see the WCAG item above) plus real-keystroke keyboard testing of both editors and every dialog. It found and fixed a keyboard trap in the Markdown editor (Tab indented forever; now Esc then Tab leaves, with a hint). Visual editor keyboard use (Alt+F10, arrows, Tab between groups, Enter, Escape) and dialog focus handling pass. Not done here: a screen-reader pass (NVDA, VoiceOver, Orca), which stays on the manual checklist in `docs/EDITOR-TESTING.md`.
+- [x] Browser compatibility testing — 2026-10-06: Chromium (the in-app browser) by hand, and Firefox 157 and Waterfox 6.5.10 (Gecko 128) with a scripted run of 50 checks each (both editors, toolbar, format switching, image editor with a real mouse drag, featured image picker, dark mode, keyboard escape from the Markdown editor, no JS errors). It found two real bugs, now fixed. Safari/WebKit has not been run (no way to here); the checklist in `docs/EDITOR-TESTING.md` covers it.
+- [x] PHP 8.2 compatibility (Docker matrix green, e.g. the v0.18.0 Release run on 2026-09-25)
+- [x] PHP 8.3 compatibility (same as above)
+- [x] PHP 8.4 compatibility (dev environment default; full suite green)
+
+#### Documentation
+
+- [x] Update README.md
+- [x] Document supported formatting
+- [x] Document Markdown interoperability
+
+#### Success Criteria
+
+- [x] Users can comfortably write without Markdown knowledge.
+- [x] Generated HTML remains clean and semantic.
+- [x] Switching between Markdown and WYSIWYG preserves content as accurately as possible.
+- The editor integrates seamlessly with Lumora Press while remaining lightweight and accessible. (TinyMCE itself is a large library — genuinely not "lightweight" — even though the integration around it is clean)
+
+**Status (2026-07-25): Implemented.** Shares its entire backend with LP-015
+(`ContentFormat`/`ContentRenderer`/`HtmlSanitizer` — see LP-015's status
+note above for the full architecture) rather than duplicating it:
+selecting "Visual / HTML" in the same Editor dropdown posts.php/pages.php
+now show swaps in TinyMCE 6/7 (self-hosted via jsDelivr, `license_key:
+'gpl'`, no cloud API key) instead of EasyMDE, editing/storing
+`content_format = 'html'`. `LumoraPress\Core\Content\
+HtmlToMarkdownConverter` (DOMDocument-based, round-trips exactly the tag
+set `HtmlSanitizer::ALLOWED_TAGS` allows — the only HTML this app ever
+produces) backs `ContentRenderer::convertFormat()`, wired into the same
+`content-editor.js` format-switch flow LP-015 uses: switching the
+dropdown confirms with the author, round-trips the current content
+through the `convert_content` JSON action, and re-initializes the other
+editor with the (best-effort) converted result. TinyMCE's own plugin set
+(`autosave`, `fullscreen`, `table`, `codesample`, `code`, `searchreplace`,
+`wordcount`, `help`) covers most of this ticket's checklist via
+configuration alone — the same "the library does it for us" pattern
+EasyMDE gave LP-015 — plus a custom "Insert from Media Manager" toolbar
+button sharing the exact picker/upload code LP-015's Markdown editor
+uses. `content_css` points TinyMCE's editing iframe at the active
+theme's real `style.css`, so the editing surface visually matches the
+published page far more closely than EasyMDE's approximated preview pane
+can (same-origin resource, so no CSP change beyond the one LP-015's
+status note already describes for the CDN scripts themselves).
+
+Originally deferred, with reasons noted inline above: image crop, a
+formal WCAG audit, and editor performance work. Task lists and the
+grammar/accessibility checkers were later declined (see `DECISIONS.md`).
+Text and image alignment, captions, document/file insertion, folder
+galleries, audio, video, inline code, and superscript/subscript were
+all implemented in later sessions — see the checklist above.
+
+**Text/image alignment was later extended to the Markdown editor too**
+(LP-015) — see that ticket's own note for the `{.center}`/
+`{.aligncenter}` marker syntax this required, since Markdown has no
+native way to carry either.
+
+
+### LP-025. Spam Prevention & Abuse Protection
+
+**Status:** Complete
+
+**2026-08-06 update:** added bulk actions (Approve/Unapprove/Mark as
+Spam/Move to Trash/Delete Permanently) to `admin/views/comments.php` — a
+"Bulk actions" select + Apply button above the comment table, with a
+"select all" checkbox and per-row checkboxes, the identical markup/JS
+contract (`data-lp-select-all`, `data-lp-bulk-form`, out-of-band
+`form="..."` target forms for the still-present per-row action buttons)
+`admin/views/users.php`'s own bulk actions already established — no new
+JS was needed, both `select-all.js` and `confirm-submit.js` are already
+global. The single-row moderate handler's Akismet moderator-feedback
+call (tells Akismet when a human overturned its verdict) was extracted
+into a shared closure so the bulk handler gets the same feedback-on-
+override behavior for free rather than duplicating that block a second
+time. Manually verified end-to-end in a real browser against a
+throwaway install + Docker MySQL (bulk approve, bulk trash, bulk delete,
+select-all, and a per-row action afterward to confirm the `form=""`
+attribute refactor didn't regress it) — this admin page has no unit-test
+coverage of its own (raw superglobals/`header()`, the same limitation
+already noted for `SiteController`/`ApiController`), so this was the
+verification path, not an automated one.
+
+**2026-08-01 update:** the user decided to keep this ticket's plugin-worthy
+scope — blacklist/whitelist management, reputation scoring, CAPTCHA
+providers, dashboards/reporting, third-party integrations beyond Akismet
+(CleanTalk, Project Honeypot, StopForumSpam, etc.), the Developer API, and
+the entire "Stop User Enumeration" module (which this ticket already
+specified as "integrated as a module within the Lumora Shield plugin") —
+for the `PLUGINS.md` &rsaquo; LPP-001 "Lumora Shield" plugin rather than
+building it into core, since none of it is essential to writing and
+publishing. That content has been moved out of this ticket entirely (not
+just deferred in place) — see `PLUGINS.md` and `DECISIONS.md`. What moved
+into core instead, because these are the WordPress plugins that get
+installed on nearly every site: the "basics" (honeypot/CSRF/timing/
+rate-limiting — mostly already existed), Akismet integration
+(`AkismetClient`, new), and a login-lockout settings UI (`LoginThrottle`
+already existed, just wasn't configurable). Auditing "Stop User
+Enumeration" against this codebase found none of the classic WordPress
+attack surface actually exists here (no XML-RPC, no public author archive,
+no REST user-listing endpoint) — and LP-058 has since added password
+reset with the same anti-enumeration treatment built in from the start —
+see `admin/views/settings/security.php`'s "User Enumeration" panel for the
+audit written up for administrators. See the per-item notes below for
+exactly what's newly built vs. pre-existing.
+
+**Consolidated (2026-07-25):** absorbed LP-039 ("Spam Detection"), a
+separate ticket that turned out to cover the same ground (honeypots,
+CSRF, rate limiting/flood protection, moderation queue). LP-039's items
+not already covered here — Akismet integration, the Developer API, and
+the "Future Enhancements" third-party-integration wishlist — were merged
+in below; everything else from LP-039 was a duplicate of a checklist item
+already on this ticket and was not copied twice. See `DECISIONS.md`.
+
+### Goal
+
+Implement a comprehensive, lightweight spam prevention system for Lumora Press that protects comments, contact forms, registrations, and other public-facing forms without relying on third-party services.
+
+The system should remain privacy-friendly, work well on shared hosting, and use multiple layers of protection rather than relying on any single anti-spam technique.
+
+---
+
+### Design Philosophy
+
+Spam prevention should be largely invisible to legitimate users while making automated abuse increasingly expensive and difficult.
+
+Rather than depending solely on CAPTCHAs, Lumora Press should combine behavioral analysis, honeypots, rate limiting, reputation scoring, and moderation tools.
+
+**Note (2026-08-01):** the "behavioral analysis, reputation scoring" half
+of that combination is `PLUGINS.md` &rsaquo; LPP-001 "Lumora Shield"
+scope now, not core — see the ticket-level update note above. Core keeps
+honeypots, rate limiting, and moderation tools.
+
+---
+
+### Form Protection
+
+#### Honeypots
+
+- [x] Hidden honeypot field — `comment_website`, `content/themes/default/comments.php` (pre-existing, LP-012)
+- [x] Randomized field names — `FormHoneypot` (`app/Core/Security/FormHoneypot.php`), HMAC-derived from `secret_key`, stable per install so cached pages still work; the legacy `comment_website` name is still honoured
+- [x] Multiple honeypot fields (optional) — `FormHoneypot::field()` renders two traps, either one trips it; `comment_form()` uses it, so no theme edits were needed
+- [x] CSS-hidden fields — `.lp-comment-form__honeypot`
+- [x] ARIA-hidden fields — `aria-hidden="true"` on the honeypot wrapper
+Time-based honeypot validation: see "Submission Timing" below instead (a separate field, not tied to the honeypot itself).
+
+#### Submission Timing
+
+- [x] Reject forms submitted too quickly — `FormTiming` (`app/Core/Security/FormTiming.php`), 2026-08-01
+- [x] Minimum form completion time — same, default 3 seconds
+- [x] Maximum form lifetime (optional) — `FormTiming::check()` + `comment_form_max_age_hours` (default 0 = off) on Settings › Security; an expired form redirects with `?comment=expired` and a notice in every theme's `comments.php` rather than silently dropping the comment
+- [x] Detect scripted instant submissions — same
+
+#### CSRF Protection
+
+- [x] CSRF tokens on every form — `Csrf` (pre-existing)
+- [x] Token expiration — `Csrf` tokens carry an issue time and expire after 12 hours
+- [x] Token regeneration — `Csrf::regenerate()` clears the pool on `Auth::login()`/`logout()`
+- [x] Invalid token logging — `Csrf::setFailureListener()` feeds `SecurityLog` (Maintenance › Logs › Security Events)
+
+---
+
+### Rate Limiting
+
+#### IP Limits
+
+- [x] Comments per minute — `CommentService::recentCommentFromIpExists()` (pre-existing, 30s window)
+- [x] Comments per hour — `SiteController::isCommentRateLimited()`, configurable `comment_max_per_hour` (default 20, 0 = off) on Settings › Security › Comment Flood Protection, 2026-10-07
+- [x] Login attempts — `LoginThrottle`, thresholds now configurable on Settings &rsaquo; Security, 2026-08-01
+- [x] Password reset attempts — `PasswordResetService`'s 60-second per-account cooldown, plus `PasswordResetThrottle` IP-based rate limiting (LP-058, 2026-08-01)
+- [x] Contact form submissions — the Contact Forms plugin rate-limits per IP (60 s window)
+Registration attempts: not applicable, no self-registration feature exists (see `DECISIONS.md`).
+
+**Note (2026-08-01):** User Limits, Progressive Penalties, Comment
+Analysis, Reputation System, Blacklists, Whitelists, Link Protection, and
+CAPTCHA Support all moved to `PLUGINS.md` &rsaquo; LPP-001 "Lumora
+Shield" — see the ticket-level update note above.
+
+---
+
+### Akismet Integration (Core)
+
+Akismet support is included with Lumora Press but remains **completely optional**.
+
+- [x] Built-in Akismet client — `AkismetClient` (`app/Services/AkismetClient.php`), 2026-08-01
+- [x] Enable/disable Akismet — `akismet_enabled` option, Settings &rsaquo; Security &rsaquo; Spam Protection
+- [x] API key configuration — `akismet_api_key` option, same panel
+- [x] Verify API key — `AkismetClient::verifyKey()` + "Verify Key" button
+- [x] Test connection — same "Verify Key" button
+- [x] Submit comments for spam analysis — `AkismetClient::checkComment()`, wired into `SiteController::submitComment()` and `ApiController::commentsStore()`
+- [x] Automatically mark suspected spam — a spam verdict overrides the comment's status to `CommentStatus::Spam`
+- [x] Allow moderators to mark Spam / Not Spam — pre-existing moderation actions on `admin/views/comments.php`
+- [x] Send moderator feedback to Akismet to improve accuracy — `submitSpam()`/`submitHam()` fired from the moderate handler when status changes
+- [x] Gracefully fall back to local spam protection if Akismet is unavailable — `checkComment()` returns null on any network/API problem, leaving the existing trust-signal decision untouched
+- [x] Never require an Akismet account to use comments — off by default, comments work unchanged if never configured
+
+---
+
+### Comment Moderation
+
+- [x] Moderation queue — `admin/views/comments.php` (pre-existing), filterable by status
+- [x] Spam queue — same page, Spam status filter
+- [x] Trash — same page, Trash status filter
+- [x] Restore — same page's "Approve"/"Unapprove" per-row actions move a comment out of Trash/Spam
+- [x] Bulk approve — new "Bulk actions" select + Apply button above the comment table (2026-08-06), same checkbox/select-all/apply pattern `admin/views/users.php` already uses
+- [x] Bulk spam — same
+- [x] Bulk delete — same, "Delete Permanently"
+- [x] Bulk restore — covered by the same "Approve"/"Unapprove" bulk actions, consistent with how single-row Restore above is likewise "Approve"/"Unapprove", not a separate action
+
+---
+
+### Automatic Moderation Rules
+
+- [x] First comment requires approval — `CommentService::hasPreviouslyApprovedComment()` trust signal (pre-existing): a first-time commenter defaults to Pending
+
+**Note (2026-08-01):** the remaining link/blacklist/score/account-age-driven
+rules moved to `PLUGINS.md` &rsaquo; LPP-001 "Lumora Shield" — they depend
+on that plugin's blacklist/reputation-scoring engine.
+
+---
+
+### Login Protection
+
+- [x] Failed login rate limiting — `LoginThrottle` (pre-existing)
+- [x] Temporary lockouts — same, thresholds now configurable, 2026-08-01
+- [x] Progressive delays — `LoginThrottle` doubles the lockout for each further batch of failures from the same IP within 24 hours (up to 16x)
+IP reputation: see `TODO-PLUGINS.md` › LPP-001 (Lumora Shield), which owns reputation scoring.
+- [x] Account lock notifications — the owner of an existing account is emailed when its login is locked out (`admin/index.php`); the visitor's response is identical either way
+- [x] Security logging — `SecurityLog` (`storage/logs/security.log`), shown and clearable on Maintenance › Logs
+
+---
+
+### Privacy
+
+- [x] No external services required — everything above works with Akismet left off
+- [x] Works entirely offline — same
+- [x] GDPR-friendly — comment IP anonymization plus GDPR-style comment data export/erasure on Settings › Privacy
+- [x] Optional third-party integrations only — Akismet is the only one, and it's opt-in
+- [x] Clear privacy documentation — `docs/SPAM-PROTECTION.md` › Privacy
+
+**Note (2026-08-01):** Registration Protection, Contact Form Protection,
+Logging, Reporting, Configuration, Performance, Developer API, and Future
+Enhancements all moved to `PLUGINS.md` &rsaquo; LPP-001 "Lumora Shield" —
+see the ticket-level update note above. Registration/Contact Form
+Protection specifically: neither feature exists in Lumora Press, so that
+content is speculative, forward-looking plugin scope, not deferred core
+work.
+
+---
+
+### Task List
+
+#### Backend
+
+- [x] Build rate limiter — `LoginThrottle`, `PasswordResetThrottle` (LP-058), `CommentService::recentCommentFromIpExists()` (all pre-existing or 2026-08-01)
+- [x] Build honeypot validation — pre-existing (LP-012), plus LP-058's forgot-password form
+- [x] Build timing validation — `FormTiming`, 2026-08-01
+- [x] Build moderation engine — bulk actions (see "Comment Moderation" above), 2026-08-06
+
+#### Admin Interface
+
+- [x] Spam settings page — Settings &rsaquo; Security (Akismet + login lockout, moved 2026-08-01 from an earlier Comments-page placement to sit with the rest of Security)
+- [x] Moderation queue — `admin/views/comments.php` (pre-existing: Pending/Approved/Spam/Trash filters and per-row actions)
+
+**Note (2026-08-01):** Blacklist management, Whitelist management, Spam
+logs, and Dashboard widgets moved to `PLUGINS.md` &rsaquo; LPP-001
+"Lumora Shield".
+
+#### Security
+
+- [x] CSRF protection — every new form (`akismet_settings`, `akismet_verify`, `security_settings`) uses `Csrf::verify()`
+- [x] Input validation — trimmed/typed/bounded throughout `FormTiming`, `AkismetClient`, and the new settings forms
+- [x] Output escaping — `esc_html`/`esc_attr` throughout the new admin views
+- [x] Secure logging — `SecurityLog` never stores content/tokens/passwords/usernames, strips control characters against log forging, truncates values, and rotates at 512 KB
+- [x] Permission checks — Comments and Settings &rsaquo; Security pages already gated by `moderate_comments`/`manage_options` at the menu level
+
+#### Testing
+
+- [x] Automated spam tests — `PHP Test Suite/Unit/Services/AkismetClientTest.php`, `PHP Test Suite/Unit/Core/Security/FormTimingTest.php`
+- [x] Honeypot tests — `FormHoneypotTest` (the trap logic now lives in its own class rather than inline in `SiteController`)
+- [x] Rate limit tests — `PHP Test Suite/Unit/Core/Security/LoginThrottleTest.php` (pre-existing, covers the constructor thresholds now exposed as settings)
+- [x] Moderation tests — `CommentModerationServiceTest`
+- [x] False positive testing — `FormHoneypotTest::testALegitimateSubmissionIsNeverFlagged`, `FormTimingTest` (valid/expired/tampered), `LoginThrottleTest` (old failures and slow lockouts)
+- [x] PHP 8.2 compatibility — Docker matrix green (e.g. the v0.18.0 Release run, 2026-09-25)
+- [x] PHP 8.3 compatibility — same
+- [x] PHP 8.4 compatibility — same
+
+#### Documentation
+
+- [x] Update README.md — Akismet + configurable login lockout documented, 2026-08-01
+- [x] Document configuration options — inline `lp-field__hint` text on both new settings panels
+- [x] Document moderation workflow — `docs/SPAM-PROTECTION.md` › Handling comments that get through
+- [x] Document privacy implications — `docs/SPAM-PROTECTION.md` › Privacy
+
+**Note (2026-08-01):** Success Criteria moved to `PLUGINS.md` &rsaquo;
+LPP-001 "Lumora Shield" — achieving "blocks the vast majority of
+automated spam" depends on that plugin's blacklist/reputation/CAPTCHA
+layers, not just core's basics + Akismet.
+
+
+### LP-033. Maintenance Mode
+
+**Status:** Complete
+
+### Goal
+
+Provide a flexible maintenance mode that allows administrators to temporarily take the site offline while still permitting authorized users to access and manage it.
+
+First pass implemented this session: a manual on/off toggle plus optional
+scheduled start/end (checked per-request, no cron — same pattern already
+used for scheduled posts/pages), Administrator-always-bypasses plus a
+configurable "also let Editors bypass" option (via the existing
+`moderate_comments` capability, no new capability/enum change needed), a
+theme-rendered maintenance page, real 503 + `Retry-After` +
+`X-Robots-Tag: noindex`, an admin dashboard warning banner + one-click
+toggle, and a Settings section for everything else. See
+`docs/CHANGELOG.md`'s entry for this date and `MaintenanceGate`
+(`app/Core/Http/MaintenanceGate.php`) in the source. The IP whitelist,
+countdown timer, and page appearance options (background image, colors,
+custom CSS) were added 2026-10-07. A secret bypass URL/cookie, logged-in-user bypass,
+contact/social links, and email notifications were rejected (see
+`DECISIONS.md`).
+
+### Core Features
+
+- [x] Enable/disable maintenance mode
+- [x] One-click toggle from the admin dashboard
+- [x] Custom maintenance page
+- [x] Configurable page title
+- [x] Configurable message
+- [x] Estimated return time
+- [x] Optional countdown timer — `maintenance_show_countdown`; `assets/js/maintenance-countdown.js`, loaded by `MaintenanceGate::respond()` only when there's a future end time; reloads the page at zero
+- [x] HTTP 503 Service Unavailable response
+- [x] Optional Retry-After header
+
+### Access Control
+
+- [x] Administrators always bypass maintenance mode
+- [x] Staff/moderators may bypass (configurable) — Editors, via `moderate_comments`
+- [x] IP whitelist — `maintenance_ip_whitelist` (one address or CIDR range per line, IPv4/IPv6), `IpRangeMatcher`; matched on `REMOTE_ADDR` only
+
+### Appearance
+
+- [x] Preview the maintenance page from the admin without turning maintenance mode on — "Preview in New Tab" on Settings › Maintenance Mode posts the form's current (even unsaved) values to `/maintenance-preview` (`MaintenanceGate::handlePreviewRequest()`): administrators only, session-bound token, no 503, nothing saved
+- [x] Theme-aware maintenance page — `content/themes/default/maintenance.php`, uses `get_header()`/`get_footer()` like `404.php`
+- [x] Use site logo — via the theme's normal header
+- [x] Custom background image — `maintenance_background_media_id`, chosen with the Media Manager picker
+- [x] Custom colors — background, text, and countdown colors, validated as hex
+- [x] Custom CSS — `maintenance_custom_css`, printed in `<head>` with the style nonce
+- [x] Responsive layout — reuses the existing `.lp-layout`/`.lp-main` rules
+- [x] Dark mode support — token-based CSS, automatic
+
+### Visitor Experience
+
+- [x] Friendly maintenance message
+
+### Search Engines
+
+- [x] Return HTTP 503 by default
+- [x] Prevent indexing while maintenance mode is active — `X-Robots-Tag: noindex`
+- [x] Preserve SEO by avoiding permanent redirects — 503, no redirect issued at all
+
+### Scheduling
+
+- [x] Schedule maintenance start
+- [x] Schedule maintenance end
+- [x] Automatic enable/disable — checked per-request, no cron needed
+- [x] Time zone aware — uses the app's configured timezone (`date_default_timezone_set()` in bootstrap)
+
+### Notifications
+
+- [x] Display admin reminder while maintenance mode is enabled
+- [x] Dashboard warning banner
+
+### Developer API
+
+Provide a standardized Maintenance Mode API.
+
+Extensions should be able to:
+
+- [x] Register bypass rules — `apply_filters('maintenance_mode_bypass', bool $bypasses, ?User $user)`
+- [x] Detect maintenance mode status — `is_maintenance_mode()` template tag (`ActiveMaintenance` bridge)
+- [x] Customize the maintenance page — `apply_filters('maintenance_page_data', array $data)`
+- [x] Hook into maintenance mode events — `do_action('maintenance_mode_toggled', bool $enabled)`
+- [x] Add maintenance widgets or status information — `do_action('maintenance_page_content')` in `maintenance.php`
+
+
+### LP-096. Admin UI Mobile Styling
+
+**Status:** Complete
+
+### Goal
+
+The admin shell has no responsive handling at all below desktop widths —
+confirmed via screenshot (Ariane, 2026-08-18) on a phone-width viewport:
+the sidebar nav takes up roughly half the screen at its fixed desktop
+width, squeezing the main content into a column so narrow that ordinary
+words wrap one character at a time ("Turn O / Mainten / Mod...", "Sit /
+down. / Write. / Publish."). This is a genuine, previously-undiscovered
+gap, not a regression — `.lp-admin__shell`/`.lp-admin__sidebar`
+(`admin/assets/css/admin.css`) have never had a `@media` rule at all;
+only *specific screens'* own two-column layouts (Media Manager, the
+Post/Page editor sidebar, Menus editor, Theme file editor) collapse to
+one column via an existing `@media (max-width: 782px)` convention
+already used four times in `admin.css` — the shell itself was simply
+missed by all of that.
+
+`admin/views/layout-header.php` renders `.lp-admin__sidebar` as a fixed
+220px-wide flex child of `.lp-admin__shell` with no mobile toggle button
+anywhere in the markup, and `admin/assets/js/nav-toggle.js` only handles
+expand/collapse of *sections within* the sidebar (LP-092), not the
+sidebar itself — there is nothing to build on for a mobile drawer,
+this is new.
+
+### Approach
+
+Match the `782px` breakpoint the codebase already uses elsewhere, for
+consistency rather than inventing a new one. Below that width:
+
+- `.lp-admin__sidebar` becomes an off-canvas drawer (fixed position,
+  slid off-screen via `transform: translateX(-100%)` by default, full
+  viewport height, above page content) instead of a static flex child.
+- A hamburger toggle button appears in `.lp-admin__content`'s header
+  area (hidden above the breakpoint) to open/close the drawer.
+- A dismissible backdrop appears behind the open drawer — tapping it, or
+  pressing Escape, closes the drawer the same way the toggle button
+  does.
+- Opening the drawer does not need to persist across navigation
+  (unlike LP-092's expand/collapse state) — a full page load is the
+  normal way admin navigation works here, so it should simply start
+  closed on every page.
+- Above the breakpoint, behavior is pixel-identical to today — this is
+  an additive mobile-only change, not a desktop layout change.
+
+### Checklist
+
+- [x] Add a hamburger toggle button to `admin/views/layout-header.php`,
+      hidden above the `782px` breakpoint, with a proper
+      `aria-expanded`/`aria-controls` (a visible "☰ Menu" label instead
+      of `aria-label` — the visible text itself is the accessible name,
+      one less thing to keep in sync with the label if it ever changes).
+- [x] Add the off-canvas drawer + backdrop CSS to `admin/assets/css/admin.css`,
+      scoped inside a `@media (max-width: 782px)` block so desktop is
+      untouched; confirm the backdrop/drawer both have correct dark-mode
+      variants at the same time (not deferred), per this project's CSS
+      rule. No dark-mode-specific rules were actually needed — every
+      color here already comes from the shared `--lp-admin-*` custom
+      properties, which flip automatically; verified by toggling the
+      account to Dark and reading the toggle button's real computed
+      colors rather than assuming.
+- [x] New `admin/assets/js/mobile-nav-toggle.js` (vanilla JS, matching
+      `nav-toggle.js`'s existing style/conventions): opens/closes the
+      drawer on toggle-button click, closes on backdrop click and
+      Escape, manages `aria-expanded`. Enqueued from
+      `admin/views/layout-footer.php` alongside the other admin scripts.
+- [x] Verify Dashboard, All Posts, the Post editor, and Settings ›
+      General at a genuine phone width (375×812, the standard iPhone
+      viewport already used elsewhere in this project's manual QA) in
+      both light and dark mode. **First pass was wrong and shipped
+      anyway** — `document.body.scrollWidth === window.innerWidth`
+      looked clean on every screen, but that check is blind to overflow
+      an ancestor clips rather than one that expands the page: this
+      ticket's own `.lp-admin__shell { overflow-x: hidden; }` (added to
+      stop the sidebar drawer from causing page scroll) was silently
+      swallowing two *separate*, real overflow bugs underneath it,
+      confirmed by Ariane's follow-up screenshots — All Posts' table and
+      bulk-actions row, and the Post editor's whole two-column layout,
+      both visibly cut off past the right edge. Root-caused both instead
+      of patching symptoms: (1) `.lp-editor-layout`'s mobile
+      `grid-template-columns: 1fr` has an *implicit* minimum of `auto`
+      (its content's min-content size) — EasyMDE's own toolbar row
+      doesn't wrap, so that content forced the whole grid track (and
+      everything nested inside it) to its full unwrapped width; fixed by
+      making the floor explicit, `minmax(0, 1fr)`, matching the pattern
+      the desktop rule already used for its own first track. (2) an
+      HTML table's cells never shrink below their min-content width
+      regardless of `width: 100%` on the `<table>` itself; every admin
+      list table now gets its own `overflow-x: auto` at this breakpoint
+      instead of silently overflowing, placed in source *after* the
+      existing unconditional `.lp-table { overflow: hidden }` rule so it
+      actually wins the cascade (a media query alone doesn't add
+      specificity — same-specificity rules still resolve by source
+      order). Re-verified after both fixes via `getBoundingClientRect()`/
+      `scrollWidth` on the actual overflowing elements post-fix (not
+      just `document.body`) across a fresh page reload each time — not
+      the same shallow check that missed this the first time.
+- [x] Confirm keyboard/screen-reader operability: verified
+      programmatically (real click/keydown events, not just CSS
+      inspection) — `aria-expanded` flips correctly, Escape closes the
+      drawer, focus moves into the first sidebar link on open and back
+      to the toggle button on close (backdrop-click path confirmed;
+      Escape-path focus-return uses the same `close()` function so is
+      the same code path, not separately re-verified).
+- [x] Manually verify on the (existing, persistent) dev install,
+      screenshot before/after shared with Ariane. Functionally verified
+      this session — every check above was run against the real dev
+      install over real HTTP, not simulated — but the Browser pane
+      wasn't visually rendering frames in this session (`computer`
+      screenshot/click both failed with "pane is not displayed"), so
+      verification here used `javascript_tool` (real DOM events,
+      `getComputedStyle()`, `getBoundingClientRect()`) instead of an
+      actual screenshot. Marked complete 2026-10-06 after Ariane
+      tested the admin on her own mobile device; no before/after
+      screenshot was captured in the session that built this, so the
+      verification on record is the programmatic checks above, her
+      follow-up screenshots of the earlier overflow bugs, and that
+      real-device test.
+- [x] Swept every other bare `grid-template-columns: 1fr` mobile
+      override in `admin.css` for the same implicit-min-content-floor
+      bug found on `.lp-editor-layout`, rather than waiting for a
+      separate bug report on each: `.lp-media-manager`,
+      `.lp-menus-editor`, and `.lp-theme-editor` all had the identical
+      pattern (a `minmax(0, 1fr) ...` desktop rule, but a bare `1fr`
+      mobile override), all fixed to `minmax(0, 1fr)` the same way.
+      Media Manager re-confirmed directly (`.lp-media-manager` width
+      335px, matching its panel, no overflow); Menus/Theme editors
+      share the identical fix but weren't individually re-confirmed
+      live in this session (`.lp-menus-editor` wasn't present in the
+      page state checked — no menu selected — and the Theme editor
+      screen wasn't reached at all) — worth a quick look next time
+      either screen is touched.
+
+### Explicitly Out of Scope
+
+- A tablet-width intermediate layout (e.g. icon-only collapsed sidebar
+  at medium widths) — this ticket is specifically about fixing the
+  broken phone-width case shown in the screenshot, not a full responsive
+  redesign across every breakpoint.
+- Per-screen mobile layout work beyond the shell itself (a data table
+  that's merely *cramped* rather than broken at 375px, say) — flag any
+  such screen found during the verification pass as a follow-up, don't
+  silently expand this ticket's scope to fix it now.
+
+
+### LP-191. Media Manager Folder Sidebar Redesign (Compact Tree + View Chips)
+
+**Status:** Complete
+
+**Implemented 2026-10-02.** Where the build differs from the plan below: the sidebar was already 240px, so it went to 280px. Folder rows are `<div class="lp-folder-tree__row">` (link with a `.lp-folder-tree__name` span for ellipsis, count, then a `<details class="lp-folder-tree__actions" data-lp-dropdown>` menu). The chevron is still the `data-lp-folder-toggle` `<details>`'s own `<summary>`, positioned into a fixed left gutter on each `.lp-folder-tree__item`, so the collapse persistence code didn't change. The drag JS's `[data-lp-folder-move-form]` is now the menu's Rename form, and a separate Move form shares that folder's one rename token. Every "New subfolder" form and the main "New Folder" form reuse a single `create_folder` token, because a per-folder token would overflow the 30-token pool on a large tree. The new `admin/assets/js/media-folder-sidebar.js` closes other dropdowns when one opens, handles Escape and clicks outside, and starts the `data-lp-media-folders` panel collapsed below 782px. The Views chip row is `.lp-media-views`; "All Files" is only highlighted when no folder is open, and the "More" chip shows the active overflow view's name. There's no harness for rendering `media.php`, so the markup and token contracts are covered statically by `Unit/MediaFolderSidebarContractTest.php`, in the same style as `AdminViewsGuardTest`. Browser-verified on the dev install at 1366px and 375px, light and dark: Move form (redirect = CSRF OK), create subfolder, simulated drag to top level, delete from the menu (on a throwaway folder, since removed), collapse persistence (POST 200), Escape focus return, "More" view highlighting, no element overflow at 375px.
+
+**Follow-ups 2026-10-02 (requested after the first commit `e8cd5bf`):** the subfolder indent was tightened (no inner padding, and a 1rem chevron gutter below the top level). "New Folder" moved from the bottom of the tree into a `.lp-folder-toolbar` directly under the folder search. Beside it is a "Collapse all"/"Expand all" button (`data-lp-folder-collapse-all`), rendered `hidden` and revealed by `folder-tree-toggle.js`. That script now coalesces toggle events into one save 150ms later: the per-response CSRF token is single-use, so a separate save for each of the folders that collapse-all toggles would have failed for all but the first. Browser-verified: one POST for expand-all across all 5 parent folders, the state persists across a reload, and both toolbar buttons are 26px tall. Committed as `b902ab2`.
+
+The Media Manager's folder sidebar has become too crowded to use. It's narrow, and each folder row tries to fit the name link, the count badge, a quick-delete `×` form, and a "▸ Manage" `<details>` into it (`$renderFolderTree` in `admin/views/media/media.php`). Every folder therefore wraps onto 3–4 lines, and each nesting level makes that worse. On the real dev-install library (5,054 files, 30+ folders, `Screencaps › Star Trek DSC 3.07 › …` three levels deep) the sidebar ends up several times taller than the file list. On top of that, the 10 built-in Views take up the top third of the sidebar before any folder appears. This ticket covers mockups A and D's chip row from the 2026-10-02 brainstorm, as a mostly markup and CSS change to the existing screen. Pinned folders, dragging files onto folders, and the jump-to-folder popover come in LP-192/LP-193/LP-194.
+
+What already exists and must keep working: dragging a folder onto another folder to reparent it, or onto the "Folders" heading to move it to top level (`folder-drag-drop.js`, which relies on the `data-lp-folder-drag`/`data-lp-folder-move-form`/`data-lp-folder-root-drop` markup contract); each user's saved collapsed-folder state (`folder-tree-toggle.js`, `save_folder_tree_state`, ancestors of the active folder always forced open); the server-side `folder_q` folder search; and the cumulative count badges.
+
+**Layout:**
+
+- [x] Widen the sidebar to roughly 240–260px on desktop (`.lp-media-manager__sidebar` in the admin stylesheet). Keep the file list at `minmax(0, 1fr)` so the wider sidebar doesn't push it into overflow.
+- [x] One line per folder row: expand/collapse chevron, folder icon, name (single line, ellipsis truncation, full name in `title`), count right-aligned. Nesting is shown by a fixed indent per level, not by the wrapped `<details>` boxes used today.
+- [x] Move the chevron to the start of the row instead of a separate `lp-folder-tree__toggle` block below it. The `data-lp-folder-toggle` hook and the persisted collapse state must keep working unchanged.
+- [x] Highlight the active folder with the row background (an `is-active` style), not just the link color.
+
+**Row actions:**
+
+- [x] Replace the inline quick-delete `×` and the inline "Manage" `<details>` with a single per-row `⋯` actions button. It appears on hover/focus and always on touch. Its menu offers Rename, Move to… (the existing `$buildFolderOptions` parent picker), New subfolder, and Delete. Re-use the existing `rename_folder`/`delete_folder`/`create_folder` POST handlers and their per-folder CSRF tokens, with no new endpoints. Keep `data-lp-folder-move-form` on the rename form so `folder-drag-drop.js` keeps working.
+- [x] Without JavaScript, the actions menu must still work as a `<details>`. The admin CSP forbids inline script and style, so any positioning goes through classes in the admin stylesheet.
+- [x] Keyboard and accessibility: the actions button has an accessible name that includes the folder name, the menu opens with Enter/Space and closes with Escape (returning focus to the button), and the delete action keeps its `data-lp-confirm` confirmation.
+
+**Views as chips:**
+
+- [x] Move the 10 built-in Views out of the sidebar into a chip row above the file list (next to the Thumbnails/List toggle). Show "All files" plus the most-used views directly, and put the rest under a "More" disclosure. The active view's chip is highlighted, and the URLs (`?view=…`) stay as they are.
+- [x] The sidebar then holds only All files / General uploads, the folder search, the tree, and "New folder".
+
+**Responsive and theming:**
+
+- [x] Below the admin mobile breakpoint (LP-096), the sidebar collapses into a "Folders" disclosure above the file list rather than stacking at full height, and the chip row wraps or scrolls horizontally without causing page-level overflow. Measure the actual element widths, not just `body.scrollWidth`.
+- [x] Dark-mode variants for every new row, menu, and chip style, added in the same change.
+
+**Tests and verification:**
+
+- [x] Update any tests that assert on the folder-tree markup (`lp-folder-tree__*` classes, the delete form, the Manage form). Add coverage for the actions menu still rendering a working rename/delete form for each folder.
+- [x] Browser-verify on the dev install against the real library: folder reparenting by drag still works, collapse state persists across reloads, rename/move/delete work from the new menu, every view chip loads the right view, and the layout holds at mobile width and in dark mode.
+
+
+### LP-195. Lumora Classic Stylesheet Cleanup (Bugs, Dead Code, Redundancy)
+
+**Status:** Complete
+
+**Implemented 2026-10-06.** `style.css` 3,302 → 3,085 lines; Lumora Classic bumped to 0.3.1. All tokens now live at the top of the file (light `:root`, then the two identical dark blocks), with new `--lp-font-ui`, `--lp-font-display`, `--lp-header-accent`/`-hover` and `--lp-card-shadow`. Listing rules are reorganised into a "Homepage & archive listings" section: shared card rules on `.lp-content--home`, Magazine-only on `--magazine`, and Classic-only on `--classic` with single selectors. Verified by swapping in the old stylesheets on the dev install and diffing computed styles of every element (homepage in all 8 layout × banner × light/dark combinations at 1280px and 375px, plus a single post, a page and search). The only differences were the intended fixes, the unified card shadow (slightly stronger in dark mode), and one behaviour the old CSS had by accident. A Magazine title size leaked into the Classic layout, so 9 of 10 Classic titles were 20px and only the first was 24px; all are now 20px (`.lp-content--home .lp-post-list__title`). Bug 1 measured 423px → 320px. Bugs 2, 5 and 6 and the footer menu were verified with injected copies of the real markup, since the dev install has no Navigation Menu widget, footer menu, privacy page or footer HTML. Not done as listed: link-colour rules whose hover deliberately stays `--lp-accent` (categories, comments link, read more, edit link, search links) were kept, since removing them would change the hover colour. Only exact duplicates of the global `a` rule were removed. Downloads-list image alignment was also kept separate, because its margins differ (1.25em vs 1.5em). Also fixed in passing: `.lp-footer-html` used `--lp-text-muted` on the dark footer (now inherits the footer text colour). Custom themes: Duskline and Xena Central got a `.lp-button` border/cursor reset placed before their `.lp-button--secondary`. Dragonquill and Sands of Kemet got a cursor rule and a new `.lp-button--secondary`. None had bug 1, and each already styles its own menus. Regression tests are in `BundledThemeStylesheetTest` (6 new); `composer test` is green (2956). `docs/THEME-DEVELOPMENT.md` now tells theme authors that core emits `<button class="lp-button lp-button--secondary">`.
+
+A full audit of `content/themes/lumora-classic/style.css` (3,302 lines) and `responsive.css` on 2026-10-02. All 294 class names were checked against the PHP and JS that output them, including classes built at runtime such as `has-{color}-color`, `lp-embed--{provider}` and `lp-toc__level-N`. Bugs 1–4 were confirmed in the dev install with computed styles. Most of the problems come from the file being two layers: generic component rules carried over from the old Default theme (lines 1–2576), then a "Lumora Classic composition" section (2577+) that restyles many of them, sometimes only partly. Line numbers below are as of the audit and will shift as fixes land.
+
+### Bugs
+
+- [x] **Featured-image banner isn't cropped on desktop.** `.lp-post__thumbnail--hero img` (style.css:728, 320px tall) loses to the later, equally specific `.lp-post__thumbnail img` (:3149, `height: auto`, 12px corners). At 1280px wide, a square image rendered ~1265px tall instead of 320px. Mobile only looks right because `responsive.css` loads afterwards. Fix: give the banner rule higher specificity or move it after :3149, and use `var(--lp-radius)` consistently.
+- [x] **Sidebar Navigation Menu widget links are nearly invisible in light mode.** The widget uses the same `lp-nav-menu__item` class as the header menu (`CoreWidgets.php:149` → `nav_menu()`), and the header's link style (:2783, `rgba(255,255,255,0.82)`, uppercase) isn't limited to the header. It renders white text on the `#fbfcfa` widget card. Footer dropdown submenus have the same problem, because only `.lp-site-header .lp-nav-menu__submenu` (:2800) gets the dark background. Fix: limit the header nav styling to `.lp-site-header`, and give the widget and footer menus their own styling.
+- [x] **`<button class="lp-button">` shows the browser's default border.** `.lp-button` (:1504) never sets `border`, `cursor` or `font`, but core puts it on `<button>` elements in the comment subscription and report forms (`include/comment-functions.php:325` and nearby). It renders with a ~1.5px `outset` border. Add `border: 0; cursor: pointer; font: inherit;` (or equivalent).
+- [x] **`.lp-button--secondary` has no theme styling.** It's used 7 times (comment pagination in `comments.php`, Watch/Unsubscribe/Cancel/Send report in `comment-functions.php`), but only `admin/assets/css/admin.css` defines it, so secondary buttons look identical to primary ones. Add a secondary style (e.g. an outline button) with dark-mode handling.
+- [x] **Footer Privacy link hover is too dark for the footer.** The hover colour (:2056) is `--lp-accent-hover`, which is `#09696b` in light mode, on the `#172033` footer background (~2.4:1 contrast, worked out from the values, not tested in the browser). Use the footer's own light accent (`#8be1d5`, same as the link's base colour at :3180) or the new header-accent token from the Redundancy section.
+- [x] **Check footer widget text colour.** `.lp-site-footer` sets `color: #edf3f1`, and `.lp-site-footer__widgets .lp-widget__title` (:2040) only fixes widget titles. Plain text inside footer widget cards (list items that aren't links) may inherit the light footer colour on a light card. Verify with real widgets, and if confirmed, set `color: var(--lp-text)` on `.lp-site-footer__widgets .lp-widget` instead.
+
+### Dead code to remove
+
+- [x] First dark-mode token block (:22–47). Its main colours (backgrounds, text, borders, accent) are all overridden by the second dark block at :2620. Move its still-live success, error and `--lp-color-*` values into the :2620 block, then delete it, so there is one `prefers-color-scheme` token block plus the `[data-theme="dark"]` block.
+- [x] `.lp-content--home .lp-main-header` (:2929), `.lp-eyebrow` (:2938) and `.lp-main-header__intro` (:2963). No template has used them since the homepage heading block was removed in commit `6b672bc`.
+- [x] `.lp-post, .lp-page { max-width: none }` (:3133). Nothing ever gives them a max-width.
+- [x] `max-width: none; margin: 0 auto` on `.lp-site-header__image-wrap` (:2682–2683) and `.lp-site-header__inner` (:2716–2717), and `justify-content: space-between` in the header grid (:2711, the `1fr` column already takes all the free space).
+- [x] `border: 1px solid var(--lp-border)` that's immediately overwritten by `border-color: rgba(…)` in `.lp-search-form__input` (:2822/2826) and `.lp-theme-toggle` (:2864/2872). Collapse each into a single `border` declaration.
+- [x] `border-color: transparent` and the repeated `color` on `.lp-search-form__button:hover` (:2851, :2853). The button already has `border: 0` and the same base colour.
+- [x] `grid-column: auto` (:3209) and `min-height: 0` (:3211) on Classic-layout post items. The Classic layout's list is flex, not grid, and nothing sets a min-height on the item. Leave the `min-height: 0` on the thumbnail and image (:3224/:3233), which is live.
+- [x] Magazine cards' `display: flex; flex-direction: column` (:3034–3035) and `order: -1` (:3039). Already the base styling, and the thumbnail already comes first in the HTML of `index.php`/`archive.php`.
+- [x] `.lp-site-footer__powered-by` colour (:2045) and `.lp-site-footer__powered-by a { color: inherit }` (:2050). Both are overridden at :3174.
+- [x] Sidebar welcome message `background`, `border` and `border-radius` (:3090–3092). Repeats the grouped `.lp-widget, .lp-sidebar .lp-welcome-message` rule at :3078. Also drop the `border-radius`/`background` that rule repeats from `.lp-widget` (:1284).
+
+### Redundancy to consolidate
+
+- [x] **Scope Magazine rules to `.lp-content--home--magazine`** instead of `.lp-content--home`. This is the biggest win. The Classic layout currently spends ~100 lines (:3198–3302, plus ~35 in `responsive.css`) undoing Magazine rules, with every selector written three times (`item`, `item:first-child`, `item:not(:first-child)`) just to beat them. Keep genuinely shared rules (`.lp-main > .lp-page-title`, meta margin, muted excerpt) on `.lp-content--home`. Afterwards, the Classic and `thumbnail-above` rules should only need single selectors.
+- [x] Group the three identical tag-pill components (`.lp-post__tags`, `.lp-post-list__tags`, `.lp-search-results__tags` and their `-item a`/hover rules, :325/:821/:925) into shared selector lists. Keep all three class names for themeability; only the top margin differs.
+- [x] Add `--lp-font-ui` (system stack, used 25 times) and `--lp-font-display` (`"DM Sans"` stack, used 7 times) tokens and replace the repeated literals.
+- [x] Add a `--lp-header-accent` token (plus a hover variant) for the 11 hard-coded `#61d0c2`/`#8be1d5`/`#a9eee3` uses in the header, footer and featured card.
+- [x] Add a `--lp-card-shadow` token with a dark-mode value for the hard-coded `rgba(23,32,51,0.055/0.045)` card shadows (:2983, :3083, :3217), which currently don't adapt to dark mode the way `--lp-surface-shadow` does.
+- [x] Group duplicate patterns:
+  - `.lp-search-form__label` with `.lp-visually-hidden`, and add `clip-path: inset(50%)` alongside the deprecated `clip`.
+  - `.lp-comment-form__honeypot` with `.lp-contact-form__honeypot`.
+  - The four `has-text-align-*` rules for `.lp-post__content`/`.lp-widget__content` via `:is()`.
+  - The left/right/centre image alignment rules repeated for post content images, `figure.lp-caption` and the downloads-list description.
+- [x] Drop declarations that only restate global defaults:
+  - ~8 rules repeating `img { max-width: 100%; height: auto }`.
+  - ~8 rules repeating the global `a` accent colour/hover (`.lp-post__content a`, `.lp-widget__content a`, `.lp-post__edit-link a`, `.lp-search-empty__item a`, `.lp-search-filters__reset`, `.lp-gallery-shortcode__view-link`, `.lp-post__categories a`, …).
+  - The never-used `var(--lp-radius, 8px)` and `var(--lp-accent-hover, var(--lp-accent))` fallbacks.
+- [x] Put split components back together: `.lp-post-list__title a` (base at :3066, hover at :789) and `.lp-site-footer__privacy-link` (hover at :2056, base at :3180).
+
+### Comments
+
+- [x] Fix comments that point the wrong way: :37 "the light values above", :653 "defined above", :2609 "rules below". The light tokens now live at :2586.
+- [x] Remove the orphaned welcome-message comment (:1296–1298) and the orphaned nested-widget comment (:1376–1380), or move each back above the rules it describes.
+- [x] Shorten the `img.lp-folder-gallery__thumb` comment (:2392–2401): there's no real conflict with `.lp-post__content img`, since both set identical values and the 150px crop rule is already more specific. The `img.lp-gallery-shortcode__thumb` note at :2556 is correct and stays.
+- [x] Remove the LPP-026/LPP-027 ticket citations from the Link Directory comment (:2280–2286), per the no-ticket-IDs-in-comments rule.
+
+### Wrap-up
+
+- [x] Propagate the applicable fixes to every theme under `custom themes/` (re-`ls` it first; as of 2026-10-02: duskline, xena-central, dragonquill, sands-of-kemet). Only add missing rules; don't remove anything there without asking Ariane.
+- [x] Bump `Version:` in `content/themes/lumora-classic/style.css` (currently 0.3.0) and add a CHANGELOG entry for the user-visible bug fixes.
+- [x] Browser-verify homepage (Magazine and Classic, with the featured image both above and beside), archive, single post, page, search, sidebar Navigation Menu widget, footer widgets and footer menu, and comment buttons, in light and dark mode at desktop and mobile widths. Sync each changed file to the dev install.
+
+
+### LP-196. File Size and Dimensions in All File Pickers
+
+**Status:** Complete
+
+Every place a user picks a file from the Media library should show the file's size (KB/MB/GB, whichever fits) and, for images, its dimensions in px, so the right file can be chosen without opening it. This covers the Downloads plugin's file picker as well.
+
+- [x] Inventory every file picker (Insert Media modal, featured image picker, Downloads add/edit file picker, theme option image fields, and any other Media-library chooser)
+- [x] Add one shared size formatter (B/KB/MB/GB) and reuse it in every picker rather than duplicating the logic
+- [x] Show the size on every picker entry, and width × height in px on image entries
+- [x] Non-image files show size only, with no dimensions placeholder
+- [x] Style the new metadata in the admin stylesheet, including dark mode and a readable layout at narrow widths
+- [x] Browser-verify each picker with an image and a non-image file
+
+Implemented with `MediaService::pickerMeta()` (adds `fileSize`/`width`/`height` to every picker item), `MediaService::describeFile()`/`formatFileSize()` for server-rendered `<select>` pickers, and `admin/assets/js/file-meta.js` (`window.lpFileMeta`) for the JS ones. Verified in the Downloads, Featured Image and Insert Image pickers.
+
+
+### LP-197. Merge Lumora Classic's Stylesheet Into One Layer
+
+**Status:** Complete
+
+**Implemented 2026-10-06.** The composition section is gone, and `style.css` now runs one section per component in page order: tokens, base (now including `body.lp-site`), Header (masthead), Navigation menus (generic dropdowns, then the header/footer link styling), Search form, Theme toggle, Welcome message (including its sidebar variant), Layout (`.lp-site-body`, `.lp-layout`, `.lp-main`, page titles, breadcrumbs), Single posts & pages (card and title first; the post meta rules used to sit under "Maintenance mode"), Rendered content, Post list, Homepage & archive listings, Search, Pagination, Sidebar & widgets (`.lp-sidebar`, title and plain list rules now ahead of the nested-list rules), Buttons, Forms, Comments, Footer (shell first), Maintenance mode, then plugin/shortcode output. The composition section's design description is now the file's intro comment. `.lp-theme-toggle:hover`/`:focus-visible` were merged into one hover rule and one focus-visible rule. In `responsive.css`, the 720px block follows the same order, and its two `.lp-layout` rules were merged. Verification: the parsed declaration sets of old and new are identical (`style.css` 1,561 = 1,561, `responsive.css` 41 = 41). A full computed-style comparison (all 498 properties plus `::before`/`::after`, transitions frozen, old stylesheets swapped in-page) showed 0 differences on: the homepage in all 8 layout × banner × light/dark combinations at 1280px and 375px; a single post with and without the banner at both widths; a page; search; a category archive in both layouts; and injected header, footer and widget menus with open three-level dropdowns. A control run against the pre-LP-195 stylesheet reported 3,749 differences, so the comparison does detect changes. One apparent difference (the theme toggle's border) turned out to be its 0.15s border transition caught mid-swap, and it disappeared once transitions were frozen. New `BundledThemeStylesheetTest::testOrderSensitiveRulesKeepTheirOrder` pins the three equal-specificity pairs whose order matters. `composer test` is green (2959). No version bump (0.3.1 hasn't shipped) and no CHANGELOG entry (nothing renders differently).
+
+Follow-up to LP-195. That ticket removed every conflict between `content/themes/lumora-classic/style.css`'s two halves: the generic component rules, and the "Lumora Classic composition" section (heading at line 2543 of 3,085 as of 2026-10-06). The file is still physically split, though, so several components have their parts in both halves:
+
+- Header menu: dropdown positioning (`.lp-nav-menu__item`, `.lp-nav-menu__submenu`, ~line 120) is generic; links and the dark dropdown (`.lp-nav-menu`, `:is(.lp-site-header, .lp-site-footer__nav) …`) are in the composition half.
+- Theme toggle: icon switching and `:focus-visible` outline are generic; the `.lp-theme-toggle` button, and its `:hover, :focus-visible` border colour, are in the composition half (the only selector currently in both halves).
+- Widgets: `.lp-widget`, `.lp-widget__content` etc. are generic; `.lp-widget__title`, `.lp-widget__list` (+ `li`, `li:last-child`) and `.lp-sidebar` are in the composition half. The nested-list rule's comment ("beat the plain .lp-widget__list rules further down") depends on that order.
+- Footer: the footer widget area, `__powered-by`, `__privacy-link` and `.lp-footer-html` are generic; `.lp-site-footer` and `__inner` are in the composition half.
+- Single post/page: thumbnails and content typography are generic; the `.lp-post, .lp-page` card and `.lp-post__title` are in the composition half.
+- Search form, welcome message, `.lp-layout`, `.lp-page-title`, `body.lp-site` and the header are composition-only, but belong in their own component sections.
+
+The goal is a file that reads top to bottom with one section per component, and no "composition" layer: tokens, base/reset, header (masthead, menu, search form, theme toggle), welcome message, layout, page titles and breadcrumbs, homepage & archive listings, single post/page and rendered content, search results, pagination, sidebar & widgets, buttons, forms & alerts, comments, footer, maintenance, then plugin/shortcode output (media viewer, embeds, downloads, link directory, folder gallery, media player, contact forms, gallery shortcodes). This is purely a reorganisation, so no rendered style may change.
+
+- [x] Before moving anything, put `git show HEAD:…/style.css` and `responsive.css` copies on the dev install as `zz-old-*.css`. For every equal-specificity selector pair that would change order, note which one must stay later (e.g. `.lp-post__thumbnail img` before `.lp-post__thumbnail--hero img`, `.lp-widget__list` before `.lp-widget__list.lp-widget__list--nested`). Then do the moves.
+- [x] Fold each composition block into its component's section and delete the composition heading. Keep the layout description it carries (fan-archive masthead, one dominant feature, and so on) as the file-header description or the listings section's intro. Merge split rules for the same selector, starting with `.lp-theme-toggle:focus-visible`.
+- [x] Update comments that refer to position ("above", "below", "further down") so they're still true, and add a "must stay after X" note anywhere source order is what decides the cascade.
+- [x] Reorder `responsive.css`'s rules within each breakpoint to follow the new section order, keeping any order a repeated selector depends on.
+- [x] Verify zero computed-style differences using LP-195's technique: swap the `<link>` hrefs in-page and diff `getComputedStyle` for every element. Cover the homepage in all 8 layout × banner × light/dark combinations at 1280px and 375px, a single post (with the banner class added), a page, search, and a category archive. Then delete the `zz-old-*` copies.
+- [x] Keep `BundledThemeStylesheetTest` green, adjusting only selector lookups that a merge changes, never what a test asserts. Run `composer test`.
+- [x] Bump Lumora Classic's `Version:` only if LP-195's 0.3.1 has already shipped by the time this lands; otherwise 0.3.1 covers both. No CHANGELOG entry is needed if nothing renders differently (or one "Changed" line at most). Custom themes are unaffected, since they're separate stylesheets.
+
+
+### LP-200. Image Editor Dialog in the Editors and Image Pickers
+
+**Status:** Complete
+
+The Media Manager's Edit Image tool (crop, rotate, flip; LP-016) only exists on a media item's own edit screen. This ticket makes it reachable from where an image is actually chosen, as a dialog opened on top of whatever the author is doing, so nobody has to leave a half-written post to crop a picture. Saving gives back the edited image (a new copy, or the original replaced in place) and the picker carries on with it.
+
+Places covered: the Insert Image dialog used by both the visual and Markdown editors (its settings step), and every featured-image-style picker that shows a chosen image (the Post and Page featured image, the default featured image, and the category image). The Media Manager's own screen keeps working as it does now, from the same shared markup and script.
+
+Approach: the editor's markup moves into one shared partial that the Media Manager includes inline and every admin page offers as a `<template>`. `image-editor.js` gains `window.lpImageEditor.open()`, which builds a native `<dialog>` from the template and saves through a JSON sub-action on the Media Manager page (the same shape as the editors' other AJAX sub-actions, with a fresh single-use CSRF token handed back in every response). The server-side request validation is shared with the Media Manager's own form, so the two cannot drift.
+
+### Checklist
+
+- [x] One shared request parser (rotation, flips, crop, output size, copy-or-replace, the "nothing to do" check) used by both the Media Manager's form and the new JSON action.
+- [x] One shared picker-item builder on `ThumbnailService`, in the shape the editors' pickers expect (`sizes`, `caption`, file size and dimensions).
+- [x] JSON sub-action on the Media Manager page that saves an edit and returns the picker item plus a fresh CSRF token; refuses users without `upload_files`, and answers errors in JSON.
+- [x] Editor markup extracted to a shared partial, used inline on the Media Manager and as a `<template>` in the admin footer for users who can upload.
+- [x] `window.lpImageEditor.open({ id, src, onSaved })` opens the editor in a dialog, saves over fetch, closes on success, and shows errors inside the dialog.
+- [x] Insert Image dialog (both editors): an "Edit Image" button on the settings step that edits the chosen image, then continues with the edited one.
+- [x] Featured image pickers: an "Edit Image" button next to the chosen image (Post/Page featured image, default featured image, category image) that selects the new copy, or refreshes the preview after a replace.
+- [x] Dialog styling in the admin stylesheet, including dark mode and a usable layout at phone width; focus moves into the dialog, Escape closes it, every control has a label.
+- [x] Unit tests for the shared parser and picker-item builder, and a browser check of each place above. Browser-verified: the Media Manager's inline editor, the post featured image box (choose, edit, save a copy, new id selected), the Insert Image dialog in the visual editor (the settings step continued with the rotated copy), and phone width. The default featured image and category image pickers run the same script but were not each exercised by hand.
+- [x] README, CHANGELOG, and the developer docs updated.
+- [x] Edit an image that is already placed in a post: the Edit Image dialog (visual editor, and Markdown with the cursor in the image) has a "Crop, Rotate or Flip…" button. It finds the Media Library item from the image's address (the original or any thumbnail size), then points the placed image and any link to its file at the edited picture, at the same size as before. An explicit width and height is reduced to the width alone if the proportions changed. Browser-verified in both editors, including the matched thumbnail size and the rewritten file link; an address outside the Media Library shows a clear message.
+
+Header images (the multi-select list on Customize) and the Downloads file picker are not covered: the first has no single chosen image to edit, and the second picks files, not images.
+
+
+### LP-202. Show the Active Theme First on Appearance › Themes
+
+**Status:** Complete
+
+The Themes screen lists every theme alphabetically, so the active one can sit anywhere in the list, and with many themes installed an administrator has to hunt for the one currently in use. Show it first, followed by the rest in the existing alphabetical order. Other screens that list themes (Customize, the theme file editor) keep their current order.
+
+### Checklist
+
+- [x] `ThemeRegistry::discover()` can return the active theme first, with the others still alphabetical (an opt-in flag, so other callers keep their order).
+- [x] Appearance › Themes uses it.
+- [x] Tests cover the active theme moving to the front, the rest staying alphabetical, and the default order being unchanged.
+- [x] Checked in the browser on the dev install.
+- [x] CHANGELOG entry.
+
+**Implemented 2026-10-07.** `ThemeRegistry::discover(bool $activeFirst = false)`; only `admin/views/appearance/themes.php` passes `true`. `usort` is stable (PHP 8.0+), so the other themes keep their alphabetical order. Four new `ThemeRegistryTest` cases.
+
+
+### LP-203. Move Branding from Appearance › Themes to Settings › General
+
+**Status:** Complete
+
+Site name, site logo, and favicon were a "Branding" section at the bottom of the Themes screen. They describe the site rather than a theme, so they now live in the Site section of Settings › General, next to the tagline.
+
+### Checklist
+
+- [x] Site name, logo, and favicon fields added to the Site form on Settings › General (the form now accepts file uploads).
+- [x] Saving moved out of `ThemesController` into a new `BrandingController`, called from the General screen after its own CSRF check.
+- [x] Branding section and its save handling removed from Appearance › Themes.
+- [x] Tests moved to `BrandingControllerTest`, with new cases for the favicon, an empty file field, a failed upload, and a failed logo not blocking the favicon.
+- [x] Checked in the browser on the dev install (multipart save round-trip).
+- [x] CHANGELOG and FEATURES updated.
+
+**Implemented 2026-10-07.** The saved options (`site_name`, `site_logo_media_id`, `favicon_media_id`) are unchanged, so nothing needs migrating. A failed logo or favicon upload is reported on the General screen after the other fields have saved, and leaves the previous image in place.
+
+
+### LP-204. Give Every Admin Panel the Pale-Blue Section Header
+
+**Status:** Complete
+
+Settings, core list screens and core editors use panels with a pale-blue header bar (`.lp-admin__panel > h2:first-child`, the collapsible "Search & Filter" `<details>`, or the editor's sidebar boxes). Several screens still use the older plain panel with no header: Maintenance Mode, and the Downloads, Link Directory and Contact Forms screens. A scan of every admin view (including every plugin screen) found the same gap elsewhere.
+
+**Rule applied.** A panel that holds a form, filters or a result summary starts with an `<h2>` (or is a collapsible Search & Filter), as on Settings › General. A panel that is only a list table stays headerless, as on Posts › All Posts and Posts › Categories. Status strips (Updates and Cache status bars, the Dashboard's maintenance toggle) are not sections and keep their own look.
+
+**Audit result (files with a panel that has no header).**
+
+- Fix: `settings/maintenance-mode` (one panel with its sections as inner headings), `contact-forms/settings` (same), `contact-forms/add-new`, `downloads/add-new`, `downloads/categories` (add/edit form), `link-directory/add-new`, `link-directory/categories` (add/edit form), `maintenance/system-information`, `maintenance/import` (two result panels), `maintenance/export` (result panel).
+- Fix, filters not collapsible: `downloads/all-downloads`, `link-directory/all-links`.
+- Already correct or intentionally headerless: all core list panels (Posts, Pages, Users, Comments, Media, Tags, Categories), `contact-forms/all-forms` and `submissions` (list only; its filter is already collapsible), the Dashboard widgets, the theme file editor, the menu editor, the Updates and Cache status bars, `notifications`, `placeholder`.
+- Plugins: no plugin draws its own admin chrome. Every plugin screen is one of the views above, and the rest (Visitor Stats, Lumora Gallery Shortcodes, Link Directory export/import and shortcodes, Downloads shortcodes) already comply.
+
+### Checklist
+
+- [x] Add a CSS rule so several panels can sit inside one `<form>` with the normal spacing.
+- [x] Maintenance Mode: split into panels with headers (status and schedule, who can still see the site, page appearance), Save and Preview at the end.
+- [x] Contact Forms › Settings: split into panels with headers.
+- [x] Downloads, Link Directory and Contact Forms add/edit screens: header on the form panel.
+- [x] Downloads and Link Directory category add/edit forms: header on the form panel.
+- [x] Downloads › All Downloads and Link Directory › All Links: filters in the collapsible Search & Filter panel, open when a filter is active.
+- [x] System Information, Import results and Export result panels: header added.
+- [x] A test fails if one of these panels loses its header.
+- [x] Checked in the browser at desktop and phone width.
+- [x] CHANGELOG entry.
+
+**Implemented 2026-10-07.** Maintenance Mode and Contact Forms › Settings are now one form spread over headed panels (new `.lp-admin__content > form > .lp-admin__panel` spacing rule). Add/edit panels on Downloads, Link Directory (links and categories) and Contact Forms got an `<h2>`; the two list filters became the collapsible Search & Filter, open when a filter is active. System Information, Import results and Export result got headers too. `AdminPanelHeaderTest` scans every admin view and fails on a new headerless panel; its allowlist is the list-table, editor and status panels. Checked in the browser at 1300px and 375px: no horizontal overflow. Not changed: media edit screen and the menu editor (both headerless by design as editors), and `notifications`.
+
+
+### LPP-030. Downloads: Filter for Downloads With No File Attached
+
+**Status:** Complete
+
+## Goal
+
+Let an administrator list only the downloads that have no file attached, so incomplete entries (a title and description created without an upload or external URL) are easy to find and finish or clean up.
+
+## Checklist
+
+- [x] Add a "No file attached" filter to the Downloads admin list that shows only downloads with neither an uploaded file nor an external URL
+- [x] Show the matching count next to the filter, consistent with the existing list view/Trash tab counts
+- [x] Confirm the filter excludes trashed downloads unless viewed from Trash, and combines correctly with the category filter and search
+
+Implemented as a "No file attached" tab beside Live/Trash (`?no_file=1`) backed by `DownloadService::countWithoutFile()` and a `noFile` filter on `paginateForAdmin()`. It mirrors `hydrate()`'s empty-URL rule, so a download whose Media/Redirect row was later deleted counts too. 3 unit tests added.
+
+
+### LPP-031. Downloads: per_page for [lumora_downloads]
+
+**Status:** Complete
+
+## Goal
+
+Let `[lumora_downloads]` split a long category list into pages, the way `[lumora_recent_downloads]` already can.
+
+## Checklist
+
+- [x] Accept `per_page` (1–100) on the category-list form of `[lumora_downloads]`, paging alphabetically with page links and the shared `downloads_page` parameter
+- [x] Leave the shortcode unchanged when `per_page` is omitted, and ignore it with `count` or `download_id`
+- [x] Document it on the Downloads › Shortcodes screen and in the plugin README
+
+Implemented as `DownloadService::paginateByCategory()` plus a shared `renderPaged()` in `DownloadsShortcode`. 2 unit tests added.
+

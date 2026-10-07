@@ -4,6 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-10-07
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Classic 0.4.0, Downloads 0.3.0, and Link Directory 0.2.0. Each can be updated on its own from its screen when a release carries its package.
+
 ### Added
 
 - Appearance › Themes lists the active theme first, with the rest in alphabetical order after it (LP-202).
@@ -42,7 +48,7 @@ All notable changes to Lumora Press are documented in this file.
 - Media Manager: the "Create Cropped Featured Image" section is replaced by the new Edit Image tool, which crops at full resolution by default. Shrinking to the featured image width is now an option instead of always happening (LP-016).
 - Visual editor: the editing toolbar and dialogs now use TinyMCE's dark skin when the admin is in dark mode (LP-016).
 - Media Manager folder sidebar redesigned (LP-191): it's wider, and each folder now fits on one line, with its expand/collapse arrow, name, and file count. Long names are shortened with "…", and the full name shows on hover. Rename, Move to, New subfolder, and Delete are now in a "…" menu on each folder, which appears when you point at the folder (it's always shown on touch screens). That menu replaces the separate × and "Manage" buttons. The built-in views (Recently Uploaded, Unused Media, Missing Alt Text, and so on) moved out of the sidebar into a row of buttons above the file list, with the less-used ones under "More". On phones, the folder list folds into a "Folders" panel above the files, showing the folder you're in. "New Folder" now sits just under the folder search instead of at the bottom of a long list, next to a new "Collapse all" / "Expand all" button that opens or closes every folder at once and remembers your choice.
-- Lumora Classic 0.3.1: stylesheet cleanup. Unused rules were removed and repeated ones combined, so the file is about 220 lines shorter. Card shadows are now a little stronger in dark mode, so cards stand out from the background.
+- Lumora Classic 0.4.0: stylesheet cleanup. Unused rules were removed and repeated ones combined, so the file is about 220 lines shorter. Card shadows are now a little stronger in dark mode, so cards stand out from the background.
 
 ### Fixed
 
