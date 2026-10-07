@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\IpRangeMatcher;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -79,9 +80,22 @@ if ($form === 'default_post_settings' && Csrf::verify('default_post_settings', i
     $kernel->config->setOption('comment_moderation_link_limit', (string) max(0, (int) ($_POST['comment_moderation_link_limit'] ?? 0)));
     $kernel->config->setOption('comment_moderation_keywords', trim((string) ($_POST['comment_moderation_keywords'] ?? '')));
     $kernel->config->setOption('comment_disallowed_keywords', trim((string) ($_POST['comment_disallowed_keywords'] ?? '')));
-    $kernel->config->setOption('comment_ip_blacklist', trim((string) ($_POST['comment_ip_blacklist'] ?? '')));
 
-    header('Location: ' . admin_url('settings/discussion') . '?saved=1');
+    // Invalid lines are dropped rather than stored, so a typo can't look like a working rule.
+    $validRules = [];
+    $ignoredIpLines = 0;
+
+    foreach (IpRangeMatcher::parseList((string) ($_POST['comment_ip_blacklist'] ?? '')) as $rule) {
+        if (IpRangeMatcher::isValidRule($rule)) {
+            $validRules[] = $rule;
+        } else {
+            $ignoredIpLines++;
+        }
+    }
+
+    $kernel->config->setOption('comment_ip_blacklist', implode("\n", array_values(array_unique($validRules))));
+
+    header('Location: ' . admin_url('settings/discussion') . '?saved=1' . ($ignoredIpLines > 0 ? '&ignored=' . $ignoredIpLines : ''));
     exit;
 } elseif ($form === 'avatar_settings' && Csrf::verify('avatar_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('avatars_enabled', ($_POST['avatars_enabled'] ?? '') === '1' ? '1' : '0');
@@ -157,6 +171,10 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
+
+<?php if ((int) ($_GET['ignored'] ?? 0) > 0): ?>
+    <div class="lp-alert lp-alert--error"><?= esc_html((string) (int) $_GET['ignored']) ?> line<?= (int) $_GET['ignored'] === 1 ? ' was' : 's were' ?> not a valid IP address or range and <?= (int) $_GET['ignored'] === 1 ? 'was' : 'were' ?> left out of the IP blacklist.</div>
 <?php endif; ?>
 
 <section class="lp-admin__panel">
@@ -348,7 +366,7 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
         <p class="lp-field">
             <label for="comment-ip-blacklist">IP Blacklist</label>
             <textarea id="comment-ip-blacklist" name="comment_ip_blacklist" rows="5"><?= esc_html($ipBlacklist) ?></textarea>
-            <span class="lp-field__hint">One IP address per line. A comment submitted from a listed address is marked as Spam outright, the same as a disallowed keyword — someone with permission to moderate comments is never blocked by this.</span>
+            <span class="lp-field__hint">One IP address or range per line, IPv4 or IPv6 (for example <code>203.0.113.7</code>, <code>203.0.113.0/24</code>, or <code>2001:db8::/32</code>). A comment submitted from a listed address is marked as Spam outright, the same as a disallowed keyword — someone with permission to moderate comments is never blocked by this.</span>
         </p>
 
         <p class="lp-field">

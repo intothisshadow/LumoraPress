@@ -19,6 +19,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Core\Security\IpRangeMatcher;
 use LumoraPress\Models\CommentStatus;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
@@ -215,10 +216,9 @@ final class CommentModerationService
     }
 
     /**
-     * Exact-match only, same as the keyword lists above — no CIDR range
-     * support, since a plain list an admin can copy an offending IP
-     * straight into (from the admin comment list or server logs) covers
-     * the common case without asking them to work out a subnet mask.
+     * Entries may be single addresses or CIDR ranges, IPv4 or IPv6; a
+     * plain address still works, so a list built from the comment list or
+     * server logs needs no subnet mask.
      */
     private function matchesIpBlacklist(?string $ipAddress): bool
     {
@@ -226,15 +226,7 @@ final class CommentModerationService
             return false;
         }
 
-        return in_array($ipAddress, $this->ipBlacklist(), true);
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function ipBlacklist(): array
-    {
-        return $this->parseKeywordList((string) $this->config->option('comment_ip_blacklist', ''));
+        return IpRangeMatcher::matches($ipAddress, IpRangeMatcher::parseList((string) $this->config->option('comment_ip_blacklist', '')));
     }
 
     /**
