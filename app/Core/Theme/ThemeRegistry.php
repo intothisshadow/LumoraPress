@@ -49,14 +49,22 @@ final class ThemeRegistry
     }
 
     /**
+     * Alphabetical by name. With $activeFirst, the active theme leads and
+     * the rest stay alphabetical; it's opt-in because other callers look
+     * themes up by name or slug and don't care about the order.
+     *
      * @return array<int, ThemeInfo>
      */
-    public function discover(): array
+    public function discover(bool $activeFirst = false): array
     {
         $dirs = glob(rtrim($this->themesPath, '/') . '/*', GLOB_ONLYDIR) ?: [];
         $themes = array_map(fn (string $dir): ThemeInfo => $this->buildInfo(basename($dir), $dir), $dirs);
 
         usort($themes, static fn (ThemeInfo $a, ThemeInfo $b): int => strcasecmp($a->name, $b->name));
+
+        if ($activeFirst) {
+            usort($themes, static fn (ThemeInfo $a, ThemeInfo $b): int => (int) $b->isActive <=> (int) $a->isActive);
+        }
 
         return $themes;
     }

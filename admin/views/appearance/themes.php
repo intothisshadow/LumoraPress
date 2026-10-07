@@ -217,7 +217,7 @@ if ($form !== '' && !in_array($form, $themeUpdateForms, true)) {
     }
 }
 
-$themeList = $kernel->themes->discover();
+$themeList = $kernel->themes->discover(activeFirst: true);
 $currentLogoId = (int) $kernel->config->option('site_logo_media_id', '');
 $currentFaviconId = (int) $kernel->config->option('favicon_media_id', '');
 $currentLogo = $currentLogoId > 0 ? $kernel->media->find($currentLogoId) : null;
