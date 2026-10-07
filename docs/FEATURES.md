@@ -1,172 +1,49 @@
 # Full Feature List
 
-The complete, detailed feature inventory for the current release. For a
-quick scannable overview, see the "Features" section of the root
-[`README.md`](../README.md) instead — this document goes into
-implementation-level detail on each area.
+The complete, detailed feature inventory for the current release. For a quick scannable overview, see the "Features" section of the root [`README.md`](../README.md) instead — this document goes into implementation-level detail on each area. The README shows the current version number, and [`CHANGELOG.md`](CHANGELOG.md) lists what changed in each release.
 
-**Version 0.10.0**
-
-- **Foundation** — installer, routing, database layer, configuration
-  service, authentication, user roles, admin dashboard, classic theme
-  system, plugin hook API, widgets, and navigation menus.
-- **Posts** — full CRUD with drafts/scheduling/pending review, Private
-  and Sticky posts, scheduled unpublishing, Trash & restore, bulk
-  actions (including change author/category/visibility), duplicate,
-  custom fields, preview, author archives, categories and tags,
-  revision history.
-- **Pages** — static pages with parent/child relationships, hierarchical
-  URLs matching that structure (e.g. `/about/team`), a
-  drag-and-drop-reorderable tree view, drafts/scheduling/pending
-  review, Private pages, comments, Trash & restore, bulk actions,
-  duplicate, Quick Edit, search & filtering, preview, breadcrumbs, and
-  revision history.
-- **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with
-  best-effort conversion between formats, text/image alignment, underline,
-  a fixed-palette font color, blockquotes, an Attachment Display
-  Settings step (size, link-to) when inserting media, and an Insert
-  Folder button that drops a whole Media folder into the content as a
-  row of thumbnails.
-- **Categories & Tags** — taxonomies for posts, with per-item archive
-  pages. Categories support Trash with restore, Merge (moves a
-  category's posts and child categories into another before removing
-  it), and bulk actions (Move to Trash / Restore / Delete Permanently /
-  Merge), matching Posts/Pages where applicable. Tags support the same
-  Merge and Delete bulk actions (flat, no hierarchy to reparent) plus a
-  one-click "Remove unused tags," a post's own tags are shown on its
-  single-post page linked to their archive, and every post's page shows
-  a "Related Posts" block of other posts sharing at least one tag.
+- **Foundation** — installer, routing, database layer, configuration service, authentication, user roles, admin dashboard, classic theme system, plugin hook API, widgets, and navigation menus.
+- **Posts** — full CRUD with drafts/scheduling/pending review, Private and Sticky posts, scheduled unpublishing, Trash & restore, bulk actions (including change author/category/visibility), duplicate, custom fields, preview, author archives, categories and tags, revision history.
+- **Pages** — static pages with parent/child relationships, hierarchical URLs matching that structure (e.g. `/about/team`), a drag-and-drop-reorderable tree view, drafts/scheduling/pending review, Private pages, comments, Trash & restore, bulk actions, duplicate, Quick Edit, search & filtering, preview, breadcrumbs, and revision history.
+- **Content editors** — Markdown (EasyMDE) and WYSIWYG (TinyMCE), with best-effort conversion between formats, text/image alignment, underline, superscript and subscript, a fixed-palette font color, blockquotes, browser spell checking in the visual editor, and an Attachment Display Settings step (size, width and height in pixels or percent, caption, link-to) when inserting media. An Edit Image dialog changes an inserted image without reinserting it, and an image can link to a URL or an existing page. Insert Folder drops a whole Media folder into the content as a row of thumbnails, and Insert Audio, Video, and File buttons add players and download links. The Markdown editor also has autosaved drafts (kept in the browser and sent to the server while you edit), definition lists, a keyboard shortcuts reference, and lets keyboard users leave the editor with Esc then Tab. Plugins can hide or add toolbar buttons in both editors.
+- **Categories & Tags** — taxonomies for posts, with per-item archive pages. Categories support Trash with restore, Merge (moves a category's posts and child categories into another before removing it), and bulk actions (Move to Trash / Restore / Delete Permanently / Merge), matching Posts/Pages where applicable. Tags support the same Merge and Delete bulk actions (flat, no hierarchy to reparent) plus a one-click "Remove unused tags," a post's own tags are shown on its single-post page linked to their archive, and every post's page shows a "Related Posts" block of other posts sharing at least one tag. Any category can be made the default one that new posts fall back to, and Tags have a Trash with restore, a Search & Filter panel, usage statistics, and an optional `tag.php` theme template.
 - **Permalinks** — a Settings &rsaquo; Permalinks screen to choose the post URL structure (Post name, Day and name, Month and name, or a custom token-based pattern) and rename the Category/Tag archive URL prefixes. Unconfigured, URLs are unchanged from `/post/{slug}`. Changing the structure on a site with published posts can automatically add a permanent redirect from every post's old URL to its new one, so existing links and search results keep working.
-- **Comments** — threaded discussion on both Posts and Pages, with
-  moderation (including bulk approve/spam/trash/delete), a per-status
-  count on every filter tab (All/Pending/Approved/Spam/Trash), an
-  Empty Spam action alongside Empty Trash, honeypot/CSRF/
-  submission-timing spam protection with a per-IP hourly comment limit and
-  a Security Events log on Maintenance &rsaquo; Logs, and optional Akismet spam-checking
-  (Settings &rsaquo; Security — off by default, never required). Every
-  post listing (the homepage and every category/tag/author/date
-  archive) shows each post's comment count linking through to its own
-  comment thread, the classic "X Comments" link.
+- **Comments** — threaded discussion on both Posts and Pages, with moderation (including bulk approve/spam/trash/delete), a per-status count on every filter tab (All/Pending/Approved/Spam/Trash), an Empty Spam action alongside Empty Trash, honeypot/CSRF/ submission-timing spam protection with a per-IP hourly comment limit and a Security Events log on Maintenance &rsaquo; Logs, and optional Akismet spam-checking (Settings &rsaquo; Security — off by default, never required). Every post listing (the homepage and every category/tag/author/date archive) shows each post's comment count linking through to its own comment thread, the classic "X Comments" link. The admin Comments screen can be searched by user, IP address, or date and has a Statistics tab with status counts, a comments-over-time chart, top commenters, and the most commented posts and pages. Posts and Pages also have bulk Enable and Disable Commenting.
 - **Comment subscriptions & notifications** — when switched on in Settings &rsaquo; Discussion, visitors can tick "Notify me of new comments by email" on the comment form, and signed-in users get a "Watch this thread" button. A guest confirms their subscription through an emailed link, sent only once their comment is approved; every subscription email carries an unsubscribe link, and opening a confirm/unsubscribe link only shows a button, so a mail scanner that opens links can't act on anyone's behalf. Signed-in users also get an admin Notifications screen (with an unread count in the sidebar) for replies to their comments, new comments on their posts and pages and on threads they watch, and comments awaiting moderation for users who can moderate. Subscriber emails and notifications are only sent once a comment is approved.
 - **Comment reactions, reporting & conversation tools** — Settings &rsaquo; Discussion &rsaquo; Reactions &amp; Reporting can add a single "Like" button or a small set of emoji reactions (👍 ❤️ 😂 😮 😢) to every comment, with one reaction per person per comment (clicking again removes it, choosing another switches it) and an option to let only signed-in users react while everyone still sees the counts. Visitors can also be allowed to report a comment with a reason; moderators get a notification, reported comments are gathered under a Reported tab on the admin Comments screen with a "Dismiss reports" action, and a comment is automatically held for moderation after a configurable number of reports. Moderators can reply to any approved or pending comment straight from the admin Comments screen ("Approve and Reply" for a pending one), without opening the post. Every comment also has a Quote button that starts a reply with the comment quoted (lines beginning with ">" display as a quote), @mentions using a user's public author name notify that user, registered commenters show their role (or "Post author"), and a comment a moderator has edited shows "(edited)". Reactions and reports work without JavaScript and update in place when it's available.
 - **Discussion settings** — a dedicated Settings &rsaquo; Discussion screen for comment defaults (required name/email, whether to collect a Website URL at all, registered-only commenting, auto-close after N days, cookie-remembered guest info, threading depth, pagination and ordering), moderation (manual-approval, link/keyword holds, disallowed-keyword rejection, IP blacklist, optional IP address anonymization, a `comment_is_spam` filter for spam-detection plugins), admin/author email notifications, and avatars (Gravatar rating/default, or a locally uploaded default image).
 - **Privacy Policy Page & Comment Data Requests** — a Settings &rsaquo; Privacy screen to name an existing Page as the site's privacy policy (exposed to themes via the `privacy_policy_url()` template tag), plus a GDPR-style lookup by commenter email address for exporting that commenter's comments as JSON or erasing their name/email/website/IP from every matching comment while keeping the comment text itself.
-- **RSS & Atom feeds** — a site-wide feed of published posts, plus a
-  per-category feed (`/category/{slug}/feed`) for each category.
-- **Search** — full-text search across posts and pages.
-- **User management** — admin-managed accounts and roles, with Trash &
-  restore, bulk actions (trash/restore/delete/change role),
-  search/filter by username, email, or role, and avatars (Gravatar by
-  default, with an optional per-user upload).
-- **Updates** — install official release ZIPs from the admin panel, either
-  by checking GitHub Releases directly or uploading a ZIP manually, with
-  automatic backup and rollback either way.
-- **Maintenance mode** — take the public site offline for visitors while
-  admins keep working, with an optional schedule, a live countdown to the
-  return time, an IP whitelist for people who should still see the site,
-  and a customizable page (background image, colors, custom CSS).
-- **Portable Settings Export/Import** (Maintenance &rsaquo; Tools) —
-  download a file with one install's Permalinks, Reading, Discussion,
-  Media/Thumbnails, and General's non-identity settings, then import it
-  into a *different*, unrelated Lumora Press install to copy that
-  configuration across — with a before/after preview shown before
-  anything is applied. Site identity (URL, tagline, admin email) and
-  anything install-specific (Security, Privacy, Redirects, Cache,
-  Embeds, or a setting referencing a specific local media file or page)
-  is never included.
+- **RSS, Atom & JSON Feed** — a site-wide feed of published posts, plus per-category, per-tag, and per-author feeds, a Pages feed, and a comments feed (site-wide and per post). Every feed is also available as a JSON Feed, each post item carries its categories, tags, and a comments link, and Settings &rsaquo; General can switch individual feed types on or off. Plugins can add a feed of their own.
+- **Search** — relevance-ranked search across posts, pages, categories, tags, and authors, with "exact phrase" and -excluded words, a Refine search panel (content type, category, tag, author, date range) and sorting that update the results in place, suggestions when nothing is found and a "Did you mean?" for a likely misspelling, and optional partial and fuzzy matching. Visitors can optionally get title suggestions or live results as they type, plus recent and popular searches. Settings &rsaquo; Search chooses what is searchable, boosts posts whose tags or categories match, refreshes the search index automatically, and shows search statistics. Plugins can add their own searchable content type.
+- **User management** — admin-managed accounts and roles, with Trash & restore, bulk actions (trash/restore/delete/change role), search/filter by username, email, or role, and avatars (Gravatar by default, with an optional per-user upload).
+- **Updates** — install official release ZIPs from the admin panel, either by checking GitHub Releases directly or uploading a ZIP manually, with automatic backup and rollback either way. Every backup can be downloaded (files and database, the database compressed), a backup can be taken on demand, and an interrupted update can be resumed or cancelled. The plugins and the theme that ship with Lumora Press can also be updated on their own, without updating Lumora Press itself.
+- **Maintenance mode** — take the public site offline for visitors while admins keep working, with an optional schedule, a live countdown to the return time, an IP whitelist for people who should still see the site, and a customizable page (background image, colors, custom CSS). A site that isn't ready yet can also show a static "coming soon" page by placing an `index.html` next to `index.php`.
+- **Portable Settings Export/Import** (Maintenance &rsaquo; Tools) — download a file with one install's Permalinks, Reading, Discussion, Media/Thumbnails, and General's non-identity settings, then import it into a *different*, unrelated Lumora Press install to copy that configuration across — with a before/after preview shown before anything is applied. Site identity (URL, tagline, admin email) and anything install-specific (Security, Privacy, Redirects, Cache, Embeds, or a setting referencing a specific local media file or page) is never included.
 - **Content Export/Import** (Maintenance &rsaquo; Export / Import) — export posts, pages, comments, media, users, menus, and widgets (all or any subset) as a lossless Lumora Press `.zip` (a `manifest.json` plus, optionally, the uploaded files) or as a WordPress WXR `.xml` file, with a list of anything WXR couldn't carry shown after the export. A Lumora Press export imports back into any Lumora Press site from Maintenance &rsaquo; Import (uploaded, or from a path on the server with a Discover list, for exports larger than the upload limit), remapping authors, featured images, categories, page parents, and comment threads, and rewriting links to the old site and its media; re-importing the same site's export updates or skips what it brought in before instead of duplicating it. Plugins can add further export formats (see `docs/DEVELOPER-APIS.md`).
-- **Appearance** — theme browser (install, activate, preview — a
-  previewed theme now persists across the whole site as you click
-  through it, not just the page you started on — and delete inactive
-  themes individually or in bulk), custom CSS, a tabbed
-  Customize screen (Header, Welcome Message, Body — colors/typography/
-  layout/post display, Menu, Widgets, Footer; values are scoped per
-  active theme, no CSS editing required), widgets (drag-to-reorder,
-  including the Dashboard's own widgets, per signed-in user), navigation
-  menus (nested submenus, drag-to-reorder, items hidden without deleting
-  them, and plugin-provided item types), and a built-in theme file editor.
-- **Plugin browser** — install, activate, and manage plugins from the
-  admin panel, including deleting inactive plugins individually or in
-  bulk.
-- **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small
-  developer API (`lp_icon()` and friends) for icons in theme/plugin markup,
-  with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo;
-  Font Awesome, off by default), plus a searchable icon picker in the
-  post/page/downloads editor toolbar once enabled.
-- **Emoji Picker plugin** (bundled, active by default) — a search-and-
-  browse-by-category emoji picker in the post/page/downloads editor
-  toolbar (Visual/HTML and Markdown), with a per-user Recently Used
-  category and a small developer API (an `lp_emoji_dataset` filter, an
-  `lp_emoji_inserted` action, `lp_emoji_picker_button()` for use outside
-  the default toolbars). Inserts a plain Unicode character — no images,
-  shortcodes, or third-party requests (Settings &rsaquo; Writing &rsaquo;
-  Emoji Picker).
-- **Lumora Shield plugin** (bundled) — optional hardening features
-  beyond core's own basics: an optional "hide author archives entirely"
-  setting on top of core's own always-on author-archive username-
-  enumeration protection; a log of blocked enumeration attempts with
-  configurable retention and optional email alerts; and content/
-  behavioral spam heuristics (excessive links, uppercase/punctuation,
-  hidden Unicode characters, repeated phrases, prior spam history,
-  posting frequency, duplicate content) feeding both core's
-  `comment_is_spam` extension point and, when the Contact Forms plugin
-  is active, its own `contact_form_is_spam` filter (Lumora Shield
-  &rsaquo; Settings, all off/on-by-sensible-default).
-- **Media Manager** — multi-file uploads with per-file progress, virtual
-  folders, metadata, thumbnail generation, a lightbox viewer (covering
-  both featured images and images embedded directly in post/page
-  content), download statistics for document/archive/audio/video files,
-  and usage tracking with delete-time warnings.
-- **Featured images** — per-post/page featured images with manual
-  cropping (with a configurable output size). Any JPEG, PNG, or WebP
-  in the Media Manager can also be cropped, rotated, and flipped from
-  its edit screen, or from the Edit Image dialog on the editors' Insert
-  Image step and the featured/category image pickers, saved either as a
-  new Library item or over the original. A site-wide
-  Customize option chooses whether a featured image appears above the
-  title or beside it, with the front page's Classic layout following
-  the same choice.
-- **FTP media import** — bring in files already on the server without a
-  browser upload.
-- **Settings** — site info, date/time formatting, SEO/social sharing
-  defaults, and more.
-- **Reading settings** — choose a "latest posts" or static-page homepage
-  (with an optional separate posts page), set how many posts each
-  listing page shows, and discourage search engines from indexing the
-  site (a virtual `robots.txt` plus a `noindex` meta tag).
-- **Front page & archive post display** — Appearance &rsaquo; Customize
-  &rsaquo; Body &rsaquo; Post Display controls whether the front page and archives show each post's
-  full content or an excerpt (with a configurable Read More link and
-  automatic excerpt length), and whether the featured image appears in
-  listings. A Read More tag, insertable from the content editor toolbar,
-  lets an author choose the excerpt cutoff point by hand. Single-post
-  pages always show the complete post regardless of this setting.
-- **Caching** — HTTP cache headers and conditional `304` responses on
-  cacheable public pages, first-class LiteSpeed Cache purge integration
-  (auto-detected, with a manual override), and automatic cache
-  invalidation whenever content or settings change.
-- **SEO tools** — per-post/page SEO title and meta description overrides,
-  canonical URLs, an XML sitemap, JSON-LD structured data, and
-  admin-managed URL redirects.
-- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify,
-  CodePen, Twitter/X, or Bluesky link on its own line in a post/page and it
-  automatically becomes an embedded player, tweet, or post (Settings
-  &rsaquo; Embeds). No outbound request is made to build the embed, with
-  one exception: a Bluesky link is resolved once against Bluesky's own
-  servers when the post/page is saved, not on every page view. Themes and
-  plugins can register additional providers via
-  `apply_filters('embed_providers', ...)`.
-- **Default Editor** — a site-wide default content editor (Settings
-  &rsaquo; General), with a per-user override on each user's own "My
-  Profile" page (or set for them by an administrator) and an optional
-  toggle to lock everyone to the site default.
-- **Public light/dark mode toggle** — a header button lets a visitor
-  explicitly pick Light or Dark, persisted in their browser and applied
-  before the page paints; falls back to the OS's preference when no
-  explicit choice has been made.
-- **Post categories & edit link** — single posts and post listings show
-  each post's assigned categories, and a signed-in author/editor with
-  permission sees a quick "Edit this post" link on the single post view,
-  and an "Edit this page" counterpart on a single Page.
-
-See `TODO.md` for planned work and known gaps.
+- **Appearance** — theme browser (install, activate, preview — a previewed theme now persists across the whole site as you click through it, not just the page you started on — and delete inactive themes individually or in bulk), custom CSS, a tabbed Customize screen (Header, Welcome Message, Body — colors/typography/ layout/post display, Menu, Widgets, Footer; values are scoped per active theme, no CSS editing required), widgets (drag-to-reorder, including the Dashboard's own widgets, per signed-in user), navigation menus (nested submenus, drag-to-reorder, items hidden without deleting them, and plugin-provided item types), and a built-in theme file editor. The bundled Lumora Classic theme offers Classic and Magazine homepage layouts, the header can rotate through several header images chosen from the Media Manager, and the active theme is listed first on the Themes screen.
+- **Plugin browser** — install, activate, and manage plugins from the admin panel, including activating, deactivating, or deleting several at once, per-plugin action links such as Settings, and an "Update available" marker with a one-click update for bundled plugins.
+- **Font Awesome plugin** (bundled) — an `[icon]` shortcode and a small developer API (`lp_icon()` and friends) for icons in theme/plugin markup, with CDN or self-hosted delivery (Settings &rsaquo; Appearance &rsaquo; Font Awesome, off by default), plus a searchable icon picker in the post/page/downloads editor toolbar once enabled.
+- **Emoji Picker plugin** (bundled, active by default) — a search-and- browse-by-category emoji picker in the post/page/downloads editor toolbar (Visual/HTML and Markdown), with a per-user Recently Used category and a small developer API (an `lp_emoji_dataset` filter, an `lp_emoji_inserted` action, `lp_emoji_picker_button()` for use outside the default toolbars). Inserts a plain Unicode character — no images, shortcodes, or third-party requests (Settings &rsaquo; Writing &rsaquo; Emoji Picker).
+- **Lumora Shield plugin** (bundled) — optional hardening features beyond core's own basics: an optional "hide author archives entirely" setting on top of core's own always-on author-archive username- enumeration protection; a log of blocked enumeration attempts with configurable retention and optional email alerts; and content/ behavioral spam heuristics (excessive links, uppercase/punctuation, hidden Unicode characters, repeated phrases, prior spam history, posting frequency, duplicate content) feeding both core's `comment_is_spam` extension point and, when the Contact Forms plugin is active, its own `contact_form_is_spam` filter (Lumora Shield &rsaquo; Settings, all off/on-by-sensible-default).
+- **Security & spam protection** — a login lockout whose thresholds you set on Settings &rsaquo; Security and which lengthens for an IP address that keeps failing (the owner of the targeted account is emailed), comment protection made of two hidden trap fields with names unique to your site, submission timing, per-IP comment limits (a short gap plus an hourly cap), an optional form lifetime, and optional Akismet checking, form tokens that expire and are cleared on sign-in and sign-out, a Security Events log on Maintenance &rsaquo; Logs, and a Content-Security-Policy header that plugins can extend. See [`SPAM-PROTECTION.md`](SPAM-PROTECTION.md).
+- **Admin interface** — a classic collapsed icon sidebar with flyout submenus, a light and a dark admin theme, a layout that works on a phone, drag-to-reorder Dashboard widgets, a Notifications screen, and list screens with a collapsible Search & Filter panel.
+- **Downloads plugin** (bundled) — a dedicated admin area for downloadable files and links: add a download as an uploaded file or an external URL with a title, description, and category, then see every download grouped by category, with Trash and restore, Duplicate, and a "No file attached" filter for entries still missing a file. `[lumora_downloads]` (with optional paging) and `[lumora_recent_downloads]` show them anywhere, and a Shortcodes page documents them, including the imported Simple Download Monitor shortcodes.
+- **Link Directory plugin** (bundled) — an admin-organized directory of links to other sites: a title, category and sub-category, URL, thumbnail, optional 100×50 link button, and description per entry. `[lumora_link_directory]` shows a category's links or every category with its link count, a Links widget can show plain links or a row of link buttons in any widget area, and Export / Import moves the whole directory, images included, to another install.
+- **Contact Forms plugin** (bundled) — build simple contact forms from a fixed set of field types (including File Upload), embed one with `[contact_form id="1"]`, and read submissions in an admin inbox with search and date filters. Spam protection mirrors core's comment form (hidden trap field, timing, a per-IP limit), with optional reCAPTCHA, Cloudflare Turnstile, and Akismet.
+- **Visitor Stats plugin** (bundled) — a local, privacy-respecting page-view counter with a Dashboard widget and a Stats screen, optional country, referrer, browser, and device breakdowns, no third-party service, no cookies, and no raw IP address or User-Agent stored.
+- **Lumora Gallery Shortcodes plugin** (bundled) — embed albums and images from one or more separately installed Lumora Gallery sites into posts and pages: whole albums, the newest images from an album, specific images, or the newest images across a gallery.
+- **WordPress Importer plugin** (bundled) — brings an existing WordPress site's users, categories, tags, media, pages, posts, and comments into Lumora Press through a direct database connection or a WXR export file, plus a local copy of its uploads folder. Supports WordPress 3.5 and later.
+- **Lumora Sweep plugin** (bundled) — a database cleanup tool on Maintenance &rsaquo; Tools for excess revisions, old trashed posts and pages, old spam and trashed comments, orphaned or duplicate custom fields, and unused categories and tags. Manual, with a preview before anything is deleted.
+- **Dummy Content plugin** (bundled) — a developer-only generator of realistic placeholder users, posts, pages, media, categories, tags, and comments for testing themes and plugins, every item tagged so it can be removed in one step.
+- **Media Manager** — multi-file uploads with per-file progress, virtual folders shown as a compact tree in a sidebar (with a folder menu for rename, move, and delete), metadata, thumbnail generation (with a choice of which sizes to regenerate), a lightbox viewer (covering both featured images and images embedded directly in post/page content), an audio and video player, download statistics for document/archive/audio/video files, and usage tracking with delete-time warnings. Every file picker shows each file's size and an image's dimensions, and a Shortcodes page documents the shortcodes built into core.
+- **Featured images** — per-post/page featured images with manual cropping (with a configurable output size). Any JPEG, PNG, or WebP in the Media Manager can also be cropped, rotated, and flipped from its edit screen, or from the Edit Image dialog on the editors' Insert Image step and the featured/category image pickers, saved either as a new Library item or over the original. A site-wide Customize option chooses whether a featured image appears above the title or beside it, with the front page's Classic layout following the same choice.
+- **FTP media import** — bring in files already on the server without a browser upload.
+- **Settings** — site info, date/time formatting, SEO/social sharing defaults, and more.
+- **Reading settings** — choose a "latest posts" or static-page homepage (with an optional separate posts page), set how many posts each listing page shows, and discourage search engines from indexing the site (a virtual `robots.txt` plus a `noindex` meta tag).
+- **Front page & archive post display** — Appearance &rsaquo; Customize &rsaquo; Body &rsaquo; Post Display controls whether the front page and archives show each post's full content or an excerpt (with a configurable Read More link and automatic excerpt length), and whether the featured image appears in listings. A Read More tag, insertable from the content editor toolbar, lets an author choose the excerpt cutoff point by hand. Single-post pages always show the complete post regardless of this setting.
+- **Caching** — HTTP cache headers and conditional `304` responses on cacheable public pages, first-class LiteSpeed Cache purge integration (auto-detected, with a manual override), and automatic cache invalidation whenever content or settings change.
+- **SEO tools** — per-post/page SEO title and meta description overrides, canonical URLs, an XML sitemap, JSON-LD structured data, and admin-managed URL redirects.
+- **Auto-Embed** — paste a bare YouTube, Vimeo, SoundCloud, Spotify, CodePen, Twitter/X, Instagram, or Bluesky link on its own line in a post/page and it automatically becomes an embedded player, tweet, or post (Settings &rsaquo; Embeds). No outbound request is made to build the embed, with one exception: a Bluesky link is resolved once against Bluesky's own servers when the post/page is saved, not on every page view. Themes and plugins can register additional providers via `apply_filters('embed_providers', ...)`.
+- **Default Editor** — a site-wide default content editor (Settings &rsaquo; General), with a per-user override on each user's own "My Profile" page (or set for them by an administrator) and an optional toggle to lock everyone to the site default.
+- **Public light/dark mode toggle** — a header button lets a visitor explicitly pick Light or Dark, persisted in their browser and applied before the page paints; falls back to the OS's preference when no explicit choice has been made.
+- **Post categories & edit link** — single posts and post listings show each post's assigned categories, and a signed-in author/editor with permission sees a quick "Edit this post" link on the single post view, and an "Edit this page" counterpart on a single Page.

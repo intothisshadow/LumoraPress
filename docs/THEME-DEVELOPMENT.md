@@ -1,30 +1,16 @@
 # Theme Development
 
-A reference for building a Lumora Press theme: required files, the
-template hierarchy, the template-tag API available inside a template, and
-how to register widget areas, nav menus, and Theme Options fields.
+A reference for building a Lumora Press theme: required files, the template hierarchy, the template-tag API available inside a template, and how to register widget areas, nav menus, and Theme Options fields.
 
-Themes are traditional PHP templates in the classic WordPress style — no
-block editor, no `theme.json`, no Full Site Editing. If you can write
-`header.php`/`footer.php`/`single.php` for classic WordPress, you already
-know the shape of a Lumora Press theme.
+Themes are traditional PHP templates in the classic WordPress style — no block editor, no `theme.json`, no Full Site Editing. If you can write `header.php`/`footer.php`/`single.php` for classic WordPress, you already know the shape of a Lumora Press theme.
 
-**Keep this document current.** Whenever a template-tag function, the
-template hierarchy, a widget/menu/Theme-Options registration pattern, or
-the dark-mode convention changes, update this file in the same change —
-see `CLAUDE.md`'s "After Every Code Change" rule. This is reference
-material, not a changelog: it should describe the API as it exists right
-now, not a history of how it got there.
+**Keep this document current.** Whenever a template-tag function, the template hierarchy, a widget/menu/Theme-Options registration pattern, or the dark-mode convention changes, update this file in the same change — see `CLAUDE.md`'s "After Every Code Change" rule. This is reference material, not a changelog: it should describe the API as it exists right now, not a history of how it got there.
 
-For the hook/filter system, plugin structure, and service-layer APIs, see
-[`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) instead — this document is
-scoped to what a *theme* author needs.
+For the hook/filter system, plugin structure, and service-layer APIs, see [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) instead — this document is scoped to what a *theme* author needs.
 
 ## Getting started
 
-A theme lives in its own directory under `content/themes/{slug}/`. The
-only required file is `style.css`, with a header comment block Lumora
-Press reads to identify the theme:
+A theme lives in its own directory under `content/themes/{slug}/`. The only required file is `style.css`, with a header comment block Lumora Press reads to identify the theme:
 
 ```css
 /*
@@ -46,18 +32,9 @@ Requires PHP: 8.2
 
 If the active theme's folder or its `style.css` is missing (deleted by hand, for example), the site falls back to the bundled Lumora Classic theme rather than failing, until another theme is activated.
 
-Every field is optional (a theme with no `Theme Name:` still shows up,
-titled from its directory slug) and only the first 8192 bytes of
-`style.css` are read for the header, mirroring classic WordPress's own
-`style.css` convention. Add a `preview.jpg`/`screenshot.jpg` (or numbered
-`screenshot-2.png`, etc.) in the theme directory for the Appearance ›
-Themes admin screen's thumbnail/gallery.
+Every field is optional (a theme with no `Theme Name:` still shows up, titled from its directory slug) and only the first 8192 bytes of `style.css` are read for the header, mirroring classic WordPress's own `style.css` convention. Add a `preview.jpg`/`screenshot.jpg` (or numbered `screenshot-2.png`, etc.) in the theme directory for the Appearance › Themes admin screen's thumbnail/gallery.
 
-Beyond `style.css`, the templates below are what `SiteController` and
-`ThemeRenderer` actually request. The bundled Lumora Classic theme
-(`content/themes/lumora-classic/`) is a complete, working reference
-implementation — copy it as a starting point rather than building from
-this document alone.
+Beyond `style.css`, the templates below are what `SiteController` and `ThemeRenderer` actually request. The bundled Lumora Classic theme (`content/themes/lumora-classic/`) is a complete, working reference implementation — copy it as a starting point rather than building from this document alone.
 
 ## Directory structure & template files
 
@@ -83,20 +60,11 @@ content/themes/{slug}/
 └── preview.jpg          (optional — admin screenshot)
 ```
 
-`index.php` through `maintenance.php` above are genuinely required:
-`ThemeRenderer::render()` throws if the requested file is missing. The
-four partials (`sidebar.php`/`comments.php`, plus `header.php`/
-`footer.php` which are *conventionally* always present) are located via
-`renderPartial()`, which no-ops silently if the file doesn't exist —
-useful if your theme has no sidebar at all.
+`index.php` through `maintenance.php` above are genuinely required: `ThemeRenderer::render()` throws if the requested file is missing. The four partials (`sidebar.php`/`comments.php`, plus `header.php`/ `footer.php` which are *conventionally* always present) are located via `renderPartial()`, which no-ops silently if the file doesn't exist — useful if your theme has no sidebar at all.
 
 ## Template hierarchy
 
-Lumora Press does **not** implement a deep cascading template hierarchy
-the way classic WordPress does (no `single-{post-type}-{slug}.php`
-fallback chain, no per-category/per-slug overrides). `SiteController`
-hardcodes which literal filename to render for each route, with one
-narrow exception:
+Lumora Press does **not** implement a deep cascading template hierarchy the way classic WordPress does (no `single-{post-type}-{slug}.php` fallback chain, no per-category/per-slug overrides). `SiteController` hardcodes which literal filename to render for each route, with one narrow exception:
 
 | Route | Template |
 |---|---|
@@ -109,34 +77,17 @@ narrow exception:
 | Unmatched route / explicit 404 | `404.php` |
 | Maintenance Mode | `maintenance.php` |
 
-Partials (`header.php`, `footer.php`, `sidebar.php`, `comments.php`) are
-requested by name from inside the templates above via `get_header()`/
-`get_footer()`/`get_sidebar()`/`comments_template()` — see the Template
-Tags reference below. `functions.php` is loaded once per request,
-separately from rendering, before any template or Theme Options
-registration happens.
+Partials (`header.php`, `footer.php`, `sidebar.php`, `comments.php`) are requested by name from inside the templates above via `get_header()`/ `get_footer()`/`get_sidebar()`/`comments_template()` — see the Template Tags reference below. `functions.php` is loaded once per request, separately from rendering, before any template or Theme Options registration happens.
 
-`tag.php` is entirely optional — a theme with no `tag.php` file behaves
-exactly as before, tag archives rendering through `archive.php` like
-every other archive type. Providing `tag.php` gets the identical set of
-variables `archive.php` receives for a tag archive (`$archive_type` is
-still `'tag'`), it's simply a separate file a theme can style
-differently from its other archives. This is the only template in the
-table above with a fallback; there is no equivalent override for
-categories, authors, or dates, and no way to add a per-slug or
-per-category template beyond what's listed (a `single-my-slug.php` file,
-for example, is simply never looked for).
+`tag.php` is entirely optional — a theme with no `tag.php` file behaves exactly as before, tag archives rendering through `archive.php` like every other archive type. Providing `tag.php` gets the identical set of variables `archive.php` receives for a tag archive (`$archive_type` is still `'tag'`), it's simply a separate file a theme can style differently from its other archives. This is the only template in the table above with a fallback; there is no equivalent override for categories, authors, or dates, and no way to add a per-slug or per-category template beyond what's listed (a `single-my-slug.php` file, for example, is simply never looked for).
 
 `maintenance.php` receives `$page_title`, `$message`, `$has_background_image` (true when the administrator chose a background image; add a class such as `lp-maintenance--has-background` to the container so the theme can give the message a semi-transparent panel that keeps the text readable), `$return_at` (the scheduled end as a `DateTimeImmutable`, or `null`), and `$countdown_to` (the same moment, but only when the administrator turned the live countdown on and the end is still ahead, otherwise `null`). To show the countdown, print an empty element with a `data-lp-countdown-to` attribute holding `$countdown_to->format(DATE_ATOM)` and the `hidden` attribute, then style it with `.lp-maintenance__countdown`; core loads the script that fills it in, and a visitor without JavaScript just sees the static return time. Wrap the site header, navigation, and welcome message in `header.php` in `if (!is_maintenance_page())` so the maintenance page shows just its message. Fire `do_action('maintenance_page_content')` inside the page's container so plugins can add their own status information. The administrator's chosen background image, colors, and custom CSS are printed into `<head>` by core through the usual `head_assets` hook, so the template needs no markup for them; style the page with the `.lp-maintenance`, `.lp-maintenance__message`, `.lp-maintenance__return-at`, and `.lp-maintenance__countdown` classes.
 
 ## The "loop"
 
-There is no global `$post`/`have_posts()`/`the_post()` state to manage.
-`SiteController` hands each template exactly the data it needs as plain
-local variables:
+There is no global `$post`/`have_posts()`/`the_post()` state to manage. `SiteController` hands each template exactly the data it needs as plain local variables:
 
-- `index.php` and `archive.php` receive `$posts` (a plain array of
-  `Post` objects) — iterate it with an ordinary `foreach`:
+- `index.php` and `archive.php` receive `$posts` (a plain array of `Post` objects) — iterate it with an ordinary `foreach`:
 
   ```php
   <?php foreach ($posts as $post): ?>
@@ -145,25 +96,13 @@ local variables:
   <?php endforeach; ?>
   ```
 
-- `single.php` and `page.php` receive a single `$post`/`$page` variable
-  directly — no loop needed.
-- `search.php` receives `$results` (an array of `SearchResult` objects),
-  iterated the same way, plus `$search`: the whole search as one bundle
-  (query, criteria, pagination, filter choices, and empty-state suggestions).
-  Don't pick it apart — hand it straight to `search_filters_form($search)`,
-  `search_did_you_mean($search)`, and `search_empty_state($search)`, so a filter added in a later version
-  reaches your theme without a template change.
-- `comments.php` receives `$comment_tree` (a nested array), rendered via
-  the `comment_list()` template tag rather than hand-written iteration.
+- `single.php` and `page.php` receive a single `$post`/`$page` variable directly — no loop needed.
+- `search.php` receives `$results` (an array of `SearchResult` objects), iterated the same way, plus `$search`: the whole search as one bundle (query, criteria, pagination, filter choices, and empty-state suggestions). Don't pick it apart — hand it straight to `search_filters_form($search)`, `search_did_you_mean($search)`, and `search_empty_state($search)`, so a filter added in a later version reaches your theme without a template change.
+- `comments.php` receives `$comment_tree` (a nested array), rendered via the `comment_list()` template tag rather than hand-written iteration.
 
 ## Template Tags
 
-Every function below is declared with a `function_exists()` guard, so a
-theme (or plugin) may safely redefine one if it truly needs to — though
-that's rarely necessary. Functions that echo output are prefixed `the_`
-(matching WordPress convention); functions that return a value for you to
-handle yourself are prefixed `get_` or named directly after what they
-return.
+Every function below is declared with a `function_exists()` guard, so a theme (or plugin) may safely redefine one if it truly needs to — though that's rarely necessary. Functions that echo output are prefixed `the_` (matching WordPress convention); functions that return a value for you to handle yourself are prefixed `get_` or named directly after what they return.
 
 ### Post & content
 
@@ -234,8 +173,7 @@ return.
 
 ### Media & images
 
-All of these accept `Post|Page|SearchResult $item` — anything with a
-`featuredImageId`.
+All of these accept `Post|Page|SearchResult $item` — anything with a `featuredImageId`.
 
 | Function | Purpose |
 |---|---|
@@ -269,15 +207,7 @@ All of these accept `Post|Page|SearchResult $item` — anything with a
 | `get_footer(): void` | Fires `get_footer`, then renders `footer.php`. |
 | `get_sidebar(): void` | Fires `get_sidebar`, then renders `sidebar.php` (silent no-op if the theme has none). |
 
-Your `header.php` and `footer.php` are also where you fire the two
-theme-convention hooks other code (and plugins) expect: `do_action('head_assets')`
-right before `</head>` and `do_action('footer_assets')` right before
-`</body>`. Core itself listens on `footer_assets` (to emit lightbox/embed
-script tags when a template used `the_post_thumbnail_lightbox()` or an
-auto-embedded URL, and the site search script, which attaches to any
-`<form role="search">` with an `<input name="q">`), so skipping
-these hooks will silently break those features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook
-reference.
+Your `header.php` and `footer.php` are also where you fire the two theme-convention hooks other code (and plugins) expect: `do_action('head_assets')` right before `</head>` and `do_action('footer_assets')` right before `</body>`. Core itself listens on `footer_assets` (to emit lightbox/embed script tags when a template used `the_post_thumbnail_lightbox()` or an auto-embedded URL, and the site search script, which attaches to any `<form role="search">` with an `<input name="q">`), so skipping these hooks will silently break those features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook reference.
 
 ### Site info & meta
 
@@ -302,11 +232,7 @@ reference.
 | `esc_attr(string $value): string` | For HTML attribute values. |
 | `esc_url(string $url): string` | For URL attribute values. |
 
-Escape at output time, right where you echo — never store pre-escaped
-data. Content returned by `the_content()`/`render_content()`/
-`get_the_excerpt()` is already safe HTML/plain-text by the time it
-reaches you; everything else (titles, slugs, user-entered fields) needs
-explicit escaping.
+Escape at output time, right where you echo — never store pre-escaped data. Content returned by `the_content()`/`render_content()`/ `get_the_excerpt()` is already safe HTML/plain-text by the time it reaches you; everything else (titles, slugs, user-entered fields) needs explicit escaping.
 
 ### Internationalization
 
@@ -333,9 +259,7 @@ Render in a template:
 <?php endif; ?>
 ```
 
-`is_active_sidebar()` is a guard, not required — `dynamic_sidebar()`
-itself no-ops if the area has no widgets, but wrapping the outer markup
-in the guard avoids an empty `<aside>` shell.
+`is_active_sidebar()` is a guard, not required — `dynamic_sidebar()` itself no-ops if the area has no widgets, but wrapping the outer markup in the guard avoids an empty `<aside>` shell.
 
 ## Navigation menus
 
@@ -351,11 +275,7 @@ Render in a template:
 <?php nav_menu('primary'); ?>
 ```
 
-`nav_menu()` renders the assigned menu as a nested `<ul class="lp-nav-menu">`
-and self-guards (no-op if nothing is assigned to that location) — no
-`has_nav_menu()` check is required around it, though `has_nav_menu(string $location): bool`
-is available if you need a conditional wrapper around surrounding markup
-(a `<nav>` tag, say).
+`nav_menu()` renders the assigned menu as a nested `<ul class="lp-nav-menu">` and self-guards (no-op if nothing is assigned to that location) — no `has_nav_menu()` check is required around it, though `has_nav_menu(string $location): bool` is available if you need a conditional wrapper around surrounding markup (a `<nav>` tag, say).
 
 Menu items an administrator marked "Hide on the site" on Appearance › Menus are left out of `nav_menu()`'s output along with everything nested under them, and `has_nav_menu()` returns `false` when every item in the location is hidden. Each item's `<li>` carries `lp-nav-menu__item`, any CSS classes set on the item, and `lp-nav-menu__item--has-children` when it has a submenu (`<ul class="lp-nav-menu__submenu">`). To change the items, classes, or finished markup from `functions.php`, use the `nav_menu_tree`, `nav_menu_item_classes`, and `nav_menu_html` filters (see "Navigation menus" in `docs/DEVELOPER-APIS.md`).
 
@@ -377,49 +297,23 @@ add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOpti
 });
 ```
 
-Read the value in a template with `theme_option('my_theme_hero_text')` —
-this always returns a string, falling back to the field's own `default`
-if unset, and never throws for an unknown key.
+Read the value in a template with `theme_option('my_theme_hero_text')` — this always returns a string, falling back to the field's own `default` if unset, and never throws for an unknown key.
 
-Values are scoped per active theme (LP-123): each theme's saved values
-are independent — switching the active theme via Appearance > Themes
-switches which set of values is shown/editable and rendered on the front
-end. A custom section your theme registers (like `my_theme` above) only
-ever shows up on the admin's Appearance > Customize screen while your
-theme is active, since that screen only ever lists the current
-`ThemeOptions` instance's registered sections.
+Values are scoped per active theme (LP-123): each theme's saved values are independent — switching the active theme via Appearance > Themes switches which set of values is shown/editable and rendered on the front end. A custom section your theme registers (like `my_theme` above) only ever shows up on the admin's Appearance > Customize screen while your theme is active, since that screen only ever lists the current `ThemeOptions` instance's registered sections.
 
-`ThemeOptionType` cases: `Text`, `Textarea`, `Number`, `Checkbox`,
-`Select`, `Color`, `Url`, `Html` (LP-123 — rich Markdown/HTML/Plain
-content, reusing the same editor as post/page content; see below).
+`ThemeOptionType` cases: `Text`, `Textarea`, `Number`, `Checkbox`, `Select`, `Color`, `Url`, `Html` (LP-123 — rich Markdown/HTML/Plain content, reusing the same editor as post/page content; see below).
 
-`ThemeOptionField` constructor parameters: `key`, `section`, `type`,
-`label`, `default = ''`, `cssVariable = null`, `help = ''`,
-`choices = []` (Select: value ⇒ label), `min = null`/`max = null`
-(Number), `cssUnit = ''` (Number, e.g. `'px'`), `cssValueMap = []`
-(Select: stored value ⇒ actual CSS value), `allowEmpty = false`,
-`previewDefault = null` (Color: swatch shown when the value is empty),
-`allowedHosts = []` (Url: restrict the submitted URL's host).
+`ThemeOptionField` constructor parameters: `key`, `section`, `type`, `label`, `default = ''`, `cssVariable = null`, `help = ''`, `choices = []` (Select: value ⇒ label), `min = null`/`max = null` (Number), `cssUnit = ''` (Number, e.g. `'px'`), `cssValueMap = []` (Select: stored value ⇒ actual CSS value), `allowEmpty = false`, `previewDefault = null` (Color: swatch shown when the value is empty), `allowedHosts = []` (Url: restrict the submitted URL's host).
 
 ### The `Html` field type
 
-An `Html`-type field stores raw, unsanitized Markdown/HTML/Plain content
-(sanitized only at render time, the same posture as post/page `content`
-and `custom_css()` — never double-sanitized at storage time), rendered
-through `render_content()`. It's always paired with a companion
-`Select`-type field carrying the `\LumoraPress\Models\ContentFormat`
-choice (`'html'`/`'markdown'`/`'plain'`), by convention named
-`{key}_format` — see `welcome_message`/`welcome_message_format` and
-`footer_html`/`footer_html_format` in `ThemeOptions::registerStandardOptions()`
-for the exact pattern to follow for your own rich-content field.
+An `Html`-type field stores raw, unsanitized Markdown/HTML/Plain content (sanitized only at render time, the same posture as post/page `content` and `custom_css()` — never double-sanitized at storage time), rendered through `render_content()`. It's always paired with a companion `Select`-type field carrying the `\LumoraPress\Models\ContentFormat` choice (`'html'`/`'markdown'`/`'plain'`), by convention named `{key}_format` — see `welcome_message`/`welcome_message_format` and `footer_html`/`footer_html_format` in `ThemeOptions::registerStandardOptions()` for the exact pattern to follow for your own rich-content field.
 
 ### Appearance > Customize screen sections
 
 The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**, plus a theme tab after them when the theme registers sections of its own. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). Every custom section your theme/plugin registers (like `my_theme` above) is shown in one more tab after Footer, named for the active theme; the tab only appears when at least one custom section exists. See `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
 
-Core's `header`/`welcome_message`/`footer` sections come with matching
-template tags a theme calls directly — no hook required for the common
-case:
+Core's `header`/`welcome_message`/`footer` sections come with matching template tags a theme calls directly — no hook required for the common case:
 
 ```php
 // Header section
@@ -443,54 +337,19 @@ has_footer_html(): bool
 footer_html(): void                     // echoes rendered HTML, no-ops if empty
 ```
 
-Every one of these self-guards (no-ops when unset), the same convention
-`nav_menu()`/`dynamic_sidebar()`/`custom_css()` already follow — a theme
-that never calls them loses nothing, and a theme that does call them
-gets an empty render rather than stray markup when nothing is
-configured. The default, duskline, and xena-central themes all call these
-from their own `header.php`/`sidebar.php`/`footer.php` — read those for
-the exact integration points. **A theme is always free to ignore any of
-these** (see `content_width`'s own precedent) — xena-central deliberately
-does not wire `has_header_image()`/`header_image_url()` into its header
-at all, since its bundled `xc-banner` image is its own permanent
-defining visual, not something a generic per-theme upload should
-replace.
+Every one of these self-guards (no-ops when unset), the same convention `nav_menu()`/`dynamic_sidebar()`/`custom_css()` already follow — a theme that never calls them loses nothing, and a theme that does call them gets an empty render rather than stray markup when nothing is configured. The default, duskline, and xena-central themes all call these from their own `header.php`/`sidebar.php`/`footer.php` — read those for the exact integration points. **A theme is always free to ignore any of these** (see `content_width`'s own precedent) — xena-central deliberately does not wire `has_header_image()`/`header_image_url()` into its header at all, since its bundled `xc-banner` image is its own permanent defining visual, not something a generic per-theme upload should replace.
 
 ### CSS-variable-injected fields
 
-Give a field a `cssVariable` (e.g. `'--my-theme-hero-color'`) and its
-value is automatically included in the `<style>` block
-`theme_options_css()` outputs in `header.php` — no extra plumbing needed
-on your end.
+Give a field a `cssVariable` (e.g. `'--my-theme-hero-color'`) and its value is automatically included in the `<style>` block `theme_options_css()` outputs in `header.php` — no extra plumbing needed on your end.
 
-**Important — read before adding a `cssVariable`:** if your theme's own
-`style.css` already sets a deliberate value for the same CSS variable
-name (e.g. your theme picks its own `--lp-max-width`), a Theme Options
-field injecting that same variable will silently override your theme's
-choice for every visitor, the moment the field exists — even before an
-admin has touched it — unless the field is given `allowEmpty: true` and
-a default of `''`. An empty value is treated as "inherit whatever the
-theme's own stylesheet already set" and is not emitted into the
-`<style>` block at all; only an admin's explicit, non-empty choice
-overrides your theme. See CLAUDE.md's "A theme's own explicit design
-choices take precedence over generic core defaults" for the full
-reasoning (this bit Lumora Press's own `content_width` field once — see
-`DECISIONS.md`'s LP-095 entry).
+**Important — read before adding a `cssVariable`:** if your theme's own `style.css` already sets a deliberate value for the same CSS variable name (e.g. your theme picks its own `--lp-max-width`), a Theme Options field injecting that same variable will silently override your theme's choice for every visitor, the moment the field exists — even before an admin has touched it — unless the field is given `allowEmpty: true` and a default of `''`. An empty value is treated as "inherit whatever the theme's own stylesheet already set" and is not emitted into the `<style>` block at all; only an admin's explicit, non-empty choice overrides your theme. A theme's own deliberate choices should win over a generic default, and this once affected Lumora Press's own `content_width` field.
 
-The built-in "Body font" field follows the same rule: its default is an
-empty "Theme default" choice, so a theme's own `--lp-font-body` (Lumora
-Classic uses Lora) shows unless an admin explicitly picks Georgia, sans-serif,
-and so on. A theme that wants a separate title font can define its own
-variable, as Lumora Classic does with `--lp-font-heading`.
+The built-in "Body font" field follows the same rule: its default is an empty "Theme default" choice, so a theme's own `--lp-font-body` (Lumora Classic uses Lora) shows unless an admin explicitly picks Georgia, sans-serif, and so on. A theme that wants a separate title font can define its own variable, as Lumora Classic does with `--lp-font-heading`.
 
 ## Dark mode
 
-The base convention still lives entirely in `style.css`: define your
-theme's colors as CSS custom properties on `:root`, then override them
-inside a `@media (prefers-color-scheme: dark)` block with the same
-variable names. As of LP-117, a visitor can also override that OS
-preference explicitly via a header toggle — supporting that needs one
-extra CSS guard plus one `<script>` tag, both shown below.
+The base convention still lives entirely in `style.css`: define your theme's colors as CSS custom properties on `:root`, then override them inside a `@media (prefers-color-scheme: dark)` block with the same variable names. As of LP-117, a visitor can also override that OS preference explicitly via a header toggle — supporting that needs one extra CSS guard plus one `<script>` tag, both shown below.
 
 ```css
 :root {
@@ -515,8 +374,7 @@ extra CSS guard plus one `<script>` tag, both shown below.
 }
 ```
 
-Add a toggle button anywhere in your markup — `data-lp-theme-toggle` is
-the only contract theme-toggle.js looks for:
+Add a toggle button anywhere in your markup — `data-lp-theme-toggle` is the only contract theme-toggle.js looks for:
 
 ```php
 <button type="button" class="lp-theme-toggle" data-lp-theme-toggle aria-label="Toggle dark mode">
@@ -525,37 +383,17 @@ the only contract theme-toggle.js looks for:
 </button>
 ```
 
-Which icon is visible is driven purely by CSS (the same `data-theme`/
-`prefers-color-scheme` guard as the color tokens above), not JS — see
-Lumora Classic's `style.css` for the `.lp-theme-toggle__icon--*`
-rules to copy.
+Which icon is visible is driven purely by CSS (the same `data-theme`/ `prefers-color-scheme` guard as the color tokens above), not JS — see Lumora Classic's `style.css` for the `.lp-theme-toggle__icon--*` rules to copy.
 
-Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`)
-`<script src>` in `<head>`, **before** your theme's stylesheet `<link>`:
+Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`) `<script src>` in `<head>`, **before** your theme's stylesheet `<link>`:
 
 ```php
 <script src="<?= esc_url(core_asset_url('js/theme-toggle.js')) ?>"></script>
 ```
 
-This ordering matters: the script runs synchronously and sets
-`data-theme` on `<html>` from `localStorage` (key `lp-theme`) before the
-stylesheet is even requested, so there's no flash of the wrong theme on
-reload. It must be an external file, not an inline `<script>` — this
-project's Content-Security-Policy `script-src` has no
-`'unsafe-inline'`/nonce allowance (only `style-src` does, via
-`csp_style_nonce()`), so an inline script here would be silently
-blocked by every browser. A click on any `[data-lp-theme-toggle]`
-button only ever switches between an explicit Light and Dark — never
-back to "follow the system" — mirroring the admin sidebar's own quick
-theme toggle. See Lumora Classic's `header.php`/`style.css` for a
-complete real example, and `xena-central`'s/`duskline`'s for how the same
-three pieces (CSS guard, script tag, toggle button) adapt to a theme
-with its own token names and header layout.
+This ordering matters: the script runs synchronously and sets `data-theme` on `<html>` from `localStorage` (key `lp-theme`) before the stylesheet is even requested, so there's no flash of the wrong theme on reload. It must be an external file, not an inline `<script>` — this project's Content-Security-Policy `script-src` has no `'unsafe-inline'`/nonce allowance (only `style-src` does, via `csp_style_nonce()`), so an inline script here would be silently blocked by every browser. A click on any `[data-lp-theme-toggle]` button only ever switches between an explicit Light and Dark — never back to "follow the system" — mirroring the admin sidebar's own quick theme toggle. See Lumora Classic's `header.php`/`style.css` for a complete real example, and `xena-central`'s/`duskline`'s for how the same three pieces (CSS guard, script tag, toggle button) adapt to a theme with its own token names and header layout.
 
-If you also expose one of these tokens as a Theme Options `cssVariable`
-field, give it `allowEmpty: true` (see above) so an admin leaving the
-field unset doesn't force a light-mode-derived value onto dark-mode
-visitors.
+If you also expose one of these tokens as a Theme Options `cssVariable` field, give it `allowEmpty: true` (see above) so an admin leaving the field unset doesn't force a light-mode-derived value onto dark-mode visitors.
 
 ## A minimal complete example
 
@@ -598,5 +436,4 @@ visitors.
 <?php get_footer(); ?>
 ```
 
-For the full picture, read `content/themes/lumora-classic/` — every template
-listed in this document, working, styled, and dark-mode-aware.
+For the full picture, read `content/themes/lumora-classic/` — every template listed in this document, working, styled, and dark-mode-aware.

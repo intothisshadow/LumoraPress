@@ -1,29 +1,14 @@
 # Developer APIs
 
-A reference for extending Lumora Press: the hook system, every hook and
-filter core actually fires, plugin file structure and lifecycle, and
-where to look for the service-layer classes a plugin's own code can call.
+A reference for extending Lumora Press: the hook system, every hook and filter core actually fires, plugin file structure and lifecycle, and where to look for the service-layer classes a plugin's own code can call.
 
-For the theme-author-facing template-tag API (rendering posts, pages,
-media, comments, widgets, menus), see
-[`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md) instead. Plugin authors
-will likely need both documents — a plugin that adds theme-visible
-behavior (an icon shortcode, an embed provider) still hooks into the same
-`content_html`/`head_assets` conventions theme authors rely on.
+For the theme-author-facing template-tag API (rendering posts, pages, media, comments, widgets, menus), see [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md) instead. Plugin authors will likely need both documents — a plugin that adds theme-visible behavior (an icon shortcode, an embed provider) still hooks into the same `content_html`/`head_assets` conventions theme authors rely on.
 
-**Keep this document current.** Whenever a hook/filter is added, changed,
-or removed (any `do_action()`/`apply_filters()` call site), or the plugin
-loading/lifecycle mechanism changes, update this file in the same
-change — see `CLAUDE.md`'s "After Every Code Change" rule. This is
-reference material, not a changelog: document the API as it exists right
-now, not a history of how it got there.
+**Keep this document current.** Whenever a hook/filter is added, changed, or removed (any `do_action()`/`apply_filters()` call site), or the plugin loading/lifecycle mechanism changes, update this file in the same change — see `CLAUDE.md`'s "After Every Code Change" rule. This is reference material, not a changelog: document the API as it exists right now, not a history of how it got there.
 
 ## The hook system
 
-Classic WordPress-style, implemented in
-[`LumoraPress\Core\Hooks\HookManager`](../app/Core/Hooks/HookManager.php)
-and exposed procedurally via four global functions
-([`include/hooks.php`](../include/hooks.php)):
+Classic WordPress-style, implemented in [`LumoraPress\Core\Hooks\HookManager`](../app/Core/Hooks/HookManager.php) and exposed procedurally via four global functions ([`include/hooks.php`](../include/hooks.php)):
 
 ```php
 add_action(string $hook, callable $callback, int $priority = 10): void;
@@ -33,34 +18,16 @@ add_filter(string $hook, callable $callback, int $priority = 10): void;
 apply_filters(string $hook, mixed $value, mixed ...$args): mixed;
 ```
 
-- **Actions** run every registered callback for `$hook`, in ascending
-  priority order (lower runs first), then within a priority in
-  registration order. No return value — an action can't short-circuit or
-  transform anything.
-- **Filters** thread a value through every registered callback:
-  `$value = $callback($value, ...$args)`, in the same priority order.
-  Each callback must return the (possibly unchanged) value. Calling
-  `apply_filters()` with nothing registered is a safe no-op passthrough
-  of `$value`.
-- **There is no `remove_action()`/`remove_filter()`.** Once registered, a
-  callback cannot be unregistered. Design accordingly — don't register a
-  callback expecting to conditionally remove it later.
-- **No introspection helpers exist** — no `current_filter()`,
-  `did_action()`, or callback counts. If you need to know whether a hook
-  already fired, track that yourself.
+- **Actions** run every registered callback for `$hook`, in ascending priority order (lower runs first), then within a priority in registration order. No return value — an action can't short-circuit or transform anything.
+- **Filters** thread a value through every registered callback: `$value = $callback($value, ...$args)`, in the same priority order. Each callback must return the (possibly unchanged) value. Calling `apply_filters()` with nothing registered is a safe no-op passthrough of `$value`.
+- **There is no `remove_action()`/`remove_filter()`.** Once registered, a callback cannot be unregistered. Design accordingly — don't register a callback expecting to conditionally remove it later.
+- **No introspection helpers exist** — no `current_filter()`, `did_action()`, or callback counts. If you need to know whether a hook already fired, track that yourself.
 
-A single shared `HookManager` instance backs both the procedural
-functions above and every core service's own internal
-`$this->hooks?->doAction(...)` calls — the effect is identical either
-way; the nullable `?HookManager` on some services just means hooks can
-legitimately be absent in a context with no hook manager wired up (tests,
-mainly), not that a plugin's registered callback is treated differently.
+A single shared `HookManager` instance backs both the procedural functions above and every core service's own internal `$this->hooks?->doAction(...)` calls — the effect is identical either way; the nullable `?HookManager` on some services just means hooks can legitimately be absent in a context with no hook manager wired up (tests, mainly), not that a plugin's registered callback is treated differently.
 
 ## Hooks & filters reference
 
-Every hook/filter core actually fires, grouped by area. "Fires in"
-points to the real call site so you can confirm current behavior rather
-than trusting this table blindly if something seems off.
+Every hook/filter core actually fires, grouped by area. "Fires in" points to the real call site so you can confirm current behavior rather than trusting this table blindly if something seems off.
 
 ### Post lifecycle
 
@@ -168,18 +135,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 See [`SHORTCODES.md`](SHORTCODES.md) for the user-facing reference (every currently-registered shortcode's attributes and copy-paste examples). This section covers building your own.
 
-A shortcode's actual *rendering* is still just a plugin or core class
-that hooks the `content_html` filter above and does its own
-`preg_replace_callback()` over a fixed pattern — see
-`content/plugins/downloads/src/DownloadsShortcode.php` for the
-reference plugin implementation, or `FolderGalleryShortcode` below for
-the core equivalent. Registering a shortcode with `register_shortcode()`
-(LP-110) is a separate, optional step on top of that: it adds the
-shortcode to the editor toolbar's "Insert Shortcode" picker
-(`admin/assets/js/content-editor.js`'s `openShortcodePicker()`), a real
-form built from the attribute fields you describe, instead of the admin
-typing `[shortcode attr="value"]` by hand. It changes nothing about how
-the shortcode itself renders.
+A shortcode's actual *rendering* is still just a plugin or core class that hooks the `content_html` filter above and does its own `preg_replace_callback()` over a fixed pattern — see `content/plugins/downloads/src/DownloadsShortcode.php` for the reference plugin implementation, or `FolderGalleryShortcode` below for the core equivalent. Registering a shortcode with `register_shortcode()` (LP-110) is a separate, optional step on top of that: it adds the shortcode to the editor toolbar's "Insert Shortcode" picker (`admin/assets/js/content-editor.js`'s `openShortcodePicker()`), a real form built from the attribute fields you describe, instead of the admin typing `[shortcode attr="value"]` by hand. It changes nothing about how the shortcode itself renders.
 
 ```php
 use LumoraPress\Core\Shortcodes\ShortcodeField;
@@ -191,19 +147,9 @@ register_shortcode('my_shortcode', 'My Shortcode', [
 ]);
 ```
 
-`ShortcodeField`'s `$type` is one of `Text`, `Number`, `Checkbox`,
-`Select` (needs `$choices`, value => label), or `Icon` (opens Font
-Awesome's own icon-browser dialog instead of a plain control — see
-`font-awesome.php`'s own registration for the pattern, including how an
-Icon field auto-fills a sibling field literally named `style`). A field
-left at its `$default` value is omitted from the inserted shortcode
-entirely, the same minimal text typing it by hand would produce.
+`ShortcodeField`'s `$type` is one of `Text`, `Number`, `Checkbox`, `Select` (needs `$choices`, value => label), or `Icon` (opens Font Awesome's own icon-browser dialog instead of a plain control — see `font-awesome.php`'s own registration for the pattern, including how an Icon field auto-fills a sibling field literally named `style`). A field left at its `$default` value is omitted from the inserted shortcode entirely, the same minimal text typing it by hand would produce.
 
-A plugin whose fields need database-backed choices (a live list of
-Folders or Download categories, say) can't call `register_shortcode()`
-directly from its own top-level file — plugin main files load before
-Kernel exists (see "Discovery & loading" below). Hook the
-`register_shortcodes` action instead:
+A plugin whose fields need database-backed choices (a live list of Folders or Download categories, say) can't call `register_shortcode()` directly from its own top-level file — plugin main files load before Kernel exists (see "Discovery & loading" below). Hook the `register_shortcodes` action instead:
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
@@ -245,59 +191,9 @@ Kernel exists (see "Discovery & loading" below). Hook the
 | `dashboard_widget_ids` | filter | `array<int, string> $ids, User $currentUser` | `admin/views/dashboard.php`, evaluated before `dashboard_widgets` fires. Since LP-134 (reorderable Dashboard widgets), a plugin that wants its `dashboard_widgets` panel to be individually drag-repositionable among the built-in widgets — not permanently pinned last — must **both** register its widget's stable id here (append it to `$ids` and return it, gated by the exact same condition the `dashboard_widgets` listener itself uses, so a widget that won't render this request doesn't reserve a slot in the saved order either) **and** give its own `<section class="lp-admin__widget">` in the `dashboard_widgets` listener the matching `data-lp-sortable-item data-lp-sortable-id="your_id"` attribute plus a `data-lp-drag-handle` element inside its `<h2>` — see `content/plugins/visitor-stats/views/dashboard-widget.php` for the exact markup shape to copy. A plugin that skips this still works exactly as before (its panel just always renders last, un-draggable). If more than one plugin registers an id here at the same time, their `dashboard_widgets` output still all arrives in one combined block (there's no way to fire the action for a single registered id in isolation), so it renders as one contiguous group positioned at whichever of those plugins' ids sorts earliest in the saved order — true independent reordering between two different plugins' widgets isn't supported yet. |
 | `admin_sidebar_alerts` | filter | `array<int, array{variant: string, url: string, title: string, label: string}> $alerts, User $currentUser` | `admin/views/layout-header.php`, on every admin screen (this file is the shared page chrome). Added for Visitor Stats' stale-GeoIP-data notice (LPP-025), generalizing the two condensed sidebar alerts core already showed for the `install/` directory and maintenance mode (LP-177) into a filter any plugin can add a third (or more) entry to, instead of those two staying a hardcoded special case. Each entry renders as `<a class="lp-alert lp-alert--{variant} lp-admin__sidebar-alert" href="{url}" title="{title}">{label}</a>` — `variant` is normally `'error'` or `'warning'` (any `.lp-alert--*` modifier works), `title` is the full explanation (the row itself truncates to one line), and `label` is trusted HTML, not escaped, same convention as `dashboard_widgets`' own output — inline tags like `<strong>`/`<code>` are fine, arbitrary markup from an untrusted source is not. See `content/plugins/visitor-stats/visitor-stats.php` for a real registration. |
 
-**There is no hook or API for a plugin to add its own admin menu item or
-page** (the `dashboard_widgets` hook above only lets a plugin add content
-*inside* the existing Dashboard screen, not register a new one). The
-shipped plugins work around this three different ways, all variations on
-the same `{slug}Active` boolean computed once in `admin/index.php` from
-the active-plugins option and shared into the target view via normal PHP
-`require`-scope: Dummy Content's admin section is wired directly into an
-existing core view (Maintenance › Tools), not registered dynamically —
-Lumora Sweep (LPP-022) does the same into that identical screen, as a
-second `$tabs`/`?tab=` tab alongside Dummy Content's own section rather
-than a separate gated block, following `admin/views/settings/security.php`'s
-existing `$tabs`/`?tab=` convention for a plugin adding a tab to an
-existing screen. WordPress Importer (LPP-004) does the same into a different existing,
-always-present menu slot (Maintenance › Import —
-`admin/views/maintenance/import.php`). Font Awesome (LPP-002) and Emoji
-Picker (LPP-006) instead each get a real settings screen of their own by
-hand-adding one nested child under an *existing* parent that already
-supports children (`Appearance`/`Settings` respectively) — a plain
-`...($xActive ? ['slug' => ['label' => ..., 'icon' => ..., 'capability'
-=> ...]] : [])` spread into that parent's `children` array in
-`admin/index.php`'s `$menu`, resolved to `admin/views/{parent}/{slug}.php`
-by the normal `views/{page}/{subpage}.php` routing — Emoji Picker's
-`Settings › Writing` entry didn't exist as a parent before this plugin
-added it (a single flat child is fine; only add nested grandchildren of
-your own once a second sibling actually needs one). Downloads (LPP-008),
-Contact Forms (LPP-003), and Link Directory (LPP-026) instead each get a
-real *top-level* menu entry of their own, since their admin screens are
-their entire reason to exist — the same `{slug}Active` gate, just wrapping
-a whole new top-level `$menu` array entry instead of a nested child. If
-your plugin needs admin UI and
-no existing menu slot fits, pick whichever of these three shapes matches
-how central the admin UI is to the plugin's purpose, rather than assuming
-a registration hook exists.
+**There is no hook or API for a plugin to add its own admin menu item or page** (the `dashboard_widgets` hook above only lets a plugin add content *inside* the existing Dashboard screen, not register a new one). The shipped plugins work around this three different ways, all variations on the same `{slug}Active` boolean computed once in `admin/index.php` from the active-plugins option and shared into the target view via normal PHP `require`-scope: Dummy Content's admin section is wired directly into an existing core view (Maintenance › Tools), not registered dynamically — Lumora Sweep (LPP-022) does the same into that identical screen, as a second `$tabs`/`?tab=` tab alongside Dummy Content's own section rather than a separate gated block, following `admin/views/settings/security.php`'s existing `$tabs`/`?tab=` convention for a plugin adding a tab to an existing screen. WordPress Importer (LPP-004) does the same into a different existing, always-present menu slot (Maintenance › Import — `admin/views/maintenance/import.php`). Font Awesome (LPP-002) and Emoji Picker (LPP-006) instead each get a real settings screen of their own by hand-adding one nested child under an *existing* parent that already supports children (`Appearance`/`Settings` respectively) — a plain `...($xActive ? ['slug' => ['label' => ..., 'icon' => ..., 'capability' => ...]] : [])` spread into that parent's `children` array in `admin/index.php`'s `$menu`, resolved to `admin/views/{parent}/{slug}.php` by the normal `views/{page}/{subpage}.php` routing — Emoji Picker's `Settings › Writing` entry didn't exist as a parent before this plugin added it (a single flat child is fine; only add nested grandchildren of your own once a second sibling actually needs one). Downloads (LPP-008), Contact Forms (LPP-003), and Link Directory (LPP-026) instead each get a real *top-level* menu entry of their own, since their admin screens are their entire reason to exist — the same `{slug}Active` gate, just wrapping a whole new top-level `$menu` array entry instead of a nested child. If your plugin needs admin UI and no existing menu slot fits, pick whichever of these three shapes matches how central the admin UI is to the plugin's purpose, rather than assuming a registration hook exists.
 
-**There is likewise no hook or API for a plugin to register its own
-public-facing route.** Every route is hardcoded in `include/bootstrap.php`
-and dispatched before any plugin's own request-time code runs again.
-This matters specifically for a plugin whose shortcode needs to *process*
-a form submission (not just render one): a `content_html`-filter
-callback runs too late in the response to safely `header()` redirect
-from inside it — classic PHP theme templates in this codebase echo
-directly rather than buffering the whole page, so by the time a
-shortcode callback executes, earlier template output is often already
-flushed. Comment submission avoids this by getting its own dedicated
-core-registered route (`$postRoutePattern . '/comment'`); Contact Forms
-(LPP-003) follows the identical shape for a plugin, gated the same way
-its admin menu entry is: `include/bootstrap.php` registers
-`/contact-form/{id}/submit` only `if (in_array('contact-forms',
-$activePlugins, true))`, constructing `ContactFormSubmissionHandler`
-straight from `$kernel`'s own already-existing components (it exists by
-this point in the file). If your plugin needs to process a public POST
-with a redirect afterward, follow this pattern rather than assuming a
-route-registration hook exists.
+**There is likewise no hook or API for a plugin to register its own public-facing route.** Every route is hardcoded in `include/bootstrap.php` and dispatched before any plugin's own request-time code runs again. This matters specifically for a plugin whose shortcode needs to *process* a form submission (not just render one): a `content_html`-filter callback runs too late in the response to safely `header()` redirect from inside it — classic PHP theme templates in this codebase echo directly rather than buffering the whole page, so by the time a shortcode callback executes, earlier template output is often already flushed. Comment submission avoids this by getting its own dedicated core-registered route (`$postRoutePattern . '/comment'`); Contact Forms (LPP-003) follows the identical shape for a plugin, gated the same way its admin menu entry is: `include/bootstrap.php` registers `/contact-form/{id}/submit` only `if (in_array('contact-forms', $activePlugins, true))`, constructing `ContactFormSubmissionHandler` straight from `$kernel`'s own already-existing components (it exists by this point in the file). If your plugin needs to process a public POST with a redirect afterward, follow this pattern rather than assuming a route-registration hook exists.
 
 ### Editor
 
@@ -522,15 +418,11 @@ add_filter('export_formats', static function (array $writers): array {
 
 ## Plugin structure & lifecycle
 
-A plugin lives in its own directory under `content/plugins/{slug}/`, with
-a main file that **must** be named `{slug}.php` — `PluginManager::load()`
-requires exactly `content/plugins/{slug}/{slug}.php`.
+A plugin lives in its own directory under `content/plugins/{slug}/`, with a main file that **must** be named `{slug}.php` — `PluginManager::load()` requires exactly `content/plugins/{slug}/{slug}.php`.
 
 ### Plugin file header
 
-Mirrors a theme's `style.css` header, as a plain block comment (not a
-docblock) right after the file's own `@package`/`@subpackage`/etc.
-docblock and `declare(strict_types=1);`:
+Mirrors a theme's `style.css` header, as a plain block comment (not a docblock) right after the file's own `@package`/`@subpackage`/etc. docblock and `declare(strict_types=1);`:
 
 ```php
 <?php
@@ -573,86 +465,28 @@ add_action('head_assets', static function (): void {
 });
 ```
 
-`Requires Plugins:` (a dependency slug list) is parsed by
-[`PluginInfo`](../app/Core/Plugin/PluginInfo.php) but isn't used by
-either shipped plugin. Also parsed but not header fields: `screenshots`/
-`readmeFile`/`changelogFile` are detected automatically from files
-present in the plugin directory (a `README.md`/`CHANGELOG.md` and any
-`screenshot*`/`preview*` image), the same convention themes use.
+`Requires Plugins:` (a dependency slug list) is parsed by [`PluginInfo`](../app/Core/Plugin/PluginInfo.php) but isn't used by either shipped plugin. Also parsed but not header fields: `screenshots`/ `readmeFile`/`changelogFile` are detected automatically from files present in the plugin directory (a `README.md`/`CHANGELOG.md` and any `screenshot*`/`preview*` image), the same convention themes use.
 
 ### Discovery & loading
 
-[`PluginManager::discover()`](../app/Core/PluginManager.php) globs every
-subdirectory of `content/plugins/` — any directory is a candidate plugin
-regardless of whether it's active. `PluginManager::load($slug)` then
-`require_once`s that plugin's main file directly; `loadActive()` loops
-this over the site's configured list of active plugin slugs. There's no
-manifest file and no class-based entry point — the plugin file's
-top-level (module-scope) code *is* its init logic, since PHP has no
-separate "plugin activation" phase distinct from "the file was required."
+[`PluginManager::discover()`](../app/Core/PluginManager.php) globs every subdirectory of `content/plugins/` — any directory is a candidate plugin regardless of whether it's active. `PluginManager::load($slug)` then `require_once`s that plugin's main file directly; `loadActive()` loops this over the site's configured list of active plugin slugs. There's no manifest file and no class-based entry point — the plugin file's top-level (module-scope) code *is* its init logic, since PHP has no separate "plugin activation" phase distinct from "the file was required."
 
-**Plugin main files load before `Kernel` exists.** `include/bootstrap.php`
-requires active plugins before it builds `$kernel` — so a plugin's
-top-level code cannot reach `$kernel`'s services directly at load time.
-It can only register hook callbacks (closures), which will run later once
-services do exist, or defer real work into something that receives
-`$kernel` from its own caller (Dummy Content's admin-view integration
-does this — it's handed `$kernel` by the core view it's embedded in,
-rather than fetching it itself). Font Awesome's approach — a plugin-owned
-singleton service class (`FontAwesomeService::instance()`) that hook
-callbacks delegate to — is the more common pattern for a plugin with its
-own real logic.
+**Plugin main files load before `Kernel` exists.** `include/bootstrap.php` requires active plugins before it builds `$kernel` — so a plugin's top-level code cannot reach `$kernel`'s services directly at load time. It can only register hook callbacks (closures), which will run later once services do exist, or defer real work into something that receives `$kernel` from its own caller (Dummy Content's admin-view integration does this — it's handed `$kernel` by the core view it's embedded in, rather than fetching it itself). Font Awesome's approach — a plugin-owned singleton service class (`FontAwesomeService::instance()`) that hook callbacks delegate to — is the more common pattern for a plugin with its own real logic.
 
-A `content_html`-filter callback (or any other hook that fires during a
-real public request, well after `$kernel` exists) still can't reach
-`$kernel`'s services just by virtue of running later — the closure was
-registered at load time, before `$kernel` existed, so it has no
-reference to it. For hook logic that genuinely needs Kernel-only
-services (a real DB-backed service like `FolderService`/`MediaService`,
-not config — Font Awesome's own hooks need no DB access, hence the
-singleton pattern above being enough for it), open a second,
-independent `Database::connect()` from `config/config.php`'s own
-credentials instead — the same "a plugin can talk to a database Kernel
-doesn't already expose" approach `WordPressSource` (LPP-004) uses for
-its *source* WordPress database, just pointed at this site's own
-database. `DownloadsShortcode` (LPP-007, `wordpress-importer` plugin's
-`[sdm_show_dl_from_category]`) does exactly this on `content_html`,
-gated behind a cheap `str_contains()` check first so the connection is
-only ever opened on the rare page that actually needs it. The Downloads
-plugin's own `[lumora_downloads]` shortcode (LPP-008, a distinct class
-of the same name in a different namespace) and Contact Forms'
-`ContactFormShortcode` (LPP-003) both follow the identical pattern for
-their own `content_html` registration.
+A `content_html`-filter callback (or any other hook that fires during a real public request, well after `$kernel` exists) still can't reach `$kernel`'s services just by virtue of running later — the closure was registered at load time, before `$kernel` existed, so it has no reference to it. For hook logic that genuinely needs Kernel-only services (a real DB-backed service like `FolderService`/`MediaService`, not config — Font Awesome's own hooks need no DB access, hence the singleton pattern above being enough for it), open a second, independent `Database::connect()` from `config/config.php`'s own credentials instead — the same "a plugin can talk to a database Kernel doesn't already expose" approach `WordPressSource` (LPP-004) uses for its *source* WordPress database, just pointed at this site's own database. `DownloadsShortcode` (LPP-007, `wordpress-importer` plugin's `[sdm_show_dl_from_category]`) does exactly this on `content_html`, gated behind a cheap `str_contains()` check first so the connection is only ever opened on the rare page that actually needs it. The Downloads plugin's own `[lumora_downloads]` shortcode (LPP-008, a distinct class of the same name in a different namespace) and Contact Forms' `ContactFormShortcode` (LPP-003) both follow the identical pattern for their own `content_html` registration.
 
-**There is no activation/deactivation hook.** Toggling a plugin active/
-inactive (Plugins admin screen) just adds or removes its slug from the
-active-plugins option list; nothing fires a lifecycle event a plugin can
-hook to run setup/teardown code. If your plugin needs first-load setup
-(creating its own database table, say), do it defensively on every load
-rather than expecting an activation hook to exist.
+**There is no activation/deactivation hook.** Toggling a plugin active/ inactive (Plugins admin screen) just adds or removes its slug from the active-plugins option list; nothing fires a lifecycle event a plugin can hook to run setup/teardown code. If your plugin needs first-load setup (creating its own database table, say), do it defensively on every load rather than expecting an activation hook to exist.
 
 ## Service layer
 
-Every piece of business logic lives in a focused service class,
-constructed once in [`include/bootstrap.php`](../include/bootstrap.php)
-and exposed on `LumoraPress\Core\Kernel` (`$kernel->posts`,
-`$kernel->pages`, `$kernel->categories`, `$kernel->tags`,
-`$kernel->comments`, `$kernel->media`, `$kernel->users`, and so on — see
-the [README](../README.md)'s Architecture section for the full list and
-what each one owns).
+Every piece of business logic lives in a focused service class, constructed once in [`include/bootstrap.php`](../include/bootstrap.php) and exposed on `LumoraPress\Core\Kernel` (`$kernel->posts`, `$kernel->pages`, `$kernel->categories`, `$kernel->tags`, `$kernel->comments`, `$kernel->media`, `$kernel->users`, and so on — see the [README](../README.md)'s Architecture section for the full list and what each one owns).
 
-A plugin only reaches `$kernel` from a context that already has it —
-inside a hook callback fired from code that was itself given `$kernel`
-(most core hooks fire from service methods or controllers that don't
-pass `$kernel` through to the callback), or from an admin view your plugin is embedded into. When a hook callback needs services the hook doesn't hand it, use `\LumoraPress\Core\ActiveKernel::instance()` (e.g. `ActiveKernel::instance()->comments`), which is how the bundled Visitor Stats and Lumora Shield plugins do it. Only call it inside a callback: your plugin's main file runs before the Kernel exists, so calling it at load time throws.
+A plugin only reaches `$kernel` from a context that already has it — inside a hook callback fired from code that was itself given `$kernel` (most core hooks fire from service methods or controllers that don't pass `$kernel` through to the callback), or from an admin view your plugin is embedded into. When a hook callback needs services the hook doesn't hand it, use `\LumoraPress\Core\ActiveKernel::instance()` (e.g. `ActiveKernel::instance()->comments`), which is how the bundled Visitor Stats and Lumora Shield plugins do it. Only call it inside a callback: your plugin's main file runs before the Kernel exists, so calling it at load time throws.
 
 **In-app notifications.** A plugin can put a message in a signed-in user's admin Notifications inbox (the screen with the unread count in the sidebar) through [`NotificationService`](../app/Services/NotificationService.php): `(new NotificationService($kernel->database, $tablePrefix))->notify($userId, 'my_plugin_event', 'Plain-text message', $url)`. `$type` is a free-form string of up to 50 characters, the message is plain text (escaped on display, capped at 500 characters), and `$url` is where clicking the notification takes the user (an absolute `http(s)` URL or a site-relative path; anything else is ignored). Read notifications older than 90 days are pruned automatically. Core's own notification types are `comment_reply`, `comment_mention`, `comment_on_your_content`, `comment_on_watched`, `comment_moderation`, and `comment_reported`; pick your own prefix for a plugin's types.
 
 ## Also see
 
-- [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md) — template-tag API,
-  template hierarchy, widget/menu/Theme-Options registration.
-- [`THIRD-PARTY.md`](THIRD-PARTY.md) — every third-party JS asset bundled
-  or referenced, and the CSP implications of adding another one.
-- The README's [Architecture](../README.md) section — the core service
-  classes and what each one is responsible for.
+- [`THEME-DEVELOPMENT.md`](THEME-DEVELOPMENT.md) — template-tag API, template hierarchy, widget/menu/Theme-Options registration.
+- [`THIRD-PARTY.md`](THIRD-PARTY.md) — every third-party JS asset bundled or referenced, and the CSP implications of adding another one.
+- The README's [Architecture](../README.md) section — the core service classes and what each one is responsible for.
