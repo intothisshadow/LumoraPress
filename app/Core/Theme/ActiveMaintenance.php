@@ -27,9 +27,25 @@ final class ActiveMaintenance
 {
     private static ?MaintenanceGate $gate = null;
 
+    private static bool $rendering = false;
+
     public static function set(MaintenanceGate $gate): void
     {
         self::$gate = $gate;
+    }
+
+    /**
+     * Set by the gate around rendering the maintenance page (including a
+     * preview), so shared templates such as header.php can adapt.
+     */
+    public static function setRendering(bool $rendering): void
+    {
+        self::$rendering = $rendering;
+    }
+
+    public static function isRendering(): bool
+    {
+        return self::$rendering;
     }
 
     public static function isActive(): bool

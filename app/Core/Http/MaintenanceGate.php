@@ -24,6 +24,7 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Security\IpRangeMatcher;
+use LumoraPress\Core\Theme\ActiveMaintenance;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Services\MediaService;
 
@@ -258,11 +259,18 @@ final class MaintenanceGate
             ),
             'return_at' => $returnAt,
             'countdown_to' => $countdownTo,
+            'has_background_image' => $this->backgroundImageUrl() !== '',
         ];
 
         $filtered = $this->hooks->applyFilters('maintenance_page_data', $data);
 
-        $this->theme->render('maintenance.php', is_array($filtered) ? $filtered + $data : $data);
+        ActiveMaintenance::setRendering(true);
+
+        try {
+            $this->theme->render('maintenance.php', is_array($filtered) ? $filtered + $data : $data);
+        } finally {
+            ActiveMaintenance::setRendering(false);
+        }
     }
 
     /**
@@ -306,6 +314,12 @@ final class MaintenanceGate
 
         if ($imageUrl !== '') {
             $css .= $bodySelector . '{background-image:url("' . addcslashes($imageUrl, "\"\\\r\n") . '");background-size:cover;background-position:center;background-attachment:fixed;background-repeat:no-repeat;}' . "\n";
+        }
+
+        // The readability panel follows a chosen background color, so a
+        // custom light-on-dark text color never lands on a theme-colored panel.
+        if ($background !== '' && $imageUrl !== '') {
+            $css .= '.lp-maintenance--has-background{background-color:color-mix(in srgb,' . $background . " 82%,transparent);}\n";
         }
 
         if ($text !== '') {

@@ -2645,6 +2645,18 @@ a.lp-post-list__comments:focus {
     font-weight: 600;
 }
 
+/* Readability panel, shown only when the maintenance page has a background image. */
+.lp-maintenance--has-background {
+    margin-top: 3rem;
+    margin-bottom: 3rem;
+    background-color: color-mix(in srgb, var(--lp-bg-alt, #fff) 82%, transparent);
+    color: var(--lp-text, inherit);
+    border-radius: 1rem;
+    box-shadow: var(--lp-surface-shadow, 0 16px 38px rgba(0, 0, 0, 0.12));
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
 /* =========================================================
    Media Viewer & Lightbox
    ========================================================= */

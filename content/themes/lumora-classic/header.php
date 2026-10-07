@@ -138,6 +138,7 @@ $meta_description = $seo_description ?? meta_description();
 </head>
 <body class="lp-site">
 <a class="lp-skip-link" href="#lp-content">Skip to content</a>
+<?php if (!is_maintenance_page()): // The maintenance page shows only its message, not the site header. ?>
 <header class="lp-site-header">
     <?php if (has_header_image()): ?>
         <div class="lp-site-header__image-wrap">
@@ -175,5 +176,6 @@ $meta_description = $seo_description ?? meta_description();
 </header>
 <?php if (has_welcome_message() && welcome_message_placement() === 'header'): ?>
     <?php welcome_message(); ?>
+<?php endif; ?>
 <?php endif; ?>
 <div class="lp-site-body">

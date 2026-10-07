@@ -535,6 +535,19 @@ if (!function_exists('is_maintenance_mode')) {
     }
 }
 
+if (!function_exists('is_maintenance_page')) {
+    /**
+     * True only while the maintenance page itself is being rendered (a
+     * visitor blocked by maintenance mode, or an administrator's preview).
+     * Lets header.php leave out the site header, navigation and search so
+     * the page shows just the maintenance message.
+     */
+    function is_maintenance_page(): bool
+    {
+        return ActiveMaintenance::isRendering();
+    }
+}
+
 if (!function_exists('theme_option')) {
     /**
      * The current value of a registered Theme Option, by key — the
