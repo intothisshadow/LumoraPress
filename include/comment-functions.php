@@ -19,6 +19,7 @@ use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\ActiveAuth;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\CommentExtras;
+use LumoraPress\Core\Security\FormHoneypot;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\Page;
@@ -109,10 +110,7 @@ if (!function_exists('comment_form')) {
             <?= Csrf::field($csrfAction) ?>
             <input type="hidden" name="parent_id" value="<?= (int) ($parentId ?? 0) ?>">
 
-            <p class="lp-comment-form__honeypot" aria-hidden="true">
-                <label for="<?= esc_attr($formId) ?>-trap">Leave this field blank</label>
-                <input type="text" id="<?= esc_attr($formId) ?>-trap" name="comment_website" tabindex="-1" autocomplete="off">
-            </p>
+            <?= FormHoneypot::field($formId) ?>
             <?= FormTiming::field() ?>
 
             <?php if ($currentUser !== null): ?>

@@ -30,12 +30,18 @@ use Throwable;
  */
 final class LoginThrottle
 {
+    // How far back repeat lockouts are remembered when lengthening a lockout.
+    private const REPEAT_HISTORY_SECONDS = 86400;
+
+    private const MAX_LOCKOUT_MULTIPLIER = 16;
+
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
         private readonly int $maxAttempts = 5,
         private readonly int $windowSeconds = 900,
         private readonly int $lockoutSeconds = 900,
+        private readonly bool $progressive = true,
     ) {
     }
 
@@ -50,13 +56,30 @@ final class LoginThrottle
     public function secondsUntilUnlocked(string $ipAddress): int
     {
         try {
-            $windowStart = date('Y-m-d H:i:s', time() - $this->windowSeconds);
+            $historyStart = date('Y-m-d H:i:s', time() - max($this->windowSeconds, self::REPEAT_HISTORY_SECONDS));
 
-            $row = $this->database->fetchOne(
-                'SELECT COUNT(*) AS attempts, MAX(attempted_at) AS last_attempt_at
+            $summary = $this->database->fetchOne(
+                'SELECT COUNT(*) AS history_attempts, MAX(attempted_at) AS last_attempt_at
                  FROM ' . $this->table() . '
-                 WHERE ip_address = :ip AND attempted_at >= :window_start',
-                ['ip' => $ipAddress, 'window_start' => $windowStart],
+                 WHERE ip_address = :ip AND attempted_at >= :history_start',
+                ['ip' => $ipAddress, 'history_start' => $historyStart],
+            );
+
+            $lastAttemptAt = $summary['last_attempt_at'] ?? null;
+
+            if ($lastAttemptAt === null) {
+                return 0;
+            }
+
+            // Counted back from the last attempt rather than from now, so a
+            // lockout longer than the window isn't cut short as the
+            // failures that caused it age out of it.
+            $burstStart = date('Y-m-d H:i:s', strtotime((string) $lastAttemptAt) - $this->windowSeconds);
+
+            $attempts = (int) $this->database->fetchColumn(
+                'SELECT COUNT(*) FROM ' . $this->table() . '
+                 WHERE ip_address = :ip AND attempted_at >= :burst_start',
+                ['ip' => $ipAddress, 'burst_start' => $burstStart],
             );
         } catch (Throwable $exception) {
             $this->logFailure($exception);
@@ -64,16 +87,31 @@ final class LoginThrottle
             return 0;
         }
 
-        $attempts = (int) ($row['attempts'] ?? 0);
-        $lastAttemptAt = $row['last_attempt_at'] ?? null;
-
-        if ($attempts < $this->maxAttempts || $lastAttemptAt === null) {
+        if ($attempts < $this->maxAttempts) {
             return 0;
         }
 
-        $lockedUntil = strtotime((string) $lastAttemptAt) + $this->lockoutSeconds;
+        $row = $summary;
+        $lockedUntil = strtotime((string) $lastAttemptAt) + ($this->lockoutSeconds * $this->lockoutMultiplier((int) ($row['history_attempts'] ?? 0)));
 
         return max(0, $lockedUntil - time());
+    }
+
+    /**
+     * Each further batch of failures from the same IP within a day doubles
+     * the lockout (1x, 2x, 4x... capped), so a patient attacker pays more
+     * for every cycle while a user who simply forgot a password once is
+     * only ever locked out for the base duration.
+     */
+    private function lockoutMultiplier(int $historyAttempts): int
+    {
+        if (!$this->progressive) {
+            return 1;
+        }
+
+        $tier = max(1, intdiv($historyAttempts, max(1, $this->maxAttempts)));
+
+        return min(self::MAX_LOCKOUT_MULTIPLIER, 2 ** ($tier - 1));
     }
 
     public function isLocked(string $ipAddress): bool

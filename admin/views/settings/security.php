@@ -41,6 +41,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
 
+    if ($form === 'comment_rate_settings' && Csrf::verify('comment_rate_settings', $token)) {
+        $kernel->config->setOption('comment_max_per_hour', (string) min(1000, max(0, (int) ($_POST['comment_max_per_hour'] ?? 20))));
+        $kernel->config->setOption('comment_form_max_age_hours', (string) min(720, max(0, (int) ($_POST['comment_form_max_age_hours'] ?? 0))));
+
+        header('Location: ' . admin_url('settings/security') . '?saved=1');
+        exit;
+    }
+
     if ($form === 'akismet_settings' && Csrf::verify('akismet_settings', $token)) {
         $kernel->config->setOption('akismet_enabled', ($_POST['akismet_enabled'] ?? '') === '1' ? '1' : '0');
 
@@ -104,6 +112,8 @@ $maxAttempts = (int) $kernel->config->option('login_max_attempts', '5');
 $windowMinutes = (int) round(((int) $kernel->config->option('login_window_seconds', '900')) / 60);
 $lockoutMinutes = (int) round(((int) $kernel->config->option('login_lockout_seconds', '900')) / 60);
 $akismetEnabled = ((string) $kernel->config->option('akismet_enabled', '0')) === '1';
+$commentMaxPerHour = max(0, (int) $kernel->config->option('comment_max_per_hour', '20'));
+$commentFormMaxAgeHours = max(0, (int) $kernel->config->option('comment_form_max_age_hours', '0'));
 $akismetKeyConfigured = trim((string) $kernel->config->option('akismet_api_key', '')) !== '';
 $trustedImageOrigins = (string) $kernel->config->option('trusted_image_origins', '');
 $shieldSettings = $lumoraShieldActive ? LumoraShieldService::instance()->settings() : null;
@@ -170,6 +180,29 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                     <label for="login-lockout-minutes">Lockout duration (minutes)</label>
                     <input type="number" id="login-lockout-minutes" name="login_lockout_minutes" min="1" value="<?= esc_attr((string) $lockoutMinutes) ?>">
                     <span class="lp-field__hint">How long an IP address is blocked from attempting another login once locked out.</span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Comment Flood Protection</h2>
+            <p class="lp-field__hint">Two comments from the same IP address within 30 seconds are always blocked. This adds a longer-term cap that stops spam trickling in slowly.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('comment_rate_settings') ?>
+                <input type="hidden" name="form" value="comment_rate_settings">
+
+                <p class="lp-field">
+                    <label for="comment-max-per-hour">Maximum comments per IP address per hour</label>
+                    <input type="number" id="comment-max-per-hour" name="comment_max_per_hour" min="0" max="1000" value="<?= esc_attr((string) $commentMaxPerHour) ?>">
+                    <span class="lp-field__hint">Set to 0 for no hourly limit. If comment IP anonymization is on, visitors who share an anonymized address also share this limit.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="comment-form-max-age-hours">Comment form lifetime (hours)</label>
+                    <input type="number" id="comment-form-max-age-hours" name="comment_form_max_age_hours" min="0" max="720" value="<?= esc_attr((string) $commentFormMaxAgeHours) ?>">
+                    <span class="lp-field__hint">A comment form left open longer than this is rejected, and the visitor is asked to reload the page. Set to 0 for no limit. If your site caches pages for longer than this, leave it at 0 so a cached form doesn't expire before anyone can use it.</span>
                 </p>
 
                 <button type="submit" class="lp-button lp-button--primary">Save</button>

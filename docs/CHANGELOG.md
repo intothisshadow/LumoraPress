@@ -6,6 +6,13 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Spam protection: the comment form's hidden trap fields now have names unique to your site, and there are two of them instead of one. No theme changes are needed.
+- Spam protection: an optional "Comment form lifetime" on Settings › Security › Comment Flood Protection. A comment form left open longer than the set number of hours is refused, and the visitor sees a notice asking them to reload the page. It's off by default.
+- Security tokens on forms now expire after twelve hours and are discarded when someone signs in or out.
+- Maintenance › Logs has a new Security Events section listing blocked attempts: invalid security tokens, filled-in trap fields, forms submitted too quickly or left open too long, comment rate limits, and login lockouts. It keeps no comment text, passwords, or tokens, and rotates itself at about half a megabyte.
+- Login lockouts get longer when the same IP address keeps failing: each further batch of failures within a day doubles the lockout, up to 16 times the base length. The owner of the account being attacked is also emailed when a lockout happens.
+- New "Spam Protection" guide (`docs/SPAM-PROTECTION.md`) covering how comments and logins are protected, a moderation workflow, and what is recorded about visitors.
+- Comment flood protection: a new hourly limit on comments per IP address, set on Settings › Security (default 20, 0 turns it off). It sits on top of the existing 30-second limit and stops spam that trickles in slowly. A visitor who hits it sees the usual "commenting too quickly" notice.
 - Link Directory (plugin): 100×50 link buttons. Add or edit a link and choose a "Link button" from the Media Manager (or upload one) to give it the classic badge other sites trade for linking. It previews at 100×50 and warns, without blocking, when the image is another size. `[lumora_link_directory buttons="1"]` shows each link's button above its title, and the shortcode picker has a "Show link buttons" checkbox. Link Directory 0.2.0.
 - Link Directory (plugin): Export / Import now carries each link's thumbnail and link button. The images are stored inside the export file and added to the Media Library when it's imported (images over 5 MB are left out, and an unreadable or non-image file is skipped with a note).
 - Link Directory (plugin): a Links widget for any widget area. Choose a category (or all), how many links, the order (alphabetical, newest, or random), and whether to show plain text links or a wrapping row of 100×50 buttons; a link without a button shows its title in a same-sized tile.

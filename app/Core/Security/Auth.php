@@ -54,6 +54,7 @@ final class Auth
     public function login(User $user): void
     {
         $this->sessions->regenerate();
+        Csrf::regenerate();
         $_SESSION[self::SESSION_KEY] = $user->id;
         $this->resolvedUser = $user;
         $this->resolved = true;
@@ -63,6 +64,7 @@ final class Auth
     {
         unset($_SESSION[self::SESSION_KEY]);
         $this->sessions->regenerate();
+        Csrf::regenerate();
         $this->resolvedUser = null;
         $this->resolved = true;
     }

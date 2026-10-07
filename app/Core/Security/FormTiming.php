@@ -29,6 +29,10 @@ namespace LumoraPress\Core\Security;
  */
 final class FormTiming
 {
+    public const VALID = 'valid';
+    public const INVALID = 'invalid';
+    public const EXPIRED = 'expired';
+
     private static ?string $secretKey = null;
 
     public static function setSecretKey(string $key): void
@@ -46,15 +50,32 @@ final class FormTiming
 
     public static function verify(?string $time, ?string $hmac, int $minSeconds = 3): bool
     {
+        return self::check($time, $hmac, $minSeconds) === self::VALID;
+    }
+
+    /**
+     * Like verify(), but distinguishes a form that was open too long from
+     * one that was submitted too fast or tampered with, so a real visitor
+     * with a stale page can be told to reload instead of silently losing
+     * their comment. A $maxSeconds of 0 means a form never expires.
+     */
+    public static function check(?string $time, ?string $hmac, int $minSeconds = 3, int $maxSeconds = 0): string
+    {
         if ($time === null || $hmac === null || !ctype_digit($time)) {
-            return false;
+            return self::INVALID;
         }
 
         if (!hash_equals(self::sign($time), $hmac)) {
-            return false;
+            return self::INVALID;
         }
 
-        return (time() - (int) $time) >= $minSeconds;
+        $age = time() - (int) $time;
+
+        if ($age < $minSeconds) {
+            return self::INVALID;
+        }
+
+        return $maxSeconds > 0 && $age > $maxSeconds ? self::EXPIRED : self::VALID;
     }
 
     private static function sign(string $time): string

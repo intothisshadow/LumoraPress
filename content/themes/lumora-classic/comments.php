@@ -72,6 +72,8 @@ if ((int) $comment_count === 0 && !$comments_open) {
         <div class="lp-alert lp-alert--success">Your comment has been submitted and is awaiting moderation.</div>
     <?php elseif ($flag === 'flood'): ?>
         <div class="lp-alert lp-alert--error">You're commenting too quickly. Please wait a moment and try again.</div>
+    <?php elseif ($flag === 'expired'): ?>
+        <div class="lp-alert lp-alert--error">This comment form was open for too long. Please reload the page and submit your comment again.</div>
     <?php elseif ($flag === 'login_required'): ?>
         <div class="lp-alert lp-alert--error">You must be logged in to post a comment.</div>
     <?php elseif ($flag === 'error'): ?>

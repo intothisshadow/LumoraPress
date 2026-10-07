@@ -18,6 +18,7 @@ declare(strict_types=1);
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormTiming;
+use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Models\ThemePreference;
 use LumoraPress\Services\NotificationService;
 
@@ -85,6 +86,27 @@ if ($page === 'login') {
             if ($user === null) {
                 $kernel->loginThrottle->recordFailure($clientIp, $username === '' ? null : $username);
                 $secondsLocked = $kernel->loginThrottle->secondsUntilUnlocked($clientIp);
+
+                // A locked IP can't submit further attempts, so this is
+                // always the failure that triggered the lockout.
+                if ($secondsLocked > 0) {
+                    $kernel->securityLog->record(SecurityLog::EVENT_LOGIN_LOCKOUT, $clientIp, 'locked for ' . (int) ceil($secondsLocked / 60) . ' min');
+
+                    // Only an account that really exists is emailed, and the
+                    // visitor's own response is identical either way, so this
+                    // can't be used to probe which usernames are valid.
+                    $targetUser = $username !== '' ? $kernel->users->findByUsername($username) : null;
+
+                    if ($targetUser !== null && $targetUser->email !== '') {
+                        $kernel->mailer->send(
+                            $targetUser->email,
+                            'Failed login attempts on your Lumora Press account',
+                            "There were repeated failed login attempts for your account from the IP address {$clientIp}, and that address has been temporarily blocked from logging in.\n\n"
+                            . "If this was you, you can try again in " . (int) ceil($secondsLocked / 60) . " minutes, or use \"Forgot password\" to reset it. If it wasn't, no action is needed, but a strong, unique password is a good idea.",
+                        );
+                    }
+                }
+
                 $error = $secondsLocked > 0
                     ? sprintf(
                         'Too many failed login attempts. Please try again in %d minute%s.',

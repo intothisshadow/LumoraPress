@@ -32,6 +32,7 @@ use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
+use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Shortcodes\ShortcodeManager;
 use LumoraPress\Core\Theme\ThemeOptions;
@@ -98,6 +99,7 @@ final class Kernel
         public readonly UserService $users,
         public readonly Auth $auth,
         public readonly LoginThrottle $loginThrottle,
+        public readonly SecurityLog $securityLog,
         public readonly RememberMeService $rememberMe,
         public readonly MediaService $media,
         public readonly PostService $posts,

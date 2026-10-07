@@ -24,8 +24,10 @@ use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\FormHoneypot;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\IpAnonymizer;
+use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
@@ -62,6 +64,8 @@ final class SiteController
      */
     private const COMMENT_FLOOD_WINDOW_SECONDS = 30;
 
+    private const COMMENT_HOURLY_LIMIT_DEFAULT = 20;
+
     public function __construct(
         private readonly ThemeRenderer $theme,
         private readonly PostService $posts,
@@ -82,6 +86,7 @@ final class SiteController
         private readonly CommentModerationService $commentModeration,
         private readonly CommentNotificationService $commentNotifications,
         private readonly PermalinkService $permalinks,
+        private readonly ?SecurityLog $securityLog = null,
     ) {
     }
 
@@ -116,6 +121,59 @@ final class SiteController
     private function postsPerPage(): int
     {
         return max(1, (int) $this->config->option('posts_per_page', '10'));
+    }
+
+    /**
+     * Honeypot and submission-timing checks. A bot is sent back to the
+     * form as if the comment had gone through, so it gets no signal about
+     * what tripped it. A form left open past the configured lifetime is
+     * the exception: that is almost always a real visitor with a stale
+     * page, so they're told to reload rather than silently losing a comment.
+     */
+    private function rejectBotSubmission(string $redirectTo): void
+    {
+        $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+
+        if (FormHoneypot::isTripped($_POST)) {
+            $this->securityLog?->record(SecurityLog::EVENT_HONEYPOT, $ipAddress, $redirectTo);
+            header('Location: ' . $redirectTo . '#comment-form');
+            exit;
+        }
+
+        $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
+        $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
+        $maxAgeHours = max(0, (int) $this->config->option('comment_form_max_age_hours', '0'));
+
+        $timing = FormTiming::check($formTime, $formTimeHmac, 3, $maxAgeHours * 3600);
+
+        if ($timing === FormTiming::EXPIRED) {
+            $this->securityLog?->record(SecurityLog::EVENT_FORM_EXPIRED, $ipAddress, $redirectTo);
+            header('Location: ' . $redirectTo . '?comment=expired#comment-form');
+            exit;
+        }
+
+        if ($timing !== FormTiming::VALID) {
+            $this->securityLog?->record(SecurityLog::EVENT_TOO_FAST, $ipAddress, $redirectTo);
+            header('Location: ' . $redirectTo . '#comment-form');
+            exit;
+        }
+    }
+
+    /**
+     * Short per-IP burst window plus a configurable hourly cap, which
+     * catches slow-drip spam that stays under the burst window. A limit
+     * of 0 disables the hourly cap. With IP anonymization on, visitors
+     * sharing an anonymized address also share this budget.
+     */
+    private function isCommentRateLimited(string $ipAddress): bool
+    {
+        if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
+            return true;
+        }
+
+        $hourlyLimit = max(0, (int) $this->config->option('comment_max_per_hour', (string) self::COMMENT_HOURLY_LIMIT_DEFAULT));
+
+        return $hourlyLimit > 0 && $this->comments->countRecentFromIp($ipAddress, 3600) >= $hourlyLimit;
     }
 
     /**
@@ -374,24 +432,7 @@ final class SiteController
             exit;
         }
 
-        // Honeypot: a real visitor never fills this hidden field. Fail
-        // silently (pretend success) rather than revealing detection to
-        // the bot filling it in.
-        if (trim((string) ($_POST['comment_website'] ?? '')) !== '') {
-            header('Location: ' . $redirectTo . '#comment-form');
-            exit;
-        }
-
-        // Submission timing: a real visitor takes at least a few seconds
-        // to fill in the form, so an instant submission is a bot signal.
-        // Same "fail silently" treatment as the honeypot above.
-        $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
-        $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
-
-        if (!FormTiming::verify($formTime, $formTimeHmac)) {
-            header('Location: ' . $redirectTo . '#comment-form');
-            exit;
-        }
+        $this->rejectBotSubmission($redirectTo);
 
         $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
 
@@ -401,7 +442,8 @@ final class SiteController
 
         $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
 
-        if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
+        if ($this->isCommentRateLimited($ipAddress)) {
+            $this->securityLog?->record(SecurityLog::EVENT_COMMENT_RATE_LIMITED, (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), $redirectTo);
             header('Location: ' . $redirectTo . '?comment=flood#comment-form');
             exit;
         }
@@ -598,18 +640,7 @@ final class SiteController
             exit;
         }
 
-        if (trim((string) ($_POST['comment_website'] ?? '')) !== '') {
-            header('Location: ' . $redirectTo . '#comment-form');
-            exit;
-        }
-
-        $formTime = is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null;
-        $formTimeHmac = is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null;
-
-        if (!FormTiming::verify($formTime, $formTimeHmac)) {
-            header('Location: ' . $redirectTo . '#comment-form');
-            exit;
-        }
+        $this->rejectBotSubmission($redirectTo);
 
         $ipAddress = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
 
@@ -619,7 +650,8 @@ final class SiteController
 
         $userAgent = is_string($_SERVER['HTTP_USER_AGENT'] ?? null) ? substr((string) $_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
 
-        if ($this->comments->recentCommentFromIpExists($ipAddress, self::COMMENT_FLOOD_WINDOW_SECONDS)) {
+        if ($this->isCommentRateLimited($ipAddress)) {
+            $this->securityLog?->record(SecurityLog::EVENT_COMMENT_RATE_LIMITED, (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), $redirectTo);
             header('Location: ' . $redirectTo . '?comment=flood#comment-form');
             exit;
         }

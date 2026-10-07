@@ -163,6 +163,7 @@ Themes are built from familiar, traditional PHP template files (`header.php`, `f
 
 - [`docs/FEATURES.md`](docs/FEATURES.md) — full feature inventory
 - [`docs/SHORTCODES.md`](docs/SHORTCODES.md) — every `[shortcode]` tag you can type into a post, page, or Download, with its full attribute reference
+- [`docs/SPAM-PROTECTION.md`](docs/SPAM-PROTECTION.md) — how comments and logins are protected, handling spam, and what is recorded
 - [`docs/UPDATES.md`](docs/UPDATES.md) — update system mechanics
 - [`docs/THEME-DEVELOPMENT.md`](docs/THEME-DEVELOPMENT.md) — theme author reference
 - [`docs/DEVELOPER-APIS.md`](docs/DEVELOPER-APIS.md) — hooks, filters, and plugin reference

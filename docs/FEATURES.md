@@ -41,7 +41,8 @@ implementation-level detail on each area.
   moderation (including bulk approve/spam/trash/delete), a per-status
   count on every filter tab (All/Pending/Approved/Spam/Trash), an
   Empty Spam action alongside Empty Trash, honeypot/CSRF/
-  submission-timing spam protection, and optional Akismet spam-checking
+  submission-timing spam protection with a per-IP hourly comment limit and
+  a Security Events log on Maintenance &rsaquo; Logs, and optional Akismet spam-checking
   (Settings &rsaquo; Security — off by default, never required). Every
   post listing (the homepage and every category/tag/author/date
   archive) shows each post's comment count linking through to its own

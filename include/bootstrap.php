@@ -48,12 +48,15 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
 use LumoraPress\Core\Security\CspNonce;
+use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\DatabaseSessionHandler;
+use LumoraPress\Core\Security\FormHoneypot;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
+use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Core\Shortcodes\ShortcodeManager;
@@ -155,6 +158,7 @@ $config = new PressConfig(LUMORA_ROOT . '/config/config.php');
 ActiveConfig::set($config);
 
 FormTiming::setSecretKey((string) $config->get('secret_key', ''));
+FormHoneypot::setSecretKey((string) $config->get('secret_key', ''));
 
 $errorHandler = new ErrorHandler(LUMORA_ROOT . '/storage/logs', (bool) $config->get('debug', false));
 $errorHandler->register();
@@ -324,6 +328,13 @@ $loginThrottle = new LoginThrottle(
     windowSeconds: max(60, (int) $config->option('login_window_seconds', '900')),
     lockoutSeconds: max(60, (int) $config->option('login_lockout_seconds', '900')),
 );
+$securityLog = new SecurityLog(
+    LUMORA_ROOT . '/storage/logs',
+    anonymizeIps: $config->option('comment_ip_anonymization_enabled', '0') === '1',
+);
+Csrf::setFailureListener(static function (string $action) use ($securityLog): void {
+    $securityLog->record(SecurityLog::EVENT_CSRF_FAILURE, (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), $action);
+});
 $rememberMe = new RememberMeService($database, $users, $tablePrefix, $secureCookies);
 
 $passwordResets = new PasswordResetService($database, $tablePrefix);
@@ -791,6 +802,7 @@ $kernel = new Kernel(
     users: $users,
     auth: $auth,
     loginThrottle: $loginThrottle,
+    securityLog: $securityLog,
     rememberMe: $rememberMe,
     media: $media,
     posts: $posts,
@@ -847,7 +859,7 @@ $kernel = new Kernel(
 // line.
 ActiveKernel::set($kernel);
 
-$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks);
+$site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments, $auth, $config, $feeds, $search, $media, $mediaStats, $cache, $redirects, $akismet, $users, $commentModeration, $commentNotifications, $permalinks, $securityLog);
 
 // Thread subscriptions and in-app notifications. Hooked here rather than
 // inside SiteController so moderator approvals from the admin, which only

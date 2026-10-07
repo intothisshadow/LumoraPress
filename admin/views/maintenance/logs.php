@@ -42,6 +42,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         $error = 'Could not clear the error log — check that storage/logs/error.log is writable.';
     }
+
+    if ($form === 'clear_security_log' && Csrf::verify('clear_security_log', $token)) {
+        if ($kernel->securityLog->clear()) {
+            header('Location: ' . admin_url('maintenance/logs') . '?security_cleared=1#security-events');
+            exit;
+        }
+
+        $error = 'Could not clear the security log — check that storage/logs/ is writable.';
+    }
 }
 
 // Simple "show more" pagination rather than numbered pages, matching this
@@ -56,6 +65,18 @@ $errorTotal = $kernel->errorLog->totalEntries();
 $errorEntries = $kernel->errorLog->read($errorLimit);
 
 $loginAttempts = $kernel->loginThrottle->recentAttempts($loginLimit);
+
+$securityLimit = max(25, min(500, (int) ($_GET['security_limit'] ?? 25)));
+$securityEvents = $kernel->securityLog->recent($securityLimit);
+
+$securityEventLabels = [
+    'csrf_failure' => 'Invalid or expired security token',
+    'honeypot_triggered' => 'Hidden trap field filled in',
+    'form_too_fast' => 'Form submitted too quickly',
+    'form_expired' => 'Comment form open too long',
+    'comment_rate_limited' => 'Comment rate limit reached',
+    'login_lockout' => 'Login lockout',
+];
 
 $formatBytes = static function (int $bytes): string {
     if ($bytes >= 1024 * 1024) {
@@ -106,6 +127,10 @@ $shieldAttemptCountForIp = static function (string $ip) use ($lumoraShieldActive
 
 <?php if (($_GET['cleared'] ?? null) === '1'): ?>
     <div class="lp-alert lp-alert--success">Error log cleared.</div>
+<?php endif; ?>
+
+<?php if (($_GET['security_cleared'] ?? null) === '1'): ?>
+    <div class="lp-alert lp-alert--success">Security log cleared.</div>
 <?php endif; ?>
 
 <section class="lp-admin__panel" id="application-errors">
@@ -176,6 +201,57 @@ $shieldAttemptCountForIp = static function (string $ip) use ($lumoraShieldActive
                     </a>
                 </p>
             <?php endif; ?>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
+
+<section class="lp-admin__panel" id="security-events">
+    <h2>Security Events</h2>
+    <p class="lp-field__hint">
+        Blocked spam and abuse attempts, newest first: invalid security
+        tokens, filled-in trap fields, forms submitted too quickly, comment
+        rate limits, and login lockouts. Only the event, the IP address, and
+        a short note are kept &mdash; never comment text, passwords, or
+        security tokens. The log keeps itself small by rotating at about
+        half a megabyte.
+    </p>
+
+    <?php if ($securityEvents === []): ?>
+        <p class="lp-admin__widget-placeholder">No security events have been recorded.</p>
+    <?php else: ?>
+        <form method="post" action="<?= esc_url(admin_url('maintenance/logs')) ?>#security-events" data-lp-confirm="Permanently clear the security log? This cannot be undone.">
+            <?= Csrf::field('clear_security_log') ?>
+            <input type="hidden" name="form" value="clear_security_log">
+            <button type="submit" class="lp-button lp-button--danger">Clear Log</button>
+        </form>
+
+        <table class="lp-table">
+            <thead>
+                <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Event</th>
+                    <th scope="col">IP Address</th>
+                    <th scope="col">Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($securityEvents as $event): ?>
+                    <tr>
+                        <td><?= esc_html($event['time']) ?></td>
+                        <td><?= esc_html($securityEventLabels[$event['event']] ?? $event['event']) ?></td>
+                        <td><?= esc_html($event['ip']) ?></td>
+                        <td><?= esc_html($event['detail']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <?php if (count($securityEvents) >= $securityLimit): ?>
+            <p>
+                <a class="lp-button" href="<?= esc_url(admin_url('maintenance/logs') . '?error_limit=' . $errorLimit . '&login_limit=' . $loginLimit . '&shield_limit=' . $shieldLimit . '&security_limit=' . ($securityLimit + 25) . '#security-events') ?>">
+                    Show 25 more
+                </a>
+            </p>
         <?php endif; ?>
     <?php endif; ?>
 </section>
