@@ -267,6 +267,7 @@ $showGenerated = isset($_GET['generated']) && $pendingExport !== null;
 
 <?php if ($showGenerated): ?>
     <section class="lp-admin__panel lp-export-ready">
+        <h2>Export Ready</h2>
         <div class="lp-alert lp-alert--success">
             Your <?= esc_html((string) $pendingExport['label']) ?> export is ready
             (<?= esc_html(number_format((int) $pendingExport['size'] / 1048576, 1)) ?> MB).

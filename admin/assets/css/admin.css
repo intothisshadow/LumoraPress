@@ -904,6 +904,15 @@ body.lp-admin-login {
     margin-bottom: 0;
 }
 
+/* One form spread over several headed panels (Maintenance Mode, Contact Forms settings). */
+.lp-admin__content > form > .lp-admin__panel {
+    margin-bottom: 1.5rem;
+}
+
+.lp-admin__content > form > .lp-admin__panel:last-child {
+    margin-bottom: 0;
+}
+
 .lp-admin__panel,
 .lp-admin__widget {
     background: var(--lp-admin-panel-bg);

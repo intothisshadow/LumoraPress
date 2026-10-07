@@ -180,6 +180,9 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
 </p>
 
 <section class="lp-admin__panel">
+    <details class="lp-admin__collapsible" <?= ($categoryFilter > 0 || $termFilter !== '') ? 'open' : '' ?>>
+    <summary>Search &amp; Filter</summary>
+    <div class="lp-admin__collapsible__body">
     <form method="get" action="<?= esc_url(admin_url('downloads/all-downloads')) ?>" class="lp-admin__filter-form">
         <?php if ($statusFilter !== null): ?>
             <input type="hidden" name="status" value="<?= esc_attr($statusFilter->value) ?>">
@@ -202,6 +205,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
         </p>
         <button type="submit" class="lp-button">Filter</button>
     </form>
+    </div>
+    </details>
 </section>
 
 <section class="lp-admin__panel">

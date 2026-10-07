@@ -89,6 +89,7 @@ $csrfAction = $editingForm !== null ? 'contact_form_save_' . $editingForm->id : 
 <?php endif; ?>
 
 <section class="lp-admin__panel">
+    <h2><?= $editingForm !== null ? 'Edit Form' : 'New Form' ?></h2>
     <form method="post" action="<?= esc_url(admin_url('contact-forms/add-new') . ($editingForm !== null ? '?id=' . $editingForm->id : '')) ?>">
         <?= Csrf::field($csrfAction) ?>
 

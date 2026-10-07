@@ -36,6 +36,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Admin screens that still had the old plain panels now use the pale-blue section headers like Settings › General (LP-204). Maintenance Mode and Contact Forms › Settings are split into headed sections. The add and edit forms for Downloads, Link Directory (links and categories) and Contact Forms have a header. The Downloads and Link Directory lists keep their filters in the collapsible Search & Filter panel. System Information and the Import and Export result panels have headers too.
 - Site name, site logo, and favicon moved from Appearance › Themes to Settings › General, in the Site section. Nothing about the saved values changes.
 - Images in posts and pages written in the visual editor are now lazy-loaded, as Markdown ones already were, so a long post no longer loads every picture up front.
 - Media Manager: the "Create Cropped Featured Image" section is replaced by the new Edit Image tool, which crops at full resolution by default. Shrinking to the featured image width is now an option instead of always happening (LP-016).

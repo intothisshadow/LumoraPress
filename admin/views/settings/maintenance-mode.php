@@ -147,20 +147,26 @@ $pickerFolders = array_map(
 $colorPattern = '#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})';
 $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 ?>
-<section class="lp-admin__panel">
-    <form method="post" action="<?= esc_url(admin_url('settings/maintenance-mode')) ?>">
-        <?= Csrf::field('maintenance_settings') ?>
-        <input type="hidden" name="form" value="maintenance_settings">
+<form method="post" action="<?= esc_url(admin_url('settings/maintenance-mode')) ?>">
+    <?= Csrf::field('maintenance_settings') ?>
+    <input type="hidden" name="form" value="maintenance_settings">
 
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="maintenance_mode_enabled" value="1" <?= $kernel->config->option('maintenance_mode_enabled', '0') === '1' ? 'checked' : '' ?>>
-            Enable maintenance mode now
-        </label>
+    <section class="lp-admin__panel">
+        <h2>Status &amp; Schedule</h2>
 
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="maintenance_allow_editors" value="1" <?= $kernel->config->option('maintenance_bypass_capability', 'manage_options') === 'moderate_comments' ? 'checked' : '' ?>>
-            Also let Editors bypass maintenance mode (Administrators always can)
-        </label>
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="maintenance_mode_enabled" value="1" <?= $kernel->config->option('maintenance_mode_enabled', '0') === '1' ? 'checked' : '' ?>>
+                Enable maintenance mode now
+            </label>
+        </p>
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="maintenance_allow_editors" value="1" <?= $kernel->config->option('maintenance_bypass_capability', 'manage_options') === 'moderate_comments' ? 'checked' : '' ?>>
+                Also let Editors bypass maintenance mode (Administrators always can)
+            </label>
+        </p>
 
         <p class="lp-field">
             <label for="maintenance-title">Maintenance page title</label>
@@ -198,12 +204,17 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             <input type="number" id="maintenance-retry-after" name="maintenance_retry_after_seconds" min="0" value="<?= esc_attr((string) $kernel->config->option('maintenance_retry_after_seconds', '3600')) ?>">
         </p>
 
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="maintenance_show_countdown" value="1" <?= $kernel->config->option('maintenance_show_countdown', '0') === '1' ? 'checked' : '' ?>>
-            Show a live countdown to the scheduled end
-        </label>
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="maintenance_show_countdown" value="1" <?= $kernel->config->option('maintenance_show_countdown', '0') === '1' ? 'checked' : '' ?>>
+                Show a live countdown to the scheduled end
+            </label>
+        </p>
         <p class="lp-field__hint">Needs a scheduled end time above. The page reloads itself when the countdown reaches zero.</p>
 
+    </section>
+
+    <section class="lp-admin__panel">
         <h2>Who can still see the site</h2>
 
         <p class="lp-field">
@@ -212,6 +223,9 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             <span class="lp-field__hint">Visitors from these addresses see the normal site while maintenance mode is on, signed in or not. One IP address or range (such as <code>203.0.113.0/24</code>) per line. Your current address is <code><?= esc_html($yourIp) ?></code>.</span>
         </p>
 
+    </section>
+
+    <section class="lp-admin__panel">
         <h2>Maintenance page appearance</h2>
 
         <fieldset class="lp-field">
@@ -264,5 +278,5 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
         <button type="submit" class="lp-button lp-button--primary">Save</button>
         <button type="submit" class="lp-button lp-button--secondary" formaction="<?= esc_url(site_url('maintenance-preview')) ?>" formtarget="_blank" data-lp-maintenance-preview data-preview-url="<?= esc_url(site_url('maintenance-preview')) ?>">Preview in New Tab</button>
         <span class="lp-field__hint">Shows the maintenance page with the values above, including any you haven't saved yet. Nothing is changed.</span>
-    </form>
-</section>
+    </section>
+</form>

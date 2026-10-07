@@ -885,6 +885,7 @@ $activeImportTab = is_string($_GET['tab'] ?? null) && isset($importTabs[$_GET['t
     $nativeWarnings = is_array($nativeImportResult['warnings'] ?? null) ? $nativeImportResult['warnings'] : [];
     ?>
     <section class="lp-admin__panel">
+        <h2>Import Results</h2>
         <div class="lp-alert lp-alert--success">
             Imported content from &ldquo;<?= esc_html((string) ($nativeImportResult['siteName'] ?? '')) ?>&rdquo;.
         </div>
@@ -952,6 +953,7 @@ if ($wordPressImporterActive && $imported):
         : [];
     ?>
     <section class="lp-admin__panel">
+        <h2>WordPress Import Results</h2>
         <div class="lp-alert lp-alert--success">WordPress import complete.</div>
 
         <?php if ($displayCounts !== []): ?>

@@ -193,6 +193,7 @@ if ($action === 'edit') {
     $parentOptions = $linkCategories->listAllForParentPicker($category?->id);
     ?>
     <section class="lp-admin__panel">
+        <h2><?= $category !== null ? 'Edit Category' : 'New Category' ?></h2>
         <form method="post" action="<?= esc_url(admin_url('link-directory/categories')) ?>">
             <?= Csrf::field('link_directory_category_save') ?>
             <input type="hidden" name="form" value="save">

@@ -542,6 +542,7 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
 <?php endif; ?>
 
 <section class="lp-admin__panel">
+    <h2><?= $editingDownload !== null ? 'Edit Download' : 'New Download' ?></h2>
     <?php if ($editingDownload !== null): ?>
         <form method="post" action="<?= esc_url(admin_url('downloads/add-new')) ?>?id=<?= (int) $editingDownload->id ?>" enctype="multipart/form-data">
             <?= Csrf::field('update_download_' . $editingDownload->id) ?>

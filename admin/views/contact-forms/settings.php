@@ -55,11 +55,11 @@ $akismetConfigured = $kernel->akismet->isEnabled();
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
-<section class="lp-admin__panel">
-    <form method="post" action="<?= esc_url(admin_url('contact-forms/settings')) ?>">
-        <?= Csrf::field('contact_forms_spam_settings') ?>
-        <input type="hidden" name="form" value="contact_forms_spam_settings">
+<form method="post" action="<?= esc_url(admin_url('contact-forms/settings')) ?>">
+    <?= Csrf::field('contact_forms_spam_settings') ?>
+    <input type="hidden" name="form" value="contact_forms_spam_settings">
 
+    <section class="lp-admin__panel">
         <h2>Google reCAPTCHA</h2>
         <p class="lp-field__hint">Off by default. Requires a reCAPTCHA v2 ("I'm not a robot") site and secret key.</p>
         <p class="lp-field lp-field--checkbox">
@@ -77,6 +77,9 @@ $akismetConfigured = $kernel->akismet->isEnabled();
             <input type="text" id="contact-forms-recaptcha-secret-key" name="contact_forms_recaptcha_secret_key" value="<?= esc_attr($recaptchaSecretKey) ?>">
         </p>
 
+    </section>
+
+    <section class="lp-admin__panel">
         <h2>Cloudflare Turnstile</h2>
         <p class="lp-field__hint">Off by default. Requires a Turnstile site and secret key.</p>
         <p class="lp-field lp-field--checkbox">
@@ -94,6 +97,9 @@ $akismetConfigured = $kernel->akismet->isEnabled();
             <input type="text" id="contact-forms-turnstile-secret-key" name="contact_forms_turnstile_secret_key" value="<?= esc_attr($turnstileSecretKey) ?>">
         </p>
 
+    </section>
+
+    <section class="lp-admin__panel">
         <h2>Akismet</h2>
         <p class="lp-field lp-field--checkbox">
             <label class="lp-field--checkbox">
@@ -108,5 +114,5 @@ $akismetConfigured = $kernel->akismet->isEnabled();
         <?php endif; ?>
 
         <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
-    </form>
-</section>
+    </section>
+</form>

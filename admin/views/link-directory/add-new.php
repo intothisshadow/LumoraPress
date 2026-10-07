@@ -246,6 +246,7 @@ $currentButton = $editingLink?->buttonMediaId !== null ? $kernel->media->find($e
 <?php endif; ?>
 
 <section class="lp-admin__panel">
+    <h2><?= $editingLink !== null ? 'Edit Link' : 'New Link' ?></h2>
     <?php if ($editingLink !== null): ?>
         <form method="post" action="<?= esc_url(admin_url('link-directory/add-new')) ?>?id=<?= (int) $editingLink->id ?>" enctype="multipart/form-data">
             <?= Csrf::field('update_link_' . $editingLink->id) ?>

@@ -194,6 +194,7 @@ if ($action === 'edit') {
     $parentOptions = $downloadCategories->listAllForParentPicker($category?->id);
     ?>
     <section class="lp-admin__panel">
+        <h2><?= $category !== null ? 'Edit Category' : 'New Category' ?></h2>
         <form method="post" action="<?= esc_url(admin_url('downloads/categories')) ?>">
             <?= Csrf::field('download_category_save') ?>
             <input type="hidden" name="form" value="save">

@@ -24,6 +24,7 @@ $version = require LUMORA_ROOT . '/version.php';
 <h1 class="lp-admin__title">System Information</h1>
 
 <section class="lp-admin__panel">
+    <h2>Environment</h2>
     <ul class="lp-admin__meta-list">
         <li><span>PHP Version</span><span><?= esc_html(PHP_VERSION) ?></span></li>
         <li><span>Lumora Press Version</span><span><?= esc_html((string) $version['version']) ?></span></li>
