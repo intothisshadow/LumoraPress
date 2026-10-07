@@ -10,6 +10,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Emoji picker: keyboard use is much easier. The category tabs and the emoji grid are each a single Tab stop (the dialog has four Tab stops instead of about a hundred), the arrow keys, Home and End move within them, and your place in the grid is kept after inserting from the Recently Used list. When you close the picker with Escape or Cancel, focus goes back into the editor text instead of the toolbar button.
 - Emoji picker: in the dark admin theme the selected category tab was hard to read (white text on a light blue background). It now uses the same readable text color as primary buttons.
 
 ## [0.21.0] — 2026-10-07

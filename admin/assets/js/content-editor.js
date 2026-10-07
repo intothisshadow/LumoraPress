@@ -1897,7 +1897,7 @@
     // it closes only via Escape (native <dialog> behavior) or Cancel.
     // ------------------------------------------------------------------
 
-    function openEmojiPicker(container, onInsert) {
+    function openEmojiPicker(container, onInsert, onClose) {
         var dataset = JSON.parse(container.dataset.emojiDataset || '[]');
         var recent = JSON.parse(container.dataset.emojiRecent || '[]');
         var recordUrl = container.dataset.uploadUrl || '';
@@ -1962,16 +1962,66 @@
                 tab.textContent = category;
                 tab.setAttribute('role', 'tab');
                 tab.setAttribute('aria-selected', state.category === category && state.term === '' ? 'true' : 'false');
+                tab.tabIndex = tab.classList.contains('is-active') ? 0 : -1;
                 tab.addEventListener('click', function () {
                     state.term = '';
                     searchInput.value = '';
                     state.category = category;
                     renderCategoryNav();
                     renderGrid();
+
+                    // The nav was rebuilt, so put focus back on the tab that
+                    // is now selected instead of dropping it on the dialog.
+                    var activeTab = categoryNav.querySelector('.is-active');
+
+                    if (activeTab) {
+                        activeTab.focus();
+                    }
                 });
                 categoryNav.appendChild(tab);
             });
+
+            // While a search is showing, no tab is selected, but the row
+            // still needs one Tab stop.
+            if (!categoryNav.querySelector('[tabindex="0"]') && categoryNav.firstElementChild) {
+                categoryNav.firstElementChild.tabIndex = 0;
+            }
         }
+
+        // A tab list is one Tab stop; the arrow keys move between its tabs.
+        categoryNav.addEventListener('focusin', function (event) {
+            if (event.target.parentNode === categoryNav) {
+                Array.prototype.forEach.call(categoryNav.children, function (tab) {
+                    tab.tabIndex = tab === event.target ? 0 : -1;
+                });
+            }
+        });
+
+        categoryNav.addEventListener('keydown', function (event) {
+            var tabs = Array.prototype.slice.call(categoryNav.children);
+            var index = tabs.indexOf(document.activeElement);
+
+            if (index === -1) {
+                return;
+            }
+
+            var target = -1;
+
+            if (event.key === 'ArrowRight') {
+                target = (index + 1) % tabs.length;
+            } else if (event.key === 'ArrowLeft') {
+                target = (index - 1 + tabs.length) % tabs.length;
+            } else if (event.key === 'Home') {
+                target = 0;
+            } else if (event.key === 'End') {
+                target = tabs.length - 1;
+            }
+
+            if (target !== -1) {
+                event.preventDefault();
+                tabs[target].focus();
+            }
+        });
 
         function itemsForState() {
             if (state.term !== '') {
@@ -2047,6 +2097,7 @@
             button.textContent = item.emoji;
             button.setAttribute('aria-label', item.name);
             button.title = item.name;
+            button.tabIndex = -1;
             button.addEventListener('click', function () {
                 onInsert(item.emoji);
                 recordRecent(item.emoji);
@@ -2055,6 +2106,13 @@
         }
 
         function renderGrid() {
+            // A re-render (the Recently Used list reorders after an insert)
+            // would drop keyboard focus with the button it was on, so
+            // remember where it was and put it back afterward.
+            var focusedChild = grid.contains(document.activeElement) && document.activeElement !== grid ? document.activeElement : null;
+            var focusedEmoji = focusedChild ? focusedChild.textContent : null;
+            var focusedIndex = focusedChild ? Array.prototype.indexOf.call(grid.children, focusedChild) : -1;
+
             grid.innerHTML = '';
             var items = itemsForState();
 
@@ -2067,7 +2125,25 @@
 
             status.hidden = true;
             items.forEach(renderItem);
+
+            // The whole grid is one Tab stop; the arrow keys move within it.
+            grid.firstElementChild.tabIndex = 0;
+
+            if (focusedChild) {
+                var restored = Array.prototype.find.call(grid.children, function (child) { return child.textContent === focusedEmoji; })
+                    || grid.children[Math.min(Math.max(focusedIndex, 0), grid.children.length - 1)];
+
+                restored.focus();
+            }
         }
+
+        grid.addEventListener('focusin', function (event) {
+            if (event.target.parentNode === grid) {
+                Array.prototype.forEach.call(grid.children, function (item) {
+                    item.tabIndex = item === event.target ? 0 : -1;
+                });
+            }
+        });
 
         // Roving arrow-key navigation across the grid — computed from the
         // grid's own actual column count (grid-template-columns resolves
@@ -2075,7 +2151,7 @@
         // itself uses auto-fill) rather than a hardcoded number, so this
         // keeps working if the tile size/dialog width ever changes.
         grid.addEventListener('keydown', function (event) {
-            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown' && event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(event.key) === -1) {
                 return;
             }
 
@@ -2097,6 +2173,10 @@
                 target = index - columns;
             } else if (event.key === 'ArrowDown') {
                 target = index + columns;
+            } else if (event.key === 'Home') {
+                target = 0;
+            } else if (event.key === 'End') {
+                target = items.length - 1;
             }
 
             if (target >= 0 && target < items.length) {
@@ -2121,7 +2201,16 @@
         dialog.appendChild(status);
         dialog.appendChild(grid);
         dialog.appendChild(closeButton);
-        dialog.addEventListener('close', function () { dialog.remove(); });
+        dialog.addEventListener('close', function () {
+            dialog.remove();
+
+            // The browser sends focus back to the toolbar button; the
+            // caller moves it on into the text being edited, which is
+            // where the writer wants to keep typing.
+            if (typeof onClose === 'function') {
+                onClose();
+            }
+        });
         document.body.appendChild(dialog);
         dialog.showModal();
 
@@ -2156,6 +2245,8 @@
                     target.value = target.value.slice(0, start) + emoji + target.value.slice(end);
                     var caret = start + emoji.length;
                     target.setSelectionRange(caret, caret);
+                    target.focus();
+                }, function () {
                     target.focus();
                 });
             });
@@ -2810,6 +2901,8 @@
                     action: function () {
                         openEmojiPicker(container, function (emoji) {
                             editor.codemirror.replaceSelection(emoji);
+                        }, function () {
+                            editor.codemirror.focus();
                         });
                     },
                     className: 'fa fa-smile-o',
@@ -3398,6 +3491,8 @@
                                 onAction: function () {
                                     openEmojiPicker(container, function (emoji) {
                                         editor.insertContent(emoji);
+                                    }, function () {
+                                        editor.focus();
                                     });
                                 },
                             });
