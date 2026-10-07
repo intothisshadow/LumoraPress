@@ -127,6 +127,8 @@ categories, authors, or dates, and no way to add a per-slug or
 per-category template beyond what's listed (a `single-my-slug.php` file,
 for example, is simply never looked for).
 
+`maintenance.php` receives `$page_title`, `$message`, `$return_at` (the scheduled end as a `DateTimeImmutable`, or `null`), and `$countdown_to` (the same moment, but only when the administrator turned the live countdown on and the end is still ahead, otherwise `null`). To show the countdown, print an empty element with a `data-lp-countdown-to` attribute holding `$countdown_to->format(DATE_ATOM)` and the `hidden` attribute, then style it with `.lp-maintenance__countdown`; core loads the script that fills it in, and a visitor without JavaScript just sees the static return time. Fire `do_action('maintenance_page_content')` inside the page's container so plugins can add their own status information. The administrator's chosen background image, colors, and custom CSS are printed into `<head>` by core through the usual `head_assets` hook, so the template needs no markup for them; style the page with the `.lp-maintenance`, `.lp-maintenance__message`, `.lp-maintenance__return-at`, and `.lp-maintenance__countdown` classes.
+
 ## The "loop"
 
 There is no global `$post`/`have_posts()`/`the_post()` state to manage.
@@ -287,6 +289,7 @@ reference.
 | `meta_description(): string` | Site-wide fallback meta description. |
 | `default_og_image_url(): ?string` | Site-wide fallback Open Graph/Twitter Card image. |
 | `powered_by_html(): string` | Fixed "Powered by Lumora Press" attribution HTML, linked to the project homepage — not site-configurable. Returns raw HTML, safe to echo directly. |
+| `is_maintenance_mode(): bool` | Whether maintenance mode is in effect (switched on by hand or by its schedule). True even for a visitor who bypasses it, so a theme can show signed-in staff a reminder. |
 | `search_engines_discouraged(): bool` | Whether Settings › Reading has asked search engines not to index the site — print `<meta name="robots" content="noindex,nofollow">` when true. |
 | `the_date(\DateTimeInterface $date): string` / `the_time(\DateTimeInterface $date): string` | Formats a date/time using the admin-configured format (Settings › General). Always use these instead of calling `->format()` directly, so admin-configured date/time formats are respected everywhere. |
 

@@ -62,6 +62,7 @@ use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Core\Shortcodes\ShortcodeManager;
 use LumoraPress\Core\Shortcodes\Shortcodes;
 use LumoraPress\Core\Theme\ActiveAuth;
+use LumoraPress\Core\Theme\ActiveMaintenance;
 use LumoraPress\Core\Theme\ActiveCategories;
 use LumoraPress\Core\Theme\ActivePages;
 use LumoraPress\Core\Theme\ActivePosts;
@@ -786,7 +787,8 @@ $hooks->addAction('lumora_press_after_plugin_update', static function (string $s
 });
 
 $router = new Router();
-$maintenance = new MaintenanceGate($config, $auth, $theme, $hooks);
+$maintenance = new MaintenanceGate($config, $auth, $theme, $hooks, $media);
+ActiveMaintenance::set($maintenance);
 
 $kernel = new Kernel(
     config: $config,
@@ -968,6 +970,9 @@ $router->get($postRoutePattern, fn (array $params) => $site->singlePost($params)
 $router->post($postRoutePattern . '/comment', fn (array $params) => $site->submitComment($params));
 $router->get($postRoutePattern . '/comments/feed/{format}', fn (array $params) => $site->postCommentsFeed($params));
 $router->get($postRoutePattern . '/comments/feed', fn (array $params) => $site->postCommentsFeed($params));
+$router->post('/maintenance-preview', static function () use ($maintenance): void {
+    $maintenance->handlePreviewRequest($_POST);
+});
 $router->get('/preview/{id}', fn (array $params) => $site->previewPost($params));
 $router->get('/preview-page/{id}', fn (array $params) => $site->previewPage($params));
 $router->get('/author/{slug}/feed/{format}', fn (array $params) => $site->authorFeed($params));

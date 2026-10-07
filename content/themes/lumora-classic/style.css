@@ -2638,6 +2638,13 @@ a.lp-post-list__comments:focus {
     color: var(--lp-text-muted);
 }
 
+.lp-maintenance__countdown {
+    margin-top: 1rem;
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
 /* =========================================================
    Media Viewer & Lightbox
    ========================================================= */

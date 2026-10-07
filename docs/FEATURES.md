@@ -62,7 +62,9 @@ implementation-level detail on each area.
   by checking GitHub Releases directly or uploading a ZIP manually, with
   automatic backup and rollback either way.
 - **Maintenance mode** — take the public site offline for visitors while
-  admins keep working.
+  admins keep working, with an optional schedule, a live countdown to the
+  return time, an IP whitelist for people who should still see the site,
+  and a customizable page (background image, colors, custom CSS).
 - **Portable Settings Export/Import** (Maintenance &rsaquo; Tools) —
   download a file with one install's Permalinks, Reading, Discussion,
   Media/Thumbnails, and General's non-identity settings, then import it

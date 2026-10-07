@@ -19,6 +19,7 @@ use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Security\CspNonce;
+use LumoraPress\Core\Theme\ActiveMaintenance;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
 use LumoraPress\Models\ContentFormat;
@@ -519,6 +520,18 @@ if (!function_exists('custom_css')) {
     function custom_css(): string
     {
         return (string) preg_replace('/<\/style\s*>/i', '', SiteBranding::customCss());
+    }
+}
+
+if (!function_exists('is_maintenance_mode')) {
+    /**
+     * Whether maintenance mode is currently in effect, whether switched
+     * on by hand or by its schedule. True even for a visitor who bypasses
+     * it, so a theme can show staff a reminder banner.
+     */
+    function is_maintenance_mode(): bool
+    {
+        return ActiveMaintenance::isActive();
     }
 }
 

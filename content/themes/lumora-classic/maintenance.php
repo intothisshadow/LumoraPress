@@ -15,6 +15,7 @@
 /** @var string $page_title */
 /** @var string $message */
 /** @var \DateTimeImmutable|null $return_at */
+/** @var \DateTimeImmutable|null $countdown_to */
 get_header();
 ?>
 <div id="lp-content" class="lp-content">
@@ -27,6 +28,12 @@ get_header();
                 We expect to be back around <?= esc_html(the_date($return_at)) ?> at <?= esc_html(the_time($return_at)) ?>.
             </p>
         <?php endif; ?>
+
+        <?php if (($countdown_to ?? null) !== null): ?>
+            <p class="lp-maintenance__countdown" data-lp-countdown-to="<?= esc_attr($countdown_to->format(DATE_ATOM)) ?>" hidden></p>
+        <?php endif; ?>
+
+        <?php do_action('maintenance_page_content'); ?>
     </div>
 </div>
 <?php get_footer(); ?>

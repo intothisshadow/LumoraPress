@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Maintenance mode: an optional live countdown to the scheduled end, shown on the maintenance page (Settings › Maintenance Mode). The page reloads itself when it reaches zero.
+- Maintenance mode: an IP whitelist. Visitors from the listed addresses or ranges (such as `203.0.113.0/24`, IPv4 or IPv6) see the normal site while maintenance mode is on. Lines that aren't valid addresses are left out when you save, with a notice.
+- Maintenance mode: a "Preview in New Tab" button on Settings › Maintenance Mode shows the maintenance page as visitors would see it, using the values in the form even if you haven't saved them. Nothing is saved, the live site isn't affected, and only administrators can open it.
+- Maintenance mode: the maintenance page can have its own background image, background, text, and countdown colors, and custom CSS.
+- Themes and plugins: a `maintenance_page_data` filter to change what the maintenance page receives, a `maintenance_page_content` action to add content to it, and an `is_maintenance_mode()` template tag (see `docs/THEME-DEVELOPMENT.md` and `docs/DEVELOPER-APIS.md`).
 - Spam protection: the comment form's hidden trap fields now have names unique to your site, and there are two of them instead of one. No theme changes are needed.
 - Spam protection: an optional "Comment form lifetime" on Settings › Security › Comment Flood Protection. A comment form left open longer than the set number of hours is refused, and the visitor sees a notice asking them to reload the page. It's off by default.
 - Security tokens on forms now expire after twelve hours and are discarded when someone signs in or out.

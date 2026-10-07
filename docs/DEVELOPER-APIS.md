@@ -230,7 +230,9 @@ Kernel exists (see "Discovery & loading" below). Hook the
 | `option_changed` | action | `string $key, string\|null $serialized` | [`PressConfig`](../app/Core/PressConfig.php)`::setOption()` — fires on **every** option write anywhere in the app, including in-memory-only config with no database bound. The single most universal "something in settings changed" hook. |
 | `general_settings_saved` | action | `string $section` (`'site_settings'` \| `'date_time_settings'` \| `'footer_settings'` \| `'seo_settings'`) | `admin/views/settings/general.php`, once per successfully-saved sub-form. **Not fired** by that same screen's Feed, Revision, or Editor sub-forms — those save silently. Don't treat this as a complete "any setting changed" event; use `option_changed` for that instead. |
 | `maintenance_mode_toggled` | action | `bool $enabled` | `admin/views/settings/maintenance-mode.php` — both the full settings form and the quick Dashboard toggle fire this. |
-| `maintenance_mode_bypass` | filter | `bool $bypasses, ?User $user` | [`MaintenanceGate`](../app/Core/Http/MaintenanceGate.php)`::bypassesFor()` — add bypass rules beyond the built-in capability check. Guests (`$user === null`) still pass through with `$bypasses = false`. |
+| `maintenance_mode_bypass` | filter | `bool $bypasses, ?User $user` | [`MaintenanceGate`](../app/Core/Http/MaintenanceGate.php)`::bypassesFor()` — add bypass rules beyond the built-in capability check and the administrator's IP whitelist. `$bypasses` already reflects both. Guests (`$user === null`) pass through with `$bypasses = true` only when their IP address is whitelisted. |
+| `maintenance_page_data` | filter | `array<string, mixed> $data` | `MaintenanceGate::respond()` — the variables handed to the theme's `maintenance.php` (`page_title`, `message`, `return_at`, `countdown_to`). Return the array with changed values or extra keys; the original keys are kept if you leave them out. |
+| `maintenance_page_content` | action | — | The theme's `maintenance.php`, inside the page container — print extra status information or widgets for visitors. |
 
 ### Admin UI extension points
 
