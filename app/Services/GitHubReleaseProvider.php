@@ -597,13 +597,16 @@ final class GitHubReleaseProvider
     }
 
     /**
-     * Collects the `{slug}-v{version}.zip` (+ `.sha256`) assets
+     * Collects the `plugin-{slug}-v{version}.zip` (+ `.sha256`) assets
      * build-release.sh attaches for bundled plugins whose version changed.
      * Checksums are only fetched at download time, so a check costs no
-     * extra requests. Slugs are lowercase-only, which is also what keeps
-     * the core `LumoraPress-v{version}.zip` asset out of this map; theme
-     * packages (`theme-{slug}-v{version}.zip`) are skipped explicitly since
-     * their names would otherwise read as a plugin called `theme-{slug}`.
+     * extra requests. Releases up to v0.21.0 named these `{slug}-v{version}.zip`
+     * with no prefix; those names are still read, so a release published
+     * that way keeps offering its plugin updates. The unprefixed form must
+     * skip `theme-` and `plugin-` names, which would otherwise read as a
+     * plugin called `theme-{slug}` or `plugin-{slug}`. Slugs are
+     * lowercase-only, which also keeps the core `LumoraPress-v{version}.zip`
+     * asset out of this map.
      *
      * @param array<int|string, mixed> $assets
      *
@@ -611,7 +614,17 @@ final class GitHubReleaseProvider
      */
     private function mapPluginAssets(array $assets): array
     {
-        return $this->mapVersionedAssets($assets, '', true);
+        $found = $this->mapVersionedAssets($assets, 'plugin-', ['theme-']);
+
+        foreach ($this->mapVersionedAssets($assets, '', ['theme-', 'plugin-']) as $slug => $legacy) {
+            if (!isset($found[$slug]) || version_compare($legacy['version'], $found[$slug]['version'], '>')) {
+                $found[$slug] = $legacy;
+            }
+        }
+
+        ksort($found);
+
+        return $found;
     }
 
     /**
@@ -624,15 +637,16 @@ final class GitHubReleaseProvider
      */
     private function mapThemeAssets(array $assets): array
     {
-        return $this->mapVersionedAssets($assets, 'theme-', false);
+        return $this->mapVersionedAssets($assets, 'theme-', []);
     }
 
     /**
      * @param array<int|string, mixed> $assets
+     * @param list<string> $skipPrefixes asset names starting with one of these are ignored
      *
      * @return array<string, array{version: string, download: array{type: string, url: string, name: string, size: ?int}, sha256_url: ?string}>
      */
-    private function mapVersionedAssets(array $assets, string $prefix, bool $skipThemePackages): array
+    private function mapVersionedAssets(array $assets, string $prefix, array $skipPrefixes): array
     {
         $checksumUrls = [];
 
@@ -649,8 +663,10 @@ final class GitHubReleaseProvider
                 continue;
             }
 
-            if ($skipThemePackages && str_starts_with($asset['name'], 'theme-')) {
-                continue;
+            foreach ($skipPrefixes as $skipPrefix) {
+                if (str_starts_with($asset['name'], $skipPrefix)) {
+                    continue 2;
+                }
             }
 
             if (preg_match('/^' . preg_quote($prefix, '/') . '([a-z0-9][a-z0-9_-]*)-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.zip$/', $asset['name'], $matches) !== 1) {
