@@ -78,7 +78,7 @@ implementation-level detail on each area.
 - **Appearance** — theme browser (install, activate, preview — a
   previewed theme now persists across the whole site as you click
   through it, not just the page you started on — and delete inactive
-  themes individually or in bulk), branding, custom CSS, a tabbed
+  themes individually or in bulk), custom CSS, a tabbed
   Customize screen (Header, Welcome Message, Body — colors/typography/
   layout/post display, Menu, Widgets, Footer; values are scoped per
   active theme, no CSS editing required), widgets (drag-to-reorder,

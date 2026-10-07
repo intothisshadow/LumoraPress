@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\BrandingController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
 
@@ -23,8 +24,6 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// Site title, logo, favicon, and custom CSS intentionally stay on
-// Appearance > Branding rather than duplicating that upload flow here.
 // User registration, default language, and first day of week are
 // deliberately not offered — each needs infrastructure that doesn't
 // exist yet, not just a settings field.
@@ -51,8 +50,14 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 
         do_action('general_settings_saved', 'site_settings');
 
-        header('Location: ' . admin_url('settings/general') . '?saved=1');
-        exit;
+        // The other fields are already saved, so an upload problem is
+        // reported on this page instead of redirecting past it.
+        $error = (new BrandingController($kernel->config, $kernel->media))->save($_POST, $_FILES, $currentUser->id);
+
+        if ($error === null) {
+            header('Location: ' . admin_url('settings/general') . '?saved=1');
+            exit;
+        }
     }
 } elseif ($form === 'date_time_settings' && Csrf::verify('date_time_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $dateFormatPresetInput = trim((string) ($_POST['date_format_preset'] ?? ''));
@@ -144,9 +149,14 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
 
 <section class="lp-admin__panel">
     <h2>Site</h2>
-    <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>" enctype="multipart/form-data">
         <?= Csrf::field('site_settings') ?>
         <input type="hidden" name="form" value="site_settings">
+
+        <p class="lp-field">
+            <label for="site-name">Site name</label>
+            <input type="text" id="site-name" name="site_name" value="<?= esc_attr((string) $kernel->config->option('site_name', '')) ?>">
+        </p>
 
         <p class="lp-field">
             <label for="site-url">Website URL</label>
@@ -162,6 +172,31 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
         <p class="lp-field">
             <label for="site-tagline">Tagline</label>
             <input type="text" id="site-tagline" name="site_tagline" value="<?= esc_attr((string) $kernel->config->option('site_tagline', '')) ?>" placeholder="A short description of the site">
+        </p>
+
+        <?php
+        $currentLogoId = (int) $kernel->config->option('site_logo_media_id', '');
+        $currentFaviconId = (int) $kernel->config->option('favicon_media_id', '');
+        $currentLogo = $currentLogoId > 0 ? $kernel->media->find($currentLogoId) : null;
+        $currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId) : null;
+        ?>
+
+        <p class="lp-field">
+            <label for="site-logo">Site logo</label>
+            <?php if ($currentLogo !== null): ?>
+                <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentLogo)) ?>" alt="Current site logo">
+                <label class="lp-field--checkbox"><input type="checkbox" name="remove_logo" value="1"> Remove current logo</label>
+            <?php endif; ?>
+            <input type="file" id="site-logo" name="logo" accept="image/*">
+        </p>
+
+        <p class="lp-field">
+            <label for="site-favicon">Favicon</label>
+            <?php if ($currentFavicon !== null): ?>
+                <img class="lp-branding-preview lp-branding-preview--favicon" src="<?= esc_url($kernel->media->url($currentFavicon)) ?>" alt="Current favicon">
+                <label class="lp-field--checkbox"><input type="checkbox" name="remove_favicon" value="1"> Remove current favicon</label>
+            <?php endif; ?>
+            <input type="file" id="site-favicon" name="favicon" accept="image/png,image/x-icon,.ico">
         </p>
 
         <p class="lp-field">

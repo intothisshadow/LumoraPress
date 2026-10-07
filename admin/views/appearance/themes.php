@@ -24,9 +24,8 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// Two independent sections — Theme Management and Branding — each with its
-// own "form" value. POST handling lives in ThemesController; this view
-// dispatches to it and turns the result into a redirect or $error string.
+// POST handling lives in ThemesController; this view dispatches to it and
+// turns the result into a redirect or $error string.
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 $error = null;
 $csrfToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
@@ -196,7 +195,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $themeUp
 }
 
 if ($form !== '' && !in_array($form, $themeUpdateForms, true)) {
-    $controller = new ThemesController($kernel->themes, $kernel->themeInstaller, $kernel->config, $kernel->media);
+    $controller = new ThemesController($kernel->themes, $kernel->themeInstaller, $kernel->config);
 
     $result = match ($form) {
         'activate_theme' => $controller->activateTheme($_POST, $csrfToken),
@@ -204,7 +203,6 @@ if ($form !== '' && !in_array($form, $themeUpdateForms, true)) {
         'bulk_delete_themes' => $controller->bulkDeleteThemes($_POST, $csrfToken),
         'update_theme' => $controller->updateTheme($_POST, $_FILES, $csrfToken),
         'install_theme' => $controller->installTheme($_FILES, $csrfToken),
-        'branding' => $controller->saveBranding($_POST, $_FILES, $currentUser->id, $csrfToken),
         default => null,
     };
 
@@ -218,10 +216,6 @@ if ($form !== '' && !in_array($form, $themeUpdateForms, true)) {
 }
 
 $themeList = $kernel->themes->discover(activeFirst: true);
-$currentLogoId = (int) $kernel->config->option('site_logo_media_id', '');
-$currentFaviconId = (int) $kernel->config->option('favicon_media_id', '');
-$currentLogo = $currentLogoId > 0 ? $kernel->media->find($currentLogoId) : null;
-$currentFavicon = $currentFaviconId > 0 ? $kernel->media->find($currentFaviconId) : null;
 
 $themeUpdateToken = is_string($_GET['theme_update_token'] ?? null) ? $_GET['theme_update_token'] : null;
 $themeUpdateProgress = null;
@@ -596,38 +590,5 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Upload &amp; Install</button>
-    </form>
-</section>
-
-<section class="lp-admin__panel">
-    <h2>Branding</h2>
-    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" enctype="multipart/form-data">
-        <?= Csrf::field('branding') ?>
-        <input type="hidden" name="form" value="branding">
-
-        <p class="lp-field">
-            <label for="site-name">Site name</label>
-            <input type="text" id="site-name" name="site_name" value="<?= esc_attr((string) $kernel->config->option('site_name', '')) ?>">
-        </p>
-
-        <p class="lp-field">
-            <label for="site-logo">Site logo</label>
-            <?php if ($currentLogo !== null): ?>
-                <img class="lp-branding-preview" src="<?= esc_url($kernel->media->url($currentLogo)) ?>" alt="Current site logo">
-                <label class="lp-field--checkbox"><input type="checkbox" name="remove_logo" value="1"> Remove current logo</label>
-            <?php endif; ?>
-            <input type="file" id="site-logo" name="logo" accept="image/*">
-        </p>
-
-        <p class="lp-field">
-            <label for="site-favicon">Favicon</label>
-            <?php if ($currentFavicon !== null): ?>
-                <img class="lp-branding-preview lp-branding-preview--favicon" src="<?= esc_url($kernel->media->url($currentFavicon)) ?>" alt="Current favicon">
-                <label class="lp-field--checkbox"><input type="checkbox" name="remove_favicon" value="1"> Remove current favicon</label>
-            <?php endif; ?>
-            <input type="file" id="site-favicon" name="favicon" accept="image/png,image/x-icon,.ico">
-        </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>

@@ -36,6 +36,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Site name, site logo, and favicon moved from Appearance › Themes to Settings › General, in the Site section. Nothing about the saved values changes.
 - Images in posts and pages written in the visual editor are now lazy-loaded, as Markdown ones already were, so a long post no longer loads every picture up front.
 - Media Manager: the "Create Cropped Featured Image" section is replaced by the new Edit Image tool, which crops at full resolution by default. Shrinking to the featured image width is now an option instead of always happening (LP-016).
 - Visual editor: the editing toolbar and dialogs now use TinyMCE's dark skin when the admin is in dark mode (LP-016).

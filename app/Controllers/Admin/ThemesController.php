@@ -21,7 +21,6 @@ use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\ThemeInfo;
 use LumoraPress\Core\Theme\ThemeRegistry;
-use LumoraPress\Services\MediaService;
 use LumoraPress\Services\ThemeInstaller;
 
 /**
@@ -39,7 +38,6 @@ final class ThemesController
         private readonly ThemeRegistry $themes,
         private readonly ThemeInstaller $themeInstaller,
         private readonly PressConfig $config,
-        private readonly MediaService $media,
     ) {
     }
 
@@ -203,49 +201,6 @@ final class ThemesController
         }
 
         return AdminActionResult::redirect(admin_url('appearance/themes') . '?installed=' . urlencode($installed->name));
-    }
-
-    /**
-     * @param array<string, mixed> $post
-     * @param array<string, mixed> $files
-     */
-    public function saveBranding(array $post, array $files, int $currentUserId, ?string $csrfToken): AdminActionResult
-    {
-        if (!Csrf::verify('branding', $csrfToken)) {
-            return $this->invalidRequest();
-        }
-
-        $this->config->setOption('site_name', trim((string) ($post['site_name'] ?? '')));
-
-        $error = null;
-
-        if (($post['remove_logo'] ?? '') === '1') {
-            $this->config->setOption('site_logo_media_id', '');
-        } elseif (isset($files['logo']) && $files['logo']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploaded = $this->media->upload($files['logo'], $currentUserId);
-                $this->config->setOption('site_logo_media_id', (string) $uploaded['id']);
-            } catch (\Throwable $exception) {
-                $error = 'Logo upload failed: ' . $exception->getMessage();
-            }
-        }
-
-        if (($post['remove_favicon'] ?? '') === '1') {
-            $this->config->setOption('favicon_media_id', '');
-        } elseif (isset($files['favicon']) && $files['favicon']['error'] !== UPLOAD_ERR_NO_FILE) {
-            try {
-                $uploaded = $this->media->upload($files['favicon'], $currentUserId);
-                $this->config->setOption('favicon_media_id', (string) $uploaded['id']);
-            } catch (\Throwable $exception) {
-                $error = 'Favicon upload failed: ' . $exception->getMessage();
-            }
-        }
-
-        if ($error !== null) {
-            return AdminActionResult::error($error);
-        }
-
-        return AdminActionResult::redirect(admin_url('appearance/themes') . '?saved=1');
     }
 
     /**
