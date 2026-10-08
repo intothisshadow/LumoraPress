@@ -218,6 +218,21 @@ final class DownloadCategoryService
     }
 
     /**
+     * The category's parent, unless there is none or it is in the Trash. A trashed parent no
+     * longer counts: its sub-categories are shown at the top level until it is restored.
+     */
+    public function findLiveParent(DownloadCategory $category): ?DownloadCategory
+    {
+        if ($category->parentId === null) {
+            return null;
+        }
+
+        $parent = $this->findById($category->parentId);
+
+        return $parent !== null && !$parent->isTrashed() ? $parent : null;
+    }
+
+    /**
      * @return array<int, DownloadCategory>
      */
     public function listAll(): array
@@ -333,24 +348,78 @@ final class DownloadCategoryService
      */
     public function listAllForTree(): array
     {
-        return $this->flattenForTree($this->listAll(), null, 0);
+        return $this->arrangeAsTree($this->listAll());
     }
 
     /**
+     * The Categories screen's rows: every live category with its download count, each parent
+     * followed by its sub-categories, and a depth to indent by.
+     *
+     * @return array<int, array{category: DownloadCategory, downloadCount: int, depth: int}>
+     */
+    public function listAllWithDownloadCountsAsTree(): array
+    {
+        $counts = [];
+        $categories = [];
+
+        foreach ($this->listAllWithDownloadCounts() as $row) {
+            $categories[] = $row['category'];
+            $counts[$row['category']->id] = $row['downloadCount'];
+        }
+
+        return array_map(
+            static fn (array $node): array => ['category' => $node['category'], 'downloadCount' => $counts[$node['category']->id], 'depth' => $node['depth']],
+            $this->arrangeAsTree($categories),
+        );
+    }
+
+    /**
+     * Puts a name-sorted list of categories into tree order: each parent immediately followed
+     * by its children, siblings staying alphabetical. A category whose parent is not in the
+     * list (trashed or deleted) is shown at the top level, and one caught in a parent loop is
+     * too, so nothing in the list can ever go missing from the result.
+     *
      * @param array<int, DownloadCategory> $categories
      * @return array<int, array{category: DownloadCategory, depth: int}>
      */
-    private function flattenForTree(array $categories, ?int $parentId, int $depth): array
+    private function arrangeAsTree(array $categories): array
     {
-        $result = [];
+        $present = [];
 
         foreach ($categories as $category) {
-            if ($category->parentId !== $parentId) {
-                continue;
-            }
+            $present[$category->id] = true;
+        }
 
-            $result[] = ['category' => $category, 'depth' => $depth];
-            $result = [...$result, ...$this->flattenForTree($categories, $category->id, $depth + 1)];
+        $childrenOf = [];
+
+        foreach ($categories as $category) {
+            $hasParent = $category->parentId !== null && $category->parentId !== $category->id && isset($present[$category->parentId]);
+            $childrenOf[$hasParent ? $category->parentId : 0][] = $category;
+        }
+
+        $result = [];
+        $seen = [];
+        $walk = static function (int $parentId, int $depth) use (&$walk, &$result, &$seen, $childrenOf): void {
+            foreach ($childrenOf[$parentId] ?? [] as $category) {
+                if (isset($seen[$category->id])) {
+                    continue;
+                }
+
+                $seen[$category->id] = true;
+                $result[] = ['category' => $category, 'depth' => $depth];
+                $walk($category->id, $depth + 1);
+            }
+        };
+
+        $walk(0, 0);
+
+        // Categories that are each other's ancestors are unreachable from the top; list them there.
+        foreach ($categories as $category) {
+            if (!isset($seen[$category->id])) {
+                $seen[$category->id] = true;
+                $result[] = ['category' => $category, 'depth' => 0];
+                $walk($category->id, 1);
+            }
         }
 
         return $result;

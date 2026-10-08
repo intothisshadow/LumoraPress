@@ -229,7 +229,7 @@ if ($action === 'edit') {
     <?php
     $trashedCount = $downloadCategories->trashedCount();
     $statusLinks = ['' => 'All (' . $downloadCategories->count() . ')', 'trash' => 'Trash (' . $trashedCount . ')'];
-    $rows = $isTrashView ? $downloadCategories->listTrashedWithDownloadCounts() : $downloadCategories->listAllWithDownloadCounts();
+    $rows = $isTrashView ? $downloadCategories->listTrashedWithDownloadCounts() : $downloadCategories->listAllWithDownloadCountsAsTree();
     ?>
 
     <p class="lp-admin__filters">
@@ -307,7 +307,10 @@ if ($action === 'edit') {
                         <?php foreach ($rows as $row): ?>
                             <?php
                             $listedCategory = $row['category'];
-                            $parentCategory = $listedCategory->parentId !== null ? $downloadCategories->findById($listedCategory->parentId) : null;
+                            // In the Trash tab the stored parent is shown as it is; elsewhere a trashed parent no longer counts.
+                            $parentCategory = $isTrashView
+                                ? ($listedCategory->parentId !== null ? $downloadCategories->findById($listedCategory->parentId) : null)
+                                : $downloadCategories->findLiveParent($listedCategory);
                             ?>
                             <tr>
                                 <?php if ($canDeleteCategories): ?>
@@ -318,11 +321,18 @@ if ($action === 'edit') {
                                 <?php endif; ?>
                                 <td><?= (int) $listedCategory->id ?></td>
                                 <td>
-                                    <?php if ($isTrashView): ?>
-                                        <?= esc_html($listedCategory->name) ?>
-                                    <?php else: ?>
-                                        <a href="<?= esc_url(admin_url('downloads/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
-                                    <?php endif; ?>
+                                    <?php $depth = (int) ($row['depth'] ?? 0); ?>
+                                    <span class="lp-download-categories__name"<?= $depth > 0 ? ' data-style-margin-left="' . ($depth * 1.5) . 'rem"' : '' ?>>
+                                        <?php if ($depth > 0): ?>
+                                            <span class="lp-download-categories__branch" aria-hidden="true">&mdash;</span>
+                                            <span class="lp-visually-hidden">Sub-category: </span>
+                                        <?php endif; ?>
+                                        <?php if ($isTrashView): ?>
+                                            <?= esc_html($listedCategory->name) ?>
+                                        <?php else: ?>
+                                            <a href="<?= esc_url(admin_url('downloads/categories')) ?>?action=edit&id=<?= (int) $listedCategory->id ?>"><?= esc_html($listedCategory->name) ?></a>
+                                        <?php endif; ?>
+                                    </span>
                                 </td>
                                 <td><?= $parentCategory !== null ? esc_html($parentCategory->name) : '—' ?></td>
                                 <td><code>[lumora_downloads category_id="<?= (int) $listedCategory->id ?>"]</code></td>

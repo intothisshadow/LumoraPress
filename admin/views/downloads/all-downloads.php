@@ -249,6 +249,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                         <th scope="col"><a href="<?= esc_url($sortLink('id')) ?>">ID</a></th>
                         <th scope="col"><a href="<?= esc_url($sortLink('title')) ?>">Title</a></th>
                         <th scope="col">Category</th>
+                        <th scope="col">Shortcode</th>
                         <th scope="col">Type</th>
                         <th scope="col">Status</th>
                         <th scope="col">Downloads</th>
@@ -280,6 +281,14 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <?php endif; ?>
                             </td>
                             <td><?= esc_html($listedDownload->categoryId !== null ? ($categoriesById[$listedDownload->categoryId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>
+                            <td>
+                                <?php /* Nothing renders for a trashed download or one with nothing to serve, so no shortcode is offered for it. */ ?>
+                                <?php if ($listedDownload->trashedAt === null && $listedDownload->url !== ''): ?>
+                                    <code class="lp-download-shortcode">[lumora_downloads download_id="<?= (int) $listedDownload->id ?>"]</code>
+                                <?php else: ?>
+                                    &mdash;
+                                <?php endif; ?>
+                            </td>
                             <td><?= $listedDownload->type === DownloadType::File ? 'File' : 'URL' ?></td>
                             <td>
                                 <span class="lp-status-badge lp-status-badge--<?= esc_attr($listedDownload->status()->value) ?>">

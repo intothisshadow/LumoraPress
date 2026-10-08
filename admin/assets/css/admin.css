@@ -4056,6 +4056,21 @@ summary.lp-media-views__chip::after {
  * (is-pending/is-active/is-done/is-error) set by admin/assets/js/
  * update-progress.js as it reads back UpdateProgress::read().
  */
+/* Downloads > Categories: a sub-category is indented under its parent. The margin comes from data-style-margin-left. */
+.lp-download-categories__name {
+    display: inline-block;
+}
+
+.lp-download-categories__branch {
+    margin-right: 0.35rem;
+    opacity: 0.6;
+}
+
+/* Downloads > All Downloads: the shortcode column's text should stay on one line so it can be selected whole. */
+.lp-download-shortcode {
+    white-space: nowrap;
+}
+
 /* Downloads > Import from GitHub: the screenshot checklist and its progress line. */
 .lp-github-shots {
     display: grid;

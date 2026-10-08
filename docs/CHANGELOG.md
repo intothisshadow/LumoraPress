@@ -17,6 +17,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Downloads (plugin): the Categories list now shows each sub-category indented under its parent instead of one flat alphabetical list. A category whose parent is in the Trash is listed at the top level rather than being left out, which also fixes the Parent Category pickers dropping such categories. The Parent column no longer names a parent that is in the Trash; it shows a dash until that parent is restored.
+- Downloads (plugin): All Downloads has a Shortcode column showing the `[lumora_downloads download_id="…"]` for each download, ready to copy. A trashed download, or one with nothing to serve, shows a dash.
 - Downloads (plugin) and WordPress Importer (plugin): every download in a public download list (`[lumora_downloads]`, `[lumora_recent_downloads]`, and the imported-download lists) now starts with a bold "Download:" before its link. Themes can restyle it with the `.lp-downloads-list__label` class.
 - Bundled plugin update packages attached to a release are now named `plugin-{slug}-v{version}.zip`, matching the `theme-{slug}-v{version}.zip` names bundled themes already use. Releases that use the older unprefixed names are still read, so nothing changes for a release already published. A site on 0.21.0 or older looks only for the old name, so it sees a plugin update from a newer release once it has updated Lumora Press itself.
 
