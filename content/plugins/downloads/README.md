@@ -20,11 +20,13 @@ A dedicated admin screen to manage downloadable files and links — the kind of 
 
 ## Notes
 
-- In every public download list, each download starts with a bold "Download:" before its link. A theme can restyle it with the `.lp-downloads-list__label` class.
+- In every public download list (`[lumora_downloads]`, `[lumora_downloads_all]`, `[lumora_recent_downloads]`, and a single download), each download is its own card: the title as a heading, its images, a Download button with the file size beside it, and the description. The images are the download's thumbnail first, then every image found in its description in order, each picture once. They appear as a carousel (with previous and next buttons, and arrow keys once the page has loaded) and open in the lightbox together, and they are taken out of the description text shown on the card. The description itself is not changed. A download with no images shows no image area, and a long description scrolls inside the card. A small icon or emoji in the text stays where it is, and so does an image that links to some other page, such as a badge.
+- A GitHub import's README usually starts with a heading that repeats the title. The card leaves that heading out, and downloads imported earlier show the same way, with nothing to re-import.
+- The imported-download lists made by the WordPress Importer plugin (`[sdm_show_dl_from_category]` and friends) keep their own simpler layout.
 
 - The GitHub import only reads public information. It sends GitHub the repository's name (or your GitHub username, to list your repositories) and your server's address, nothing else, and only while you are using the import or update screens. GitHub allows a limited number of such requests an hour for anonymous visitors; if you reach that, the screen says when it resets. Private repositories are not supported.
 - A README's simple HTML (centered headers, badges, line breaks) is converted to Markdown when imported, because descriptions written in Markdown don't display raw HTML. Complicated layouts such as tables built from HTML may need a tidy-up in the description afterwards.
-- Themes style the Screenshots section of an imported description as small tiles side by side. A custom theme that doesn't can copy the `#screenshots + p a > img` rule inside `.lp-downloads-list__description` from Lumora Classic's stylesheet.
+- The screenshots of an imported download show in its card's carousel, and the Screenshots section is left out of the text shown there.
 
 - A file-type download reuses the existing Media library, and a URL-type download reuses the existing Redirects system (so it keeps real hit-counting) — Downloads is a thin, unified admin layer over both, not a separate storage mechanism.
 - If the WordPress Importer plugin is also active, a download added here automatically appears in that plugin's own imported-download shortcode output too, filed by the same category.

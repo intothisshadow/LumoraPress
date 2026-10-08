@@ -22,10 +22,12 @@ use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\BasePath;
-use LumoraPress\Models\ContentFormat;
+use LumoraPress\Core\Theme\FeaturedImages;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\RedirectService;
+use LumoraPress\Services\ThumbnailService;
+use RuntimeException;
 
 /**
  * A same-named but unrelated class to the WordPress Importer plugin's own
@@ -60,8 +62,14 @@ final class DownloadsShortcode
         private readonly ?ContentRenderer $injectedContent = null,
         private readonly ?DownloadMediaUrlMasker $injectedMasker = null,
         private readonly ?ImportedDownloadsFinder $injectedImported = null,
+        private readonly ?DownloadCardBuilder $injectedBuilder = null,
     ) {
     }
+
+    /** Services opened on first use, so every list on a page shares one connection. */
+    private ?array $openedServices = null;
+
+    private ?DownloadCardBuilder $builder = null;
 
     public function renderShortcodes(string $html): string
     {
@@ -187,20 +195,18 @@ final class DownloadsShortcode
         }
 
         $showSize = ($attributes['show_size'] ?? '0') === '1';
-        $content = $this->content();
+        $builder = $this->builder();
+        // A download with no file or link yet has nothing to offer a visitor.
+        $live = array_values(array_filter($downloads->listByCategory($category->id), static fn (Download $download): bool => $download->url !== ''));
+        $contents = $builder->forDownloads($live);
         $entries = [];
 
-        foreach ($downloads->listByCategory($category->id) as $download) {
-            // A download with no file or link yet has nothing to offer a visitor.
-            if ($download->url === '') {
-                continue;
-            }
-
+        foreach ($live as $download) {
             $entries[] = [
                 'name' => $download->title,
                 'url' => $download->url,
                 'size' => $showSize && $download->fileSizeBytes !== null ? $this->formatBytes($download->fileSizeBytes) : null,
-                'descriptionHtml' => $download->description !== '' ? $this->renderDescription($content, $download->description, $download->descriptionFormat) : '',
+                'content' => $contents[$download->id],
             ];
         }
 
@@ -209,7 +215,7 @@ final class DownloadsShortcode
                 'name' => $item['name'],
                 'url' => $item['url'],
                 'size' => $showSize && $item['sizeBytes'] !== null ? $this->formatBytes($item['sizeBytes']) : null,
-                'descriptionHtml' => $item['description'] !== '' ? esc_html($item['description']) : '',
+                'content' => $builder->plainContent($item['description'] !== '' ? esc_html($item['description']) : ''),
             ];
         }
 
@@ -222,7 +228,7 @@ final class DownloadsShortcode
         $html = '<div class="lp-downloads-list"><h3 class="lp-downloads-list__title">' . esc_html($category->name) . '</h3><ul class="lp-downloads-list__items">';
 
         foreach ($entries as $entry) {
-            $html .= $this->itemHtml($entry['name'], $entry['url'], $entry['size'], $entry['descriptionHtml']);
+            $html .= $builder->render($entry['name'], $entry['url'], $entry['size'], $entry['content'], 4);
         }
 
         return $html . '</ul></div>';
@@ -274,32 +280,18 @@ final class DownloadsShortcode
     }
 
     /**
-     * See DownloadMediaUrlMasker's own docblock. A shortcode-render path
-     * has no $kernel to reuse, so this opens its own standalone MediaService.
+     * See DownloadMediaUrlMasker's own docblock. Null when the services were handed in without a
+     * way to look uploads up, which only happens in tests.
      */
-    private function masker(): DownloadMediaUrlMasker
+    private function masker(): ?DownloadMediaUrlMasker
     {
         if ($this->injectedMasker !== null) {
             return $this->injectedMasker;
         }
 
-        $config = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $config['db_host'],
-            database: (string) $config['db_name'],
-            username: (string) $config['db_user'],
-            password: (string) $config['db_password'],
-            port: (int) ($config['db_port'] ?? 3306),
-        );
-        $tablePrefix = (string) $config['table_prefix'];
-        $media = new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', BasePath::get() . '/content/uploads');
+        $media = $this->services()[3] ?? null;
 
-        return new DownloadMediaUrlMasker($media, BasePath::get() . '/content/uploads');
-    }
-
-    private function uploadsUrlPrefix(): string
-    {
-        return rtrim(BasePath::get() . '/content/uploads', '/') . '/';
+        return $media instanceof MediaService ? new DownloadMediaUrlMasker($media, BasePath::get() . '/content/uploads') : null;
     }
 
     /**
@@ -350,22 +342,28 @@ final class DownloadsShortcode
             return '';
         }
 
-        $content = $this->content();
+        $builder = $this->builder();
+        $contents = $builder->forDownloads($items);
 
         $html = '<div class="lp-downloads-list">';
 
+        // A card's title sits one level below the category heading above it.
+        $headingLevel = 3;
+
         if ($category !== null) {
             $html .= '<h3 class="lp-downloads-list__title">' . esc_html($category->name) . '</h3>';
+            $headingLevel = 4;
         }
 
         $html .= '<ul class="lp-downloads-list__items">';
 
         foreach ($items as $item) {
-            $html .= $this->itemHtml(
+            $html .= $builder->render(
                 $item->title,
                 $item->url,
                 $showSize && $item->fileSizeBytes !== null ? $this->formatBytes($item->fileSizeBytes) : null,
-                $item->description !== '' ? $this->renderDescription($content, $item->description, $item->descriptionFormat) : '',
+                $contents[$item->id],
+                $headingLevel,
             );
         }
 
@@ -374,38 +372,13 @@ final class DownloadsShortcode
         return $html;
     }
 
-    /**
-     * The one markup every download list item uses, so the lists can't drift apart.
-     * $descriptionHtml is already safe HTML (rendered content, or escaped text).
-     */
-    private function itemHtml(string $title, string $url, ?string $size, string $descriptionHtml): string
+    private function builder(): DownloadCardBuilder
     {
-        $html = '<li class="lp-downloads-list__item">';
-        $html .= '<strong class="lp-downloads-list__label">Download:</strong> ';
-        $html .= '<a class="lp-downloads-list__link" href="' . esc_url($url) . '">' . esc_html($title) . '</a>';
-
-        if ($size !== null) {
-            $html .= ' <span class="lp-downloads-list__size">(' . esc_html($size) . ')</span>';
+        if ($this->injectedBuilder !== null) {
+            return $this->injectedBuilder;
         }
 
-        if ($descriptionHtml !== '') {
-            $html .= '<div class="lp-downloads-list__description">' . $descriptionHtml . '</div>';
-        }
-
-        return $html . '</li>';
-    }
-
-    private function renderDescription(ContentRenderer $content, string $description, ContentFormat $format): string
-    {
-        // masker()->mask() rewrites any embedded image URL that still points
-        // at the real upload path; guarded by a cheap string check first.
-        $rendered = $content->render($description, $format);
-
-        if (str_contains($rendered, $this->uploadsUrlPrefix())) {
-            $rendered = $this->masker()->mask($rendered);
-        }
-
-        return $rendered;
+        return $this->builder ??= new DownloadCardBuilder($this->services()[0], $this->content(), fn (): DownloadMediaUrlMasker => $this->masker());
     }
 
     private function formatBytes(int $bytes): string
@@ -439,12 +412,16 @@ final class DownloadsShortcode
     }
 
     /**
-     * @return array{0: DownloadService, 1: DownloadCategoryService, 2: ImportedDownloadsFinder|null}
+     * @return array{0: DownloadService, 1: DownloadCategoryService, 2: ImportedDownloadsFinder|null, 3?: MediaService}
      */
     private function services(): array
     {
         if ($this->injectedDownloads !== null && $this->injectedCategories !== null) {
             return [$this->injectedDownloads, $this->injectedCategories, $this->injectedImported];
+        }
+
+        if ($this->openedServices !== null) {
+            return $this->openedServices;
         }
 
         $config = require LUMORA_ROOT . '/config/config.php';
@@ -459,8 +436,20 @@ final class DownloadsShortcode
         $categories = new DownloadCategoryService($database, $tablePrefix);
         $media = new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', BasePath::get() . '/content/uploads');
         $redirects = new RedirectService($database, $tablePrefix);
-        $downloads = new DownloadService($database, $tablePrefix, $media, $redirects, $categories);
+        $downloads = new DownloadService($database, $tablePrefix, $media, $redirects, $categories, $this->liveThumbnails());
 
-        return [$downloads, $categories, new ImportedDownloadsFinder($database, $tablePrefix)];
+        return $this->openedServices = [$downloads, $categories, new ImportedDownloadsFinder($database, $tablePrefix), $media];
+    }
+
+    /**
+     * Only used to find a thumbnail's medium-size file; without it a card falls back to the original image.
+     */
+    private function liveThumbnails(): ?ThumbnailService
+    {
+        try {
+            return FeaturedImages::thumbnails();
+        } catch (RuntimeException) {
+            return null;
+        }
     }
 }

@@ -395,6 +395,28 @@ This ordering matters: the script runs synchronously and sets `data-theme` on `<
 
 If you also expose one of these tokens as a Theme Options `cssVariable` field, give it `allowEmpty: true` (see above) so an admin leaving the field unset doesn't force a light-mode-derived value onto dark-mode visitors.
 
+## Styling bundled plugin markup
+
+### Download cards (Downloads plugin)
+
+Every download in a public list (`[lumora_downloads]`, `[lumora_downloads_all]`, `[lumora_recent_downloads]`, and the single-download form) is one `<li class="lp-downloads-list__item lp-download-card">` inside the `.lp-downloads-list` box. A theme styles these classes and never needs to touch PHP:
+
+| Class | What it is |
+| --- | --- |
+| `.lp-download-card` | The card itself. The older `.lp-downloads-list__item` class stays on the same element, so a theme that only styles that one keeps working (it will need to undo its separator-row look for a card). |
+| `.lp-download-card--has-media` | Added when the card has at least one image. |
+| `.lp-download-card__title` | The download's title, an `h4` under a category heading and an `h3` when there is none. |
+| `.lp-download-card__media` | The images area (only present when there are images). It also carries `lp-gallery`, so each card is its own lightbox group. |
+| `.lp-download-card__carousel` | A horizontally scrolling, snapping row. It works with no JavaScript; give it `scroll-snap-type: x mandatory`. |
+| `.lp-download-card__slide` | One image (a link to the full image inside a fixed-height box). Give it a fixed `height` so the card keeps its shape and reserves space before the image loads. |
+| `.lp-download-card__nav`, `--prev`, `--next` | The previous/next buttons, added by the script only when there is more than one image. They sit over `.lp-download-card__media`, which should be `position: relative`. |
+| `.lp-download-card__status` | The "Image 2 of 5" line the script keeps up to date for screen readers. |
+| `.lp-download-card__body` | Wraps everything under the images. |
+| `.lp-download-card__meta`, `__link`, `__size` | The row holding the Download button-style link and the optional file size (`.lp-downloads-list__link` and `.lp-downloads-list__size` are on the same elements). |
+| `.lp-download-card__description` | The description. Give it a `max-height` and `overflow-y: auto` so a long README scrolls inside the card (`.is-scrollable` is added when it really overflows). |
+
+The images are the download's thumbnail first, then every image found in its description, each picture once. They are lifted out of the description text for display only; the stored description is not changed. `assets/js/download-card.js` is loaded in the footer (through `footer_assets`) only on a page that needs it, so a theme must not load it itself. Because the cards are dropped into post content, a card's `lp-gallery` is nested inside the post's own; the lightbox script opens only the clicked card's images.
+
 ## A minimal complete example
 
 ```php

@@ -95,6 +95,14 @@
                  */
                 var resolvedDimensions = new WeakMap();
 
+                // A gallery inside another one (a download card in a post body) opens its own images
+                // only; the outer gallery ignores clicks that belong to a nested one.
+                lightbox.addFilter('clickedIndex', function (index, event) {
+                    var link = event.target.closest(CHILDREN_SELECTOR);
+
+                    return link && link.closest('.lp-gallery') !== gallery ? -1 : index;
+                });
+
                 lightbox.addFilter('domItemData', function (itemData, element) {
                     var known = resolvedDimensions.get(element);
 
@@ -113,7 +121,7 @@
                 gallery.addEventListener('click', function (event) {
                     var link = event.target.closest('a[data-pswp-lightbox]:not([data-pswp-width])');
 
-                    if (!link || !gallery.contains(link)) {
+                    if (!link || !gallery.contains(link) || link.closest('.lp-gallery') !== gallery) {
                         return;
                     }
 

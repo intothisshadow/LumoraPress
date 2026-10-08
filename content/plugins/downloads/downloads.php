@@ -44,6 +44,8 @@ require_once __DIR__ . '/src/DownloadCategoryService.php';
 require_once __DIR__ . '/src/DownloadService.php';
 require_once __DIR__ . '/src/DownloadMediaUrlMasker.php';
 require_once __DIR__ . '/src/ImportedDownloadsFinder.php';
+require_once __DIR__ . '/src/DescriptionImageExtractor.php';
+require_once __DIR__ . '/src/DownloadCardBuilder.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 require_once __DIR__ . '/src/GitHubRepositoryRef.php';
 require_once __DIR__ . '/src/GitHubImportException.php';
@@ -57,6 +59,14 @@ require_once __DIR__ . '/src/GitHubImportService.php';
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
+
+// Only a card with more than one image needs the script that adds the previous/next buttons;
+// without it the images still scroll and snap.
+add_action('footer_assets', static function (): void {
+    if (DownloadCardBuilder::scriptUsed()) {
+        echo '<script src="' . esc_url(core_asset_url('js/download-card.js')) . '" defer></script>' . "\n";
+    }
+});
 
 // The import preview shows each screenshot straight from GitHub before anything is copied, so
 // that one admin screen needs raw.githubusercontent.com in img-src; no other page is widened.

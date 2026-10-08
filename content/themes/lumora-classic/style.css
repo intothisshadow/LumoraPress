@@ -2869,6 +2869,215 @@ a.lp-post-list__comments:focus {
     margin-right: auto;
 }
 
+/*
+ * Download card: every download in a list is its own card (title, images, download
+ * button, description). The compound selectors keep the older .lp-downloads-list__item
+ * rules above from reapplying their separator-row look to a card.
+ */
+.lp-downloads-list__item.lp-download-card,
+.lp-downloads-list__item.lp-download-card:first-child {
+    margin: 0 0 1rem;
+    padding: 1rem 1.1rem 1.1rem;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg);
+    overflow: visible;
+}
+
+.lp-downloads-list__item.lp-download-card:last-child {
+    margin-bottom: 0;
+}
+
+.lp-download-card__title {
+    margin: 0 0 0.75rem;
+    font-family: var(--lp-font-heading);
+    font-size: 1.15rem;
+    line-height: 1.3;
+}
+
+.lp-download-card__media {
+    position: relative;
+    margin: 0 0 0.9rem;
+    border-radius: calc(var(--lp-radius) - 4px);
+    background: var(--lp-bg-alt);
+    overflow: hidden;
+}
+
+/* A snapping row: it scrolls with the mouse, touch or keyboard even before the script adds buttons. */
+.lp-download-card__carousel {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+.lp-download-card__carousel:focus-visible {
+    outline: 2px solid var(--lp-accent);
+    outline-offset: -2px;
+}
+
+/* A fixed height keeps the card the same shape however large each picture is, and reserves the space before it loads. */
+.lp-download-card__slide {
+    display: flex;
+    flex: 0 0 100%;
+    box-sizing: border-box;
+    height: 16rem;
+    align-items: center;
+    justify-content: center;
+    scroll-snap-align: center;
+}
+
+.lp-download-card__slide a {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.lp-download-card__slide img {
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.lp-download-card__nav {
+    position: absolute;
+    top: 50%;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-top: -1.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(23, 32, 51, 0.72);
+    color: #fff;
+    cursor: pointer;
+    font-size: 1.6rem;
+    line-height: 1;
+}
+
+.lp-download-card__nav:hover:not(:disabled),
+.lp-download-card__nav:focus-visible {
+    background: var(--lp-accent-hover);
+}
+
+.lp-download-card__nav:disabled {
+    cursor: default;
+    opacity: 0.35;
+}
+
+.lp-download-card__nav--prev {
+    left: 0.6rem;
+}
+
+.lp-download-card__nav--next {
+    right: 0.6rem;
+}
+
+.lp-download-card__status {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 50%;
+    margin: 0;
+    padding: 0.1rem 0.7rem;
+    border-radius: 999px;
+    background: rgba(23, 32, 51, 0.72);
+    color: #fff;
+    font-family: var(--lp-font-ui);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+.lp-download-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin: 0 0 0.75rem;
+}
+
+.lp-download-card__link {
+    display: inline-block;
+    padding: 0.45rem 1.1rem;
+    border-radius: var(--lp-radius);
+    background: var(--lp-accent);
+    color: #fff;
+    font-family: var(--lp-font-ui);
+    font-size: 0.95rem;
+    text-decoration: none;
+}
+
+.lp-download-card__link:hover,
+.lp-download-card__link:focus {
+    background: var(--lp-accent-hover);
+    color: #fff;
+}
+
+/*
+ * A long description scrolls inside the card. The two "local" gradients are the card's own
+ * colour and cover the two "scroll" shadows, which show only while there is more to read.
+ */
+.lp-download-card__description {
+    max-height: 15rem;
+    margin-top: 0;
+    padding-right: 0.35rem;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+    background-image:
+        linear-gradient(var(--lp-bg) 30%, transparent),
+        linear-gradient(transparent, var(--lp-bg) 70%),
+        linear-gradient(rgba(23, 32, 51, 0.22), transparent),
+        linear-gradient(transparent, rgba(23, 32, 51, 0.22));
+    background-position: top, bottom, top, bottom;
+    background-repeat: no-repeat;
+    background-size: 100% 2rem, 100% 2rem, 100% 0.6rem, 100% 0.6rem;
+    background-attachment: local, local, scroll, scroll;
+}
+
+.lp-download-card__description:focus-visible {
+    outline: 2px solid var(--lp-accent);
+    outline-offset: 2px;
+}
+
+.lp-download-card__description :is(h1, h2, h3, h4, h5, h6) {
+    margin: 1rem 0 0.4rem;
+    font-size: 1.05rem;
+}
+
+.lp-download-card__description :is(h1, h2, h3, h4, h5, h6):first-child {
+    margin-top: 0;
+}
+
+.lp-download-card__description pre {
+    overflow: auto;
+}
+
+.lp-download-card__description img {
+    max-width: 100%;
+    height: auto;
+}
+
+@media (max-width: 600px) {
+    .lp-downloads-list__item.lp-download-card,
+    .lp-downloads-list__item.lp-download-card:first-child {
+        padding: 0.85rem 0.85rem 0.95rem;
+    }
+
+    .lp-download-card__slide {
+        height: 12rem;
+    }
+
+    .lp-download-card__description {
+        max-height: 12rem;
+    }
+}
+
 /* =========================================================
    Link Directory
    ========================================================= */

@@ -362,6 +362,94 @@ final class DownloadService
     }
 
     /**
+     * The edit screen's way to set or clear the thumbnail. Unlike setThumbnail(), which the
+     * importers call with an item they just created, this checks that a picked item is an image,
+     * and it only ever touches the thumbnail, never the description.
+     *
+     * @throws InvalidArgumentException when the item is missing or is not an image
+     */
+    public function changeThumbnail(int $id, ?int $mediaId): bool
+    {
+        if ($this->findById($id) === null) {
+            return false;
+        }
+
+        if ($mediaId !== null) {
+            $media = $this->media->find($mediaId);
+
+            if ($media === null || !str_starts_with((string) $media['mime_type'], 'image/')) {
+                throw new InvalidArgumentException('Please choose an image from the Media Library.');
+            }
+        }
+
+        return $this->setThumbnail($id, $mediaId);
+    }
+
+    /**
+     * The thumbnail of each download that has an image one, in a form a card can show as its
+     * first slide. Both lookups are batched for the whole list; a thumbnail whose Media item is
+     * gone, or is not an image, is left out.
+     *
+     * @param array<int, Download> $downloads
+     * @return array<int, array{full: string, thumb: string, alt: string, caption: string, width: int, height: int}> keyed by download id
+     */
+    public function thumbnailImages(array $downloads): array
+    {
+        $mediaIds = [];
+
+        foreach ($downloads as $download) {
+            if ($download->thumbnailMediaId !== null) {
+                $mediaIds[] = $download->thumbnailMediaId;
+            }
+        }
+
+        if ($mediaIds === []) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach ($this->media->findMany($mediaIds) as $item) {
+            $items[(int) $item['id']] = $item;
+        }
+
+        $sizes = $this->thumbnails?->thumbnailsForMany($mediaIds) ?? [];
+        $images = [];
+
+        foreach ($downloads as $download) {
+            $item = $download->thumbnailMediaId !== null ? ($items[$download->thumbnailMediaId] ?? null) : null;
+
+            if ($item === null || !str_starts_with((string) $item['mime_type'], 'image/')) {
+                continue;
+            }
+
+            $thumb = null;
+
+            foreach ($sizes[(int) $item['id']] ?? [] as $row) {
+                if ($row['size_name'] === 'medium') {
+                    // Built from the batched rows, since ThumbnailService::url() would query once per image.
+                    $thumb = $this->media->url(['file_path' => $row['file_path']]);
+                }
+            }
+
+            $alt = trim((string) ($item['alt_text'] ?? ''));
+            $caption = trim((string) ($item['caption'] ?? ''));
+
+            $images[$download->id] = [
+                // The same masked address a description image ends up with, so the two de-duplicate.
+                'full' => site_url('media/' . (int) $item['id'] . '/view'),
+                'thumb' => $thumb ?? $this->media->url($item),
+                'alt' => $alt !== '' ? $alt : $download->title,
+                'caption' => $caption !== '' ? $caption : $alt,
+                'width' => (int) ($item['width'] ?? 0),
+                'height' => (int) ($item['height'] ?? 0),
+            ];
+        }
+
+        return $images;
+    }
+
+    /**
      * Soft-deletes a download — hidden from listAllGroupedByCategory()/
      * listByCategory() (so the [lumora_downloads] shortcode and the public
      * site stop showing it) but its underlying Media/Redirect row is
