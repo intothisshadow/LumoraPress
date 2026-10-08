@@ -35,9 +35,10 @@ use LumoraPress\Core\Shortcodes\Shortcodes;
 if (!function_exists('register_shortcode')) {
     /**
      * @param array<int, ShortcodeField> $fields
+     * @param string|null $tag the shortcode the picker inserts, when it isn't $name itself
      */
-    function register_shortcode(string $name, string $label, array $fields = []): void
+    function register_shortcode(string $name, string $label, array $fields = [], ?string $tag = null): void
     {
-        Shortcodes::instance()->register($name, $label, $fields);
+        Shortcodes::instance()->register($name, $label, $fields, $tag);
     }
 }

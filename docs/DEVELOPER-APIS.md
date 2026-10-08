@@ -151,6 +151,14 @@ register_shortcode('my_shortcode', 'My Shortcode', [
 
 `ShortcodeField`'s `$type` is one of `Text`, `Number`, `Checkbox`, `Select` (needs `$choices`, value => label), or `Icon` (opens Font Awesome's own icon-browser dialog instead of a plain control — see `font-awesome.php`'s own registration for the pattern, including how an Icon field auto-fills a sibling field literally named `style`). A field left at its `$default` value is omitted from the inserted shortcode entirely, the same minimal text typing it by hand would produce.
 
+`register_shortcode()` takes an optional fourth argument, `$tag`: the shortcode the picker actually inserts, when that isn't `$name`. `$name` only identifies the picker entry, so registering the same name twice replaces the first. Give an entry its own `$name` and the shared `$tag` to offer one shortcode in the picker more than once with different fields, as the Downloads plugin does for `lumora_downloads` (a category entry, plus a "Single Download" entry that inserts `[lumora_downloads download_id="…"]`):
+
+```php
+register_shortcode('lumora_downloads_single', 'Single Download', [
+    new ShortcodeField('download_id', 'Download ID', ShortcodeFieldType::Number, required: true),
+], 'lumora_downloads');
+```
+
 A plugin whose fields need database-backed choices (a live list of Folders or Download categories, say) can't call `register_shortcode()` directly from its own top-level file — plugin main files load before Kernel exists (see "Discovery & loading" below). Hook the `register_shortcodes` action instead:
 
 | Name | Type | Args | Fires in |

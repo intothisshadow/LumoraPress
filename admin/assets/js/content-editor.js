@@ -2437,7 +2437,8 @@
                     attrs += ' ' + entry.field.name + '="' + shortcodeAttrValue(value) + '"';
                 });
 
-                onInsert('[' + name + attrs + ']');
+                // An entry can insert a different shortcode than its own key (see ShortcodeManager::register()).
+                onInsert('[' + (definition.tag || name) + attrs + ']');
                 dialog.close();
             });
 

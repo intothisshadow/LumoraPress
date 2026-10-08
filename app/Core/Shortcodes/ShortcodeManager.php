@@ -32,19 +32,23 @@ namespace LumoraPress\Core\Shortcodes;
  */
 final class ShortcodeManager
 {
-    /** @var array<string, array{label: string, fields: array<int, ShortcodeField>}> */
+    /** @var array<string, array{label: string, fields: array<int, ShortcodeField>, tag: string}> */
     private array $shortcodes = [];
 
     /**
+     * $name identifies the picker entry; $tag is the shortcode it inserts and defaults to $name.
+     * They differ when one shortcode is offered in the picker more than once with different
+     * fields, for example a "Single Download" entry that inserts the Downloads shortcode.
+     *
      * @param array<int, ShortcodeField> $fields
      */
-    public function register(string $name, string $label, array $fields = []): void
+    public function register(string $name, string $label, array $fields = [], ?string $tag = null): void
     {
-        $this->shortcodes[$name] = ['label' => $label, 'fields' => $fields];
+        $this->shortcodes[$name] = ['label' => $label, 'fields' => $fields, 'tag' => $tag ?? $name];
     }
 
     /**
-     * @return array<string, array{label: string, fields: array<int, ShortcodeField>}>
+     * @return array<string, array{label: string, fields: array<int, ShortcodeField>, tag: string}>
      */
     public function all(): array
     {
@@ -58,13 +62,14 @@ final class ShortcodeManager
      * here rather than duplicated across posts/new.php, pages/new.php,
      * and downloads/add-new.php, the three views that each need it.
      *
-     * @return array<string, array{label: string, fields: array<int, array{name: string, label: string, type: string, default: string, required: bool, choices: array<string, string>, help: string}>}>
+     * @return array<string, array{label: string, tag: string, fields: array<int, array{name: string, label: string, type: string, default: string, required: bool, choices: array<string, string>, help: string}>}>
      */
     public function toArray(): array
     {
         return array_map(
             static fn (array $shortcode): array => [
                 'label' => $shortcode['label'],
+                'tag' => $shortcode['tag'],
                 'fields' => array_map(
                     static fn (ShortcodeField $field): array => [
                         'name' => $field->name,
