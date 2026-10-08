@@ -3,26 +3,29 @@
    ========================================================= */
 
 :root {
-    --lp-admin-bg: #f1f1f1;
-    --lp-admin-sidebar-bg: #23282d;
-    --lp-admin-sidebar-fg: #eee;
-    --lp-admin-sidebar-fg-muted: #b4b9be;
+    /* One palette: plum accent, neutrals tinted a hair toward it, and the
+       status colors (green/rose/amber) kept at similar softness so no one
+       hue shouts over the rest. */
+    --lp-admin-bg: #f3f1f5;
+    --lp-admin-sidebar-bg: #28232f;
+    --lp-admin-sidebar-fg: #f0edf3;
+    --lp-admin-sidebar-fg-muted: #bab3c6;
     --lp-admin-accent: #7b4bb8;
     --lp-admin-switch-on: #5cc98b;
     --lp-admin-accent-hover: #5f378f;
     --lp-admin-on-accent: #fff;
-    --lp-admin-text: #1d2327;
-    --lp-admin-border: #dcdcde;
+    --lp-admin-text: #211d27;
+    --lp-admin-border: #ddd8e4;
     --lp-admin-panel-bg: #ffffff;
-    --lp-admin-error-bg: #fcf0f1;
-    --lp-admin-error-border: #d63638;
-    --lp-admin-error-text: #7a1a1c;
-    --lp-admin-success-bg: #edfaef;
-    --lp-admin-success-border: #00a32a;
-    --lp-admin-success-text: #005c15;
-    --lp-admin-warning-bg: #fcf9e8;
-    --lp-admin-warning-border: #dba617;
-    --lp-admin-warning-text: #664d03;
+    --lp-admin-error-bg: #fcf0f3;
+    --lp-admin-error-border: #d6455d;
+    --lp-admin-error-text: #7a1d2e;
+    --lp-admin-success-bg: #edf8f1;
+    --lp-admin-success-border: #2e9e5b;
+    --lp-admin-success-text: #14532d;
+    --lp-admin-warning-bg: #fcf6e6;
+    --lp-admin-warning-border: #d9a021;
+    --lp-admin-warning-text: #664a0a;
     --lp-admin-info-bg: #f4eefa;
     --lp-admin-info-border: #7b4bb8;
     --lp-admin-info-text: #3d2466;
@@ -40,8 +43,8 @@
     --lp-admin-chip-neutral-bg: rgba(70, 130, 210, 0.09);
     --lp-admin-chip-neutral-border: rgba(70, 130, 210, 0.32);
     --lp-admin-chip-neutral-hover-bg: #3b73bd;
-    --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
-    --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
+    --lp-admin-chip-danger-bg: rgba(214, 69, 93, 0.07);
+    --lp-admin-chip-danger-border: rgba(214, 69, 93, 0.35);
     /* Teal for the "View" row-action chip specifically —
        distinguishes it from the neutral-accent chips (Duplicate,
        Restore, etc.) it used to be visually identical to. */
@@ -55,8 +58,8 @@
        rather than part of the panel's own background. Kept close to
        each other but distinguishable, so a field doesn't read as a
        button or vice versa. */
-    --lp-admin-field-bg: #f3f4f6;
-    --lp-admin-button-bg: #f6f6f7;
+    --lp-admin-field-bg: #f5f3f8;
+    --lp-admin-button-bg: #f8f6fa;
 }
 
 /*
@@ -71,25 +74,25 @@
  */
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --lp-admin-bg: #101214;
-        --lp-admin-sidebar-bg: #17191c;
-        --lp-admin-sidebar-fg: #e4e6e8;
-        --lp-admin-sidebar-fg-muted: #9aa0a6;
+        --lp-admin-bg: #131016;
+        --lp-admin-sidebar-bg: #1a161f;
+        --lp-admin-sidebar-fg: #e6e3ea;
+        --lp-admin-sidebar-fg-muted: #a49dae;
         --lp-admin-switch-on: #6dd498;
         --lp-admin-accent: #b697e6;
         --lp-admin-accent-hover: #c9b1ee;
         --lp-admin-on-accent: #14101c;
-        --lp-admin-text: #e4e6e8;
-        --lp-admin-border: #33383d;
-        --lp-admin-panel-bg: #1b1e21;
-        --lp-admin-error-bg: #3a1f20;
-        --lp-admin-error-border: #d63638;
-        --lp-admin-error-text: #f2b8b9;
-        --lp-admin-success-bg: #10281a;
-        --lp-admin-success-border: #2fb344;
-        --lp-admin-success-text: #8fe3a3;
-        --lp-admin-warning-bg: #332b0f;
-        --lp-admin-warning-border: #dba617;
+        --lp-admin-text: #e6e3ea;
+        --lp-admin-border: #372f40;
+        --lp-admin-panel-bg: #1d1923;
+        --lp-admin-error-bg: #3a1f27;
+        --lp-admin-error-border: #e0566d;
+        --lp-admin-error-text: #f4b9c4;
+        --lp-admin-success-bg: #12291d;
+        --lp-admin-success-border: #3fb26e;
+        --lp-admin-success-text: #98e4b3;
+        --lp-admin-warning-bg: #332a12;
+        --lp-admin-warning-border: #e0ab35;
         --lp-admin-warning-text: #f0d68a;
         --lp-admin-info-bg: #261f33;
         --lp-admin-info-border: #b697e6;
@@ -103,37 +106,37 @@
         --lp-admin-chip-neutral-bg: rgba(143, 188, 240, 0.12);
         --lp-admin-chip-neutral-border: rgba(143, 188, 240, 0.4);
         --lp-admin-chip-neutral-hover-bg: #3b73bd;
-        --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
-        --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+        --lp-admin-chip-danger-bg: rgba(224, 86, 109, 0.14);
+        --lp-admin-chip-danger-border: rgba(224, 86, 109, 0.45);
         --lp-admin-chip-view-color: #5fd0d0;
         --lp-admin-chip-view-bg: rgba(95, 208, 208, 0.12);
         --lp-admin-chip-view-border: rgba(95, 208, 208, 0.4);
         --lp-admin-chip-view-hover-bg: #0c7f81;
-        --lp-admin-field-bg: #24282c;
-        --lp-admin-button-bg: #26292d;
+        --lp-admin-field-bg: #26212d;
+        --lp-admin-button-bg: #29242f;
     }
 }
 
 :root[data-theme="dark"] {
-    --lp-admin-bg: #101214;
-    --lp-admin-sidebar-bg: #17191c;
-    --lp-admin-sidebar-fg: #e4e6e8;
-    --lp-admin-sidebar-fg-muted: #9aa0a6;
+    --lp-admin-bg: #131016;
+    --lp-admin-sidebar-bg: #1a161f;
+    --lp-admin-sidebar-fg: #e6e3ea;
+    --lp-admin-sidebar-fg-muted: #a49dae;
     --lp-admin-switch-on: #6dd498;
     --lp-admin-accent: #b697e6;
     --lp-admin-accent-hover: #c9b1ee;
     --lp-admin-on-accent: #14101c;
-    --lp-admin-text: #e4e6e8;
-    --lp-admin-border: #33383d;
-    --lp-admin-panel-bg: #1b1e21;
-    --lp-admin-error-bg: #3a1f20;
-    --lp-admin-error-border: #d63638;
-    --lp-admin-error-text: #f2b8b9;
-    --lp-admin-success-bg: #10281a;
-    --lp-admin-success-border: #2fb344;
-    --lp-admin-success-text: #8fe3a3;
-    --lp-admin-warning-bg: #332b0f;
-    --lp-admin-warning-border: #dba617;
+    --lp-admin-text: #e6e3ea;
+    --lp-admin-border: #372f40;
+    --lp-admin-panel-bg: #1d1923;
+    --lp-admin-error-bg: #3a1f27;
+    --lp-admin-error-border: #e0566d;
+    --lp-admin-error-text: #f4b9c4;
+    --lp-admin-success-bg: #12291d;
+    --lp-admin-success-border: #3fb26e;
+    --lp-admin-success-text: #98e4b3;
+    --lp-admin-warning-bg: #332a12;
+    --lp-admin-warning-border: #e0ab35;
     --lp-admin-warning-text: #f0d68a;
     --lp-admin-info-bg: #261f33;
     --lp-admin-info-border: #b697e6;
@@ -147,14 +150,14 @@
     --lp-admin-chip-neutral-bg: rgba(143, 188, 240, 0.12);
     --lp-admin-chip-neutral-border: rgba(143, 188, 240, 0.4);
     --lp-admin-chip-neutral-hover-bg: #3b73bd;
-    --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
-    --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
+    --lp-admin-chip-danger-bg: rgba(224, 86, 109, 0.14);
+    --lp-admin-chip-danger-border: rgba(224, 86, 109, 0.45);
     --lp-admin-chip-view-color: #5fd0d0;
     --lp-admin-chip-view-bg: rgba(95, 208, 208, 0.12);
     --lp-admin-chip-view-border: rgba(95, 208, 208, 0.4);
     --lp-admin-chip-view-hover-bg: #0c7f81;
-    --lp-admin-field-bg: #24282c;
-    --lp-admin-button-bg: #26292d;
+    --lp-admin-field-bg: #26212d;
+    --lp-admin-button-bg: #29242f;
 }
 
 * {
