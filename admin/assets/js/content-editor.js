@@ -123,6 +123,23 @@
         return Math.max(1, Math.round(words / 200));
     }
 
+    // The editing area's height is one CSS rule (--lp-editor-height on
+    // .lp-content-editor--tall) so Visual, Markdown and Plain open the same
+    // size. TinyMCE needs a number, so the rule is resolved to pixels by
+    // measuring a probe; an editor without the variable keeps `fallback`.
+    function editorHeightPx(container, fallback) {
+        var probe = document.createElement('div');
+        probe.style.height = 'var(--lp-editor-height, ' + fallback + 'px)';
+        probe.style.visibility = 'hidden';
+        probe.style.position = 'absolute';
+        container.appendChild(probe);
+
+        var height = probe.offsetHeight || fallback;
+        container.removeChild(probe);
+
+        return height;
+    }
+
     function updateStats(statsEl, text) {
         if (!statsEl) {
             return;
@@ -2946,6 +2963,7 @@
                 // FONT_AWESOME_CSS)) instead of via this option, so its
                 // origin is one this app's CSP actually allows.
                 autoDownloadFontAwesome: false,
+                minHeight: editorHeightPx(container, 300) + 'px',
                 spellChecker: true,
                 status: false,
                 uploadImage: true,
@@ -2992,6 +3010,20 @@
                     return null;
                 },
             });
+
+            // EasyMDE's minHeight sizes only the writing area, while
+            // TinyMCE's height and the plain textarea include their own
+            // chrome. Subtracting the toolbar (and borders) keeps the three
+            // modes the same total height, so switching does not jump.
+            var markdownBox = container.querySelector('.EasyMDEContainer');
+            var markdownScroller = editor.codemirror.getScrollerElement();
+
+            if (markdownBox && container.classList.contains('lp-content-editor--tall')) {
+                var targetHeight = editorHeightPx(container, 300);
+
+                markdownScroller.style.minHeight = targetHeight + 'px';
+                markdownScroller.style.minHeight = Math.max(160, targetHeight - (markdownBox.offsetHeight - targetHeight)) + 'px';
+            }
 
             // EasyMDE hides the original <textarea> behind its CodeMirror
             // UI and does not keep its .value live-synced on every
@@ -3149,7 +3181,7 @@
                     target: textarea,
                     license_key: 'gpl',
                     skin: adminIsDark ? 'oxide-dark' : 'oxide',
-                    height: 420,
+                    height: editorHeightPx(container, 420),
                     menubar: false,
                     // Only enabled (and only added to the plugin list) once
                     // there's a real post/page id to key the storage slot

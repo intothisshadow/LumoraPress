@@ -2101,9 +2101,20 @@ body.lp-admin-login {
 
 /* Content Editor (LP-015/LP-016) */
 
+/* The Post and Page editors open tall: sized to the screen, with a floor and a ceiling. Content editors without this modifier keep their compact defaults. */
+.lp-content-editor--tall {
+    --lp-editor-height: clamp(480px, 70vh, 960px);
+}
+
+@media (max-width: 782px) {
+    .lp-content-editor--tall {
+        --lp-editor-height: clamp(340px, 55vh, 560px);
+    }
+}
+
 .lp-content-editor textarea {
     width: 100%;
-    min-height: 260px;
+    min-height: var(--lp-editor-height, 260px);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.9rem;
 }

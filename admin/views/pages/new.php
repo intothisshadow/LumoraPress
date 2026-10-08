@@ -584,7 +584,7 @@ if ($savedLayout['order'] === []) {
                 </p>
 
                 <div
-                    class="lp-field lp-content-editor"
+                    class="lp-field lp-content-editor lp-content-editor--tall"
                     data-lp-content-editor
                     data-format="<?= esc_attr($activeContentFormat->value) ?>"
                     data-upload-url="<?= esc_url(admin_url('pages/new')) ?>"
