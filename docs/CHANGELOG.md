@@ -13,9 +13,12 @@ All notable changes to Lumora Press are documented in this file.
 - Saving an existing download or link now keeps you on its edit screen with the "saved" notice, the same as saving a new one or a post or page, instead of returning to the list.
 - Updates no longer bring back bundled plugins and themes you deleted. Until now every core update restored any bundled plugin that was missing, so deleting Dummy Content or Font Awesome meant deleting it again after each release. An update now leaves out a bundled plugin or theme that your current version ships and that is no longer on the site, however it was removed, while anything new in the release is still installed. Lumora Classic, the active theme, and the core folders are always applied. The update result names what was left out, and the modified-files warning no longer lists a deleted plugin.
 
+- Downloads (plugin): on Import from GitHub, **Preview** (and **Check Match** when linking) and **Check for changes** on an update now show their result in place instead of reloading the page, with a "Reading GitHub…" note while they wait. The address bar still updates, so a reload or bookmark opens the same result, and everything works as a normal page load without JavaScript.
+
 ### Fixed
 
 - New/Edit Post and Page: the Categories list is compact again, with normal-size checkboxes and regular-weight labels in a bordered, scrollable box, and the Tags suggestion list is no longer cut off by the edge of its sidebar box.
+- Lumora Classic: a page or post whose content ends with a left- or right-aligned image no longer lets that image hang out of the bottom of its card, overlapping the "Edit this page" link, tags, and comments below it. The content area now grows to contain the image.
 
 ### Added
 

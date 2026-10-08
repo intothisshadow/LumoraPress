@@ -881,6 +881,14 @@ a.lp-post-list__comments:focus {
     margin: 0.25em 0 1em 1.5em;
 }
 
+/* Contains a trailing img.alignleft/alignright float so the card, the
+   edit link, tags and comments below it never overlap the image. */
+.lp-post__content::after {
+    clear: both;
+    content: "";
+    display: table;
+}
+
 .lp-post__content img.aligncenter {
     display: block;
 }

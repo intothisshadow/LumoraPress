@@ -434,8 +434,3 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
-
-<section class="lp-admin__panel">
-    <h2>Site Identity</h2>
-    <p>Site title, logo, favicon, and custom CSS are managed on the <a href="<?= esc_url(admin_url('appearance/themes')) ?>">Appearance</a> page.</p>
-</section>

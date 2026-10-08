@@ -10,6 +10,9 @@
  * [data-lp-github-progress] holding [data-lp-github-bar], [data-lp-github-status]
  * and [data-lp-github-failures]. Every response carries a fresh single-use
  * CSRF token for the next call.
+ *
+ * Looking up a repository or checking for updates is done in place as well: see
+ * initLookup().
  */
 (function () {
     'use strict';
@@ -142,7 +145,100 @@
         });
     }
 
+    // A [data-lp-github-lookup] form (GET) or link loads its result panel into
+    // [data-lp-github-result] instead of navigating. Without JavaScript it still
+    // works as a normal page load.
+    function initLookup(trigger) {
+        var target = document.querySelector('[data-lp-github-result]');
+        var isForm = trigger.tagName === 'FORM';
+        var button = isForm ? trigger.querySelector('button[type="submit"]') : trigger;
+        var busy = false;
+
+        if (!target) {
+            return;
+        }
+
+        function show(message, isError) {
+            var note = document.createElement(isError ? 'div' : 'p');
+
+            note.className = isError ? 'lp-alert lp-alert--error' : 'lp-field__hint';
+            note.setAttribute('role', isError ? 'alert' : 'status');
+            note.textContent = message;
+            target.insertBefore(note, target.firstChild);
+        }
+
+        function finish() {
+            busy = false;
+            target.removeAttribute('aria-busy');
+            button.setAttribute('aria-disabled', 'false');
+
+            if (isForm) {
+                button.disabled = false;
+            }
+        }
+
+        function run(url) {
+            if (busy) {
+                return;
+            }
+
+            busy = true;
+            target.setAttribute('aria-busy', 'true');
+            button.setAttribute('aria-disabled', 'true');
+
+            if (isForm) {
+                button.disabled = true;
+            }
+
+            target.textContent = '';
+            show('Reading GitHub…', false);
+
+            fetch(url, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'fetch' },
+            }).then(function (response) {
+                return response.json();
+            }).then(function (result) {
+                target.innerHTML = result.html;
+
+                if (result.error) {
+                    show(result.error, true);
+                }
+
+                target.querySelectorAll('[data-lp-github-import]').forEach(init);
+
+                try {
+                    window.history.replaceState(null, '', url);
+                } catch (ignored) {
+                    // The address bar is a convenience only.
+                }
+
+                target.scrollIntoView({ block: 'nearest' });
+            }).catch(function () {
+                target.textContent = '';
+                show('Something went wrong. Reload the page and try again.', true);
+            }).then(finish);
+        }
+
+        if (isForm) {
+            trigger.addEventListener('submit', function (event) {
+                event.preventDefault();
+                run(trigger.action + '?' + new URLSearchParams(new FormData(trigger)).toString());
+            });
+        } else {
+            trigger.addEventListener('click', function (event) {
+                if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) {
+                    return;
+                }
+
+                event.preventDefault();
+                run(trigger.href);
+            });
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('[data-lp-github-import]').forEach(init);
+        document.querySelectorAll('[data-lp-github-lookup]').forEach(initLookup);
     });
 }());
