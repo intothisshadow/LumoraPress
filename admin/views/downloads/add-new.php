@@ -532,7 +532,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 // whatever value the download already had.
                 $downloads->update($id, $title, $description, $editingDownload?->folderId, $externalUrl !== '' ? $externalUrl : null, $descriptionFormat, $categoryId > 0 ? $categoryId : null);
 
-                header('Location: ' . admin_url('downloads/all-downloads') . '?saved=1');
+                header('Location: ' . admin_url('downloads/add-new') . '?id=' . $id . '&saved=1');
                 exit;
             }
         }

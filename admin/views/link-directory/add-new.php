@@ -178,7 +178,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     buttonMediaId: $resolveButtonMediaId($editingLink->buttonMediaId),
                 );
 
-                header('Location: ' . admin_url('link-directory/all-links') . '?saved=1');
+                header('Location: ' . admin_url('link-directory/add-new') . '?id=' . $id . '&saved=1');
                 exit;
             }
         }
