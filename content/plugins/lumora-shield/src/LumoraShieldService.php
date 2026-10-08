@@ -142,7 +142,7 @@ final class LumoraShieldService
      */
     public function commentIsSpam(bool $default, string $guestName, string $guestEmail, ?string $guestUrl, string $content, string $ipAddress): bool
     {
-        if ($default || !$this->settings()['enable_comment_analysis']) {
+        if ($default || !$this->settings()['enable_comment_analysis'] || $this->isBypassed('comment', $ipAddress, $guestEmail)) {
             return $default;
         }
 
@@ -194,7 +194,7 @@ final class LumoraShieldService
      */
     public function contactFormIsSpam(bool $default, array $data, string $ipAddress): bool
     {
-        if ($default || !$this->settings()['enable_contact_form_analysis']) {
+        if ($default || !$this->settings()['enable_contact_form_analysis'] || $this->isBypassed('contact_form', $ipAddress, $this->contactIdentity($data)[1])) {
             return $default;
         }
 
@@ -375,6 +375,16 @@ final class LumoraShieldService
             // Best-effort — a failed notification must never break the
             // request that triggered it.
         }
+    }
+
+    /**
+     * Lets a trusted plugin exempt a submission (a verified customer, a known partner's IP)
+     * from this plugin's analysis. Only an explicit `true` counts, so a listener returning
+     * something truthy by accident can't switch the checks off.
+     */
+    private function isBypassed(string $source, string $ipAddress, string $email): bool
+    {
+        return apply_filters('lumora_shield_bypass_analysis', false, $source, $ipAddress, $email) === true;
     }
 
     /**
