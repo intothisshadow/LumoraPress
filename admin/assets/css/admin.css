@@ -8,6 +8,7 @@
     --lp-admin-sidebar-fg: #eee;
     --lp-admin-sidebar-fg-muted: #b4b9be;
     --lp-admin-accent: #2271b1;
+    --lp-admin-switch-on: #5cc98b;
     --lp-admin-accent-hover: #135e96;
     --lp-admin-on-accent: #fff;
     --lp-admin-text: #1d2327;
@@ -67,6 +68,7 @@
         --lp-admin-sidebar-bg: #17191c;
         --lp-admin-sidebar-fg: #e4e6e8;
         --lp-admin-sidebar-fg-muted: #9aa0a6;
+        --lp-admin-switch-on: #6dd498;
         --lp-admin-accent: #4c9be8;
         --lp-admin-accent-hover: #6cb0ef;
         --lp-admin-on-accent: #0b1520;
@@ -106,6 +108,7 @@
     --lp-admin-sidebar-bg: #17191c;
     --lp-admin-sidebar-fg: #e4e6e8;
     --lp-admin-sidebar-fg-muted: #9aa0a6;
+    --lp-admin-switch-on: #6dd498;
     --lp-admin-accent: #4c9be8;
     --lp-admin-accent-hover: #6cb0ef;
     --lp-admin-on-accent: #0b1520;
@@ -2125,10 +2128,8 @@ body.lp-admin-login {
     color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
 }
 
-/* Checklist boxes (categories) meet the 24px minimum touch target. */
+/* Checklist switches (categories) keep a gap before their label. */
 .lp-field--checklist input[type="checkbox"] {
-    width: 1.5rem;
-    height: 1.5rem;
     margin: 0 0.35rem 0 0;
     vertical-align: middle;
 }
@@ -4616,6 +4617,30 @@ select:focus {
     margin: 0;
 }
 
+/* Theme Options color fields are a swatch, not a full-width bar. */
+.lp-field input[type="color"] {
+    width: 2.5rem;
+    height: 2.25rem;
+    padding: 0.125rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+/* Swatch fields sit side by side and wrap, instead of one per row. */
+.lp-field--color {
+    display: inline-block;
+    vertical-align: top;
+    width: min(100%, 15rem);
+    margin-right: 1.5rem;
+}
+
+/* The taller switch would otherwise touch the color field above it. */
+.lp-field input[type="color"] + .lp-field--checkbox {
+    margin-top: 0.5rem;
+}
+
 .lp-field--checkbox label {
     display: inline;
     margin-bottom: 0;
@@ -5505,6 +5530,96 @@ select:focus {
     margin: 0;
 }
 
+/*
+ * Slide switches: every admin checkbox is drawn as a switch with no markup
+ * change, so bulk-select, select-all and form posting behave exactly as
+ * before and plugin screens get it for free. Containers can set
+ * --lp-switch-w / --lp-switch-h to shrink it (see the compact rule below).
+ * TinyMCE's dialogs live in the admin document, so they are left alone.
+ */
+input[type="checkbox"]:not(.lp-toggle input, .tox input) {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: var(--lp-switch-w, 2.5rem);
+    height: var(--lp-switch-h, 1.4rem);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lp-admin-text) 35%, var(--lp-admin-panel-bg));
+    cursor: pointer;
+    vertical-align: middle;
+    transition: background 0.15s ease;
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input)::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(var(--lp-switch-h, 1.4rem) - 4px);
+    height: calc(var(--lp-switch-h, 1.4rem) - 4px);
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    transition: transform 0.15s ease;
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input):checked {
+    background: var(--lp-admin-switch-on);
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input):checked::before {
+    transform: translateX(calc(var(--lp-switch-w, 2.5rem) - var(--lp-switch-h, 1.4rem)));
+}
+
+/* A select-all box over a partly selected list sits halfway. */
+input[type="checkbox"]:not(.lp-toggle input, .tox input):indeterminate {
+    background: color-mix(in srgb, var(--lp-admin-switch-on) 55%, var(--lp-admin-border));
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input):indeterminate::before {
+    transform: translateX(calc((var(--lp-switch-w, 2.5rem) - var(--lp-switch-h, 1.4rem)) / 2));
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input):focus-visible {
+    outline: 2px solid var(--lp-admin-accent);
+    outline-offset: 2px;
+}
+
+input[type="checkbox"]:not(.lp-toggle input, .tox input):disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Compact size where a full switch would crowd the layout. */
+.lp-table,
+.lp-theme-card__select,
+.lp-media-grid__select,
+.lp-menus-add-panel__list {
+    --lp-switch-w: 2rem;
+    --lp-switch-h: 1.15rem;
+}
+
+/* Windows high-contrast mode drops background colours, so draw the state with system colours. */
+@media (forced-colors: active) {
+    input[type="checkbox"]:not(.lp-toggle input, .tox input) {
+        border: 1px solid ButtonText;
+        background: Canvas;
+    }
+
+    input[type="checkbox"]:not(.lp-toggle input, .tox input)::before {
+        background: ButtonText;
+    }
+
+    input[type="checkbox"]:not(.lp-toggle input, .tox input):checked {
+        background: Highlight;
+    }
+}
+
 /* Toggle switch (Update settings > Automatically check for updates) */
 
 .lp-toggle {
@@ -5526,7 +5641,7 @@ select:focus {
     display: inline-block;
     width: 2.5rem;
     height: 1.4rem;
-    background: var(--lp-admin-border);
+    background: color-mix(in srgb, var(--lp-admin-text) 35%, var(--lp-admin-panel-bg));
     border-radius: 999px;
     position: relative;
     transition: background 0.15s ease;
@@ -5545,7 +5660,7 @@ select:focus {
 }
 
 .lp-toggle input:checked + .lp-toggle__track {
-    background: var(--lp-admin-accent);
+    background: var(--lp-admin-switch-on);
 }
 
 .lp-toggle input:checked + .lp-toggle__track::after {
@@ -6153,10 +6268,7 @@ a.lp-button--link.lp-button--link--view:hover {
 }
 
 .lp-field--checklist .lp-menus-add-panel__list input[type="checkbox"] {
-    width: 1.1rem;
-    height: 1.1rem;
     margin: 0;
-    flex: 0 0 auto;
 }
 
 .lp-menus-structure-list {

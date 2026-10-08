@@ -189,7 +189,7 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
         return;
     }
     ?>
-    <p class="lp-field">
+    <p class="lp-field<?= $field->type === ThemeOptionType::Color ? ' lp-field--color' : '' ?>">
         <label for="<?= esc_attr($fieldId) ?>"><?= esc_html($field->label) ?></label>
         <?php if ($field->type === ThemeOptionType::Color): ?>
             <input
