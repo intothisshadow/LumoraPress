@@ -22,7 +22,7 @@ get_header();
 <div id="lp-content" class="lp-content">
     <div class="lp-maintenance<?= ($has_background_image ?? false) ? ' lp-maintenance--has-background' : '' ?>">
         <h1 class="lp-page-title"><?= esc_html($page_title) ?></h1>
-        <p class="lp-maintenance__message"><?= esc_html($message) ?></p>
+        <div class="lp-maintenance__message"><?= $message ?></div>
 
         <?php if ($return_at !== null): ?>
             <p class="lp-maintenance__return-at">

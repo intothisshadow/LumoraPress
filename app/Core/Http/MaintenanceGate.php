@@ -26,6 +26,8 @@ use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Security\IpRangeMatcher;
 use LumoraPress\Core\Theme\ActiveMaintenance;
 use LumoraPress\Core\Theme\ThemeRenderer;
+use LumoraPress\Models\ContentFormat;
+use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\MediaService;
 
 /**
@@ -50,6 +52,7 @@ final class MaintenanceGate
         private readonly ThemeRenderer $theme,
         private readonly HookManager $hooks,
         private readonly ?MediaService $media = null,
+        private readonly ?ContentRenderer $content = null,
     ) {
     }
 
@@ -217,6 +220,7 @@ final class MaintenanceGate
         return [
             'maintenance_title' => $text('maintenance_title'),
             'maintenance_message' => $text('maintenance_message'),
+            'maintenance_message_format' => $text('maintenance_message_format'),
             'maintenance_end_at' => $endAt,
             'maintenance_show_countdown' => $text('maintenance_show_countdown') === '1' ? '1' : '0',
             'maintenance_background_color' => $text('maintenance_background_color'),
@@ -253,10 +257,7 @@ final class MaintenanceGate
 
         $data = [
             'page_title' => (string) $this->setting('maintenance_title', 'Maintenance'),
-            'message' => $this->setting(
-                'maintenance_message',
-                'We are currently performing scheduled maintenance. Please check back shortly.',
-            ),
+            'message' => $this->messageHtml(),
             'return_at' => $returnAt,
             'countdown_to' => $countdownTo,
             'has_background_image' => $this->backgroundImageUrl() !== '',
@@ -271,6 +272,26 @@ final class MaintenanceGate
         } finally {
             ActiveMaintenance::setRendering(false);
         }
+    }
+
+    /**
+     * The message as safe HTML. A message saved before formats existed has
+     * no stored format and is treated as plain text, so it looks exactly as
+     * it always did until it is next saved in another format.
+     */
+    private function messageHtml(): string
+    {
+        $message = $this->setting(
+            'maintenance_message',
+            'We are currently performing scheduled maintenance. Please check back shortly.',
+        );
+        $format = ContentFormat::tryFrom($this->setting('maintenance_message_format', 'plain')) ?? ContentFormat::Plain;
+
+        if ($this->content === null) {
+            return nl2br(htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+        }
+
+        return $this->content->render($message, $format);
     }
 
     /**

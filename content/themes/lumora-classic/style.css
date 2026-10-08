@@ -2641,6 +2641,20 @@ a.lp-post-list__comments:focus {
 .lp-maintenance__countdown {
     margin-top: 1rem;
     font-size: 1.5rem;
+/* The message is formatted HTML: drop the outer paragraph margins and keep images inside the column. */
+.lp-maintenance__message > :first-child {
+    margin-top: 0;
+}
+
+.lp-maintenance__message > :last-child {
+    margin-bottom: 0;
+}
+
+.lp-maintenance__message img {
+    max-width: 100%;
+    height: auto;
+}
+
     font-variant-numeric: tabular-nums;
     font-weight: 600;
 }

@@ -787,7 +787,7 @@ $hooks->addAction('lumora_press_after_plugin_update', static function (string $s
 });
 
 $router = new Router();
-$maintenance = new MaintenanceGate($config, $auth, $theme, $hooks, $media);
+$maintenance = new MaintenanceGate($config, $auth, $theme, $hooks, $media, $content);
 ActiveMaintenance::set($maintenance);
 
 $kernel = new Kernel(

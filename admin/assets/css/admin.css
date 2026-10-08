@@ -2761,6 +2761,37 @@ body.lp-admin-login {
 
 .lp-featured-image-picker__chosen {
     display: inline-flex;
+/* Swatch + hex field + "Use default" (color-picker-field.js). The text field stays the submitted value. */
+.lp-color-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.lp-field .lp-color-field__swatch {
+    flex: none;
+    width: 2.5rem;
+    height: 2.25rem;
+    padding: 0.125rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+/* No color chosen: the swatch shows the placeholder color, dimmed so it doesn't read as a saved value. */
+.lp-field .lp-color-field--empty .lp-color-field__swatch {
+    opacity: 0.45;
+}
+
+.lp-field .lp-color-field__text {
+    flex: none;
+    width: 9rem;
+    max-width: 100%;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
     align-items: center;
     gap: 0.4rem;
     font-size: 0.85rem;

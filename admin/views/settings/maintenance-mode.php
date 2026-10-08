@@ -18,6 +18,7 @@
 use LumoraPress\Controllers\Admin\FeaturedImageDefaultsController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\IpRangeMatcher;
+use LumoraPress\Models\ContentFormat;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -43,6 +44,35 @@ if ($form === FeaturedImageDefaultsController::MAINTENANCE_BACKGROUND_PICKER_CSR
     http_response_code($pickerResponse['status']);
     header('Content-Type: application/json');
     echo json_encode($pickerResponse['body']);
+    exit;
+}
+
+// The message editor's Visual/Markdown/HTML switch posts here to convert the
+// current text; the same conversion the Post editor uses.
+if ($form === 'convert_content') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    $convertFrom = ContentFormat::tryFrom((string) ($_POST['from'] ?? ''));
+    $convertTo = ContentFormat::tryFrom((string) ($_POST['to'] ?? ''));
+
+    if (!Csrf::verify('convert_content', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Reload the page and try again.']);
+    } elseif ($convertFrom === null || $convertTo === null) {
+        http_response_code(422);
+        echo json_encode(['error' => 'Unknown format.']);
+    } else {
+        // Tokens are single-use, so a fresh one rides along for the next switch.
+        echo json_encode([
+            'content' => $kernel->content->convertFormat((string) ($_POST['content'] ?? ''), $convertFrom, $convertTo),
+            'csrf_token' => Csrf::token('convert_content'),
+        ]);
+    }
+
     exit;
 }
 
@@ -72,6 +102,10 @@ if ($form === 'maintenance_settings' && Csrf::verify('maintenance_settings', is_
     $kernel->config->setOption('maintenance_mode_enabled', $enabled ? '1' : '0');
     $kernel->config->setOption('maintenance_title', trim((string) ($_POST['maintenance_title'] ?? '')));
     $kernel->config->setOption('maintenance_message', trim((string) ($_POST['maintenance_message'] ?? '')));
+    $kernel->config->setOption(
+        'maintenance_message_format',
+        (ContentFormat::tryFrom((string) ($_POST['maintenance_message_format'] ?? '')) ?? ContentFormat::Plain)->value,
+    );
     $kernel->config->setOption('maintenance_start_at', $parseScheduleInput((string) ($_POST['maintenance_start_at'] ?? '')));
     $kernel->config->setOption('maintenance_end_at', $parseScheduleInput((string) ($_POST['maintenance_end_at'] ?? '')));
     $kernel->config->setOption(
@@ -173,10 +207,34 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             <input type="text" id="maintenance-title" name="maintenance_title" value="<?= esc_attr((string) $kernel->config->option('maintenance_title', 'Maintenance')) ?>">
         </p>
 
+        <?php
+        // A message saved before formats existed has no stored format and stays plain text.
+        $messageFormat = ContentFormat::tryFrom((string) $kernel->config->option('maintenance_message_format', 'plain')) ?? ContentFormat::Plain;
+        ?>
         <p class="lp-field">
-            <label for="maintenance-message">Maintenance message</label>
-            <textarea id="maintenance-message" name="maintenance_message" rows="3"><?= esc_html((string) $kernel->config->option('maintenance_message', 'We are currently performing scheduled maintenance. Please check back shortly.')) ?></textarea>
+            <label for="maintenance-message-format">Message editor</label>
+            <select id="maintenance-message-format" name="maintenance_message_format" data-lp-content-format-select>
+                <?php foreach (ContentFormat::cases() as $formatOption): ?>
+                    <option value="<?= esc_attr($formatOption->value) ?>" <?= $messageFormat === $formatOption ? 'selected' : '' ?>><?= esc_html($formatOption->label()) ?></option>
+                <?php endforeach; ?>
+            </select>
         </p>
+
+        <div class="lp-field">
+            <label for="maintenance-message">Maintenance message</label>
+            <div
+                class="lp-content-editor"
+                data-lp-content-editor
+                data-format="<?= esc_attr($messageFormat->value) ?>"
+                data-upload-url="<?= esc_url(admin_url('settings/maintenance-mode')) ?>"
+                data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
+                data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
+                data-wysiwyg-config="<?= esc_attr(lp_wysiwyg_editor_config()) ?>"
+                data-more-tag-stylesheet="<?= esc_url(admin_asset_url('css/content-editor-iframe.css')) ?>"
+            >
+                <textarea id="maintenance-message" name="maintenance_message" rows="6"><?= esc_html((string) $kernel->config->option('maintenance_message', 'We are currently performing scheduled maintenance. Please check back shortly.')) ?></textarea>
+            </div>
+        </div>
 
         <p class="lp-field">
             <label for="maintenance-start-at">Scheduled start (optional)</label>
@@ -251,21 +309,28 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             <p class="lp-field__hint">Covers the whole page behind the message. Leave empty for the theme's own background.</p>
         </fieldset>
 
-        <p class="lp-field">
-            <label for="maintenance-background-color">Background color</label>
-            <input type="text" id="maintenance-background-color" name="maintenance_background_color" maxlength="9" pattern="<?= esc_attr($colorPattern) ?>" placeholder="#1a1a2e" value="<?= esc_attr((string) $kernel->config->option('maintenance_background_color', '')) ?>">
-        </p>
-
-        <p class="lp-field">
-            <label for="maintenance-text-color">Text color</label>
-            <input type="text" id="maintenance-text-color" name="maintenance_text_color" maxlength="9" pattern="<?= esc_attr($colorPattern) ?>" placeholder="#ffffff" value="<?= esc_attr((string) $kernel->config->option('maintenance_text_color', '')) ?>">
-        </p>
-
-        <p class="lp-field">
-            <label for="maintenance-accent-color">Countdown color</label>
-            <input type="text" id="maintenance-accent-color" name="maintenance_accent_color" maxlength="9" pattern="<?= esc_attr($colorPattern) ?>" placeholder="#e0a458" value="<?= esc_attr((string) $kernel->config->option('maintenance_accent_color', '')) ?>">
-            <span class="lp-field__hint">Colors are written as hex values such as <code>#336699</code>. Leave a color blank to keep the theme's own. Check that your text stays readable against the background.</span>
-        </p>
+        <?php
+        // The swatch has no name, so only the hex text field is submitted; an empty text field means "use the page's own color".
+        $colorFields = [
+            ['background', 'Background color', '#1a1a2e'],
+            ['text', 'Text color', '#ffffff'],
+            ['accent', 'Countdown color', '#e0a458'],
+        ];
+        ?>
+        <?php foreach ($colorFields as [$colorKey, $colorLabel, $colorPlaceholder]): ?>
+            <?php $colorValue = (string) $kernel->config->option('maintenance_' . $colorKey . '_color', ''); ?>
+            <div class="lp-field">
+                <label for="maintenance-<?= esc_attr($colorKey) ?>-color"><?= esc_html($colorLabel) ?></label>
+                <span class="lp-color-field" data-lp-color-field data-color-default="<?= esc_attr($colorPlaceholder) ?>">
+                    <input type="color" class="lp-color-field__swatch" data-lp-color-swatch aria-label="Pick <?= esc_attr(strtolower($colorLabel)) ?>" value="<?= esc_attr(preg_match('/^#[0-9a-fA-F]{6}/', $colorValue) === 1 ? strtolower(substr($colorValue, 0, 7)) : $colorPlaceholder) ?>">
+                    <input type="text" class="lp-color-field__text" data-lp-color-text id="maintenance-<?= esc_attr($colorKey) ?>-color" name="maintenance_<?= esc_attr($colorKey) ?>_color" maxlength="9" pattern="<?= esc_attr($colorPattern) ?>" placeholder="<?= esc_attr($colorPlaceholder) ?>" autocomplete="off" spellcheck="false" value="<?= esc_attr($colorValue) ?>">
+                    <button type="button" class="lp-button lp-button--link" data-lp-color-clear <?= $colorValue === '' ? 'hidden' : '' ?>>Use default</button>
+                </span>
+                <?php if ($colorKey === 'accent'): ?>
+                    <span class="lp-field__hint">Pick a color or type a hex value such as <code>#336699</code>; the 4 and 8 digit forms (<code>#3366997f</code>) add transparency, which only the text field can set. Leave a color empty to keep the theme's own. Check that your text stays readable against the background.</span>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
 
         <p class="lp-field">
             <label for="maintenance-custom-css">Custom CSS</label>
