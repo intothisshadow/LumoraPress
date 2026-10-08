@@ -585,6 +585,27 @@ if (!function_exists('show_site_title')) {
     }
 }
 
+if (!function_exists('show_site_tagline')) {
+    /**
+     * Whether a theme should render the site tagline.
+     */
+    function show_site_tagline(): bool
+    {
+        return theme_option('show_tagline') === '1';
+    }
+}
+
+if (!function_exists('show_post_meta')) {
+    /**
+     * Whether a post byline part is switched on in Customize: one of
+     * 'author', 'date', 'categories', 'tags' or 'reading_time'.
+     */
+    function show_post_meta(string $part): bool
+    {
+        return theme_option('show_post_' . $part) === '1';
+    }
+}
+
 if (!function_exists('has_header_image')) {
     /**
      * Whether an administrator has uploaded a header image for the

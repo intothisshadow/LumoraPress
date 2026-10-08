@@ -64,12 +64,17 @@ $lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? 
                                 <a href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html($post->title) ?></a>
                             </h2>
                             <p class="lp-post-list__meta">
-                                <?php the_author_link($post); ?>
-                                <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
-                                <?php if (post_categories($post) !== []): ?>
-                                    <span class="lp-post-list__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
+                                <?php $lpMetaLead = show_post_meta('author') || show_post_meta('date'); ?>
+                                <?php $lpShowCategories = show_post_meta('categories') && post_categories($post) !== []; ?>
+                                <?php if (show_post_meta('author')): ?><?php the_author_link($post); ?><?php endif; ?>
+                                <?php if (show_post_meta('date')): ?><?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?><?php endif; ?>
+                                <?php if ($lpShowCategories): ?>
+                                    <span class="lp-post-list__categories"><?= $lpMetaLead ? '&middot; ' : '' ?>Filed under <?php the_post_categories($post); ?></span>
                                 <?php endif; ?>
-                                &middot; <?php comments_link($post, $comment_counts[$post->id] ?? 0); ?>
+                                <?php if (show_post_meta('reading_time')): ?>
+                                    <span class="lp-post-list__reading-time"><?= $lpMetaLead || $lpShowCategories ? '&middot; ' : '' ?><?php the_reading_time($post); ?></span>
+                                <?php endif; ?>
+                                <?= $lpMetaLead || $lpShowCategories || show_post_meta('reading_time') ? '&middot; ' : '' ?><?php comments_link($post, $comment_counts[$post->id] ?? 0); ?>
                             </p>
                             <?php $moreTagContent = get_the_content_up_to_more_tag($post); ?>
                             <?php if ($moreTagContent !== null): ?>
@@ -84,7 +89,7 @@ $lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? 
                                 <?php endif; ?>
                                 <a class="lp-post-list__more" href="<?= esc_url(post_permalink($post)) ?>"><?= esc_html(theme_option('read_more_text')) ?></a>
                             <?php endif; ?>
-                            <?php if (post_has_tags($post)): ?>
+                            <?php if (show_post_meta('tags') && post_has_tags($post)): ?>
                                 <ul class="lp-post-list__tags">
                                     <?php foreach (get_the_tags($post) as $postTag): ?>
                                         <li class="lp-post-list__tags-item"><a href="<?= esc_url(tag_permalink($postTag)) ?>"><?= esc_html($postTag->name) ?></a></li>

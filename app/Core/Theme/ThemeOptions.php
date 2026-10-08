@@ -262,6 +262,25 @@ final class ThemeOptions
             label: 'Read More text',
             default: 'Continue reading →',
         ));
+        $this->registerSection('post_meta', 'Post Details', 'Choose which details appear with each post, on the front page, archives, and single posts.');
+
+        foreach ([
+            'show_post_author' => ['Show author', 'Show who wrote the post.', '1'],
+            'show_post_date' => ['Show date', 'Show when the post was published.', '1'],
+            'show_post_categories' => ['Show categories', 'Show the "Filed under" list of categories.', '1'],
+            'show_post_tags' => ['Show tags', 'Show the post\'s tags below its content.', '1'],
+            'show_post_reading_time' => ['Show reading time', 'Show an estimate such as "3 min read", based on the post\'s word count.', '0'],
+        ] as $key => [$label, $help, $default]) {
+            $this->registerField(new ThemeOptionField(
+                key: $key,
+                section: 'post_meta',
+                type: ThemeOptionType::Checkbox,
+                label: $label,
+                default: $default,
+                help: $help,
+            ));
+        }
+
         // Its own section rather than folded into Post Display: this is a
         // single visual choice with its own admin picker UI (customize.php
         // renders featured_image_position as two clickable preview cards,
@@ -293,6 +312,14 @@ final class ThemeOptions
             label: 'Show site title',
             default: '1',
             help: 'Show the site title/logo in the header. Turn off if your header image already includes the title.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'show_tagline',
+            section: 'header',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show tagline',
+            default: '1',
+            help: 'Show the site tagline (set in Settings › General) in the header.',
         ));
         $this->registerField(new ThemeOptionField(
             key: 'header_height',

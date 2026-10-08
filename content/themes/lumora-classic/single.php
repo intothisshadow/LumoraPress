@@ -29,13 +29,19 @@ get_header(['post' => $post]);
                 </div>
             <?php endif; ?>
             <h1 class="lp-post__title"><?= esc_html($post->title) ?></h1>
-            <p class="lp-post__meta">
-                <?php the_author_link($post); ?>
-                <?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?>
-                <?php if (post_categories($post) !== []): ?>
-                    <span class="lp-post__categories">&middot; Filed under <?php the_post_categories($post); ?></span>
-                <?php endif; ?>
-            </p>
+            <?php $lpMetaLead = show_post_meta('author') || show_post_meta('date'); ?>
+            <?php if ($lpMetaLead || show_post_meta('categories') || show_post_meta('reading_time')): ?>
+                <p class="lp-post__meta">
+                    <?php if (show_post_meta('author')): ?><?php the_author_link($post); ?><?php endif; ?>
+                    <?php if (show_post_meta('date')): ?><?= $post->publishedAt !== null ? esc_html(the_date($post->publishedAt)) : '' ?><?php endif; ?>
+                    <?php if (show_post_meta('categories') && post_categories($post) !== []): ?>
+                        <span class="lp-post__categories"><?= $lpMetaLead ? '&middot; ' : '' ?>Filed under <?php the_post_categories($post); ?></span>
+                    <?php endif; ?>
+                    <?php if (show_post_meta('reading_time')): ?>
+                        <span class="lp-post__reading-time"><?= $lpMetaLead || show_post_meta('categories') ? '&middot; ' : '' ?><?php the_reading_time($post); ?></span>
+                    <?php endif; ?>
+                </p>
+            <?php endif; ?>
             <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($post)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($post, size: 'large'); ?>
@@ -43,7 +49,7 @@ get_header(['post' => $post]);
                 </div>
             <?php endif; ?>
             <div class="lp-post__content"><?php the_content($post); ?></div>
-            <?php if (post_has_tags($post)): ?>
+            <?php if (show_post_meta('tags') && post_has_tags($post)): ?>
                 <ul class="lp-post__tags">
                     <?php foreach (get_the_tags($post) as $postTag): ?>
                         <li class="lp-post__tags-item"><a href="<?= esc_url(tag_permalink($postTag)) ?>"><?= esc_html($postTag->name) ?></a></li>

@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Core\Content\ReadingTime;
 use LumoraPress\Models\Category;
 use LumoraPress\Models\Page;
 use LumoraPress\Models\Post;
@@ -115,6 +116,30 @@ if (!function_exists('the_excerpt')) {
     function the_excerpt(Post $post): void
     {
         echo esc_html(get_the_excerpt($post));
+    }
+}
+
+if (!function_exists('get_reading_time')) {
+    /**
+     * Estimated minutes to read $post, 0 when it has no text.
+     */
+    function get_reading_time(Post $post): int
+    {
+        return ReadingTime::minutes(content_plain_text($post->content, $post->contentFormat));
+    }
+}
+
+if (!function_exists('the_reading_time')) {
+    /**
+     * Echoes e.g. "3 min read"; prints nothing for a post with no text.
+     */
+    function the_reading_time(Post $post): void
+    {
+        $minutes = get_reading_time($post);
+
+        if ($minutes > 0) {
+            echo esc_html($minutes . ' min read');
+        }
     }
 }
 

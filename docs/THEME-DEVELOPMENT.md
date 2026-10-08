@@ -311,7 +311,7 @@ An `Html`-type field stores raw, unsanitized Markdown/HTML/Plain content (saniti
 
 ### Appearance > Customize screen sections
 
-The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**, plus a theme tab after them when the theme registers sections of its own. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). Every custom section your theme/plugin registers (like `my_theme` above) is shown in one more tab after Footer, named for the active theme; the tab only appears when at least one custom section exists. See `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
+The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**, plus a theme tab after them when the theme registers sections of its own. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`post_meta`/`featured_image` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). Every custom section your theme/plugin registers (like `my_theme` above) is shown in one more tab after Footer, named for the active theme; the tab only appears when at least one custom section exists. See `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.
 
 Core's `header`/`welcome_message`/`footer` sections come with matching template tags a theme calls directly — no hook required for the common case:
 
@@ -326,6 +326,14 @@ header_height(): string                 // bare value, '' when the admin hasn't 
                                          // override (so your theme's own default height
                                          // wins); also flows through theme_options_css()
                                          // as --lp-header-image-height
+
+show_site_tagline(): bool               // whether to render the site tagline (Header > Show tagline)
+
+// Post Details section (Body tab) — gate each part of a post's byline with it
+show_post_meta(string $part): bool      // $part: 'author', 'date', 'categories', 'tags' or
+                                         // 'reading_time'; the first four default on, reading_time off
+get_reading_time(Post $post): int       // minutes at 200 words/minute, rounded up; 0 for a post with no text
+the_reading_time(Post $post): void      // echoes e.g. "3 min read" (nothing when 0)
 
 // Welcome Message section — call in exactly one of header.php/sidebar.php
 has_welcome_message(): bool

@@ -209,7 +209,7 @@ final class ThemeCustomizerController
             'header' => 'header',
             'welcome_message' => 'welcome_message',
             'footer' => 'footer',
-            'colors', 'typography', 'layout', 'post_display', 'featured_image' => 'body',
+            'colors', 'typography', 'layout', 'post_display', 'post_meta', 'featured_image' => 'body',
             default => 'theme',
         };
 

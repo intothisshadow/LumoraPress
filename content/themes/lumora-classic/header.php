@@ -155,7 +155,7 @@ $meta_description = $seo_description ?? meta_description();
                         <?= esc_html(site_name()) ?>
                     <?php endif; ?>
                 </a>
-                <?php if (site_tagline() !== ''): ?>
+                <?php if (show_site_tagline() && site_tagline() !== ''): ?>
                     <span class="lp-site-header__tagline"><?= esc_html(site_tagline()) ?></span>
                 <?php endif; ?>
             </p>

@@ -23,6 +23,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Appearance › Customize › Body has a new **Post Details** panel with switches for showing each post's author, date, categories, and tags (all on by default), and an optional "3 min read" reading time (off by default). They apply on the front page, archives, and single posts. The Header tab gains a **Show tagline** switch. Lumora Classic honors all six.
 - Downloads (plugin): an optional GitHub access token on the Import from GitHub screen. Without one GitHub allows only 60 requests an hour from your server, which a few updates can use up; with a token (no permissions needed) the limit is 5,000. The token is stored encrypted and sent only to GitHub's API. The "limited how many requests" message now mentions this, and an import or link reuses the preview's read of GitHub for ten minutes instead of asking GitHub again.
 - A "Removed Bundled Plugins" panel on Plugins and a "Removed Bundled Themes" panel on Appearance › Themes list what you removed, each with a Restore button that installs it (inactive) from the latest release through the same backed-up update steps.
 
