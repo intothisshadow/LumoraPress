@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Media Manager: searching or filtering now shows up to 200 files per page instead of 40, so a whole set of results can be selected and moved to a folder at once. Browsing without a search still shows 40.
 - Saving an existing download or link now keeps you on its edit screen with the "saved" notice, the same as saving a new one or a post or page, instead of returning to the list.
 - Updates no longer bring back bundled plugins and themes you deleted. Until now every core update restored any bundled plugin that was missing, so deleting Dummy Content or Font Awesome meant deleting it again after each release. An update now leaves out a bundled plugin or theme that your current version ships and that is no longer on the site, however it was removed, while anything new in the release is still installed. Lumora Classic, the active theme, and the core folders are always applied. The update result names what was left out, and the modified-files warning no longer lists a deleted plugin.
 

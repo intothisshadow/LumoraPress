@@ -839,7 +839,12 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
         }
 
         $page = max(1, (int) ($_GET['paged'] ?? 1));
-        $perPage = 40;
+        // A search or filter result is a working set to select and move in
+        // bulk, so it gets a much larger page than plain browsing.
+        $isFiltered = $term !== '' || $type !== '' || $dateFrom !== '' || $dateTo !== ''
+            || $widthMin !== '' || $widthMax !== '' || $heightMin !== '' || $heightMax !== ''
+            || $sizeMinKb !== '' || $sizeMaxKb !== '';
+        $perPage = $isFiltered ? 200 : 40;
         $result = $mediaService->query($filters, $perPage, ($page - 1) * $perPage);
         $items = $result['items'];
         $totalPages = (int) max(1, ceil($result['total'] / $perPage));
