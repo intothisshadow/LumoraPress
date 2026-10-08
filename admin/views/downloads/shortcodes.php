@@ -96,6 +96,29 @@ $exampleCategory = $allDownloadCategories[0] ?? null;
 </section>
 
 <section class="lp-admin__panel">
+    <h2><code>[lumora_downloads_all]</code></h2>
+    <p class="lp-field__hint">
+        Lists everything in a category whether it was added here or imported: the
+        category's downloads, together with the files and links filed in a Media
+        Library folder with the same name (the way downloads migrated from WordPress
+        are stored). It is one alphabetical list, and anything that is already a
+        download is listed once. A category with no matching folder simply shows its
+        own downloads.
+    </p>
+
+    <h3>Attributes</h3>
+    <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
+        <li><span><code>category</code></span><span>A category name, matched case-insensitively. The folder is found by the same name.</span></li>
+        <li><span><code>category_id</code></span><span>A category's exact numeric ID. Wins over <code>category</code> when both are given.</span></li>
+        <li><span><code>show_size</code></span><span>Set to <code>"1"</code> to show each file's size next to its link.</span></li>
+    </ul>
+
+    <h3>Examples</h3>
+    <pre><code>[lumora_downloads_all category="<?= esc_html($exampleCategory->name ?? 'Patches') ?>"]</code></pre>
+    <pre><code>[lumora_downloads_all category_id="<?= (int) ($exampleCategory->id ?? 1) ?>" show_size="1"]</code></pre>
+</section>
+
+<section class="lp-admin__panel">
     <h2><code>[lumora_recent_downloads]</code></h2>
     <p class="lp-field__hint">
         Lists the newest live downloads first and pages through them, for a

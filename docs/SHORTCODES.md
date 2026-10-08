@@ -76,7 +76,7 @@ Shows up in the editor's Insert Shortcode picker as **Icon**, with a searchable 
 
 ### `[lumora_downloads]` — Downloads plugin
 
-Shows up in the picker as **Downloads from Category**. Three variants, checked in this order: a single download by id, the newest N downloads (optionally filtered to a category), or every download in a category. **Downloads &rsaquo; Shortcodes** in the admin has a live reference built from your site's own categories.
+Shows up in the picker twice: **Downloads from Category**, and **Single Download**, which asks for a download's id (the ID column on **Downloads &rsaquo; All Downloads**, which also has a Shortcode column with each one ready to copy) and inserts `[lumora_downloads download_id="…"]`. Three variants, checked in this order: a single download by id, the newest N downloads (optionally filtered to a category), or every download in a category. **Downloads &rsaquo; Shortcodes** in the admin has a live reference built from your site's own categories.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -91,6 +91,20 @@ With none of `download_id`/`count`/`category_id`/`category` given, nothing rende
 ```
 [lumora_downloads category="Wallpapers" show_size="1"]
 [lumora_downloads count="5"]
+```
+
+### `[lumora_downloads_all]` — Downloads plugin
+
+Shows up in the picker as **All Downloads from Category**. Lists everything in a category whether it was added in Downloads or imported: the category's own downloads, together with the files and links filed in a Media Library folder with the same name (how downloads migrated from WordPress are stored). It is one alphabetical list under the category's name, and anything that is already a download is listed once. A category with no matching folder shows just its downloads.
+
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `category_id` | One of the two | A Download Category's id. Takes priority over `category` if both are given. |
+| `category` | One of the two | A Download Category's name, matched case-insensitively. The folder is matched by the same name. |
+| `show_size` | No | `1` to show each file's size next to its link. Defaults to off. |
+
+```
+[lumora_downloads_all category="Large Textures" show_size="1"]
 ```
 
 ### `[contact_form]` — Contact Forms plugin

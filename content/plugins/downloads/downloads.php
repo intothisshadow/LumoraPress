@@ -43,6 +43,7 @@ require_once __DIR__ . '/src/DownloadCategory.php';
 require_once __DIR__ . '/src/DownloadCategoryService.php';
 require_once __DIR__ . '/src/DownloadService.php';
 require_once __DIR__ . '/src/DownloadMediaUrlMasker.php';
+require_once __DIR__ . '/src/ImportedDownloadsFinder.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
 require_once __DIR__ . '/src/GitHubRepositoryRef.php';
 require_once __DIR__ . '/src/GitHubImportException.php';
@@ -105,6 +106,18 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
         new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: $categoryChoices),
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);
+
+    register_shortcode('lumora_downloads_all', 'All Downloads from Category', [
+        new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: $categoryChoices, help: 'Lists the category\'s downloads together with any files and links filed in a Media folder with the same name, such as downloads imported from WordPress.'),
+        new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+    ]);
+
+    // Same shortcode as above, offered separately: the picker can't make one entry
+    // serve both "a category" and "one download", so this inserts download_id instead.
+    register_shortcode('lumora_downloads_single', 'Single Download', [
+        new ShortcodeField('download_id', 'Download ID', ShortcodeFieldType::Number, required: true, help: 'The number in the ID column of Downloads › All Downloads, or in its Shortcode column.'),
+        new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
+    ], 'lumora_downloads');
 
     register_shortcode('lumora_recent_downloads', 'Recent Downloads', [
         new ShortcodeField('category_id', 'Category (optional)', ShortcodeFieldType::Select, choices: ['' => 'Every category'] + $categoryChoices),

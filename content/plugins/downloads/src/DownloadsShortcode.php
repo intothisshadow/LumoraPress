@@ -22,6 +22,7 @@ use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\BasePath;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Services\ContentRenderer;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\RedirectService;
@@ -36,7 +37,10 @@ use LumoraPress\Services\RedirectService;
  */
 final class DownloadsShortcode
 {
-    private const PATTERN = '/\[lumora_downloads([^\]]*)\]/i';
+    // The lookahead keeps this from also claiming [lumora_downloads_all …], whose name starts the same way.
+    private const PATTERN = '/\[lumora_downloads(?![A-Za-z0-9_])([^\]]*)\]/i';
+
+    private const ALL_PATTERN = '/\[lumora_downloads_all([^\]]*)\]/i';
 
     private const RECENT_PATTERN = '/\[lumora_recent_downloads([^\]]*)\]/i';
 
@@ -55,6 +59,7 @@ final class DownloadsShortcode
         private readonly ?DownloadCategoryService $injectedCategories = null,
         private readonly ?ContentRenderer $injectedContent = null,
         private readonly ?DownloadMediaUrlMasker $injectedMasker = null,
+        private readonly ?ImportedDownloadsFinder $injectedImported = null,
     ) {
     }
 
@@ -69,6 +74,12 @@ final class DownloadsShortcode
             fn (array $matches): string => $this->renderOne($this->parseAttributes($matches[1])),
             $html,
         ) ?? $html;
+
+        $result = preg_replace_callback(
+            self::ALL_PATTERN,
+            fn (array $matches): string => $this->renderAll($this->parseAttributes($matches[1])),
+            $result,
+        ) ?? $result;
 
         return preg_replace_callback(
             self::RECENT_PATTERN,
@@ -157,6 +168,64 @@ final class DownloadsShortcode
         }
 
         return $html;
+    }
+
+    /**
+     * `[lumora_downloads_all]`: a category's downloads together with the files and links filed
+     * in a Media folder of the same name (how downloads migrated from WordPress are stored),
+     * as one alphabetical list. Anything a Download row already covers is listed once.
+     *
+     * @param array<string, string> $attributes
+     */
+    private function renderAll(array $attributes): string
+    {
+        [$downloads, $categories, $imported] = $this->services();
+        $category = $this->resolveCategory($categories, $attributes);
+
+        if ($category === null) {
+            return '';
+        }
+
+        $showSize = ($attributes['show_size'] ?? '0') === '1';
+        $content = $this->content();
+        $entries = [];
+
+        foreach ($downloads->listByCategory($category->id) as $download) {
+            // A download with no file or link yet has nothing to offer a visitor.
+            if ($download->url === '') {
+                continue;
+            }
+
+            $entries[] = [
+                'name' => $download->title,
+                'url' => $download->url,
+                'size' => $showSize && $download->fileSizeBytes !== null ? $this->formatBytes($download->fileSizeBytes) : null,
+                'descriptionHtml' => $download->description !== '' ? $this->renderDescription($content, $download->description, $download->descriptionFormat) : '',
+            ];
+        }
+
+        foreach ($imported?->forCategoryName($category->name) ?? [] as $item) {
+            $entries[] = [
+                'name' => $item['name'],
+                'url' => $item['url'],
+                'size' => $showSize && $item['sizeBytes'] !== null ? $this->formatBytes($item['sizeBytes']) : null,
+                'descriptionHtml' => $item['description'] !== '' ? esc_html($item['description']) : '',
+            ];
+        }
+
+        if ($entries === []) {
+            return '';
+        }
+
+        usort($entries, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+
+        $html = '<div class="lp-downloads-list"><h3 class="lp-downloads-list__title">' . esc_html($category->name) . '</h3><ul class="lp-downloads-list__items">';
+
+        foreach ($entries as $entry) {
+            $html .= $this->itemHtml($entry['name'], $entry['url'], $entry['size'], $entry['descriptionHtml']);
+        }
+
+        return $html . '</ul></div>';
     }
 
     /**
@@ -292,32 +361,51 @@ final class DownloadsShortcode
         $html .= '<ul class="lp-downloads-list__items">';
 
         foreach ($items as $item) {
-            $html .= '<li class="lp-downloads-list__item">';
-            $html .= '<strong class="lp-downloads-list__label">Download:</strong> ';
-            $html .= '<a class="lp-downloads-list__link" href="' . esc_url($item->url) . '">' . esc_html($item->title) . '</a>';
-
-            if ($showSize && $item->fileSizeBytes !== null) {
-                $html .= ' <span class="lp-downloads-list__size">(' . esc_html($this->formatBytes($item->fileSizeBytes)) . ')</span>';
-            }
-
-            if ($item->description !== '') {
-                // masker()->mask() rewrites any embedded image URL that still points
-                // at the real upload path; guarded by a cheap string check first.
-                $rendered = $content->render($item->description, $item->descriptionFormat);
-
-                if (str_contains($rendered, $this->uploadsUrlPrefix())) {
-                    $rendered = $this->masker()->mask($rendered);
-                }
-
-                $html .= '<div class="lp-downloads-list__description">' . $rendered . '</div>';
-            }
-
-            $html .= '</li>';
+            $html .= $this->itemHtml(
+                $item->title,
+                $item->url,
+                $showSize && $item->fileSizeBytes !== null ? $this->formatBytes($item->fileSizeBytes) : null,
+                $item->description !== '' ? $this->renderDescription($content, $item->description, $item->descriptionFormat) : '',
+            );
         }
 
         $html .= '</ul></div>';
 
         return $html;
+    }
+
+    /**
+     * The one markup every download list item uses, so the lists can't drift apart.
+     * $descriptionHtml is already safe HTML (rendered content, or escaped text).
+     */
+    private function itemHtml(string $title, string $url, ?string $size, string $descriptionHtml): string
+    {
+        $html = '<li class="lp-downloads-list__item">';
+        $html .= '<strong class="lp-downloads-list__label">Download:</strong> ';
+        $html .= '<a class="lp-downloads-list__link" href="' . esc_url($url) . '">' . esc_html($title) . '</a>';
+
+        if ($size !== null) {
+            $html .= ' <span class="lp-downloads-list__size">(' . esc_html($size) . ')</span>';
+        }
+
+        if ($descriptionHtml !== '') {
+            $html .= '<div class="lp-downloads-list__description">' . $descriptionHtml . '</div>';
+        }
+
+        return $html . '</li>';
+    }
+
+    private function renderDescription(ContentRenderer $content, string $description, ContentFormat $format): string
+    {
+        // masker()->mask() rewrites any embedded image URL that still points
+        // at the real upload path; guarded by a cheap string check first.
+        $rendered = $content->render($description, $format);
+
+        if (str_contains($rendered, $this->uploadsUrlPrefix())) {
+            $rendered = $this->masker()->mask($rendered);
+        }
+
+        return $rendered;
     }
 
     private function formatBytes(int $bytes): string
@@ -351,12 +439,12 @@ final class DownloadsShortcode
     }
 
     /**
-     * @return array{0: DownloadService, 1: DownloadCategoryService}
+     * @return array{0: DownloadService, 1: DownloadCategoryService, 2: ImportedDownloadsFinder|null}
      */
     private function services(): array
     {
         if ($this->injectedDownloads !== null && $this->injectedCategories !== null) {
-            return [$this->injectedDownloads, $this->injectedCategories];
+            return [$this->injectedDownloads, $this->injectedCategories, $this->injectedImported];
         }
 
         $config = require LUMORA_ROOT . '/config/config.php';
@@ -373,6 +461,6 @@ final class DownloadsShortcode
         $redirects = new RedirectService($database, $tablePrefix);
         $downloads = new DownloadService($database, $tablePrefix, $media, $redirects, $categories);
 
-        return [$downloads, $categories];
+        return [$downloads, $categories, new ImportedDownloadsFinder($database, $tablePrefix)];
     }
 }
