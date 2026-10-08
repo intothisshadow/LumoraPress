@@ -295,6 +295,25 @@ final class ThemeOptions
             ));
         }
 
+        $this->registerSection('page_elements', 'Page Elements', 'Choose which navigation and heading elements appear on pages and archives.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'show_breadcrumbs',
+            section: 'page_elements',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show breadcrumbs',
+            default: '1',
+            help: 'Show the "Home › Parent" trail above child pages and sub-category archives.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'show_page_titles',
+            section: 'page_elements',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show page titles',
+            default: '1',
+            help: 'Show the title at the top of each static page. When off, the title stays in the page for screen readers and search engines, just not visible. Post titles, archives, and search results are not affected.',
+        ));
+
         // Its own section rather than folded into Post Display: this is a
         // single visual choice with its own admin picker UI (customize.php
         // renders featured_image_position as two clickable preview cards,
@@ -326,6 +345,14 @@ final class ThemeOptions
             label: 'Show site title',
             default: '1',
             help: 'Show the site title/logo in the header. Turn off if your header image already includes the title.',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'show_search_bar',
+            section: 'header',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show search bar',
+            default: '1',
+            help: 'Show the search box in the header. Visitors can still reach search results by visiting the search address directly.',
         ));
         $this->registerField(new ThemeOptionField(
             key: 'show_tagline',

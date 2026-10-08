@@ -173,7 +173,7 @@ if (!function_exists('the_page_breadcrumbs')) {
      */
     function the_page_breadcrumbs(Page $page, array $ancestors): void
     {
-        if ($ancestors === []) {
+        if ($ancestors === [] || !show_breadcrumbs()) {
             return;
         }
 
@@ -226,7 +226,7 @@ if (!function_exists('the_category_breadcrumbs')) {
      */
     function the_category_breadcrumbs(Category $category, array $ancestors): void
     {
-        if ($ancestors === []) {
+        if ($ancestors === [] || !show_breadcrumbs()) {
             return;
         }
 

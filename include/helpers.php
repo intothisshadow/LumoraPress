@@ -595,6 +595,40 @@ if (!function_exists('show_site_tagline')) {
     }
 }
 
+if (!function_exists('show_search_bar')) {
+    /**
+     * Whether a theme should render its header search form.
+     */
+    function show_search_bar(): bool
+    {
+        return theme_option('show_search_bar') === '1';
+    }
+}
+
+if (!function_exists('show_breadcrumbs')) {
+    /**
+     * Whether breadcrumb trails render. the_page_breadcrumbs() and
+     * the_category_breadcrumbs() check it themselves, so a theme needs no
+     * extra condition.
+     */
+    function show_breadcrumbs(): bool
+    {
+        return theme_option('show_breadcrumbs') === '1';
+    }
+}
+
+if (!function_exists('show_page_titles')) {
+    /**
+     * Whether a static page shows its title heading. A theme should still
+     * output the <h1> and hide it visually (lp-visually-hidden) when this
+     * is false, so the page keeps its heading for screen readers.
+     */
+    function show_page_titles(): bool
+    {
+        return theme_option('show_page_titles') === '1';
+    }
+}
+
 if (!function_exists('sidebar_position')) {
     /**
      * Where the sidebar sits: 'right', 'left' or 'none'.

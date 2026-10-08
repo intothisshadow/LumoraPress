@@ -163,11 +163,13 @@ $meta_description = $seo_description ?? meta_description();
         <nav class="lp-site-header__nav" aria-label="Primary">
             <?php nav_menu('primary'); ?>
         </nav>
+        <?php if (show_search_bar()): ?>
         <form class="lp-search-form" role="search" method="get" action="<?= esc_url(site_url('search')) ?>">
             <label class="lp-search-form__label" for="lp-search-q">Search</label>
             <input class="lp-search-form__input" type="search" id="lp-search-q" name="q" value="<?= esc_attr((string) ($_GET['q'] ?? '')) ?>" placeholder="Search&hellip;">
             <button class="lp-search-form__button" type="submit">Search</button>
         </form>
+        <?php endif; ?>
         <button type="button" class="lp-theme-toggle" data-lp-theme-toggle aria-label="Toggle dark mode">
             <span class="lp-theme-toggle__icon lp-theme-toggle__icon--dark" aria-hidden="true">🌙</span>
             <span class="lp-theme-toggle__icon lp-theme-toggle__icon--light" aria-hidden="true">☀️</span>

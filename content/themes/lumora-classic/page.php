@@ -30,7 +30,7 @@ get_header(['page' => $page]);
                 </div>
             <?php endif; ?>
             <?php the_page_breadcrumbs($page, $page_ancestors ?? []); ?>
-            <h1 class="lp-page-title"><?= esc_html($page->title) ?></h1>
+            <h1 class="lp-page-title<?= show_page_titles() ? '' : ' lp-visually-hidden' ?>"><?= esc_html($page->title) ?></h1>
             <?php if (!$lpThumbnailAboveTitle && has_post_thumbnail($page)): ?>
                 <div class="lp-post__thumbnail lp-gallery">
                     <?php the_post_thumbnail_lightbox($page, size: 'large'); ?>
