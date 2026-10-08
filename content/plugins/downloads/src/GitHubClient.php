@@ -48,8 +48,9 @@ final class GitHubClient
     /**
      * @param (Closure(string $url, array<int, string> $headers, int $timeoutSeconds): (array{status: int, body: string, headers: array<string, string>}|null))|null $httpGet null means the request could not be made at all
      * @param (Closure(string $url, string $destinationPath, int $timeoutSeconds, int $maxBytes): int)|null $httpDownload returns the HTTP status, or 0 when the request failed
+     * @param string|null $token optional access token; sent to api.github.com only, never to the raw file host
      */
-    public function __construct(?Closure $httpGet = null, ?Closure $httpDownload = null)
+    public function __construct(?Closure $httpGet = null, ?Closure $httpDownload = null, private readonly ?string $token = null)
     {
         $this->httpGet = $httpGet ?? $this->defaultHttpGet(...);
         $this->httpDownload = $httpDownload ?? $this->defaultHttpDownload(...);
@@ -225,11 +226,17 @@ final class GitHubClient
      */
     private function request(string $path, string $accept, bool $allowNotFound = false): ?array
     {
-        $response = ($this->httpGet)('https://api.github.com' . $path, [
+        $headers = [
             'Accept: ' . $accept,
             'User-Agent: ' . self::USER_AGENT,
             'X-GitHub-Api-Version: 2022-11-28',
-        ], self::TIMEOUT_SECONDS);
+        ];
+
+        if ($this->token !== null && $this->token !== '') {
+            $headers[] = 'Authorization: Bearer ' . $this->token;
+        }
+
+        $response = ($this->httpGet)('https://api.github.com' . $path, $headers, self::TIMEOUT_SECONDS);
 
         if ($response === null) {
             throw new GitHubImportException('GitHub could not be reached. Try again in a moment.', GitHubImportException::UNREACHABLE);
@@ -249,6 +256,10 @@ final class GitHubClient
             throw $this->notFound();
         }
 
+        if ($status === 401) {
+            throw new GitHubImportException('GitHub did not accept the saved access token. Check it, or remove it to use GitHub without one.', GitHubImportException::INVALID);
+        }
+
         if (in_array($status, [301, 302, 307, 308], true)) {
             throw new GitHubImportException('That repository has moved or been renamed. Use its new address.', GitHubImportException::MOVED);
         }
@@ -256,8 +267,9 @@ final class GitHubClient
         if (($status === 403 || $status === 429) && ($response['headers']['x-ratelimit-remaining'] ?? '') === '0') {
             $reset = (int) ($response['headers']['x-ratelimit-reset'] ?? 0);
             $when = $reset > 0 ? ' It resets at ' . date('H:i', $reset) . '.' : '';
+            $advice = $this->token === null || $this->token === '' ? ' Adding a GitHub access token on the Import from GitHub screen raises the limit.' : '';
 
-            throw new GitHubImportException('GitHub has limited how many requests this site can make for now.' . $when, GitHubImportException::RATE_LIMITED);
+            throw new GitHubImportException('GitHub has limited how many requests this site can make for now.' . $when . $advice, GitHubImportException::RATE_LIMITED);
         }
 
         throw new GitHubImportException('GitHub returned an unexpected response.', GitHubImportException::INVALID);

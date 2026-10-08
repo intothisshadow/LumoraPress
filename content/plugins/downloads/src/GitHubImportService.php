@@ -42,6 +42,15 @@ final class GitHubImportService
 
     private const REPO_CACHE_SECONDS = 900;
 
+    private const SNAPSHOT_SESSION_KEY = 'lp_github_import_snapshots';
+
+    private const SNAPSHOT_SECONDS = 600;
+
+    private const SNAPSHOT_MAX_ENTRIES = 5;
+
+    /** A README larger than this isn't kept in the session, which is stored in the database. */
+    private const SNAPSHOT_MAX_README_BYTES = 100_000;
+
     public const ACCOUNT_OPTION = 'downloads_github_account';
 
     public function __construct(
@@ -55,6 +64,36 @@ final class GitHubImportService
         private readonly string $uploadsPath,
         private readonly string $tempDir,
     ) {
+    }
+
+    /**
+     * What GitHub currently says about a repository. A screen the admin opened to look (preview,
+     * update check) reads fresh; the step that follows it (import, link) reuses that read for a
+     * few minutes, so one action costs GitHub's rate limit once instead of twice.
+     *
+     * @return array{repo: array{name: string, description: string, defaultBranch: string}, readme: ?string, listing: array<int, array{path: string, name: string, sha: string, size: int}>}
+     */
+    private function snapshot(GitHubRepositoryRef $ref, bool $fresh = false): array
+    {
+        $key = strtolower($ref->fullName());
+        $cached = $_SESSION[self::SNAPSHOT_SESSION_KEY][$key] ?? null;
+
+        if (!$fresh && is_array($cached) && time() - (int) ($cached['at'] ?? 0) < self::SNAPSHOT_SECONDS && isset($cached['data'])) {
+            return $cached['data'];
+        }
+
+        $repo = $this->client->fetchRepository($ref);
+        $readme = $this->client->fetchReadme($ref, $repo['defaultBranch']);
+        $data = ['repo' => $repo, 'readme' => $readme, 'listing' => $this->client->listScreenshots($ref, $repo['defaultBranch'])];
+
+        unset($_SESSION[self::SNAPSHOT_SESSION_KEY][$key]);
+
+        if ($readme === null || strlen($readme) <= self::SNAPSHOT_MAX_README_BYTES) {
+            $_SESSION[self::SNAPSHOT_SESSION_KEY][$key] = ['at' => time(), 'data' => $data];
+            $_SESSION[self::SNAPSHOT_SESSION_KEY] = array_slice($_SESSION[self::SNAPSHOT_SESSION_KEY], -self::SNAPSHOT_MAX_ENTRIES, null, true);
+        }
+
+        return $data;
     }
 
     public function account(): string
@@ -113,10 +152,8 @@ final class GitHubImportService
      */
     public function preview(GitHubRepositoryRef $ref): array
     {
-        $repo = $this->client->fetchRepository($ref);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $screenshots] = $this->snapshot($ref, fresh: true);
         $branch = $repo['defaultBranch'];
-        $readme = $this->client->fetchReadme($ref, $branch);
-        $screenshots = $this->client->listScreenshots($ref, $branch);
 
         return [
             'ref' => $ref,
@@ -146,10 +183,9 @@ final class GitHubImportService
             throw new InvalidArgumentException('That repository has already been imported.');
         }
 
-        $repo = $this->client->fetchRepository($ref);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $screenshotList] = $this->snapshot($ref);
         $branch = $repo['defaultBranch'];
-        $readme = $this->client->fetchReadme($ref, $branch);
-        $listing = $this->indexByPath($this->client->listScreenshots($ref, $branch));
+        $listing = $this->indexByPath($screenshotList);
 
         $operations = [];
 
@@ -195,10 +231,9 @@ final class GitHubImportService
         }
 
         $ref = $source['ref'];
-        $repo = $this->client->fetchRepository($ref);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $screenshotList] = $this->snapshot($ref, fresh: true);
         $branch = $repo['defaultBranch'];
-        $readme = $this->client->fetchReadme($ref, $branch);
-        $listing = $this->indexByPath($this->client->listScreenshots($ref, $branch));
+        $listing = $this->indexByPath($screenshotList);
         $mapped = [];
 
         foreach ($this->store->images($downloadId) as $image) {
@@ -334,9 +369,7 @@ final class GitHubImportService
     public function previewLink(int $downloadId, GitHubRepositoryRef $ref): array
     {
         $download = $this->linkableDownload($downloadId);
-        $repo = $this->client->fetchRepository($ref);
-        $readme = $this->client->fetchReadme($ref, $repo['defaultBranch']);
-        $listing = $this->client->listScreenshots($ref, $repo['defaultBranch']);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $listing] = $this->snapshot($ref, fresh: true);
         $local = $this->localImageHashes($download);
         $matched = [];
         $unmatched = [];
@@ -377,10 +410,8 @@ final class GitHubImportService
     public function linkDownload(int $downloadId, GitHubRepositoryRef $ref, bool $switchLink = false): void
     {
         $download = $this->linkableDownload($downloadId);
-        $repo = $this->client->fetchRepository($ref);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $listing] = $this->snapshot($ref);
         $branch = $repo['defaultBranch'];
-        $readme = $this->client->fetchReadme($ref, $branch);
-        $listing = $this->client->listScreenshots($ref, $branch);
         $local = $this->localImageHashes($download);
 
         $title = $readme !== null ? ReadmeTransformer::title($readme, $repo['name']) : $repo['name'];

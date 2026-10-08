@@ -52,6 +52,7 @@ require_once __DIR__ . '/src/GitHubImportException.php';
 require_once __DIR__ . '/src/GitHubClient.php';
 require_once __DIR__ . '/src/ReadmeTransformer.php';
 require_once __DIR__ . '/src/GitHubSourceStore.php';
+require_once __DIR__ . '/src/GitHubTokenStore.php';
 require_once __DIR__ . '/src/GitHubImportService.php';
 
 // Needs no Kernel services until content actually contains [lumora_downloads]

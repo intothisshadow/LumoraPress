@@ -23,6 +23,7 @@ use LumoraPress\Plugins\Downloads\GitHubImportException;
 use LumoraPress\Plugins\Downloads\GitHubImportService;
 use LumoraPress\Plugins\Downloads\GitHubRepositoryRef;
 use LumoraPress\Plugins\Downloads\GitHubSourceStore;
+use LumoraPress\Plugins\Downloads\GitHubTokenStore;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -33,8 +34,9 @@ $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
 $downloadCategories = new DownloadCategoryService($kernel->database, $tablePrefix);
 $sourceStore = new GitHubSourceStore($kernel->database, $tablePrefix);
 $downloadService = new DownloadService($kernel->database, $tablePrefix, $kernel->media, $kernel->redirects, $downloadCategories, $kernel->thumbnails, $kernel->mediaStats);
+$tokenStore = new GitHubTokenStore($kernel->config);
 $importer = new GitHubImportService(
-    new GitHubClient(),
+    new GitHubClient(token: $tokenStore->token()),
     $sourceStore,
     $downloadService,
     $kernel->media,
@@ -131,6 +133,22 @@ if ($isPost && ($_POST['form'] ?? null) === 'github_account' && $currentUser->ca
     }
 
     $error = 'That is not a valid GitHub username.';
+}
+
+if ($isPost && ($_POST['form'] ?? null) === 'github_token' && $currentUser->can('upload_files') && Csrf::verify('github_token', $token)) {
+    $removing = ($_POST['remove_token'] ?? '') === '1';
+    $newToken = $removing ? '' : trim((string) ($_POST['github_token'] ?? ''));
+
+    if ($newToken === '' && !$removing) {
+        $error = 'Paste an access token to save, or use Remove Token.';
+    } elseif ($tokenStore->save($newToken)) {
+        header('Location: ' . admin_url('downloads/import-github') . '?token_saved=' . ($removing ? '0' : '1') . (isset($_GET['link']) ? '&link=' . (int) $_GET['link'] : ''));
+        exit;
+    } else {
+        $error = $tokenStore->canEncrypt()
+            ? 'That does not look like a GitHub access token.'
+            : 'This server cannot store the token securely, so it was not saved.';
+    }
 }
 
 if ($isPost && ($_POST['form'] ?? null) === 'github_link' && $currentUser->can('upload_files') && Csrf::verify('github_link', $token)) {
@@ -243,6 +261,10 @@ $linkQuery = $linkId > 0 ? '?link=' . $linkId : '';
 
 <?php if (isset($_GET['account_saved'])): ?>
     <div class="lp-alert lp-alert--success">GitHub account saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['token_saved'])): ?>
+    <div class="lp-alert lp-alert--success"><?= $_GET['token_saved'] === '1' ? 'GitHub access token saved.' : 'GitHub access token removed.' ?></div>
 <?php endif; ?>
 
 <?php if (isset($_GET['refreshed'])): ?>
@@ -380,6 +402,23 @@ $linkQuery = $linkId > 0 ? '?link=' . $linkId : '';
                 <?php endif; ?>
             </form>
         <?php endif; ?>
+    </section>
+
+    <section class="lp-admin__panel">
+        <h2>GitHub Access Token (optional)</h2>
+        <p class="lp-field__hint">Without a token GitHub allows only 60 requests an hour from this server, which a few updates can use up. A token raises that to 5,000. Create one at GitHub &rsaquo; Settings &rsaquo; Developer settings &rsaquo; Personal access tokens, with no permissions selected, since only public information is read. It is stored encrypted and sent only to GitHub's API.</p>
+        <form method="post" action="<?= esc_url($endpoint . $linkQuery) ?>">
+            <?= Csrf::field('github_token') ?>
+            <input type="hidden" name="form" value="github_token">
+            <p class="lp-field">
+                <label for="github-token">Access token</label>
+                <input type="password" id="github-token" name="github_token" value="" maxlength="255" spellcheck="false" autocomplete="new-password" placeholder="<?= $tokenStore->isSet() ? 'A token is saved. Paste a new one to replace it.' : '' ?>">
+            </p>
+            <button type="submit" class="lp-button lp-button--primary">Save Token</button>
+            <?php if ($tokenStore->isSet()): ?>
+                <button type="submit" name="remove_token" value="1" class="lp-button">Remove Token</button>
+            <?php endif; ?>
+        </form>
     </section>
 
     <section class="lp-admin__panel">
