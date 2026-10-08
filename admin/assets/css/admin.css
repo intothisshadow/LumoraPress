@@ -33,6 +33,13 @@
     --lp-admin-focus-ring: rgba(123, 75, 184, 0.18);
     --lp-admin-chip-bg: rgba(123, 75, 184, 0.07);
     --lp-admin-chip-border: rgba(123, 75, 184, 0.3);
+    /* Pastel blue for the neutral row-action chips (Duplicate, Restore, ...),
+       so they sit beside the teal View and red Trash chips instead of
+       repeating the accent color. */
+    --lp-admin-chip-neutral-color: #2a5f9e;
+    --lp-admin-chip-neutral-bg: rgba(70, 130, 210, 0.09);
+    --lp-admin-chip-neutral-border: rgba(70, 130, 210, 0.32);
+    --lp-admin-chip-neutral-hover-bg: #3b73bd;
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
     /* Teal for the "View" row-action chip specifically —
@@ -92,6 +99,10 @@
         --lp-admin-focus-ring: rgba(182, 151, 230, 0.25);
         --lp-admin-chip-bg: rgba(182, 151, 230, 0.12);
         --lp-admin-chip-border: rgba(182, 151, 230, 0.4);
+        --lp-admin-chip-neutral-color: #8fbcf0;
+        --lp-admin-chip-neutral-bg: rgba(143, 188, 240, 0.12);
+        --lp-admin-chip-neutral-border: rgba(143, 188, 240, 0.4);
+        --lp-admin-chip-neutral-hover-bg: #3b73bd;
         --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
         --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
         --lp-admin-chip-view-color: #5fd0d0;
@@ -132,6 +143,10 @@
     --lp-admin-focus-ring: rgba(182, 151, 230, 0.25);
     --lp-admin-chip-bg: rgba(182, 151, 230, 0.12);
     --lp-admin-chip-border: rgba(182, 151, 230, 0.4);
+    --lp-admin-chip-neutral-color: #8fbcf0;
+    --lp-admin-chip-neutral-bg: rgba(143, 188, 240, 0.12);
+    --lp-admin-chip-neutral-border: rgba(143, 188, 240, 0.4);
+    --lp-admin-chip-neutral-hover-bg: #3b73bd;
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
     --lp-admin-chip-view-color: #5fd0d0;
@@ -5719,11 +5734,11 @@ input[type="checkbox"]:not(.lp-toggle input, .tox input, [name$="[]"], [data-lp-
 .lp-button--link:visited {
     display: inline-flex;
     align-items: center;
-    background: var(--lp-admin-chip-bg);
-    border: 1px solid var(--lp-admin-chip-border);
+    background: var(--lp-admin-chip-neutral-bg);
+    border: 1px solid var(--lp-admin-chip-neutral-border);
     border-radius: 999px;
     padding: 0.3rem 0.85rem;
-    color: var(--lp-admin-accent);
+    color: var(--lp-admin-chip-neutral-color);
     text-decoration: none;
     font-size: 0.8rem;
     font-weight: 600;
@@ -5745,8 +5760,8 @@ input[type="checkbox"]:not(.lp-toggle input, .tox input, [name$="[]"], [data-lp-
  */
 .lp-button--link:hover,
 .lp-button--link:visited:hover {
-    background: var(--lp-admin-accent);
-    border-color: var(--lp-admin-accent);
+    background: var(--lp-admin-chip-neutral-hover-bg);
+    border-color: var(--lp-admin-chip-neutral-hover-bg);
     color: #fff;
 }
 
