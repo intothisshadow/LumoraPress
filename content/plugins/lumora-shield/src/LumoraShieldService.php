@@ -20,6 +20,7 @@ namespace LumoraPress\Plugins\LumoraShield;
 use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
 use LumoraPress\Models\Comment;
+use LumoraPress\Models\CommentStatus;
 
 /**
  * Three modules: Stop User Enumeration, Monitoring, and Comment Analysis.
@@ -207,6 +208,32 @@ final class LumoraShieldService
         $this->writeSpamEvent('contact_form', $reasons, 'spam', $ipAddress, $name, $email);
 
         return true;
+    }
+
+    /**
+     * Dashboard figures: what Shield flagged recently, the worst offending IPs over the past
+     * month, and how many comments are waiting in the moderation queue right now.
+     *
+     * @return array{totals: array{today: int, this_week: int, this_month: int}, topIps: array<int, array{ipAddress: string, count: int}>, pendingComments: int}
+     */
+    public function spamReport(): array
+    {
+        $totals = ['today' => 0, 'this_week' => 0, 'this_month' => 0];
+        $topIps = [];
+
+        try {
+            $log = $this->spamLog();
+            $totals = $log->totals();
+            $topIps = $log->topIps(30, 5);
+        } catch (\Throwable) {
+            // A missing table (migration not yet run) must not take the Dashboard down with it.
+        }
+
+        return [
+            'totals' => $totals,
+            'topIps' => $topIps,
+            'pendingComments' => ActiveKernel::instance()->comments->countByStatus(CommentStatus::Pending),
+        ];
     }
 
     /**

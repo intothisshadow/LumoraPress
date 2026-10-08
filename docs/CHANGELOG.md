@@ -7,6 +7,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - Settings › Discussion › IP Blacklist now accepts IP ranges such as `203.0.113.0/24` and IPv6 addresses and ranges, as well as single addresses. Lines that aren't a valid address or range are left out when you save, with a notice, and `#` starts a comment.
+- Lumora Shield (plugin): a "Spam Protection" panel on the Dashboard for anyone who can moderate comments. It shows how many submissions Shield flagged today, in the last 7 days, and in the last 30 days, the five most-flagged IP addresses over 30 days, and the number of comments waiting for moderation, linked to the pending list. Counts only reach back as far as the log retention period.
 - Lumora Shield (plugin): a Spam Analysis Log on Maintenance › Logs. Each comment or contact form submission Shield flags as spam is recorded with the time, source, author name and email, IP address, a score (how many checks fired), the checks that caught it, and what happened to it. A flagged comment links to its entry in Comments, so a legitimate message that landed in Spam can be traced to the check responsible. It follows the existing log retention setting, and a migration adds its table.
 
 ### Changed

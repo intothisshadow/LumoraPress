@@ -101,6 +101,29 @@ add_filter(
         => $lumoraShield->contactFormIsSpam($default, $data, $ipAddress),
 );
 
+/*
+ * Dashboard panel with spam counts and the moderation queue. Gated on
+ * moderate_comments, since it links into the comment queue, and the id is
+ * registered under the same condition so the panel can be reordered.
+ */
+add_action('dashboard_widgets', static function (\LumoraPress\Models\User $currentUser) use ($lumoraShield): void {
+    if (!$currentUser->can('moderate_comments')) {
+        return;
+    }
+
+    $report = $lumoraShield->spamReport();
+
+    require __DIR__ . '/views/dashboard-widget.php';
+});
+
+add_filter('dashboard_widget_ids', static function (array $ids, \LumoraPress\Models\User $currentUser): array {
+    if ($currentUser->can('moderate_comments')) {
+        $ids[] = 'lumora_shield';
+    }
+
+    return $ids;
+});
+
 // LP-166: no top-level menu of its own (LP-153 folded it into Settings >
 // Security and Maintenance > Logs) — the Plugins screen is otherwise the
 // only place an administrator would naturally look to find these.

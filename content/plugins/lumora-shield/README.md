@@ -25,6 +25,10 @@ Runs independent content checks (excessive links, excessive uppercase/punctuatio
 
 Every comment or contact form submission Lumora Shield flags is recorded at **Maintenance &rsaquo; Logs &rsaquo; Spam Analysis Log**: time, source, author name and email, IP address, a score (how many checks fired), the checks that caught it, and the action taken. A flagged comment links to its entry in Comments, so if a real message ends up in Spam you can see which check was responsible. Only submissions flagged by Lumora Shield appear here, not ones caught by Akismet or core's own checks. Records follow the same retention period as the enumeration log.
 
+### Dashboard Panel
+
+A **Spam Protection** panel on the Dashboard, shown to anyone who can moderate comments, gives a quick read on how things are going: how many submissions Lumora Shield flagged today, in the last 7 days, and in the last 30 days, the five most-flagged IP addresses over 30 days, and how many comments are waiting in the moderation queue. The counts come from the Spam Analysis Log, so they only reach back as far as its retention period. Like other Dashboard panels, it can be dragged into a different position.
+
 ### Contact Form Protection
 
 Applies the same content checks Comment Analysis uses to comments, against every field of a Contact Forms plugin submission — closing the one gap that plugin's own CSRF/honeypot/rate-limiting/CAPTCHA/Akismet protection doesn't cover on its own. Toggled independently via **Enable Contact Form Protection** at **Settings &rsaquo; Security &rsaquo; Lumora Shield**. Only takes effect while the Contact Forms plugin is active.
