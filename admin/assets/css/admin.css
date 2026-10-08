@@ -5027,6 +5027,13 @@ select:focus {
     color: var(--lp-admin-info-text);
 }
 
+/* Links inherit the notice's own text color; the browser's default blue is unreadable on the tinted backgrounds, especially in dark mode. */
+.lp-alert a {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 /* Login screen */
 
 .lp-admin-login {
