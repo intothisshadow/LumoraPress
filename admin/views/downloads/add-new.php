@@ -616,7 +616,7 @@ $githubSource = $editingDownload !== null
     <section class="lp-admin__panel">
         <h2>GitHub</h2>
         <p>If this download comes from a public GitHub repository, you can link it to that repository to get the Update from GitHub button.</p>
-        <p class="lp-field__hint">Linking changes nothing here: your title, description, link, and files stay as they are.</p>
+        <p class="lp-field__hint">Linking keeps your title and description as they are, and lets you choose whether the download link becomes GitHub's zip.</p>
         <p>
             <a class="lp-button" href="<?= esc_url(admin_url('downloads/import-github')) ?>?link=<?= (int) $editingDownload->id ?>">Link to GitHub</a>
         </p>

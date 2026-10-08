@@ -141,7 +141,7 @@ if ($isPost && ($_POST['form'] ?? null) === 'github_link' && $currentUser->can('
         $error = 'That repository could not be read.';
     } else {
         try {
-            $importer->linkDownload($linkTargetId, $linkRef);
+            $importer->linkDownload($linkTargetId, $linkRef, ($_POST['switch_link'] ?? '') === '1');
             header('Location: ' . admin_url('downloads/import-github') . '?update=' . $linkTargetId . '&check=1&linked=1');
             exit;
         } catch (GitHubImportException | InvalidArgumentException $exception) {
@@ -352,7 +352,7 @@ $linkQuery = $linkId > 0 ? '?link=' . $linkId : '';
     <?php if ($linkDownload !== null): ?>
         <section class="lp-admin__panel">
             <h2>Link &ldquo;<?= esc_html($linkDownload->title) ?>&rdquo; to a Repository</h2>
-            <p>Linking gives this download the Update from GitHub button. It changes nothing on the download itself: its title, description, link, and files stay exactly as they are. Choose the repository below and check how it matches.</p>
+            <p>Linking gives this download the Update from GitHub button. Its title and description are left exactly as they are, and you can choose below whether its download link should also point at GitHub. Choose the repository and check how it matches.</p>
             <p class="lp-field__hint">Screenshots already in this download's Media folder are matched to the repository's files by their content, so nothing is downloaded or duplicated. Anything on GitHub the download doesn't have yet is offered as new when you next update.</p>
             <p><a class="lp-button" href="<?= esc_url(admin_url('downloads/add-new')) ?>?id=<?= (int) $linkId ?>">Back to the download</a></p>
         </section>
@@ -450,6 +450,17 @@ $linkQuery = $linkId > 0 ? '?link=' . $linkId : '';
 
             <form method="post" action="<?= esc_url($endpoint) ?>?link=<?= (int) $linkId ?>">
                 <?= Csrf::field('github_link') ?>
+                <?php if ($linkPreview['switchesLink']): ?>
+                    <p class="lp-field">
+                        <label>
+                            <input type="checkbox" name="switch_link" value="1" checked>
+                            Make the download link GitHub's zip of the <code><?= esc_html($linkPreview['branch']) ?></code> branch, as an import does
+                        </label>
+                        <span class="lp-field__hint"><code><?= esc_html($linkPreview['zipUrl']) ?></code> always serves the latest code, so nothing has to be stored on your server.<?= $linkPreview['replacesFile'] ? ' This download currently serves an uploaded file; that file is removed from the Media Library if nothing else uses it.' : '' ?> Untick it to keep the current link.</span>
+                    </p>
+                <?php else: ?>
+                    <p class="lp-field__hint">This download's link already points at this repository's zip, so it stays as it is.</p>
+                <?php endif; ?>
                 <input type="hidden" name="form" value="github_link">
                 <input type="hidden" name="download_id" value="<?= (int) $linkId ?>">
                 <input type="hidden" name="owner" value="<?= esc_attr($linkRef->owner) ?>">

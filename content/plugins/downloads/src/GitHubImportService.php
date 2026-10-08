@@ -329,7 +329,7 @@ final class GitHubImportService
      * already in the repository (matched by file content, nothing downloaded), and which
      * repository screenshots it doesn't have yet. Nothing is saved.
      *
-     * @return array{ref: GitHubRepositoryRef, repoName: string, branch: string, title: string, hasReadme: bool, matched: array<int, array{path: string, name: string, mediaId: int, mediaName: string}>, unmatched: array<int, array{path: string, name: string, sha: string, size: int}>}
+     * @return array{ref: GitHubRepositoryRef, repoName: string, branch: string, title: string, hasReadme: bool, zipUrl: string, switchesLink: bool, replacesFile: bool, matched: array<int, array{path: string, name: string, mediaId: int, mediaName: string}>, unmatched: array<int, array{path: string, name: string, sha: string, size: int}>}
      */
     public function previewLink(int $downloadId, GitHubRepositoryRef $ref): array
     {
@@ -356,6 +356,9 @@ final class GitHubImportService
             'ref' => $ref,
             'repoName' => $repo['name'],
             'branch' => $this->recordedBranch($download, $ref, $repo['defaultBranch']),
+            'zipUrl' => $ref->archiveUrl($repo['defaultBranch']),
+            'switchesLink' => $this->archiveBranch($download, $ref) === null,
+            'replacesFile' => $download->type === DownloadType::File,
             'title' => $readme !== null ? ReadmeTransformer::title($readme, $repo['name']) : $repo['name'],
             'hasReadme' => $readme !== null,
             'matched' => $matched,
@@ -365,12 +368,13 @@ final class GitHubImportService
 
     /**
      * Attaches a repository to a download that wasn't imported from one, so it gains the
-     * update screen. Nothing on the download changes: its title, description, link, and files are
-     * left exactly as they are. The recorded fingerprints are those of what an import would have
+     * update screen. Its title, description, and files are left exactly as they are. With
+     * $switchLink its download link also becomes GitHub's zip of the default branch, the way an
+     * import sets it, unless it already points at one of this repository's zips. The recorded fingerprints are those of what an import would have
      * produced, so a title or description that differs counts as edited and is offered
      * unticked, and the README is treated as not yet applied so the first check can offer it.
      */
-    public function linkDownload(int $downloadId, GitHubRepositoryRef $ref): void
+    public function linkDownload(int $downloadId, GitHubRepositoryRef $ref, bool $switchLink = false): void
     {
         $download = $this->linkableDownload($downloadId);
         $repo = $this->client->fetchRepository($ref);
@@ -383,6 +387,17 @@ final class GitHubImportService
         $readmePart = $readme !== null ? ReadmeTransformer::withoutGallery($this->cleanReadme($readme, $ref, $branch, $listing)) : '';
 
         $this->store->record($downloadId, $ref, $this->recordedBranch($download, $ref, $branch), hash('sha256', $title), hash('sha256', $readmePart), '');
+
+        if ($switchLink && $this->archiveBranch($download, $ref) === null) {
+            $zip = $ref->archiveUrl($branch);
+
+            // A File download is replaced by the link; its own file is removed only if nothing else uses it.
+            if ($download->type === DownloadType::File) {
+                $this->downloads->convertToUrl($downloadId, $zip);
+            } else {
+                $this->downloads->update($downloadId, $download->title, $download->description, $download->folderId, $zip, null, $download->categoryId);
+            }
+        }
 
         foreach ($listing as $entry) {
             if (isset($local[$entry['sha']])) {
@@ -412,13 +427,21 @@ final class GitHubImportService
      */
     private function recordedBranch(Download $download, GitHubRepositoryRef $ref, string $defaultBranch): string
     {
+        return $this->archiveBranch($download, $ref) ?? $defaultBranch;
+    }
+
+    /**
+     * The branch of this repository's zip the download already links to, or null for any other link.
+     */
+    private function archiveBranch(Download $download, GitHubRepositoryRef $ref): ?string
+    {
         $pattern = '#^https://github\.com/' . preg_quote($ref->owner, '#') . '/' . preg_quote($ref->repo, '#') . '/archive/refs/heads/(.+)\.zip$#i';
 
         if ($download->targetUrl !== null && preg_match($pattern, $download->targetUrl, $matches) === 1) {
             return rawurldecode($matches[1]);
         }
 
-        return $defaultBranch;
+        return null;
     }
 
     /**
