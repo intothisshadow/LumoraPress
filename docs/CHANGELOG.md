@@ -6,10 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Saving an existing download or link now keeps you on its edit screen with the "saved" notice, the same as saving a new one or a post or page, instead of returning to the list.
 - Updates no longer bring back bundled plugins and themes you deleted. Until now every core update restored any bundled plugin that was missing, so deleting Dummy Content or Font Awesome meant deleting it again after each release. An update now leaves out a bundled plugin or theme that your current version ships and that is no longer on the site, however it was removed, while anything new in the release is still installed. Lumora Classic, the active theme, and the core folders are always applied. The update result names what was left out, and the modified-files warning no longer lists a deleted plugin.
 
 ### Added
 
+- Downloads (plugin): an optional GitHub access token on the Import from GitHub screen. Without one GitHub allows only 60 requests an hour from your server, which a few updates can use up; with a token (no permissions needed) the limit is 5,000. The token is stored encrypted and sent only to GitHub's API. The "limited how many requests" message now mentions this, and an import or link reuses the preview's read of GitHub for ten minutes instead of asking GitHub again.
 - A "Removed Bundled Plugins" panel on Plugins and a "Removed Bundled Themes" panel on Appearance › Themes list what you removed, each with a Restore button that installs it (inactive) from the latest release through the same backed-up update steps.
 
 ## [0.22.0] — 2026-10-08
