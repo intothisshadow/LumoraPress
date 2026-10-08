@@ -20,6 +20,7 @@ use LumoraPress\Models\ContentFormat;
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadType;
+use LumoraPress\Plugins\Downloads\GitHubSourceStore;
 use LumoraPress\Plugins\FontAwesome\FontAwesomeService;
 
 if (!isset($kernel)) {
@@ -524,6 +525,10 @@ $previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId)
 $currentFileMedia = $editingDownload !== null && $editingDownload->type === DownloadType::File && $editingDownload->mediaId !== null
     ? $kernel->media->find($editingDownload->mediaId)
     : null;
+
+$githubSource = $editingDownload !== null
+    ? (new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_')))->find($editingDownload->id)
+    : null;
 ?>
 <h1 class="lp-admin__title"><?= $editingDownload !== null ? 'Edit Download' : 'Add New Download' ?></h1>
 
@@ -539,6 +544,29 @@ $currentFileMedia = $editingDownload !== null && $editingDownload->type === Down
     <div class="lp-alert lp-alert--warning">
         This download has no file or URL attached yet — it's hidden from the public site until you add one below, using "Replace with a file" or "Replace with a URL".
     </div>
+<?php endif; ?>
+
+<?php if ($githubSource !== null): ?>
+    <section class="lp-admin__panel">
+        <h2>GitHub Source</h2>
+        <p>
+            Imported from <a href="<?= esc_url($githubSource['ref']->htmlUrl()) ?>"><?= esc_html($githubSource['ref']->fullName()) ?></a>
+            (branch <code><?= esc_html($githubSource['branch']) ?></code>), last synced <?= esc_html($githubSource['syncedAt']) ?>.
+        </p>
+        <p class="lp-field__hint">Saving this download never contacts GitHub. Updating does, only when you ask.</p>
+        <p>
+            <a class="lp-button" href="<?= esc_url(admin_url('downloads/import-github')) ?>?update=<?= (int) $editingDownload->id ?>">Update from GitHub</a>
+        </p>
+    </section>
+<?php elseif ($editingDownload !== null): ?>
+    <section class="lp-admin__panel">
+        <h2>GitHub</h2>
+        <p>If this download comes from a public GitHub repository, you can link it to that repository to get the Update from GitHub button.</p>
+        <p class="lp-field__hint">Linking changes nothing here: your title, description, link, and files stay as they are.</p>
+        <p>
+            <a class="lp-button" href="<?= esc_url(admin_url('downloads/import-github')) ?>?link=<?= (int) $editingDownload->id ?>">Link to GitHub</a>
+        </p>
+    </section>
 <?php endif; ?>
 
 <section class="lp-admin__panel">

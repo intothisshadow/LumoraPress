@@ -57,6 +57,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/file-meta.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/content-editor.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/downloads-picker.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/github-import.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/featured-image-picker.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/maintenance-preview.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/header-images.js')) ?>" defer></script>

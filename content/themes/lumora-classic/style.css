@@ -2823,6 +2823,22 @@ a.lp-post-list__comments:focus {
     font-size: 0.9em;
 }
 
+/*
+ * A description written from a GitHub import ends with a "Screenshots" heading and one
+ * paragraph of linked thumbnails. Markdown can't carry a class, so this keys off the
+ * heading's id and shows them as small tiles side by side.
+ */
+.lp-downloads-list__description #screenshots + p a > img {
+    display: inline-block;
+    width: 180px;
+    max-width: 100%;
+    height: auto;
+    margin: 0 0.5em 0.5em 0;
+    vertical-align: top;
+    border: 1px solid var(--lp-border);
+    border-radius: var(--lp-radius);
+}
+
 .lp-downloads-list__description {
     margin-top: 0.25em;
     color: var(--lp-text-muted);

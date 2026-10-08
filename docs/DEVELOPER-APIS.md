@@ -85,6 +85,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 |---|---|---|---|
 | `media_saved` | action | `array $media` (the reloaded row as an **array**, not an object — unlike every other `*_saved` hook above) | [`MediaService`](../app/Services/MediaService.php): `upload()`, `registerExistingFile()`, `replace()` only. **Not fired** by `updateMetadata()`, `move()`, `setVideoAssets()`, or either bulk-update method, even though those mutate the record — don't assume this is a general "media record changed" hook. |
 | `media_deleted` | action | `int $id` | `MediaService::delete()`. |
+| `download_deleted` | action | `int $id` (the deleted download's id) | `DownloadService::delete()` (Downloads plugin), after the row is removed and only when one was. The Downloads plugin's own GitHub import uses it to remove the download's source records; a plugin that keeps data keyed to a download can do the same. |
 | `thumbnail_generated` | action | `int $mediaId, string $sizeName, string $path` | [`ThumbnailService`](../app/Services/ThumbnailService.php)`::generate()`, once per successfully generated size. |
 | `thumbnail_generation_failed` | action | `int $mediaId, string $sizeName, string $errorMessage` | Same method's failure path. |
 | `thumbnail_sizes` | filter | `array $sizes` (keyed by size name ⇒ `{width, height, mode, enabled}`) | `ThumbnailService::sizes()` — add or modify thumbnail size definitions. |

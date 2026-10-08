@@ -295,6 +295,7 @@ final class DownloadsShortcode
 
         foreach ($items as $item) {
             $html .= '<li class="lp-downloads-list__item">';
+            $html .= '<strong class="lp-downloads-list__label">Download:</strong> ';
             $html .= '<a class="lp-downloads-list__link" href="' . esc_url($item['url']) . '">' . esc_html($item['name']) . '</a>';
 
             if ($item['size'] !== null) {

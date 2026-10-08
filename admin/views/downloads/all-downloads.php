@@ -20,6 +20,7 @@ use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadStatus;
 use LumoraPress\Plugins\Downloads\DownloadType;
+use LumoraPress\Plugins\Downloads\GitHubSourceStore;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -123,6 +124,10 @@ $orderDir = (string) ($_GET['order'] ?? 'asc');
 
 $listFilters = ['term' => $termFilter, 'categoryId' => $categoryFilter, 'noFile' => $noFileFilter];
 $pagination = $downloads->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
+
+// One query for the whole page of rows, to flag the ones imported from GitHub.
+$githubRepositories = (new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_')))
+    ->repositoriesForDownloads(array_map(static fn ($listedDownload): int => $listedDownload->id, $pagination['downloads']));
 
 $statusCounts = [
     DownloadStatus::Live->value => $downloads->countByStatus(DownloadStatus::Live),
@@ -268,6 +273,10 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <?php if ($listedDownload->url === ''): ?>
                                     <br>
                                     <span class="lp-status-badge lp-status-badge--warning" title="Imported without a file/URL — attach one from the Edit Download screen. Hidden from the public site until then.">No file attached</span>
+                                <?php endif; ?>
+                                <?php if (isset($githubRepositories[$listedDownload->id])): ?>
+                                    <br>
+                                    <a class="lp-status-badge" href="https://github.com/<?= esc_attr($githubRepositories[$listedDownload->id]) ?>" title="Imported from <?= esc_attr($githubRepositories[$listedDownload->id]) ?>">GitHub</a>
                                 <?php endif; ?>
                             </td>
                             <td><?= esc_html($listedDownload->categoryId !== null ? ($categoriesById[$listedDownload->categoryId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>

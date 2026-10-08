@@ -341,7 +341,24 @@ final class DownloadService
             $this->redirects->delete((int) $row['redirect_id']);
         }
 
-        return $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+        $deleted = $this->database->execute('DELETE FROM ' . $this->table() . ' WHERE id = :id', ['id' => $id]) > 0;
+
+        if ($deleted) {
+            do_action('download_deleted', $id);
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Points the download's representative image at a Media item, or clears it with null.
+     */
+    public function setThumbnail(int $id, ?int $mediaId): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET thumbnail_media_id = :media_id, updated_at = :updated_at WHERE id = :id',
+            ['media_id' => $mediaId, 'updated_at' => date('Y-m-d H:i:s'), 'id' => $id],
+        ) > 0;
     }
 
     /**

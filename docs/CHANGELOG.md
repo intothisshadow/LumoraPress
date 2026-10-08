@@ -6,6 +6,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Downloads (plugin): Import from GitHub. A new Downloads › Import from GitHub screen creates a download from a public GitHub repository. Save your GitHub username once to choose a repository from a list, or paste any public repository's address. A preview shows the title (from the README's first heading; a heading that is really a file name, like `FocusWriter-Theme_FAN_XenaWarriorPrincess_SunlightonSteel`, is turned into readable words), the README as an editable Markdown description, and the repository's screenshots with a checkbox each. The import copies the ticked screenshots into a Media folder named after the repository, shows them in a Screenshots section after the description, uses the first as the download's thumbnail, and links the download to GitHub's zip of the default branch. Progress shows in place, and a failed import removes what it copied. A migration adds the tables that remember each download's repository.
+- Downloads (plugin): Update from GitHub. A download imported from GitHub has an "Update from GitHub" button on its edit screen. It lists only what changed on GitHub (the README, new, changed, or removed screenshots, a renamed default branch), each with a checkbox, and leaves a description or title you edited by hand unticked. Changed screenshots are replaced in place so anything using them keeps working, and nothing updates unless you click. The Downloads list marks these downloads with a GitHub tag.
+- Downloads (plugin): Link to GitHub. A download you added by hand can be linked to its GitHub repository from a "Link to GitHub" panel on its edit screen, so it gains the Update from GitHub button. Linking changes nothing on the download. Screenshots already in its Media folder are matched to the repository's files by their content, with nothing downloaded, and a check screen shows the matches before you confirm.
+- A `download_deleted` action, for plugins that keep data about a download (see `docs/DEVELOPER-APIS.md`).
 - Settings › Discussion › IP Blacklist now accepts IP ranges such as `203.0.113.0/24` and IPv6 addresses and ranges, as well as single addresses. Lines that aren't a valid address or range are left out when you save, with a notice, and `#` starts a comment.
 - Lumora Shield (plugin): a `lumora_shield_bypass_analysis` filter lets another plugin exempt a comment or contact form submission from Shield's checks, for example for a trusted partner (see `docs/DEVELOPER-APIS.md`).
 - Lumora Shield (plugin): a "Spam Protection" panel on the Dashboard for anyone who can moderate comments. It shows how many submissions Shield flagged today, in the last 7 days, and in the last 30 days, the five most-flagged IP addresses over 30 days, and the number of comments waiting for moderation, linked to the pending list. Counts only reach back as far as the log retention period.
@@ -13,6 +17,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Downloads (plugin) and WordPress Importer (plugin): every download in a public download list (`[lumora_downloads]`, `[lumora_recent_downloads]`, and the imported-download lists) now starts with a bold "Download:" before its link. Themes can restyle it with the `.lp-downloads-list__label` class.
 - Bundled plugin update packages attached to a release are now named `plugin-{slug}-v{version}.zip`, matching the `theme-{slug}-v{version}.zip` names bundled themes already use. Releases that use the older unprefixed names are still read, so nothing changes for a release already published. A site on 0.21.0 or older looks only for the old name, so it sees a plugin update from a newer release once it has updated Lumora Press itself.
 
 ### Fixed

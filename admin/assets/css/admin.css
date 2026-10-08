@@ -4056,6 +4056,47 @@ summary.lp-media-views__chip::after {
  * (is-pending/is-active/is-done/is-error) set by admin/assets/js/
  * update-progress.js as it reads back UpdateProgress::read().
  */
+/* Downloads > Import from GitHub: the screenshot checklist and its progress line. */
+.lp-github-shots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.lp-github-shots__item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.lp-github-shots__thumb {
+    display: block;
+    width: 100%;
+    height: 90px;
+    object-fit: cover;
+    background: rgba(127, 127, 127, 0.12);
+}
+
+.lp-github-shots__name {
+    overflow-wrap: anywhere;
+    font-size: 0.85rem;
+}
+
+.lp-field__hint--error {
+    color: var(--lp-admin-error-text);
+}
+
+[data-lp-github-progress] progress {
+    display: block;
+    width: 100%;
+    max-width: 28rem;
+}
+
 .lp-update-progress {
     display: flex;
     flex-direction: column;

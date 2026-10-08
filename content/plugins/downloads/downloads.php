@@ -31,6 +31,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\Downloads;
 
+use LumoraPress\Core\ActiveKernel;
 use LumoraPress\Core\Kernel;
 use LumoraPress\Core\Shortcodes\ShortcodeField;
 use LumoraPress\Core\Shortcodes\ShortcodeFieldType;
@@ -43,12 +44,52 @@ require_once __DIR__ . '/src/DownloadCategoryService.php';
 require_once __DIR__ . '/src/DownloadService.php';
 require_once __DIR__ . '/src/DownloadMediaUrlMasker.php';
 require_once __DIR__ . '/src/DownloadsShortcode.php';
+require_once __DIR__ . '/src/GitHubRepositoryRef.php';
+require_once __DIR__ . '/src/GitHubImportException.php';
+require_once __DIR__ . '/src/GitHubClient.php';
+require_once __DIR__ . '/src/ReadmeTransformer.php';
+require_once __DIR__ . '/src/GitHubSourceStore.php';
+require_once __DIR__ . '/src/GitHubImportService.php';
 
 // Needs no Kernel services until content actually contains [lumora_downloads]
 // (it opens its own database connection then), so it's safe to construct here.
 $downloadsShortcode = new DownloadsShortcode();
 
 add_filter('content_html', static fn (string $html): string => $downloadsShortcode->renderShortcodes($html), 20);
+
+// The import preview shows each screenshot straight from GitHub before anything is copied, so
+// that one admin screen needs raw.githubusercontent.com in img-src; no other page is widened.
+add_filter('csp_directives', static function (array $directives): array {
+    $path = rtrim((string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?? ''), '/');
+
+    if (!str_ends_with($path, '/downloads/import-github')) {
+        return $directives;
+    }
+
+    $directives['img-src'] = ($directives['img-src'] ?? "'self'") . ' https://raw.githubusercontent.com';
+
+    return $directives;
+});
+
+// Keeps the GitHub source records in step with what is deleted; best-effort, since a
+// cleanup failure must never block deleting the download or the Media item itself.
+add_action('download_deleted', static function (int $downloadId): void {
+    try {
+        $kernel = ActiveKernel::instance();
+        (new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_')))->deleteForDownload($downloadId);
+    } catch (\Throwable) {
+        // Stale rows are harmless: nothing reads a source for a download that no longer exists.
+    }
+});
+
+add_action('media_deleted', static function (int $mediaId): void {
+    try {
+        $kernel = ActiveKernel::instance();
+        (new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_')))->removeImagesForMedia($mediaId);
+    } catch (\Throwable) {
+        // The next update treats a screenshot with no live Media item as new either way.
+    }
+});
 
 // Category choices need $kernel->database, unavailable this early, so this
 // hooks 'register_shortcodes' rather than calling register_shortcode() directly.
