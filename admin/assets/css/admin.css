@@ -2761,17 +2761,6 @@ body.lp-admin-login {
     }
 }
 
-/* The picker widget itself (editor-featured-image.php / thumbnails.php), not the dialog it opens. */
-.lp-featured-image-picker {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 0.75rem;
-}
-
-.lp-featured-image-picker__chosen {
-    display: inline-flex;
 /* Swatch + hex field + "Use default" (color-picker-field.js). The text field stays the submitted value. */
 .lp-color-field {
     display: flex;
@@ -2803,6 +2792,17 @@ body.lp-admin-login {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* The picker widget itself (editor-featured-image.php / thumbnails.php), not the dialog it opens. */
+.lp-featured-image-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.lp-featured-image-picker__chosen {
+    display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     font-size: 0.85rem;

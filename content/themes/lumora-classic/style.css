@@ -2633,14 +2633,6 @@ a.lp-post-list__comments:focus {
     font-size: 1.1rem;
 }
 
-.lp-maintenance__return-at {
-    margin-top: 0.75rem;
-    color: var(--lp-text-muted);
-}
-
-.lp-maintenance__countdown {
-    margin-top: 1rem;
-    font-size: 1.5rem;
 /* The message is formatted HTML: drop the outer paragraph margins and keep images inside the column. */
 .lp-maintenance__message > :first-child {
     margin-top: 0;
@@ -2655,6 +2647,14 @@ a.lp-post-list__comments:focus {
     height: auto;
 }
 
+.lp-maintenance__return-at {
+    margin-top: 0.75rem;
+    color: var(--lp-text-muted);
+}
+
+.lp-maintenance__countdown {
+    margin-top: 1rem;
+    font-size: 1.5rem;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
 }
