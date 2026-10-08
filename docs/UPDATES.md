@@ -41,6 +41,16 @@ The theme that ships with Lumora Press (Lumora Classic) can be updated the same 
 - **History.** Theme updates appear in Update History with the source "Theme" and the theme's own old and new version numbers. Lumora Press keeps its own record of each bundled theme's installed version in `storage/updates/theme-versions.json`, kept in step with the theme's `style.css` header, including when a full Lumora Press update brings a newer copy.
 - **Interrupted updates.** An unfinished theme update shows up on Maintenance &rsaquo; Updates like any other; **Resume Update** returns to the Themes screen.
 
+## Bundled plugins and themes you removed
+
+Not every bundled plugin is wanted on every site, and an update does not undo that choice.
+
+- **What an update does.** If the version you are running ships a bundled plugin or theme and it is no longer on disk, the update leaves it out. This holds however it was removed (the Plugins screen, FTP, a file manager) and for deletions made long before. A plugin or theme that only the new release includes is new, and is installed as usual, inactive.
+- **What you see.** The update result names what was left out ("Not reinstalled because you removed them: Dummy Content."), and the "modified core files" warning no longer lists a plugin you deleted.
+- **Always applied.** Lumora Classic, the theme Lumora Press falls back to, and whichever theme is active are never left out, and neither is any core folder: a missing core folder is repaired by an update.
+- **Getting one back.** The **Plugins** screen has a "Removed Bundled Plugins" panel, and **Appearance** &rsaquo; **Themes** a "Removed Bundled Themes" one, each with a **Restore** button. Restore downloads that component's package from the latest release and installs it through the same backed-up, rolled-back steps as an update. It is installed inactive. When the latest release has no package for it, upload the ZIP by hand instead.
+- **A plugin missing by accident**, for example after a half-finished earlier update, is treated as removed. Restore it from the panel.
+
 ## Manual recovery
 
 If the admin panel itself becomes unreachable after a failed update, restore manually: unzip the most recent `storage/backups/files-*.zip` over the installation directory, and re-import the most recent database backup into the database — `storage/backups/db-*.sql.gz` on a server with the zlib extension (the default), or plain `storage/backups/db-*.sql` on one without it. A `.sql.gz` file needs decompressing first (`gunzip` or your hosting file manager's equivalent); both formats are otherwise plain, human-readable SQL — `storage/` is never web-accessible, so retrieve them via FTP/SFTP or your hosting file manager.

@@ -109,7 +109,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $pluginU
         }
     } elseif ($form === 'plugin_update_download') {
         $slug = is_string($_POST['slug'] ?? null) ? $_POST['slug'] : '';
-        $origin = in_array($_POST['origin'] ?? null, ['row', 'card', 'details'], true) ? $_POST['origin'] : 'row';
+        $origin = in_array($_POST['origin'] ?? null, ['row', 'card', 'details', 'restore'], true) ? $_POST['origin'] : 'row';
 
         if (!Csrf::verify('plugin_update_' . $origin . '_' . $slug, $csrfToken)) {
             $error = 'Your session expired. Please try again.';
@@ -141,7 +141,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $pluginU
 
                 $pluginUpdateSummary = $kernel->updates->checkPluginPackage($slug, $downloadPath, $currentUser->id);
             } catch (\Throwable $exception) {
-                $error = $exception->getMessage();
+                $error = $exception->getMessage() . (($_POST['origin'] ?? '') === 'restore' ? ' You can upload the plugin\'s ZIP under Install a Plugin instead.' : '');
                 $kernel->updateProgress->complete(false, $error);
             } finally {
                 if ($downloadPath !== null && is_file($downloadPath)) {
@@ -341,11 +341,17 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
 
 <?php if ($pluginUpdateSummary !== null): ?>
     <section class="lp-admin__panel lp-plugin-update">
-        <h2>Plugin Update Summary</h2>
+        <?php $restoringPlugin = $pluginUpdateSummary['from_version'] === '0.0.0'; ?>
+        <h2><?= $restoringPlugin ? 'Restore Plugin' : 'Plugin Update Summary' ?></h2>
         <p>
-            Updating <strong><?= esc_html($pluginUpdateSummary['name']) ?></strong>
-            from <strong><?= esc_html($pluginUpdateSummary['from_version']) ?></strong>
-            to <strong><?= esc_html($pluginUpdateSummary['to_version']) ?></strong>
+            <?php if ($restoringPlugin): ?>
+                Restoring <strong><?= esc_html($pluginUpdateSummary['name']) ?></strong>
+                version <strong><?= esc_html($pluginUpdateSummary['to_version']) ?></strong>. It is installed inactive.
+            <?php else: ?>
+                Updating <strong><?= esc_html($pluginUpdateSummary['name']) ?></strong>
+                from <strong><?= esc_html($pluginUpdateSummary['from_version']) ?></strong>
+                to <strong><?= esc_html($pluginUpdateSummary['to_version']) ?></strong>
+            <?php endif; ?>
         </p>
 
         <?php if ($pluginUpdateSummary['blocking'] !== []): ?>
@@ -370,7 +376,7 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
                 <?= Csrf::field('plugin_update_install') ?>
                 <input type="hidden" name="form" value="plugin_update_install">
                 <input type="hidden" name="token" value="<?= esc_attr($pluginUpdateSummary['token']) ?>">
-                <button type="submit" class="lp-button lp-button--primary">Confirm &amp; Update</button>
+                <button type="submit" class="lp-button lp-button--primary"><?= $restoringPlugin ? 'Confirm &amp; Restore' : 'Confirm &amp; Update' ?></button>
             </form>
             <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
                 <?= Csrf::field('plugin_update_cancel') ?>
@@ -895,3 +901,25 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
         <dialog class="lp-plugin-dialog" data-lp-plugin-dialog aria-label="Plugin details"></dialog>
     <?php endif; ?>
 </section>
+
+<?php $removedBundled = $kernel->updates->removedBundledComponents()['plugins']; ?>
+<?php if ($removedBundled !== []): ?>
+    <section class="lp-admin__panel lp-plugin-removed">
+        <h2>Removed Bundled Plugins</h2>
+        <p>These plugins come with Lumora Press but are not installed on this site. Updates leave them out. Restore one to bring it back, inactive, from the latest release.</p>
+        <ul class="lp-plugin-removed__list">
+            <?php foreach ($removedBundled as $removedSlug): ?>
+                <li class="lp-plugin-removed__item">
+                    <span class="lp-plugin-removed__name"><?= esc_html(ucwords(str_replace(['-', '_'], ' ', $removedSlug))) ?></span>
+                    <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('plugins')) ?>?ajax=progress" data-lp-update-progress-target="lp-plugin-update-progress">
+                        <?= Csrf::field('plugin_update_restore_' . $removedSlug) ?>
+                        <input type="hidden" name="form" value="plugin_update_download">
+                        <input type="hidden" name="origin" value="restore">
+                        <input type="hidden" name="slug" value="<?= esc_attr($removedSlug) ?>">
+                        <button type="submit" class="lp-button">Restore</button>
+                    </form>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
+<?php endif; ?>

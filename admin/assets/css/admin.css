@@ -3718,6 +3718,32 @@ summary.lp-media-views__chip::after {
     font-weight: 700;
 }
 
+/* Plugins and Themes: bundled components that were removed from this site, each with a Restore button. */
+.lp-plugin-removed__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-plugin-removed__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--lp-admin-border);
+}
+
+.lp-plugin-removed__item:first-child {
+    border-top: 0;
+}
+
+.lp-plugin-removed__name {
+    font-weight: 600;
+    color: var(--lp-admin-text);
+}
+
 /* Edit Download's Images panel: the thumbnail large enough to judge, then the card's images in carousel order. */
 .lp-download-images__picker {
     align-items: flex-start;

@@ -2,6 +2,16 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Updates no longer bring back bundled plugins and themes you deleted. Until now every core update restored any bundled plugin that was missing, so deleting Dummy Content or Font Awesome meant deleting it again after each release. An update now leaves out a bundled plugin or theme that your current version ships and that is no longer on the site, however it was removed, while anything new in the release is still installed. Lumora Classic, the active theme, and the core folders are always applied. The update result names what was left out, and the modified-files warning no longer lists a deleted plugin.
+
+### Added
+
+- A "Removed Bundled Plugins" panel on Plugins and a "Removed Bundled Themes" panel on Appearance › Themes list what you removed, each with a Restore button that installs it (inactive) from the latest release through the same backed-up update steps.
+
 ## [0.22.0] — 2026-10-08
 
 ### Bundled versions

@@ -109,6 +109,7 @@ Administrators can update Lumora Press entirely from within the admin panel — 
 - Core files and the database are backed up automatically first.
 - Any database migrations the new version needs run automatically.
 - Your uploads, your own themes/plugins, and your configuration are never overwritten.
+- A bundled plugin or theme you have deleted stays deleted: an update only puts back the ones still on your site. A plugin or theme that is new in a release is still added. The **Plugins** and **Appearance** &rsaquo; **Themes** screens list what you removed, with a **Restore** button, and the update result names anything it left out.
 - If anything goes wrong mid-update, Lumora Press rolls back to the pre-update backup automatically.
 - If an update is interrupted partway (the browser tab was closed or the connection dropped), Maintenance &rsaquo; Updates says so and offers to **Resume** it or **Discard** it; discarding restores the backup taken at the start if any new files were already in place. No other update can be started until you choose one.
 - If the admin panel itself ever becomes unreachable after a failed update, the backup files can also be restored by hand.

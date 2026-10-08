@@ -69,6 +69,9 @@ final class UpdateService
 
     private const THEMES_PATH_PREFIX = 'content/themes/';
 
+    /** What include/bootstrap.php renders when no usable theme is set, so it is always restored. */
+    private const FALLBACK_THEME = 'lumora-classic';
+
     /**
      * An unfinished update whose progress record changed this recently may
      * still be running in another browser tab, so it can't be discarded yet.
@@ -79,6 +82,13 @@ final class UpdateService
 
     /** Stages that run after the new files may already be on disk. */
     private const FILES_APPLIED_STAGES = ['apply_files', 'migrate', 'clear_cache', 'cleanup'];
+
+    /**
+     * Removed bundled plugins and themes the last applyFilesStage() left alone.
+     *
+     * @var array<int, string>
+     */
+    private array $skippedBundledPaths = [];
 
     /**
      * @param array<int, string> $corePaths Paths (relative to $installRoot) the
@@ -154,6 +164,65 @@ final class UpdateService
     public function isBundledPlugin(string $slug): bool
     {
         return in_array($slug, $this->bundledPluginSlugs(), true);
+    }
+
+    /**
+     * Bundled plugin and theme directories the running version ships that are no longer on disk,
+     * meaning someone removed them on purpose. A path only the new package declares is new in
+     * that release and is never listed here. The fallback theme and the active theme are left
+     * out so an update can never leave the site without a theme to render.
+     *
+     * @return array<int, string> paths relative to the install root
+     */
+    public function removedBundledPaths(): array
+    {
+        $activeTheme = (string) ($this->config?->option('active_theme', self::FALLBACK_THEME) ?? self::FALLBACK_THEME);
+        $removed = [];
+
+        foreach ($this->corePaths as $corePath) {
+            $isPlugin = str_starts_with($corePath, self::PLUGINS_PATH_PREFIX);
+            $isTheme = str_starts_with($corePath, self::THEMES_PATH_PREFIX);
+
+            if (!$isPlugin && !$isTheme) {
+                continue;
+            }
+
+            $slug = substr($corePath, strlen($isPlugin ? self::PLUGINS_PATH_PREFIX : self::THEMES_PATH_PREFIX));
+
+            if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1) {
+                continue;
+            }
+
+            if ($isTheme && in_array($slug, [self::FALLBACK_THEME, $activeTheme], true)) {
+                continue;
+            }
+
+            if (!file_exists(rtrim($this->installRoot, '/') . '/' . $corePath)) {
+                $removed[] = $corePath;
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * The same list as slugs, for the Plugins and Themes screens' Restore buttons.
+     *
+     * @return array{plugins: array<int, string>, themes: array<int, string>}
+     */
+    public function removedBundledComponents(): array
+    {
+        $components = ['plugins' => [], 'themes' => []];
+
+        foreach ($this->removedBundledPaths() as $path) {
+            if (str_starts_with($path, self::PLUGINS_PATH_PREFIX)) {
+                $components['plugins'][] = substr($path, strlen(self::PLUGINS_PATH_PREFIX));
+            } else {
+                $components['themes'][] = substr($path, strlen(self::THEMES_PATH_PREFIX));
+            }
+        }
+
+        return $components;
     }
 
     /**
@@ -612,10 +681,18 @@ final class UpdateService
         }
 
         $modified = [];
+        $removed = array_map(static fn (string $path): string => $path . '/', $this->removedBundledPaths());
 
         foreach ($expected as $relativePath => $expectedHash) {
             if ($pathPrefix !== null && !str_starts_with($relativePath, $pathPrefix)) {
                 continue;
+            }
+
+            // A plugin or theme you removed is not a modified file, just one that no longer exists.
+            foreach ($removed as $removedPrefix) {
+                if (str_starts_with($relativePath, $removedPrefix)) {
+                    continue 2;
+                }
             }
 
             $absolute = rtrim($this->installRoot, '/') . '/' . $relativePath;
@@ -710,11 +787,12 @@ final class UpdateService
 
             $this->logAttempt($fromVersion, $toVersion, $source, UpdateStatus::Success, 'Update applied successfully.', $filesBackupPath, $databaseBackupPath, $performedByUserId);
             $this->hooks->doAction('lumora_press_after_update', $fromVersion, $toVersion, UpdateStatus::Success);
-            $this->progress?->complete(true, "Successfully updated from {$fromVersion} to {$toVersion}.");
+            $successMessage = "Successfully updated from {$fromVersion} to {$toVersion}." . $this->skippedComponentsNote($this->skippedBundledPaths);
+            $this->progress?->complete(true, $successMessage);
 
             return [
                 'status' => UpdateStatus::Success,
-                'message' => "Successfully updated from {$fromVersion} to {$toVersion}.",
+                'message' => $successMessage,
                 'from_version' => $fromVersion,
                 'to_version' => $toVersion,
             ];
@@ -880,6 +958,7 @@ final class UpdateService
                         $this->progress?->stage('clear_cache');
                     } else {
                         $state['effective_core_paths'] = $this->applyFilesStage($stagingPath, $state['root_prefix']);
+                        $state['skipped_components'] = $this->skippedBundledPaths;
                         $state['stage'] = 'migrate';
                         $this->progress?->stage('migrate');
                     }
@@ -915,7 +994,7 @@ final class UpdateService
                     $componentName = $scope === 'theme' ? ($state['theme_name'] ?? null) : ($state['plugin_name'] ?? null);
                     $message = $componentSlug !== null
                         ? "Successfully updated {$componentName} from {$state['from_version']} to {$state['to_version']}."
-                        : "Successfully updated from {$state['from_version']} to {$state['to_version']}.";
+                        : "Successfully updated from {$state['from_version']} to {$state['to_version']}." . $this->skippedComponentsNote($state['skipped_components'] ?? []);
                     $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], UpdateStatus::Success, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
                     $this->fireAfterUpdateHook($state, UpdateStatus::Success);
                     $this->progress?->complete(true, $message);
@@ -1285,12 +1364,35 @@ final class UpdateService
      * @return array<int, string> the effective core paths just overlaid —
      *     cleanupStage() needs the same set to know what's now obsolete.
      */
+    /**
+     * @param array<int, string> $paths
+     */
+    private function skippedComponentsNote(array $paths): string
+    {
+        if ($paths === []) {
+            return '';
+        }
+
+        $names = array_map(
+            static fn (string $path): string => ucwords(str_replace(['-', '_'], ' ', basename($path))),
+            $paths,
+        );
+
+        return ' Not reinstalled because you removed them: ' . implode(', ', $names) . '.';
+    }
+
     private function applyFilesStage(string $stagingPath, string $rootPrefix): array
     {
         $effectiveRoot = rtrim($stagingPath . '/' . $rootPrefix, '/');
         $effectiveCorePaths = $this->resolveEffectiveCorePaths($effectiveRoot);
+        $this->skippedBundledPaths = $this->removedBundledPaths();
 
         foreach ($effectiveCorePaths as $corePath) {
+            // Kept in the returned list so the manifest still records what the release ships.
+            if (in_array($corePath, $this->skippedBundledPaths, true)) {
+                continue;
+            }
+
             $this->overlayPath($effectiveRoot . '/' . $corePath, rtrim($this->installRoot, '/') . '/' . $corePath);
         }
 

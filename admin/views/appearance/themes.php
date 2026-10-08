@@ -78,7 +78,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $themeUp
         }
     } elseif ($form === 'theme_update_download') {
         $slug = is_string($_POST['slug'] ?? null) ? $_POST['slug'] : '';
-        $origin = in_array($_POST['origin'] ?? null, ['card', 'details'], true) ? $_POST['origin'] : 'card';
+        $origin = in_array($_POST['origin'] ?? null, ['card', 'details', 'restore'], true) ? $_POST['origin'] : 'card';
 
         if (!Csrf::verify('theme_update_' . $origin . '_' . $slug, $csrfToken)) {
             $error = 'Your session expired. Please try again.';
@@ -110,7 +110,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $themeUp
 
                 $themeUpdateSummary = $kernel->updates->checkThemePackage($slug, $downloadPath, $currentUser->id);
             } catch (\Throwable $exception) {
-                $error = $exception->getMessage();
+                $error = $exception->getMessage() . (($_POST['origin'] ?? '') === 'restore' ? ' You can upload the theme\'s ZIP with the upload form on this screen instead.' : '');
                 $kernel->updateProgress->complete(false, $error);
             } finally {
                 if ($downloadPath !== null && is_file($downloadPath)) {
@@ -283,11 +283,17 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
 
 <?php if ($themeUpdateSummary !== null): ?>
     <section class="lp-admin__panel lp-theme-update">
-        <h2>Theme Update Summary</h2>
+        <?php $restoringTheme = $themeUpdateSummary['from_version'] === '0.0.0'; ?>
+        <h2><?= $restoringTheme ? 'Restore Theme' : 'Theme Update Summary' ?></h2>
         <p>
-            Updating <strong><?= esc_html($themeUpdateSummary['name']) ?></strong>
-            from <strong><?= esc_html($themeUpdateSummary['from_version']) ?></strong>
-            to <strong><?= esc_html($themeUpdateSummary['to_version']) ?></strong>
+            <?php if ($restoringTheme): ?>
+                Restoring <strong><?= esc_html($themeUpdateSummary['name']) ?></strong>
+                version <strong><?= esc_html($themeUpdateSummary['to_version']) ?></strong>. It is not activated.
+            <?php else: ?>
+                Updating <strong><?= esc_html($themeUpdateSummary['name']) ?></strong>
+                from <strong><?= esc_html($themeUpdateSummary['from_version']) ?></strong>
+                to <strong><?= esc_html($themeUpdateSummary['to_version']) ?></strong>
+            <?php endif; ?>
         </p>
 
         <?php if ($themeUpdateSummary['blocking'] !== []): ?>
@@ -312,7 +318,7 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                 <?= Csrf::field('theme_update_install') ?>
                 <input type="hidden" name="form" value="theme_update_install">
                 <input type="hidden" name="token" value="<?= esc_attr($themeUpdateSummary['token']) ?>">
-                <button type="submit" class="lp-button lp-button--primary">Confirm &amp; Update</button>
+                <button type="submit" class="lp-button lp-button--primary"><?= $restoringTheme ? 'Confirm &amp; Restore' : 'Confirm &amp; Update' ?></button>
             </form>
             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
                 <?= Csrf::field('theme_update_cancel') ?>
@@ -592,3 +598,25 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
         <button type="submit" class="lp-button lp-button--primary">Upload &amp; Install</button>
     </form>
 </section>
+
+<?php $removedBundledThemes = $kernel->updates->removedBundledComponents()['themes']; ?>
+<?php if ($removedBundledThemes !== []): ?>
+    <section class="lp-admin__panel lp-plugin-removed">
+        <h2>Removed Bundled Themes</h2>
+        <p>These themes come with Lumora Press but are not installed on this site. Updates leave them out. Restore one to bring it back from the latest release; it is not activated.</p>
+        <ul class="lp-plugin-removed__list">
+            <?php foreach ($removedBundledThemes as $removedSlug): ?>
+                <li class="lp-plugin-removed__item">
+                    <span class="lp-plugin-removed__name"><?= esc_html(ucwords(str_replace(['-', '_'], ' ', $removedSlug))) ?></span>
+                    <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-update-progress-form data-lp-update-progress-url="<?= esc_url(admin_url('appearance/themes')) ?>?ajax=progress" data-lp-update-progress-target="lp-theme-update-progress">
+                        <?= Csrf::field('theme_update_restore_' . $removedSlug) ?>
+                        <input type="hidden" name="form" value="theme_update_download">
+                        <input type="hidden" name="origin" value="restore">
+                        <input type="hidden" name="slug" value="<?= esc_attr($removedSlug) ?>">
+                        <button type="submit" class="lp-button">Restore</button>
+                    </form>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
+<?php endif; ?>
