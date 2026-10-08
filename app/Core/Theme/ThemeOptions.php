@@ -199,7 +199,7 @@ final class ThemeOptions
             allowEmpty: true,
         ));
 
-        $this->registerSection('layout', 'Layout', 'Controls the width of the site\'s header, content, and footer.');
+        $this->registerSection('layout', 'Layout', 'Controls the width and sidebar placement of the site\'s header, content, and footer.');
 
         $this->registerField(new ThemeOptionField(
             key: 'content_width',
@@ -217,6 +217,20 @@ final class ThemeOptions
                 'none' => 'Full width',
             ],
             allowEmpty: true,
+        ));
+
+        $this->registerField(new ThemeOptionField(
+            key: 'sidebar_position',
+            section: 'layout',
+            type: ThemeOptionType::Select,
+            label: 'Sidebar position',
+            default: 'right',
+            choices: [
+                'right' => 'Right',
+                'left' => 'Left',
+                'none' => 'No sidebar',
+            ],
+            help: '"No sidebar" hides the sidebar on every page, including a welcome message placed there, and lets the content use the full width. On small screens the sidebar always sits below the content.',
         ));
 
         // Its own section, not folded into Layout: page width vs. how much

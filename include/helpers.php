@@ -595,6 +595,32 @@ if (!function_exists('show_site_tagline')) {
     }
 }
 
+if (!function_exists('sidebar_position')) {
+    /**
+     * Where the sidebar sits: 'right', 'left' or 'none'.
+     */
+    function sidebar_position(): string
+    {
+        $position = theme_option('sidebar_position');
+
+        return in_array($position, ['left', 'none'], true) ? $position : 'right';
+    }
+}
+
+if (!function_exists('body_class')) {
+    /**
+     * The class list for the theme's <body> tag: $classes plus the
+     * layout classes core controls (e.g. lp-sidebar-left). Unescaped —
+     * wrap in esc_attr().
+     */
+    function body_class(string $classes = ''): string
+    {
+        $position = sidebar_position();
+
+        return trim($classes . ($position === 'right' ? '' : ' lp-sidebar-' . $position));
+    }
+}
+
 if (!function_exists('show_post_meta')) {
     /**
      * Whether a post byline part is switched on in Customize: one of

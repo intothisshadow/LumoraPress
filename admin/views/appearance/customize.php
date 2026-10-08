@@ -129,15 +129,14 @@ if (isset($tabs['theme'])) {
 $renderThemeOptionField = function (ThemeOptionField $field, string $currentValue, string $formatValue = 'html'): void {
     $fieldId = 'theme-option-' . str_replace('_', '-', $field->key);
 
-    // featured_image_position gets a bespoke clickable visual picker
-    // (two small layout diagrams) instead of the plain <select> every
-    // other Select field falls through to below — a purely presentational
-    // choice, not a new generic field type, since nothing else in this
-    // codebase needs an illustrated picker yet. The choice→diagram mapping
-    // is hardcoded to this field's two known values ('above'/'beside');
+    // featured_image_position and sidebar_position get a bespoke clickable
+    // visual picker (small layout diagrams) instead of the plain <select>
+    // every other Select field falls through to below — a purely
+    // presentational choice, not a new generic field type. The
+    // choice→diagram mapping is hardcoded to these fields' known values;
     // the "Default" badge itself is data-driven off $field->default, not
     // hardcoded to either value.
-    if ($field->key === 'featured_image_position') {
+    if (in_array($field->key, ['featured_image_position', 'sidebar_position'], true)) {
         ?>
         <fieldset class="lp-field lp-field--visual-choice">
             <legend><?= esc_html($field->label) ?></legend>
@@ -154,7 +153,24 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
                             <?= $currentValue === $choiceValue ? 'checked' : '' ?>
                         >
                         <span class="lp-visual-choice__preview">
-                            <?php if ($choiceValue === 'beside'): ?>
+                            <?php if ($field->key === 'sidebar_position'): ?>
+                                <?php
+                                // Content column (heading + lines) and sidebar block, laid out per choice.
+                                $contentX = $choiceValue === 'left' ? 34 : 4;
+                                $contentWidth = $choiceValue === 'none' ? 88 : 58;
+                                ?>
+                                <svg class="lp-visual-choice__diagram" viewBox="0 0 96 68" aria-hidden="true" focusable="false">
+                                    <?php if ($choiceValue !== 'none'): ?>
+                                        <rect class="lp-visual-choice__image" x="<?= $choiceValue === 'left' ? 4 : 68 ?>" y="4" width="24" height="60" rx="3"/>
+                                    <?php endif; ?>
+                                    <rect class="lp-visual-choice__heading" x="<?= $contentX ?>" y="8" width="<?= (int) ($contentWidth * 0.7) ?>" height="7" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="<?= $contentX ?>" y="21" width="<?= $contentWidth ?>" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="<?= $contentX ?>" y="28" width="<?= $contentWidth ?>" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="<?= $contentX ?>" y="35" width="<?= (int) ($contentWidth * 0.6) ?>" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="<?= $contentX ?>" y="46" width="<?= $contentWidth ?>" height="4" rx="2"/>
+                                    <rect class="lp-visual-choice__line" x="<?= $contentX ?>" y="53" width="<?= (int) ($contentWidth * 0.8) ?>" height="4" rx="2"/>
+                                </svg>
+                            <?php elseif ($choiceValue === 'beside'): ?>
                                 <svg class="lp-visual-choice__diagram" viewBox="0 0 96 68" aria-hidden="true" focusable="false">
                                     <rect class="lp-visual-choice__image" x="4" y="4" width="32" height="60" rx="3"/>
                                     <rect class="lp-visual-choice__heading" x="44" y="8" width="48" height="7" rx="2"/>

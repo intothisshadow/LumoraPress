@@ -205,7 +205,9 @@ All of these accept `Post|Page|SearchResult $item` — anything with a `featured
 |---|---|
 | `get_header(array $vars = []): void` | Fires the `get_header` action, then renders `header.php`, extracting `$vars` as local variables inside it (e.g. `get_header(['post' => $post])` from `single.php`). |
 | `get_footer(): void` | Fires `get_footer`, then renders `footer.php`. |
-| `get_sidebar(): void` | Fires `get_sidebar`, then renders `sidebar.php` (silent no-op if the theme has none). |
+| `get_sidebar(): void` | Fires `get_sidebar`, then renders `sidebar.php` (silent no-op if the theme has none, or if the administrator chose "No sidebar" under Sidebar position). |
+| `sidebar_position(): string` | `'right'` (default), `'left'` or `'none'`, from the Sidebar position Theme Option. |
+| `body_class(string $classes = ''): string` | `$classes` plus the layout classes core controls: `lp-sidebar-left` or `lp-sidebar-none` (nothing for the default right). Unescaped; use it as `<body class="<?= esc_attr(body_class('lp-site')) ?>">`. A theme that skips it ignores the Sidebar position option. Style the two classes in your stylesheet: for left, mirror the layout grid; for none, make `.lp-layout` one column. |
 
 Your `header.php` and `footer.php` are also where you fire the two theme-convention hooks other code (and plugins) expect: `do_action('head_assets')` right before `</head>` and `do_action('footer_assets')` right before `</body>`. Core itself listens on `footer_assets` (to emit lightbox/embed script tags when a template used `the_post_thumbnail_lightbox()` or an auto-embedded URL, and the site search script, which attaches to any `<form role="search">` with an `<input name="q">`), so skipping these hooks will silently break those features. See [`DEVELOPER-APIS.md`](DEVELOPER-APIS.md) for the full hook reference.
 
@@ -438,7 +440,7 @@ The images are the download's thumbnail first, then every image found in its des
     <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= theme_options_css() ?></style>
     <?php do_action('head_assets'); ?>
 </head>
-<body>
+<body class="<?= esc_attr(body_class('lp-site')) ?>">
     <header>
         <a href="<?= esc_url(site_url('')) ?>"><?= esc_html(site_name()) ?></a>
         <?php nav_menu('primary'); ?>

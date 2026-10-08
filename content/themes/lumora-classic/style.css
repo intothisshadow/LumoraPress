@@ -566,6 +566,22 @@ body.lp-site {
     gap: 1.5rem;
 }
 
+/* Sidebar position ("Sidebar position" Theme Option): the left layout
+   mirrors the grid with direction so each theme's own column widths still
+   apply; children reset to ltr. It only has an effect while the layout is
+   two columns, so small screens keep the sidebar below the content. */
+.lp-sidebar-left .lp-layout {
+    direction: rtl;
+}
+
+.lp-sidebar-left .lp-layout > * {
+    direction: ltr;
+}
+
+.lp-sidebar-none .lp-layout {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .lp-main {
     min-width: 0;
 }
@@ -3412,4 +3428,17 @@ img.lp-gallery-shortcode__thumb {
 .lp-gallery-shortcode__view-link {
     display: inline-block;
     font-size: 0.9rem;
+}
+
+/* Visitors who ask their system for less motion get no transitions,
+   animations, or smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
 }

@@ -136,7 +136,7 @@ $meta_description = $seo_description ?? meta_description();
     do_action('head_assets');
     ?>
 </head>
-<body class="lp-site">
+<body class="<?= esc_attr(body_class('lp-site')) ?>">
 <a class="lp-skip-link" href="#lp-content">Skip to content</a>
 <?php if (!is_maintenance_page()): // The maintenance page shows only its message, not the site header. ?>
 <header class="lp-site-header">

@@ -46,6 +46,10 @@ if (!function_exists('get_footer')) {
 if (!function_exists('get_sidebar')) {
     function get_sidebar(): void
     {
+        if (sidebar_position() === 'none') {
+            return;
+        }
+
         do_action('get_sidebar');
         ActiveTheme::instance()->renderPartial('sidebar');
     }
