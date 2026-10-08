@@ -2822,10 +2822,6 @@ a.lp-post-list__comments:focus {
  */
 .lp-downloads-list {
     margin: 1.5em 0;
-    padding: 1em 1.25em;
-    border: 1px solid var(--lp-border);
-    border-radius: var(--lp-radius);
-    background: var(--lp-bg-alt);
 }
 
 .lp-downloads-list__title {
@@ -2833,7 +2829,8 @@ a.lp-post-list__comments:focus {
     font-size: 1.1em;
 }
 
-.lp-downloads-list__items {
+/* Doubled class beats the post-content list indent so cards use the full width. */
+.lp-downloads-list .lp-downloads-list__items {
     margin: 0;
     padding: 0;
     list-style: none;

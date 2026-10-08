@@ -21,6 +21,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Lumora Classic: the Downloads list no longer sits inside a gray bordered box, and its cards now use the full content width on phones instead of being indented by the post's list padding.
 - Admin: links inside notices (saved, error, warning) now take the notice's own text color instead of the browser's default blue, which was hard to read on the tinted backgrounds and nearly invisible in dark mode.
 - New/Edit Post and Page: the Categories list is compact again, with normal-size checkboxes and regular-weight labels in a bordered, scrollable box, and the Tags suggestion list is no longer cut off by the edge of its sidebar box.
 - Lumora Classic: a page or post whose content ends with a left- or right-aligned image no longer lets that image hang out of the bottom of its card, overlapping the "Edit this page" link, tags, and comments below it. The content area now grows to contain the image.
