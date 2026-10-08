@@ -18310,3 +18310,265 @@ Let `[lumora_downloads]` split a long category list into pages, the way `[lumora
 
 Implemented as `DownloadService::paginateByCategory()` plus a shared `renderPaged()` in `DownloadsShortcode`. 2 unit tests added.
 
+
+## 0.22.0 (2026-10-08)
+
+### LPP-006. Emoji Picker
+
+**Status:** Complete
+
+### Goal
+
+Give writers a fast way to insert emoji into post/page content without
+leaving the editor or relying on OS-level emoji pickers, which are
+inconsistent across platforms and often clunky on desktop browsers.
+Modeled on the manual workflow of browsing Emojipedia for the right
+emoji and pasting it in, but self-contained: no live requests to
+Emojipedia or any other third party, since Emojipedia has no public API
+and scraping it would be fragile and against its terms of service.
+
+Implemented as a new bundled first-party plugin,
+`content/plugins/emoji-picker/`, following the same structure/
+conventions Font Awesome (LPP-002) established: a singleton
+`EmojiPickerService` (`ActiveConfig`-backed settings, no database table
+of its own), hook-based decoupling facades in `include/helpers.php` so
+core admin views never need a direct class reference, and its own
+`Settings → Writing → Emoji Picker` screen — the first plugin to need a
+`Writing` parent under Settings, added the same way Font Awesome nested
+its own settings page under Appearance (see
+`docs/DEVELOPER-APIS.md`'s "Admin UI extension points" section, updated
+this same session to document the pattern and correct its stale claim
+that Font Awesome "adds no admin UI at all").
+
+### Data Source
+
+- [x] Bundle a local emoji dataset (name, keywords/aliases, category,
+      Unicode codepoint) derived from Unicode CLDR annotations —
+      redistributable, no external API dependency. **Scope note:** a
+      curated ~470-entry subset, not the full ~1,400+ entry CLDR set —
+      accurately hand-authoring every language's keyword annotations for
+      that many characters was out of scope for this first pass; skin-
+      tone/gender modifier variants and multi-person family/couple
+      sequences are also omitted to keep the list a single flat set of
+      unmodified base characters. See `data/emoji.php`'s own docblock.
+- [x] Store the dataset as a static JSON/PHP data file shipped with the
+      plugin, not generated at runtime — `content/plugins/emoji-picker/data/emoji.php`.
+- [x] Document the process for refreshing the bundled dataset when a new
+      Unicode emoji revision ships — in that same file's docblock.
+
+### Picker UI
+
+- [x] Toolbar button/icon in the Classic WYSIWYG editor
+- [x] Toolbar button/icon in the Markdown (Easy MDE) editor
+- [x] Available in HTML editor mode (insert at cursor position) — this
+      codebase's "HTML editor mode" *is* the TinyMCE/Visual instance
+      (`ContentFormat::Html`, label "Visual / HTML") — there is no
+      separate raw-source editor, confirmed by reading
+      `content-editor.js`'s `initWysiwygEditor()`/`initMarkdownEditor()`
+      — so the WYSIWYG toolbar button above already covers this.
+- [x] Search-as-you-type filtering by name/keyword — entirely client-
+      side (the whole small dataset is embedded in the page, no per-
+      keystroke AJAX round trip, unlike Font Awesome's icon search).
+- [x] Browse by category (Smileys, Animals, Food, Objects, Symbols, Flags, etc.)
+- [x] Recently-used emoji section — a new `users.recent_emoji` column
+      (`UserService::getRecentEmoji()`/`addRecentEmoji()`), same shape as
+      the existing `folder_tree_state` preference column.
+- [x] Keyboard navigable, closes on Escape, focus returns to editor on
+      insert — done and checked live in both editors on 2026-10-07. The
+      search box takes focus when the dialog opens. The category tabs
+      are one Tab stop (Left/Right/Home/End move between them, Enter
+      selects and focus stays on the selected tab) and the emoji grid is
+      one Tab stop (all four arrow keys plus Home/End move within it),
+      so the dialog has four Tab stops instead of one per emoji. Enter
+      inserts and the dialog stays open; focus stays on the same emoji
+      even when the Recently Used list reorders after an insert. Escape
+      or Cancel closes it and focus goes back into the editor text
+      (CodeMirror or TinyMCE), not the toolbar button. An earlier note
+      here said the arrow keys did nothing; that was a bad test (the key
+      was pressed while a category tab had focus).
+- [x] Click/Enter inserts the emoji character at the cursor and keeps the
+      picker open for repeated inserts until dismissed — Enter works for
+      free (every grid item is a real `<button>`); confirmed the dialog
+      does *not* close on insert, unlike every other picker in this
+      codebase (a deliberate, called-out divergence from
+      `openIconPicker()`'s shared pattern).
+
+### Insertion Behavior
+
+- [x] Inserts the raw Unicode character (not an image or shortcode), so
+      content remains portable and readable outside Lumora Press.
+- [x] No database schema changes required — emoji live in post content
+      as plain UTF-8 text. (The separate Recently-used *preference*
+      column above is additive and not required for basic insertion —
+      that item is about post content storage specifically.)
+- [x] Works correctly with existing content sanitization/escaping so
+      emoji are never stripped or mangled on save/render — verified
+      end-to-end on the dev install: saved a Markdown post with emoji in
+      both the title and body, confirmed they survive the full
+      render pipeline (Markdown parse → `HtmlSanitizer` → public page)
+      intact.
+
+### Developer API
+
+- [x] `apply_filters` hook to extend or override the bundled emoji dataset
+      — `lp_emoji_dataset`.
+- [x] `add_action` hook fired on insert, for plugins/themes that want to
+      react (e.g. analytics, custom recently-used storage) —
+      `lp_emoji_inserted`, fired from the `emoji_picker_record_recent`
+      AJAX sub-action (core, in each editor-hosting admin view) when a
+      "recently used" entry is recorded — there is no other server round
+      trip on insert to fire it from (insertion itself is 100%
+      client-side), documented as such in `docs/DEVELOPER-APIS.md`.
+- [x] Template tag to render the picker trigger outside the default
+      editor toolbars (e.g. a theme's comment form) —
+      `lp_emoji_picker_button(array $args = [])`, inserting into
+      `$args['target']` (a CSS selector) or the nearest `<textarea>` in
+      the same `<form>` by default.
+
+### Settings
+
+**Settings → Writing → Emoji Picker**
+
+- [x] Enable/disable the picker globally
+- [x] Choose which editors show the picker button (WYSIWYG/Markdown —
+      "HTML" is the same WYSIWYG editor, see Picker UI above, so there is
+      no third, separate toggle)
+- [x] Number of recently-used emoji to remember
+- [x] Default category shown on open
+
+### Performance
+
+- [x] Load the emoji dataset and picker assets only on screens with an
+      active editor, never sitewide — the dataset is embedded only in
+      `[data-lp-content-editor]` containers' own attributes (`posts/new.php`,
+      `pages/new.php`, `downloads/add-new.php`), gated on the plugin
+      being active and enabled.
+- [x] No external network requests at any point (fully offline-capable)
+      — search/browse are 100% client-side against the already-embedded
+      dataset; the only network call at all is a same-origin,
+      fire-and-forget "record recently used" POST, never to a third
+      party.
+- [x] Dataset kept small enough to have no meaningful impact on admin
+      page load — ~472 entries, embedded as one JSON attribute (tens of
+      KB), the same "inline a moderate JSON blob as a data attribute"
+      convention `data-shortcodes` already uses on the same container.
+
+### Accessibility
+
+- [x] Picker trigger and search field have proper labels
+- [x] Emoji grid items are keyboard navigable with arrow keys — a roving
+      arrow-key handler computed from the grid's own actual rendered
+      column count (`getComputedStyle().gridTemplateColumns`), not a
+      hardcoded number.
+- [x] Each emoji exposes its name to screen readers (not just the glyph)
+      — `aria-label`/`title` per grid item.
+- [x] Sufficient color contrast and visible focus states in both light
+      and dark admin themes — verified live on 2026-10-07 by toggling
+      the admin theme and measuring every text element in the dialog:
+      worst case 5.17:1 in light and 6.27:1 in dark (AA needs 4.5:1).
+      That check found a real failure, now fixed: the active category
+      tab used a hardcoded white on the lighter dark-mode accent
+      (2.93:1); it now uses `--lp-admin-on-accent`. Focus uses the
+      browser's own focus ring on the tabs and every emoji button, which
+      stays visible on both backgrounds. The emoji glyphs themselves are
+      colour images and don't take the text colour.
+
+### Notes
+
+Comparable in spirit to the WordPress classic-editor's native "Insert
+Special Character"/emoji tools, but with search and categorization
+closer to how Emojipedia itself is browsed. No accounts, tracking, or
+remote lookups — everything ships with the plugin. Out of scope for this
+ticket: animated/custom emoji, emoji reactions on comments, and any kind
+of emoji autocomplete-while-typing (`:smile:` shortcode expansion) —
+those would be separate future enhancements if ever requested.
+
+
+### LPP-035. Downloads: Card Layout for Each Download in Public Lists
+
+**Status:** Complete
+
+## Goal
+
+Each download in a public list (`[lumora_downloads]`, `[lumora_downloads_all]`, `[lumora_recent_downloads]`, and the single-download form) becomes its own card, with the same parts in the same places every time:
+
+- **A proper title,** shown as a heading, instead of the title being only the text of the link.
+- **A media area for its images,** with every image the download has shown in it as a carousel, so the card stays a fixed, tidy shape however many screenshots there are.
+- **The download link,** as a clear button-style link with the file size beside it.
+- **The description,** which scrolls inside the card when it is long, instead of making the page as tall as the longest README.
+
+The reason is a category page like the Mummy Returns one on the dev site: two downloads with a short description and one picture each, and one GitHub import whose whole README, install steps and screenshot gallery run down the page between its neighbours.
+
+## What exists today
+
+- Each item is one `<li class="lp-downloads-list__item">` holding a bold "Download:" label, the title as the link text, an optional size, and the rendered description. The whole list sits inside a single bordered box (`.lp-downloads-list`).
+- A download's own thumbnail (`thumbnail_media_id`) is **not shown in any list.** The pictures you see come from images written inside descriptions, and a GitHub import appends its screenshots to its description as a "Screenshots" section of linked thumbnails.
+- A GitHub import's description also starts with the README's own heading, repeating the title.
+- Themes style the existing classes (`.lp-downloads-list__item`, `__link`, `__size`, `__description`) in Lumora Classic and every theme under `custom themes/`, so those names have to keep working.
+- There is already a lightbox for linked images inside a `.lp-gallery` container (`media-viewer.js`), and a CSS-only way to build a carousel (a horizontally scrolling, snapping row).
+
+## Decisions (confirmed with Ariane, 2026-10-08)
+
+- **Where the carousel's images come from:** the download's thumbnail first, then every image found inside its description, in order, with duplicates removed. The ones moved into the carousel are taken out of the description text so they are not shown twice. This works for hand-written descriptions and for GitHub imports alike, with no extra database work.
+- **How cards are arranged:** one card per row, full width, as the list is today. A grid could follow later.
+- **The edit screen gets a dedicated Images section** (see "Admin screen" below). Today the thumbnail is only a small read-only preview inside the main form, and it can't be chosen, changed, or removed there at all: only the importers ever set it.
+
+## Checklist
+
+### Markup and data
+
+- [x] One shared builder (`DownloadCardBuilder`) builds a download's card for every Downloads list shortcode, including the file-only rows `[lumora_downloads_all]` adds, so the layouts cannot drift apart. The WordPress Importer's own `[sdm_show_dl_from_category]` lists keep their simpler layout, since that plugin must work without Downloads active and its items have no thumbnail or Download row.
+- [x] Stable classes for every part: `.lp-download-card`, `__title`, `__media`, `__carousel`, `__slide`, `__body`, `__description`, `__meta`, `__link`, `__size`. The existing `.lp-downloads-list__*` classes stay on the same elements so current theme CSS keeps working.
+- [x] The title is a heading one level below the category heading (a category list's title is an `h3`, so the card's is an `h4`; a lone download uses the level the page expects), and the link text becomes "Download" with the size beside it.
+- [x] Collect each download's images: the thumbnail, then the images in its description in order, de-duplicated. Resolve them in one query for the whole list, not one per download, and use a medium-size thumbnail with the full image behind it.
+- [x] Take the images that went into the carousel out of the displayed description, so a GitHub import's "Screenshots" section and a hand-written description's pictures do not appear twice. Leave the stored description untouched.
+- [x] A download with no images gets a card with no media area, not an empty box; a download with one image shows it without carousel controls.
+- [x] A GitHub import stops repeating its title: drop the README's own first heading from the description when it equals the title (and keep the update check's fingerprints correct for downloads imported before this change).
+
+### Carousel
+
+- [x] Built on a horizontally scrolling, snapping row, so it works with no JavaScript, with previous and next buttons added by a small script only when there is more than one image.
+- [x] Accessible: a labelled region, buttons with names, "image 2 of 5" announced, keyboard operation (arrow keys and Tab), no automatic movement, and the reduced-motion preference respected.
+- [x] Clicking an image opens the existing lightbox, using the `.lp-gallery` and `data-pswp-*` conventions, grouped per card.
+- [x] Images load lazily, and reserve their space so the page doesn't jump.
+
+### Description
+
+- [x] A long description scrolls inside the card at a set maximum height, keyboard-focusable and labelled so it can be scrolled without a mouse, with a hint that there is more (a fade or shadow at the cut-off).
+- [x] A short description shows in full with no scrollbar.
+
+### Admin screen
+
+- [x] A separate, headed "Images" panel on the Edit Download screen, in place of the small preview inside the main form, laid out like the other core and plugin panels.
+- [x] It shows the thumbnail large enough to judge, with buttons to choose one from the Media Library (the shared media picker, as other screens use), replace it, and remove it. A download with none says so and says what is shown instead.
+- [x] It also lists the other images the card will show, the ones found in the description, in the order the carousel shows them, labelled as coming from the description (read-only here: they are changed by editing the description). The thumbnail is marked as the first slide.
+- [x] It says in plain words what a visitor will see: how many images the carousel will have, and that a download with no thumbnail starts with its first description image.
+- [x] Saving the panel changes only the thumbnail; it never rewrites the description.
+- [x] A GitHub-sourced download's panel notes that its screenshots came from GitHub, and that choosing a different thumbnail is kept by an update (an update only moves a thumbnail that is still the first screenshot).
+- [x] CSRF, the same capability as the rest of the screen, and the picked item checked to be an image.
+- [x] Keep the media picker's behaviour at phone width and in the dark admin theme.
+
+### Styling
+
+- [x] Card styling in Lumora Classic's stylesheet: border, radius, spacing, a title row, the media area and download row, in both light and dark themes, and at phone width.
+- [x] The same additions, as additions only, in every theme under `custom themes/` in the same session.
+
+### Tests and docs
+
+- [x] Unit tests: setting, changing, and removing a thumbnail (only an image is accepted, the description is left alone); the card markup for a download with no image, one image, and several; images found in a description (Markdown and HTML), de-duplication, and their removal from the shown text; a long and a short description; a GitHub import's dropped heading; and every list shortcode using the one card builder.
+- [x] Browser-verify the Images panel on the edit screen (choose, replace, remove, and the list of description images), then on the dev site's Mummy Returns category: the long GitHub import and the short ones side by side, the carousel with the mouse, the keyboard, and at phone width, the lightbox, light and dark, and with JavaScript off. Done 2026-10-08 on a temporary page (removed afterwards) listing the GitHub import (download 459) beside the WordPress-imported downloads, since the Mummy Returns category's downloads have no file attached and are hidden.
+- [x] Update the Downloads README, `docs/THEME-DEVELOPMENT.md` (the new classes), `docs/CHANGELOG.md`, and `docs/FEATURES.md` if it describes the lists; bump the Downloads `Version:` at the next Release.
+
+## Implementation notes (2026-10-08)
+
+- Code is in `content/plugins/downloads/src/`: `DownloadCardBuilder` (markup and the whole pipeline), `DescriptionImageExtractor` (pure DOM work: lifting images, dropping a repeated title heading), plus `DownloadService::changeThumbnail()` (image-only, never touches the description) and `thumbnailImages()` (one batched lookup per list). The carousel script is `assets/js/download-card.js`, loaded through `footer_assets` only when a card needs it. `assets/js/media-viewer.js` gained a `clickedIndex` filter so a card's lightbox group nested inside a post's own gallery opens only its own images.
+- The repeated README heading is dropped when the card is rendered, not when the description is saved, so the stored text and the update check's fingerprints are untouched and downloads imported earlier benefit too.
+- Images are lifted only when they are not tiny in both directions (an icon or emoji stays in the text) and are not wrapped in a link to somewhere else (a badge stays). A stale `width="44"` on a tall screenshot, as WordPress imports have, does not count as tiny.
+- The WordPress Importer plugin's own `[sdm_show_dl_from_category]` lists are unchanged: that plugin must work without Downloads active, and its items have no thumbnail.
+- The admin picker's request name is `download_thumbnail_picker_query` (a new constant on `FeaturedImageDefaultsController`); `featured-image-picker.js` gained `data-picker-preview-size` so the panel can show the choice at medium size.
+- Before the Release that ships this: bump the Downloads plugin `Version:`, and note that the card script is part of core's `assets/`, so a site that updates only the plugin package before updating core still gets working cards, just without the carousel buttons.
+
+## Not in this ticket
+
+Autoplay, a per-download setting for how many images to show, a card grid, and showing a download's file type or download count on the card. Any of these can follow once the card exists.
+

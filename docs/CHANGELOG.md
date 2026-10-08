@@ -2,7 +2,11 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased]
+## [0.22.0] — 2026-10-08
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Classic 0.5.0, Downloads 0.4.0, Lumora Shield 0.2.0, and WordPress Importer 1.1.3. Each can be updated on its own from its screen when a release carries its package.
 
 ### Added
 
