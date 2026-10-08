@@ -44,6 +44,9 @@ final class FeaturedImageDefaultsController
     /** The Maintenance Mode background-image picker, also under its own request name. */
     public const MAINTENANCE_BACKGROUND_PICKER_CSRF_ACTION = 'maintenance_background_picker_query';
 
+    /** The Downloads plugin's thumbnail picker on the Edit Download screen. */
+    public const DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION = 'download_thumbnail_picker_query';
+
     private const PICKER_PAGE_SIZE = 40;
 
     public function __construct(
@@ -90,7 +93,7 @@ final class FeaturedImageDefaultsController
      */
     public function pickerQuery(array $post, bool $canUploadFiles, ?string $csrfToken, string $action = self::PICKER_CSRF_ACTION): array
     {
-        if (!in_array($action, [self::PICKER_CSRF_ACTION, self::HEADER_PICKER_CSRF_ACTION, self::LINK_BUTTON_PICKER_CSRF_ACTION, self::MAINTENANCE_BACKGROUND_PICKER_CSRF_ACTION], true)) {
+        if (!in_array($action, [self::PICKER_CSRF_ACTION, self::HEADER_PICKER_CSRF_ACTION, self::LINK_BUTTON_PICKER_CSRF_ACTION, self::MAINTENANCE_BACKGROUND_PICKER_CSRF_ACTION, self::DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION], true)) {
             return ['status' => 403, 'body' => ['error' => 'Not permitted.']];
         }
 

@@ -45,6 +45,14 @@
         return (sizes.small || sizes.medium || sizes.large || sizes.full || { url: item.url }).url;
     }
 
+    // A picker can ask for a larger preview of its choice (data-picker-preview-size="medium") than the grid's small tile.
+    function previewUrl(container, item) {
+        var wanted = container.dataset.pickerPreviewSize;
+        var sizes = item.sizes || {};
+
+        return wanted && sizes[wanted] ? sizes[wanted].url : gridThumbnailUrl(item);
+    }
+
     function openFeaturedImagePicker(container, onSelect) {
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
         var pickerUrl = container.dataset.pickerUrl;
@@ -258,7 +266,7 @@
 
                 var thumb = document.createElement('img');
                 thumb.className = 'lp-featured-image-picker__chosen-thumb';
-                thumb.src = fresh ? window.lpImageEditor.bust(gridThumbnailUrl(item)) : gridThumbnailUrl(item);
+                thumb.src = fresh ? window.lpImageEditor.bust(previewUrl(container, item)) : previewUrl(container, item);
                 thumb.alt = '';
                 chosenLabel.appendChild(thumb);
                 chosenLabel.appendChild(document.createTextNode(item.name));

@@ -15,13 +15,21 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\FeaturedImageDefaultsController;
+use LumoraPress\Core\Content\HtmlSanitizer;
+use LumoraPress\Core\Content\MarkdownParser;
+use LumoraPress\Core\Hooks\HookManager;
+use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Plugins\Downloads\DownloadCardBuilder;
 use LumoraPress\Plugins\Downloads\DownloadCategoryService;
+use LumoraPress\Plugins\Downloads\DownloadMediaUrlMasker;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadType;
 use LumoraPress\Plugins\Downloads\GitHubSourceStore;
 use LumoraPress\Plugins\FontAwesome\FontAwesomeService;
+use LumoraPress\Services\ContentRenderer;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -274,6 +282,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null)
     exit;
 }
 
+// The thumbnail picker (featured-image-picker.js) queries this page for JSON, under its own
+// request name so it can't invalidate the Description editor's picker token.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === FeaturedImageDefaultsController::DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $pickerResponse = (new FeaturedImageDefaultsController($kernel->config, $kernel->media, $kernel->thumbnails))->pickerQuery(
+        $_POST,
+        $currentUser->can('upload_files'),
+        is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null,
+        FeaturedImageDefaultsController::DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION,
+    );
+    http_response_code($pickerResponse['status']);
+    header('Content-Type: application/json');
+    echo json_encode($pickerResponse['body']);
+    exit;
+}
+
 // "Add from server" / "Replace file" — deliberately separate from
 // media_picker_query above, which is the image-only "Insert Image"
 // picker. A download's file can be anything, so this queries every
@@ -430,6 +457,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $error = $exception->getMessage();
             }
         }
+    } elseif ($form === 'update_download_thumbnail') {
+        $id = (int) ($_POST['id'] ?? 0);
+
+        if ($editingDownload !== null && $editingDownload->id === $id && Csrf::verify('update_download_thumbnail_' . $id, $token)) {
+            $chosenId = (int) ($_POST['thumbnail_media_id'] ?? 0);
+
+            try {
+                // Only the thumbnail is written; the description and everything else stay as saved.
+                $downloads->changeThumbnail($id, $chosenId > 0 ? $chosenId : null);
+                header('Location: ' . admin_url('downloads/add-new') . '?id=' . $id . '&thumbnail_saved=1#download-images');
+                exit;
+            } catch (\InvalidArgumentException $exception) {
+                $error = $exception->getMessage();
+            }
+        } else {
+            $error = 'Your session expired or the request could not be verified. Please try again.';
+        }
     } elseif ($form === 'update_download') {
         $id = (int) ($_POST['id'] ?? 0);
 
@@ -507,21 +551,27 @@ $editorFolderTree = array_map(
     $kernel->folders->listAllForTree(),
 );
 
-/*
- * Preview image: thumbnailMediaId — an explicitly chosen representative
- * image, distinct from the download's own file — wins when set, since a
- * Url-typed download has no local file and a File-typed one's file may
- * not be an image. Falls back to the File-typed download's own file, or
- * null if neither applies or the referenced Media row is gone.
- *
- * @var array<string, mixed>|null $previewMedia
- */
-$previewMediaId = $editingDownload?->thumbnailMediaId
-    ?? ($editingDownload !== null && $editingDownload->type === DownloadType::File ? $editingDownload->mediaId : null);
-$previewMedia = $previewMediaId !== null ? $kernel->media->find($previewMediaId) : null;
+// What the public card will show: the thumbnail first, then the images found in the description.
+// Built the way the public list builds it (a private hook manager, so no plugin filter runs).
+$cardImages = null;
+$thumbnailMedia = null;
 
-// Looked up separately from $previewMedia above, which can point at a
-// distinct thumbnailMediaId rather than the download's actual file.
+if ($editingDownload !== null) {
+    $cardMasker = new DownloadMediaUrlMasker($kernel->media, BasePath::get() . '/content/uploads');
+    $cardBuilder = new DownloadCardBuilder(
+        $downloads,
+        new ContentRenderer(new MarkdownParser(), new HtmlSanitizer(), new HookManager()),
+        static fn (): DownloadMediaUrlMasker => $cardMasker,
+    );
+    $cardImages = $cardBuilder->forDownloads([$editingDownload])[$editingDownload->id];
+    $thumbnailMedia = $editingDownload->thumbnailMediaId !== null ? $kernel->media->find($editingDownload->thumbnailMediaId) : null;
+
+    if ($thumbnailMedia !== null && !str_starts_with((string) $thumbnailMedia['mime_type'], 'image/')) {
+        $thumbnailMedia = null;
+    }
+}
+
+// Looked up on its own: it is the download's file, which can be anything.
 $currentFileMedia = $editingDownload !== null && $editingDownload->type === DownloadType::File && $editingDownload->mediaId !== null
     ? $kernel->media->find($editingDownload->mediaId)
     : null;
@@ -538,6 +588,10 @@ $githubSource = $editingDownload !== null
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Download saved.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['thumbnail_saved'])): ?>
+    <div class="lp-alert lp-alert--success">Thumbnail saved.</div>
 <?php endif; ?>
 
 <?php if ($editingDownload !== null && $editingDownload->url === ''): ?>
@@ -582,20 +636,6 @@ $githubSource = $editingDownload !== null
                 <input type="text" id="download-title" name="title" value="<?= esc_attr($editingDownload->title) ?>" required>
             </p>
 
-            <?php if ($previewMedia !== null): ?>
-                <div class="lp-field lp-download-preview">
-                    <?php if (str_starts_with((string) $previewMedia['mime_type'], 'image/')): ?>
-                        <img
-                            class="lp-download-preview__image"
-                            src="<?= esc_url((string) ($kernel->thumbnails->url($previewMedia, 'medium') ?? $kernel->media->url($previewMedia))) ?>"
-                            alt="<?= esc_attr((string) ($previewMedia['alt_text'] ?? '')) ?>"
-                        >
-                    <?php else: ?>
-                        <span class="lp-download-preview__file" aria-hidden="true"><?= esc_html(strtoupper($kernel->media->typeCategory((string) $previewMedia['mime_type']))) ?></span>
-                        <span class="lp-visually-hidden"><?= esc_html($kernel->media->typeCategory((string) $previewMedia['mime_type'])) ?> file</span>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
 
             <?php $activeDescriptionFormat = $editingDownload->descriptionFormat; ?>
             <p class="lp-field">
@@ -812,6 +852,87 @@ $githubSource = $editingDownload !== null
         </form>
     <?php endif; ?>
 </section>
+
+<?php if ($editingDownload !== null && $cardImages !== null): ?>
+    <?php
+    $slideCount = count($cardImages['slides']);
+    $descriptionImages = $cardImages['descriptionImages'];
+    ?>
+    <section class="lp-admin__panel lp-download-images" id="download-images">
+        <h2>Images</h2>
+        <form method="post" action="<?= esc_url(admin_url('downloads/add-new')) ?>?id=<?= (int) $editingDownload->id ?>">
+            <?= Csrf::field('update_download_thumbnail_' . $editingDownload->id) ?>
+            <input type="hidden" name="form" value="update_download_thumbnail">
+            <input type="hidden" name="id" value="<?= (int) $editingDownload->id ?>">
+
+            <div class="lp-field">
+                <strong id="download-thumbnail-label">Thumbnail</strong>
+                <p class="lp-field__hint">The first image on this download's card in public lists. Choose one from the Media Library; it is not uploaded again.</p>
+                <div
+                    class="lp-featured-image-picker lp-download-images__picker"
+                    data-lp-featured-image-picker
+                    data-picker-url="<?= esc_url(admin_url('downloads/add-new')) ?>"
+                    data-picker-action="<?= esc_attr(FeaturedImageDefaultsController::DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION) ?>"
+                    data-picker-csrf="<?= esc_attr(Csrf::token(FeaturedImageDefaultsController::DOWNLOAD_THUMBNAIL_PICKER_CSRF_ACTION)) ?>"
+                    data-picker-preview-size="medium"
+                    data-media-folders="<?= esc_attr((string) json_encode($editorFolderTree)) ?>"
+                    aria-labelledby="download-thumbnail-label"
+                >
+                    <input type="hidden" name="thumbnail_media_id" data-picker-value value="<?= (int) ($thumbnailMedia['id'] ?? 0) ?>">
+                    <span class="lp-featured-image-picker__chosen lp-download-images__chosen" data-picker-chosen>
+                        <?php if ($thumbnailMedia !== null): ?>
+                            <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url((string) ($kernel->thumbnails->url($thumbnailMedia, 'medium') ?? $kernel->media->url($thumbnailMedia))) ?>" alt="">
+                            <?= esc_html((string) $thumbnailMedia['file_name']) ?>
+                        <?php endif; ?>
+                    </span>
+                    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger><?= $thumbnailMedia !== null ? 'Replace&hellip;' : 'Choose from Media Manager&hellip;' ?></button>
+                    <button type="button" class="lp-button lp-button--link lp-button--link--danger" data-picker-remove <?= $thumbnailMedia === null ? 'hidden' : '' ?>>Remove</button>
+                </div>
+                <?php /* Hidden by CSS while the picker above holds a choice, so it stays right before the page is saved. */ ?>
+                <p class="lp-field__hint lp-download-images__none">No thumbnail is set.
+                    <?= $descriptionImages !== []
+                        ? 'The card starts with the first image in the description instead.'
+                        : 'The card has no image area unless the description contains images.' ?>
+                </p>
+            </div>
+
+            <button type="submit" class="lp-button lp-button--primary">Save Thumbnail</button>
+            <p class="lp-field__hint">Saving here only changes the thumbnail. The description is not touched.</p>
+        </form>
+
+        <h3>Images on the card</h3>
+        <p>
+            <?php if ($slideCount === 0): ?>
+                Visitors will see no image area on this download's card.
+            <?php elseif ($slideCount === 1): ?>
+                Visitors will see 1 image on this download's card, with no carousel controls.
+            <?php else: ?>
+                Visitors will see a carousel of <?= (int) $slideCount ?> images on this download's card.
+            <?php endif; ?>
+            <?php if ($thumbnailMedia === null && $descriptionImages !== []): ?>
+                With no thumbnail, it starts with the first image from the description.
+            <?php endif; ?>
+        </p>
+
+        <?php if ($slideCount > 0): ?>
+            <ol class="lp-download-images__list">
+                <?php foreach ($cardImages['slides'] as $index => $slide): ?>
+                    <li class="lp-download-images__item">
+                        <img class="lp-download-images__thumb" src="<?= esc_url($slide['thumb']) ?>" alt="" loading="lazy">
+                        <span class="lp-download-images__label">
+                            <?= $cardImages['thumbnail'] !== null && $index === 0 ? 'Thumbnail, the first slide' : 'From the description' ?>
+                        </span>
+                    </li>
+                <?php endforeach; ?>
+            </ol>
+            <p class="lp-field__hint">The images from the description are shown here in carousel order and are taken out of the description text on the card. They change when you edit the description above.</p>
+        <?php endif; ?>
+
+        <?php if ($githubSource !== null): ?>
+            <p class="lp-field__hint">This download's screenshots came from GitHub. A thumbnail you choose here is kept when you update from GitHub; an update only moves the thumbnail while it is still the first screenshot.</p>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
 
 <details class="lp-admin__panel">
     <summary>New Category</summary>
