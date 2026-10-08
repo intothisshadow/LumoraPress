@@ -7,9 +7,9 @@
     --lp-admin-sidebar-bg: #23282d;
     --lp-admin-sidebar-fg: #eee;
     --lp-admin-sidebar-fg-muted: #b4b9be;
-    --lp-admin-accent: #2271b1;
+    --lp-admin-accent: #7b4bb8;
     --lp-admin-switch-on: #5cc98b;
-    --lp-admin-accent-hover: #135e96;
+    --lp-admin-accent-hover: #5f378f;
     --lp-admin-on-accent: #fff;
     --lp-admin-text: #1d2327;
     --lp-admin-border: #dcdcde;
@@ -23,25 +23,25 @@
     --lp-admin-warning-bg: #fcf9e8;
     --lp-admin-warning-border: #dba617;
     --lp-admin-warning-text: #664d03;
-    --lp-admin-info-bg: #eef6fc;
-    --lp-admin-info-border: #2271b1;
-    --lp-admin-info-text: #0d3a5c;
+    --lp-admin-info-bg: #f4eefa;
+    --lp-admin-info-border: #7b4bb8;
+    --lp-admin-info-text: #3d2466;
     --lp-admin-radius: 4px;
     --lp-admin-panel-radius: 10px;
     --lp-admin-shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 8px rgba(16, 24, 40, 0.1);
     --lp-admin-shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.1), 0 8px 16px rgba(16, 24, 40, 0.12);
-    --lp-admin-focus-ring: rgba(34, 113, 177, 0.18);
-    --lp-admin-chip-bg: rgba(34, 113, 177, 0.07);
-    --lp-admin-chip-border: rgba(34, 113, 177, 0.3);
+    --lp-admin-focus-ring: rgba(123, 75, 184, 0.18);
+    --lp-admin-chip-bg: rgba(123, 75, 184, 0.07);
+    --lp-admin-chip-border: rgba(123, 75, 184, 0.3);
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.06);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.35);
-    /* Pastel purple for the "View" row-action chip specifically —
+    /* Teal for the "View" row-action chip specifically —
        distinguishes it from the neutral-accent chips (Duplicate,
        Restore, etc.) it used to be visually identical to. */
-    --lp-admin-chip-view-color: #7e57c2;
-    --lp-admin-chip-view-bg: rgba(126, 87, 194, 0.08);
-    --lp-admin-chip-view-border: rgba(126, 87, 194, 0.3);
-    --lp-admin-chip-view-hover-bg: #6a3fb0;
+    --lp-admin-chip-view-color: #0b7a7c;
+    --lp-admin-chip-view-bg: rgba(11, 122, 124, 0.08);
+    --lp-admin-chip-view-border: rgba(11, 122, 124, 0.3);
+    --lp-admin-chip-view-hover-bg: #0a6466;
     /* LP-088/LP-090: form fields and neutral buttons previously reused
        --lp-admin-panel-bg (identical to the card they sit inside), so
        there was no visual signal that they were interactive surfaces
@@ -69,9 +69,9 @@
         --lp-admin-sidebar-fg: #e4e6e8;
         --lp-admin-sidebar-fg-muted: #9aa0a6;
         --lp-admin-switch-on: #6dd498;
-        --lp-admin-accent: #4c9be8;
-        --lp-admin-accent-hover: #6cb0ef;
-        --lp-admin-on-accent: #0b1520;
+        --lp-admin-accent: #b697e6;
+        --lp-admin-accent-hover: #c9b1ee;
+        --lp-admin-on-accent: #14101c;
         --lp-admin-text: #e4e6e8;
         --lp-admin-border: #33383d;
         --lp-admin-panel-bg: #1b1e21;
@@ -84,20 +84,20 @@
         --lp-admin-warning-bg: #332b0f;
         --lp-admin-warning-border: #dba617;
         --lp-admin-warning-text: #f0d68a;
-        --lp-admin-info-bg: #16232e;
-        --lp-admin-info-border: #4c9be8;
-        --lp-admin-info-text: #a9d3f5;
+        --lp-admin-info-bg: #261f33;
+        --lp-admin-info-border: #b697e6;
+        --lp-admin-info-text: #dccff2;
         --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
         --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
-        --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
-        --lp-admin-chip-bg: rgba(76, 155, 232, 0.12);
-        --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
+        --lp-admin-focus-ring: rgba(182, 151, 230, 0.25);
+        --lp-admin-chip-bg: rgba(182, 151, 230, 0.12);
+        --lp-admin-chip-border: rgba(182, 151, 230, 0.4);
         --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
         --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
-        --lp-admin-chip-view-color: #b39ddb;
-        --lp-admin-chip-view-bg: rgba(179, 157, 219, 0.12);
-        --lp-admin-chip-view-border: rgba(179, 157, 219, 0.4);
-        --lp-admin-chip-view-hover-bg: #7e57c2;
+        --lp-admin-chip-view-color: #5fd0d0;
+        --lp-admin-chip-view-bg: rgba(95, 208, 208, 0.12);
+        --lp-admin-chip-view-border: rgba(95, 208, 208, 0.4);
+        --lp-admin-chip-view-hover-bg: #0c7f81;
         --lp-admin-field-bg: #24282c;
         --lp-admin-button-bg: #26292d;
     }
@@ -109,9 +109,9 @@
     --lp-admin-sidebar-fg: #e4e6e8;
     --lp-admin-sidebar-fg-muted: #9aa0a6;
     --lp-admin-switch-on: #6dd498;
-    --lp-admin-accent: #4c9be8;
-    --lp-admin-accent-hover: #6cb0ef;
-    --lp-admin-on-accent: #0b1520;
+    --lp-admin-accent: #b697e6;
+    --lp-admin-accent-hover: #c9b1ee;
+    --lp-admin-on-accent: #14101c;
     --lp-admin-text: #e4e6e8;
     --lp-admin-border: #33383d;
     --lp-admin-panel-bg: #1b1e21;
@@ -124,20 +124,20 @@
     --lp-admin-warning-bg: #332b0f;
     --lp-admin-warning-border: #dba617;
     --lp-admin-warning-text: #f0d68a;
-    --lp-admin-info-bg: #16232e;
-    --lp-admin-info-border: #4c9be8;
-    --lp-admin-info-text: #a9d3f5;
+    --lp-admin-info-bg: #261f33;
+    --lp-admin-info-border: #b697e6;
+    --lp-admin-info-text: #dccff2;
     --lp-admin-shadow: 0 1px 3px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.4);
     --lp-admin-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.45);
-    --lp-admin-focus-ring: rgba(76, 155, 232, 0.25);
-    --lp-admin-chip-bg: rgba(76, 155, 232, 0.12);
-    --lp-admin-chip-border: rgba(76, 155, 232, 0.4);
+    --lp-admin-focus-ring: rgba(182, 151, 230, 0.25);
+    --lp-admin-chip-bg: rgba(182, 151, 230, 0.12);
+    --lp-admin-chip-border: rgba(182, 151, 230, 0.4);
     --lp-admin-chip-danger-bg: rgba(214, 54, 56, 0.14);
     --lp-admin-chip-danger-border: rgba(214, 54, 56, 0.45);
-    --lp-admin-chip-view-color: #b39ddb;
-    --lp-admin-chip-view-bg: rgba(179, 157, 219, 0.12);
-    --lp-admin-chip-view-border: rgba(179, 157, 219, 0.4);
-    --lp-admin-chip-view-hover-bg: #7e57c2;
+    --lp-admin-chip-view-color: #5fd0d0;
+    --lp-admin-chip-view-bg: rgba(95, 208, 208, 0.12);
+    --lp-admin-chip-view-border: rgba(95, 208, 208, 0.4);
+    --lp-admin-chip-view-hover-bg: #0c7f81;
     --lp-admin-field-bg: #24282c;
     --lp-admin-button-bg: #26292d;
 }
@@ -2059,7 +2059,7 @@ body.lp-admin-login {
     position: absolute;
     box-sizing: border-box;
     border: 2px dashed var(--lp-admin-accent);
-    background: rgba(34, 113, 177, 0.15);
+    background: rgba(123, 75, 184, 0.15);
     cursor: move;
 }
 
@@ -4003,7 +4003,7 @@ summary.lp-media-views__chip::after {
     position: absolute;
     box-sizing: border-box;
     border: 2px dashed var(--lp-admin-accent);
-    background: rgba(34, 113, 177, 0.15);
+    background: rgba(123, 75, 184, 0.15);
     cursor: move;
 }
 
@@ -4905,14 +4905,14 @@ select:focus {
     background: var(--lp-admin-accent);
     border-color: var(--lp-admin-accent);
     color: var(--lp-admin-on-accent);
-    box-shadow: 0 1px 2px rgba(34, 113, 177, 0.25);
+    box-shadow: 0 1px 2px rgba(123, 75, 184, 0.25);
 }
 
 .lp-button--primary:hover {
     background: var(--lp-admin-accent-hover);
     border-color: var(--lp-admin-accent-hover);
     color: var(--lp-admin-on-accent);
-    box-shadow: 0 2px 6px rgba(34, 113, 177, 0.3);
+    box-shadow: 0 2px 6px rgba(123, 75, 184, 0.3);
 }
 
 .lp-button--secondary {

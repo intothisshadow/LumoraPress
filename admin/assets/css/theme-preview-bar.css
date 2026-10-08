@@ -12,14 +12,14 @@
 :root {
     --lp-preview-bar-bg: #1d2327;
     --lp-preview-bar-fg: #ffffff;
-    --lp-preview-bar-accent: #4c9be8;
+    --lp-preview-bar-accent: #b697e6;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
         --lp-preview-bar-bg: #101214;
         --lp-preview-bar-fg: #e4e6e8;
-        --lp-preview-bar-accent: #6cb0ef;
+        --lp-preview-bar-accent: #c9b1ee;
     }
 }
 
