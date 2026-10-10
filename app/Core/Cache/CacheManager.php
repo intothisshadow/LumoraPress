@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Cache;
 
+use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\PressConfig;
 
 /**
@@ -33,6 +34,19 @@ final class CacheManager
 
     private const PURGE_LOG_LIMIT = 20;
 
+    /**
+     * Public page kinds the administrator can switch caching on or off for
+     * individually (option `cache_type_{key}`, on unless set to '0').
+     */
+    public const CONTENT_TYPES = [
+        'home' => 'Homepage and posts listing',
+        'pages' => 'Pages',
+        'categories' => 'Category archives',
+        'tags' => 'Tag archives',
+        'archives' => 'Date and author archives',
+        'search' => 'Search results',
+    ];
+
     private bool $pageCacheable = false;
 
     private bool $disabled = false;
@@ -42,10 +56,14 @@ final class CacheManager
     /** @var array<int, string> */
     private array $tags = [];
 
+    /**
+     * @param array<string, CacheDriverInterface> $registeredDrivers every driver selectable on Settings > Cache, keyed by slug
+     */
     public function __construct(
         private readonly PressConfig $config,
         private readonly CacheDriverInterface $driver,
         private readonly string $installRoot,
+        private readonly array $registeredDrivers = [],
     ) {
     }
 
@@ -53,12 +71,18 @@ final class CacheManager
      * Opts the current response into HTTP caching, with cache tags
      * attached for later purgeTag() calls. Only call this for a response
      * safe to serve identically to every visitor — no embedded
-     * per-session CSRF form, no user-specific content.
+     * per-session CSRF form, no user-specific content. A $contentType from
+     * CONTENT_TYPES lets the administrator switch that kind of page off;
+     * an unknown type is always allowed.
      *
      * @param array<int, string> $tags
      */
-    public function markPageCacheable(array $tags = []): void
+    public function markPageCacheable(array $tags = [], string $contentType = 'other'): void
     {
+        if (isset(self::CONTENT_TYPES[$contentType]) && $this->config->option('cache_type_' . $contentType, '1') === '0') {
+            return;
+        }
+
         $this->pageCacheable = true;
         $this->registerTags($tags);
     }
@@ -100,12 +124,85 @@ final class CacheManager
      */
     public function isCacheable(): bool
     {
-        return $this->pageCacheable && !$this->disabled && $this->config->option('cache_enabled', '1') !== '0';
+        return $this->pageCacheable
+            && !$this->disabled
+            && $this->config->option('cache_enabled', '1') !== '0'
+            && !$this->requestPathExcluded();
+    }
+
+    private function requestPathExcluded(): bool
+    {
+        $patterns = (string) $this->config->option('cache_exclusions', '');
+
+        if ($patterns === '') {
+            return false;
+        }
+
+        // Patterns are written relative to the site, so a subdirectory
+        // install's base path is removed first, as the router does.
+        $path = (string) (parse_url(BasePath::stripFrom((string) ($_SERVER['REQUEST_URI'] ?? '/')), PHP_URL_PATH) ?? '/');
+
+        return CacheExclusions::matches($path, $patterns);
     }
 
     public function driverName(): string
     {
         return $this->driver->name();
+    }
+
+    /**
+     * Slugs of every driver selectable on Settings > Cache, built-in and
+     * plugin-registered, so the admin select never has to hardcode them.
+     *
+     * @return array<int, string>
+     */
+    public function registeredDriverSlugs(): array
+    {
+        return array_keys($this->registeredDrivers);
+    }
+
+    /**
+     * Plain-language problems with the current cache settings, for the
+     * admin screen. Advisory only; nothing here blocks saving.
+     *
+     * @return array<int, string>
+     */
+    public function configurationWarnings(string $serverSoftware): array
+    {
+        $warnings = [];
+        $enabled = $this->config->option('cache_enabled', '1') !== '0';
+        $override = (string) $this->config->option('cache_driver', 'auto');
+        $serverIsLiteSpeed = str_contains(strtolower($serverSoftware), 'litespeed');
+
+        if ($enabled && (int) $this->config->option('cache_default_lifetime', '3600') === 0) {
+            $warnings[] = 'The default cache lifetime is 0, so cacheable pages are marked as already stale and nothing is actually reused. Set a lifetime above 0 or turn HTTP caching off.';
+        }
+
+        if ($override === 'litespeed' && !$serverIsLiteSpeed) {
+            $warnings[] = 'The cache driver is forced to LiteSpeed, but this server does not identify as LiteSpeed. Purge requests will be sent and then ignored. Switch the driver to automatic detection unless a LiteSpeed proxy sits in front of this site.';
+        }
+
+        if (!$enabled && $this->driver->name() !== 'null') {
+            $warnings[] = 'HTTP caching is turned off while a ' . $this->driver->name() . ' cache is active. Pages are sent as uncacheable, but the cache is still purged on every content change.';
+        }
+
+        if ($enabled) {
+            $anyTypeCached = false;
+
+            foreach (array_keys(self::CONTENT_TYPES) as $type) {
+                $anyTypeCached = $anyTypeCached || $this->config->option('cache_type_' . $type, '1') !== '0';
+            }
+
+            if (!$anyTypeCached) {
+                $warnings[] = 'HTTP caching is on, but every kind of page is switched off under "What gets cached", so nothing will be cached.';
+            }
+        }
+
+        if ($override !== 'auto' && !isset($this->registeredDrivers[$override])) {
+            $warnings[] = 'The selected cache driver "' . $override . '" is not available (a plugin that provided it may have been deactivated). The None driver is being used instead.';
+        }
+
+        return $warnings;
     }
 
     public function driverAvailable(): bool
@@ -134,7 +231,7 @@ final class CacheManager
         }
 
         $lifetime = $this->lifetime ?? max(0, (int) $this->config->option('cache_default_lifetime', '3600'));
-        $etag = '"' . md5($body) . '"';
+        $etag = self::etagFor($body);
 
         header('Cache-Control: public, max-age=' . $lifetime);
         header('ETag: ' . $etag);
@@ -147,15 +244,58 @@ final class CacheManager
             header('X-LiteSpeed-Cache-Control: public,max-age=' . $lifetime);
         }
 
-        $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? trim($_SERVER['HTTP_IF_NONE_MATCH']) : null;
+        $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? $_SERVER['HTTP_IF_NONE_MATCH'] : '';
 
-        if ($ifNoneMatch === $etag) {
+        if (self::ifNoneMatchMatches($ifNoneMatch, $etag)) {
+            // A browser applies a 304's headers to the copy it already holds.
+            // This request's fresh CSP nonce would not match the nonce in
+            // that stored body, so the stored policy must stay in force.
+            header_remove('Content-Security-Policy');
+            header_remove('Content-Security-Policy-Report-Only');
             http_response_code(304);
 
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Content-hash ETag that ignores CSP nonces. Every response carries a
+     * fresh per-request nonce in its inline tags, so hashing the raw body
+     * would give a different ETag each time and no 304 could ever match.
+     */
+    public static function etagFor(string $body): string
+    {
+        return '"' . md5(preg_replace('/\snonce="[^"]*"/', '', $body) ?? $body) . '"';
+    }
+
+    /**
+     * Whether any validator in an If-None-Match header names $etag. Weak
+     * markers and the content-coding suffix Apache's mod_deflate (or
+     * nginx/brotli modules) appends to the ETag it sends on compressed
+     * responses ("abc-gzip") are ignored, otherwise the browser's
+     * revalidation never matches on a compressing host and a 304 is
+     * never answered.
+     */
+    public static function ifNoneMatchMatches(string $header, string $etag): bool
+    {
+        foreach (explode(',', $header) as $candidate) {
+            $candidate = trim($candidate);
+
+            if ($candidate === '*') {
+                return true;
+            }
+
+            $candidate = preg_replace('/^W\//', '', $candidate) ?? $candidate;
+            $candidate = preg_replace('/-(?:gzip|br|deflate|zstd)"$/', '"', $candidate) ?? $candidate;
+
+            if ($candidate !== '' && $candidate === $etag) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function hasSentHeader(string $name): bool

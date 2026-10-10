@@ -14,6 +14,9 @@
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
 
+use LumoraPress\Core\Cache\CacheExclusions;
+use LumoraPress\Core\Cache\CacheManager;
+use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Security\Csrf;
 
 if (!isset($kernel)) {
@@ -32,7 +35,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('cache_default_lifetime', (string) max(0, (int) ($_POST['cache_default_lifetime'] ?? 3600)));
 
         $driverOverride = (string) ($_POST['cache_driver'] ?? 'auto');
-        $kernel->config->setOption('cache_driver', in_array($driverOverride, ['auto', 'null', 'litespeed'], true) ? $driverOverride : 'auto');
+        $kernel->config->setOption('cache_driver', in_array($driverOverride, array_merge(['auto'], $cache->registeredDriverSlugs()), true) ? $driverOverride : 'auto');
+
+        foreach (array_keys(CacheManager::CONTENT_TYPES) as $contentType) {
+            $kernel->config->setOption('cache_type_' . $contentType, ($_POST['cache_type_' . $contentType] ?? '') === '1' ? '1' : '0');
+        }
+
+        // Normalised through the parser so comments, blank lines and stray
+        // spaces never reach the stored value.
+        $exclusions = is_string($_POST['cache_exclusions'] ?? null) ? implode("\n", CacheExclusions::parse(mb_substr($_POST['cache_exclusions'], 0, 5000))) : '';
+        $kernel->config->setOption('cache_exclusions', $exclusions);
 
         header('Location: ' . admin_url('settings/cache') . '?saved=1');
         exit;
@@ -44,6 +56,34 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         header('Location: ' . admin_url('settings/cache') . '?purged=1');
         exit;
     }
+
+    if ($form === 'purge_home' && Csrf::verify('purge_home', $token)) {
+        $cache->purgeUrl(BasePath::get() . '/');
+
+        header('Location: ' . admin_url('settings/cache') . '?purged=1');
+        exit;
+    }
+
+    if ($form === 'purge_url' && Csrf::verify('purge_url', $token)) {
+        // Only a path on this site is purged; a pasted full address is
+        // reduced to its path and a foreign host is rejected.
+        $submitted = trim(is_string($_POST['purge_url'] ?? null) ? $_POST['purge_url'] : '');
+        $parts = parse_url($submitted);
+        $siteHost = (string) parse_url(site_url('/'), PHP_URL_HOST);
+        $path = is_array($parts) ? (string) ($parts['path'] ?? '') : '';
+        $hostMatches = !is_array($parts) || !isset($parts['host']) || strcasecmp((string) $parts['host'], $siteHost) === 0;
+
+        if ($submitted !== '' && $hostMatches && $path !== '' && $path[0] === '/' && strlen($path) <= 500 && preg_match('/[\x00-\x1f\x7f\s,]/', $path) !== 1) {
+            // The edge cache keys on the full URL path, so a subdirectory
+            // install's base path is always part of what gets purged.
+            $cache->purgeUrl(BasePath::get() . BasePath::stripFrom($path));
+            header('Location: ' . admin_url('settings/cache') . '?purged=1');
+        } else {
+            header('Location: ' . admin_url('settings/cache') . '?purge_invalid=1');
+        }
+
+        exit;
+    }
 }
 
 $driverName = $cache->driverName();
@@ -52,6 +92,10 @@ $cacheEnabled = $kernel->config->option('cache_enabled', '1') !== '0';
 $defaultLifetime = (string) $kernel->config->option('cache_default_lifetime', '3600');
 $driverOverride = (string) $kernel->config->option('cache_driver', 'auto');
 $recentPurges = $cache->recentPurges();
+$configurationWarnings = $cache->configurationWarnings($serverSoftware);
+$exclusionsValue = (string) $kernel->config->option('cache_exclusions', '');
+// Plugins can add their own rows (e.g. a CDN's connection status) here.
+$extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], $cache), static fn ($value, $label): bool => is_string($label) && is_scalar($value), ARRAY_FILTER_USE_BOTH);
 ?>
 <h1 class="lp-admin__title">Cache</h1>
 
@@ -63,13 +107,27 @@ $recentPurges = $cache->recentPurges();
     <div class="lp-alert lp-alert--success">Cache purged.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['purge_invalid'])): ?>
+    <div class="lp-alert lp-alert--error">That isn't a page on this site. Enter a path such as <code>/about</code>, or a full address on this site.</div>
+<?php endif; ?>
+
+<?php if ($configurationWarnings !== []): ?>
+    <div class="lp-alert lp-alert--warning">
+        <ul>
+            <?php foreach ($configurationWarnings as $warning): ?>
+                <li><?= esc_html($warning) ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+<?php endif; ?>
+
 <section class="lp-admin__panel lp-update__status-bar">
     <div class="lp-update__status-group">
         <p class="lp-update__status-label">Detected Cache Driver</p>
         <p class="lp-update__status-value">
-            <?= $driverName === 'litespeed' ? 'LiteSpeed Cache' : 'None (Null driver)' ?>
-            <span class="lp-status-badge <?= $driverName === 'litespeed' ? 'lp-status-badge--success' : 'lp-status-badge--warning' ?>">
-                <?= $driverName === 'litespeed' ? 'Active' : 'No cache integration' ?>
+            <?= esc_html($driverName === 'litespeed' ? 'LiteSpeed Cache' : ($driverName === 'null' ? 'None (Null driver)' : $driverName)) ?>
+            <span class="lp-status-badge <?= $driverName !== 'null' ? 'lp-status-badge--success' : 'lp-status-badge--warning' ?>">
+                <?= $driverName !== 'null' ? 'Active' : 'No cache integration' ?>
             </span>
         </p>
         <p class="lp-update__status-label">Detected Web Server</p>
@@ -78,8 +136,8 @@ $recentPurges = $cache->recentPurges();
     <div class="lp-update__status-group">
         <p class="lp-update__status-label">Cache Status</p>
         <p class="lp-update__status-value">
-            <span class="lp-status-badge <?= $cacheEnabled && $driverName === 'litespeed' ? 'lp-status-badge--success' : 'lp-status-badge--warning' ?>">
-                <?= $cacheEnabled ? ($driverName === 'litespeed' ? 'Enabled, LiteSpeed active' : 'Enabled, nothing to purge') : 'Disabled' ?>
+            <span class="lp-status-badge <?= $cacheEnabled && $driverName !== 'null' ? 'lp-status-badge--success' : 'lp-status-badge--warning' ?>">
+                <?= $cacheEnabled ? ($driverName !== 'null' ? 'Enabled, ' . esc_html($driverName) . ' active' : 'Enabled, nothing to purge') : 'Disabled' ?>
             </span>
         </p>
         <p class="lp-update__status-label">Default Cache Lifetime</p>
@@ -87,23 +145,23 @@ $recentPurges = $cache->recentPurges();
     </div>
 </section>
 
-<?php if ($driverName !== 'litespeed'): ?>
+<?php if ($driverName === 'null'): ?>
     <div class="lp-alert lp-alert--warning">
         No supported reverse-proxy/edge cache was detected on this server. Lumora Press still sends standard
         HTTP caching headers (<code>Cache-Control</code>, <code>ETag</code>, conditional <code>304</code>
         responses) on every cacheable public page, which browsers and any CDN in front of this site will
         still honor &mdash; there just isn't a LiteSpeed-specific purge integration active. Only LiteSpeed/
-        OpenLiteSpeed is supported today; Cloudflare, Varnish, and other reverse proxies are planned for a
-        future release.
+        OpenLiteSpeed is supported out of the box; a plugin can add support for other caches and CDNs.
     </div>
 <?php endif; ?>
 
+<form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+    <?= Csrf::field('cache_settings') ?>
+    <input type="hidden" name="form" value="cache_settings">
+
 <section class="lp-admin__panel">
     <h2>Settings</h2>
-    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
-        <?= Csrf::field('cache_settings') ?>
-        <input type="hidden" name="form" value="cache_settings">
-
+    <div>
         <label class="lp-field--checkbox">
             <input type="checkbox" name="cache_enabled" value="1" <?= $cacheEnabled ? 'checked' : '' ?>>
             Enable HTTP caching
@@ -116,6 +174,11 @@ $recentPurges = $cache->recentPurges();
                 <option value="auto" <?= $driverOverride === 'auto' ? 'selected' : '' ?>>Automatic detection (recommended)</option>
                 <option value="litespeed" <?= $driverOverride === 'litespeed' ? 'selected' : '' ?>>LiteSpeed (force on)</option>
                 <option value="null" <?= $driverOverride === 'null' ? 'selected' : '' ?>>None (force off, HTTP headers only)</option>
+                <?php foreach ($cache->registeredDriverSlugs() as $driverSlug): ?>
+                    <?php if (!in_array($driverSlug, ['litespeed', 'null'], true)): ?>
+                        <option value="<?= esc_attr($driverSlug) ?>" <?= $driverOverride === $driverSlug ? 'selected' : '' ?>><?= esc_html($driverSlug) ?> (from a plugin)</option>
+                    <?php endif; ?>
+                <?php endforeach; ?>
             </select>
             <span class="lp-field__hint">Automatic detection checks the web server and the <code>X-LSCACHE</code> request header LiteSpeed's cache module adds. Override this only if detection guesses wrong on your host.</span>
         </p>
@@ -126,9 +189,38 @@ $recentPurges = $cache->recentPurges();
             <span class="lp-field__hint">How long a cacheable public page may be reused before it's considered stale. Content changes purge the cache immediately regardless of this value — see "Automatic Invalidation" below.</span>
         </p>
 
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
+    </div>
 </section>
+
+<section class="lp-admin__panel">
+    <h2>What Gets Cached</h2>
+    <p>Choose which kinds of public page may be cached for visitors who aren't logged in.</p>
+    <?php foreach (CacheManager::CONTENT_TYPES as $typeKey => $typeLabel): ?>
+        <div>
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="cache_type_<?= esc_attr($typeKey) ?>" value="1" <?= $kernel->config->option('cache_type_' . $typeKey, '1') !== '0' ? 'checked' : '' ?>>
+                <?= esc_html($typeLabel) ?>
+            </label>
+        </div>
+    <?php endforeach; ?>
+    <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
+        <li>Not controlled here: feeds send their own caching headers, and the web server delivers uploaded files directly.</li>
+        <li>Never cached: every admin page, anything requested by a logged-in visitor, a single post's page, and any page that contains a form, such as a comment form or a contact form. Those carry a one-time token that must never be shared between visitors.</li>
+        <li>A logged-in visitor never receives a cached response, and a cached guest response is never served to a logged-in visitor &mdash; enforced per-request, not by a header a shared cache might ignore.</li>
+    </ul>
+</section>
+
+<section class="lp-admin__panel">
+    <h2>Never Cache</h2>
+    <p class="lp-field">
+        <label for="cache-exclusions">Pages to leave out of the cache</label>
+        <textarea id="cache-exclusions" name="cache_exclusions" rows="5" spellcheck="false"><?= esc_html($exclusionsValue) ?></textarea>
+        <span class="lp-field__hint">One path per line, such as <code>/members</code> or <code>/shop/*</code>. A <code>*</code> matches any characters. Only the path is compared, not the part after a <code>?</code>. Lines starting with <code>#</code> are ignored.</span>
+    </p>
+</section>
+
+<p><button type="submit" class="lp-button lp-button--primary">Save</button></p>
+</form>
 
 <section class="lp-admin__panel">
     <h2>Manual Purge</h2>
@@ -138,21 +230,64 @@ $recentPurges = $cache->recentPurges();
         <input type="hidden" name="form" value="purge_all">
         <button type="submit" class="lp-button lp-button--danger">Purge Entire Cache</button>
     </form>
+
+    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+        <?= Csrf::field('purge_home') ?>
+        <input type="hidden" name="form" value="purge_home">
+        <button type="submit" class="lp-button lp-button--secondary">Purge Homepage</button>
+    </form>
+
+    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+        <?= Csrf::field('purge_url') ?>
+        <input type="hidden" name="form" value="purge_url">
+        <p class="lp-field">
+            <label for="cache-purge-url">Purge one page</label>
+            <input type="text" id="cache-purge-url" name="purge_url" placeholder="/about" maxlength="500" required>
+            <span class="lp-field__hint">A path such as <code>/about</code>, or the page's full address.</span>
+        </p>
+        <button type="submit" class="lp-button lp-button--secondary">Purge Page</button>
+    </form>
+</section>
+
+<section class="lp-admin__panel" data-lp-cache-test>
+    <h2>Test Cache Headers</h2>
+    <p>Requests your homepage the way an anonymous visitor would, then asks for it again to check that the server answers <code>304 Not Modified</code>.</p>
+    <button type="button" class="lp-button lp-button--secondary" data-lp-cache-test-run data-lp-cache-test-url="<?= esc_attr(site_url('/')) ?>">Run Test</button>
+    <p class="lp-field__hint" data-lp-cache-test-status role="status" aria-live="polite"></p>
+    <table class="lp-table" data-lp-cache-test-results hidden>
+        <thead>
+            <tr>
+                <th scope="col">Check</th>
+                <th scope="col">Result</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <?php if ($driverName === 'litespeed'): ?>
+        <p class="lp-field__hint">LiteSpeed removes its own <code>X-LiteSpeed-Tag</code> and <code>X-LiteSpeed-Cache-Control</code> headers before a page reaches the browser, so they can't be shown here. <code>X-LiteSpeed-Cache</code> reads <code>hit</code> when the page came from the cache.</p>
+    <?php endif; ?>
 </section>
 
 <section class="lp-admin__panel">
     <h2>Automatic Invalidation</h2>
-    <p>The entire cache is purged automatically whenever any of the following change: posts, pages, categories, tags, comments (posted or moderated), or any site setting/widget/menu/theme option. This is a deliberate simplicity trade-off for now &mdash; always correct, though less targeted than purging only the specific pages a change actually affects.</p>
+    <p>The entire cache is purged automatically whenever any of the following change: posts, pages, categories, tags, media, users (name or avatar changes), comments (posted or moderated), or any site setting/widget/menu/theme option. This is a deliberate simplicity trade-off for now &mdash; always correct, though less targeted than purging only the specific pages a change actually affects.</p>
 </section>
 
-<section class="lp-admin__panel">
-    <h2>What Gets Cached</h2>
-    <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
-        <li>Cacheable for guests: the homepage, category/tag/date archives, search results, and standalone pages.</li>
-        <li>Never cached: every admin page, anything requested by a logged-in visitor, and a single post's page (it embeds a one-time comment form token that must never be shared between visitors).</li>
-        <li>A logged-in visitor never receives a cached response, and a cached guest response is never served to a logged-in visitor &mdash; enforced per-request, not by a header a shared cache might ignore.</li>
-    </ul>
-</section>
+<?php if ($extraDiagnostics !== []): ?>
+    <section class="lp-admin__panel">
+        <h2>Diagnostics</h2>
+        <table class="lp-table">
+            <tbody>
+                <?php foreach ($extraDiagnostics as $diagnosticLabel => $diagnosticValue): ?>
+                    <tr>
+                        <th scope="row"><?= esc_html($diagnosticLabel) ?></th>
+                        <td><?= esc_html((string) $diagnosticValue) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </section>
+<?php endif; ?>
 
 <section class="lp-admin__panel">
     <h2>Recent Purges</h2>

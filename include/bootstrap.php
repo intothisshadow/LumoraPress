@@ -317,7 +317,7 @@ $themeCompatibility = new ThemeCompatibility($themesPath, (string) (require LUMO
 $themeInstaller = new ThemeInstaller($themesPath, $themes, $themeCompatibility);
 $themeFileEditor = new ThemeFileEditor($themesPath, LUMORA_ROOT . '/storage/theme-file-backups');
 
-$users = new UserService($database, $tablePrefix);
+$users = new UserService($database, $tablePrefix, $hooks);
 $auth = new Auth($users, $sessions);
 $editorPreferences = new EditorPreferenceService($config, $users, $hooks);
 ActiveEditorPreference::set($editorPreferences);
@@ -736,20 +736,39 @@ $installPing = new InstallPingService($config, (string) $appVersion['version']);
 // convention above.
 $settingsPortability = new SettingsPortabilityService($config, LUMORA_ROOT . '/storage/settings-imports', (string) $appVersion['version']);
 
-// Driver auto-detection, with a manual override (Settings > Cache) for
-// a host where detection guesses wrong. Falls back to the inert Null
-// driver when LiteSpeed isn't actually available.
-$cacheDriverOverride = (string) $config->option('cache_driver', 'auto');
-$cacheDriver = match ($cacheDriverOverride) {
-    'litespeed' => new LiteSpeedCacheDriver(),
-    'null' => new NullCacheDriver(),
-    default => (static function (): CacheDriverInterface {
-        $liteSpeed = new LiteSpeedCacheDriver();
+// Built-in drivers plus any a plugin registers through the 'cache_drivers'
+// filter (plugins are already loaded at this point). The filter result is
+// sanitized so a careless plugin can't break the cache screen or drop a
+// built-in driver.
+$builtInCacheDrivers = ['litespeed' => new LiteSpeedCacheDriver(), 'null' => new NullCacheDriver()];
+$cacheDrivers = $builtInCacheDrivers;
 
-        return $liteSpeed->isAvailable() ? $liteSpeed : new NullCacheDriver();
-    })(),
-};
-$cache = new CacheManager($config, $cacheDriver, LUMORA_ROOT);
+foreach ((array) apply_filters('cache_drivers', []) as $driverSlug => $pluginCacheDriver) {
+    if ($pluginCacheDriver instanceof CacheDriverInterface && is_string($driverSlug) && preg_match('/^[a-z0-9_-]+$/', $driverSlug) === 1 && !isset($builtInCacheDrivers[$driverSlug])) {
+        $cacheDrivers[$driverSlug] = $pluginCacheDriver;
+    }
+}
+
+// Automatic detection prefers LiteSpeed, then the first plugin driver that
+// reports itself available, and otherwise falls back to the inert Null
+// driver. Settings > Cache can force a specific one where detection guesses
+// wrong; a forced driver that no longer exists (its plugin was deactivated)
+// also falls back to Null rather than breaking the site.
+$cacheDriverOverride = (string) $config->option('cache_driver', 'auto');
+$cacheDriver = $cacheDrivers[$cacheDriverOverride] ?? (static function () use ($cacheDrivers, $builtInCacheDrivers, $cacheDriverOverride): CacheDriverInterface {
+    if ($cacheDriverOverride !== 'auto') {
+        return $builtInCacheDrivers['null'];
+    }
+
+    foreach ($cacheDrivers as $candidate) {
+        if ($candidate->name() !== 'null' && $candidate->isAvailable()) {
+            return $candidate;
+        }
+    }
+
+    return $builtInCacheDrivers['null'];
+})();
+$cache = new CacheManager($config, $cacheDriver, LUMORA_ROOT, $cacheDrivers);
 
 // Automatic invalidation: every content-change action, plus the generic
 // 'option_changed', purges the whole cache. A blanket purgeAll() rather
@@ -761,6 +780,7 @@ foreach ([
     'tag_saved', 'tag_deleted',
     'comment_posted', 'comment_status_changed', 'comment_deleted',
     'media_saved', 'media_deleted',
+    'user_saved', 'user_deleted',
 ] as $cachePurgeAction) {
     $hooks->addAction($cachePurgeAction, static function () use ($cache): void {
         $cache->purgeAll();

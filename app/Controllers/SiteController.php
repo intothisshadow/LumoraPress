@@ -100,7 +100,7 @@ final class SiteController
             $homepagePage = $homepagePageId > 0 ? $this->pages->findById($homepagePageId) : null;
 
             if ($homepagePage !== null && $homepagePage->isPubliclyVisible()) {
-                $this->markCacheableForGuests(['page_' . $homepagePage->id]);
+                $this->markCacheableForGuests(['page_' . $homepagePage->id], 'home');
                 $this->theme->render('page.php', [
                     'page_title' => $homepagePage->title,
                     'page' => $homepagePage,
@@ -184,10 +184,10 @@ final class SiteController
      *
      * @param array<int, string> $tags
      */
-    private function markCacheableForGuests(array $tags = []): void
+    private function markCacheableForGuests(array $tags, string $contentType): void
     {
         if (!$this->auth->check()) {
-            $this->cache->markPageCacheable($tags);
+            $this->cache->markPageCacheable($tags, $contentType);
         }
     }
 
@@ -196,7 +196,7 @@ final class SiteController
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $pagination = $this->posts->paginatePublished($page, $this->postsPerPage());
 
-        $this->markCacheableForGuests(['posts']);
+        $this->markCacheableForGuests(['posts'], 'home');
         $this->theme->render('index.php', [
             'page_title' => $pageTitle,
             'posts' => $pagination['posts'],
@@ -920,7 +920,7 @@ final class SiteController
             return;
         }
 
-        $this->markCacheableForGuests(['posts', 'author_' . $author->id]);
+        $this->markCacheableForGuests(['posts', 'author_' . $author->id], 'archives');
         $this->theme->render('archive.php', [
             'page_title' => $author->displayName,
             'archive_type' => 'author',
@@ -971,7 +971,7 @@ final class SiteController
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $pagination = $this->posts->paginateByCategory($category->id, $page, $this->postsPerPage());
 
-        $this->markCacheableForGuests(['posts', 'category_' . $category->id]);
+        $this->markCacheableForGuests(['posts', 'category_' . $category->id], 'categories');
         $this->theme->render('archive.php', [
             'page_title' => $category->name,
             'archive_type' => 'category',
@@ -1005,7 +1005,7 @@ final class SiteController
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $pagination = $this->posts->paginateByTag($tag->id, $page, $this->postsPerPage());
 
-        $this->markCacheableForGuests(['posts', 'tag_' . $tag->id]);
+        $this->markCacheableForGuests(['posts', 'tag_' . $tag->id], 'tags');
         // A theme may provide tag.php for tag-archive-specific markup;
         // every theme already ships archive.php as the fallback (LP-011).
         $this->theme->renderFirstAvailable(['tag.php', 'archive.php'], [
@@ -1026,7 +1026,7 @@ final class SiteController
         $page = max(1, (int) ($_GET['paged'] ?? 1));
         $pagination = $this->posts->paginatePublished($page, $this->postsPerPage());
 
-        $this->markCacheableForGuests(['posts']);
+        $this->markCacheableForGuests(['posts'], 'archives');
         $this->theme->render('archive.php', [
             'page_title' => 'Archive',
             'archive_type' => 'date',
@@ -1056,7 +1056,7 @@ final class SiteController
         $pagination = $this->posts->paginateByMonth($year, $month, $page, $this->postsPerPage());
         $monthName = (new DateTimeImmutable())->setDate($year, $month, 1)->format('F Y');
 
-        $this->markCacheableForGuests(['posts']);
+        $this->markCacheableForGuests(['posts'], 'archives');
         $this->theme->render('archive.php', [
             'page_title' => $monthName,
             'archive_type' => 'date',
@@ -1096,7 +1096,7 @@ final class SiteController
             $this->users->addRecentSearch($currentUser->id, $results['query'], SearchService::RECENT_SEARCH_LIMIT);
         }
 
-        $this->markCacheableForGuests(['search']);
+        $this->markCacheableForGuests(['search'], 'search');
         $this->theme->render('search.php', [
             'page_title' => 'Search',
             'query' => $results['query'],
@@ -1138,7 +1138,7 @@ final class SiteController
             }
         }
 
-        $this->markCacheableForGuests(['search']);
+        $this->markCacheableForGuests(['search'], 'search');
         $this->sendSearchJson($payload);
     }
 
@@ -1206,7 +1206,7 @@ final class SiteController
         $text = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 200) : '';
         $suggestions = $this->search->suggestionsEnabled() ? $this->search->suggestTitles($text) : [];
 
-        $this->markCacheableForGuests(['search']);
+        $this->markCacheableForGuests(['search'], 'search');
         $this->sendSearchJson(['suggestions' => $suggestions]);
     }
 
@@ -1239,7 +1239,7 @@ final class SiteController
             return;
         }
 
-        $this->markCacheableForGuests(['page_' . $page->id]);
+        $this->markCacheableForGuests(['page_' . $page->id], 'pages');
         $this->theme->render('page.php', [
             'page_title' => $page->title,
             'page' => $page,

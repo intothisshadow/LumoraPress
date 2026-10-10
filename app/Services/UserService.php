@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\ThemePreference;
 use LumoraPress\Models\User;
@@ -43,6 +44,7 @@ final class UserService
     public function __construct(
         private readonly Database $database,
         private readonly string $tablePrefix,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -327,6 +329,9 @@ final class UserService
             throw new \RuntimeException('Failed to load the user that was just updated.');
         }
 
+        // The display name and role appear in bylines and author archives.
+        $this->hooks?->doAction('user_saved', $user);
+
         return $user;
     }
 
@@ -594,6 +599,10 @@ final class UserService
 
         unset($this->findByIdCache[$id]);
 
+        if ($deleted) {
+            $this->hooks?->doAction('user_deleted', $id);
+        }
+
         return $deleted;
     }
 
@@ -613,6 +622,10 @@ final class UserService
 
         unset($this->findByIdCache[$id]);
 
+        if ($trashed) {
+            $this->hooks?->doAction('user_deleted', $id);
+        }
+
         return $trashed;
     }
 
@@ -624,6 +637,10 @@ final class UserService
         ) > 0;
 
         unset($this->findByIdCache[$id]);
+
+        if ($restored) {
+            $this->hooks?->doAction('user_saved', $this->findById($id));
+        }
 
         return $restored;
     }
@@ -731,6 +748,7 @@ final class UserService
         );
 
         unset($this->findByIdCache[$id]);
+        $this->hooks?->doAction('user_saved', $this->findById($id));
     }
 
     /**

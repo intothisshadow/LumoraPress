@@ -30,6 +30,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Pages that contain a form are no longer cached for visitors. A page with an open comment form or a Contact Forms form was being sent as cacheable, so a cache in front of the site could hand one visitor's one-time form token to everyone else and make their comment or message fail. Any page that carries such a token is now always sent as uncacheable.
+- "304 Not Modified" answers now actually work. A page's validator changed on every request, because each response carries its own security nonce, and on Apache with compression the browser sent the validator back with a "-gzip" suffix that never matched. Repeat visits now get a short 304 reply instead of the whole page again.
 - Lumora Classic: a menu item's sub-items (a dropdown) no longer get cut off. The header clipped everything that extended below it, so a dropdown opening from the main menu was almost completely hidden. The header image still follows the header's rounded corners.
 - A user's login name can no longer end up as their public name. An account saved with no Display Name used to be given its login name as one, which then appeared on bylines, in the author page address, and under comments. Now a blank Display Name, or one identical to the login name, becomes a neutral "Member 7"-style name. This applies when an account is created or edited, when users are imported (including from WordPress), and to existing accounts: on update, any account whose Display Name already matched its login is renamed the same way, and can be changed on the Users screen. The Users screen also now refuses a Display Name identical to the Username for every role, including Subscriber, where a blank one is still allowed.
 - Lumora Classic: the Downloads list no longer sits inside a gray bordered box, and its cards now use the full content width on phones instead of being indented by the post's list padding.
@@ -39,6 +41,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Settings › Cache has a **What Gets Cached** panel with a switch for each kind of public page: the homepage and posts listing, pages, category archives, tag archives, date and author archives, and search results. A **Never Cache** box takes paths to leave out of the cache, one per line, such as `/members` or `/shop/*`.
+- Settings › Cache can purge the homepage or one page by its path or address, instead of only the whole cache.
+- Settings › Cache has a **Test Cache Headers** panel that requests your homepage the way a visitor would and shows its `Cache-Control`, `ETag`, `Vary`, and LiteSpeed hit/miss headers, then checks that a repeat request gets a 304.
+- Settings › Cache warns about settings that don't make sense together, such as a cache lifetime of 0, the driver forced to LiteSpeed on a server that isn't LiteSpeed, or every kind of page switched off.
+- The cache is now purged when a user's name, role, or avatar changes, since they appear on every post they wrote.
+- Plugins can add cache drivers (for a CDN or another reverse proxy) and extra Settings › Cache diagnostics, and listen for `user_saved` and `user_deleted`; see `docs/DEVELOPER-APIS.md`.
 - Appearance › Customize › Body has a new **Post Details** panel with switches for showing each post's author, date, categories, and tags (all on by default), and an optional "3 min read" reading time (off by default). They apply on the front page, archives, and single posts. The Header tab gains a **Show tagline** switch. Lumora Classic honors all six.
 - Appearance › Customize › Body › Layout has a **Sidebar position** setting: Right (the default), Left, or No sidebar. "No sidebar" hides the sidebar on every page and gives the content the full width; on small screens the sidebar always sits below the content. Lumora Classic honors it, and any theme can by adding `body_class()` to its `<body>` tag.
 - Lumora Classic: visitors whose system asks for reduced motion get no transitions, animations, or smooth scrolling anywhere on the site.

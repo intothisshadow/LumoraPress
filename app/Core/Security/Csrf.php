@@ -54,9 +54,23 @@ final class Csrf
         self::$failureListener = $listener;
     }
 
+    private static bool $issuedThisRequest = false;
+
+    /**
+     * Whether any token was minted during this request. A page that embeds
+     * a single-use token is specific to the visitor's session, so a shared
+     * cache must never store it; the response layer checks this instead of
+     * every form having to opt out of caching itself.
+     */
+    public static function wasIssued(): bool
+    {
+        return self::$issuedThisRequest;
+    }
+
     public static function token(string $action = 'default'): string
     {
         self::ensureSession();
+        self::$issuedThisRequest = true;
 
         $token = bin2hex(random_bytes(32));
         $pool = self::pool($action);

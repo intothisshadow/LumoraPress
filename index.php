@@ -103,6 +103,12 @@ if ($kernel->maintenance->shouldBlock($requestUri)) {
     $kernel->router->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $requestUri);
     $output = ob_get_clean();
 
+    // A page carrying a single-use CSRF token (comment form, contact form
+    // shortcode, any plugin form) belongs to one visitor's session.
+    if (\LumoraPress\Core\Security\Csrf::wasIssued()) {
+        $kernel->cache->disableCaching();
+    }
+
     if ($kernel->cache->applyHeaders((string) $output)) {
         echo $output;
     }

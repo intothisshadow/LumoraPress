@@ -77,6 +77,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/geoip-import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/media-import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/search-index.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/cache-headers-test.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/select-all.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/bulk-action-confirm.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/confirm-submit.js')) ?>" defer></script>

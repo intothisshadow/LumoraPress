@@ -92,6 +92,13 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `thumbnail_max_pixels` | filter | `int $configuredMaxPixels` | `ThumbnailService::generate()` — the decompression-bomb safeguard ceiling; raise or lower it. |
 | `media_usage` | filter | `array $usages, int $mediaId` | [`MediaUsageChecker`](../app/Services/MediaUsageChecker.php) — add your own "in use by X" reasons (core already reports post/page featured-image, site logo, favicon, default OG image usage) so the Media Library's delete-confirmation dialog also warns about your plugin's own usage of an image. |
 
+### User lifecycle
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `user_saved` | action | `?User $user` (reloaded) | [`UserService`](../app/Services/UserService.php): `update()`, `updateAvatar()`, and `restore()`. Not fired for password changes or last-active updates. Core uses it to purge the page cache, since a display name or avatar appears in bylines. |
+| `user_deleted` | action | `int $id` | `UserService::delete()` and `trash()`, only when a row was affected. |
+
 ### Rendering / output
 
 | Name | Type | Args | Fires in |
@@ -290,6 +297,26 @@ The type id must be 1–40 lowercase letters, digits, hyphens, or underscores. T
 | `search_filter_params` | filter | `array<int, string> $names` | `SiteController::search()`. Query-string parameter names your filter reads; their values reach providers as `$criteria->extra[$name]`. Core's own names (`q`, `paged`, `type`, `category`, `tag`, `author`, `from`, `to`, `sort`) can't be claimed. |
 | `search_cache_enabled` | filter | `bool $enabled, SearchCriteria $criteria` | `SearchService::search()`. Return `false` to skip the saved-results cache for this search, e.g. when your provider's results differ per visitor. See [Search API](#search-api). |
 | `search_filter_fields` | action | `SearchCriteria $criteria` | `search_filters_form()` ([`include/search-functions.php`](../include/search-functions.php)), inside the form after core's fields. Echo your own inputs, escaped. |
+
+### Cache
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `cache_drivers` | filter | `array<string, CacheDriverInterface> $drivers` | `include/bootstrap.php`, once, after plugins load. Add a driver keyed by a lowercase slug (`a-z`, `0-9`, `_`, `-`); it appears in Settings › Cache's driver select, and automatic detection picks the first plugin driver whose `isAvailable()` is true when LiteSpeed isn't. The built-in `litespeed` and `null` drivers can't be replaced, and entries that aren't a `CacheDriverInterface` are dropped. |
+| `cache_diagnostics` | filter | `array<string, scalar> $rows, CacheManager $cache` | `admin/views/settings/cache.php`. Return label ⇒ value rows to show in a Diagnostics panel, such as a CDN's connection status. |
+
+## Cache API
+
+`$kernel->cache` is the [`CacheManager`](../app/Core/Cache/CacheManager.php). Lumora Press has no page cache of its own; it sends cache headers and tells an external cache (LiteSpeed, or a driver a plugin registers) what to forget.
+
+- **Marking a response cacheable.** A route opts in with `markPageCacheable(array $tags, string $contentType)`. `$contentType` is one of `CacheManager::CONTENT_TYPES` (`home`, `pages`, `categories`, `tags`, `archives`, `search`), which the administrator can switch off individually; any other string is always allowed. Call `disableCaching()` to veto a response, for example when it shows something visitor-specific.
+- **Automatic veto.** Any response that minted a CSRF token (`Csrf::token()` or `Csrf::field()`) is made uncacheable, so a plugin form can't leak one visitor's one-time token to another. The administrator's "Never Cache" path list is applied on top.
+- **Purging.** `purgeUrl()`, `purgeUrls()`, `purgeTag()`, `purgeTags()` and `purgeAll()` send the purge through the active driver and add it to the Recent Purges log. A URL purge takes the full URL path, including a subdirectory install's base path. Core calls `purgeAll()` on the post, page, category, tag, comment, media and user hooks and on every `option_changed` that isn't housekeeping, so most plugins never need to purge.
+- **Writing a driver.** Implement `CacheDriverInterface` (`name()`, `isAvailable()`, `purgeUrl()`, `purgeTag()`, `purgeAll()`) and return it from the `cache_drivers` filter.
+
+```php
+add_filter('cache_drivers', static fn (array $drivers): array => $drivers + ['varnish' => new VarnishDriver()]);
+```
 
 ## Search API
 
