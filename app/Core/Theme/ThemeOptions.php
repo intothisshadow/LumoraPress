@@ -202,6 +202,45 @@ final class ThemeOptions
             allowEmpty: true,
         ));
 
+        // Like the images options, these change a theme's own heading styling only once an
+        // administrator picks a value; body_class() adds lp-custom-heading-font and each theme's
+        // override rule applies --lp-font-heading to its headings. The family field is registered
+        // after the choice so, when both are set, its declaration is the one that wins.
+        $this->registerField(new ThemeOptionField(
+            key: 'heading_font',
+            section: 'typography',
+            type: ThemeOptionType::Select,
+            label: 'Heading font',
+            default: '',
+            cssVariable: '--lp-font-heading',
+            allowEmpty: true,
+            requiresSupport: 'heading-font',
+            help: 'The font for page and post titles, titles in lists and widgets, and headings inside content.',
+            choices: [
+                '' => 'Theme default',
+                'serif' => 'Serif (Georgia)',
+                'sans' => 'Sans-serif',
+                'system' => 'System UI',
+                'mono' => 'Monospace',
+            ],
+            cssValueMap: [
+                'serif' => 'Georgia, "Times New Roman", serif',
+                'sans' => '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+                'system' => 'system-ui, sans-serif',
+                'mono' => '"SF Mono", Consolas, "Courier New", monospace',
+            ],
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'heading_google_fonts_family',
+            section: 'typography',
+            type: ThemeOptionType::Text,
+            label: 'Heading Google Fonts font family',
+            cssVariable: '--lp-font-heading',
+            requiresSupport: 'heading-font',
+            help: 'The font-family value of a font from the Google Fonts URL above, e.g. \'Playfair Display\', serif — overrides the Heading font selection when set. The URL can include more than one family, one for the body and one for headings.',
+            allowEmpty: true,
+        ));
+
         $this->registerSection('layout', 'Layout', 'Controls the width and sidebar placement of the site\'s header, content, and footer.');
 
         $this->registerField(new ThemeOptionField(

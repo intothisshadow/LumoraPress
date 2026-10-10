@@ -3428,6 +3428,25 @@ img.lp-gallery-shortcode__thumb {
     font-size: 0.9rem;
 }
 
+/* Heading font override ("Heading font" Theme Option): applies only once the administrator
+   picks a font (core adds lp-custom-heading-font), and is !important because that choice is meant
+   to beat the theme's own per-component heading fonts. */
+body.lp-custom-heading-font :is(
+    .lp-page-title,
+    .lp-post__title,
+    .lp-post-list__title,
+    .lp-related-posts__title,
+    .lp-search-results__title,
+    .lp-widget__title,
+    .lp-comments__title,
+    .lp-download-card__title,
+    .lp-downloads-list__title,
+    .lp-post__content :is(h1, h2, h3, h4, h5, h6),
+    .lp-post-list__content :is(h1, h2, h3, h4, h5, h6)
+) {
+    font-family: var(--lp-font-heading) !important;
+}
+
 /* Image styling overrides ("Images" Theme Options): each rule applies only
    once the administrator picks a value (core adds the lp-custom-* body class),
    and is !important because that choice is meant to beat the theme's own

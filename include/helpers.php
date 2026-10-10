@@ -688,7 +688,7 @@ if (!function_exists('footer_widget_columns')) {
 if (!function_exists('body_class')) {
     /**
      * The class list for the theme's <body> tag: $classes plus the
-     * layout classes core controls (lp-sidebar-left, lp-footer-columns-3, lp-custom-image-radius). Unescaped —
+     * layout classes core controls (lp-sidebar-left, lp-footer-columns-3, lp-custom-image-radius, lp-custom-heading-font). Unescaped —
      * wrap in esc_attr().
      */
     function body_class(string $classes = ''): string
@@ -697,11 +697,22 @@ if (!function_exists('body_class')) {
         $columns = footer_widget_columns();
         $custom = '';
 
-        // Each marks an image setting the administrator chose, so a theme's
-        // own style stays in place until then.
-        foreach (['image_radius' => 'image-radius', 'image_shadow' => 'image-shadow', 'gallery_spacing' => 'gallery-gap'] as $option => $class) {
-            if (theme_option($option) !== '') {
-                $custom .= ' lp-custom-' . $class;
+        // Each marks a setting the administrator chose, so a theme's own
+        // style stays in place until then.
+        $customSettings = [
+            'image-radius' => ['image_radius'],
+            'image-shadow' => ['image_shadow'],
+            'gallery-gap' => ['gallery_spacing'],
+            'heading-font' => ['heading_font', 'heading_google_fonts_family'],
+        ];
+
+        foreach ($customSettings as $class => $options) {
+            foreach ($options as $option) {
+                if (theme_option($option) !== '') {
+                    $custom .= ' lp-custom-' . $class;
+
+                    break;
+                }
             }
         }
 
