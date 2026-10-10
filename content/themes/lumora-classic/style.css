@@ -2582,6 +2582,19 @@ a.lp-post-list__comments:focus {
    themselves reuse .lp-widget/.lp-widget__* unchanged from the sidebar —
    only this wrapper (a wrapping row of cards instead of a single stacked
    column) is new. */
+/* Homepage widget area: sits above the post list on the first page of the homepage and is
+   absent when no widgets are assigned. Widgets keep their own card styling. */
+.lp-homepage-widgets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1.25rem;
+    margin: 0 0 1.75rem;
+}
+
+.lp-homepage-widgets > * {
+    min-width: 0;
+}
+
 .lp-site-footer__widgets {
     max-width: var(--lp-max-width);
     margin: 0 auto;

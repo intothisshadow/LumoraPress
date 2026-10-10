@@ -44,3 +44,24 @@ if (!function_exists('is_active_sidebar')) {
         return Widgets::instance()->hasWidgets($sidebarId);
     }
 }
+
+if (!function_exists('the_homepage_widgets')) {
+    /**
+     * Prints the "homepage" widget area above the post list, on the first page of the genuine
+     * homepage only (not the Posts page, archives, or page 2 onward). Like the sidebar and footer
+     * areas it is optional: with no widgets assigned, or in a theme that never registered the
+     * area, it prints nothing, not even an empty wrapper.
+     *
+     * @param array<string, mixed> $pagination The listing's pagination array, as index.php receives it.
+     */
+    function the_homepage_widgets(?string $pageTitle, array $pagination = []): void
+    {
+        if ($pageTitle !== null || (int) ($pagination['page'] ?? 1) > 1 || !is_active_sidebar('homepage')) {
+            return;
+        }
+
+        echo '<section class="lp-homepage-widgets" aria-label="Homepage widgets">';
+        dynamic_sidebar('homepage');
+        echo '</section>', "\n";
+    }
+}

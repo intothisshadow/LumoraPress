@@ -263,6 +263,18 @@ Render in a template:
 
 `is_active_sidebar()` is a guard, not required — `dynamic_sidebar()` itself no-ops if the area has no widgets, but wrapping the outer markup in the guard avoids an empty `<aside>` shell.
 
+**Homepage widget area.** Register a `homepage` area and call `the_homepage_widgets($page_title, $pagination ?? [])` in `index.php`, just above the post list:
+
+```php
+register_sidebar('homepage', 'Homepage Widget Area', 'Appears above the post list on the first page of the homepage only.');
+```
+
+```php
+<?php the_homepage_widgets($page_title, $pagination ?? []); ?>
+```
+
+It prints `<section class="lp-homepage-widgets" aria-label="Homepage widgets">` only on the genuine homepage (a null `$page_title`, so not the Posts page or an archive) and only on page 1, and nothing at all when the area is empty or was never registered. Style `.lp-homepage-widgets` in your stylesheet (Lumora Classic uses an auto-fit grid of widget cards).
+
 ## Navigation menus
 
 Register in `functions.php`:

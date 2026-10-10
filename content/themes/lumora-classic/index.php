@@ -41,6 +41,7 @@ $comment_counts ??= [];
 <?php $lpThumbnailAboveClass = theme_option('featured_image_position') !== 'beside' ? ' lp-content--thumbnail-above' : ''; ?>
 <div id="lp-content" class="lp-content lp-content--home lp-content--home--<?= esc_attr($lpHomeLayout) ?><?= esc_attr($lpThumbnailAboveClass) ?> lp-layout">
     <main class="lp-main">
+        <?php the_homepage_widgets($page_title, $pagination ?? []); ?>
         <?php if ($posts === []): ?>
             <p class="lp-empty-state">No posts have been published yet.</p>
         <?php else: ?>
