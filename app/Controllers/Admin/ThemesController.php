@@ -19,6 +19,7 @@ namespace LumoraPress\Controllers\Admin;
 
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Theme\ThemeCompatibility;
 use LumoraPress\Core\Theme\ThemeInfo;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Services\ThemeInstaller;
@@ -38,6 +39,7 @@ final class ThemesController
         private readonly ThemeRegistry $themes,
         private readonly ThemeInstaller $themeInstaller,
         private readonly PressConfig $config,
+        private readonly ThemeCompatibility $compatibility,
     ) {
     }
 
@@ -56,6 +58,12 @@ final class ThemesController
 
         if ($known === []) {
             return AdminActionResult::error('That theme could not be found.');
+        }
+
+        $problems = $this->compatibility->problemsFor(reset($known));
+
+        if ($problems !== []) {
+            return AdminActionResult::error(sprintf('"%s" can\'t be activated on this site. %s', reset($known)->name, implode(' ', $problems)));
         }
 
         $this->config->setOption('active_theme', $slug);

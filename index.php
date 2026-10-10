@@ -45,7 +45,8 @@ if ($previewSlug !== '') {
     if ($previewUser !== null && $previewUser->can('manage_themes')) {
         $previewInfo = $kernel->themes->infoFor($previewSlug);
 
-        if ($previewInfo !== null) {
+        // A theme that can't run here (newer requirements, missing templates) would only error out.
+        if ($previewInfo !== null && $kernel->themeCompatibility->problemsFor($previewInfo) === []) {
             $kernel->theme->setActiveTheme($previewInfo->slug);
             $kernel->theme->loadFunctions();
             \LumoraPress\Core\Theme\ThemePreview::activate($previewInfo);

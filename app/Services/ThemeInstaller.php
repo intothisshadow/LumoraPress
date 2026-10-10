@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Services;
 
+use LumoraPress\Core\Theme\ThemeCompatibility;
 use LumoraPress\Core\Theme\ThemeInfo;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use RuntimeException;
@@ -40,6 +41,7 @@ final class ThemeInstaller
     public function __construct(
         private readonly string $themesPath,
         private readonly ThemeRegistry $themes,
+        private readonly ?ThemeCompatibility $compatibility = null,
     ) {
     }
 
@@ -232,7 +234,37 @@ final class ThemeInstaller
             throw new RuntimeException('The archive\'s style.css does not have a valid "Theme Name:" header.');
         }
 
+        $this->assertCompatible($themeName, $styleCssContents, $names, $rootPrefix);
+
         return [$rootPrefix, $themeName];
+    }
+
+    /**
+     * Refuses a theme that can't run here before anything is written: a newer Lumora Press or
+     * PHP than this site has, or required templates missing from its top level.
+     *
+     * @param array<int, string> $names
+     */
+    private function assertCompatible(string $themeName, string $styleCssContents, array $names, string $rootPrefix): void
+    {
+        if ($this->compatibility === null) {
+            return;
+        }
+
+        $header = ThemeRegistry::parseHeaderContents($styleCssContents);
+        $topLevel = [];
+
+        foreach ($names as $name) {
+            if (str_starts_with($name, $rootPrefix) && !str_contains(substr($name, strlen($rootPrefix)), '/')) {
+                $topLevel[] = substr($name, strlen($rootPrefix));
+            }
+        }
+
+        $problems = $this->compatibility->problems($header['requiresAtLeast'], $header['requiresPhp'], $topLevel);
+
+        if ($problems !== []) {
+            throw new RuntimeException(sprintf('"%s" can\'t be installed on this site. %s', $themeName, implode(' ', $problems)));
+        }
     }
 
     private function extractAndFinalize(ZipArchive $zip, string $rootPrefix, string $destination): void

@@ -77,6 +77,7 @@ use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptions;
 use LumoraPress\Core\Theme\HeaderImageRotation;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
+use LumoraPress\Core\Theme\ThemeCompatibility;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\CoreWidgets;
@@ -312,7 +313,8 @@ do_action('register_theme_options', $themeOptions);
 ThemeOptionsBridge::set($themeOptions);
 
 $themes = new ThemeRegistry($themesPath, $themesUrl, $activeThemeSlug);
-$themeInstaller = new ThemeInstaller($themesPath, $themes);
+$themeCompatibility = new ThemeCompatibility($themesPath, (string) (require LUMORA_ROOT . '/version.php')['version']);
+$themeInstaller = new ThemeInstaller($themesPath, $themes, $themeCompatibility);
 $themeFileEditor = new ThemeFileEditor($themesPath, LUMORA_ROOT . '/storage/theme-file-backups');
 
 $users = new UserService($database, $tablePrefix);
@@ -821,6 +823,7 @@ $kernel = new Kernel(
     maintenance: $maintenance,
     themes: $themes,
     themeInstaller: $themeInstaller,
+    themeCompatibility: $themeCompatibility,
     folders: $folders,
     mediaUsage: $mediaUsage,
     thumbnails: $thumbnails,

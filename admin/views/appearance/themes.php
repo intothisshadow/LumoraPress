@@ -195,7 +195,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($form, $themeUp
 }
 
 if ($form !== '' && !in_array($form, $themeUpdateForms, true)) {
-    $controller = new ThemesController($kernel->themes, $kernel->themeInstaller, $kernel->config);
+    $controller = new ThemesController($kernel->themes, $kernel->themeInstaller, $kernel->config, $kernel->themeCompatibility);
 
     $result = match ($form) {
         'activate_theme' => $controller->activateTheme($_POST, $csrfToken),
@@ -416,6 +416,7 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
             $activateCsrfField = Csrf::field('activate_theme_' . $info->slug);
             $deleteCsrfField = Csrf::field('delete_theme_' . $info->slug);
             $themeUpdate = $themeUpdatesAvailable[$info->slug] ?? null;
+            $themeProblems = $kernel->themeCompatibility->problemsFor($info);
             ?>
             <div class="lp-theme-card<?= $info->isActive ? ' lp-theme-card--active' : '' ?>" data-lp-theme-card data-theme-search="<?= esc_attr($searchHaystack) ?>">
                 <div class="lp-theme-card__screenshot-wrap">
@@ -437,6 +438,9 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                         <?php if ($info->isActive): ?>
                             <span class="lp-theme-card__badge">Active</span>
                         <?php endif; ?>
+                        <?php if ($themeProblems !== []): ?>
+                            <span class="lp-theme-card__badge lp-theme-card__badge--incompatible">Not compatible</span>
+                        <?php endif; ?>
                     </h3>
                     <?php if ($info->description !== ''): ?>
                         <p class="lp-theme-card__description"><?= esc_html($info->description) ?></p>
@@ -445,6 +449,13 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                         <?php if ($info->version !== ''): ?><span>Version <?= esc_html($info->version) ?></span><?php endif; ?>
                         <?php if ($info->author !== ''): ?><span>By <?= esc_html($info->author) ?></span><?php endif; ?>
                     </p>
+                    <?php if ($themeProblems !== []): ?>
+                        <ul class="lp-theme-card__problems">
+                            <?php foreach ($themeProblems as $problem): ?>
+                                <li><?= esc_html($problem) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                     <?php if ($themeUpdate !== null): ?>
                         <p class="lp-theme-card__update">
                             <span class="lp-theme-card__badge lp-theme-card__badge--update">Update available: <?= esc_html($themeUpdate['version']) ?></span>
@@ -462,13 +473,18 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                         <?php endif; ?>
                         <button type="button" class="lp-button lp-button--secondary" data-lp-theme-details-trigger data-theme-template="<?= esc_attr($templateId) ?>">Details</button>
                         <?php if (!$info->isActive): ?>
-                            <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
-                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
-                                <?= $activateCsrfField ?>
-                                <input type="hidden" name="form" value="activate_theme">
-                                <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                <button type="submit" class="lp-button lp-button--primary">Activate</button>
-                            </form>
+                            <?php if ($themeProblems === []): ?>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
+                                <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
+                                    <?= $activateCsrfField ?>
+                                    <input type="hidden" name="form" value="activate_theme">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button lp-button--primary">Activate</button>
+                                </form>
+                            <?php else: ?>
+                                <button type="button" class="lp-button lp-button--secondary" disabled>Preview</button>
+                                <button type="button" class="lp-button lp-button--primary" disabled>Activate</button>
+                            <?php endif; ?>
                             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this theme permanently? This cannot be undone.">
                                 <?= $deleteCsrfField ?>
                                 <input type="hidden" name="form" value="delete_theme">
@@ -495,7 +511,19 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                     <h3 class="lp-theme-details__name">
                         <?= esc_html($info->name) ?>
                         <?php if ($info->isActive): ?><span class="lp-theme-card__badge">Active</span><?php endif; ?>
+                        <?php if ($themeProblems !== []): ?><span class="lp-theme-card__badge lp-theme-card__badge--incompatible">Not compatible</span><?php endif; ?>
                     </h3>
+
+                    <?php if ($themeProblems !== []): ?>
+                        <div class="lp-alert lp-alert--error" role="alert">
+                            <p>This theme can't be used on this site:</p>
+                            <ul>
+                                <?php foreach ($themeProblems as $problem): ?>
+                                    <li><?= esc_html($problem) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
 
                     <?php if ($info->description !== ''): ?>
                         <p class="lp-theme-details__description"><?= esc_html($info->description) ?></p>
@@ -553,13 +581,18 @@ $hasBundledThemes = $kernel->updates->bundledThemeSlugs() !== [];
                             </form>
                         <?php endif; ?>
                         <?php if (!$info->isActive): ?>
-                            <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
-                            <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
-                                <?= $activateCsrfField ?>
-                                <input type="hidden" name="form" value="activate_theme">
-                                <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
-                                <button type="submit" class="lp-button lp-button--primary">Activate</button>
-                            </form>
+                            <?php if ($themeProblems === []): ?>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url($previewUrl) ?>" target="_blank" rel="noopener noreferrer">Preview</a>
+                                <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form">
+                                    <?= $activateCsrfField ?>
+                                    <input type="hidden" name="form" value="activate_theme">
+                                    <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                    <button type="submit" class="lp-button lp-button--primary">Activate</button>
+                                </form>
+                            <?php else: ?>
+                                <button type="button" class="lp-button lp-button--secondary" disabled>Preview</button>
+                                <button type="button" class="lp-button lp-button--primary" disabled>Activate</button>
+                            <?php endif; ?>
                             <form method="post" action="<?= esc_url(admin_url('appearance/themes')) ?>" class="lp-admin__inline-form" data-lp-confirm="Delete this theme permanently? This cannot be undone.">
                                 <?= $deleteCsrfField ?>
                                 <input type="hidden" name="form" value="delete_theme">

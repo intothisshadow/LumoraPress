@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Appearance › Themes now checks that a theme can run on your site. A theme that asks for a newer Lumora Press or PHP than you have, or that is missing a required template file, shows a "Not compatible" badge with the reasons, can't be previewed or activated, and a ZIP like that is refused at install or update before any file is written. Themes that need nothing special are unaffected.
 - Downloads (plugin): importing from GitHub, or applying a README update, now adds the image addresses the README uses (badges, pictures served from GitHub) to Settings › Security › Trusted Image Sources, as saving a post already does. Before, those images were blocked by the site's security policy and showed as broken until each address was added by hand.
 - Lumora Classic: images inside posts and pages now have the same thin border as gallery thumbnails.
 - Admin: the whole color palette now works together. The grays are tinted slightly toward the plum accent, and the success (green), error (rose red), and warning (amber) colors match the softness of the switches and row buttons, in light and dark mode.

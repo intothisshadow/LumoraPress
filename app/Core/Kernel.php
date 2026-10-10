@@ -36,6 +36,7 @@ use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Shortcodes\ShortcodeManager;
 use LumoraPress\Core\Theme\ThemeOptions;
+use LumoraPress\Core\Theme\ThemeCompatibility;
 use LumoraPress\Core\Theme\ThemeRegistry;
 use LumoraPress\Core\Theme\ThemeRenderer;
 use LumoraPress\Core\Widgets\WidgetManager;
@@ -116,6 +117,7 @@ final class Kernel
         public readonly MaintenanceGate $maintenance,
         public readonly ThemeRegistry $themes,
         public readonly ThemeInstaller $themeInstaller,
+        public readonly ThemeCompatibility $themeCompatibility,
         public readonly FolderService $folders,
         public readonly MediaUsageChecker $mediaUsage,
         public readonly ThumbnailService $thumbnails,

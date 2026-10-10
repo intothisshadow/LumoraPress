@@ -161,6 +161,30 @@ final class ThemeRegistry
             return $result;
         }
 
+        return self::parseHeaderContents($head);
+    }
+
+    /**
+     * The same header read from text already in hand, so a ZIP's style.css can be checked
+     * before anything is extracted.
+     *
+     * @return array{
+     *     name: string, description: string, version: string, author: string,
+     *     authorUri: string, themeUri: string, license: string, licenseUri: string,
+     *     requiresAtLeast: string, requiresPhp: string, tags: string
+     * }
+     */
+    public static function parseHeaderContents(string $head): array
+    {
+        $result = [
+            'name' => '', 'description' => '', 'version' => '', 'author' => '',
+            'authorUri' => '', 'themeUri' => '', 'license' => '', 'licenseUri' => '',
+            'requiresAtLeast' => '', 'requiresPhp' => '', 'tags' => '',
+        ];
+
+        // Only the first 8 KiB can hold the header, however large the file is.
+        $head = substr($head, 0, 8192);
+
         $labels = [
             'name' => 'Theme Name',
             'description' => 'Description',

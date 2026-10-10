@@ -1529,6 +1529,20 @@ body.lp-admin-login {
     margin: 0 0 0.75rem;
 }
 
+.lp-theme-card__badge--incompatible {
+    background: var(--lp-admin-error-bg);
+    color: var(--lp-admin-error-text);
+    border: 1px solid var(--lp-admin-error-border);
+    white-space: nowrap;
+}
+
+.lp-theme-card__problems {
+    margin: 0 0 0.75rem;
+    padding-left: 1.1rem;
+    font-size: 0.85rem;
+    color: var(--lp-admin-error-text);
+}
+
 /* Bundled theme updates: status line + "Check for Updates" above the grid */
 
 .lp-theme-updates-bar {
