@@ -75,7 +75,7 @@ final class ThemeOptions
      */
     public function registerStandardOptions(): void
     {
-        $this->registerSection('colors', 'Colors', 'Overrides the active theme\'s default color palette. Leave a color set to "Use theme default" to keep the theme\'s own choice, including its dark-mode variant.');
+        $this->registerSection('colors', 'Colors', 'Overrides the active theme\'s default color palette in light mode. Leave a color set to "Use theme default" to keep the theme\'s own choice. Dark mode keeps the theme\'s own dark colors unless you set them under Dark Mode Colors.');
 
         $this->registerField(new ThemeOptionField(
             key: 'accent_color',
@@ -83,6 +83,7 @@ final class ThemeOptions
             type: ThemeOptionType::Color,
             label: 'Accent color',
             cssVariable: '--lp-accent',
+            derivedVariables: ['--lp-accent-hover' => 'color-mix(in srgb, {value} 80%, black)'],
             help: 'Used for links, buttons, and highlighted elements.',
             allowEmpty: true,
             previewDefault: '#2271b1',
@@ -134,6 +135,70 @@ final class ThemeOptions
             allowEmpty: true,
             previewDefault: '#dcdcde',
         ));
+        // The chosen color is the state's border; its background and text are mixed from it and
+        // the theme's own surface and text colors, so they stay readable in light and dark mode.
+        $this->registerField(new ThemeOptionField(
+            key: 'success_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Success color',
+            cssVariable: '--lp-success-border',
+            derivedVariables: [
+                '--lp-success-bg' => 'color-mix(in srgb, {value} 14%, var(--lp-bg-alt))',
+                '--lp-success-text' => 'color-mix(in srgb, {value} 45%, var(--lp-text))',
+            ],
+            help: 'Used for confirmation messages, such as "Your comment was submitted".',
+            allowEmpty: true,
+            previewDefault: '#00a32a',
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'error_color',
+            section: 'colors',
+            type: ThemeOptionType::Color,
+            label: 'Error color',
+            cssVariable: '--lp-error-border',
+            derivedVariables: [
+                '--lp-error-bg' => 'color-mix(in srgb, {value} 14%, var(--lp-bg-alt))',
+                '--lp-error-text' => 'color-mix(in srgb, {value} 45%, var(--lp-text))',
+            ],
+            help: 'Used for error messages and form problems.',
+            allowEmpty: true,
+            previewDefault: '#d63638',
+        ));
+
+        // The same colors again, applied only in dark mode. A theme without a dark appearance
+        // doesn't declare 'dark-mode', so this whole panel stays hidden for it.
+        $this->registerSection('colors_dark', 'Dark Mode Colors', 'Colors used when a visitor is in dark mode, whether from their device setting or the site\'s light/dark switch. Leave a color on "Use theme default" to keep the theme\'s own dark color.');
+
+        foreach ([
+            ['dark_accent_color', 'Accent color', '--lp-accent', '#61d0c2', ['--lp-accent-hover' => 'color-mix(in srgb, {value} 80%, white)']],
+            ['dark_text_color', 'Text color', '--lp-text', '#edf3f1', []],
+            ['dark_text_muted_color', 'Muted text color', '--lp-text-muted', '#a6b4b5', []],
+            ['dark_background_color', 'Background color', '--lp-bg', '#111821', []],
+            ['dark_background_alt_color', 'Alternate background color', '--lp-bg-alt', '#1b2530', []],
+            ['dark_border_color', 'Border color', '--lp-border', '#33434b', []],
+            ['dark_success_color', 'Success color', '--lp-success-border', '#2fae4a', [
+                '--lp-success-bg' => 'color-mix(in srgb, {value} 14%, var(--lp-bg-alt))',
+                '--lp-success-text' => 'color-mix(in srgb, {value} 45%, var(--lp-text))',
+            ]],
+            ['dark_error_color', 'Error color', '--lp-error-border', '#d63638', [
+                '--lp-error-bg' => 'color-mix(in srgb, {value} 14%, var(--lp-bg-alt))',
+                '--lp-error-text' => 'color-mix(in srgb, {value} 45%, var(--lp-text))',
+            ]],
+        ] as [$key, $label, $variable, $preview, $derived]) {
+            $this->registerField(new ThemeOptionField(
+                key: $key,
+                section: 'colors_dark',
+                type: ThemeOptionType::Color,
+                label: $label,
+                cssVariable: $variable,
+                derivedVariables: $derived,
+                allowEmpty: true,
+                previewDefault: $preview,
+                requiresSupport: 'dark-mode',
+                darkMode: true,
+            ));
+        }
 
         $this->registerSection('typography', 'Typography', 'Controls the fonts and text sizing used across every public page.');
 
@@ -864,12 +929,13 @@ final class ThemeOptions
      * rather than emitting an override, so the theme's own default (dark
      * mode included) keeps controlling that token.
      *
-     * accent_color also gets a derived --lp-accent-hover declaration so a
-     * custom accent color doesn't leave hover/focus states mismatched.
+     * A field's $derivedVariables are emitted right after it, so a custom
+     * color doesn't leave its hover or tint variants mismatched.
      */
     public function cssVariables(): string
     {
         $declarations = [];
+        $darkDeclarations = [];
 
         foreach ($this->fields as $field) {
             if ($field->cssVariable === null) {
@@ -883,18 +949,30 @@ final class ThemeOptions
             }
 
             $cssValue = $field->cssValueMap[$value] ?? $value;
-            $declarations[] = $field->cssVariable . ': ' . $cssValue . $field->cssUnit . ';';
+            $lines = [$field->cssVariable . ': ' . $cssValue . $field->cssUnit . ';'];
 
-            if ($field->key === 'accent_color') {
-                $declarations[] = '--lp-accent-hover: color-mix(in srgb, ' . $value . ' 80%, black);';
+            foreach ($field->derivedVariables as $variable => $template) {
+                $lines[] = $variable . ': ' . str_replace('{value}', $value, $template) . ';';
+            }
+
+            if ($field->darkMode) {
+                array_push($darkDeclarations, ...$lines);
+            } else {
+                array_push($declarations, ...$lines);
             }
         }
 
-        if ($declarations === []) {
-            return '';
+        $css = $declarations === [] ? '' : ':root{' . implode('', $declarations) . '}';
+
+        // Same two selectors the themes' own dark colors use (the device preference unless the
+        // visitor chose light, and the explicit dark switch); placed after the theme's
+        // stylesheet, they win on source order.
+        if ($darkDeclarations !== []) {
+            $dark = implode('', $darkDeclarations);
+            $css .= '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){' . $dark . '}}:root[data-theme="dark"]{' . $dark . '}';
         }
 
-        return ':root{' . implode('', $declarations) . '}';
+        return $css;
     }
 
     private function sanitize(ThemeOptionField $field, string $rawValue): ?string

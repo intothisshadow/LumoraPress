@@ -37,6 +37,7 @@ add_theme_support(
     'tagline',
     'page-titles',
     'heading-font',
+    'dark-mode',
     'search-bar',
 );
 register_nav_menu('social', 'Social Links Menu');

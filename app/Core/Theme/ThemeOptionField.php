@@ -83,6 +83,21 @@ final class ThemeOptionField
          * theme honors it.
          */
         public readonly ?string $requiresSupport = null,
+        /**
+         * Further custom properties computed from this field's value, emitted
+         * alongside $cssVariable: custom property => CSS value, with {value}
+         * standing for the (validated) stored value. A color is typically used
+         * to derive its hover or tint variants, so they stay consistent.
+         *
+         * @var array<string, string>
+         */
+        public readonly array $derivedVariables = [],
+        /**
+         * Emitted only while the visitor is in dark mode, after the theme's own dark colors so it
+         * wins. Without this, a custom color is overridden by the theme's dark value for the same
+         * token (the theme's dark rules are more specific than a bare :root declaration).
+         */
+        public readonly bool $darkMode = false,
     ) {
     }
 }

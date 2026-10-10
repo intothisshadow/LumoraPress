@@ -326,6 +326,7 @@ add_theme_support(
     'search-bar',        // show_search_bar()
     'page-titles',       // show_page_titles()
     'heading-font',      // body_class() + the .lp-custom-heading-font rule using --lp-font-heading
+    'dark-mode',         // a dark appearance via the usual tokens, switched by [data-theme="dark"] or prefers-color-scheme
 );
 current_theme_supports(string $feature): bool
 ```
@@ -435,6 +436,8 @@ Load `theme-toggle.js` as a plain (no `defer`/`async`/`type="module"`) `<script 
 This ordering matters: the script runs synchronously and sets `data-theme` on `<html>` from `localStorage` (key `lp-theme`) before the stylesheet is even requested, so there's no flash of the wrong theme on reload. It must be an external file, not an inline `<script>` — this project's Content-Security-Policy `script-src` has no `'unsafe-inline'`/nonce allowance (only `style-src` does, via `csp_style_nonce()`), so an inline script here would be silently blocked by every browser. A click on any `[data-lp-theme-toggle]` button only ever switches between an explicit Light and Dark — never back to "follow the system" — mirroring the admin sidebar's own quick theme toggle. See Lumora Classic's `header.php`/`style.css` for a complete real example, and `xena-central`'s/`duskline`'s for how the same three pieces (CSS guard, script tag, toggle button) adapt to a theme with its own token names and header layout.
 
 If you also expose one of these tokens as a Theme Options `cssVariable` field, give it `allowEmpty: true` (see above) so an admin leaving the field unset doesn't force a light-mode-derived value onto dark-mode visitors.
+
+A color an administrator sets in the plain Colors panel is a bare `:root` declaration, so your dark-mode blocks (more specific selectors) override it in dark mode. The Dark Mode Colors panel exists for that: its values are emitted inside the same two dark selectors, after your stylesheet, and win. A theme with a dark appearance built this way should declare `add_theme_support('dark-mode')` (see the Customize section below); without it the Dark Mode Colors panel is hidden.
 
 ## Styling bundled plugin markup
 
