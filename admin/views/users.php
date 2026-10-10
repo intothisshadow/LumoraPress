@@ -108,10 +108,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $role = UserRole::Subscriber;
         }
 
-        // An identical username and Display Name publishes half of a
-        // staff account's credentials via the public post byline —
-        // required to differ for every role except Subscriber, which has
-        // no posting byline.
+        // An identical username and Display Name publishes half of the
+        // account's credentials (byline, author archive, comment name).
+        // Staff must supply one; a Subscriber may leave it blank and gets
+        // a neutral name from UserService.
         $isStaffRole = $role !== UserRole::Subscriber;
 
         if ($username === '' || $email === '' || ($isStaffRole && $displayName === '')) {
@@ -120,7 +120,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 : 'Username and email are required.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
-        } elseif ($isStaffRole && $userService->usernameMatchesDisplayName($username, $displayName)) {
+        } elseif ($displayName !== '' && $userService->usernameMatchesDisplayName($username, $displayName)) {
             $error = 'Username and Display Name must be different — Display Name is shown publicly on posts.';
         } elseif ($role === UserRole::Administrator && $userService->isGuessableAdministratorUsername($username)) {
             $error = 'That username is too easy to guess. Choose something less obvious than "admin".';
@@ -374,7 +374,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
             <p class="lp-field">
                 <label for="user-display-name">Display Name</label>
                 <input type="text" id="user-display-name" name="display_name" value="<?= esc_attr($user->displayName ?? '') ?>">
-                <span class="lp-field__hint">Shown publicly as the author name on posts. Required, and must be different from the Username above, for every role except Subscriber.</span>
+                <span class="lp-field__hint">Shown publicly as the author name on posts and comments. Must be different from the Username above. Required for every role except Subscriber, who gets a neutral name such as "Member 7" if it is left blank.</span>
             </p>
 
             <p class="lp-field">

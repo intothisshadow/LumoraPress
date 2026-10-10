@@ -187,16 +187,36 @@ final class UserService
     private const GUESSABLE_ADMINISTRATOR_USERNAMES = ['admin', 'administrator', 'root', 'webmaster', 'superuser', 'owner'];
 
     /**
-     * A post's public byline is the account's Display Name, so an
-     * identical login username and Display Name effectively publishes
-     * half of an admin/staff account's credentials. Checked explicitly
-     * by the installer and Add/Edit User screen before calling
-     * create()/update(), not enforced inside them, since the Importer
-     * and Dummy Content generator shouldn't abort a whole batch over this.
+     * A post's public byline, author archive slug and a signed-in
+     * commenter's name are all the account's Display Name, so an identical
+     * login username and Display Name publishes half of the account's
+     * credentials. The installer and Add/Edit User screen reject it with an
+     * error; create()/update() additionally replace it with a neutral name
+     * rather than throwing, so an importer or generator never aborts a
+     * whole batch over one account.
      */
     public static function usernameMatchesDisplayName(string $username, string $displayName): bool
     {
         return mb_strtolower(trim($username)) === mb_strtolower(trim($displayName));
+    }
+
+    /**
+     * The name an account gets when no usable Display Name was supplied.
+     * Built from the id so it can never be derived from the login.
+     */
+    public static function neutralDisplayName(int $userId): string
+    {
+        return 'Member ' . $userId;
+    }
+
+    /**
+     * $displayName when it is safe to publish, otherwise null.
+     */
+    private static function publishableDisplayName(?string $displayName, string $username): ?string
+    {
+        $name = trim((string) $displayName);
+
+        return $name === '' || self::usernameMatchesDisplayName($username, $name) ? null : $name;
     }
 
     public static function isGuessableAdministratorUsername(string $username): bool
@@ -239,6 +259,10 @@ final class UserService
         ?string $displayName = null,
         ?\DateTimeImmutable $registeredAt = null,
     ): User {
+        $publishable = self::publishableDisplayName($displayName, $username);
+
+        // The neutral name needs the new row's id, so a placeholder that
+        // is itself safe to publish covers the gap between the two statements.
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
                 (username, email, password_hash, display_name, role, created_at)
@@ -247,11 +271,18 @@ final class UserService
                 'username' => $username,
                 'email' => $email,
                 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                'display_name' => $displayName ?? $username,
+                'display_name' => $publishable ?? 'Member',
                 'role' => $role->value,
                 'created_at' => ($registeredAt ?? new \DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
+
+        if ($publishable === null) {
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET display_name = :display_name WHERE id = :id',
+                ['display_name' => self::neutralDisplayName((int) $id), 'id' => $id],
+            );
+        }
 
         $user = $this->findById((int) $id);
 
@@ -270,6 +301,12 @@ final class UserService
             throw new \RuntimeException("User {$id} does not exist.");
         }
 
+        // A blank or login-matching name keeps the stored one when that is
+        // still safe against the (possibly renamed) username.
+        $resolvedName = self::publishableDisplayName($displayName, $username)
+            ?? self::publishableDisplayName($existing->displayName, $username)
+            ?? self::neutralDisplayName($id);
+
         $this->database->execute(
             'UPDATE ' . $this->table() . '
                 SET username = :username, email = :email, display_name = :display_name, role = :role
@@ -277,7 +314,7 @@ final class UserService
             [
                 'username' => $username,
                 'email' => $email,
-                'display_name' => $displayName ?? $username,
+                'display_name' => $resolvedName,
                 'role' => $role->value,
                 'id' => $id,
             ],
@@ -774,7 +811,9 @@ final class UserService
             id: (int) $row['id'],
             username: (string) $row['username'],
             email: (string) $row['email'],
-            displayName: (string) ($row['display_name'] ?? $row['username']),
+            displayName: trim((string) ($row['display_name'] ?? '')) !== ''
+                ? (string) $row['display_name']
+                : self::neutralDisplayName((int) $row['id']),
             role: UserRole::from((string) $row['role']),
             preferredEditor: isset($row['preferred_editor'])
                 ? ContentFormat::tryFrom((string) $row['preferred_editor'])
