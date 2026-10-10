@@ -361,6 +361,7 @@ $linkQuery = $linkId > 0 ? '?link=' . $linkId : '';
 
     <section class="lp-admin__panel">
         <h2>Choose a Repository</h2>
+        <p class="lp-field__hint">Images in the README that stay on another site, such as badges, are added to <a href="<?= esc_url(admin_url('settings/security')) ?>">Trusted Image Sources</a> when the download is saved, so they display. You can remove them there at any time.</p>
         <form method="get" action="<?= esc_url($endpoint) ?>" data-lp-github-lookup>
             <?php if ($linkId > 0): ?>
                 <input type="hidden" name="link" value="<?= (int) $linkId ?>">

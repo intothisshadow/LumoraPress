@@ -259,7 +259,8 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                 An Administrator or Editor saving a post or page never needs to
                 do this by hand for their own content — any external image
                 origin their saved content actually uses is added here
-                automatically. This list is where those origins land, and you
+                automatically. So are the image sources in a README imported
+                from GitHub. This list is where those origins land, and you
                 can remove one at any time.
             </p>
             <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
@@ -281,9 +282,9 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
             <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
                 <li>No XML-RPC endpoint.</li>
                 <li>The "Forgot password?" flow always shows the same "if that address is registered, we sent a link" response, whether or not the email exists, and is itself IP-rate-limited to blunt large-scale probing.</li>
-                <li>No REST API endpoint that lists or exposes user accounts.</li>
+                <li>There is no REST API, so no endpoint lists or exposes user accounts.</li>
                 <li>The login form already gives a single generic error for both a wrong username and a wrong password.</li>
-                <li>The public author archive (<code>/author/{slug}</code>) 404s an author with zero published posts exactly like a nonexistent username.</li>
+                <li>The public author archive (<code>/author/{slug}</code>) 404s an author with zero published posts exactly like a nonexistent author.</li>
             </ul>
             <?php if ($lumoraShieldActive): ?>
                 <p class="lp-field__hint">
@@ -297,7 +298,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
             <h2>Always On</h2>
             <ul class="lp-admin__meta-list lp-admin__meta-list--stacked">
                 <li>CSRF protection on every administrative form.</li>
-                <li>Secure, HttpOnly session cookies.</li>
+                <li>HttpOnly, SameSite session cookies, marked Secure when the site is served over HTTPS.</li>
                 <li>Submission timing and honeypot checks on the public comment form, plus optional Akismet spam-checking (Spam Protection panel above).</li>
             </ul>
         </section>

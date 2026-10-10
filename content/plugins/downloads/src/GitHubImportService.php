@@ -19,6 +19,7 @@ namespace LumoraPress\Plugins\Downloads;
 
 use InvalidArgumentException;
 use LumoraPress\Core\PressConfig;
+use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Services\FolderService;
 use LumoraPress\Services\MediaService;
@@ -663,6 +664,8 @@ final class GitHubImportService
             $this->downloads->setThumbnail($download->id, (int) $added[0]['mediaId']);
         }
 
+        $this->trustImageSources($description);
+
         $this->store->record($download->id, $ref, (string) $job['branch'], hash('sha256', (string) $job['title']), hash('sha256', $readmePart), (string) $job['readmeHash']);
 
         foreach ($added as $image) {
@@ -710,6 +713,10 @@ final class GitHubImportService
 
         $this->refreshThumbnail($download, $job['firstMediaBefore'] ?? null, $images[0]['mediaId'] ?? null);
 
+        if ($rebuildDescription) {
+            $this->trustImageSources($description);
+        }
+
         $this->store->record(
             $downloadId,
             $source['ref'],
@@ -720,6 +727,21 @@ final class GitHubImportService
         );
 
         return $downloadId;
+    }
+
+    /**
+     * A README's badges and rewritten raw.githubusercontent.com images stay on their own hosts, and
+     * the Content-Security-Policy blocks any host not under Settings › Security › Trusted Image
+     * Sources. The saved description's image hosts are added there, as saving a post does.
+     * Failing to record them must not undo an import that otherwise worked.
+     */
+    private function trustImageSources(string $description): void
+    {
+        try {
+            TrustedImageOrigins::autoTrustFromMarkdown($this->config, $description, function_exists('site_origin') ? site_origin() : '');
+        } catch (RuntimeException) {
+            // The images just stay blocked until the host is added by hand.
+        }
     }
 
     /**

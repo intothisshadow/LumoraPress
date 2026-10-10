@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Core\Security;
 
 use DOMDocument;
+use LumoraPress\Core\Content\MarkdownParser;
 use LumoraPress\Core\PressConfig;
 
 /**
@@ -119,20 +120,42 @@ final class TrustedImageOrigins
      */
     public static function autoTrustFromContent(PressConfig $config, string $html, string $siteOrigin): void
     {
-        $found = self::extractExternalOrigins($html, $siteOrigin);
+        self::trustOrigins($config, self::extractExternalOrigins($html, $siteOrigin));
+    }
 
+    /**
+     * Same as autoTrustFromContent() for Markdown (a GitHub README, say),
+     * which stores `![alt](url)` rather than a literal <img>. Returns the
+     * origins that were newly added, empty when there were none.
+     *
+     * @return array<int, string>
+     */
+    public static function autoTrustFromMarkdown(PressConfig $config, string $markdown, string $siteOrigin): array
+    {
+        return self::trustOrigins($config, self::extractExternalOrigins((new MarkdownParser())->toHtml($markdown), $siteOrigin));
+    }
+
+    /**
+     * @param array<int, string> $found
+     * @return array<int, string> The origins that were not already trusted.
+     */
+    private static function trustOrigins(PressConfig $config, array $found): array
+    {
         if ($found === []) {
-            return;
+            return [];
         }
 
         $existing = self::parse((string) $config->option('trusted_image_origins', ''));
-        $merged = array_values(array_unique([...$existing, ...$found]));
+        $added = array_values(array_diff($found, $existing));
 
-        if ($merged === $existing) {
-            return;
+        if ($added === []) {
+            return [];
         }
 
+        $merged = array_values(array_unique([...$existing, ...$added]));
         sort($merged);
         $config->setOption('trusted_image_origins', implode("\n", $merged));
+
+        return $added;
     }
 }

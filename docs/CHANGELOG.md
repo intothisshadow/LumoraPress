@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- Downloads (plugin): importing from GitHub, or applying a README update, now adds the image addresses the README uses (badges, pictures served from GitHub) to Settings › Security › Trusted Image Sources, as saving a post already does. Before, those images were blocked by the site's security policy and showed as broken until each address was added by hand.
 - Lumora Classic: images inside posts and pages now have the same thin border as gallery thumbnails.
 - Admin: the whole color palette now works together. The grays are tinted slightly toward the plum accent, and the success (green), error (rose red), and warning (amber) colors match the softness of the switches and row buttons, in light and dark mode.
 - Admin: the accent color is now plum instead of the usual admin blue, in light and dark mode — buttons, links, focus rings, the panel header bars, notices, the editor's "Read more" marker, and the theme preview bar. The "View" row button, which was already purple, is now teal so it stays distinct from the other row buttons.
