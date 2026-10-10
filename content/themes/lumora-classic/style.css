@@ -3427,6 +3427,36 @@ img.lp-gallery-shortcode__thumb {
     font-size: 0.9rem;
 }
 
+/* Footer widget columns ("Footer widget columns" Theme Option): a fixed
+   count replaces the automatic wrap; small screens always get one column. */
+.lp-footer-columns-1 .lp-site-footer__widgets {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.lp-footer-columns-2 .lp-site-footer__widgets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lp-footer-columns-3 .lp-site-footer__widgets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lp-footer-columns-4 .lp-site-footer__widgets {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+    .lp-footer-columns-2 .lp-site-footer__widgets,
+    .lp-footer-columns-3 .lp-site-footer__widgets,
+    .lp-footer-columns-4 .lp-site-footer__widgets {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* Back-to-top button ("Show back-to-top button" Theme Option): core emits
    the button on footer_assets and reveals it after scrolling; this only
    styles it from the theme's own tokens. */

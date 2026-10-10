@@ -653,17 +653,34 @@ if (!function_exists('sidebar_position')) {
     }
 }
 
+if (!function_exists('footer_widget_columns')) {
+    /**
+     * 'auto' (the widgets wrap to the width) or '1'..'4'.
+     */
+    function footer_widget_columns(): string
+    {
+        $columns = theme_option('footer_widget_columns');
+
+        return in_array($columns, ['1', '2', '3', '4'], true) ? $columns : 'auto';
+    }
+}
+
 if (!function_exists('body_class')) {
     /**
      * The class list for the theme's <body> tag: $classes plus the
-     * layout classes core controls (e.g. lp-sidebar-left). Unescaped —
+     * layout classes core controls (lp-sidebar-left, lp-footer-columns-3). Unescaped —
      * wrap in esc_attr().
      */
     function body_class(string $classes = ''): string
     {
         $position = sidebar_position();
+        $columns = footer_widget_columns();
 
-        return trim($classes . ($position === 'right' ? '' : ' lp-sidebar-' . $position));
+        return trim(
+            $classes
+            . ($position === 'right' ? '' : ' lp-sidebar-' . $position)
+            . ($columns === 'auto' ? '' : ' lp-footer-columns-' . $columns),
+        );
     }
 }
 

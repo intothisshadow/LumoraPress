@@ -452,6 +452,21 @@ final class ThemeOptions
                 'plain' => 'Plain text',
             ],
         ));
+        $this->registerField(new ThemeOptionField(
+            key: 'footer_widget_columns',
+            section: 'footer',
+            type: ThemeOptionType::Select,
+            label: 'Footer widget columns',
+            default: 'auto',
+            choices: [
+                'auto' => 'Automatic',
+                '1' => '1 column',
+                '2' => '2 columns',
+                '3' => '3 columns',
+                '4' => '4 columns',
+            ],
+            help: 'How many columns the widgets in the Footer widget area are arranged in. Automatic fits as many as the width allows. Small screens always use one column. Has no effect while the Footer widget area has no widgets.',
+        ));
     }
 
     /**

@@ -150,7 +150,7 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
                             name="opt_<?= esc_attr($field->key) ?>"
                             value="<?= esc_attr($choiceValue) ?>"
                             class="lp-visual-choice__input"
-                            <?= $currentValue === $choiceValue ? 'checked' : '' ?>
+                            <?= $currentValue === (string) $choiceValue ? 'checked' : '' ?>
                         >
                         <span class="lp-visual-choice__preview">
                             <?php if ($field->key === 'sidebar_position'): ?>
@@ -222,7 +222,8 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
         <?php elseif ($field->type === ThemeOptionType::Select): ?>
             <select id="<?= esc_attr($fieldId) ?>" name="opt_<?= esc_attr($field->key) ?>">
                 <?php foreach ($field->choices as $choiceValue => $choiceLabel): ?>
-                    <option value="<?= esc_attr($choiceValue) ?>" <?= $currentValue === $choiceValue ? 'selected' : '' ?>><?= esc_html($choiceLabel) ?></option>
+                    <?php // PHP turns numeric-string array keys like '3' into ints, so compare as strings. ?>
+                    <option value="<?= esc_attr((string) $choiceValue) ?>" <?= $currentValue === (string) $choiceValue ? 'selected' : '' ?>><?= esc_html($choiceLabel) ?></option>
                 <?php endforeach; ?>
             </select>
         <?php elseif ($field->type === ThemeOptionType::Number): ?>
