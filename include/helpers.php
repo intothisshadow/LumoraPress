@@ -595,6 +595,26 @@ if (!function_exists('show_site_tagline')) {
     }
 }
 
+if (!function_exists('add_theme_support')) {
+    /**
+     * Declares the optional Customize features a theme implements, from its functions.php.
+     * Customize hides a Theme Option while the theme hasn't declared the feature it needs.
+     * Features: 'sidebar-position', 'footer-columns', 'image-styling', 'back-to-top',
+     * 'post-details', 'tagline', 'search-bar', 'page-titles'.
+     */
+    function add_theme_support(string ...$features): void
+    {
+        \LumoraPress\Core\Theme\ThemeSupport::add(...$features);
+    }
+}
+
+if (!function_exists('current_theme_supports')) {
+    function current_theme_supports(string $feature): bool
+    {
+        return \LumoraPress\Core\Theme\ThemeSupport::has($feature);
+    }
+}
+
 if (!function_exists('show_search_bar')) {
     /**
      * Whether a theme should render its header search form.

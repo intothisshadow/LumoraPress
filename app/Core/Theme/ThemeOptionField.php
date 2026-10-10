@@ -77,6 +77,12 @@ final class ThemeOptionField
          * @var array<int, string>
          */
         public readonly array $allowedHosts = [],
+        /**
+         * A feature name (see ThemeSupport) the active theme must declare with
+         * add_theme_support() for this option to do anything. Null means every
+         * theme honors it.
+         */
+        public readonly ?string $requiresSupport = null,
     ) {
     }
 }

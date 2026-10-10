@@ -4693,6 +4693,17 @@ select:focus {
     line-height: 1.5;
 }
 
+/* Customize: options the active theme doesn't implement are hidden and listed here instead. */
+.lp-field__hint--unsupported {
+    margin: 0 0 1rem;
+    font-style: italic;
+}
+
+.lp-customize-draft-status {
+    display: inline;
+    margin-left: 0.5rem;
+}
+
 /* LP-078: Settings > Permalinks structure presets. */
 .lp-field--radio {
     display: flex;

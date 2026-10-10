@@ -43,6 +43,9 @@ final class ThemeOptions
     /** @var array<string, string>|null */
     private ?array $values = null;
 
+    /** True while an unsaved draft is being previewed: nothing may be written back. */
+    private bool $previewOnly = false;
+
     public function __construct(
         private readonly PressConfig $config,
         private readonly string $activeThemeSlug = 'lumora-classic',
@@ -221,6 +224,7 @@ final class ThemeOptions
 
         $this->registerField(new ThemeOptionField(
             key: 'sidebar_position',
+            requiresSupport: 'sidebar-position',
             section: 'layout',
             type: ThemeOptionType::Select,
             label: 'Sidebar position',
@@ -288,6 +292,7 @@ final class ThemeOptions
             $this->registerField(new ThemeOptionField(
                 key: $key,
                 section: 'post_meta',
+                requiresSupport: 'post-details',
                 type: ThemeOptionType::Checkbox,
                 label: $label,
                 default: $default,
@@ -307,6 +312,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'show_page_titles',
+            requiresSupport: 'page-titles',
             section: 'page_elements',
             type: ThemeOptionType::Checkbox,
             label: 'Show page titles',
@@ -315,6 +321,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'show_back_to_top',
+            requiresSupport: 'back-to-top',
             section: 'page_elements',
             type: ThemeOptionType::Checkbox,
             label: 'Show back-to-top button',
@@ -349,6 +356,7 @@ final class ThemeOptions
 
         $this->registerField(new ThemeOptionField(
             key: 'image_radius',
+            requiresSupport: 'image-styling',
             section: 'images',
             type: ThemeOptionType::Select,
             label: 'Image corners',
@@ -366,6 +374,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'image_shadow',
+            requiresSupport: 'image-styling',
             section: 'images',
             type: ThemeOptionType::Select,
             label: 'Image shadow',
@@ -387,6 +396,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'gallery_spacing',
+            requiresSupport: 'image-styling',
             section: 'images',
             type: ThemeOptionType::Select,
             label: 'Gallery spacing',
@@ -418,6 +428,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'show_search_bar',
+            requiresSupport: 'search-bar',
             section: 'header',
             type: ThemeOptionType::Checkbox,
             label: 'Show search bar',
@@ -426,6 +437,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'show_tagline',
+            requiresSupport: 'tagline',
             section: 'header',
             type: ThemeOptionType::Checkbox,
             label: 'Show tagline',
@@ -516,6 +528,7 @@ final class ThemeOptions
         ));
         $this->registerField(new ThemeOptionField(
             key: 'footer_widget_columns',
+            requiresSupport: 'footer-columns',
             section: 'footer',
             type: ThemeOptionType::Select,
             label: 'Footer widget columns',
@@ -631,6 +644,103 @@ final class ThemeOptions
     public function field(string $key): ?ThemeOptionField
     {
         return $this->fields[$key] ?? null;
+    }
+
+    public function themeSlug(): string
+    {
+        return $this->activeThemeSlug;
+    }
+
+    /**
+     * Whether the active theme implements what this option needs. An option that names no
+     * feature is honored by every theme.
+     */
+    public function isSupported(ThemeOptionField $field): bool
+    {
+        return $field->requiresSupport === null || ThemeSupport::has($field->requiresSupport);
+    }
+
+    /**
+     * Reads one section's submitted form into what saving it would do, without saving: values
+     * to set, options to put back to the theme's own default, and the labels of any that failed
+     * validation. Options the theme doesn't support are skipped, and a Select that wasn't
+     * submitted keeps its current value. Save and Preview both go through this so they can't
+     * disagree about what a form means.
+     *
+     * @param array<string, mixed> $post
+     * @return array{set: array<string, string>, reset: array<int, string>, errors: array<int, string>}
+     */
+    public function draftFromInput(string $sectionKey, array $post): array
+    {
+        $draft = ['set' => [], 'reset' => [], 'errors' => []];
+
+        foreach ($this->fieldsForSection($sectionKey) as $field) {
+            if (!$this->isSupported($field)) {
+                continue;
+            }
+
+            $postKey = 'opt_' . $field->key;
+
+            if ($field->allowEmpty && ($post['reset_' . $field->key] ?? '') === '1') {
+                $draft['reset'][] = $field->key;
+
+                continue;
+            }
+
+            if ($field->type === ThemeOptionType::Select && !isset($post[$postKey])) {
+                continue;
+            }
+
+            $rawValue = $field->type === ThemeOptionType::Checkbox
+                ? (isset($post[$postKey]) ? '1' : '0')
+                : (string) ($post[$postKey] ?? '');
+
+            $sanitized = $this->sanitize($field, $rawValue);
+
+            if ($sanitized === null) {
+                $draft['errors'][] = $field->label;
+
+                continue;
+            }
+
+            $draft['set'][$field->key] = $sanitized;
+        }
+
+        return $draft;
+    }
+
+    /**
+     * Saves what draftFromInput() returned.
+     *
+     * @param array{set: array<string, string>, reset: array<int, string>, errors: array<int, string>} $draft
+     */
+    public function applyDraft(array $draft): void
+    {
+        foreach ($draft['reset'] as $key) {
+            $this->reset($key);
+        }
+
+        foreach ($draft['set'] as $key => $value) {
+            $this->set($key, $value);
+        }
+    }
+
+    /**
+     * Makes this request read the draft's values instead of the saved ones and refuses to write
+     * anything, so previewing unsaved changes can never alter the site.
+     *
+     * @param array{set: array<string, string>, reset: array<int, string>} $draft
+     */
+    public function usePreviewValues(array $draft): void
+    {
+        $values = $this->loadValues();
+
+        foreach ($draft['reset'] as $key) {
+            unset($values[$key]);
+        }
+
+        $this->values = array_replace($values, $draft['set']);
+        $this->previewOnly = true;
     }
 
     public function value(string $key): string
@@ -852,6 +962,10 @@ final class ThemeOptions
      */
     private function persist(array $values): void
     {
+        if ($this->previewOnly) {
+            return;
+        }
+
         $this->values = $values;
         $this->config->setOption($this->optionKey(), json_encode($values, JSON_THROW_ON_ERROR));
     }

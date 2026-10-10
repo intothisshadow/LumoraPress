@@ -26,6 +26,18 @@ register_sidebar('footer', 'Footer Widget Area', 'Appears in the site footer, ab
 
 register_nav_menu('primary', 'Primary Menu');
 register_nav_menu('footer', 'Footer Menu');
+
+// The Customize options this theme implements; any it doesn't list stay hidden.
+add_theme_support(
+    'sidebar-position',
+    'footer-columns',
+    'image-styling',
+    'back-to-top',
+    'post-details',
+    'tagline',
+    'page-titles',
+    'search-bar',
+);
 register_nav_menu('social', 'Social Links Menu');
 register_nav_menu('secondary', 'Secondary Menu');
 

@@ -28,14 +28,26 @@ final class ThemePreview
 {
     private static ?ThemeInfo $theme = null;
 
+    private static ?string $optionsToken = null;
+
     public static function activate(ThemeInfo $theme): void
     {
         self::$theme = $theme;
     }
 
+    /**
+     * Marks this preview as showing unsaved Customize changes, so the banner says so and
+     * links keep the draft's token.
+     */
+    public static function useOptions(string $token): void
+    {
+        self::$optionsToken = $token;
+    }
+
     public static function reset(): void
     {
         self::$theme = null;
+        self::$optionsToken = null;
     }
 
     public static function isActive(): bool
@@ -69,7 +81,9 @@ final class ThemePreview
 
         $separator = str_contains($url, '?') ? '&' : '?';
 
-        return $url . $separator . 'lp_preview_theme=' . rawurlencode(self::$theme->slug);
+        $url .= $separator . 'lp_preview_theme=' . rawurlencode(self::$theme->slug);
+
+        return self::$optionsToken !== null ? $url . '&lp_preview_options=' . rawurlencode(self::$optionsToken) : $url;
     }
 
     /**
@@ -85,7 +99,9 @@ final class ThemePreview
 
         $bar = '<div class="lp-theme-preview-bar" role="status">'
             . '<link rel="stylesheet" href="' . htmlspecialchars(admin_asset_url('css/theme-preview-bar.css'), ENT_QUOTES, 'UTF-8') . '">'
-            . '<span class="lp-theme-preview-bar__label">Previewing theme: <strong>' . htmlspecialchars(self::$theme->name, ENT_QUOTES, 'UTF-8') . '</strong></span>'
+            . '<span class="lp-theme-preview-bar__label">'
+            . (self::$optionsToken !== null ? 'Previewing unsaved Customize changes' : 'Previewing theme: <strong>' . htmlspecialchars(self::$theme->name, ENT_QUOTES, 'UTF-8') . '</strong>')
+            . '</span>'
             . '<a class="lp-theme-preview-bar__exit" href="' . htmlspecialchars($exitUrl, ENT_QUOTES, 'UTF-8') . '">Exit Preview</a>'
             . '</div>';
 

@@ -51,6 +51,19 @@ if ($form === FeaturedImageDefaultsController::PICKER_CSRF_ACTION || $form === F
     exit;
 }
 
+// "Preview" (customize-draft.js) posts a form's unsaved values and gets back the front-end URL to open.
+if ($form === ThemeCustomizerController::PREVIEW_CSRF_ACTION) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $previewResponse = $controller->previewSection(is_string($_POST['section'] ?? null) ? $_POST['section'] : '', $_POST, $csrfToken);
+    http_response_code($previewResponse['status']);
+    header('Content-Type: application/json');
+    echo json_encode($previewResponse['body']);
+    exit;
+}
+
 if ($form !== '') {
     $result = match (true) {
         $form === 'theme_options_header' => $controller->saveHeader($_POST, $_FILES, $currentUser->id, $csrfToken),
@@ -260,7 +273,43 @@ $renderThemeOptionField = function (ThemeOptionField $field, string $currentValu
 
 // Renders one registered section as its own form, reused per-tab and
 // per-sub-section within the Body tab.
-$renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderThemeOptionField): void {
+// Splits a section's fields into those the active theme honors and the labels of those it
+// doesn't (see ThemeSupport), so Customize never offers a setting that would do nothing.
+$splitBySupport = static function (string $sectionKey) use ($kernel): array {
+    $supported = [];
+    $unsupportedLabels = [];
+
+    foreach ($kernel->themeOptions->fieldsForSection($sectionKey) as $field) {
+        if ($kernel->themeOptions->isSupported($field)) {
+            $supported[] = $field;
+        } else {
+            $unsupportedLabels[] = $field->label;
+        }
+    }
+
+    return [$supported, $unsupportedLabels];
+};
+
+$renderUnsupportedNote = static function (array $unsupportedLabels): void {
+    if ($unsupportedLabels === []) {
+        return;
+    }
+    ?>
+    <p class="lp-field__hint lp-field__hint--unsupported">The active theme doesn't use these settings, so they are hidden: <?= esc_html(implode(', ', $unsupportedLabels)) ?>.</p>
+    <?php
+};
+
+// Preview opens the front end with this form's unsaved values; Discard (shown once something
+// changes) puts the screen back to what is saved. Both are wired by customize-draft.js.
+$renderDraftButtons = static function (string $sectionKey): void {
+    ?>
+    <button type="button" class="lp-button lp-button--secondary" data-lp-preview-options data-lp-preview-section="<?= esc_attr($sectionKey) ?>" data-lp-preview-csrf="<?= esc_attr(Csrf::token(ThemeCustomizerController::PREVIEW_CSRF_ACTION)) ?>" data-lp-preview-url="<?= esc_url(admin_url('appearance/customize')) ?>">Preview</button>
+    <button type="button" class="lp-button lp-button--link" data-lp-discard hidden>Discard changes</button>
+    <span class="lp-field__hint lp-customize-draft-status" data-lp-draft-status role="status"></span>
+    <?php
+};
+
+$renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderThemeOptionField, $splitBySupport, $renderUnsupportedNote, $renderDraftButtons): void {
     $section = $kernel->themeOptions->sections()[$sectionKey] ?? null;
 
     if ($section === null) {
@@ -268,17 +317,20 @@ $renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderT
     }
 
     $csrfAction = 'theme_options_' . $section->key;
+    [$fields, $unsupportedLabels] = $splitBySupport($section->key);
     ?>
     <section class="lp-admin__panel">
         <h2><?= esc_html($section->label) ?></h2>
         <?php if ($section->description !== ''): ?>
             <p class="lp-field__hint"><?= esc_html($section->description) ?></p>
         <?php endif; ?>
-        <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>?tab=<?= esc_attr($_GET['tab'] ?? 'header') ?>">
+        <?php $renderUnsupportedNote($unsupportedLabels); ?>
+        <?php if ($fields !== []): ?>
+        <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>?tab=<?= esc_attr($_GET['tab'] ?? 'header') ?>" data-lp-customize-form>
             <?= Csrf::field($csrfAction) ?>
             <input type="hidden" name="form" value="<?= esc_attr($csrfAction) ?>">
 
-            <?php foreach ($kernel->themeOptions->fieldsForSection($section->key) as $field): ?>
+            <?php foreach ($fields as $field): ?>
                 <?php
                 // An Html field's companion {key}_format Select field picks
                 // its content-editor.js mode, read by naming convention.
@@ -291,7 +343,9 @@ $renderThemeOptionSection = function (string $sectionKey) use ($kernel, $renderT
 
             <button type="submit" name="submit_action" value="save" class="lp-button lp-button--primary">Save <?= esc_html($section->label) ?></button>
             <button type="submit" name="submit_action" value="reset" class="lp-button lp-button--secondary" data-lp-confirm="Reset every <?= esc_attr(strtolower($section->label)) ?> option back to its default?">Reset to Defaults</button>
+            <?php $renderDraftButtons($section->key); ?>
         </form>
+        <?php endif; ?>
     </section>
     <?php
 };
@@ -370,6 +424,10 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['discarded']) && $error === null): ?>
+    <div class="lp-alert lp-alert--success" role="status">Unsaved changes discarded.</div>
+<?php endif; ?>
+
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
 <?php endif; ?>
@@ -391,11 +449,13 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
         <section class="lp-admin__panel">
             <h2>Header</h2>
             <p class="lp-field__hint">Controls what appears in the site header above the navigation.</p>
-            <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>?tab=header" enctype="multipart/form-data">
+            <?php [$headerFields, $headerUnsupported] = $splitBySupport('header'); ?>
+            <?php $renderUnsupportedNote($headerUnsupported); ?>
+            <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>?tab=header" enctype="multipart/form-data" data-lp-customize-form>
                 <?= Csrf::field('theme_options_header') ?>
                 <input type="hidden" name="form" value="theme_options_header">
 
-                <?php foreach ($kernel->themeOptions->fieldsForSection('header') as $field): ?>
+                <?php foreach ($headerFields as $field): ?>
                     <?php $renderThemeOptionField($field, $kernel->themeOptions->value($field->key)); ?>
                 <?php endforeach; ?>
 
@@ -436,6 +496,7 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
 
                 <button type="submit" name="submit_action" value="save" class="lp-button lp-button--primary">Save Header</button>
                 <button type="submit" name="submit_action" value="reset" class="lp-button lp-button--secondary" data-lp-confirm="Reset every header option, including the header image, back to its default?">Reset to Defaults</button>
+                <?php $renderDraftButtons('header'); ?>
             </form>
         </section>
     </div>

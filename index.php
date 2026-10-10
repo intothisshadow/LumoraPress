@@ -47,9 +47,30 @@ if ($previewSlug !== '') {
 
         // A theme that can't run here (newer requirements, missing templates) would only error out.
         if ($previewInfo !== null && $kernel->themeCompatibility->problemsFor($previewInfo) === []) {
-            $kernel->theme->setActiveTheme($previewInfo->slug);
-            $kernel->theme->loadFunctions();
+            // The active theme's functions.php has already run; loading it again would register everything twice.
+            if ($previewInfo->slug !== $kernel->theme->activeTheme()) {
+                $kernel->theme->setActiveTheme($previewInfo->slug);
+                $kernel->theme->loadFunctions();
+            }
+
             \LumoraPress\Core\Theme\ThemePreview::activate($previewInfo);
+
+            // Customize's "Preview" shows unsaved values for the active theme, in memory for this
+            // request only; the token ties the page to the draft its tab was opened with.
+            $optionsToken = is_string($_GET['lp_preview_options'] ?? null) ? $_GET['lp_preview_options'] : '';
+            $draft = $_SESSION[\LumoraPress\Controllers\Admin\ThemeCustomizerController::PREVIEW_SESSION_KEY] ?? null;
+
+            if (
+                $optionsToken !== ''
+                && is_array($draft)
+                && hash_equals((string) ($draft['token'] ?? ''), $optionsToken)
+                && (int) ($draft['expires'] ?? 0) > time()
+                && ($draft['theme'] ?? '') === $previewInfo->slug
+                && $previewInfo->slug === $kernel->themeOptions->themeSlug()
+            ) {
+                $kernel->themeOptions->usePreviewValues(['set' => (array) $draft['set'], 'reset' => (array) $draft['reset']]);
+                \LumoraPress\Core\Theme\ThemePreview::useOptions($optionsToken);
+            }
         }
     }
 }
@@ -58,7 +79,7 @@ if ($kernel->maintenance->shouldBlock($requestUri)) {
     $kernel->maintenance->respond();
 } elseif (\LumoraPress\Core\Theme\ThemePreview::isActive()) {
     $exitQuery = $_GET;
-    unset($exitQuery['lp_preview_theme']);
+    unset($exitQuery['lp_preview_theme'], $exitQuery['lp_preview_options']);
     $exitPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '/');
     $exitUrl = site_url($exitPath) . ($exitQuery === [] ? '' : '?' . http_build_query($exitQuery));
 

@@ -311,6 +311,26 @@ Values are scoped per active theme (LP-123): each theme's saved values are indep
 
 An `Html`-type field stores raw, unsanitized Markdown/HTML/Plain content (sanitized only at render time, the same posture as post/page `content` and `custom_css()` — never double-sanitized at storage time), rendered through `render_content()`. It's always paired with a companion `Select`-type field carrying the `\LumoraPress\Models\ContentFormat` choice (`'html'`/`'markdown'`/`'plain'`), by convention named `{key}_format` — see `welcome_message`/`welcome_message_format` and `footer_html`/`footer_html_format` in `ThemeOptions::registerStandardOptions()` for the exact pattern to follow for your own rich-content field.
 
+### Declaring which Customize options your theme implements
+
+Some Theme Options only do something when the theme cooperates (a body class, a template check, a CSS rule). Declare the ones your theme implements from `functions.php`; Customize hides any it hasn't declared, with a note, rather than offering a setting that does nothing:
+
+```php
+add_theme_support(
+    'sidebar-position',  // body_class() + .lp-sidebar-left / .lp-sidebar-none rules
+    'footer-columns',    // body_class() + .lp-footer-columns-N rules
+    'image-styling',     // body_class() + the .lp-custom-image-* / gallery-gap rules
+    'back-to-top',       // .lp-back-to-top styling
+    'post-details',      // show_post_meta() around the byline parts, the_reading_time()
+    'tagline',           // show_site_tagline()
+    'search-bar',        // show_search_bar()
+    'page-titles',       // show_page_titles()
+);
+current_theme_supports(string $feature): bool
+```
+
+A theme that declares nothing still gets every option that needs no cooperation (colors, typography, content width, featured image position, and so on). A plugin that registers a Theme Option can name the feature it needs with `ThemeOptionField`'s `requiresSupport` argument.
+
 ### Appearance > Customize screen sections
 
 The admin Appearance > Customize screen (LP-123, replacing the old flat Theme Options page) groups sections into six tabs: **Header**, **Welcome Message**, **Body**, **Menu**, **Widgets**, **Footer**, plus a theme tab after them when the theme registers sections of its own. Menu and Widgets are link-outs to the existing Menus/Widgets screens, not option sections. **Body groups the pre-existing `colors`/`typography`/`layout`/`post_display`/`post_meta`/`page_elements`/`featured_image`/`images` sections under one tab — it is not itself a registered `ThemeOptions` section** (`ThemeOptions::sections()` still returns those five section keys unchanged; the tab grouping is purely an admin-view concern). Every custom section your theme/plugin registers (like `my_theme` above) is shown in one more tab after Footer, named for the active theme; the tab only appears when at least one custom section exists. See `admin/views/appearance/customize.php`'s `$tabSections` if you need to place a custom section somewhere specific.

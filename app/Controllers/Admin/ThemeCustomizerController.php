@@ -19,7 +19,6 @@ namespace LumoraPress\Controllers\Admin;
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\ThemeOptions;
-use LumoraPress\Core\Theme\ThemeOptionType;
 use LumoraPress\Services\MediaService;
 use Throwable;
 
@@ -33,6 +32,12 @@ use Throwable;
  */
 final class ThemeCustomizerController
 {
+    public const PREVIEW_CSRF_ACTION = 'theme_options_preview';
+
+    public const PREVIEW_SESSION_KEY = 'lp_options_preview';
+
+    private const PREVIEW_LIFETIME_SECONDS = 1800;
+
     public function __construct(
         private readonly ThemeOptions $themeOptions,
         private readonly MediaService $media,
@@ -59,31 +64,54 @@ final class ThemeCustomizerController
             return AdminActionResult::redirect($this->redirectTarget($sectionKey));
         }
 
-        $errors = [];
+        $draft = $this->themeOptions->draftFromInput($sectionKey, $post);
+        $this->themeOptions->applyDraft($draft);
 
-        foreach ($this->themeOptions->fieldsForSection($sectionKey) as $field) {
-            $postKey = 'opt_' . $field->key;
-
-            if ($field->allowEmpty && ($post['reset_' . $field->key] ?? '') === '1') {
-                $this->themeOptions->reset($field->key);
-
-                continue;
-            }
-
-            $rawValue = $field->type === ThemeOptionType::Checkbox
-                ? (isset($post[$postKey]) ? '1' : '0')
-                : (string) ($post[$postKey] ?? '');
-
-            if (!$this->themeOptions->set($field->key, $rawValue)) {
-                $errors[] = $field->label;
-            }
-        }
-
-        if ($errors !== []) {
-            return AdminActionResult::error("Couldn't save: " . implode(', ', $errors) . ' — please check the value(s) and try again.');
+        if ($draft['errors'] !== []) {
+            return AdminActionResult::error("Couldn't save: " . implode(', ', $draft['errors']) . ' — please check the value(s) and try again.');
         }
 
         return AdminActionResult::redirect($this->redirectTarget($sectionKey));
+    }
+
+    /**
+     * Stores a section's unsaved form values for a front-end preview. Nothing is written to the
+     * saved options: the draft lives in the session, expires, and is only read by a request that
+     * presents its token. The CSRF token is single-use, so the response carries a fresh one for
+     * the next click.
+     *
+     * @param array<string, mixed> $post
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function previewSection(string $sectionKey, array $post, ?string $csrfToken): array
+    {
+        if (!Csrf::verify(self::PREVIEW_CSRF_ACTION, $csrfToken)) {
+            return ['status' => 403, 'body' => ['error' => 'Your session expired. Reload the page and try again.', 'csrfToken' => Csrf::token(self::PREVIEW_CSRF_ACTION)]];
+        }
+
+        if (!isset($this->themeOptions->sections()[$sectionKey])) {
+            return ['status' => 404, 'body' => ['error' => 'That section could not be found.', 'csrfToken' => Csrf::token(self::PREVIEW_CSRF_ACTION)]];
+        }
+
+        $draft = $this->themeOptions->draftFromInput($sectionKey, $post);
+
+        if ($draft['errors'] !== []) {
+            return ['status' => 422, 'body' => ['error' => 'Check the value(s): ' . implode(', ', $draft['errors']) . '.', 'csrfToken' => Csrf::token(self::PREVIEW_CSRF_ACTION)]];
+        }
+
+        $token = bin2hex(random_bytes(16));
+        $_SESSION[self::PREVIEW_SESSION_KEY] = [
+            'token' => $token,
+            'theme' => $this->themeOptions->themeSlug(),
+            'set' => $draft['set'],
+            'reset' => $draft['reset'],
+            'expires' => time() + self::PREVIEW_LIFETIME_SECONDS,
+        ];
+
+        return ['status' => 200, 'body' => [
+            'url' => site_url('') . '?lp_preview_theme=' . rawurlencode($this->themeOptions->themeSlug()) . '&lp_preview_options=' . $token,
+            'csrfToken' => Csrf::token(self::PREVIEW_CSRF_ACTION),
+        ]];
     }
 
     /**
@@ -106,24 +134,9 @@ final class ThemeCustomizerController
             return AdminActionResult::redirect($this->redirectTarget('header'));
         }
 
-        $errors = [];
-
-        foreach ($this->themeOptions->fieldsForSection('header') as $field) {
-            $postKey = 'opt_' . $field->key;
-
-            // A choice that wasn't submitted keeps its current value rather than failing validation.
-            if ($field->type === ThemeOptionType::Select && !isset($post[$postKey])) {
-                continue;
-            }
-
-            $rawValue = $field->type === ThemeOptionType::Checkbox
-                ? (isset($post[$postKey]) ? '1' : '0')
-                : (string) ($post[$postKey] ?? '');
-
-            if (!$this->themeOptions->set($field->key, $rawValue)) {
-                $errors[] = $field->label;
-            }
-        }
+        $draft = $this->themeOptions->draftFromInput('header', $post);
+        $this->themeOptions->applyDraft($draft);
+        $errors = $draft['errors'];
 
         // The Header tab posts the images still in its list (and says so with
         // header_images_submitted, so an emptied list clears them); a caller
