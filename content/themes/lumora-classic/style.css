@@ -861,6 +861,7 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-post__content img {
+    border: 1px solid var(--lp-border);
     border-radius: var(--lp-radius);
 }
 
@@ -3425,6 +3426,40 @@ img.lp-gallery-shortcode__thumb {
 .lp-gallery-shortcode__view-link {
     display: inline-block;
     font-size: 0.9rem;
+}
+
+/* Image styling overrides ("Images" Theme Options): each rule applies only
+   once the administrator picks a value (core adds the lp-custom-* body class),
+   and is !important because that choice is meant to beat the theme's own
+   per-component image rules. */
+body.lp-custom-image-radius :is(
+    .lp-post__content img,
+    .lp-post-list__content img,
+    .lp-post__thumbnail img,
+    .lp-post-list__thumbnail img,
+    .lp-related-posts__thumbnail img,
+    .lp-search-results__thumbnail img,
+    img.lp-folder-gallery__thumb,
+    img.lp-gallery-shortcode__thumb
+) {
+    border-radius: var(--lp-image-radius) !important;
+}
+
+body.lp-custom-image-shadow :is(
+    .lp-post__content img,
+    .lp-post-list__content img,
+    .lp-post__thumbnail img,
+    .lp-post-list__thumbnail img,
+    .lp-related-posts__thumbnail img,
+    .lp-search-results__thumbnail img,
+    img.lp-folder-gallery__thumb,
+    img.lp-gallery-shortcode__thumb
+) {
+    box-shadow: var(--lp-image-shadow) !important;
+}
+
+body.lp-custom-gallery-gap :is(.lp-folder-gallery__items, .lp-gallery-shortcode__items) {
+    gap: var(--lp-gallery-gap) !important;
 }
 
 /* Footer widget columns ("Footer widget columns" Theme Option): a fixed

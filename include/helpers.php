@@ -668,18 +668,28 @@ if (!function_exists('footer_widget_columns')) {
 if (!function_exists('body_class')) {
     /**
      * The class list for the theme's <body> tag: $classes plus the
-     * layout classes core controls (lp-sidebar-left, lp-footer-columns-3). Unescaped —
+     * layout classes core controls (lp-sidebar-left, lp-footer-columns-3, lp-custom-image-radius). Unescaped —
      * wrap in esc_attr().
      */
     function body_class(string $classes = ''): string
     {
         $position = sidebar_position();
         $columns = footer_widget_columns();
+        $custom = '';
+
+        // Each marks an image setting the administrator chose, so a theme's
+        // own style stays in place until then.
+        foreach (['image_radius' => 'image-radius', 'image_shadow' => 'image-shadow', 'gallery_spacing' => 'gallery-gap'] as $option => $class) {
+            if (theme_option($option) !== '') {
+                $custom .= ' lp-custom-' . $class;
+            }
+        }
 
         return trim(
             $classes
             . ($position === 'right' ? '' : ' lp-sidebar-' . $position)
-            . ($columns === 'auto' ? '' : ' lp-footer-columns-' . $columns),
+            . ($columns === 'auto' ? '' : ' lp-footer-columns-' . $columns)
+            . $custom,
         );
     }
 }

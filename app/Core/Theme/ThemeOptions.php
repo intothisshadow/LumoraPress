@@ -341,6 +341,68 @@ final class ThemeOptions
             help: 'On the homepage, this also switches the Classic layout\'s listing between the two arrangements — the Magazine layout always shows the image above.',
         ));
 
+        // These three override a theme's own image styling only once an
+        // administrator picks a value (default: none), so a theme author's
+        // design wins until then. The variable alone changes nothing: body_class()
+        // adds a lp-custom-* class that switches on each theme's override rule.
+        $this->registerSection('images', 'Images', 'Choose how images look across posts, pages, and galleries. Leave a setting on "Use theme default" to keep the active theme\'s own style.');
+
+        $this->registerField(new ThemeOptionField(
+            key: 'image_radius',
+            section: 'images',
+            type: ThemeOptionType::Select,
+            label: 'Image corners',
+            default: '',
+            cssVariable: '--lp-image-radius',
+            choices: [
+                '' => 'Use theme default',
+                'square' => 'Square',
+                'soft' => 'Slightly rounded',
+                'round' => 'Rounded',
+            ],
+            cssValueMap: ['square' => '0', 'soft' => '6px', 'round' => '16px'],
+            help: 'The corners of images in posts and pages, thumbnails, and galleries.',
+            allowEmpty: true,
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'image_shadow',
+            section: 'images',
+            type: ThemeOptionType::Select,
+            label: 'Image shadow',
+            default: '',
+            cssVariable: '--lp-image-shadow',
+            choices: [
+                '' => 'Use theme default',
+                'none' => 'No shadow',
+                'soft' => 'Soft shadow',
+                'strong' => 'Strong shadow',
+            ],
+            cssValueMap: [
+                'none' => 'none',
+                'soft' => '0 4px 14px rgba(0, 0, 0, 0.15)',
+                'strong' => '0 10px 30px rgba(0, 0, 0, 0.35)',
+            ],
+            help: 'A shadow under images in posts and pages, thumbnails, and galleries.',
+            allowEmpty: true,
+        ));
+        $this->registerField(new ThemeOptionField(
+            key: 'gallery_spacing',
+            section: 'images',
+            type: ThemeOptionType::Select,
+            label: 'Gallery spacing',
+            default: '',
+            cssVariable: '--lp-gallery-gap',
+            choices: [
+                '' => 'Use theme default',
+                'tight' => 'Tight',
+                'normal' => 'Normal',
+                'wide' => 'Wide',
+            ],
+            cssValueMap: ['tight' => '0.25rem', 'normal' => '0.75rem', 'wide' => '1.5rem'],
+            help: 'The space between thumbnails in a gallery.',
+            allowEmpty: true,
+        ));
+
         // header_image itself is deliberately NOT a ThemeOptionField — a
         // file upload doesn't fit this class's string-in/string-out
         // sanitize() contract — see headerImageMediaId() below instead.
