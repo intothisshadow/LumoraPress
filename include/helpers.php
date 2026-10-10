@@ -605,6 +605,18 @@ if (!function_exists('show_search_bar')) {
     }
 }
 
+if (!function_exists('show_back_to_top')) {
+    /**
+     * Whether core adds the back-to-top button on `footer_assets`. Themes
+     * only need to call do_action('footer_assets') and style
+     * .lp-back-to-top.
+     */
+    function show_back_to_top(): bool
+    {
+        return theme_option('show_back_to_top') === '1';
+    }
+}
+
 if (!function_exists('show_breadcrumbs')) {
     /**
      * Whether breadcrumb trails render. the_page_breadcrumbs() and

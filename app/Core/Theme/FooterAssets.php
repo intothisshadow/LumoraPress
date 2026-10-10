@@ -88,6 +88,15 @@ final class FooterAssets
             <?php
         }
 
+        if (show_back_to_top()) {
+            ?>
+            <button type="button" class="lp-back-to-top" data-lp-back-to-top aria-label="Back to top" hidden>
+                <span class="lp-back-to-top__icon" aria-hidden="true">&uarr;</span>
+            </button>
+            <script src="<?= esc_url(core_asset_url('js/back-to-top.js')) ?>"></script>
+            <?php
+        }
+
         // lp_emoji_picker_button() (Emoji Picker plugin, LPP-006) already
         // renders '' when the plugin is inactive/disabled, so the button
         // itself never appears without this — checked here rather than

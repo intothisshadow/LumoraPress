@@ -335,6 +335,9 @@ show_search_bar(): bool                 // whether to render your header search 
 // Page Elements section (Body tab)
 show_page_titles(): bool                // output a static page's <h1> either way; when false add the
                                          // lp-visually-hidden class so it stays for screen readers
+show_back_to_top(): bool                // core adds the button itself on footer_assets (a <button class="lp-back-to-top"
+                                         // hidden> plus assets/js/back-to-top.js); a theme only styles
+                                         // .lp-back-to-top and must fire do_action('footer_assets')
 show_breadcrumbs(): bool                // the_page_breadcrumbs()/the_category_breadcrumbs() already
                                          // check it, so a theme needs no condition of its own
 

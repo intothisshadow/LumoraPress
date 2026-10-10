@@ -313,6 +313,14 @@ final class ThemeOptions
             default: '1',
             help: 'Show the title at the top of each static page. When off, the title stays in the page for screen readers and search engines, just not visible. Post titles, archives, and search results are not affected.',
         ));
+        $this->registerField(new ThemeOptionField(
+            key: 'show_back_to_top',
+            section: 'page_elements',
+            type: ThemeOptionType::Checkbox,
+            label: 'Show back-to-top button',
+            default: '0',
+            help: 'Show a button in the corner that scrolls back to the top once a visitor has scrolled down a little.',
+        ));
 
         // Its own section rather than folded into Post Display: this is a
         // single visual choice with its own admin picker UI (customize.php

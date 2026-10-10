@@ -3427,6 +3427,42 @@ img.lp-gallery-shortcode__thumb {
     font-size: 0.9rem;
 }
 
+/* Back-to-top button ("Show back-to-top button" Theme Option): core emits
+   the button on footer_assets and reveals it after scrolling; this only
+   styles it from the theme's own tokens. */
+.lp-back-to-top {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 1px solid var(--lp-accent);
+    border-radius: var(--lp-radius);
+    background: var(--lp-bg-alt);
+    color: var(--lp-text);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.lp-back-to-top[hidden] {
+    display: none;
+}
+
+.lp-back-to-top:hover {
+    border-color: var(--lp-accent-hover);
+}
+
+.lp-back-to-top:focus-visible {
+    outline: 2px solid var(--lp-accent);
+    outline-offset: 2px;
+}
+
 /* Visitors who ask their system for less motion get no transitions,
    animations, or smooth scrolling. */
 @media (prefers-reduced-motion: reduce) {
