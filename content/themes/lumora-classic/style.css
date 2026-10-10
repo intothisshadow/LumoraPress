@@ -179,10 +179,14 @@ body.lp-site {
    Header (masthead)
    ========================================================= */
 
+/* The header must not clip (overflow: hidden) or the menu's dropdowns, which open below it,
+   are cut off; the image wrap rounds its own top corners to follow the header's shape. Its
+   z-index keeps an open dropdown above the content that follows. */
 .lp-site-header {
+    position: relative;
+    z-index: 20;
     max-width: var(--lp-max-width);
     margin: 1.25rem auto 0;
-    overflow: hidden;
     border-radius: 22px 22px 0 0;
     background: var(--lp-header-ink);
     box-shadow: var(--lp-surface-shadow);
@@ -191,6 +195,7 @@ body.lp-site {
 .lp-site-header__image-wrap {
     position: relative;
     overflow: hidden;
+    border-radius: 22px 22px 0 0;
     background: #25364a;
 }
 
