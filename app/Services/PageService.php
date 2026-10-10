@@ -200,7 +200,7 @@ final class PageService
         }
 
         $this->treeCache = null;
-        $this->hooks?->doAction('page_saved', $page);
+        $this->hooks?->doAction('page_saved', $page, $existing);
 
         return $page;
     }
@@ -357,7 +357,7 @@ final class PageService
             $page = $this->findById($id);
 
             if ($page !== null) {
-                $this->hooks?->doAction('page_saved', $page);
+                $this->hooks?->doAction('page_saved', $page, $existing);
             }
         }
 

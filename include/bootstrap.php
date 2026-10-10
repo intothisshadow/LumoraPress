@@ -23,6 +23,7 @@ use LumoraPress\Core\ActiveKernel;
 use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Autoloader;
 use LumoraPress\Core\Cache\CacheDriverInterface;
+use LumoraPress\Core\Cache\CacheInvalidator;
 use LumoraPress\Core\Cache\CacheManager;
 use LumoraPress\Core\Cache\LiteSpeedCacheDriver;
 use LumoraPress\Core\Cache\NullCacheDriver;
@@ -770,15 +771,21 @@ $cacheDriver = $cacheDrivers[$cacheDriverOverride] ?? (static function () use ($
 })();
 $cache = new CacheManager($config, $cacheDriver, LUMORA_ROOT, $cacheDrivers);
 
-// Automatic invalidation: every content-change action, plus the generic
-// 'option_changed', purges the whole cache. A blanket purgeAll() rather
-// than per-tag targeting is a deliberate simplicity trade-off.
+// Automatic invalidation. Post, page and comment changes go through
+// CacheInvalidator, which skips changes no visitor can see. Everything
+// else (and every option write) purges the whole cache, since widgets,
+// menus and bylines repeat that data on every page.
+$cacheInvalidator = new CacheInvalidator($cache, $config);
+$hooks->addAction('post_saved', [$cacheInvalidator, 'postSaved']);
+$hooks->addAction('page_saved', [$cacheInvalidator, 'pageSaved']);
+$hooks->addAction('comment_posted', [$cacheInvalidator, 'commentPosted']);
+$hooks->addAction('comment_status_changed', [$cacheInvalidator, 'commentStatusChanged']);
+
 foreach ([
-    'post_saved', 'post_deleted',
-    'page_saved', 'page_deleted',
+    'post_deleted', 'page_deleted',
     'category_saved', 'category_deleted',
     'tag_saved', 'tag_deleted',
-    'comment_posted', 'comment_status_changed', 'comment_deleted',
+    'comment_deleted',
     'media_saved', 'media_deleted',
     'user_saved', 'user_deleted',
 ] as $cachePurgeAction) {

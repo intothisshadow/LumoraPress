@@ -33,7 +33,7 @@ Every hook/filter core actually fires, grouped by area. "Fires in" points to the
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
-| `post_saved` | action | `Post $post` | [`PostService`](../app/Services/PostService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). Fires on every save path, not just full create/update. |
+| `post_saved` | action | `Post $post, ?Post $previous = null` | [`PostService`](../app/Services/PostService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). Fires on every save path, not just full create/update. `$previous` is the post as it was before `update()` or `setStatus()`, so a listener can tell a publish from an unpublish; it is `null` from `create()` and `updateSeo()`. |
 | `post_deleted` | action | `int $id` | `PostService::trash()` (soft-delete) **and** `delete()` (permanent). Both fire the same event name — a listener can't tell "moved to Trash" from "permanently removed" from the hook alone. `restore()` fires nothing at all. |
 | `single_post_viewed` | action | `Post $post, bool $isGuest` | `SiteController::singlePost()`, once per request, after the post is resolved and visibility-checked, before rendering. A no-op unless something listens — core carries no view-tracking logic of its own. `$isGuest` is `!$this->auth->check()`, the same idiom `markCacheableForGuests()` uses. The Visitor & Post View Statistics plugin (LPP-014) is this hook's first listener. |
 
@@ -43,7 +43,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 
 | Name | Type | Args | Fires in |
 |---|---|---|---|
-| `page_saved` | action | `Page $page` | [`PageService`](../app/Services/PageService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). |
+| `page_saved` | action | `Page $page, ?Page $previous = null` | [`PageService`](../app/Services/PageService.php): `create()`, `update()`, `updateSeo()` (if changed), `setStatus()` (if changed). `$previous` is the page as it was before `update()` or `setStatus()`, and `null` from `create()` and `updateSeo()`. |
 | `page_deleted` | action | `int $id` | `PageService::trash()` **and** `delete()` (permanent) — same both-mean-the-same-hook caveat as posts. `restore()` fires nothing. A permanent delete also removes the page's comments, the same as a post's. |
 
 ### Comment lifecycle
@@ -311,7 +311,7 @@ The type id must be 1–40 lowercase letters, digits, hyphens, or underscores. T
 
 - **Marking a response cacheable.** A route opts in with `markPageCacheable(array $tags, string $contentType)`. `$contentType` is one of `CacheManager::CONTENT_TYPES` (`home`, `pages`, `categories`, `tags`, `archives`, `search`), which the administrator can switch off individually; any other string is always allowed. Call `disableCaching()` to veto a response, for example when it shows something visitor-specific.
 - **Automatic veto.** Any response that minted a CSRF token (`Csrf::token()` or `Csrf::field()`) is made uncacheable, so a plugin form can't leak one visitor's one-time token to another. The administrator's "Never Cache" path list is applied on top.
-- **Purging.** `purgeUrl()`, `purgeUrls()`, `purgeTag()`, `purgeTags()` and `purgeAll()` send the purge through the active driver and add it to the Recent Purges log. A URL purge takes the full URL path, including a subdirectory install's base path. Core calls `purgeAll()` on the post, page, category, tag, comment, media and user hooks and on every `option_changed` that isn't housekeeping, so most plugins never need to purge.
+- **Purging.** `purgeUrl()`, `purgeUrls()`, `purgeTag()`, `purgeTags()` and `purgeAll()` send the purge through the active driver and add it to the Recent Purges log. A URL purge takes the full URL path, including a subdirectory install's base path. Core does the purging for you, so most plugins never need to: saving a draft or private post or page, or an unapproved comment, purges nothing; an approved comment purges only the `posts` tag and its page's `page_{id}` tag, unless a widget that may show comments is placed (Recent Comments, Statistics, or any widget a plugin registers), in which case it purges everything; every other post, page, category, tag, media, user, and comment-deletion hook, and every `option_changed` that isn't housekeeping, purges everything. Cacheable pages carry the tags `posts` (every listing and archive), `page_{id}`, `category_{id}`, `tag_{id}`, `author_{id}`, and `search`. With "Show cache tags in a response header" on, they're also sent as `X-Lumora-Cache-Tags`. The `max-age` browsers get can be shorter than the server's lifetime (`s-maxage`).
 - **Writing a driver.** Implement `CacheDriverInterface` (`name()`, `isAvailable()`, `purgeUrl()`, `purgeTag()`, `purgeAll()`) and return it from the `cache_drivers` filter.
 
 ```php

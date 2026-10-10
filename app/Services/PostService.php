@@ -179,7 +179,7 @@ final class PostService
             throw new RuntimeException('Failed to load the post that was just updated.');
         }
 
-        $this->hooks?->doAction('post_saved', $post);
+        $this->hooks?->doAction('post_saved', $post, $existing);
 
         return $post;
     }
@@ -271,7 +271,7 @@ final class PostService
             $post = $this->findById($id);
 
             if ($post !== null) {
-                $this->hooks?->doAction('post_saved', $post);
+                $this->hooks?->doAction('post_saved', $post, $existing);
             }
         }
 

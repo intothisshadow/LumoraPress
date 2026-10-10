@@ -17,7 +17,8 @@
         ['Cache-Control', 'Cache-Control'],
         ['ETag', 'ETag'],
         ['Vary', 'Vary'],
-        ['X-LiteSpeed-Cache', 'X-LiteSpeed-Cache']
+        ['X-LiteSpeed-Cache', 'X-LiteSpeed-Cache'],
+        ['Cache tags', 'X-Lumora-Cache-Tags']
     ];
 
     document.addEventListener('DOMContentLoaded', function () {

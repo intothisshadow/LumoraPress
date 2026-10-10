@@ -34,6 +34,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('cache_enabled', ($_POST['cache_enabled'] ?? '') === '1' ? '1' : '0');
         $kernel->config->setOption('cache_default_lifetime', (string) max(0, (int) ($_POST['cache_default_lifetime'] ?? 3600)));
 
+        $browserLifetime = trim(is_string($_POST['cache_browser_lifetime'] ?? null) ? $_POST['cache_browser_lifetime'] : '');
+        $kernel->config->setOption('cache_browser_lifetime', $browserLifetime === '' ? '' : (string) max(0, (int) $browserLifetime));
+        $kernel->config->setOption('cache_debug_tags', ($_POST['cache_debug_tags'] ?? '') === '1' ? '1' : '0');
+
         $driverOverride = (string) ($_POST['cache_driver'] ?? 'auto');
         $kernel->config->setOption('cache_driver', in_array($driverOverride, array_merge(['auto'], $cache->registeredDriverSlugs()), true) ? $driverOverride : 'auto');
 
@@ -91,6 +95,8 @@ $serverSoftware = (string) ($_SERVER['SERVER_SOFTWARE'] ?? 'Unknown');
 $cacheEnabled = $kernel->config->option('cache_enabled', '1') !== '0';
 $defaultLifetime = (string) $kernel->config->option('cache_default_lifetime', '3600');
 $driverOverride = (string) $kernel->config->option('cache_driver', 'auto');
+$browserLifetimeValue = (string) $kernel->config->option('cache_browser_lifetime', '');
+$debugTags = $kernel->config->option('cache_debug_tags', '0') === '1';
 $recentPurges = $cache->recentPurges();
 $configurationWarnings = $cache->configurationWarnings($serverSoftware);
 $exclusionsValue = (string) $kernel->config->option('cache_exclusions', '');
@@ -189,6 +195,18 @@ $extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], 
             <span class="lp-field__hint">How long a cacheable public page may be reused before it's considered stale. Content changes purge the cache immediately regardless of this value — see "Automatic Invalidation" below.</span>
         </p>
 
+        <p class="lp-field">
+            <label for="cache-browser-lifetime">Browser cache lifetime (seconds)</label>
+            <input type="number" id="cache-browser-lifetime" name="cache_browser_lifetime" min="0" value="<?= esc_attr($browserLifetimeValue) ?>" placeholder="Same as the default lifetime">
+            <span class="lp-field__hint">How long a visitor's browser may reuse a page without asking again. Leave it empty to use the default lifetime. A shorter value lets the server-side cache stay long while visitors still see a purge quickly.</span>
+        </p>
+
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="cache_debug_tags" value="1" <?= $debugTags ? 'checked' : '' ?>>
+            Show cache tags in a response header
+        </label>
+        <span class="lp-field__hint">Adds an <code>X-Lumora-Cache-Tags</code> header to cacheable pages so the header test below can show which tags a page carries. Leave it off on a live site; it only helps when checking purges.</span>
+
     </div>
 </section>
 
@@ -264,13 +282,13 @@ $extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], 
         <tbody></tbody>
     </table>
     <?php if ($driverName === 'litespeed'): ?>
-        <p class="lp-field__hint">LiteSpeed removes its own <code>X-LiteSpeed-Tag</code> and <code>X-LiteSpeed-Cache-Control</code> headers before a page reaches the browser, so they can't be shown here. <code>X-LiteSpeed-Cache</code> reads <code>hit</code> when the page came from the cache.</p>
+        <p class="lp-field__hint">LiteSpeed removes its own <code>X-LiteSpeed-Tag</code> and <code>X-LiteSpeed-Cache-Control</code> headers before a page reaches the browser, so they can't be shown here. Turn on "Show cache tags in a response header" to see the tags, and note that <code>X-LiteSpeed-Cache</code> reads <code>hit</code> when the page came from the cache.</p>
     <?php endif; ?>
 </section>
 
 <section class="lp-admin__panel">
     <h2>Automatic Invalidation</h2>
-    <p>The entire cache is purged automatically whenever any of the following change: posts, pages, categories, tags, media, users (name or avatar changes), comments (posted or moderated), or any site setting/widget/menu/theme option. This is a deliberate simplicity trade-off for now &mdash; always correct, though less targeted than purging only the specific pages a change actually affects.</p>
+    <p>The cache is purged automatically when something a visitor can see changes. Saving a draft, a private post or page, or a comment that isn't approved purges nothing. An approved comment purges only the post listings and the page it was left on, unless a widget that shows comments is in use. Everything else purges the whole cache: a published post or page changing, categories, tags, media, users (name or avatar changes), deletions, and any site setting, widget, menu, or theme option. Menus and widgets repeat the same data on every page, so a smaller purge there could leave stale pages behind.</p>
 </section>
 
 <?php if ($extraDiagnostics !== []): ?>

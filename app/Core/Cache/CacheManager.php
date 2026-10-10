@@ -178,6 +178,12 @@ final class CacheManager
             $warnings[] = 'The default cache lifetime is 0, so cacheable pages are marked as already stale and nothing is actually reused. Set a lifetime above 0 or turn HTTP caching off.';
         }
 
+        $browserLifetime = trim((string) $this->config->option('cache_browser_lifetime', ''));
+
+        if ($enabled && $browserLifetime !== '' && (int) $browserLifetime > (int) $this->config->option('cache_default_lifetime', '3600')) {
+            $warnings[] = 'The browser cache lifetime is longer than the default cache lifetime. After a purge, visitors\' browsers will keep showing the old page until their own lifetime ends. Keep the browser lifetime equal to or shorter than the default.';
+        }
+
         if ($override === 'litespeed' && !$serverIsLiteSpeed) {
             $warnings[] = 'The cache driver is forced to LiteSpeed, but this server does not identify as LiteSpeed. Purge requests will be sent and then ignored. Switch the driver to automatic detection unless a LiteSpeed proxy sits in front of this site.';
         }
@@ -233,7 +239,11 @@ final class CacheManager
         $lifetime = $this->lifetime ?? max(0, (int) $this->config->option('cache_default_lifetime', '3600'));
         $etag = self::etagFor($body);
 
-        header('Cache-Control: public, max-age=' . $lifetime);
+        $browserLifetime = $this->browserLifetime($lifetime);
+
+        // s-maxage only when the browser's lifetime differs, so the common
+        // single-lifetime setup keeps its plain header.
+        header('Cache-Control: public, max-age=' . $browserLifetime . ($browserLifetime !== $lifetime ? ', s-maxage=' . $lifetime : ''));
         header('ETag: ' . $etag);
         // Cookie-sensitive rather than Vary: * so shared guest responses stay
         // cacheable while logged-in visitors still get their own copy.
@@ -242,6 +252,12 @@ final class CacheManager
         if ($this->tags !== [] && $this->driver->name() === 'litespeed') {
             header('X-LiteSpeed-Tag: ' . implode(',', array_unique($this->tags)));
             header('X-LiteSpeed-Cache-Control: public,max-age=' . $lifetime);
+        }
+
+        // LiteSpeed removes its own tag header before the response leaves the
+        // server, so tag debugging needs a copy under a name it leaves alone.
+        if ($this->tags !== [] && $this->config->option('cache_debug_tags', '0') === '1') {
+            header('X-Lumora-Cache-Tags: ' . implode(',', array_unique($this->tags)));
         }
 
         $ifNoneMatch = is_string($_SERVER['HTTP_IF_NONE_MATCH'] ?? null) ? $_SERVER['HTTP_IF_NONE_MATCH'] : '';
@@ -296,6 +312,18 @@ final class CacheManager
         }
 
         return false;
+    }
+
+    /**
+     * How long a visitor's browser may reuse a page. Blank means "same as
+     * the server lifetime", so a shorter browser value lets the server-side
+     * cache stay long while visitors still pick up a purge quickly.
+     */
+    private function browserLifetime(int $serverLifetime): int
+    {
+        $configured = trim((string) $this->config->option('cache_browser_lifetime', ''));
+
+        return $configured === '' ? $serverLifetime : max(0, (int) $configured);
     }
 
     private function hasSentHeader(string $name): bool
