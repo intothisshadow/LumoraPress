@@ -19,7 +19,9 @@ namespace LumoraPress\Controllers\Admin;
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\ThemeOptions;
+use InvalidArgumentException;
 use LumoraPress\Services\MediaService;
+use LumoraPress\Services\ThemeSettingsPortability;
 use Throwable;
 
 /**
@@ -36,12 +38,75 @@ final class ThemeCustomizerController
 
     public const PREVIEW_SESSION_KEY = 'lp_options_preview';
 
+    public const EXPORT_CSRF_ACTION = 'theme_settings_export';
+
+    public const IMPORT_CSRF_ACTION = 'theme_settings_import';
+
     private const PREVIEW_LIFETIME_SECONDS = 1800;
+
+    private readonly ThemeSettingsPortability $portability;
 
     public function __construct(
         private readonly ThemeOptions $themeOptions,
         private readonly MediaService $media,
     ) {
+        $this->portability = new ThemeSettingsPortability($themeOptions);
+    }
+
+    /**
+     * The active theme's settings as a downloadable file.
+     *
+     * @return array{filename: string, body: string}|null Null when the CSRF check fails.
+     */
+    public function exportSettings(?string $csrfToken): ?array
+    {
+        if (!Csrf::verify(self::EXPORT_CSRF_ACTION, $csrfToken)) {
+            return null;
+        }
+
+        return ['filename' => $this->portability->filename(), 'body' => $this->portability->export()];
+    }
+
+    /**
+     * Replaces the active theme's settings with an uploaded export.
+     *
+     * @param array<string, mixed> $files
+     */
+    public function importSettings(array $files, ?string $csrfToken): AdminActionResult
+    {
+        if (!Csrf::verify(self::IMPORT_CSRF_ACTION, $csrfToken)) {
+            return $this->invalidRequest();
+        }
+
+        $file = $files['settings_file'] ?? null;
+
+        if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return AdminActionResult::error('Please choose a settings file to import.');
+        }
+
+        if ($file['error'] !== UPLOAD_ERR_OK || !is_string($file['tmp_name'] ?? null)) {
+            return AdminActionResult::error('The file upload failed. Please try again.');
+        }
+
+        $json = file_get_contents($file['tmp_name'], false, null, 0, ThemeSettingsPortability::MAX_BYTES + 1);
+
+        if ($json === false) {
+            return AdminActionResult::error('The file could not be read.');
+        }
+
+        try {
+            $result = $this->portability->import($json);
+        } catch (InvalidArgumentException $exception) {
+            return AdminActionResult::error($exception->getMessage());
+        }
+
+        $query = '?tab=body&imported=' . $result['imported'];
+
+        if ($result['skipped'] !== []) {
+            $query .= '&skipped=' . rawurlencode(implode(', ', array_slice($result['skipped'], 0, 10)));
+        }
+
+        return AdminActionResult::redirect(admin_url('appearance/customize') . $query);
     }
 
     /**

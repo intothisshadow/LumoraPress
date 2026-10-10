@@ -923,6 +923,42 @@ final class ThemeOptions
     }
 
     /**
+     * The saved value of every registered option, as an export would carry it. Header images
+     * are stored under their own reserved keys (media IDs mean nothing on another site), so
+     * they never appear here.
+     *
+     * @return array<string, string>
+     */
+    public function exportableValues(): array
+    {
+        return array_intersect_key($this->loadValues(), $this->fields);
+    }
+
+    /**
+     * Checks $rawValue for $key the way saving would, without saving. Null when the option
+     * doesn't exist or the value is invalid.
+     */
+    public function validate(string $key, string $rawValue): ?string
+    {
+        $field = $this->field($key);
+
+        return $field === null ? null : $this->sanitize($field, $rawValue);
+    }
+
+    /**
+     * Makes the saved options exactly $validated (values already passed through validate()),
+     * keeping the header images, which aren't part of an import.
+     *
+     * @param array<string, string> $validated
+     */
+    public function replaceAll(array $validated): void
+    {
+        $reserved = array_diff_key($this->loadValues(), $this->fields);
+
+        $this->persist($reserved + $validated);
+    }
+
+    /**
      * Renders every field with a $cssVariable as one `:root { ... }`
      * block, echoed inside a <style> tag via theme_options_css(). A field
      * with an empty, $allowEmpty-permitted value is skipped entirely

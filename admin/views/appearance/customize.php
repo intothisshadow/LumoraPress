@@ -64,8 +64,29 @@ if ($form === ThemeCustomizerController::PREVIEW_CSRF_ACTION) {
     exit;
 }
 
+// The settings export is a file download rather than a page.
+if ($form === ThemeCustomizerController::EXPORT_CSRF_ACTION) {
+    $export = $controller->exportSettings($csrfToken);
+
+    if ($export !== null) {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $export['filename'] . '"');
+        header('X-Content-Type-Options: nosniff');
+        echo $export['body'];
+        exit;
+    }
+
+    $error = 'Your session expired or the request could not be verified. Please try again.';
+    $form = '';
+}
+
 if ($form !== '') {
     $result = match (true) {
+        $form === ThemeCustomizerController::IMPORT_CSRF_ACTION => $controller->importSettings($_FILES, $csrfToken),
         $form === 'theme_options_header' => $controller->saveHeader($_POST, $_FILES, $currentUser->id, $csrfToken),
         $form === FeaturedImageDefaultsController::CSRF_ACTION => $featuredImageDefaults->save($_POST, $currentUser->can('manage_options'), $csrfToken),
         default => $controller->saveSection(substr($form, strlen('theme_options_')), $_POST, $csrfToken),
@@ -428,6 +449,16 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
     <div class="lp-alert lp-alert--success" role="status">Unsaved changes discarded.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['imported']) && $error === null): ?>
+    <?php $importedSkipped = is_string($_GET['skipped'] ?? null) ? $_GET['skipped'] : ''; ?>
+    <div class="lp-alert lp-alert--success" role="status">
+        Imported <?= (int) $_GET['imported'] ?> settings.
+        <?php if ($importedSkipped !== ''): ?>
+            Skipped because the theme doesn't use them or their values weren't valid: <?= esc_html($importedSkipped) ?>.
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
 <?php if ($error !== null): ?>
     <div class="lp-alert lp-alert--error"><?= esc_html($error) ?></div>
 <?php endif; ?>
@@ -542,3 +573,25 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
         </div>
     <?php endif; ?>
 </div>
+
+<section class="lp-admin__panel">
+    <h2>Export and Import Settings</h2>
+    <p class="lp-field__hint">Download <?= esc_html($activeThemeInfo->name ?? 'this theme') ?>'s settings as a file, to keep as a backup or to move the same look to another site. A file only imports into the theme it was exported from. Header images are not included.</p>
+
+    <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>" class="lp-admin__inline-form">
+        <?= Csrf::field(ThemeCustomizerController::EXPORT_CSRF_ACTION) ?>
+        <input type="hidden" name="form" value="<?= esc_attr(ThemeCustomizerController::EXPORT_CSRF_ACTION) ?>">
+        <button type="submit" class="lp-button lp-button--primary">Export Settings</button>
+    </form>
+
+    <form method="post" action="<?= esc_url(admin_url('appearance/customize')) ?>" enctype="multipart/form-data" data-lp-confirm="Replace this theme's current settings with the ones in the file?">
+        <?= Csrf::field(ThemeCustomizerController::IMPORT_CSRF_ACTION) ?>
+        <input type="hidden" name="form" value="<?= esc_attr(ThemeCustomizerController::IMPORT_CSRF_ACTION) ?>">
+        <p class="lp-field">
+            <label for="theme-settings-file">Settings file</label>
+            <input type="file" id="theme-settings-file" name="settings_file" accept="application/json,.json" required>
+            <span class="lp-field__hint">Importing replaces this theme's current settings with the file's.</span>
+        </p>
+        <button type="submit" class="lp-button lp-button--secondary">Import Settings</button>
+    </form>
+</section>
