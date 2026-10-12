@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Errors\QuietCall;
 use Throwable;
 
 /**
@@ -205,7 +206,7 @@ final class BlueskyResolverService
             ],
         ]);
 
-        $body = @file_get_contents($url, false, $context);
+        $body = QuietCall::run(static fn (): string|false => file_get_contents($url, false, $context));
 
         return $body !== false ? $body : null;
     }

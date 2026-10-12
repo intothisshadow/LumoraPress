@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Services;
 
+use LumoraPress\Core\Errors\QuietCall;
 use LumoraPress\Core\PressConfig;
 
 /**
@@ -196,7 +197,7 @@ final class AkismetClient
             ],
         ]);
 
-        $body = @file_get_contents($url, false, $context);
+        $body = QuietCall::run(static fn (): string|false => file_get_contents($url, false, $context));
 
         return $body !== false ? $body : null;
     }

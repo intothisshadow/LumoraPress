@@ -20,6 +20,7 @@ namespace LumoraPress\Services;
 use DOMDocument;
 use DOMElement;
 use LumoraPress\Core\Content\HtmlSanitizer;
+use LumoraPress\Core\Errors\QuietCall;
 use LumoraPress\Core\Http\BasePath;
 use LumoraPress\Core\Content\HtmlToMarkdownConverter;
 use LumoraPress\Core\Content\MarkdownParser;
@@ -356,7 +357,7 @@ final class ContentRenderer
             return null;
         }
 
-        $dimensions = @getimagesize($realPath);
+        $dimensions = QuietCall::run(static fn (): array|false => getimagesize($realPath));
 
         return is_array($dimensions) ? [(int) $dimensions[0], (int) $dimensions[1]] : null;
     }

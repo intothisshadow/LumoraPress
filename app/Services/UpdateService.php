@@ -19,6 +19,7 @@ namespace LumoraPress\Services;
 
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Database\Migrator;
+use LumoraPress\Core\Errors\QuietCall;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\InstallerCleanup;
 use LumoraPress\Core\Plugin\PluginRegistry;
@@ -620,7 +621,7 @@ final class UpdateService
             return ["The backup directory ({$backupsPath}) is not writable by the web server."];
         }
 
-        $freeSpace = @disk_free_space($existingAncestor);
+        $freeSpace = QuietCall::run(static fn (): float|false => disk_free_space($existingAncestor));
 
         if ($freeSpace !== false && $freeSpace < self::MIN_BACKUP_FREE_BYTES) {
             return [sprintf(
@@ -1508,7 +1509,8 @@ final class UpdateService
 
         foreach (glob($sessionsPath . '/sess_*') ?: [] as $sessionFile) {
             if ($sessionFile !== $currentSessionFile) {
-                @unlink($sessionFile);
+                // A file owned by another user can't be removed; that's expected, not an error.
+                QuietCall::run(static fn (): bool => unlink($sessionFile));
             }
         }
     }
@@ -1780,7 +1782,8 @@ final class UpdateService
      */
     public function systemStatus(): array
     {
-        $diskFree = @disk_free_space($this->installRoot);
+        $installRoot = $this->installRoot;
+        $diskFree = QuietCall::run(static fn (): float|false => disk_free_space($installRoot));
         $hasZip = class_exists('ZipArchive');
         $hasCurl = function_exists('curl_init');
         $installRootWritable = is_writable($this->installRoot);

@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace LumoraPress\Core\Mail;
 
+use LumoraPress\Core\Errors\QuietCall;
+
 /**
  * Sends mail via PHP's built-in mail() function — no PHPMailer/Symfony
  * Mailer dependency, matching the fact that the main application has no
@@ -50,6 +52,7 @@ final class NativeMailer implements Mailer
             }
         }
 
-        return @mail($to, $subject, $body, $headers);
+        // mail() warns as well as returning false when no sendmail binary is configured.
+        return QuietCall::run(static fn (): bool => mail($to, $subject, $body, $headers));
     }
 }

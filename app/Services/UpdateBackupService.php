@@ -149,7 +149,7 @@ final class UpdateBackupService
 
             $tail = substr($contents, -$markerLength);
         } else {
-            $size = @filesize($path);
+            $size = is_file($path) ? filesize($path) : false;
 
             if ($size === false || $size === 0) {
                 return;

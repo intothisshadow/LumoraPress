@@ -42,7 +42,7 @@ final class IpAnonymizer
         }
 
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
-            $packed = @inet_pton($ip);
+            $packed = inet_pton($ip);
 
             if ($packed === false || strlen($packed) !== 16) {
                 return $ip;
@@ -51,7 +51,7 @@ final class IpAnonymizer
             // Keep the first 48 bits (network/subnet) and zero the
             // remaining 80 bits (interface identifier).
             $masked = substr($packed, 0, 6) . str_repeat("\0", 10);
-            $result = @inet_ntop($masked);
+            $result = inet_ntop($masked);
 
             return $result !== false ? $result : $ip;
         }

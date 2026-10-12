@@ -110,7 +110,7 @@ if (!function_exists('admin_asset_url')) {
         // loaded directly by the PHP Test Suite's bootstrap, where
         // LUMORA_ROOT isn't defined.
         $absolutePath = dirname(__DIR__) . '/admin/assets/' . $path;
-        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+        $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
 
         return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');
     }
@@ -133,7 +133,7 @@ if (!function_exists('core_asset_url')) {
         }
 
         $absolutePath = dirname(__DIR__) . '/assets/' . $path;
-        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+        $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
 
         return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');
     }

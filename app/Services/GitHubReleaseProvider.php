@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Services;
 
+use LumoraPress\Core\Errors\QuietCall;
 use LumoraPress\Core\PressConfig;
 use RuntimeException;
 
@@ -765,7 +766,7 @@ final class GitHubReleaseProvider
             ],
         ]);
 
-        $body = @file_get_contents($url, false, $context);
+        $body = QuietCall::run(static fn (): string|false => file_get_contents($url, false, $context));
 
         return $body !== false ? $body : null;
     }
@@ -799,7 +800,9 @@ final class GitHubReleaseProvider
             fclose($file);
 
             if ($success !== true || $status < 200 || $status >= 300) {
-                @unlink($destinationPath);
+                if (is_file($destinationPath)) {
+                    unlink($destinationPath);
+                }
 
                 return false;
             }
@@ -825,7 +828,7 @@ final class GitHubReleaseProvider
             ],
         ]);
 
-        $body = @file_get_contents($url, false, $context);
+        $body = QuietCall::run(static fn (): string|false => file_get_contents($url, false, $context));
 
         if ($body === false) {
             return false;

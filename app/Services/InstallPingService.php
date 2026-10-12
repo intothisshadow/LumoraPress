@@ -228,7 +228,7 @@ final class InstallPingService
         });
 
         try {
-            $result = @file_get_contents($url, false, $context);
+            $result = file_get_contents($url, false, $context);
         } finally {
             restore_error_handler();
         }

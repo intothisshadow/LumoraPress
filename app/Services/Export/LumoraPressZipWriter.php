@@ -176,7 +176,7 @@ final class LumoraPressZipWriter implements StagedExportFormatWriter
         while ($cursor < count($queue) && $files < self::BATCH_MAX_FILES && $bytes < self::BATCH_MAX_BYTES) {
             [$absolutePath, $entryName] = $queue[$cursor];
             $this->addEntry($zip, (string) $absolutePath, (string) $entryName);
-            $bytes += (int) @filesize((string) $absolutePath);
+            $bytes += is_file((string) $absolutePath) ? (int) filesize((string) $absolutePath) : 0;
             $files++;
             $cursor++;
         }

@@ -78,7 +78,7 @@ final class ThemeRenderer
 
         $relativePath = ltrim($path, '/');
         $absolutePath = $this->themePath() . '/' . $relativePath;
-        $mtime = is_file($absolutePath) ? @filemtime($absolutePath) : false;
+        $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
 
         return $base . '/' . $relativePath . ($mtime !== false ? '?v=' . $mtime : '');
     }

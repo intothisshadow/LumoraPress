@@ -20,6 +20,7 @@ namespace LumoraPress\Services;
 use Closure;
 use GdImage;
 use LumoraPress\Core\Database\Database;
+use LumoraPress\Core\Errors\QuietCall;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\PressConfig;
 use RuntimeException;
@@ -83,7 +84,7 @@ final class ThumbnailService
         ?Closure $readExif = null,
     ) {
         $this->readExif = $readExif ?? static fn (string $path): array|false =>
-            function_exists('exif_read_data') ? @exif_read_data($path) : false;
+            function_exists('exif_read_data') ? QuietCall::run(static fn (): array|false => exif_read_data($path)) : false;
     }
 
     /**
@@ -135,7 +136,7 @@ final class ThumbnailService
 
         $configuredMaxPixels = (int) $this->config->option('thumbnail_max_pixels', (string) self::DEFAULT_MAX_PIXELS);
         $maxPixels = (int) $this->hooks->applyFilters('thumbnail_max_pixels', $configuredMaxPixels);
-        $dimensions = @getimagesize($sourcePath);
+        $dimensions = QuietCall::run(static fn (): array|false => getimagesize($sourcePath));
 
         if ($dimensions === false) {
             $this->log("Media #{$mediaId}: unable to read image dimensions, skipping all sizes.");
@@ -326,7 +327,7 @@ final class ThumbnailService
             return null;
         }
 
-        $dimensions = @getimagesize($sourcePath);
+        $dimensions = QuietCall::run(static fn (): array|false => getimagesize($sourcePath));
 
         if ($dimensions === false) {
             return null;
@@ -344,7 +345,7 @@ final class ThumbnailService
         $url = rtrim($this->uploadsUrl, '/') . '/' . $relativePath;
 
         if (is_file($destination)) {
-            $existingDimensions = @getimagesize($destination);
+            $existingDimensions = QuietCall::run(static fn (): array|false => getimagesize($destination));
 
             if ($existingDimensions !== false) {
                 return ['url' => $url, 'width' => $existingDimensions[0], 'height' => $existingDimensions[1]];
@@ -389,7 +390,7 @@ final class ThumbnailService
             return null;
         }
 
-        $dimensions = @getimagesize($sourcePath);
+        $dimensions = QuietCall::run(static fn (): array|false => getimagesize($sourcePath));
 
         if ($dimensions === false) {
             return null;
@@ -552,7 +553,7 @@ final class ThumbnailService
         $mimeType = (string) $media['mime_type'];
         $relativeSource = (string) $media['file_path'];
         $sourcePath = rtrim($this->uploadsPath, '/') . '/' . $relativeSource;
-        $dimensions = is_file($sourcePath) ? @getimagesize($sourcePath) : false;
+        $dimensions = is_file($sourcePath) ? QuietCall::run(static fn (): array|false => getimagesize($sourcePath)) : false;
 
         if ($dimensions === false) {
             return null;
@@ -798,7 +799,10 @@ final class ThumbnailService
         try {
             $this->encode($canvas, $temporaryPath, $mimeType);
         } catch (Throwable $exception) {
-            @unlink($temporaryPath);
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
+
             $this->log("Failed to optimize \"{$path}\": {$exception->getMessage()}");
 
             return false;
@@ -807,7 +811,9 @@ final class ThumbnailService
         $optimizedSize = is_file($temporaryPath) ? filesize($temporaryPath) : false;
 
         if ($optimizedSize === false || $originalSize === false || $optimizedSize >= $originalSize) {
-            @unlink($temporaryPath);
+            if (is_file($temporaryPath)) {
+                unlink($temporaryPath);
+            }
 
             return false;
         }
