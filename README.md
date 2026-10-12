@@ -84,7 +84,7 @@ For the complete feature list and implementation details, see [`docs/FEATURES.md
 ## Requirements
 
 - PHP 8.2, 8.3, 8.4, or 8.5
-- MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search)
+- MySQL 5.6.4+ or MariaDB 10.0.5+ (InnoDB `FULLTEXT` index support, used by search). Those are the oldest versions with the features Lumora Press needs; it is tested on MariaDB 11 and MySQL 8.0, and older versions have not been tested.
 - The `pdo`, `pdo_mysql`, `session`, `json`, and `zip` PHP extensions (`zip` is required only for the manual core-update, theme-install, and Lumora Press content export/import features)
 - Apache with `mod_rewrite` (the shipped `.htaccess` files assume Apache)
 - `config/`, `storage/logs/`, `storage/sessions/`, `storage/cache/`, and `content/uploads/` writable by the web server user
