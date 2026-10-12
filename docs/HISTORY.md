@@ -18572,3 +18572,844 @@ The reason is a category page like the Mummy Returns one on the dev site: two do
 
 Autoplay, a per-download setting for how many images to show, a card grid, and showing a download's file type or download count on the card. Any of these can follow once the card exists.
 
+
+## 0.23.0 (2026-10-12)
+
+### LP-034. Appearance
+
+**Status:** Complete
+
+**LP-023's entire "Theme Options" ticket was folded in here on 2026-08-04** —
+see `DECISIONS.md`'s "LP-023 merged into LP-034" entry. LP-023 turned out to
+re-describe the exact scope this ticket's own implementation note already
+named as deferred (Theme Options API, Layout/Typography/Color, Navigation/
+Footer, header/footer HTML), just under a separate ID. Items below tagged
+"(from LP-023)" are that merge; genuine duplicates (e.g. Custom CSS, sidebar
+position, thumbnail/border-radius/shadow/lightbox, body/heading font) were
+not re-added. LP-023 itself was removed from `TODO.md` — nothing of it
+survives outside this ticket.
+
+**Theme Options core system implemented (2026-08-04).** A new
+`LumoraPress\Core\Theme\ThemeOptions` service (`ThemeOptionField`/
+`ThemeOptionType` alongside it) — sections and fields are registered once
+per request, core's own `registerStandardOptions()` plus anything a theme
+or plugin adds via `add_action('register_theme_options', ...)` — backed by
+one flat `theme_options` JSON option (the same convention `widgets_config`/
+`nav_menus` already use; not yet scoped per active theme, see the Theme
+Integration checklist below). Values with a registered CSS variable are
+rendered as a single `:root { ... }` block by `theme_options_css()` and
+injected into `<head>` right after the theme's own stylesheet link (and
+before the pre-existing Custom CSS block, so hand-authored CSS still wins),
+the same mechanism Custom CSS/Branding already use. Nine standard options
+ship this pass across three sections — Colors (Accent, Text, Muted Text,
+Background, Alt Background, Border — all `<input type="color">`, each with
+a "Use theme default" reset checkbox so an unset color still respects the
+default theme's own `prefers-color-scheme: dark` variant rather than
+freezing light-mode values onto dark-mode visitors), Typography (Body font,
+Base font size, Line height), and Layout (Content width, doubling as both
+"Site width" and "Boxed/Wide") — rendered on a new auto-generated Appearance
+&rsaquo; Theme Options admin page (`admin/views/appearance/theme-options.php`),
+one CSRF-protected form per section plus a page-level "Reset All" form.
+Homepage, Header, Footer, Blog, Custom Code (beyond the pre-existing Custom
+CSS field), Accessibility, Import/Export, and per-theme option scoping all
+remain deferred — see each item's own note below for exactly what's built
+vs. not. Covered by a new `ThemeOptionsTest`; full suite and `composer stan`
+both run clean.
+
+**Google Fonts support added to Typography, same day.** Two more fields —
+`google_fonts_url` (a new `ThemeOptionType::Url`, https-only and restricted
+by a per-field host allowlist to `fonts.googleapis.com`, so this field can
+never become a way to load an arbitrary stylesheet from an arbitrary host)
+and `google_fonts_family` (Text, registered after `body_font` so its
+declaration for the shared `--lp-font-body` CSS variable wins in the
+cascade when set, leaving `body_font`'s choice in control otherwise). A
+non-empty URL injects a `<link rel="stylesheet">` (plus the matching
+`preconnect` hints) into `<head>`. Any Text/Textarea field with a
+`$cssVariable` now has `{`, `}`, `<`, `>` stripped at save time — a
+defensive measure against breaking out of the single inline `:root {...}`
+declaration/`<style>` tag, not a new trust boundary (same `manage_themes`
+level `custom_css()`'s own `</style` strip already documents).
+
+**Real bug found and fixed, same day: the CSP header was silently
+blocking every inline `<style>` tag, including the pre-existing Custom
+CSS field.** Reported by the user as "Content width doesn't change the
+default theme"; root-caused by inspecting the live site's DOM directly
+(`document.styleSheets` never included the inline block despite correct
+HTML source) rather than by reading code, since this failure mode
+produces no error anywhere. See `DECISIONS.md`'s "CSP style-src silently
+blocked every inline `<style>` tag" entry for the full story and the fix
+(`LumoraPress\Core\Security\CspNonce` + a `csp_style_nonce()` helper).
+**Follow-up fixed same day: the three admin-view inline `style="..."`
+attributes.** `admin/views/media/thumbnails.php` and
+`admin/views/media/import.php` each had a bulk-progress bar's width set via
+`style="width: ...%;"`; `admin/views/appearance/menus.php` set a menu
+structure item's indent via `style="margin-left: ...rem"`. All three values
+are per-request dynamic (a computed percentage / depth), so a static CSS
+class alone can't express them, and nonces don't cover attributes (only
+`<style>`/`<script>` elements) — the fix was a new generic
+`admin/assets/js/dynamic-style.js`, enqueued globally from
+`admin/views/layout-footer.php`, that reads `data-style-width`/
+`data-style-margin-left` attributes on `DOMContentLoaded` and applies them
+via `element.style.<property> = ...` (JS setting a style property directly
+is unaffected by `style-src`, unlike inline markup). The three views now
+emit `data-style-width="42%"` / `data-style-margin-left="3rem"` instead of
+the blocked `style="..."` attribute. Verified with a Node-based DOM-less
+trace of the script's logic (no dev server was available to browser-test
+against); `composer test` and `composer stan` both still run clean.
+Confirmed via `grep -rln 'style="' admin/views/` that no other admin view
+attribute usages remain. **Follow-up fixed same day: the Tag Cloud widget's
+known gap above.** `app/Core/Widgets/CoreWidgets.php`'s `tag_cloud` widget
+now emits `data-style-font-size="1.4em"` instead of the blocked
+`style="font-size: 1.4em"`. Since this widget is public-facing, not
+admin-only, the fix follows CLAUDE.md's "Public-Facing CSS Rule" and lives
+in the theme layer rather than reusing the admin asset: a new
+`content/themes/default/assets/js/dynamic-style.js` (same `data-style-*` →
+`element.style.<property>` pattern as `admin/assets/js/dynamic-style.js`,
+but theme-scoped) is enqueued unconditionally from the default theme's own
+`footer.php` (the widget can appear in any sidebar on any page, so there's
+no cheap per-request flag to gate it behind, unlike `MediaViewer::isUsed()`
+for the lightbox script). No `custom themes/` directories exist yet, so
+there was nothing to propagate this to. Covered by a new
+`CoreWidgetsTest::testTagCloudWidgetUsesDataAttributeInsteadOfInlineStyle()`
+regression test asserting the output contains no `style="` and does contain
+a `data-style-font-size="..."` attribute; full suite and `composer stan`
+both still run clean.
+
+#### Goal
+
+Provide a centralized appearance configuration page that allows administrators to customize the visual presentation of the site independently of the active theme, while allowing themes to expose their own configurable options.
+
+First pass implemented this session: Theme Management (list installed
+themes with parsed style.css metadata and screenshots, activate one,
+install new ones from a ZIP upload), Branding (site logo, favicon, and
+finally wiring up the `site_name` option — set by the installer since
+LP-028 but never read anywhere until now — into the theme), and Custom
+CSS. See `docs/CHANGELOG.md`'s entry for this date and
+`ThemeRegistry`/`ThemeInstaller`/`SiteBranding` in the source. The Theme
+Options API, Layout/Typography/Color customization, Navigation/Footer
+content options, Accessibility settings, and header/footer custom HTML
+injection are explicitly deferred (not attempted this session), not
+merely unimplemented.
+
+#### Design Goals (from LP-023)
+
+The Theme Options system should:
+
+- [x] Be easy for users to understand — grouped panels, options the theme doesn't use are hidden, Preview and Discard changes
+- [x] Be easy for developers to extend — `add_action('register_theme_options', ...)` + `ThemeOptions::registerField()`
+- [x] Require minimal boilerplate — one `registerField()` call per option
+- [x] Automatically generate admin interfaces — Appearance &rsaquo; Theme Options renders one form per registered section straight from its fields, no per-field admin markup needed
+- [x] Validate user input — `ThemeOptions::set()` validates per control type before persisting; invalid input is rejected, not silently coerced
+- [x] Be secure by default — CSRF per section, `manage_themes`-gated, allowlist validation, escaped output
+- [x] Support future extensibility — same hook works for plugins, not just themes
+
+#### Theme Management
+
+- [x] Select active theme
+- [x] Theme preview
+- [x] Theme screenshots
+- [x] Theme information
+- [x] Theme author
+- [x] Theme version
+- [x] Theme description
+- [x] Theme compatibility check — `ThemeCompatibility` (Requires at least / Requires PHP / required templates) checked on the Themes screen (badge + disabled Preview/Activate), on activation and preview, and on ZIP install/update before extraction
+- [x] Enable/disable themes
+- [x] Delete unused themes
+- [x] Install themes from ZIP
+- [x] Theme update notifications (future) — bundled themes show "Update available" on Appearance › Themes and can be updated on their own (LP-182); a third-party theme has no update source
+
+#### Theme Options
+
+- [x] Display theme-specific options — lumora-classic registers its own section/field via the `register_theme_options` hook
+- [x] Automatically detect supported options — a theme declares what it implements with `add_theme_support()`; `ThemeOptionField::$requiresSupport` options are hidden (with a note) until it does
+- [x] Standardized Theme Options API — `LumoraPress\Core\Theme\ThemeOptions`/`ThemeOptionField`/`ThemeOptionType`
+- [x] Reset theme options to defaults — per-field, per-section, and reset-all
+- [x] Preview before saving (from LP-023) — a Preview button on each Customize panel opens the site with the unsaved values (session draft, 30 minutes, nothing persisted)
+- [x] Revert changes without saving (from LP-023) — a Discard changes button per panel plus an unsaved-changes warning
+- [x] Reset a single section to defaults (from LP-023) — `ThemeOptions::resetSection()`
+- [x] Theme-specific custom settings defined by the theme itself (from LP-023) — lumora-classic's "Homepage layout"
+- [x] Theme-specific custom sections (from LP-023) — same
+- [x] Theme-specific default values (from LP-023) — same
+
+#### Branding
+
+- [x] Site logo
+- [x] Favicon
+- [x] Site title display toggle (from LP-023) — `show_site_title` Theme Option
+- [x] Tagline display toggle (from LP-023) — `show_tagline` Theme Option, read via `show_site_tagline()`
+
+#### Layout
+
+- [x] Site width — `content_width` Theme Option, same `--lp-max-width` token the header wrapper and content wrapper both already used
+- [x] Content width — same option/token as Site width above (the default theme uses one variable for both)
+- [x] Sidebar position — `sidebar_position` Theme Option (Right/Left/No sidebar), via `body_class()` classes + `get_sidebar()` skipping on none
+- [x] Breadcrumbs — `the_page_breadcrumbs()`/`the_category_breadcrumbs()` in lumora-classic
+- [x] Back-to-top button — `show_back_to_top` (Page Elements, off by default); `FooterAssets` emits the button + `assets/js/back-to-top.js`
+- [x] Boxed/Wide layout toggle (from LP-023) — the `content_width` Select's "Full width" choice sets `--lp-max-width: none`
+- [x] Maximum page width, distinct from content width (from LP-023) — same option; no separate "site width vs. max width" distinction exists in the default theme's CSS to control independently
+- [x] Footer widget columns — `footer_widget_columns` Select (Automatic/1–4) in the Footer section, applied through `body_class()` (`lp-footer-columns-N`); the footer widget area is already optional (`is_active_sidebar('footer')`)
+
+#### Typography
+
+- [x] Base font size — `base_font_size` (14–22px) &rarr; `--lp-font-size-base`
+- [x] Heading font — `heading_font` Select plus `heading_google_fonts_family` (Typography), via `--lp-font-heading` + `lp-custom-heading-font`; applies to titles and content headings, not the site title or menu
+- [x] Body font — `body_font` (Serif/Sans-serif/System UI/Monospace) &rarr; `--lp-font-body`, or a Google Fonts URL + font-family pair (`google_fonts_url`/`google_fonts_family`) that overrides it — the URL is restricted to `fonts.googleapis.com` and injects a `<link>` in `<head>`
+- [x] Line height — `line_height` (Compact/Default/Relaxed) &rarr; `--lp-line-height-base`
+
+#### Colors
+
+- [x] Accent color — `accent_color` Theme Option &rarr; `--lp-accent` (+ a derived `--lp-accent-hover` via `color-mix()`)
+- [x] Link color — shares Accent color; the default theme has no separate link-color token
+- [x] Button colors — same, buttons already use `--lp-accent`
+- [x] Success color — `success_color` sets `--lp-success-border`; the background and text are mixed from it and the theme's own surface/text colors (`ThemeOptionField::$derivedVariables`)
+- [x] Error color — `error_color`, same as Success
+- [x] Background color (from LP-023) — `background_color`/`background_alt_color` &rarr; `--lp-bg`/`--lp-bg-alt`
+- [x] Text colors (from LP-023) — `text_color`/`text_muted_color` &rarr; `--lp-text`/`--lp-text-muted`
+- [x] Dark mode colors (future) (from LP-023) — a Dark Mode Colors panel (`colors_dark`, `dark_*` options, support feature `dark-mode`), emitted only under the themes' own dark selectors after their stylesheet; a color in the plain Colors panel is overridden by the theme's dark value in dark mode, which that panel now says
+
+#### Images & Media
+
+- [x] Image border radius — `image_radius` (Images section), via `--lp-image-radius` + `lp-custom-image-radius`
+- [x] Image shadow — `image_shadow`, via `--lp-image-shadow` + `lp-custom-image-shadow`
+- [x] Lightbox settings — already in Settings › Media (show filenames in the lightbox, lightbox image size)
+- [x] Gallery spacing — `gallery_spacing`, via `--lp-gallery-gap` + `lp-custom-gallery-gap`
+
+#### Homepage (from LP-023)
+
+- [x] Static homepage option — Settings › Reading homepage display
+- [x] Latest posts (default) option — same
+- [x] Homepage widgets (future) — a `homepage` widget area registered in each theme's `functions.php`, printed by `the_homepage_widgets()` above the post list on page 1 of the homepage; empty means nothing is output
+
+#### Header (from LP-023)
+
+- [x] Header image — Theme Options header image (`headerImageMediaId()`)
+- [x] Header height — `header_height` Theme Option
+- [x] Navigation style — marked done by Ariane: the menu already ships as a horizontal bar with dropdown submenus (nested items via a parent in Appearance › Menus); a header clipping bug that hid the dropdowns was fixed. No setting was added
+
+#### Navigation
+
+- [x] Footer menu — lumora-classic registers a `footer` menu location
+- [x] Show search bar — `show_search_bar` Theme Option (Header), read via `show_search_bar()`
+- [x] Show breadcrumbs — `show_breadcrumbs` (Page Elements); checked inside `the_page_breadcrumbs()`/`the_category_breadcrumbs()`
+- [x] Show page titles — `show_page_titles` (Page Elements); static pages keep a visually hidden `<h1>` when off
+
+#### Blog (from LP-023)
+
+- [x] Post layout — `post_display_mode` Theme Option
+- [x] Featured image display — `show_featured_image_in_listings`/`featured_image_position` Theme Options
+- [x] Author display — `show_post_author` Theme Option, via `show_post_meta('author')`; Post Details panel on Customize › Body
+- [x] Category display — `show_post_categories`
+- [x] Tag display — `show_post_tags`
+- [x] Date display — `show_post_date`
+- [x] Reading time — `show_post_reading_time` (default off), `the_reading_time()`/`get_reading_time()`
+- [x] Related posts — `the_related_posts()` in lumora-classic's single.php
+
+#### Footer
+
+- [x] Footer text — `footer_html` Theme Option ("Footer content")
+- [x] Custom HTML — same `footer_html` option
+- [x] Social links — Social Links widget, placeable in the footer widget area
+- [x] Footer widgets (future) (from LP-023) — lumora-classic registers a `footer` widget area
+
+#### Custom Code
+
+- [x] Custom CSS
+- [x] Footer HTML — `footer_html` Theme Option
+
+Analytics and header scripts: see LPP-036 (`TODO-PLUGINS.md`), a provider-picker plugin that adds the tracking tag and its CSP allowance without a free-form code box. Header HTML and Additional scripts were rejected (see `DECISIONS.md`).
+
+#### Supported Control Types (from LP-023)
+
+- [x] Text
+- [x] Textarea
+- [x] Number
+- [x] Checkbox
+- [x] Toggle switch — Checkbox options render as slide switches
+- [x] Select dropdown
+- [x] Color picker
+- [x] URL — `google_fonts_url`, with an optional per-field allowed-hosts allowlist
+
+#### Import & Export (from LP-023)
+
+- [x] Export theme settings — Customize › Export and Import Settings (`ThemeSettingsPortability::export()`): the active theme's registered options as a JSON file, header images excluded
+- [x] Import theme settings — same panel (`import()`): same-theme only, each value validated like Save, replaces the theme's settings, skipped options listed
+
+#### Validation (from LP-023)
+
+- [x] Type validation — `ThemeOptions::sanitize()` branches per `ThemeOptionType`, rejecting anything that doesn't match
+- [x] URL validation — `sanitizeUrl()`: https-only, plus a per-field host allowlist (`google_fonts_url` is restricted to `fonts.googleapis.com`)
+- [x] Color validation — `^#[0-9a-fA-F]{6}$` allowlist regex
+- [x] Numeric ranges — per-field `$min`/`$max`, enforced in `sanitizeNumber()`
+
+#### Theme Integration (from LP-023)
+
+- [x] Automatic loading of options on theme activation — options are stored per theme (`theme_options_{theme}`), so activating a theme shows that theme's own set
+- [x] Automatic default values when an option is unset — `ThemeOptionField::$default`, returned by `ThemeOptions::value()`
+- [x] Easy retrieval of an option in templates — `theme_option($key)` helper
+- [x] Theme activation defaults — a theme with nothing stored uses each option's registered default
+- [x] Theme update compatibility (options survive a theme version bump) — stored per theme slug in the database, so a theme update never touches them
+
+#### Accessibility (Future)
+
+- [x] Reduced motion support — a blanket `prefers-reduced-motion: reduce` block in every theme's stylesheet 
+
+#### Performance
+
+- [x] Cache theme option values (from LP-023) — `ThemeOptions` memoizes decoded values in memory for the life of the request; no persistent/opcode-level cache yet
+- [x] Minimize database queries when reading options (from LP-023) — reuses `PressConfig`'s existing single-query options load, no dedicated query
+
+#### Developer API
+
+Provide a standardized Appearance / Theme Options API.
+
+Themes should be able to:
+
+- Register theme options
+- Register custom controls
+- Register preview handlers
+- Register default values
+- Extend the Appearance page
+
+Plugins should be able to:
+
+- Add appearance sections
+- Register styling options
+- Inject custom controls
+- Extend theme previews
+
+##### Registration (from LP-023)
+
+- [x] Register option sections — `ThemeOptions::registerSection()`
+- [x] Register individual settings — `ThemeOptions::registerField()`
+- [x] Register default values — `ThemeOptionField::$default`
+
+##### Helper Functions (from LP-023)
+
+- [x] Retrieve a theme option — `theme_option($key)`
+- [x] Reset a single option — `ThemeOptions::reset($key)`
+- [x] Reset all options — `ThemeOptions::resetAll()`
+
+##### Extensibility (from LP-023)
+
+- [x] Hooks/events — `do_action('register_theme_options', $themeOptions)`, fired once per request after the active theme's `functions.php` loads
+- [x] Future plugin integration — the registration hook works identically for a plugin, not just a theme's `functions.php`
+
+#### Testing (from LP-023)
+
+- [x] Unit tests — `ThemeOptionsTest` (20 tests): registration, get/set/reset per type, validation rejection, CSS variable generation, cross-instance persistence
+- [x] Admin/API tests — `ThemeCustomizerControllerTest` covers Save, Reset, Header, Preview, and support gating (the REST API no longer exists)
+- [x] Validation tests — covered within `ThemeOptionsTest`
+- [x] Import/export tests — `ThemeSettingsPortabilityTest` and the export/import cases in `ThemeCustomizerControllerTest`
+- [x] Theme compatibility tests — `ThemeCompatibilityTest`, plus install, update, and activation cases in `ThemeInstallerTest`/`ThemesControllerTest`
+- [x] PHP 8.2 compatibility — no 8.3/8.4-only syntax used
+- [x] PHP 8.3 compatibility — same
+- [x] PHP 8.4 compatibility — full suite (913 tests) and `composer stan` both run clean under PHP 8.4.24
+
+#### Documentation (from LP-023)
+
+- [x] Update README.md
+- [x] Document the Theme Options API — docblocks on `ThemeOptions`/`ThemeOptionField`/`ThemeOptionType`, plus a README section
+- [x] Create a developer guide — `docs/THEME-DEVELOPMENT.md`
+- [x] Provide an example theme implementation — Lumora Classic, plus "A minimal complete example" in `docs/THEME-DEVELOPMENT.md`
+
+#### Future Enhancements
+
+
+#### Success Criteria (from LP-023)
+
+- [x] Theme developers can add configurable settings with minimal code.
+- [x] Administrators have a consistent interface regardless of the active theme.
+- [x] Theme settings are secure, validated, and performant.
+- [x] The API is flexible enough to support both simple and highly customizable themes.
+- [x] Future plugins can extend the Theme Options system without modifying the core.
+
+
+### LP-037. Cache API & LiteSpeed Support
+
+**Status:** Complete
+
+**LP-038's entire "Cache" section was folded in here on 2026-08-01** —
+see `DECISIONS.md`'s "LP-038's Cache section merged into LP-037" entry.
+Sections/items below marked "(from LP-038)" are that merge; LP-038 itself
+was narrowed to Asset Optimization, Media Optimization, CDN & Reverse
+Proxy, and Monitoring & Diagnostics, none of which duplicate this ticket.
+
+**Implemented (2026-08-01).** New `app/Core/Cache/` namespace:
+`CacheDriverInterface` (`purgeUrl()`/`purgeTag()`/`purgeAll()`/`name()`/
+`isAvailable()`), `NullCacheDriver` (inert fallback), `LiteSpeedCacheDriver`
+(detects via `SERVER_SOFTWARE`/the `X-LSCACHE` request header LiteSpeed's
+cache module adds; purges via `X-LiteSpeed-Purge` response headers, the
+only mechanism LiteSpeed actually uses), and `CacheManager` (the
+framework-agnostic API itself, one instance per request, `$kernel->cache`).
+Settings &rsaquo; Cache (`admin/views/settings/cache.php`) is filled in —
+previously a placeholder LP-042 reserved.
+
+Two deliberate architecture calls made **with the user before writing any
+code**, since both cut real ticket scope:
+
+1. **Image "views" and audio/video "plays" are not tracked/cached
+   specially** — there is no PHP-mediated route for any media file in
+   this app (`MediaService::url()` returns a direct static URL), so
+   routing every `<img>` through PHP to make it cacheable/countable would
+   add overhead to the hot path of every page load, contradicting this
+   project's own performance goals. Out of scope for this pass.
+2. **HTTP response caching is opt-in per route, not detected
+   automatically.** `SiteController::markCacheableForGuests()` is called
+   explicitly by `home()`/`category()`/`tag()`/`archive()`/
+   `archiveByMonth()`/`search()`/`page()` — and deliberately **not** by
+   `singlePost()`, since `single.php` embeds a one-time, session-bound
+   CSRF token (`Csrf::token()`/`Csrf::field()` — "single-use, stored in
+   the session") for the comment form; caching that page would serve one
+   visitor's token to every other visitor, permanently breaking their
+   ability to comment. A logged-in visitor is never marked cacheable
+   either way (checked via `Auth::check()`), so admins never see (or
+   pollute) a guest-cached response.
+
+Headers are applied in `index.php`, not per-controller-action: both
+non-preview dispatch branches now buffer the router's output
+(`ob_start()`/`ob_get_clean()`) so `CacheManager::applyHeaders()` can
+compute a content-hash ETag from the complete body and answer a real
+conditional `304` — except `/admin/*`, which bypasses this buffering
+entirely, because `admin/index.php` already opens its own
+never-explicitly-closed `ob_start()` (documented in that file as
+"flushed automatically at script end") and nesting a second buffer
+around it would make `ob_get_clean()` pop the wrong one. `applyHeaders()`
+also never overwrites a `Cache-Control` header a route already set for
+itself (`SiteController::feed()`'s pre-existing LP-013 ETag/Cache-Control
+logic is left completely alone).
+
+Automatic invalidation: `PostService`/`PageService`/`CategoryService`/
+`TagService`/`CommentService`/`MediaService` each gained an **optional**
+trailing `?HookManager $hooks = null` constructor parameter (so every
+existing `new PostService($db, $prefix)` call across the PHP Test Suite
+keeps compiling unchanged — only `include/bootstrap.php`'s real instances
+pass one) and now fire `'post_saved'`/`'post_deleted'`/`'page_saved'`/…/
+`'media_saved'`/`'media_deleted'` from their actual write methods —
+deliberately the service layer, not the admin views that call them (the
+`general_settings_saved`/`comment_posted` precedent), since posts/pages/
+media are also written by `ApiController`'s REST endpoints and the
+Dashboard's Quick Draft form, not just their own admin editor screens.
+`PressConfig::setOption()` also gained a generic `'option_changed'` hook
+(bound via a new `bindHooks()` method, mirroring `bindDatabase()`) — one
+choke point that automatically covers settings, widgets, menus, theme
+activation, and theme options, since all of those are stored as options
+already. `include/bootstrap.php` registers one listener per action,
+calling `$cache->purgeAll()` — **a deliberate blanket purge rather than
+per-tag targeting** for this first pass (always correct, not maximally
+efficient; tags are still collected and sent as `X-LiteSpeed-Tag` for
+LiteSpeed's own use, and `purgeTag()`/`purgeUrl()` remain real, callable
+Developer API methods a plugin can use directly).
+
+**Second pass (2026-10-10).** Triaged every open item with the user:
+implemented the useful ones, rejected the rest (recorded in
+`DECISIONS.md`'s "LP-037 open items triaged" entry and removed from this
+ticket), and moved the CDN/reverse-proxy/object-cache/warming wishlist
+to LP-038, which already lists all of it. Built: per-page-type cache
+switches (`CacheManager::CONTENT_TYPES`, option `cache_type_{key}`), a
+never-cache path list (`CacheExclusions`, option `cache_exclusions`,
+matched relative to the install's base path), purge homepage / purge one
+page, a client-side "Test Cache Headers" panel
+(`admin/assets/js/cache-headers-test.js`), advisory configuration
+warnings (`CacheManager::configurationWarnings()`), `user_saved`/
+`user_deleted` hooks in `UserService` wired to the blanket purge, and
+the `cache_drivers`/`cache_diagnostics` filters so other caches are
+plugin work. Two bugs found and fixed on the way: (1) any page that
+minted a CSRF token (comment form on a page, the Contact Forms
+shortcode) was still marked cacheable — `index.php` now calls
+`disableCaching()` whenever `Csrf::wasIssued()`; (2) conditional `GET`
+never returned `304` — the ETag hashed a body carrying a per-request CSP
+nonce, and Apache's mod_deflate appends `-gzip` to the validator.
+`CacheManager::etagFor()` now ignores nonces, `ifNoneMatchMatches()`
+ignores the coding suffix, and a 304 drops its CSP header so the
+browser's stored policy still matches its stored body.
+
+**Third pass (2026-10-10).** The last three items. Browser lifetime:
+option `cache_browser_lifetime` (empty = same as the server lifetime),
+sent as `max-age` with the server value as `s-maxage` when they differ.
+Tag debugging: LiteSpeed strips `X-LiteSpeed-Tag`, so a
+`cache_debug_tags` switch adds a copy as `X-Lumora-Cache-Tags`, which
+the header test lists. Targeted invalidation: `CacheInvalidator` now
+handles `post_saved`, `page_saved`, `comment_posted` and
+`comment_status_changed`. `post_saved`/`page_saved` gained a trailing
+`?previous` argument (set from `update()` and `setStatus()`) so a change
+is skipped when neither the old nor the new state is publicly visible,
+and an approved comment purges only the `posts` tag plus its page tag
+when every placed widget is on a known comment-free list, otherwise
+everything. Deletions, categories, tags, media, users and options still
+purge everything on purpose: widgets, menus and bylines repeat that
+data on every cached page, so a smaller purge could leave stale pages.
+
+Verified: `php -l` on every changed/new file, a clean `composer stan`,
+and `composer test` (760/760, 24 new — `CacheManagerTest`,
+`LiteSpeedCacheDriverTest`, `NullCacheDriverTest`, plus `PressConfigTest`/
+`PostServiceTest` additions covering the hook-firing pattern
+representatively rather than exhaustively across all six services, since
+the wiring is mechanically identical in each). Header emission itself
+(`header()` calls) isn't asserted on in tests — PHPUnit runs the whole
+unit suite in one shared CLI process, and by the time any single test
+class runs, PHPUnit's own progress output has already caused real
+output, so `header()` silently no-ops for the rest of the process
+regardless of what the code under test does; no other test in this suite
+asserts on header output for the same reason.
+
+#### Goal
+
+Create a standardized Cache API that allows Lumora Press and its extensions to interact with caching systems in a consistent way, while providing first-class support for LiteSpeed Cache and remaining compatible with other reverse proxies and CDNs.
+
+#### Core Cache API
+
+Provide a framework-agnostic Cache API.
+
+Core functionality:
+
+- [x] Purge a single URL — `CacheManager::purgeUrl()`
+- [x] Purge multiple URLs — `purgeUrls()`
+- [x] Purge by cache tag — `purgeTag()`
+- [x] Purge the entire cache — `purgeAll()`
+- [x] Set cache lifetime — `setCacheLifetime()`
+- [x] Disable caching for a response — `disableCaching()`
+- [x] Mark a response as private — nothing is cacheable unless a route calls `markPageCacheable()`, and `disableCaching()` makes the response `no-store, private`
+- [x] Register cache tags — `registerTag()`/`registerTags()`
+
+#### HTTP Cache Support
+
+Generate proper HTTP caching headers.
+
+- [x] Cache-Control
+- [x] ETag
+- [x] Vary — `Vary: Cookie`, so a shared cache never hands a guest-rendered copy to a logged-in visitor or vice versa
+- [x] Conditional GET (304 Not Modified)
+- [x] Configurable cache lifetimes — `setCacheLifetime()` (per-response) and `cache_default_lifetime` (site-wide default)
+- [x] Default cache lifetime, admin-configurable (from LP-038) — Settings &rsaquo; Cache
+- [x] Browser cache lifetime, distinct from the server-side cache lifetime above (from LP-038) — `cache_browser_lifetime`
+
+#### Public Content Selection (from LP-038)
+
+Each kind of public page has its own switch on Settings › Cache (a date and author archives switch was added alongside the ones listed). Feeds, static assets, and media pages are not part of this system: feeds send their own caching headers, the web server delivers static assets directly, and Lumora Press has no public media page.
+
+- [x] Homepage
+- [x] Pages
+- [x] Categories
+- [x] Tag pages
+- [x] Search results
+
+#### Automatic Cache Invalidation
+
+Automatically purge affected content when changes occur.
+
+Examples:
+
+- [x] Media upload — `MediaService::upload()` fires `media_saved`
+- [x] Media deletion — `MediaService::delete()` fires `media_deleted`
+- [x] Category changes
+- [x] Page changes
+- [x] News/post updates
+- [x] Comment approval — `CommentService::updateStatus()` fires `comment_status_changed`
+- [x] Comment deletion
+- [x] User profile updates — `UserService` fires `user_saved` (update, avatar, restore) and `user_deleted` (trash, delete)
+- [x] Theme activation — stored via `PressConfig::setOption('active_theme', ...)`, covered by the generic `option_changed` hook
+- [x] Theme option changes — same, any theme option is a `setOption()` call
+- [x] Widget changes — `widgets_config` is a `setOption()`-backed option
+- [x] Navigation/menu changes — `nav_menus`/`nav_menu_locations` are `setOption()`-backed options
+- [x] Configuration changes — the generic `option_changed` hook covers every settings form
+
+- [x] Only invalidate affected pages whenever possible — changes no visitor can see (drafts, private content, unapproved comments) purge nothing, and an approved comment purges only the `posts` and page tags when no widget that may show comments is placed; everything else still purges all, deliberately (see the third-pass note above)
+
+#### LiteSpeed Driver
+
+Automatically detect LiteSpeed/OpenLiteSpeed.
+
+If supported:
+
+- [x] Send `X-LiteSpeed-Purge` headers
+- [x] Support URL purging
+- [x] Support tag-based purging
+- [x] Support full cache purge
+- [x] Support cache varies where appropriate — blanket `Vary: Cookie`, not fine-grained per-content-type vary rules
+- [x] Detect unavailable LiteSpeed features gracefully — falls back to `NullCacheDriver`, admin page explains it
+
+#### Admin Integration
+
+Add a Cache section to the admin panel.
+
+- [x] Show detected cache driver
+- [x] Show detected web server — raw `SERVER_SOFTWARE`
+- [x] Display cache status
+- [x] Manual "Purge Cache" button — "Purge Homepage" and "Purge one page" (a path or full address on this site)
+- [x] Manual "Purge Entire Cache" button
+- [x] Test cache headers — "Test Cache Headers" panel, fetched from the browser without cookies, with a 304 check
+- [x] Show cache diagnostics — status bar + Recent Purges table
+- [x] Explain unsupported features — warning box shown whenever the driver isn't LiteSpeed
+- [x] Enable/disable the whole cache integration, admin-facing toggle separate from the underlying API (from LP-038)
+- [x] Manual driver selection, overriding auto-detection (optional) (from LP-038) — auto/litespeed/null select
+- [x] Granular manual purge: homepage and one page by path or address (from LP-038); a selected category is purged the same way, by its URL
+- [x] Cache configuration validation, surfaced as an admin warning (from LP-038) — `CacheManager::configurationWarnings()`
+- [x] Recent purge log (from LP-038) — file-backed (`storage/cache/cache-purge-log.json`), last 20 shown
+
+#### Advanced (from LP-038)
+
+- [x] Cache exclusions (specific URLs/patterns never cached) — "Never Cache" box on Settings › Cache, one path per line with `*` wildcards
+- [x] Cache tag debugging — `cache_debug_tags` adds an `X-Lumora-Cache-Tags` header (LiteSpeed strips its own `X-LiteSpeed-Tag`), listed by the header test
+- [x] Developer mode (disable caching entirely) — the "Enable HTTP caching" toggle, turned off
+
+#### Performance
+
+- [x] Cache only public content — routes opt in explicitly, nothing else is ever cacheable
+- [x] Never cache admin pages — `/admin/*` never buffered/marked cacheable at all
+- [x] Never cache logged-in users by default — `Auth::check()` gates every `markPageCacheable()` call
+- [x] Never cache CSRF-protected pages — `singlePost()` deliberately excluded, and any response that minted a token (`Csrf::wasIssued()`) is made uncacheable in `index.php`, which covers pages with a comment form and the Contact Forms shortcode
+- [x] Never cache session messages — the one place a flash-style message appears on a public GET (the comment-post redirect target) is `singlePost()`, already excluded above
+- [x] Support guest page caching — the entire point of `markCacheableForGuests()`
+- [x] Never cache login/logout (from LP-038) — under `/admin/*`, already excluded
+- [x] Never cache user account pages (from LP-038) — N/A, no public user-account pages exist outside `/admin/*`
+- [x] Never cache comment forms (from LP-038) — same as CSRF-protected pages above
+- [x] Never cache upload pages (from LP-038) — under `/admin/*`, already excluded
+- [x] Never cache preview pages (from LP-038) — theme preview requires `manage_themes` login, so `Auth::check()` already excludes it
+
+#### Developer API
+
+Provide a standardized Cache API.
+
+Core methods:
+
+- `purgeUrl()`
+- `purgeUrls()`
+- `purgeTag()`
+- `purgeTags()`
+- `purgeAll()`
+- `registerTag()`
+- `setCacheLifetime()`
+- `disableCaching()`
+- `isCacheable()`
+
+Extensions should be able to:
+
+- Register cache drivers
+- Register cache tags
+- Trigger cache invalidation
+- Mark responses as cacheable/non-cacheable
+- Extend cache diagnostics
+
+#### Driver Architecture
+
+Support interchangeable cache drivers.
+
+Initial drivers:
+
+- [x] Null driver (default/no caching)
+- [x] LiteSpeed driver
+
+- [x] Plugin-registered drivers through the `cache_drivers` filter
+
+Cloudflare, Varnish, FastCGI/Nginx proxy cache, other reverse proxies, CDN integrations, object cache (Redis/Memcached), cache warming and preloading, and Image CDN are not core work: a plugin can add a driver through `cache_drivers`, and the CDN, reverse-proxy, object-cache, warming, and Image CDN lists already live in LP-038. Edge Side Includes, fragment caching, and cache hit/miss analytics were declined; see `DECISIONS.md`.
+
+
+### LP-205. Maintenance Mode: Message Editor and Color Pickers
+
+**Status:** Complete
+
+**Implementation notes (2026-10-08):** `MaintenanceGate` takes an optional `ContentRenderer` (last constructor argument) and renders `maintenance_message` in `maintenance_message_format`; no stored format means plain text, and without a renderer it still escapes, never prints raw. The settings screen answers the editor's format switch itself (`form=convert_content`, same `ContentRenderer::convertFormat()` as the Post editor) and has no media or link pickers wired, as with Theme Options' Html fields. New `admin/assets/js/color-picker-field.js` (loaded in `layout-footer.php`) and `.lp-color-field*` styles; the swatch has no `name`, the hex field is what is saved. All five `maintenance.php` templates now print `<div class="lp-maintenance__message"><?= $message ?></div>`, with first/last-child margin trims added to each stylesheet. Lumora Classic changed, so its next Release needs a `Version:` bump; custom theme versions were not bumped. Tests: `MaintenanceGateTest` additions and `MaintenanceMessageAndEditorHeightContractTest`. The settings screen's color save validation lives in the view and isn't unit-tested beyond that contract test; `MaintenanceGate` re-validates every color at output.
+
+Two improvements to Settings › Maintenance Mode. The "Maintenance message" is a plain textarea today, so a site owner can't add a link, bold text, or a line break they can see. The three color fields under "Maintenance page appearance" (Background color, Text color, Countdown color) are bare text boxes where you type a hex code from memory. Both have working precedents elsewhere in the admin: Theme Options' Html fields reuse the content editor with its Visual/Markdown/HTML toggle, and Theme Options' color fields use a color picker.
+
+#### Message editor
+
+- [x] The "Maintenance message" field uses the same editor as a Theme Options Html field (Visual, Markdown, or HTML), reusing `content-editor.js` and its format toggle rather than a new editor.
+- [x] Store the chosen format alongside the message (a `maintenance_message_format` option, mirroring Theme Options' `{key}_format` convention).
+- [x] Render the message through `ContentRenderer`, the single sanitizing boundary for every content format, never as raw stored HTML.
+- [x] A message saved before this change shows exactly as it does now: treat it as plain text (escaped, with line breaks kept) until it is next saved with another format.
+- [x] Check every place the message is printed: the maintenance page template in Lumora Classic and each theme under `custom themes/`, the "Preview in New Tab" button (which must show the formatted message from the unsaved form values), and the `maintenance_page_data` filter, whose `maintenance_message` value is now rendered HTML and needs a note in `docs/DEVELOPER-APIS.md` and `docs/THEME-DEVELOPMENT.md`.
+- [x] Keep the field's default text and the "Custom maintenance message" behavior otherwise unchanged.
+- [x] The editor loads under the admin Content-Security-Policy with no new origins; confirm in the browser and check the console.
+
+#### Color pickers
+
+- [x] Give Background color, Text color, and Countdown color a color picker, in the same shape as Theme Options' color fields (a swatch beside the hex field), so a color can be picked or typed.
+- [x] Empty must still mean "use the maintenance page's own default". Offer a way to clear a color back to that (the "use default" checkbox pattern from `color-field-reset.js`, or a clear button), since `<input type="color">` can never be empty.
+- [x] Keep the hex text field alongside the picker. The current validation accepts 3, 4, 6, and 8 digit hex, and the 4 and 8 digit forms carry transparency, which the native picker can't express.
+- [x] Picker and text field stay in sync in both directions, with no inline `style` or `oninput` (blocked by the CSP).
+- [x] The "Preview in New Tab" button uses the picked colors from the unsaved form.
+- [x] Style the swatch in the admin stylesheet with stable classes, and check it in the dark admin theme and at phone width.
+
+#### Finishing
+
+- [x] Unit tests for the message format handling and rendering (a legacy plain message, each format, script and event-handler content stripped) and the color field save validation; update the existing Maintenance Mode tests that assume a plain message.
+- [x] Browser-verify on the dev install: write a formatted message in each editor mode, save, view the live maintenance page and the preview, pick and clear each color, and check phone width.
+- [x] Update `README.md` if it describes these settings, `docs/CHANGELOG.md`, and the Maintenance Mode section of `docs/FEATURES.md` if it lists them.
+- [x] If any theme's maintenance template changes, apply the same change to every theme under `custom themes/` in the same session.
+
+
+### LP-207. Saving an Existing Download or Link Should Stay on Its Edit Screen
+
+**Status:** Complete
+
+Saving a *new* download or link keeps you on its edit screen (`?id=…&saved=1`), but saving an *existing* one sends you back to the list (`all-downloads?saved=1`, `all-links?saved=1`). That makes the two cases inconsistent and loses your place when you only wanted to save and keep editing. Posts, Pages, Contact Forms, Media, Users, Comments, and the category/tag screens already stay on the edit screen after a save.
+
+#### Audit result (2026-10-08)
+
+- **Inconsistent, to fix:** `admin/views/downloads/add-new.php` (the update branch redirects to `downloads/all-downloads?saved=1`) and `admin/views/link-directory/add-new.php` (the update branch redirects to `link-directory/all-links?saved=1`).
+- **Already correct:** Posts and Pages (`PostsController::save()` / `PagesController::save()` redirect to `posts/new?id=…&saved=1` / `pages/new?id=…&saved=1`), Contact Forms, Media (every save), Users, Comments, Downloads and Link Directory categories, Posts categories/tags. Single-purpose settings pages (Custom CSS, Font Awesome, Profile, Visitor Stats and Gallery Shortcodes settings) already redirect back to themselves.
+- The Pages `repositionPage()` redirect to `pages/all-pages?saved=1` is a drag-reorder from the list, so it correctly stays on the list.
+
+#### Checklist
+
+- [x] Downloads: after saving an existing download, redirect to `downloads/add-new?id={id}&saved=1`, the same as a new one, and confirm the edit screen shows the "saved" notice.
+- [x] Link Directory: the same for an existing link, redirecting to `link-directory/add-new?id={id}&saved=1`.
+- [x] Make sure the notice reads correctly for both a first save and a later one, and that the edit screen still has an obvious way back to the list.
+- [x] Check `PHP Test Suite` for any test that asserts the old list redirect, and update it.
+- [x] Browser-verify on the dev install: edit and save a download and a link, and confirm you stay on the edit screen with the notice.
+- [x] Update `docs/CHANGELOG.md` (and the Downloads and Link Directory READMEs if they describe the save flow).
+
+### LP-208. Taller Editor Windows on New/Edit Post and Page
+
+**Status:** Complete
+
+**Implementation notes (2026-10-08):** Before this, the three modes did not share a height: Visual/HTML (TinyMCE) was a fixed `height: 420`, Markdown (EasyMDE) used its 300px default, and Plain used `min-height: 260px`. Now `.lp-content-editor--tall` (on the Post and Page editor containers only) sets `--lp-editor-height: clamp(480px, 70vh, 960px)` (`clamp(340px, 55vh, 560px)` at 782px and below); `editorHeightPx()` in `content-editor.js` resolves it to pixels for TinyMCE and EasyMDE, and the Markdown area is fitted so its toolbar is included in the same total. Editors without the modifier (Downloads description, Theme Options, Maintenance message) keep their old sizes. Measured on the dev install at 768px high: Visual, Markdown, and Plain all 538px, unchanged after switching modes, for New Post, Edit Post, New Page, and Edit Page; 447px at phone size. TinyMCE's resize handle and the plain textarea's resize grip still work. Dark was checked with the admin's `data-theme="dark"` set by hand because the dev admin's theme preference is explicitly Light; the rule has no color component.
+
+The writing area on New Post, Edit Post, New Page, and Edit Page is too short for the screen it sits on, so a long entry means scrolling inside a small box while the page around it has plenty of room. Writing is the point of this software, so the editor should open large enough to write in comfortably. This applies to all three modes (Visual, Markdown, and HTML) and to both content types, and should stay one shared rule rather than separate heights per screen.
+
+#### Checklist
+
+- [x] Find where the editor height is set today (the textarea's `rows="12"` in `admin/views/posts/new.php` and `admin/views/pages/new.php`, plus any height the Visual editor in `admin/assets/js/content-editor.js` or `admin/assets/css/admin.css` applies) and note whether Visual, Markdown, and HTML modes share one height or each have their own.
+- [x] Make the editor taller by default on Posts and Pages. Prefer sizing relative to the viewport (with a sensible minimum) over a bigger fixed pixel number, so it suits both a laptop and a large monitor.
+- [x] Keep the editor user-resizable if it is today, and make sure switching between Visual, Markdown, and HTML does not jump the height or lose it.
+- [x] Check it at tablet and phone widths so a taller editor does not push the Publish box or the toolbar out of reach.
+- [x] Browser-verify on the dev install: New and Edit for both a post and a page, in each editor mode, light and dark.
+- [x] Update `docs/CHANGELOG.md`, and `PHP Test Suite` if any test asserts the old `rows` value or height rule.
+
+
+### LP-209. Media Manager: Show More Results After a Search
+
+**Status:** Complete
+
+Searching or filtering the Media Manager shows only 40 files per page, the same as browsing, so moving a set of search results into a folder means working through page after page. A search result is a working set, so it should show far more files at once and let "Select all" plus the bulk move act on the whole set.
+
+#### Checklist
+
+- [x] When a search or any filter (filename, type, dates, dimensions, file size) is active, show up to 200 files per page instead of 40; plain browsing keeps 40.
+- [x] Pagination keeps working for result sets larger than that, and "Select all" plus the bulk folder move act on every file shown.
+- [x] Browser-verify on the dev install: search shows 200 with pagination, Select all checks every file shown, plain browsing still shows 40.
+- [x] Update `docs/CHANGELOG.md`.
+
+
+### LP-210. Slide Switches for On/Off Settings
+
+**Status:** Complete
+
+Every tick box in the admin should be a slide switch instead, everywhere it appears. A switch reads as "this is on or off right now" at a glance. The admin already has one switch, `.lp-toggle` in `admin/assets/css/admin.css`, used only by Maintenance › Updates › "Automatically check for updates"; this ticket extends that component rather than inventing a second one.
+
+Scope is every tick box in the admin, not only plain settings: on/off settings, checkbox groups where several options are picked from a list (categories on the post editor, roles, permissions), consent-style boxes such as "Remember me" and the privacy and terms acknowledgements, and the row-selection boxes (bulk-action "select all" and per-row boxes on Posts, Pages, Comments, Users, Media, Downloads, Link Directory and similar). Decided with Ariane 2026-10-08. The audit should flag any spot where a switch is a poor fit (a dense list with hundreds of rows, a very narrow table cell, the Media Manager's selection overlay) so the design can use a compact switch size there instead of a tick box.
+
+**Implemented 2026-10-08 as a global CSS rule rather than a per-screen markup change.** `input[type="checkbox"]` in `admin.css` is drawn as a switch (`appearance: none` plus a `::before` knob), so no field names, values or JS change and bundled plugin screens and future checkboxes get it for free. `.lp-toggle` markup is excluded and still works; TinyMCE dialogs (`.tox`) are excluded. Tables, the theme-card and media-grid overlays and the menus add-panel list set `--lp-switch-w`/`--lp-switch-h` for a compact size. `:indeterminate` shows a half-way knob; `forced-colors` mode has its own rules. The public site's comment-form checkboxes are theme output and are not touched. Remaining: the test-suite check and custom plugin screens (none of which load their own checkbox CSS).
+
+#### Checklist
+
+- [x] Audit every `type="checkbox"` in `admin/views/` (including the bundled plugins' screens: Contact Forms, Downloads, Link Directory, Visitor Stats, Lumora Shield and any other under `content/plugins/`) and group them as on/off settings, multi-pick groups, consent boxes and row selection; record the list in the ticket before changing anything, noting any spot that needs a compact switch.
+- [x] Make `.lp-toggle` a reusable admin component: render it from one shared helper or partial so every screen outputs identical markup, keep the label clickable, and give it a visible on/off state beyond colour alone (for accessibility, the label or an adjacent "On"/"Off" text should not rely on colour only) plus a disabled state and dark-mode styling.
+- [x] Convert every checkbox found in the audit, including bulk-action select-all and per-row selection (keep the existing select-all and shift-click range behaviour working), with no change to the submitted field names or values, so saving, defaults and existing stored settings behave exactly as before; unchecked switches must still submit "off" wherever the tick box did.
+- [x] Keep keyboard and screen reader behaviour intact: Space toggles it, focus is clearly visible, and it is still announced as a checkbox or switch with its label.
+- [x] Browser-verify the converted screens on the dev install (Settings › General, Reading, Writing, Discussion, Media, Privacy, Security, Search, Cache, Embeds, Permalinks, Maintenance Mode, Appearance, and the bundled plugin screens), light and dark, desktop and mobile width, and confirm a save round-trip on a few of them.
+- [x] Update `docs/CHANGELOG.md`, any plugin README that describes a tick box, `PHP Test Suite` for any test asserting the old checkbox markup, and the custom plugins' admin screens under `custom plugins/` if they have on/off settings.
+
+
+### LP-211. A New Admin Accent Color
+
+**Status:** Complete
+
+**Chosen 2026-10-08 (Ariane picked option A, plum):** light `#7b4bb8`, hover `#5f378f`, dark `#b697e6`, dark hover `#c9b1ee`, text on accent in dark mode `#14101c`. The "View" row chip used to be purple and would have matched the new accent, so it moved to teal (`#0b7a7c` light, `#5fd0d0` dark). The Lumora Classic theme's own accent preview default (`#2271b1` in `ThemeOptions.php`) belongs to the public theme, not the admin, and was left alone.
+
+The admin's main color was `--lp-admin-accent: #2271b1` (hover `#135e96`, dark mode `#4c9be8`/`#6cb0ef`), the same blue that countless other admin panels use, so Lumora Press looks generic. Pick a distinctive replacement and apply it everywhere the accent shows up. The admin already routes about 110 rules through `var(--lp-admin-accent)`, so most of this is changing the tokens in `admin/assets/css/admin.css`; the work is choosing well and catching the places that hardcode the blue.
+
+Places known to hardcode the old blue instead of using the token: `--lp-admin-info-border` in `admin.css`, `content-editor-iframe.css` (the "Read more" marker, which sits inside the editor iframe and cannot read the admin's custom properties), and `theme-preview-bar.css`. The pale-blue panel header bars (Settings › General and the other headed panels) and the pale-blue tints on badges and the breadcrumb are separate tokens that may need to follow the new color so the screens don't end up half blue.
+
+Ariane picks the color. Show a few candidates side by side on a real admin screen before committing to one.
+
+#### Checklist
+
+- [x] Choose the new accent with Ariane: show 3–4 candidates (light and dark mode, plus hover) on a real screen such as Settings › Discussion or the Posts list, and record the final light, hover and dark values here.
+- [x] Change `--lp-admin-accent`, `--lp-admin-accent-hover` and their dark-mode counterparts (both the `prefers-color-scheme` block and `[data-theme="dark"]`), and check `--lp-admin-on-accent` still gives readable button text on the new color.
+- [x] Find and update every other use of the old blue: `--lp-admin-info-border`, the pale panel-header and badge tints, `content-editor-iframe.css`, `theme-preview-bar.css`, the login screen, the installer under `install/`, and any hardcoded blue in the bundled plugins' screens and `admin/assets/js/`. Grep for `#2271b1`, `#135e96`, `#4c9be8`, `#6cb0ef` and the pale tints' hex values.
+- [x] Check contrast: link text, button text and focus outlines meet WCAG AA against both light and dark panel backgrounds, and the green switch color from LP-210 still looks right beside the new accent.
+- [x] Browser-verify the main admin screens, the login page, the installer, a bundled plugin screen and the editor, in light and dark, on desktop and mobile width.
+- [x] Update `docs/CHANGELOG.md`, and `PHP Test Suite` if any test asserts the old color values.
+
+
+### LP-212. Harmonize the Admin Color Palette
+
+**Status:** Complete
+
+With the plum accent (LP-211), the pastel green switch (LP-210) and the pastel blue and teal row chips, the admin's older neutrals and status colors (WordPress-style cool gray, saturated `#00a32a` green and `#d63638` red) no longer matched each other. Audited every color token in `admin.css` and brought them into one family. Done 2026-10-08.
+
+Light mode: page `#f3f1f5`, sidebar `#28232f`, text `#211d27`, border `#ddd8e4`, fields `#f5f3f8`, buttons `#f8f6fa` (neutrals tinted a hair toward plum); success `#2e9e5b` (the deeper partner of the `#5cc98b` switch), error `#d6455d` (a rose-leaning red), warning `#d9a021`. Dark mode follows the same hues: page `#131016`, sidebar `#1a161f`, panel `#1d1923`, border `#372f40`, success `#3fb26e`, error `#e0566d`, warning `#e0ab35`. The theme preview bar follows the sidebar. Every text/background pair checked is at least 6.8:1.
+
+#### Checklist
+
+- [x] Audit every color token and hardcoded color in `admin/assets/css/`.
+- [x] Tint the neutrals (page, sidebar, text, borders, fields, buttons) toward the plum accent in light and dark mode.
+- [x] Move the success, error and warning colors, and the Trash chip, into the same softness and hue family as the switch, accent and chips.
+- [x] Check contrast for text on every status background in both modes.
+- [x] Browser-verify the dashboard, notices (saved, error, warning), the Users and Comments badges, the sidebar, the login page and a bundled plugin screen in light and dark.
+
+### LP-213. Stop the Login Name Leaking Through the Display Name
+
+**Status:** Complete
+
+A user's display name falls back to their login username whenever none is set (`UserService::create()`, `update()` and `hydrate()` all do `$displayName ?? $username`). Since the display name is what bylines, author links, author archive slugs (`/author/{slug}`) and feeds print, an account saved without a display name publishes half of a working login credential. This is a hardening gap, not the confirmed cause of the 2026-10-08 incident: a live-site author-archive probe for the admin's real username showed up in Logs › Blocked Enumeration Attempts, but that account has always had a distinct display name, so how the username was learned is still unknown (it may have been reused on another site). The audit items below are what could find the real source.
+
+Implemented 2026-10-10. Chose the neutral-default fix: `UserService::publishableDisplayName()` turns a blank or username-matching name into `Member {id}` (`neutralDisplayName()`) in `create()` and `update()` (an update keeps the stored name when it is still safe), and `hydrate()` reads an empty stored name the same way. Because the importers and the installer all go through `create()`, no per-importer change was needed. The Users screen now rejects a Display Name identical to the Username for every role (a Subscriber may still leave it blank), and migration 0085 renames existing accounts whose Display Name matched their username. The audits found no other public output of a login name: no bundled plugin, feed, sitemap, oEmbed, comment markup or login/reset message prints it (the login error is generic and the lockout notice is IP-based). Existing fixtures that used `admin`/`Admin` style pairs were given distinct display names.
+
+#### Checklist
+
+- [x] Decide the fix: require a display name that differs from the username on create/update (the Users form already has `usernameMatchesDisplayName()`), or generate a neutral default (e.g. "Author 12") instead of falling back to the username.
+- [x] Apply it in `UserService::create()`, `update()` and `hydrate()`, and in the importers (`UserImporter`, `LumoraPressImportService`, WordPress WXR import) so imported users don't reintroduce the fallback.
+- [x] Add a migration or an admin notice for existing accounts whose display name still equals their username, so they can be fixed.
+- [x] Audit every bundled plugin (`content/plugins/`) for anything that prints a username or login name publicly: feeds, shortcodes, widgets, contact forms, downloads, visitor stats, sitemaps, REST-style endpoints, HTML comments or body classes.
+- [x] Audit core and the bundled theme for the same leak outside the display-name fallback (feeds' `dc:creator`, oEmbed, sitemaps, comment markup, error messages on the login screen).
+- [x] Add unit and regression tests for the fallback fix and for each leak the audits turn up.
+
+
+### LPP-032. Link Directory: Links Widget and 100×50 Link Buttons
+
+**Status:** Complete
+
+#### Goal
+
+Give the Link Directory a sidebar/footer widget, and let each link carry an optional 100×50 "link button" image: the classic fansite/webring badge.
+
+- **Links widget:** lists links either as plain text links or as a row of 100×50 button images.
+- **Link button image:** uploaded or picked on the link's Add/Edit screen. It can also be shown next to the link on the `[lumora_link_directory]` page.
+
+Interpretation to confirm with Ariane before starting: "show that button on link page" is read as **both** the admin Add/Edit Link screen (where the button is uploaded and previewed) **and** the public directory page (an option to display it there). Adjust the checklist if only one was meant.
+
+Findings from 2026-10-06 that shape the work:
+- Plugins can already register a widget type (`WidgetManager::registerWidget($type, $label, $render)`, `app/Core/Widgets/WidgetManager.php`). But `admin/views/appearance/widgets.php`'s `$settingsFieldsFor()` hardcodes each core widget's settings fields, and every other type falls through to a lone Title field. So a plugin widget can't offer "plain links vs. buttons" or a category choice until core grows a hook for it.
+- The links table is created by a core migration (`install/migrations/0069_create_link_directory_links_table.sql`), and the Add/Edit screen is core `admin/views/link-directory/add-new.php`. A new button-image column therefore means a new core migration, not just plugin code.
+- Each link already has an optional `thumbnail_media_id` (`Link::$thumbnailMediaId`, rendered by `LinkDirectoryShortcode`). The button is a separate image with a separate purpose (a fixed-size badge, not a description picture), so it gets its own column rather than reusing the thumbnail.
+
+#### Checklist
+
+**Core prerequisite**
+- [x] Add a filter (e.g. `widget_settings_fields`, with `$fields, string $widgetType`) to `$settingsFieldsFor()` in `admin/views/appearance/widgets.php`, so a plugin-registered widget can declare its own settings fields using the existing field types (text, number, checkbox, select). Saving already stores arbitrary `settings[...]` keys; confirm that, and that unknown keys are sanitized the same way as core widgets' keys. Document the filter in `docs/DEVELOPER-APIS.md`.
+
+**Link button image**
+- [x] New core migration adding a nullable `button_media_id` column to the links table, plus `Link::$buttonMediaId` and `LinkService` create/update/hydrate support.
+- [x] Add/Edit Link screen: a "Link button (100×50)" field using the existing Media picker (upload or choose), with a preview at 100×50 and a Remove action. Accept any image, and show a non-blocking hint when its size isn't 100×50; don't crop or resize the file.
+- [x] Include the button in `LinkDirectoryPortabilityService` export/import (remapped the same way as `thumbnailMediaId`), and show it in the admin links list if there's room.
+- [x] `[lumora_link_directory]`: an option to show each link's button (a plugin setting and/or a shortcode attribute such as `buttons="1"`), rendered as `<img width="100" height="50">` inside the link, falling back to the plain text link when a link has no button.
+
+**Links widget**
+- [x] Register a "Links" widget type from the plugin, with settings: Title, Category (all or one), Number of links, Order (alphabetical / newest / random), and Display (plain links / 100×50 buttons).
+- [x] Plain mode: a `<ul class="lp-widget__list">` of text links, matching the core link-list widgets. Buttons mode: a wrapping row of 100×50 button images with the link title as `alt` and `title`; links without a button fall back to their text title, styled so mixed rows still look tidy.
+- [x] Only show live links (respect `LinkStatus`), escape every URL and label, and add `rel="noopener"` to any link that opens in a new tab, consistent with the directory page.
+
+**Styling, docs, tests**
+- [x] Stable classes for the new markup (e.g. `.lp-link-buttons`, `.lp-link-button`, `.lp-link-button__img`, `.lp-link-button--text`), styled in Lumora Classic's `style.css` (Link Directory section, with dark mode), and the same additions in every theme under `custom themes/`.
+- [x] Plugin README (widget, button field, directory option), CHANGELOG entry, and a plugin `Version:` bump.
+- [x] Tests: `LinkService` round-trip of `buttonMediaId`, portability export/import of the button, widget rendering in both modes (including the no-button fallback and the category/number/order settings), and the `widget_settings_fields` filter (`LinkServiceTest`, `LinkDirectoryPortabilityServiceTest`, `LinkDirectoryWidgetTest`, `WidgetsControllerTest`).
+- [x] Browser-verify the widget in the sidebar and footer, the Add/Edit picker, and the directory option, in light and dark mode at desktop and phone widths.
+
+Implemented 2026-10-06 (Link Directory 0.2.0, migration `0082`, unit suite green at 3061 tests). Pieces: `widget_settings_fields` filter (applied in `admin/views/appearance/widgets.php` and `WidgetsController::fieldTypesFor()`; select fields gained an optional `empty_label`), `Link::$buttonMediaId`, `LinkService::listForWidget()`, `LinkButtonRenderer`, `LinkDirectoryWidget`, `LinkDirectoryConnection` (the shortcode's and widget's shared own-connection helper), a `buttons="1"` shortcode attribute (a shortcode attribute only, no plugin setting), and the picker on the Add/Edit screen, which reuses `FeaturedImageDefaultsController::pickerQuery()` under its own `link_button_picker_query` request name. Browser-verified on the dev install: the Add/Edit picker (choose, save, reload, size warning, Remove), and the Links widget in the footer area in buttons mode (all tiles exactly 100×50, mixed badge/text row, light desktop, dark phone width with no overflow).
+
+Export/import (done 2026-10-06, after Ariane asked for thumbnails and buttons to be exported): a Media id means nothing on another install, so each image is embedded base64 in the same JSON file (`thumbnail`/`button` objects with `fileName`, `mimeType`, `data`; format version unchanged, since old importers ignore the new keys) and import recreates it as a Media item via `registerExistingFile()`. Images over 5 MB are left out of an export; on import the extension and the content-sniffed type must both be an allowed image, a shared image is stored once, and anything else is skipped and counted in the result message. The live export was checked on the dev install (10 thumbnails embedded); the import side is unit-tested only, since a live import would leave `www-data`-owned files in the dev library. One item stays open: the browser pass is not yet done: the widget in the primary sidebar (only the footer area was checked), plain-text mode live, and the `buttons="1"` shortcode on a real page (those two are unit-tested only).
+
+

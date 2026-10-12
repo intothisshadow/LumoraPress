@@ -4,6 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-10-12
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Classic 0.6.0 and Downloads 0.5.0. Each can be updated on its own from its screen when a release carries its package.
+
 ### Changed
 
 - Appearance › Customize has an **Export and Import Settings** panel under the tabs. **Export Settings** downloads the active theme's settings as a JSON file, to keep as a backup or to move the same look to another site; **Import Settings** replaces the theme's settings with a file's. A file only imports into the theme it came from, every value is checked as saving would check it, and anything the theme doesn't use or that isn't valid is skipped and listed. Header images are not included.
