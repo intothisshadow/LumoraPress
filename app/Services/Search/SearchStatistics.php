@@ -35,7 +35,8 @@ final class SearchStatistics
 
     public const RETENTION_DAYS = 180;
 
-    private const MAX_QUERY_LENGTH = 200;
+    // 191 characters is the longest utf8mb4 unique key older InnoDB row formats accept.
+    private const MAX_QUERY_LENGTH = 191;
 
     /**
      * A term must have been searched at least this often, and have found

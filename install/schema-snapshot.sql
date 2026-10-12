@@ -495,7 +495,7 @@ CREATE TABLE `{prefix}revisions` (
 -- >>>
 CREATE TABLE `{prefix}search_queries` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `query` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `query` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `searches` int(10) unsigned NOT NULL DEFAULT 0,
   `last_result_count` int(10) unsigned NOT NULL DEFAULT 0,
   `first_searched_at` datetime NOT NULL,

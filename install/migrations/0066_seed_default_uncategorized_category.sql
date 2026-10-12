@@ -1,5 +1,6 @@
 INSERT INTO {prefix}categories (name, slug, description, parent_id, menu_order, created_at, updated_at)
 SELECT 'Uncategorized', 'uncategorized', '', NULL, 0, NOW(), NOW()
+FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM {prefix}categories WHERE slug = 'uncategorized');
 
 SET @lp_default_category_id = (SELECT id FROM {prefix}categories WHERE slug = 'uncategorized' LIMIT 1);

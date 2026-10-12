@@ -5,7 +5,7 @@ CREATE TABLE {prefix}search_terms (
 
 CREATE TABLE {prefix}search_queries (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    query VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    query VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     searches INT UNSIGNED NOT NULL DEFAULT 0,
     last_result_count INT UNSIGNED NOT NULL DEFAULT 0,
     first_searched_at DATETIME NOT NULL,
