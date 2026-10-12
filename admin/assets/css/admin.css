@@ -1285,6 +1285,18 @@ body.lp-admin-login {
     flex-shrink: 0;
 }
 
+/* System Information: values are long paths and badges, so the value
+   column wraps anywhere and sits right-aligned beside its label. */
+.lp-admin__meta-list--details li > span:last-child {
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.lp-admin__meta-list--details li .lp-status-badge {
+    margin-left: 0.35rem;
+}
+
 /*
  * A flex item's default min-width is its content's natural width, not
  * 0 — so a long, unbreakable filename (Popular Downloads) or title

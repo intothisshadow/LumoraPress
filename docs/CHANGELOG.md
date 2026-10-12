@@ -8,6 +8,10 @@ All notable changes to Lumora Press are documented in this file.
 
 - Installing on MySQL 5.6 or MariaDB 10.0 (the oldest supported database servers) failed during setup: one migration used a `SELECT` without a `FROM`, and the search-statistics table used a key longer than those servers allow. Both are fixed, and Lumora Press now runs on every database version listed under Requirements in the README. Search statistics now record queries up to 191 characters long instead of 200.
 
+### Added
+
+- Maintenance › System Information now shows the details support questions start with: the stored and auto-detected site URL (with an HTTPS badge and a warning when they differ), the application root, writable checks for the uploads, cache, and storage directories, the database host, name, table prefix, and server version (with a supported badge), the web server, PHP memory and upload limits, and detected capabilities (HTTP/2, HTTP/3, Brotli, page cache). An **Export Snapshot (JSON)** button downloads the same information for support requests; database credentials are never included.
+
 ### Changed
 
 - Plugins: every plugin's **Details** panel has an **Update from ZIP** control, like themes. The ZIP must be for that same plugin, and a review screen shows the installed and uploaded versions first, with a warning and a confirmation if the ZIP is the same version or older. Whether the plugin is active and its saved settings are kept.
