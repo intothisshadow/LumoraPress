@@ -657,7 +657,7 @@ final class LumoraPressImportService
      * duplicated. A theme location is only filled if it's currently
      * empty here — an import never replaces a menu the admin chose.
      */
-    private function importMenus(string $batchId, ExportContent $content): ?int
+    private function importMenus(string $batchId, ExportContent $content): null
     {
         if ($content->menus === []) {
             return null;
@@ -726,7 +726,7 @@ final class LumoraPressImportService
      * Widgets, and one whose type isn't available here (a plugin's widget
      * with that plugin inactive) is skipped.
      */
-    private function importWidgets(string $batchId, ExportContent $content): ?int
+    private function importWidgets(string $batchId, ExportContent $content): null
     {
         if ($content->widgets === []) {
             return null;

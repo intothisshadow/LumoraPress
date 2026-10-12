@@ -27,7 +27,7 @@ namespace LumoraPress\Core\Theme;
 final class ThemeOptionField
 {
     /**
-     * @param array<string, string> $choices value => label, Select only
+     * @param array<int|string, string> $choices value => label, Select only (PHP stores numeric-string keys such as '1' as ints)
      * @param array<string, string> $cssValueMap Select only: stored choice value =>
      *     actual CSS value for $cssVariable, when they differ (e.g. body_font
      *     stores 'serif' but the CSS needs the full font stack).

@@ -350,8 +350,8 @@ final class PostsController
         // Publish-time decisions, same gate as Status/Schedule above.
         $visibility = $canPublish
             ? (PostVisibility::tryFrom((string) ($post['visibility'] ?? '')) ?? PostVisibility::Public)
-            : ($existing?->visibility ?? PostVisibility::Public);
-        $isSticky = $canPublish ? ($post['is_sticky'] ?? null) !== null : ($existing?->isSticky ?? false);
+            : ($existing->visibility ?? PostVisibility::Public);
+        $isSticky = $canPublish ? ($post['is_sticky'] ?? null) !== null : ($existing->isSticky ?? false);
 
         // Same gate; a blank field means "no scheduled unpublish", not "leave the existing one alone".
         $unpublishAt = null;

@@ -535,6 +535,11 @@ final class MarkdownParser
         return $html . "</dl>\n";
     }
 
+    /**
+     * @param array<int, string> $header
+     * @param array<int, string> $align
+     * @param array<int, array<int, string>> $rows
+     */
     private function renderTable(array $header, array $align, array $rows): string
     {
         $alignClass = static fn (int $index): string => isset($align[$index]) && $align[$index] !== ''

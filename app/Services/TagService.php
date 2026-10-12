@@ -444,11 +444,8 @@ final class TagService
                   LEFT JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
                   LEFT JOIN ' . $this->postsTable() . ' p ON p.id = pt.post_id';
 
-        if ($conditions !== []) {
-            $sql .= ' WHERE ' . implode(' AND ', $conditions);
-        }
-
-        $sql .= ' GROUP BY t.id';
+        // $conditions always holds the trashed_at filter, so WHERE is unconditional.
+        $sql .= ' WHERE ' . implode(' AND ', $conditions) . ' GROUP BY t.id';
 
         $having = [];
 

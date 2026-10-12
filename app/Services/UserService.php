@@ -385,7 +385,7 @@ final class UserService
     public function getEditorLayoutPreferences(int $id, string $screenType): array
     {
         $user = $this->findById($id);
-        $decoded = json_decode($user?->editorLayoutPreferences ?? '{}', true);
+        $decoded = json_decode($user->editorLayoutPreferences ?? '{}', true);
         $forScreen = is_array($decoded) ? ($decoded[$screenType] ?? null) : null;
 
         return [
@@ -405,7 +405,7 @@ final class UserService
     public function updateEditorLayoutPreferences(int $id, string $screenType, array $order, array $collapsed): void
     {
         $user = $this->findById($id);
-        $decoded = json_decode($user?->editorLayoutPreferences ?? '{}', true);
+        $decoded = json_decode($user->editorLayoutPreferences ?? '{}', true);
 
         if (!is_array($decoded)) {
             $decoded = [];
@@ -429,7 +429,7 @@ final class UserService
     public function getListViewMode(int $id, string $screenType, string $default = 'grid'): string
     {
         $user = $this->findById($id);
-        $decoded = json_decode($user?->listViewPreferences ?? '{}', true);
+        $decoded = json_decode($user->listViewPreferences ?? '{}', true);
         $forScreen = is_array($decoded) ? ($decoded[$screenType] ?? null) : null;
 
         if ($forScreen === 'list' || $forScreen === 'grid') {
@@ -447,7 +447,7 @@ final class UserService
     {
         $mode = $mode === 'list' ? 'list' : 'grid';
         $user = $this->findById($id);
-        $decoded = json_decode($user?->listViewPreferences ?? '{}', true);
+        $decoded = json_decode($user->listViewPreferences ?? '{}', true);
 
         if (!is_array($decoded)) {
             $decoded = [];
@@ -473,7 +473,7 @@ final class UserService
     public function getCollapsedMediaFolders(int $id): array
     {
         $user = $this->findById($id);
-        $decoded = json_decode($user?->folderTreeState ?? '[]', true);
+        $decoded = json_decode($user->folderTreeState ?? '[]', true);
 
         return is_array($decoded) ? array_values(array_map('intval', $decoded)) : [];
     }
@@ -504,7 +504,7 @@ final class UserService
     public function getRecentEmoji(int $id): array
     {
         $user = $this->findById($id);
-        $decoded = json_decode($user?->recentEmoji ?? '[]', true);
+        $decoded = json_decode($user->recentEmoji ?? '[]', true);
 
         return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
     }
@@ -543,7 +543,7 @@ final class UserService
      */
     public function getRecentSearches(int $id): array
     {
-        $decoded = json_decode($this->findById($id)?->recentSearches ?? '[]', true);
+        $decoded = json_decode($this->findById($id)->recentSearches ?? '[]', true);
 
         return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
     }

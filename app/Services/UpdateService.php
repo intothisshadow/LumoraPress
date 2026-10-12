@@ -1381,6 +1381,9 @@ final class UpdateService
         return ' Not reinstalled because you removed them: ' . implode(', ', $names) . '.';
     }
 
+    /**
+     * @return array<int, string>
+     */
     private function applyFilesStage(string $stagingPath, string $rootPrefix): array
     {
         $effectiveRoot = rtrim($stagingPath . '/' . $rootPrefix, '/');

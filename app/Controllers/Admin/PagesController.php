@@ -407,7 +407,7 @@ final class PagesController
         // Visibility is a publish-time decision, same gate as Status above.
         $visibility = $canPublish
             ? (PageVisibility::tryFrom((string) ($post['visibility'] ?? '')) ?? PageVisibility::Public)
-            : ($existing?->visibility ?? PageVisibility::Public);
+            : ($existing->visibility ?? PageVisibility::Public);
 
         // Resolution order: upload wins over existing-image select, which wins over "remove", which wins over keeping current.
         $featuredImageId = $existing?->featuredImageId;

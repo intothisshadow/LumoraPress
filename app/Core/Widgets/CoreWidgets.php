@@ -379,8 +379,9 @@ final class CoreWidgets
      * the Pages and Categories widgets' shared building block. $itemHtml
      * returns one row's already-escaped <li> inner content.
      *
-     * @param array<int, array{depth: int}> $rows
-     * @param callable(array{depth: int}): string $itemHtml
+     * @template TRow of array{depth: int}
+     * @param array<int, TRow> $rows
+     * @param callable(TRow): string $itemHtml
      */
     private static function renderNestedList(array $rows, callable $itemHtml): void
     {

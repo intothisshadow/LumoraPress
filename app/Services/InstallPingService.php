@@ -152,7 +152,7 @@ final class InstallPingService
             'php_version' => PHP_VERSION,
         ]);
 
-        $status = null;
+        $status = 0;
         $error = null;
 
         try {
@@ -172,8 +172,8 @@ final class InstallPingService
             throw $error;
         }
 
-        if ($status === null || $status < 200 || $status >= 300) {
-            throw new \RuntimeException('Install ping failed with HTTP status ' . ($status ?? 0) . '.');
+        if ($status < 200 || $status >= 300) {
+            throw new \RuntimeException('Install ping failed with HTTP status ' . $status . '.');
         }
     }
 
@@ -220,6 +220,9 @@ final class InstallPingService
             ],
         ]);
 
+        // file_get_contents() only assigns this when the request reaches a response.
+        $http_response_header = [];
+
         set_error_handler(static function (): bool {
             return true;
         });
@@ -232,7 +235,7 @@ final class InstallPingService
 
         $status = 0;
 
-        foreach ($http_response_header ?? [] as $header) {
+        foreach ($http_response_header as $header) {
             if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $matches) === 1) {
                 $status = (int) $matches[1];
             }

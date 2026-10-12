@@ -1061,9 +1061,9 @@ final class CategoryService
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             trashedAt: isset($row['trashed_at']) ? new DateTimeImmutable((string) $row['trashed_at']) : null,
-            imageId: isset($row['image_id']) && $row['image_id'] !== null ? (int) $row['image_id'] : null,
+            imageId: isset($row['image_id']) ? (int) $row['image_id'] : null,
             menuOrder: isset($row['menu_order']) ? (int) $row['menu_order'] : 0,
-            archiveDisplayMode: isset($row['archive_display_mode']) && $row['archive_display_mode'] !== null ? (string) $row['archive_display_mode'] : null,
+            archiveDisplayMode: isset($row['archive_display_mode']) ? (string) $row['archive_display_mode'] : null,
         );
     }
 

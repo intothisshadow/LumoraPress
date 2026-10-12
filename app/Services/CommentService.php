@@ -960,7 +960,7 @@ final class CommentService
             userAgent: $row['user_agent'] !== null ? (string) $row['user_agent'] : null,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
-            pageId: isset($row['page_id']) && $row['page_id'] !== null ? (int) $row['page_id'] : null,
+            pageId: isset($row['page_id']) ? (int) $row['page_id'] : null,
             editedAt: isset($row['edited_at']) ? new DateTimeImmutable((string) $row['edited_at']) : null,
         );
     }
