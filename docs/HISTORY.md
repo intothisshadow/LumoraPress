@@ -18310,6 +18310,51 @@ Let `[lumora_downloads]` split a long category list into pages, the way `[lumora
 
 Implemented as `DownloadService::paginateByCategory()` plus a shared `renderPaged()` in `DownloadsShortcode`. 2 unit tests added.
 
+### LPP-032. Link Directory: Links Widget and 100×50 Link Buttons
+
+**Status:** Complete
+
+#### Goal
+
+Give the Link Directory a sidebar/footer widget, and let each link carry an optional 100×50 "link button" image: the classic fansite/webring badge.
+
+- **Links widget:** lists links either as plain text links or as a row of 100×50 button images.
+- **Link button image:** uploaded or picked on the link's Add/Edit screen. It can also be shown next to the link on the `[lumora_link_directory]` page.
+
+Interpretation to confirm with Ariane before starting: "show that button on link page" is read as **both** the admin Add/Edit Link screen (where the button is uploaded and previewed) **and** the public directory page (an option to display it there). Adjust the checklist if only one was meant.
+
+Findings from 2026-10-06 that shape the work:
+- Plugins can already register a widget type (`WidgetManager::registerWidget($type, $label, $render)`, `app/Core/Widgets/WidgetManager.php`). But `admin/views/appearance/widgets.php`'s `$settingsFieldsFor()` hardcodes each core widget's settings fields, and every other type falls through to a lone Title field. So a plugin widget can't offer "plain links vs. buttons" or a category choice until core grows a hook for it.
+- The links table is created by a core migration (`install/migrations/0069_create_link_directory_links_table.sql`), and the Add/Edit screen is core `admin/views/link-directory/add-new.php`. A new button-image column therefore means a new core migration, not just plugin code.
+- Each link already has an optional `thumbnail_media_id` (`Link::$thumbnailMediaId`, rendered by `LinkDirectoryShortcode`). The button is a separate image with a separate purpose (a fixed-size badge, not a description picture), so it gets its own column rather than reusing the thumbnail.
+
+#### Checklist
+
+**Core prerequisite**
+- [x] Add a filter (e.g. `widget_settings_fields`, with `$fields, string $widgetType`) to `$settingsFieldsFor()` in `admin/views/appearance/widgets.php`, so a plugin-registered widget can declare its own settings fields using the existing field types (text, number, checkbox, select). Saving already stores arbitrary `settings[...]` keys; confirm that, and that unknown keys are sanitized the same way as core widgets' keys. Document the filter in `docs/DEVELOPER-APIS.md`.
+
+**Link button image**
+- [x] New core migration adding a nullable `button_media_id` column to the links table, plus `Link::$buttonMediaId` and `LinkService` create/update/hydrate support.
+- [x] Add/Edit Link screen: a "Link button (100×50)" field using the existing Media picker (upload or choose), with a preview at 100×50 and a Remove action. Accept any image, and show a non-blocking hint when its size isn't 100×50; don't crop or resize the file.
+- [x] Include the button in `LinkDirectoryPortabilityService` export/import (remapped the same way as `thumbnailMediaId`), and show it in the admin links list if there's room.
+- [x] `[lumora_link_directory]`: an option to show each link's button (a plugin setting and/or a shortcode attribute such as `buttons="1"`), rendered as `<img width="100" height="50">` inside the link, falling back to the plain text link when a link has no button.
+
+**Links widget**
+- [x] Register a "Links" widget type from the plugin, with settings: Title, Category (all or one), Number of links, Order (alphabetical / newest / random), and Display (plain links / 100×50 buttons).
+- [x] Plain mode: a `<ul class="lp-widget__list">` of text links, matching the core link-list widgets. Buttons mode: a wrapping row of 100×50 button images with the link title as `alt` and `title`; links without a button fall back to their text title, styled so mixed rows still look tidy.
+- [x] Only show live links (respect `LinkStatus`), escape every URL and label, and add `rel="noopener"` to any link that opens in a new tab, consistent with the directory page.
+
+**Styling, docs, tests**
+- [x] Stable classes for the new markup (e.g. `.lp-link-buttons`, `.lp-link-button`, `.lp-link-button__img`, `.lp-link-button--text`), styled in Lumora Classic's `style.css` (Link Directory section, with dark mode), and the same additions in every theme under `custom themes/`.
+- [x] Plugin README (widget, button field, directory option), CHANGELOG entry, and a plugin `Version:` bump.
+- [x] Tests: `LinkService` round-trip of `buttonMediaId`, portability export/import of the button, widget rendering in both modes (including the no-button fallback and the category/number/order settings), and the `widget_settings_fields` filter (`LinkServiceTest`, `LinkDirectoryPortabilityServiceTest`, `LinkDirectoryWidgetTest`, `WidgetsControllerTest`).
+- [x] Browser-verify the widget in the sidebar and footer, the Add/Edit picker, and the directory option, in light and dark mode at desktop and phone widths.
+
+Implemented 2026-10-06 (Link Directory 0.2.0, migration `0082`, unit suite green at 3061 tests). Pieces: `widget_settings_fields` filter (applied in `admin/views/appearance/widgets.php` and `WidgetsController::fieldTypesFor()`; select fields gained an optional `empty_label`), `Link::$buttonMediaId`, `LinkService::listForWidget()`, `LinkButtonRenderer`, `LinkDirectoryWidget`, `LinkDirectoryConnection` (the shortcode's and widget's shared own-connection helper), a `buttons="1"` shortcode attribute (a shortcode attribute only, no plugin setting), and the picker on the Add/Edit screen, which reuses `FeaturedImageDefaultsController::pickerQuery()` under its own `link_button_picker_query` request name. Browser-verified on the dev install: the Add/Edit picker (choose, save, reload, size warning, Remove), and the Links widget in the footer area in buttons mode (all tiles exactly 100×50, mixed badge/text row, light desktop, dark phone width with no overflow).
+
+Export/import (done 2026-10-06, after Ariane asked for thumbnails and buttons to be exported): a Media id means nothing on another install, so each image is embedded base64 in the same JSON file (`thumbnail`/`button` objects with `fileName`, `mimeType`, `data`; format version unchanged, since old importers ignore the new keys) and import recreates it as a Media item via `registerExistingFile()`. Images over 5 MB are left out of an export; on import the extension and the content-sniffed type must both be an allowed image, a shared image is stored once, and anything else is skipped and counted in the result message. The live export was checked on the dev install (10 thumbnails embedded); the import side is unit-tested only, since a live import would leave `www-data`-owned files in the dev library. One item stays open: the browser pass is not yet done: the widget in the primary sidebar (only the footer area was checked), plain-text mode live, and the `buttons="1"` shortcode on a real page (those two are unit-tested only).
+
+
 
 ## 0.22.0 (2026-10-08)
 
@@ -19366,50 +19411,4 @@ Implemented 2026-10-10. Chose the neutral-default fix: `UserService::publishable
 - [x] Audit every bundled plugin (`content/plugins/`) for anything that prints a username or login name publicly: feeds, shortcodes, widgets, contact forms, downloads, visitor stats, sitemaps, REST-style endpoints, HTML comments or body classes.
 - [x] Audit core and the bundled theme for the same leak outside the display-name fallback (feeds' `dc:creator`, oEmbed, sitemaps, comment markup, error messages on the login screen).
 - [x] Add unit and regression tests for the fallback fix and for each leak the audits turn up.
-
-
-### LPP-032. Link Directory: Links Widget and 100×50 Link Buttons
-
-**Status:** Complete
-
-#### Goal
-
-Give the Link Directory a sidebar/footer widget, and let each link carry an optional 100×50 "link button" image: the classic fansite/webring badge.
-
-- **Links widget:** lists links either as plain text links or as a row of 100×50 button images.
-- **Link button image:** uploaded or picked on the link's Add/Edit screen. It can also be shown next to the link on the `[lumora_link_directory]` page.
-
-Interpretation to confirm with Ariane before starting: "show that button on link page" is read as **both** the admin Add/Edit Link screen (where the button is uploaded and previewed) **and** the public directory page (an option to display it there). Adjust the checklist if only one was meant.
-
-Findings from 2026-10-06 that shape the work:
-- Plugins can already register a widget type (`WidgetManager::registerWidget($type, $label, $render)`, `app/Core/Widgets/WidgetManager.php`). But `admin/views/appearance/widgets.php`'s `$settingsFieldsFor()` hardcodes each core widget's settings fields, and every other type falls through to a lone Title field. So a plugin widget can't offer "plain links vs. buttons" or a category choice until core grows a hook for it.
-- The links table is created by a core migration (`install/migrations/0069_create_link_directory_links_table.sql`), and the Add/Edit screen is core `admin/views/link-directory/add-new.php`. A new button-image column therefore means a new core migration, not just plugin code.
-- Each link already has an optional `thumbnail_media_id` (`Link::$thumbnailMediaId`, rendered by `LinkDirectoryShortcode`). The button is a separate image with a separate purpose (a fixed-size badge, not a description picture), so it gets its own column rather than reusing the thumbnail.
-
-#### Checklist
-
-**Core prerequisite**
-- [x] Add a filter (e.g. `widget_settings_fields`, with `$fields, string $widgetType`) to `$settingsFieldsFor()` in `admin/views/appearance/widgets.php`, so a plugin-registered widget can declare its own settings fields using the existing field types (text, number, checkbox, select). Saving already stores arbitrary `settings[...]` keys; confirm that, and that unknown keys are sanitized the same way as core widgets' keys. Document the filter in `docs/DEVELOPER-APIS.md`.
-
-**Link button image**
-- [x] New core migration adding a nullable `button_media_id` column to the links table, plus `Link::$buttonMediaId` and `LinkService` create/update/hydrate support.
-- [x] Add/Edit Link screen: a "Link button (100×50)" field using the existing Media picker (upload or choose), with a preview at 100×50 and a Remove action. Accept any image, and show a non-blocking hint when its size isn't 100×50; don't crop or resize the file.
-- [x] Include the button in `LinkDirectoryPortabilityService` export/import (remapped the same way as `thumbnailMediaId`), and show it in the admin links list if there's room.
-- [x] `[lumora_link_directory]`: an option to show each link's button (a plugin setting and/or a shortcode attribute such as `buttons="1"`), rendered as `<img width="100" height="50">` inside the link, falling back to the plain text link when a link has no button.
-
-**Links widget**
-- [x] Register a "Links" widget type from the plugin, with settings: Title, Category (all or one), Number of links, Order (alphabetical / newest / random), and Display (plain links / 100×50 buttons).
-- [x] Plain mode: a `<ul class="lp-widget__list">` of text links, matching the core link-list widgets. Buttons mode: a wrapping row of 100×50 button images with the link title as `alt` and `title`; links without a button fall back to their text title, styled so mixed rows still look tidy.
-- [x] Only show live links (respect `LinkStatus`), escape every URL and label, and add `rel="noopener"` to any link that opens in a new tab, consistent with the directory page.
-
-**Styling, docs, tests**
-- [x] Stable classes for the new markup (e.g. `.lp-link-buttons`, `.lp-link-button`, `.lp-link-button__img`, `.lp-link-button--text`), styled in Lumora Classic's `style.css` (Link Directory section, with dark mode), and the same additions in every theme under `custom themes/`.
-- [x] Plugin README (widget, button field, directory option), CHANGELOG entry, and a plugin `Version:` bump.
-- [x] Tests: `LinkService` round-trip of `buttonMediaId`, portability export/import of the button, widget rendering in both modes (including the no-button fallback and the category/number/order settings), and the `widget_settings_fields` filter (`LinkServiceTest`, `LinkDirectoryPortabilityServiceTest`, `LinkDirectoryWidgetTest`, `WidgetsControllerTest`).
-- [x] Browser-verify the widget in the sidebar and footer, the Add/Edit picker, and the directory option, in light and dark mode at desktop and phone widths.
-
-Implemented 2026-10-06 (Link Directory 0.2.0, migration `0082`, unit suite green at 3061 tests). Pieces: `widget_settings_fields` filter (applied in `admin/views/appearance/widgets.php` and `WidgetsController::fieldTypesFor()`; select fields gained an optional `empty_label`), `Link::$buttonMediaId`, `LinkService::listForWidget()`, `LinkButtonRenderer`, `LinkDirectoryWidget`, `LinkDirectoryConnection` (the shortcode's and widget's shared own-connection helper), a `buttons="1"` shortcode attribute (a shortcode attribute only, no plugin setting), and the picker on the Add/Edit screen, which reuses `FeaturedImageDefaultsController::pickerQuery()` under its own `link_button_picker_query` request name. Browser-verified on the dev install: the Add/Edit picker (choose, save, reload, size warning, Remove), and the Links widget in the footer area in buttons mode (all tiles exactly 100×50, mixed badge/text row, light desktop, dark phone width with no overflow).
-
-Export/import (done 2026-10-06, after Ariane asked for thumbnails and buttons to be exported): a Media id means nothing on another install, so each image is embedded base64 in the same JSON file (`thumbnail`/`button` objects with `fileName`, `mimeType`, `data`; format version unchanged, since old importers ignore the new keys) and import recreates it as a Media item via `registerExistingFile()`. Images over 5 MB are left out of an export; on import the extension and the content-sniffed type must both be an allowed image, a shared image is stored once, and anything else is skipped and counted in the result message. The live export was checked on the dev install (10 thumbnails embedded); the import side is unit-tested only, since a live import would leave `www-data`-owned files in the dev library. One item stays open: the browser pass is not yet done: the widget in the primary sidebar (only the footer area was checked), plain-text mode live, and the `buttons="1"` shortcode on a real page (those two are unit-tested only).
-
 
