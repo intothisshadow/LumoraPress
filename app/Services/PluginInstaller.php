@@ -91,7 +91,10 @@ final class PluginInstaller
      * already installed, so the caller can offer Replace/Update instead
      * of a plain Install action.
      *
-     * @return array{slug: string, name: string, version: string, existing: ?PluginInfo}
+     * 'versionRelation' compares the uploaded version with the installed one: 'newer', 'same',
+     * 'older', or 'unknown' when there is no installed copy or either version is missing.
+     *
+     * @return array{slug: string, name: string, version: string, existing: ?PluginInfo, versionRelation: string}
      */
     public function inspectStaged(string $token): array
     {
@@ -113,20 +116,37 @@ final class PluginInstaller
             $zip->close();
         }
 
+        $existing = $this->plugins->infoFor($slug);
+
         return [
             'slug' => $slug,
             'name' => $name,
             'version' => $version,
-            'existing' => $this->plugins->infoFor($slug),
+            'existing' => $existing,
+            'versionRelation' => $this->versionRelation($existing !== null ? $existing->version : '', $version),
         ];
+    }
+
+    private function versionRelation(string $installed, string $uploaded): string
+    {
+        if ($installed === '' || $uploaded === '') {
+            return 'unknown';
+        }
+
+        return match (version_compare($uploaded, $installed)) {
+            1 => 'newer',
+            -1 => 'older',
+            default => 'same',
+        };
     }
 
     /**
      * Installs (or, with $replace, overwrites) a previously staged
      * upload, then deletes the staged file regardless of outcome — a
-     * staged upload is only ever meant to be finalized once.
+     * staged upload is only ever meant to be finalized once. With $updateSlug the archive must
+     * be for that already-installed plugin.
      */
-    public function finalize(string $token, bool $replace): PluginInfo
+    public function finalize(string $token, bool $replace, ?string $updateSlug = null): PluginInfo
     {
         $path = $this->stagedPath($token);
 
@@ -135,7 +155,7 @@ final class PluginInstaller
         }
 
         try {
-            return $this->install($path, $replace);
+            return $updateSlug !== null ? $this->update($path, $updateSlug) : $this->install($path, $replace);
         } finally {
             $this->discardStaged($token);
         }
@@ -192,45 +212,7 @@ final class PluginInstaller
             throw new RuntimeException("A plugin named \"{$slug}\" is already installed. Remove it first, or confirm replacing it.");
         }
 
-        $tempDestination = $destination . '.installing-' . bin2hex(random_bytes(4));
-
-        if (!mkdir($tempDestination, 0755, true)) {
-            throw new RuntimeException('Unable to create the plugin directory.');
-        }
-
-        if (!$zip->extractTo($tempDestination)) {
-            $this->removeDirectory($tempDestination);
-
-            throw new RuntimeException('Failed to extract the plugin archive.');
-        }
-
-        $extractedRoot = rtrim($tempDestination . '/' . $rootPrefix, '/');
-
-        // Only remove the previous installation once the new one has
-        // extracted successfully — if extraction above had failed, the
-        // existing plugin is left completely untouched.
-        if ($alreadyExists) {
-            $this->removeDirectory($destination);
-        }
-
-        if ($rootPrefix !== '') {
-            // The plugin's files live one level down (e.g. a GitHub
-            // export wrapping everything in "plugin-slug-1.0.0/") —
-            // move them up to the real destination directly rather than
-            // leaving an extra nested folder inside the installed
-            // plugin.
-            $moved = rename($extractedRoot, $destination);
-            $this->removeDirectory($tempDestination);
-        } else {
-            $moved = rename($tempDestination, $destination);
-        }
-
-        if (!$moved) {
-            $this->removeDirectory($tempDestination);
-            $this->removeDirectory($destination);
-
-            throw new RuntimeException('Failed to finalize the plugin installation.');
-        }
+        $this->extractAndSwap($zip, $rootPrefix, $destination);
 
         $info = $this->plugins->infoFor($slug);
 
@@ -239,6 +221,131 @@ final class PluginInstaller
         }
 
         return $info;
+    }
+
+    /**
+     * Replaces an installed plugin's files with a ZIP's contents. The ZIP must be for the same
+     * plugin folder, so uploading the wrong plugin can't overwrite another one. Active state and
+     * saved settings live in the database, so they are untouched.
+     */
+    public function update(string $zipPath, string $slug): PluginInfo
+    {
+        $destination = rtrim($this->pluginsPath, '/') . '/' . $slug;
+
+        if ($slug === '' || !is_dir($destination)) {
+            throw new RuntimeException('That plugin could not be found.');
+        }
+
+        if (!is_file($zipPath)) {
+            throw new RuntimeException('The uploaded file could not be found.');
+        }
+
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('The uploaded file is not a valid ZIP archive.');
+        }
+
+        try {
+            $names = $this->validatedEntryNames($zip);
+            [$archiveSlug, $rootPrefix] = $this->detectSlugAndRootPrefix($zip, $names);
+
+            $this->assertMatchesSlug($archiveSlug, $slug);
+            $this->extractAndSwap($zip, $rootPrefix, $destination);
+        } finally {
+            $zip->close();
+        }
+
+        $info = $this->plugins->infoFor($slug);
+
+        if ($info === null) {
+            throw new RuntimeException('The plugin was updated but could not be read back.');
+        }
+
+        return $info;
+    }
+
+    /**
+     * Stages an upload meant to update $slug, rejecting a ZIP for a different plugin before the
+     * review screen is ever shown.
+     */
+    public function stageUpdate(string $uploadedTmpPath, string $slug): string
+    {
+        $token = $this->stage($uploadedTmpPath);
+
+        try {
+            $archive = $this->inspectStaged($token);
+            $this->assertMatchesSlug($archive['slug'], $slug);
+        } catch (RuntimeException $exception) {
+            $this->discardStaged($token);
+
+            throw $exception;
+        }
+
+        return $token;
+    }
+
+    private function assertMatchesSlug(string $archiveSlug, string $slug): void
+    {
+        if ($archiveSlug !== $slug) {
+            throw new RuntimeException("That ZIP is for the plugin \"{$archiveSlug}\", not \"{$slug}\". Nothing was changed.");
+        }
+    }
+
+    /**
+     * Extracts into a staging folder beside the destination, then swaps it in. An existing
+     * destination is renamed aside first and renamed back if the new folder can't take its
+     * place, so a failure never leaves the plugin missing.
+     */
+    private function extractAndSwap(ZipArchive $zip, string $rootPrefix, string $destination): void
+    {
+        $staging = $destination . '.installing-' . bin2hex(random_bytes(4));
+
+        if (!mkdir($staging, 0755, true)) {
+            throw new RuntimeException('Unable to create the plugin directory.');
+        }
+
+        if (!$zip->extractTo($staging)) {
+            $this->removeDirectory($staging);
+
+            throw new RuntimeException('Failed to extract the plugin archive.');
+        }
+
+        // GitHub-style exports wrap everything in "plugin-slug-1.0.0/"; the swap moves that
+        // inner folder so it doesn't end up nested inside the installed plugin.
+        $extractedRoot = rtrim($staging . '/' . $rootPrefix, '/');
+
+        $this->swapDirectories($extractedRoot, $destination);
+        $this->removeDirectory($staging);
+    }
+
+    private function swapDirectories(string $newDirectory, string $destination): void
+    {
+        if (!is_dir($newDirectory)) {
+            throw new RuntimeException('The extracted plugin files could not be found. Nothing was changed.');
+        }
+
+        if (!is_dir($destination)) {
+            if (!rename($newDirectory, $destination)) {
+                throw new RuntimeException('Failed to finalize the plugin installation.');
+            }
+
+            return;
+        }
+
+        $displaced = $destination . '.replaced-' . bin2hex(random_bytes(4));
+
+        if (!rename($destination, $displaced)) {
+            throw new RuntimeException('Could not move the existing plugin files aside. Nothing was changed.');
+        }
+
+        if (!rename($newDirectory, $destination)) {
+            rename($displaced, $destination);
+
+            throw new RuntimeException('Could not install the new plugin files; the previous version was restored.');
+        }
+
+        $this->removeDirectory($displaced);
     }
 
     /**

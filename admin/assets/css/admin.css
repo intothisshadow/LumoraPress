@@ -1722,9 +1722,16 @@ body.lp-admin-login {
     gap: 0.5rem;
 }
 
-.lp-theme-details__update-form input[type="file"] {
+.lp-theme-details__update-form input[type="file"],
+.lp-plugin-details__update-form input[type="file"] {
     max-width: 220px;
     font-size: 0.85em;
+}
+
+.lp-plugin-details__update-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* Plugins: plugin grid (LP-045) — mirrors the theme grid above */

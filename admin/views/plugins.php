@@ -237,6 +237,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $form !== '' && $form !=
         'install_plugin' => $controller->installPlugin($_FILES, $csrfToken),
         'confirm_install_plugin' => $controller->confirmInstallPlugin($_POST, $csrfToken),
         'cancel_install_plugin' => $controller->cancelInstallPlugin($_POST, $csrfToken),
+        'update_plugin' => $controller->updatePlugin($_POST, $_FILES, $csrfToken),
         default => null,
     };
 
@@ -255,6 +256,8 @@ if ($pendingToken !== null) {
     try {
         $pendingInstall = $kernel->pluginInstaller->inspectStaged($pendingToken);
         $pendingInstall['token'] = $pendingToken;
+        // Set only when the upload came from a plugin's own "Update from ZIP" control.
+        $pendingInstall['updateSlug'] = $pendingInstall['existing'] !== null && ($_GET['update'] ?? null) === $pendingInstall['slug'] ? $pendingInstall['slug'] : null;
     } catch (\Throwable $exception) {
         $error = $exception->getMessage();
         $pendingToken = null;
@@ -435,13 +438,22 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
     </div>
 <?php endif; ?>
 
+<?php if (isset($_GET['zip_updated'])): ?>
+    <div class="lp-alert lp-alert--success">Updated &ldquo;<?= esc_html((string) $_GET['zip_updated']) ?>&rdquo; from the uploaded ZIP.</div>
+<?php endif; ?>
+
 <?php if (isset($_GET['installed'])): ?>
     <div class="lp-alert lp-alert--success">Installed &ldquo;<?= esc_html((string) $_GET['installed']) ?>&rdquo;.</div>
 <?php endif; ?>
 
 <?php if ($pendingInstall !== null): ?>
+    <?php
+    $pendingUpdateSlug = $pendingInstall['updateSlug'];
+    $pendingRelation = $pendingInstall['versionRelation'];
+    $pendingNeedsConfirm = $pendingUpdateSlug !== null && in_array($pendingRelation, ['same', 'older'], true);
+    ?>
     <section class="lp-admin__panel lp-plugin-pending">
-        <h2>Confirm Plugin Installation</h2>
+        <h2><?= $pendingUpdateSlug !== null ? 'Confirm Plugin Update' : 'Confirm Plugin Installation' ?></h2>
 
         <?php if ($pendingInstall['existing'] !== null): ?>
             <p>
@@ -451,6 +463,15 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
                 &ldquo;<?= esc_html($pendingInstall['name']) ?>&rdquo;
                 (version <?= esc_html($pendingInstall['version'] !== '' ? $pendingInstall['version'] : 'unknown') ?>).
             </p>
+            <?php if ($pendingUpdateSlug !== null): ?>
+                <?php if ($pendingNeedsConfirm): ?>
+                    <p class="lp-alert lp-alert--warning">
+                        <?= $pendingRelation === 'same' ? 'This ZIP is the same version as the installed plugin.' : 'This ZIP is an older version than the installed plugin.' ?>
+                        Applying it will overwrite the installed files.
+                    </p>
+                <?php endif; ?>
+                <p>The plugin's files are replaced. Whether it is active and its saved settings stay as they are, and if anything fails the previous files are put back.</p>
+            <?php endif; ?>
         <?php else: ?>
             <p>
                 Ready to install &ldquo;<?= esc_html($pendingInstall['name']) ?>&rdquo;
@@ -458,21 +479,24 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
             </p>
         <?php endif; ?>
 
-        <form method="post" action="<?= esc_url(admin_url('plugins')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('plugins')) ?>"<?= $pendingNeedsConfirm ? ' data-lp-confirm="' . esc_attr($pendingRelation === 'same' ? 'This ZIP is the same version as the installed plugin. Overwrite its files anyway?' : 'This ZIP is older than the installed version. Overwrite the installed plugin with it anyway?') . '"' : '' ?>>
             <?= Csrf::field('confirm_install_plugin') ?>
             <input type="hidden" name="form" value="confirm_install_plugin">
             <input type="hidden" name="token" value="<?= esc_attr($pendingInstall['token']) ?>">
             <?php if ($pendingInstall['existing'] !== null): ?>
                 <input type="hidden" name="replace" value="1">
             <?php endif; ?>
-
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="activate_now" value="1" checked>
-                Activate this plugin now
-            </label>
+            <?php if ($pendingUpdateSlug !== null): ?>
+                <input type="hidden" name="update_slug" value="<?= esc_attr($pendingUpdateSlug) ?>">
+            <?php else: ?>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="activate_now" value="1" checked>
+                    Activate this plugin now
+                </label>
+            <?php endif; ?>
 
             <button type="submit" class="lp-button lp-button--primary">
-                <?= $pendingInstall['existing'] !== null ? 'Replace Installed Plugin' : 'Install Plugin' ?>
+                <?= $pendingUpdateSlug !== null ? 'Update Plugin' : ($pendingInstall['existing'] !== null ? 'Replace Installed Plugin' : 'Install Plugin') ?>
             </button>
         </form>
         <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" class="lp-admin__inline-form">
@@ -889,6 +913,14 @@ $pluginUpdatesLastCheckedAt = (int) $kernel->config->option('update_last_checked
                                     <button type="submit" class="lp-button lp-button--danger">Delete</button>
                                 </form>
                             <?php endif; ?>
+                            <form method="post" action="<?= esc_url(admin_url('plugins')) ?>" enctype="multipart/form-data" class="lp-admin__inline-form lp-plugin-details__update-form">
+                                <?= Csrf::field('update_plugin_' . $info->slug) ?>
+                                <input type="hidden" name="form" value="update_plugin">
+                                <input type="hidden" name="slug" value="<?= esc_attr($info->slug) ?>">
+                                <label class="lp-visually-hidden" for="<?= esc_attr($templateId) ?>-zip">Plugin ZIP file to update &ldquo;<?= esc_html($info->name) ?>&rdquo; with</label>
+                                <input type="file" id="<?= esc_attr($templateId) ?>-zip" name="plugin_zip" accept=".zip" required>
+                                <button type="submit" class="lp-button lp-button--secondary">Update from ZIP</button>
+                            </form>
                             <button type="button" class="lp-button" data-lp-plugin-dialog-close>Close</button>
                         </div>
                     </div>

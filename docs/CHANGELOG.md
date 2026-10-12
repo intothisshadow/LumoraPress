@@ -4,6 +4,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Plugins: every plugin's **Details** panel has an **Update from ZIP** control, like themes. The ZIP must be for that same plugin, and a review screen shows the installed and uploaded versions first, with a warning and a confirmation if the ZIP is the same version or older. Whether the plugin is active and its saved settings are kept.
+- Plugins: replacing a plugin (from this control or from Install a Plugin) now moves the old files aside and puts them back if the new ones can't be moved in, so a failed replace no longer leaves the plugin missing.
+
 ## [0.23.0] — 2026-10-12
 
 ### Bundled versions

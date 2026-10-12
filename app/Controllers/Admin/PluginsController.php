@@ -189,6 +189,42 @@ final class PluginsController
     }
 
     /**
+     * Stages a ZIP meant to update one installed plugin, then hands off to the same review
+     * screen as Add Plugin, which shows both versions before anything is changed.
+     *
+     * @param array<string, mixed> $post
+     * @param array<string, mixed> $files
+     */
+    public function updatePlugin(array $post, array $files, ?string $csrfToken): AdminActionResult
+    {
+        $slug = trim((string) ($post['slug'] ?? ''));
+
+        if (!Csrf::verify('update_plugin_' . $slug, $csrfToken)) {
+            return $this->invalidRequest();
+        }
+
+        if ($this->plugins->infoFor($slug) === null) {
+            return AdminActionResult::error('That plugin could not be found.');
+        }
+
+        if (!isset($files['plugin_zip']) || $files['plugin_zip']['error'] === UPLOAD_ERR_NO_FILE) {
+            return AdminActionResult::error('Please choose a ZIP file to upload.');
+        }
+
+        if ($files['plugin_zip']['error'] !== UPLOAD_ERR_OK) {
+            return AdminActionResult::error('The file upload failed. Please try again.');
+        }
+
+        try {
+            $token = $this->pluginInstaller->stageUpdate($files['plugin_zip']['tmp_name'], $slug);
+        } catch (Throwable $exception) {
+            return AdminActionResult::error($exception->getMessage());
+        }
+
+        return AdminActionResult::redirect(admin_url('plugins') . '?pending=' . urlencode($token) . '&update=' . urlencode($slug));
+    }
+
+    /**
      * @param array<string, mixed> $post
      */
     public function confirmInstallPlugin(array $post, ?string $csrfToken): AdminActionResult
@@ -199,11 +235,16 @@ final class PluginsController
 
         $token = (string) ($post['token'] ?? '');
         $replace = ($post['replace'] ?? '') === '1';
+        $updateSlug = is_string($post['update_slug'] ?? null) && $post['update_slug'] !== '' ? $post['update_slug'] : null;
 
         try {
-            $installed = $this->pluginInstaller->finalize($token, $replace);
+            $installed = $this->pluginInstaller->finalize($token, $replace, $updateSlug);
         } catch (Throwable $exception) {
             return AdminActionResult::error($exception->getMessage());
+        }
+
+        if ($updateSlug !== null) {
+            return AdminActionResult::redirect(admin_url('plugins') . '?zip_updated=' . urlencode($installed->name));
         }
 
         if (($post['activate_now'] ?? '') === '1' && !$installed->isDisabled) {
