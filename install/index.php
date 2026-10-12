@@ -19,6 +19,7 @@ use LumoraPress\Core\Autoloader;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Database\DatabaseConnectionException;
 use LumoraPress\Core\Database\Migrator;
+use LumoraPress\Core\Database\SchemaSnapshot;
 use LumoraPress\Core\Errors\ErrorHandler;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\InstallerCleanup;
@@ -190,6 +191,11 @@ if ($method === 'POST' && ($_POST['step'] ?? '') === '2') {
                 );
 
                 $migrator = new Migrator($database, __DIR__ . '/migrations', $dbConfig['table_prefix']);
+
+                // A clean database gets its tables from one generated file; anything newer than
+                // the snapshot (or a database that isn't clean) still goes through the migrations.
+                (new SchemaSnapshot($database, $dbConfig['table_prefix'], __DIR__ . '/schema-snapshot.sql', __DIR__ . '/migrations'))
+                    ->applyIfClean($migrator);
                 $migrator->migrate();
 
                 $users = new UserService($database, $dbConfig['table_prefix']);

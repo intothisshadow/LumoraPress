@@ -101,6 +101,25 @@ final class Migrator
     }
 
     /**
+     * Records migrations as applied without running them, for a schema built another way
+     * (a fresh install from the schema snapshot).
+     *
+     * @param array<int, string> $migrations filenames
+     */
+    public function markApplied(array $migrations): void
+    {
+        $this->ensureMigrationsTable();
+
+        $applied = $this->appliedMigrations();
+
+        foreach ($migrations as $migration) {
+            if (!in_array($migration, $applied, true)) {
+                $this->recordMigration($migration);
+            }
+        }
+    }
+
+    /**
      * @return array<int, string>
      */
     private function appliedMigrations(): array
