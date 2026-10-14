@@ -4252,10 +4252,15 @@ summary.lp-media-views__chip::after {
     color: var(--lp-admin-error-text);
 }
 
-[data-lp-github-progress] progress {
+[data-lp-github-progress] progress,
+[data-lp-sweep-progress] progress {
     display: block;
     width: 100%;
     max-width: 28rem;
+}
+
+.lp-input--days {
+    width: 5em;
 }
 
 .lp-update-progress {

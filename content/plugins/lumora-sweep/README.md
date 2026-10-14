@@ -13,6 +13,13 @@ Adds a **Sweep** tab to **Maintenance &rsaquo; Tools**. Each category below show
 - **Duplicate Custom Field Rows** — two or more `post_meta` rows on the same post with an identical key and value. A plausible bug artifact, safe to de-duplicate; the oldest copy is always kept.
 - **Unused Categories & Tags** — categories/tags with zero posts attached. Off by default: an empty category or tag can be intentional (reserved for future content), unlike every other category above. Turn it on only if you're sure.
 
+Two more categories deal with the accounts that pile up when public registration (Settings &rsaquo; Registration) is switched on:
+
+- **Inactive Accounts** — sign-ups that were confirmed but never used. An account is listed only if it registered through the public sign-up form, is a Subscriber or Contributor, is older than the number of days you choose (default 30), and has never signed in (or not within the days you choose). An account that has any posts, pages, comments, uploads, comment subscriptions, reactions, reports, or notifications is never listed, and neither are Authors, Editors, Administrators, accounts an administrator added, imported accounts, or your own account. The tab shows the count and the oldest 20 usernames. **Move to Trash** sends them to the Users trash, where each can be restored.
+- **Old Trashed Users** — permanently deletes users who have been in the Users trash for at least the number of days you choose (default 30). It covers every trashed user, not only sign-ups. A user who wrote posts or pages is never deleted, and neither is the last Administrator.
+
+Both run in batches with a progress bar, so a site with thousands of accounts does not time out. A third panel, **Account Clean-up Settings**, remembers your rules and sets the **reminder**: when the number of inactive accounts reaches a threshold (default 25, 0 turns it off), every Administrator gets a "Clean-up reminder" in the Notifications inbox with an **Open Sweep** button. It is checked at most once an hour while an administrator is using the admin, nothing new is sent while an earlier reminder is unread, and the next waits at least the number of days you set (default 7). Each Administrator can switch the reminder off on My Profile. It is never emailed.
+
 After each category's cleanup, `OPTIMIZE TABLE` runs on whatever tables that category just touched.
 
 ## What it doesn't do

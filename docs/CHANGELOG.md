@@ -23,6 +23,8 @@ All notable changes to Lumora Press are documented in this file.
 - My Profile has a **Notifications** panel where each person can switch off any kind of notification they have no use for. A switched-off kind is skipped entirely, so it never raises the unread count.
 - Plugins: `register_notification_type()` declares a notification type with a label, icon, action button text, and the capability needed to open it, and `NotificationService::notifyUsersWithCapability()` notifies everyone who has a capability. A new `update_check_completed` action fires after every successful update check. See `docs/DEVELOPER-APIS.md`.
 
+- Plugins: a new `admin_loaded` action fires on every admin page load for small cached housekeeping, since there is no cron. See `docs/DEVELOPER-APIS.md`.
+
 ### Changed
 
 - Admin: the unread count beside Notifications in the sidebar now ends with an exclamation mark ("3!"), so waiting notifications read as an alert and not only a number. Screen readers still hear the number and "unread".

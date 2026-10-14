@@ -394,6 +394,9 @@ if (
 // no DB-backed session table to derive it from.
 $kernel->users->touchLastActive($currentUser->id);
 
+// For plugins that do small, cached housekeeping on admin page loads, since there is no cron.
+do_action('admin_loaded', $currentUser);
+
 // maybeSendPing() returns immediately unless enabled and due; wrapped
 // defensively so a future change there can't break the admin panel.
 try {

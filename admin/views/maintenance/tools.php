@@ -19,6 +19,8 @@
 
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Plugins\DummyContent\DummyContentGenerator;
+use LumoraPress\Plugins\LumoraSweep\AccountSweepService;
+use LumoraPress\Plugins\LumoraSweep\SweepReminderService;
 use LumoraPress\Plugins\LumoraSweep\SweepService;
 
 if (!isset($kernel)) {
@@ -203,7 +205,75 @@ if ($sweepActive) {
     $commentsDays = max(0, (int) ($_GET['comments_days'] ?? 30));
     $unusedTermsEnabled = ((string) $kernel->config->option('sweep_unused_terms_enabled', '0')) === '1';
 
+    $accountSweep = AccountSweepService::fromKernel($kernel);
+    $sweepReminder = new SweepReminderService(
+        $kernel->config,
+        $accountSweep,
+        $notifications,
+        $kernel->users,
+        $kernel->database,
+        (string) $kernel->config->get('table_prefix', 'lp_'),
+    );
+    $inactiveAge = isset($_GET['inactive_age']) ? max(0, (int) $_GET['inactive_age']) : $accountSweep->inactiveAgeDays();
+    $inactiveSignIn = isset($_GET['inactive_signin']) ? max(0, (int) $_GET['inactive_signin']) : $accountSweep->inactiveSignInDays();
+    $oldUsersDays = isset($_GET['old_users_days']) ? max(0, (int) $_GET['old_users_days']) : $accountSweep->trashedUsersDays();
+
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
+
+    // Large clean-ups run in batches. The page's script posts the same form again with this
+    // header until nothing is left, and each answer is JSON; without JavaScript a plain
+    // submit does one batch and redirects back with how many it handled.
+    $isBatchRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+    $respondBatchJson = static function (array $payload): never {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode($payload);
+        exit;
+    };
+    $batchToken = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+
+    if ($form === 'sweep_trash_inactive' && Csrf::verify('sweep_trash_inactive', $batchToken)) {
+        $postedAge = max(0, (int) ($_POST['inactive_age'] ?? 0));
+        $postedSignIn = max(0, (int) ($_POST['inactive_signin'] ?? 0));
+        $moved = $accountSweep->trashInactive($postedAge, $postedSignIn, $currentUser->id);
+
+        if ($isBatchRequest) {
+            $remaining = $accountSweep->countInactive($postedAge, $postedSignIn, $currentUser->id);
+            $respondBatchJson(['processed' => $moved, 'remaining' => $remaining, 'done' => $moved === 0 || $remaining === 0, 'csrf_token' => Csrf::token('sweep_trash_inactive')]);
+        }
+
+        header('Location: ' . admin_url('maintenance/tools') . "?tab=sweep&inactive_age={$postedAge}&inactive_signin={$postedSignIn}&sweep_cleaned=inactive&sweep_removed={$moved}");
+        exit;
+    }
+
+    if ($form === 'sweep_delete_old_users' && Csrf::verify('sweep_delete_old_users', $batchToken)) {
+        $postedDays = max(0, (int) ($_POST['days'] ?? 0));
+        $deleted = $accountSweep->deleteOldTrashed($postedDays);
+
+        if ($isBatchRequest) {
+            $remaining = $accountSweep->countOldTrashed($postedDays);
+            $respondBatchJson(['processed' => $deleted, 'remaining' => $remaining, 'done' => $deleted === 0 || $remaining === 0, 'csrf_token' => Csrf::token('sweep_delete_old_users')]);
+        }
+
+        header('Location: ' . admin_url('maintenance/tools') . "?tab=sweep&old_users_days={$postedDays}&sweep_cleaned=old_users&sweep_removed={$deleted}");
+        exit;
+    }
+
+    if ($form === 'sweep_save_account_settings' && Csrf::verify('sweep_save_account_settings', $batchToken)) {
+        $kernel->config->setOption('sweep_inactive_age_days', (string) max(0, (int) ($_POST['inactive_age'] ?? AccountSweepService::DEFAULT_AGE_DAYS)));
+        $kernel->config->setOption('sweep_inactive_signin_days', (string) max(0, (int) ($_POST['inactive_signin'] ?? 0)));
+        $kernel->config->setOption('sweep_trashed_users_days', (string) max(0, (int) ($_POST['old_users_days'] ?? AccountSweepService::DEFAULT_TRASHED_DAYS)));
+        $kernel->config->setOption('sweep_reminder_threshold', (string) max(0, (int) ($_POST['reminder_threshold'] ?? SweepReminderService::DEFAULT_THRESHOLD)));
+        $kernel->config->setOption('sweep_reminder_interval_days', (string) max(1, (int) ($_POST['reminder_interval'] ?? SweepReminderService::DEFAULT_INTERVAL_DAYS)));
+        // The cached count was made with the old rules.
+        $kernel->config->setOption('sweep_reminder_checked_at', '0');
+
+        header('Location: ' . admin_url('maintenance/tools') . '?tab=sweep&sweep_account_settings_saved=1');
+        exit;
+    }
 
     if ($form === 'sweep_clean_revisions' && Csrf::verify('sweep_clean_revisions', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $removed = $sweep->cleanExcessRevisions();
@@ -265,8 +335,11 @@ if ($sweepActive) {
     $sweepCleanedCategory = is_string($_GET['sweep_cleaned'] ?? null) ? $_GET['sweep_cleaned'] : null;
     $sweepRemovedCount = isset($_GET['sweep_removed']) ? (int) $_GET['sweep_removed'] : null;
     $sweepUnusedTermsSaved = isset($_GET['sweep_unused_terms_saved']);
+    $sweepAccountSettingsSaved = isset($_GET['sweep_account_settings_saved']);
 
     $sweepCategoryLabels = [
+        'inactive' => 'inactive account moved to the Users trash',
+        'old_users' => 'trashed user permanently deleted',
         'revisions' => 'excess revision',
         'trash' => 'old trashed post/page',
         'comments' => 'old spam/trashed comment',
@@ -276,6 +349,8 @@ if ($sweepActive) {
     ];
 
     $sweepCounts = [
+        'inactive' => $accountSweep->countInactive($inactiveAge, $inactiveSignIn, $currentUser->id),
+        'old_users' => $accountSweep->countOldTrashed($oldUsersDays),
         'revisions' => $sweep->countExcessRevisions(),
         'trash' => $sweep->countOldTrashedContent($trashDays),
         'comments' => $sweep->countOldSpamOrTrashComments($commentsDays),
@@ -554,7 +629,15 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
         <?php if ($sweepRemovedCount !== null && $sweepCleanedCategory !== null): ?>
             <div class="lp-alert lp-alert--success">
-                <?php if ($sweepRemovedCount === 0): ?>
+                <?php if ($sweepCleanedCategory === 'inactive' || $sweepCleanedCategory === 'old_users'): ?>
+                    <?php if ($sweepRemovedCount === 0): ?>
+                        Nothing to clean — no matching accounts were found.
+                    <?php elseif ($sweepCleanedCategory === 'inactive'): ?>
+                        Moved <?= (int) $sweepRemovedCount ?> account<?= $sweepRemovedCount === 1 ? '' : 's' ?> to the Users trash. Each can be restored from there.
+                    <?php else: ?>
+                        Permanently deleted <?= (int) $sweepRemovedCount ?> trashed user<?= $sweepRemovedCount === 1 ? '' : 's' ?>.
+                    <?php endif; ?>
+                <?php elseif ($sweepRemovedCount === 0): ?>
                     Nothing to clean — no <?= esc_html($sweepCategoryLabels[$sweepCleanedCategory] ?? 'row') ?>s were found.
                 <?php else: ?>
                     Removed <?= (int) $sweepRemovedCount ?> <?= esc_html($sweepCategoryLabels[$sweepCleanedCategory] ?? 'row') ?><?= $sweepRemovedCount === 1 ? '' : 's' ?>.
@@ -562,9 +645,126 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
             </div>
         <?php endif; ?>
 
-        <?php if ($sweepUnusedTermsSaved): ?>
+        <?php if ($sweepUnusedTermsSaved || $sweepAccountSettingsSaved): ?>
             <div class="lp-alert lp-alert--success">Saved.</div>
         <?php endif; ?>
+
+        <section class="lp-admin__panel">
+            <h2>Inactive Accounts</h2>
+            <p class="lp-field__hint">
+                Sign-ups that were confirmed but never used. An account is listed only if it
+                registered through the public sign-up form, is a Subscriber or Contributor, is
+                older than the number of days below, and has not signed in (or not lately). An
+                account that has any posts, pages, comments, uploads, comment subscriptions,
+                reactions, reports, or notifications is never listed. Clean Up moves the accounts
+                to the Users trash, where each one can be restored.
+            </p>
+            <form method="get" action="<?= esc_url(admin_url('maintenance/tools')) ?>" class="lp-admin__inline-form">
+                <input type="hidden" name="tab" value="sweep">
+                <label for="sweep-inactive-age">Registered more than</label>
+                <input type="number" id="sweep-inactive-age" name="inactive_age" min="0" value="<?= (int) $inactiveAge ?>" class="lp-input--days">
+                <span class="lp-field__hint">days ago, and last signed in more than</span>
+                <input type="number" id="sweep-inactive-signin" name="inactive_signin" min="0" value="<?= (int) $inactiveSignIn ?>" class="lp-input--days" aria-label="Days since last sign-in">
+                <span class="lp-field__hint">days ago (0 = never)</span>
+                <button type="submit" class="lp-button">Update Count</button>
+            </form>
+            <p><strong><?= (int) $sweepCounts['inactive'] ?></strong> inactive account<?= $sweepCounts['inactive'] === 1 ? '' : 's' ?> found.</p>
+            <?php $inactiveSample = $sweepCounts['inactive'] > 0 ? $accountSweep->sampleInactive($inactiveAge, $inactiveSignIn, $currentUser->id) : []; ?>
+            <?php if ($inactiveSample !== []): ?>
+                <table class="lp-table">
+                    <thead>
+                        <tr><th scope="col">Username</th><th scope="col">Registered</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($inactiveSample as $sampleUser): ?>
+                            <tr>
+                                <td><?= esc_html($sampleUser['username']) ?></td>
+                                <td><?= esc_html(the_date(new DateTimeImmutable($sampleUser['createdAt']))) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if ($sweepCounts['inactive'] > count($inactiveSample)): ?>
+                    <p class="lp-field__hint">Showing the oldest <?= (int) count($inactiveSample) ?> of <?= (int) $sweepCounts['inactive'] ?>.</p>
+                <?php endif; ?>
+            <?php endif; ?>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>?tab=sweep" data-lp-sweep-batch data-lp-sweep-total="<?= (int) $sweepCounts['inactive'] ?>" data-lp-sweep-confirm="Move <?= (int) $sweepCounts['inactive'] ?> inactive account(s) to the Users trash? You can restore them from there.">
+                <?= Csrf::field('sweep_trash_inactive') ?>
+                <input type="hidden" name="form" value="sweep_trash_inactive">
+                <input type="hidden" name="inactive_age" value="<?= (int) $inactiveAge ?>">
+                <input type="hidden" name="inactive_signin" value="<?= (int) $inactiveSignIn ?>">
+                <button type="submit" class="lp-button lp-button--danger" <?= $sweepCounts['inactive'] === 0 ? 'disabled' : '' ?>>Move to Trash</button>
+            </form>
+            <div data-lp-sweep-progress hidden>
+                <progress data-lp-sweep-bar max="1" value="0"></progress>
+                <p role="status" data-lp-sweep-status></p>
+            </div>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Old Trashed Users</h2>
+            <p class="lp-field__hint">
+                Permanently deletes users who have been in the Users trash for at least this many
+                days. This covers every trashed user, not only sign-ups. A user who wrote posts or
+                pages is never deleted, nor is the last Administrator.
+            </p>
+            <form method="get" action="<?= esc_url(admin_url('maintenance/tools')) ?>" class="lp-admin__inline-form">
+                <input type="hidden" name="tab" value="sweep">
+                <label for="sweep-old-users-days">Trashed for more than</label>
+                <input type="number" id="sweep-old-users-days" name="old_users_days" min="0" value="<?= (int) $oldUsersDays ?>" class="lp-input--days">
+                <span class="lp-field__hint">days</span>
+                <button type="submit" class="lp-button">Update Count</button>
+            </form>
+            <p><strong><?= (int) $sweepCounts['old_users'] ?></strong> trashed user<?= $sweepCounts['old_users'] === 1 ? '' : 's' ?> found.</p>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>?tab=sweep" data-lp-sweep-batch data-lp-sweep-total="<?= (int) $sweepCounts['old_users'] ?>" data-lp-sweep-confirm="Permanently delete <?= (int) $sweepCounts['old_users'] ?> trashed user(s)? This cannot be undone.">
+                <?= Csrf::field('sweep_delete_old_users') ?>
+                <input type="hidden" name="form" value="sweep_delete_old_users">
+                <input type="hidden" name="days" value="<?= (int) $oldUsersDays ?>">
+                <button type="submit" class="lp-button lp-button--danger" <?= $sweepCounts['old_users'] === 0 ? 'disabled' : '' ?>>Delete Permanently</button>
+            </form>
+            <div data-lp-sweep-progress hidden>
+                <progress data-lp-sweep-bar max="1" value="0"></progress>
+                <p role="status" data-lp-sweep-status></p>
+            </div>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Account Clean-up Settings</h2>
+            <p class="lp-field__hint">
+                The rules above are remembered here so the reminder counts the same accounts you
+                would clean up. A reminder lands in every Administrator's Notifications inbox
+                when the number of inactive accounts reaches the threshold. It is checked at most
+                once an hour while an administrator is using the admin, and nothing new is sent
+                while an earlier reminder is still unread.
+            </p>
+            <form method="post" action="<?= esc_url(admin_url('maintenance/tools')) ?>?tab=sweep">
+                <?= Csrf::field('sweep_save_account_settings') ?>
+                <input type="hidden" name="form" value="sweep_save_account_settings">
+                <p class="lp-field">
+                    <label for="sweep-setting-age">Inactive accounts: registered more than (days ago)</label>
+                    <input type="number" id="sweep-setting-age" name="inactive_age" min="0" value="<?= (int) $accountSweep->inactiveAgeDays() ?>">
+                </p>
+                <p class="lp-field">
+                    <label for="sweep-setting-signin">Inactive accounts: last signed in more than (days ago)</label>
+                    <input type="number" id="sweep-setting-signin" name="inactive_signin" min="0" value="<?= (int) $accountSweep->inactiveSignInDays() ?>">
+                    <span class="lp-field__hint">0 means the account must never have signed in.</span>
+                </p>
+                <p class="lp-field">
+                    <label for="sweep-setting-trashed">Old trashed users: trashed more than (days)</label>
+                    <input type="number" id="sweep-setting-trashed" name="old_users_days" min="0" value="<?= (int) $accountSweep->trashedUsersDays() ?>">
+                </p>
+                <p class="lp-field">
+                    <label for="sweep-setting-threshold">Remind me when this many accounts look unused</label>
+                    <input type="number" id="sweep-setting-threshold" name="reminder_threshold" min="0" value="<?= (int) $sweepReminder->threshold() ?>">
+                    <span class="lp-field__hint">0 turns the reminder off.</span>
+                </p>
+                <p class="lp-field">
+                    <label for="sweep-setting-interval">Wait at least this many days between reminders</label>
+                    <input type="number" id="sweep-setting-interval" name="reminder_interval" min="1" value="<?= (int) $sweepReminder->intervalDays() ?>">
+                </p>
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
 
         <section class="lp-admin__panel">
             <h2>Excess Revisions</h2>

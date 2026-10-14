@@ -32,10 +32,44 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\LumoraSweep;
 
 require_once __DIR__ . '/src/SweepService.php';
+require_once __DIR__ . '/src/AccountSweepService.php';
+require_once __DIR__ . '/src/SweepReminderService.php';
 
-// Nothing to hook at load time — its whole surface is a gated tab on the
-// existing Maintenance > Tools screen, which constructs SweepService from
-// $kernel directly, the same as the Dummy Content plugin's own section there.
+// The Sweep tab itself is a gated tab on the existing Maintenance > Tools screen, which constructs
+// its services from $kernel directly, the same as the Dummy Content plugin's own section there.
+// Only the inbox reminder needs a hook.
+register_notification_type(
+    SweepReminderService::TYPE,
+    'Clean-up reminder',
+    'Open Sweep',
+    '🧹',
+    'manage_options',
+    'Unused sign-up accounts are piling up and can be cleaned up in Sweep',
+);
+
+// Fires on every admin page load; the service caches its count for an hour, so this is cheap.
+add_action('admin_loaded', static function (\LumoraPress\Models\User $user): void {
+    if (!$user->can('manage_options')) {
+        return;
+    }
+
+    $kernel = \LumoraPress\Core\ActiveKernel::instance();
+    $prefix = (string) $kernel->config->get('table_prefix', 'lp_');
+
+    try {
+        (new SweepReminderService(
+            $kernel->config,
+            AccountSweepService::fromKernel($kernel),
+            new \LumoraPress\Services\NotificationService($kernel->database, $prefix, $kernel->hooks),
+            $kernel->users,
+            $kernel->database,
+            $prefix,
+        ))->maybeRemind();
+    } catch (\Throwable $exception) {
+        // A reminder must never break the admin page it piggybacks on.
+        error_log('[LumoraSweep] ' . $exception::class . ': ' . $exception->getMessage());
+    }
+});
 
 add_filter('plugin_action_links_lumora-sweep', static fn (array $links): array => [
     ...$links,
