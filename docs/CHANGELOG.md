@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Resetting a forgotten password accepted passwords of 8 characters while every other screen required 10, so a reset quietly bypassed the rule. All of them now use the same minimum length.
 - A video, music, or social-media address on its own line now embeds in posts written in the Visual editor, as it already did in Markdown. The Visual editor (or a browser extension that turns text into links) can store the address as a link inside a `<span>`, which the embed step did not recognise. A link with its own wording ("Watch this") is still left as a link.
 - A core update could fail at its last step and roll itself back on servers that cache PHP files (the version check read the old, cached copy of `version.php`). The update now reads the version file fresh.
 - Restoring a removed bundled plugin or theme now reports "Successfully restored Font Awesome 0.1.0." instead of "updated … from 0.0.0".
@@ -25,6 +26,9 @@ All notable changes to Lumora Press are documented in this file.
 
 - Lumora Sweep (Maintenance › Tools › Sweep) can now clear the accounts that pile up when public registration is on. **Inactive Accounts** lists sign-ups that were confirmed but never used (older than a number of days, never signed in or not lately, and with no posts, pages, comments, uploads, subscriptions, reactions, reports, or notifications) and moves them to the Users trash, where each can be restored. **Old Trashed Users** permanently deletes users trashed for at least a number of days, never one who wrote posts or pages, nor the last Administrator. Both run in batches with a progress bar. A **reminder** lands in every Administrator's Notifications inbox when the number of inactive accounts reaches a threshold (default 25), at most once a week by default and never while an earlier one is unread.- Contact Forms: a new, non-spam message now adds a notification to every Administrator's Notifications inbox, so it is noticed even if the email never arrives. While that notice is unread, later messages only update its count instead of adding more.
 - Plugins: a new `admin_loaded` action fires on every admin page load for small cached housekeeping, since there is no cron. See `docs/DEVELOPER-APIS.md`.
+
+- Settings › Security gained three panels. **Passwords** sets one minimum length (default 10, between 8 and 64) that now applies everywhere a password is chosen: adding or editing a user, signing up, and resetting a forgotten password. **Sign-in Sessions** sets how many idle minutes before a session expires (0 keeps your host's own setting, often only 24 minutes) and how many days "Remember Me" lasts (default 30). **Browser Security Headers** has an opt-in HSTS switch, for sites whose HTTPS is solid.
+- Every page now carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that switches off the camera, microphone, and location, whether or not the Content-Security-Policy is on. Plugins can adjust them with the new `security_headers` filter.
 
 ### Changed
 

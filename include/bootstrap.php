@@ -52,6 +52,7 @@ use LumoraPress\Core\PluginManager;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Auth;
 use LumoraPress\Core\Security\ContentSecurityPolicy;
+use LumoraPress\Core\Security\SecurityHeaders;
 use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\DatabaseSessionHandler;
@@ -223,6 +224,10 @@ $sessions = new SessionManager(
     sessionPath: $configuredSessionPath,
     secureCookies: $secureCookies,
     handler: $configuredSessionPath === '' ? new DatabaseSessionHandler($database, $tablePrefix) : null,
+    // 0 (the default) leaves the host's own idle timeout alone.
+    maxLifetimeSeconds: ((int) $config->option('session_idle_minutes', '0')) > 0
+        ? min(43200, max(5, (int) $config->option('session_idle_minutes', '0'))) * 60
+        : null,
 );
 $sessions->start();
 
@@ -367,7 +372,13 @@ $securityLog = new SecurityLog(
 Csrf::setFailureListener(static function (string $action) use ($securityLog): void {
     $securityLog->record(SecurityLog::EVENT_CSRF_FAILURE, (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), $action);
 });
-$rememberMe = new RememberMeService($database, $users, $tablePrefix, $secureCookies);
+$rememberMe = new RememberMeService(
+    $database,
+    $users,
+    $tablePrefix,
+    $secureCookies,
+    min(365, max(1, (int) $config->option('remember_me_days', '30'))) * 24 * 60 * 60,
+);
 
 $passwordResets = new PasswordResetService($database, $tablePrefix);
 $passwordResetThrottle = new PasswordResetThrottle($database, $tablePrefix);
@@ -1172,6 +1183,11 @@ $router->setNotFoundHandler(static fn () => $site->notFound());
 
 // Sent last, after plugins and the theme's functions.php have loaded,
 // so any add_filter('csp_directives', ...) they registered is honoured.
+SecurityHeaders::send(apply_filters(
+    'security_headers',
+    SecurityHeaders::headers($secureCookies, ((string) $config->option('hsts_enabled', '0')) === '1'),
+));
+
 if ((bool) $config->get('csp_enabled', true)) {
     $cspDirectives = apply_filters('csp_directives', ContentSecurityPolicy::defaultDirectives());
     (new ContentSecurityPolicy($cspDirectives))->send();

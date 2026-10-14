@@ -30,6 +30,8 @@ final class SessionManager
         private readonly bool $secureCookies,
         private readonly string $sessionName = 'lumora_press_session',
         private readonly ?SessionHandlerInterface $handler = null,
+        /** How long an idle session is kept before PHP's garbage collector may remove it; null keeps the host's own setting. */
+        private readonly ?int $maxLifetimeSeconds = null,
     ) {
     }
 
@@ -55,6 +57,10 @@ final class SessionManager
 
             ini_set('session.gc_probability', '1');
             ini_set('session.gc_divisor', '100');
+        }
+
+        if ($this->maxLifetimeSeconds !== null) {
+            ini_set('session.gc_maxlifetime', (string) $this->maxLifetimeSeconds);
         }
 
         session_name($this->sessionName);

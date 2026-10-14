@@ -13,6 +13,7 @@
  * @since 0.5.0
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
+/** @var \LumoraPress\Core\Security\PasswordPolicy $passwordPolicy */
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
@@ -126,8 +127,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $error = 'That username is too easy to guess. Choose something less obvious than "admin".';
         } elseif ($existing === null && $password === '') {
             $error = 'A password is required for a new user.';
-        } elseif ($password !== '' && strlen($password) < 10) {
-            $error = 'Password must be at least 10 characters long.';
+        } elseif ($password !== '' && $passwordPolicy->violation($password) !== null) {
+            $error = $passwordPolicy->violation($password);
         } elseif ($password !== '' && $password !== $passwordConfirm) {
             $error = 'Passwords do not match.';
         } elseif ($existing === null && $userService->usernameOrEmailExists($username, $email)) {
@@ -437,13 +438,13 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
 
             <p class="lp-field">
                 <label for="user-password"><?= $user === null ? 'Password' : 'New Password' ?></label>
-                <input type="password" id="user-password" name="password" autocomplete="new-password" minlength="10" <?= $user === null ? 'required' : '' ?>>
-                <span class="lp-field__hint"><?php if ($user === null): ?>At least 10 characters.<?php else: ?>Leave blank to keep the current password.<?php endif; ?></span>
+                <input type="password" id="user-password" name="password" autocomplete="new-password" minlength="<?= (int) $passwordPolicy->minLength() ?>" <?= $user === null ? 'required' : '' ?>>
+                <span class="lp-field__hint"><?php if ($user === null): ?>At least <?= (int) $passwordPolicy->minLength() ?> characters.<?php else: ?>Leave blank to keep the current password.<?php endif; ?></span>
             </p>
 
             <p class="lp-field">
                 <label for="user-password-confirm"><?= $user === null ? 'Confirm Password' : 'Confirm New Password' ?></label>
-                <input type="password" id="user-password-confirm" name="password_confirm" autocomplete="new-password" minlength="10" <?= $user === null ? 'required' : '' ?>>
+                <input type="password" id="user-password-confirm" name="password_confirm" autocomplete="new-password" minlength="<?= (int) $passwordPolicy->minLength() ?>" <?= $user === null ? 'required' : '' ?>>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save User</button>

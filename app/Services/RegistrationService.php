@@ -22,6 +22,7 @@ use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Mail\Mailer;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\IpRangeMatcher;
+use LumoraPress\Core\Security\PasswordPolicy;
 use LumoraPress\Core\Security\RegistrationSpamCheck;
 use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Models\User;
@@ -56,8 +57,6 @@ final class RegistrationService
     private const CONFIRM_LIFETIME_SECONDS = 172800;
 
     private const APPROVAL_LIFETIME_SECONDS = 1209600;
-
-    private const MIN_PASSWORD_LENGTH = 10;
 
     /** At most this many sign-up emails go to one address per hour, so the form can't mail-bomb someone. */
     private const MAX_EMAILS_PER_ADDRESS_PER_HOUR = 2;
@@ -354,8 +353,10 @@ final class RegistrationService
             $errors[] = 'The display name can\'t contain links or email addresses.';
         }
 
-        if (strlen($password) < self::MIN_PASSWORD_LENGTH) {
-            $errors[] = sprintf('The password must be at least %d characters.', self::MIN_PASSWORD_LENGTH);
+        $passwordProblem = (new PasswordPolicy($this->config))->violation($password);
+
+        if ($passwordProblem !== null) {
+            $errors[] = $passwordProblem;
         } elseif ($password !== $passwordConfirm) {
             $errors[] = 'The passwords do not match.';
         }

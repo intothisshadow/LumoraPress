@@ -48,6 +48,9 @@ try {
     error_log('[admin] Failed to apply pending migrations: ' . $exception->getMessage());
 }
 
+// Shared by every screen where a password is chosen, so the rule is the same on all of them.
+$passwordPolicy = new \LumoraPress\Core\Security\PasswordPolicy($kernel->config);
+
 $page = is_string($_GET['page'] ?? null) ? $_GET['page'] : 'dashboard';
 
 if ($page === 'login') {
@@ -332,8 +335,8 @@ if ($page === 'reset-password') {
 
         if (!Csrf::verify('password_reset_confirm', is_string($csrfToken) ? $csrfToken : null)) {
             $error = 'Your session expired. Please try again.';
-        } elseif (strlen($password) < 8) {
-            $error = 'Password must be at least 8 characters.';
+        } elseif ($passwordPolicy->violation($password) !== null) {
+            $error = $passwordPolicy->violation($password);
         } elseif ($password !== $passwordConfirm) {
             $error = 'Passwords do not match.';
         } else {

@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\PasswordPolicy;
 use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Plugins\LumoraShield\LumoraShieldService;
 
@@ -38,6 +39,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $kernel->config->setOption('login_lockout_seconds', (string) (max(1, (int) ($_POST['login_lockout_minutes'] ?? 15)) * 60));
 
         header('Location: ' . admin_url('settings/security') . '?saved=1');
+        exit;
+    }
+
+    if ($form === 'password_policy' && Csrf::verify('password_policy', $token)) {
+        $kernel->config->setOption('password_min_length', (string) min(PasswordPolicy::CEILING_MIN_LENGTH, max(PasswordPolicy::FLOOR_MIN_LENGTH, (int) ($_POST['password_min_length'] ?? PasswordPolicy::DEFAULT_MIN_LENGTH))));
+
+        header('Location: ' . admin_url('settings/security') . '?policy_saved=1');
+        exit;
+    }
+
+    if ($form === 'session_settings' && Csrf::verify('session_settings', $token)) {
+        $kernel->config->setOption('session_idle_minutes', (string) min(43200, max(0, (int) ($_POST['session_idle_minutes'] ?? 0))));
+        $kernel->config->setOption('remember_me_days', (string) min(365, max(1, (int) ($_POST['remember_me_days'] ?? 30))));
+
+        header('Location: ' . admin_url('settings/security') . '?policy_saved=1');
+        exit;
+    }
+
+    if ($form === 'security_headers' && Csrf::verify('security_headers', $token)) {
+        $kernel->config->setOption('hsts_enabled', ($_POST['hsts_enabled'] ?? '') === '1' ? '1' : '0');
+
+        header('Location: ' . admin_url('settings/security') . '?policy_saved=1');
         exit;
     }
 
@@ -108,6 +131,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
+$passwordMinLength = (new PasswordPolicy($kernel->config))->minLength();
+$sessionIdleMinutes = max(0, (int) $kernel->config->option('session_idle_minutes', '0'));
+$rememberMeDays = min(365, max(1, (int) $kernel->config->option('remember_me_days', '30')));
+$hstsEnabled = ((string) $kernel->config->option('hsts_enabled', '0')) === '1';
+$siteIsHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 $maxAttempts = (int) $kernel->config->option('login_max_attempts', '5');
 $windowMinutes = (int) round(((int) $kernel->config->option('login_window_seconds', '900')) / 60);
 $lockoutMinutes = (int) round(((int) $kernel->config->option('login_lockout_seconds', '900')) / 60);
@@ -130,6 +158,10 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved. New thresholds take effect on the next login attempt.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['policy_saved'])): ?>
+    <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
 <?php if (isset($_GET['akismet_saved'])): ?>
@@ -181,6 +213,63 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                     <input type="number" id="login-lockout-minutes" name="login_lockout_minutes" min="1" value="<?= esc_attr((string) $lockoutMinutes) ?>">
                     <span class="lp-field__hint">How long an IP address is blocked from attempting another login once locked out.</span>
                 </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Passwords</h2>
+            <p class="lp-field__hint">One minimum length applies everywhere a password is chosen: adding or editing a user, signing up, and resetting a forgotten password. It only affects passwords set from now on. Longer is better than complicated, so there are no rules about symbols or capitals.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('password_policy') ?>
+                <input type="hidden" name="form" value="password_policy">
+
+                <p class="lp-field">
+                    <label for="password-min-length">Minimum password length</label>
+                    <input type="number" id="password-min-length" name="password_min_length" min="<?= (int) PasswordPolicy::FLOOR_MIN_LENGTH ?>" max="<?= (int) PasswordPolicy::CEILING_MIN_LENGTH ?>" value="<?= esc_attr((string) $passwordMinLength) ?>">
+                    <span class="lp-field__hint">Between <?= (int) PasswordPolicy::FLOOR_MIN_LENGTH ?> and <?= (int) PasswordPolicy::CEILING_MIN_LENGTH ?> characters. The default is <?= (int) PasswordPolicy::DEFAULT_MIN_LENGTH ?>.</span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Sign-in Sessions</h2>
+            <p class="lp-field__hint">How long a person stays signed in. Changes apply to sessions that start from now on.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('session_settings') ?>
+                <input type="hidden" name="form" value="session_settings">
+
+                <p class="lp-field">
+                    <label for="session-idle-minutes">Sign out after this many idle minutes</label>
+                    <input type="number" id="session-idle-minutes" name="session_idle_minutes" min="0" max="43200" value="<?= esc_attr((string) $sessionIdleMinutes) ?>">
+                    <span class="lp-field__hint">0 uses your web host's own setting, which is often only 24 minutes. Raise it if you are signed out in the middle of writing. People who tick "Remember Me" stay signed in for the number of days below regardless.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="remember-me-days">"Remember Me" lasts (days)</label>
+                    <input type="number" id="remember-me-days" name="remember_me_days" min="1" max="365" value="<?= esc_attr((string) $rememberMeDays) ?>">
+                    <span class="lp-field__hint">Applies to the next time someone signs in with "Remember Me" ticked; devices that are already remembered keep their original length.</span>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Browser Security Headers</h2>
+            <p class="lp-field__hint">Sent on every page, with nothing to configure: <code>X-Content-Type-Options</code> (stops browsers guessing file types), <code>X-Frame-Options</code> (other sites cannot put yours in a frame), <code>Referrer-Policy</code> (other sites see only your domain, not the full address), and <code>Permissions-Policy</code> (the camera, microphone and location are switched off for your pages). The Content-Security-Policy is separate.</p>
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>">
+                <?= Csrf::field('security_headers') ?>
+                <input type="hidden" name="form" value="security_headers">
+
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="hsts_enabled" value="1" <?= $hstsEnabled ? 'checked' : '' ?>>
+                    Tell browsers to only ever use HTTPS for this site (HSTS)
+                </label>
+                <span class="lp-field__hint">Leave this off until your site works properly over HTTPS. Once a browser sees it, it refuses plain HTTP for this site for a year, so if HTTPS later breaks, visitors who have already been here cannot reach the site until it is fixed. It is only sent while the site is being viewed over HTTPS<?= $siteIsHttps ? '' : ', and this page is currently loaded over plain HTTP, so it has no effect yet' ?>.</span>
 
                 <button type="submit" class="lp-button lp-button--primary">Save</button>
             </form>

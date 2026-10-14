@@ -13,6 +13,7 @@
  * @since 0.24.0
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
+/** @var \LumoraPress\Core\Security\PasswordPolicy $passwordPolicy */
 /** @var list<string> $registerErrors */
 /** @var bool $registerSent */
 /** @var string|null $registerNotice */
@@ -83,12 +84,12 @@ if (!isset($kernel)) {
                 </p>
                 <p class="lp-field">
                     <label for="register-password">Password</label>
-                    <input type="password" id="register-password" name="password" required autocomplete="new-password" minlength="10">
+                    <input type="password" id="register-password" name="password" required autocomplete="new-password" minlength="<?= (int) $passwordPolicy->minLength() ?>">
                     <span class="lp-field__hint">At least 10 characters.</span>
                 </p>
                 <p class="lp-field">
                     <label for="register-password-confirm">Confirm password</label>
-                    <input type="password" id="register-password-confirm" name="password_confirm" required autocomplete="new-password" minlength="10">
+                    <input type="password" id="register-password-confirm" name="password_confirm" required autocomplete="new-password" minlength="<?= (int) $passwordPolicy->minLength() ?>">
                 </p>
                 <?php if ($registerQuestion !== ''): ?>
                     <p class="lp-field">

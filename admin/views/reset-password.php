@@ -13,6 +13,7 @@
  * @since 0.5.0
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
+/** @var \LumoraPress\Core\Security\PasswordPolicy $passwordPolicy */
 /** @var int|null $tokenUserId */
 /** @var string $token */
 /** @var string|null $error */
@@ -49,11 +50,11 @@ if (!isset($kernel)) {
                 <?= Csrf::field('password_reset_confirm') ?>
                 <p class="lp-field">
                     <label for="password">New Password</label>
-                    <input type="password" id="password" name="password" required minlength="8" autofocus autocomplete="new-password">
+                    <input type="password" id="password" name="password" required minlength="<?= (int) $passwordPolicy->minLength() ?>" autofocus autocomplete="new-password">
                 </p>
                 <p class="lp-field">
                     <label for="password-confirm">Confirm New Password</label>
-                    <input type="password" id="password-confirm" name="password_confirm" required minlength="8" autocomplete="new-password">
+                    <input type="password" id="password-confirm" name="password_confirm" required minlength="<?= (int) $passwordPolicy->minLength() ?>" autocomplete="new-password">
                 </p>
                 <p class="lp-field">
                     <button type="submit" class="lp-button lp-button--primary">Reset Password</button>
