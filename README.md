@@ -37,7 +37,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Sticky and private posts
 - Configurable permalink structure (post name, date-based, or custom), with optional automatic redirects from the old URLs when it changes
 - Threaded comments and moderation
-- Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users
+- Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users (replies, posts awaiting review, new versions, failing email, and more, each with a button to the page that handles it and a per-person mute)
 - Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
 - Optional user registration, off by default and built to resist spam: accounts exist only after the emailed link is confirmed, with per-IP limits, a flood pause, disposable-email blocking, optional administrator approval, and a hold on new accounts' first comments (Settings &rsaquo; Registration)

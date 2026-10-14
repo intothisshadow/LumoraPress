@@ -1,6 +1,6 @@
 -- Lumora Press schema snapshot. Generated; do not edit by hand.
 -- Regenerate with "PHP Test Suite/generate-schema-snapshot.sh" whenever a migration is added.
--- Through: 0086_add_user_registration.sql
+-- Through: 0087_add_notification_preferences_to_users.sql
 -- >>>
 CREATE TABLE `{prefix}bluesky_embeds` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -611,6 +611,7 @@ CREATE TABLE `{prefix}users` (
   `recent_emoji` longtext DEFAULT NULL,
   `recent_searches` longtext DEFAULT NULL,
   `registration_source` varchar(10) NOT NULL DEFAULT 'admin',
+  `notification_preferences` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_username` (`username`),
   UNIQUE KEY `uniq_email` (`email`)

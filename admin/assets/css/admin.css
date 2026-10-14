@@ -6714,6 +6714,40 @@ a.lp-button--link.lp-button--link--view:hover {
     font-weight: 600;
 }
 
+.lp-notifications__type {
+    display: block;
+    margin-bottom: 0.15rem;
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
+    font-size: 0.8rem;
+}
+
+.lp-notifications__type-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.lp-notifications__unavailable {
+    display: block;
+    max-width: 16rem;
+    margin-bottom: 0.25rem;
+    color: color-mix(in srgb, var(--lp-admin-text) 70%, transparent);
+    font-size: 0.85rem;
+    white-space: normal;
+}
+
+.lp-notifications__mute-list {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.lp-notifications__mute-list li {
+    margin-bottom: 0.5rem;
+}
+
 .lp-notifications__row.is-unread td:first-child {
     box-shadow: inset 3px 0 0 var(--lp-admin-accent);
 }

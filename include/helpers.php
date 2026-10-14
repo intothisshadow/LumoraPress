@@ -625,6 +625,19 @@ if (!function_exists('add_theme_support')) {
     }
 }
 
+if (!function_exists('register_notification_type')) {
+    /**
+     * Declares a notification type so the Notifications screen shows its label, icon and action
+     * button, and My Profile lets each person mute it. Call before notify()ing with that type.
+     *
+     * @param string $capability Capability needed to open the destination (and to see the mute option); '' for anyone.
+     */
+    function register_notification_type(string $type, string $label, string $actionLabel = '', string $icon = '', string $capability = '', string $description = ''): void
+    {
+        \LumoraPress\Core\Notifications\NotificationTypes::register($type, $label, $actionLabel, $icon, $capability !== '' ? $capability : null, null, $description);
+    }
+}
+
 if (!function_exists('current_theme_supports')) {
     function current_theme_supports(string $feature): bool
     {

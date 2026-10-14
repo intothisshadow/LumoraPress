@@ -40,7 +40,9 @@ use LumoraPress\Core\Http\CdnRewriter;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
 use LumoraPress\Core\Http\TrustedProxies;
+use LumoraPress\Core\Mail\FailureReportingMailer;
 use LumoraPress\Core\Mail\NativeMailer;
+use LumoraPress\Core\Notifications\NotificationTypes;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Kernel;
 use LumoraPress\Core\Menus\MenuManager;
@@ -126,6 +128,7 @@ use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
 use LumoraPress\Services\MediaUsageChecker;
 use LumoraPress\Services\PageService;
+use LumoraPress\Services\NotificationEventService;
 use LumoraPress\Services\NotificationService;
 use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
@@ -377,7 +380,13 @@ $adminEmail = trim((string) $config->option('admin_email', ''));
 $mailFromAddress = $adminEmail !== ''
     ? $adminEmail
     : 'noreply@' . ((string) (parse_url(home_url(), PHP_URL_HOST) ?: 'localhost'));
-$mailer = new NativeMailer($mailFromAddress);
+$notificationService = new NotificationService($database, $tablePrefix, $hooks);
+$notificationEvents = new NotificationEventService($notificationService, $users, $config, static fn (): ?int => $auth->user()?->id);
+NotificationTypes::registerCore();
+
+// Every outgoing email goes through this one transport, so wrapping it covers password resets,
+// comment alerts, contact forms and sign-up confirmations alike.
+$mailer = new FailureReportingMailer(new NativeMailer($mailFromAddress), $notificationEvents->onMailFailed(...));
 
 $media = new MediaService(
     database: $database,
@@ -614,7 +623,7 @@ add_action('footer_assets', [new SearchAssets($search, $auth), 'render']);
 $akismet = new AkismetClient($config, home_url());
 $commentModeration = new CommentModerationService($config, $comments, $users);
 $registrationThrottle = new RegistrationThrottle($database, $tablePrefix, $config);
-$registration = new RegistrationService($database, $tablePrefix, $config, $users, $mailer, new NotificationService($database, $tablePrefix, $hooks), $securityLog, $hooks, $akismet);
+$registration = new RegistrationService($database, $tablePrefix, $config, $users, $mailer, $notificationService, $securityLog, $hooks, $akismet);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
@@ -771,7 +780,20 @@ $updates = new UpdateService(
     themeVersions: new PluginVersionManifest(LUMORA_ROOT, 'theme-versions.json'),
 );
 
-$githubUpdates = new GitHubReleaseProvider($config);
+$githubUpdates = new GitHubReleaseProvider($config, null, null, $hooks);
+
+// Announced from the update check itself, since there is no cron: whichever screen runs the check
+// (Dashboard, Updates, Plugins, Themes) tells administrators once per new version.
+add_action('update_check_completed', static function (array $release) use ($notificationEvents, $updates): void {
+    $notificationEvents->announceUpdates(
+        $release,
+        $updates->installedVersion(),
+        $updates->installedPluginVersions(),
+        $updates->installedThemeVersions(),
+    );
+});
+add_action('post_saved', [$notificationEvents, 'onPostSaved']);
+add_action('page_saved', [$notificationEvents, 'onPageSaved']);
 
 // Deliberately independent of $githubUpdates above (see
 // InstallPingService's docblock) — its own endpoint, its own option
@@ -947,7 +969,7 @@ $site = new SiteController($theme, $posts, $pages, $categories, $tags, $comments
 // inside SiteController so moderator approvals from the admin, which only
 // fire comment_status_changed, are covered by the same code path.
 $commentSubscriptions = new CommentSubscriptionService($database, $tablePrefix);
-$commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, new NotificationService($database, $tablePrefix, $hooks));
+$commentFollowups = new CommentFollowupService($config, $mailer, $comments, $posts, $pages, $users, $commentSubscriptions, $notificationService);
 $commentSubscriptionController = new CommentSubscriptionController($commentSubscriptions, $commentFollowups, $posts, $pages, $auth, $site, $commentModeration);
 
 // Subscribing must happen before onCommentPosted() so an immediately

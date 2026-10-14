@@ -16,8 +16,10 @@
 /** @var \LumoraPress\Models\User $currentUser */
 /** @var \LumoraPress\Services\NotificationService $notifications */
 
+use LumoraPress\Core\Notifications\NotificationTypes;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Services\CommentSubscriptionService;
+use LumoraPress\Services\NotificationTargetChecker;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -25,8 +27,11 @@ if (!isset($kernel)) {
 }
 
 $subscriptions = new CommentSubscriptionService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+$targetChecker = new NotificationTargetChecker($kernel->posts, $kernel->pages);
 $unreadOnly = ($_GET['filter'] ?? '') === 'unread';
-$screenUrl = admin_url('notifications') . ($unreadOnly ? '?filter=unread' : '');
+$typeFilter = is_string($_GET['type'] ?? null) ? substr($_GET['type'], 0, 50) : '';
+$screenQuery = array_filter(['filter' => $unreadOnly ? 'unread' : '', 'type' => $typeFilter]);
+$screenUrl = admin_url('notifications') . ($screenQuery !== [] ? '?' . http_build_query($screenQuery) : '');
 
 // Opening a notification is a plain link so it behaves like one (new tab,
 // copy link); marking your own notification read is harmless as a GET.
@@ -35,6 +40,13 @@ if (isset($_GET['open'])) {
     $notification = $notifications->findForUser($openId, $currentUser->id);
     $notifications->markRead($openId, $currentUser->id);
     $target = $notification !== null ? (string) $notification['url'] : '';
+
+    // A destination that was deleted, or that the viewer can no longer open, is explained on
+    // this screen rather than sent to a 404 or a "forbidden" page.
+    if ($notification !== null && $targetChecker->explain($notification, $currentUser) !== null) {
+        header('Location: ' . $screenUrl . ($screenQuery !== [] ? '&' : '?') . 'unavailable=' . $openId);
+        exit;
+    }
 
     // Absolute http(s) or site-relative links only — never "//host" or javascript: URLs.
     $isFollowable = preg_match('#^https?://#i', $target) === 1 || preg_match('#^/(?!/)#', $target) === 1;
@@ -68,9 +80,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $notifications->pruneOldRead();
 
-$pagination = $notifications->paginateForUser($currentUser->id, max(1, (int) ($_GET['paged'] ?? 1)), 20, $unreadOnly);
+$pagination = $notifications->paginateForUser($currentUser->id, max(1, (int) ($_GET['paged'] ?? 1)), 20, $unreadOnly, $typeFilter);
 $unreadCount = $notifications->unreadCount($currentUser->id);
 $totalCount = $notifications->paginateForUser($currentUser->id, 1, 1)['total'];
+$typesInInbox = $notifications->typesForUser($currentUser->id);
+
+$unavailableNotice = null;
+
+if (isset($_GET['unavailable'])) {
+    $unavailable = $notifications->findForUser((int) $_GET['unavailable'], $currentUser->id);
+    $unavailableNotice = $unavailable !== null ? $targetChecker->explain($unavailable, $currentUser) : null;
+}
+
+$filterUrl = static function (array $query): string {
+    $query = array_filter($query);
+
+    return admin_url('notifications') . ($query !== [] ? '?' . http_build_query($query) : '');
+};
 
 // One token shared by every form below: Csrf::field() per form would
 // replace the token each time, leaving only the last form valid.
@@ -94,10 +120,28 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
 ?>
 <h1 class="lp-admin__title">Notifications</h1>
 
+<?php if ($unavailableNotice !== null): ?>
+    <div class="lp-alert lp-alert--warning" role="status"><?= esc_html($unavailableNotice) ?></div>
+<?php endif; ?>
+
 <p class="lp-admin__filters">
-    <a href="<?= esc_url(admin_url('notifications')) ?>" class="<?= !$unreadOnly ? 'is-active' : '' ?>">All (<?= (int) $totalCount ?>)</a>
-    <a href="<?= esc_url(admin_url('notifications')) ?>?filter=unread" class="<?= $unreadOnly ? 'is-active' : '' ?>">Unread (<?= (int) $unreadCount ?>)</a>
+    <a href="<?= esc_url($filterUrl(['type' => $typeFilter])) ?>" class="<?= !$unreadOnly ? 'is-active' : '' ?>">All (<?= (int) $totalCount ?>)</a>
+    <a href="<?= esc_url($filterUrl(['filter' => 'unread', 'type' => $typeFilter])) ?>" class="<?= $unreadOnly ? 'is-active' : '' ?>">Unread (<?= (int) $unreadCount ?>)</a>
 </p>
+
+<?php if (count($typesInInbox) > 1 || $typeFilter !== ''): ?>
+    <form method="get" action="<?= esc_url(admin_url('notifications')) ?>" class="lp-notifications__type-filter">
+        <?php if ($unreadOnly): ?><input type="hidden" name="filter" value="unread"><?php endif; ?>
+        <label for="notification-type-filter">Type</label>
+        <select id="notification-type-filter" name="type">
+            <option value="">All types</option>
+            <?php foreach ($typesInInbox as $inboxType): ?>
+                <option value="<?= esc_attr($inboxType) ?>" <?= $typeFilter === $inboxType ? 'selected' : '' ?>><?= esc_html(NotificationTypes::label($inboxType)) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="lp-button lp-button--secondary">Filter</button>
+    </form>
+<?php endif; ?>
 
 <section class="lp-admin__panel">
     <?php if ($pagination['notifications'] === []): ?>
@@ -130,11 +174,19 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
             </thead>
             <tbody>
                 <?php foreach ($pagination['notifications'] as $notification): ?>
-                    <?php $isUnread = $notification['read_at'] === null; ?>
+                    <?php
+                    $isUnread = $notification['read_at'] === null;
+                    $typeInfo = NotificationTypes::get((string) $notification['type']);
+                    $unavailableReason = $targetChecker->explain($notification, $currentUser);
+                    $hasDestination = (string) $notification['url'] !== '' && $unavailableReason === null;
+                    ?>
                     <tr class="lp-notifications__row<?= $isUnread ? ' is-unread' : '' ?>">
                         <td>
+                            <?php if ($typeInfo !== null): ?>
+                                <span class="lp-notifications__type"><?php if ($typeInfo['icon'] !== ''): ?><span aria-hidden="true"><?= esc_html($typeInfo['icon']) ?></span> <?php endif; ?><?= esc_html($typeInfo['label']) ?></span>
+                            <?php endif; ?>
                             <?php if ($isUnread): ?><span class="lp-visually-hidden">Unread: </span><?php endif; ?>
-                            <?php if ((string) $notification['url'] !== ''): ?>
+                            <?php if ($hasDestination): ?>
                                 <a class="lp-notifications__message" href="<?= esc_url(admin_url('notifications') . '?open=' . (int) $notification['id']) ?>"><?= esc_html((string) $notification['message']) ?></a>
                             <?php else: ?>
                                 <span class="lp-notifications__message"><?= esc_html((string) $notification['message']) ?></span>
@@ -142,6 +194,11 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
                         </td>
                         <td class="lp-notifications__when"><time datetime="<?= esc_attr((new DateTimeImmutable((string) $notification['created_at']))->format(DATE_ATOM)) ?>"><?= esc_html(the_date(new DateTimeImmutable((string) $notification['created_at']))) ?> <?= esc_html(the_time(new DateTimeImmutable((string) $notification['created_at']))) ?></time></td>
                         <td class="lp-notifications__actions">
+                            <?php if ($hasDestination && $typeInfo !== null && $typeInfo['actionLabel'] !== ''): ?>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('notifications') . '?open=' . (int) $notification['id']) ?>"><?= esc_html($typeInfo['actionLabel']) ?></a>
+                            <?php elseif ($unavailableReason !== null): ?>
+                                <span class="lp-notifications__unavailable"><?= esc_html($unavailableReason) ?></span>
+                            <?php endif; ?>
                             <?php if ($isUnread): ?>
                                 <form method="post" action="<?= esc_url($screenUrl) ?>" class="lp-admin__inline-form">
                                     <input type="hidden" name="csrf_token" value="<?= esc_attr($csrfToken) ?>">

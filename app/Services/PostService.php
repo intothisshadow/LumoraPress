@@ -204,7 +204,9 @@ final class PostService
             $post = $this->findById($id);
 
             if ($post !== null) {
-                $this->hooks?->doAction('post_saved', $post);
+                // Only the SEO fields changed, so the post is its own previous state; a listener
+                // watching status changes must not read this save as a new submission.
+                $this->hooks?->doAction('post_saved', $post, $post);
             }
         }
     }

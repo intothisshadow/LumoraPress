@@ -88,11 +88,35 @@ final class CommentFollowupService
         }
     }
 
-    public function onStatusChanged(Comment $comment): void
+    public function onStatusChanged(Comment $comment, ?CommentStatus $previousStatus = null): void
     {
         if ($comment->status === CommentStatus::Approved) {
+            if ($previousStatus === CommentStatus::Pending) {
+                $this->notifyCommenterOfApproval($comment);
+            }
+
             $this->dispatch($comment);
         }
+    }
+
+    /**
+     * Only a comment that was held gets this; one approved on submission has nothing to report.
+     * Guests have no inbox, so only registered commenters are told.
+     */
+    private function notifyCommenterOfApproval(Comment $comment): void
+    {
+        $context = $comment->userId !== null ? $this->resolveContent($comment) : null;
+
+        if ($context === null || $this->users->findById($comment->userId) === null) {
+            return;
+        }
+
+        $this->notifications->notify(
+            $comment->userId,
+            'comment_approved',
+            sprintf(__('Your comment on "%s" was approved'), $context['title']),
+            $context['url'] . '#comment-' . $comment->id,
+        );
     }
 
     public static function manageUrl(string $token): string
@@ -235,11 +259,7 @@ final class CommentFollowupService
 
     private function notifyEveryModerator(Comment $comment, string $type, string $message, string $url): void
     {
-        foreach ($this->users->listAll() as $user) {
-            if ($user->id !== $comment->userId && $user->can('moderate_comments')) {
-                $this->notifications->notify($user->id, $type, $message, $url);
-            }
-        }
+        $this->notifications->notifyUsersWithCapability($this->users, 'moderate_comments', $type, $message, $url, $comment->userId);
     }
 
     /**

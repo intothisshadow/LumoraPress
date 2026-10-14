@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Services;
 
 use LumoraPress\Core\Errors\QuietCall;
+use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\PressConfig;
 use RuntimeException;
 
@@ -60,6 +61,7 @@ final class GitHubReleaseProvider
         private readonly PressConfig $config,
         private readonly ?\Closure $httpGet = null,
         private readonly ?\Closure $httpDownload = null,
+        private readonly ?HookManager $hooks = null,
     ) {
     }
 
@@ -175,6 +177,7 @@ final class GitHubReleaseProvider
 
         if ($release !== null) {
             $this->cacheRelease($release);
+            $this->hooks?->doAction('update_check_completed', $release);
         }
 
         return $release;

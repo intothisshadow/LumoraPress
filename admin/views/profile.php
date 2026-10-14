@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Core\Notifications\NotificationTypes;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
 use LumoraPress\Models\ThemePreference;
@@ -28,6 +29,14 @@ if (!isset($kernel)) {
 // only — this form always operates on $currentUser->id and nothing else.
 $locked = $kernel->editorPreferences->isLockedToDefault();
 $error = null;
+
+// Only the notification types this role could ever receive; showing an Author the
+// "update available" switch would be noise.
+$notificationTypesForUser = array_filter(
+    NotificationTypes::all(),
+    static fn (array $type): bool => $type['capability'] === null || $currentUser->can($type['capability']),
+);
+$mutedNotificationTypes = $notifications->mutedTypes($currentUser->id);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -60,6 +69,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             header('Location: ' . admin_url('profile') . '?saved=1');
             exit;
         }
+    } elseif ($form === 'notification_preferences' && Csrf::verify('notification_preferences', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        // Ticked boxes are the types the person wants; everything they could have ticked but
+        // didn't becomes the muted list. Types hidden from this role keep their stored state.
+        $wanted = is_array($_POST['notify'] ?? null) ? array_map('strval', $_POST['notify']) : [];
+        $muted = array_diff($notifications->mutedTypes($currentUser->id), array_keys($notificationTypesForUser));
+
+        foreach (array_keys($notificationTypesForUser) as $typeName) {
+            if (!in_array($typeName, $wanted, true)) {
+                $muted[] = $typeName;
+            }
+        }
+
+        $notifications->setMutedTypes($currentUser->id, array_values($muted));
+
+        header('Location: ' . admin_url('profile') . '?saved=1');
+        exit;
     }
 }
 ?>
@@ -127,3 +152,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         <button type="submit" class="lp-button lp-button--primary" <?= $locked ? 'disabled' : '' ?>>Save</button>
     </form>
 </section>
+
+<?php if ($notificationTypesForUser !== []): ?>
+    <section class="lp-admin__panel">
+        <h2>Notifications</h2>
+
+        <form method="post" action="<?= esc_url(admin_url('profile')) ?>">
+            <?= Csrf::field('notification_preferences') ?>
+            <input type="hidden" name="form" value="notification_preferences">
+
+            <p class="lp-field__hint">Choose which events add a notification to your inbox. A kind you switch off is skipped entirely, so it never raises the unread count.</p>
+
+            <ul class="lp-notifications__mute-list">
+                <?php foreach ($notificationTypesForUser as $typeName => $typeInfo): ?>
+                    <li>
+                        <label class="lp-field--checkbox">
+                            <input type="checkbox" name="notify[]" value="<?= esc_attr($typeName) ?>" <?= in_array($typeName, $mutedNotificationTypes, true) ? '' : 'checked' ?>>
+                            <?= esc_html($typeInfo['description']) ?>
+                        </label>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+
+            <button type="submit" class="lp-button lp-button--primary">Save</button>
+        </form>
+    </section>
+<?php endif; ?>

@@ -223,7 +223,8 @@ final class PageService
             $page = $this->findById($id);
 
             if ($page !== null) {
-                $this->hooks?->doAction('page_saved', $page);
+                // See PostService::updateSeo(): the page is its own previous state here.
+                $this->hooks?->doAction('page_saved', $page, $page);
             }
         }
     }
