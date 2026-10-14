@@ -19412,3 +19412,1321 @@ Implemented 2026-10-10. Chose the neutral-default fix: `UserService::publishable
 - [x] Audit core and the bundled theme for the same leak outside the display-name fallback (feeds' `dc:creator`, oEmbed, sitemaps, comment markup, error messages on the login screen).
 - [x] Add unit and regression tests for the fallback fix and for each leak the audits turn up.
 
+
+## 0.24.0 (2026-10-14)
+
+### LP-038. Performance
+
+**Status:** Complete
+
+**This ticket's entire "Cache" section was merged into LP-037 (Cache API
+& LiteSpeed Support) on 2026-08-01** — LP-037 already specified the same
+Cache API/HTTP headers/LiteSpeed driver/invalidation/admin integration
+this section restated under a different ticket ID. Its non-duplicate
+items (granular public-content selection, granular manual purge/never-
+cache lists, per-driver admin toggles, an Advanced subsection) were
+folded into LP-037's checklist rather than copied twice. See
+`DECISIONS.md`'s "LP-038's Cache section merged into LP-037" entry.
+LP-038 is narrowed from here on to everything below: Asset Optimization,
+Media Optimization, CDN & Reverse Proxy, and Monitoring & Diagnostics —
+none of which duplicate LP-037.
+
+#### Goal
+
+Provide a centralized Performance area for configuring asset delivery, media optimization, CDN/reverse-proxy integration, and performance-related diagnostics — caching itself is LP-037's Cache API, surfaced through the same Settings &rsaquo; Performance admin area this ticket builds.
+
+---
+
+### Asset Optimization
+
+#### JavaScript
+
+- [x] Defer JavaScript (opt-out per script) — Settings › Performance; `ScriptQueue` and `FooterAssets`
+- [x] Load JavaScript in footer (opt-out per script) — `enqueue_script()`; the theme-toggle script deliberately stays in the head
+
+#### Fonts
+
+- [x] Local font hosting (serve font files from the site instead of Google Fonts or another font CDN) — `LocalFontService`, `the_font_stylesheets()`
+- [x] Font preloading — regular Latin faces of hosted fonts
+- [x] Font-display optimization — Settings › Performance, applied to hosted and Google-hosted fonts
+
+---
+
+### Media Optimization
+
+#### Images (Always optional, Future)
+
+- [x] Lazy loading — `loading="lazy"` on Markdown images, featured images, folder galleries, and embeds
+- [x] Responsive images (`srcset`) — featured images (`include/media-functions.php`)
+- [x] Automatic WebP generation — optional setting (off by default) on Media › Thumbnails; only offered when GD supports WebP, original format kept otherwise
+- [x] Compression quality settings — JPEG and WebP quality on Media › Thumbnails (`thumbnail_jpeg_quality`, `thumbnail_webp_quality`)
+- [x] Thumbnail optimization — progressive JPEG and maximum PNG compression (`thumbnail_optimize`, on by default)
+
+#### Video
+
+- [x] Poster image support — video `poster_media_id` in `MediaPlayerShortcode`
+- [x] Lazy-loaded video embeds — embed iframes use `loading="lazy"` (`EmbedService`)
+
+---
+
+### CDN & Reverse Proxy
+
+#### Integrations
+
+- [x] LiteSpeed Cache — LP-037's `LiteSpeedCacheDriver`
+- [x] Reverse Proxy support (trusted proxy headers for client IP and HTTPS detection) — `TrustedProxies`, applied to `$_SERVER` in `bootstrap.php`
+
+#### Configuration
+
+- [x] CDN URL — Settings › Performance
+- [x] Asset URL rewriting (theme and core static assets) — `CdnRewriter` in `theme_url()` and `core_asset_url()`, with the CSP extended to the CDN host
+
+---
+
+### Monitoring & Diagnostics
+
+#### Performance Information
+
+- [x] Server information — Maintenance › System Information
+- [x] PHP version — Maintenance › System Information
+- [x] Database version — Maintenance › System Information
+- [x] Active cache driver — Settings › Cache
+- [x] Memory limits — Maintenance › System Information
+- [x] Upload limits — Maintenance › System Information
+
+#### Diagnostics
+
+- [x] Performance recommendations — Settings › Performance › Recommendations (`PerformanceCheckService`)
+- [x] Configuration checks — Settings › Performance › Configuration Checks
+
+
+### LP-042. Reorganize Admin Settings
+
+**Status:** Complete
+
+#### Goal
+
+Move all configuration-related options into a dedicated **Settings** section with logical sub-pages, making the admin interface easier to navigate and maintain.
+
+**2026-07-25 update:** Implemented alongside LP-043 (same admin nav/routing
+work). Scoped to a genuine *reorganization* of settings that already had
+working code behind them — Feeds, Search, REST API (`admin/views/settings/general.php`),
+Thumbnails, Media Import (`admin/views/settings/media.php`), and Maintenance
+Mode/LP-033 (`admin/views/settings/maintenance-mode.php`), all moved verbatim
+(same option keys, same CSRF action names) off the old single
+`admin/views/settings.php`. Site identity (title/logo/favicon/custom CSS)
+stayed on Appearance &rsaquo; Branding at the time rather than being duplicated
+onto General, to avoid touching that working upload flow for a cosmetic
+gain (site name, logo, and favicon moved to Settings &rsaquo; General in LP-203; custom CSS stays on Appearance). Cache and Security are real sub-pages in the nav (`admin/views/settings/cache.php`,
+`admin/views/settings/security.php`) but almost everything under them below
+is genuinely unbuilt, not just unmoved — see the per-item checkboxes below,
+still unchecked, and the stub pages' own on-page notes. Building those out is
+follow-up work, not a "move it" task.
+
+#### Settings Structure
+
+- [x] General — `admin/views/settings/general.php`
+- [x] Media — `admin/views/settings/media.php`
+- [x] Cache — `admin/views/settings/cache.php` (stub — see below)
+- [x] Maintenance Mode — `admin/views/settings/maintenance-mode.php`
+- [x] Security — `admin/views/settings/security.php` (stub — see below)
+
+#### General
+
+**2026-08-01 update:** The General settings page (`admin/views/settings/general.php`)
+gained four new sections — Site, Date & Time, Footer, and SEO & Social
+Sharing — covering every item below except the three explicitly deferred
+ones (registration/default role/default language/first day of week — see
+their own notes). `LumoraPress\Core\Theme\SiteBranding` (the existing
+LP-034 bridge themes already read site name/logo/favicon/custom CSS
+through) gained tagline, meta description, footer copyright text, default
+OG image, and date/time format, alongside two new theme helpers
+(`the_date()`/`the_time()`, `include/helpers.php`) that the default theme
+now uses everywhere it used to hardcode a `->format('F j, Y')`-style
+string (`archive.php`, `index.php`, `single.php`, `search.php`,
+`comments.php`, `maintenance.php`). Along the way, fixed a real bug: the
+`timezone` DB option has been settable since the installer existed, but
+`include/bootstrap.php` only ever read the *file*-config copy written once
+at install — `date_default_timezone_set()` now runs after
+`PressConfig::bindDatabase()` and reads the DB option, so the Settings >
+General field actually takes effect. `general_settings_saved` is a new
+action hook (fired once per settings form saved) for the "developer hooks"
+deliverable.
+
+Goal
+
+Provide a centralized configuration page for general website settings.
+
+##### Features
+
+- [x] Site title — on Settings › General › Site (`site_name` option; moved there from Appearance › Themes, LP-203)
+- [x] Tagline/description — `site_tagline` option, Settings &rsaquo; General &rsaquo; Site, read by themes via `site_tagline()`
+- [x] Site logo — on Settings › General › Site (`site_logo_media_id` option; moved there from Appearance › Themes, LP-203)
+- [x] Site icon (favicon) — on Settings › General › Site (`favicon_media_id` option; moved there from Appearance › Themes, LP-203)
+- [x] Website URL — `site_url` option now has an admin field (Settings &rsaquo; General &rsaquo; Site), validated as a URL
+- [x] Administration email address — `admin_email` option, validated as an email address; still nothing sends mail anywhere in the app, so nothing consumes it yet — stored for when a feature needs it, same as `site_url` was live before anything read it back
+Enable user registration and Default role for new users: see LP-216, which designs the whole signup flow these two settings belong to.
+
+- [x] Timezone — Settings &rsaquo; General &rsaquo; Site now has a working field; see the bootstrap.php fix above
+- [x] Date format — `date_format` option (default `F j, Y`), applied via `the_date()`
+- [x] Time format — `time_format` option (default `g:i a`), applied via `the_time()`
+
+##### Branding
+
+- [x] Footer copyright text — `footer_copyright_text` option, Settings &rsaquo; General &rsaquo; Footer; blank keeps the theme's existing auto-generated "&copy; {year} {site name}." line
+- [x] Site meta description — `meta_description` option, rendered as `<meta name="description">`; a single post/page's own excerpt always wins over it
+- [x] Default Open Graph image — `default_og_image_media_id` option (Media Manager select or upload, same pattern as LP-040's Featured Image field), used as the `og:image`/`twitter:image` fallback when a shared post/page has no featured image
+
+##### Deliverables
+
+- [x] Settings page for what already exists (Feeds/Search/REST API)
+- [x] Modern General Settings page (the fields above)
+- [x] Validation for all settings — URL/email/timezone format checks on save; date/time format fields fall back to their defaults if left blank rather than accepting anything
+- [x] Developer hooks for extending settings — `general_settings_saved` action
+
+#### Media
+
+- [x] Upload directories — Media Import (`media_import_allowed_directories`)
+- [x] Thumbnail generation, image sizes, compression (JPEG/WebP quality) — Thumbnails section
+- [x] Media organization — folders in the Media Manager (nested folders, drag-and-drop moves) rather than a Settings › Media option
+
+#### Cache
+
+Settings › Cache (LP-037) now covers enabling/disabling caching, the page cache, cache exclusions, and clearing it. Object cache and asset optimization were rejected (see `DECISIONS.md`, 2026-10-14):
+
+- [x] Enable/disable caching — Settings › Cache
+- [x] Page cache — Settings › Cache (driver + default lifetime)
+- [x] Cache exclusions — Settings › Cache › Never Cache
+- [x] Clear cache — "Purge Entire Cache" on Settings › Cache
+
+#### Maintenance Mode
+
+- [x] Enable/disable maintenance mode
+- [x] Custom maintenance message
+- [x] Allow logged-in users (Editors, via `maintenance_bypass_capability`)
+- [x] IP whitelist — LP-033 (`maintenance_ip_whitelist`, single addresses and CIDR ranges)
+- [x] Optional scheduled maintenance (start/end + Retry-After)
+
+#### Security
+
+**2026-08-01 update (LP-025):** login throttling's 5-attempts/15-min
+lockout is now configurable on `admin/views/settings/security.php`
+(`login_max_attempts`/`login_window_seconds`/`login_lockout_seconds`
+options, read by `LoginThrottle` in `include/bootstrap.php`), and that same
+page documents the user-enumeration audit — none of the classic WordPress
+vectors (XML-RPC, password reset, public author archives, REST
+user-listing) exist in this codebase to enumerate through, so there's
+nothing further to build there. No XML-RPC line is listed — Lumora Press
+has no XML-RPC endpoint (see `MEMORY.md`'s LP-039 note).
+
+- [x] Login security (configurable attempt/lockout thresholds) — see above
+- [x] Password policy — one minimum length (Settings › Security › Passwords, default 10, 8 to 64) read by every screen that sets a password; also fixed the reset screen accepting 8
+- [x] Session configuration — idle timeout and "Remember Me" length (Settings › Security › Sign-in Sessions)
+- [x] User enumeration protection — audited; no exploitable surface exists, documented on the Security settings page (see LP-025)
+- [x] Rate limiting (beyond the existing hardcoded login throttle) — login lockout thresholds and the hourly comment limit are settings on Settings › Security (LP-025)
+- [x] Security headers — nosniff, X-Frame-Options, Referrer-Policy and Permissions-Policy always sent; HSTS is an opt-in (Settings › Security › Browser Security Headers)
+
+#### Deliverables
+
+- [x] Updated admin navigation
+- [x] Existing settings migrated automatically (same option keys/CSRF action names, just relocated views)
+- [x] No configuration values lost during upgrade
+- [x] Updated documentation — the README has no per-screen settings section (settings are described in `docs/FEATURES.md` and `docs/CHANGELOG.md`, both updated)
+
+------
+
+#### Implementation notes (2026-10-14)
+
+`Core\Security\PasswordPolicy` (length only, floor 8, so a setting can never weaken the rule below what existed) is shared through `$passwordPolicy` in `admin/index.php`; `RegistrationService` builds its own from its config. The install screen keeps its own 10, which is the default. `Core\Security\SecurityHeaders` is sent in `bootstrap.php` next to the CSP and passes through a `security_headers` filter. `SessionManager` takes an optional idle lifetime (sets `session.gc_maxlifetime` before the session starts) and `RememberMeService` already took its lifetime as an argument. Options: `password_min_length`, `session_idle_minutes`, `remember_me_days`, `hsts_enabled`. Verified on the dev install: the headers on public and admin pages, the new panels, and the Users form picking up a changed minimum. Not verified: that PHP actually expires a session at the shorter idle time (the garbage collector is probabilistic and the dev install has no way to wait out a timeout), and HSTS itself, since the dev install is plain HTTP.
+
+
+### LP-048. Classic Widgets
+
+**Status:** Complete
+
+**Implemented (2026-09-04): Delete-from-active, cross-theme widget
+survival, and PHP Code widget; Custom JavaScript widget added then
+removed as unnecessary.** Three checklist items landed: (1) an active
+widget's row now has a direct "Delete" action next to "Deactivate" — the
+existing `delete_widget` handler already worked against any sidebar id,
+so no service-layer change was needed, just a second form in the
+active-widget row reusing it. (2) `bootstrap.php`'s `widgets_config`
+loader now moves any saved sidebar id the active theme no longer
+registers into the Inactive Widgets bucket instead of leaving it loaded
+nowhere — a theme switch no longer silently orphans widget assignments.
+(3) A new "PHP Code" core widget type — its stored code is `eval()`'d (a
+leading `<?php` tag stripped first), gated by the same `manage_themes`
+capability (Administrator only) the Theme Editor already requires to
+hand-edit `functions.php` directly, so it grants no privilege that role
+couldn't already exercise; a parse/runtime error is caught and logged
+rather than taking down the page.
+
+A "Custom JavaScript" widget type was also built in this same session —
+wrapping stored code in a CSP-nonce'd `<script>` tag, which needed
+`script-src` to gain a nonce allowance it didn't have before (only
+`style-src` did) — but was removed again once a real use case (a
+webring badge needing `<div>` + external `<script src>` markup) showed
+it solved the wrong problem: that content needs the **Custom HTML**
+widget (raw markup, unescaped, already existed) plus a site-specific
+CSP `script-src` allowlist entry for the specific external domain (now
+handled via a `custom plugins/` plugin, see CLAUDE.md's own "Custom
+Plugin Rules"), not a widget that wraps arbitrary code in an inline
+`<script>` tag. With no remaining use case, the widget, the `script-src`
+nonce/`csp_script_nonce()` helper it alone justified, and its tests were
+all reverted in full — core doesn't carry unused surface. Unit tests
+(27/27 `CoreWidgetsTest` passing, full suite 2068 tests green) and
+browser verification on the dev install covered both the working state
+(Delete/Deactivate on every active row, PHP Code widget evaluating
+correctly) and confirmed the revert left no trace (script-src nonce gone
+from the CSP header, "Custom JavaScript" gone from the Add Widget
+dropdown, no console errors).
+
+**Implemented (2026-08-13): Footer Widget Area and Inactive Widgets.**
+Both bundled themes (`content/themes/default`, `custom themes/duskline`)
+now `register_sidebar('footer', ...)` and render it via
+`is_active_sidebar('footer')`/`dynamic_sidebar('footer')` in their
+`footer.php`, exactly per the "Header/Footer Widget Areas —
+Implementation Plan" below — a `.lp-site-footer__widgets` wrapper (a
+wrapping row of `.lp-widget` cards, new CSS in each theme's own
+`style.css`, additive in Duskline) was the only new markup needed; every
+widget itself renders through the same `.lp-widget`/`.lp-widget__*`
+classes the sidebar already used. A `header` widget area was left
+deferred, per the plan's own "optional and less conventional" framing —
+neither theme's compact single-row header has an obvious slot for one
+without a redesign, which the Custom Theme Rules and Public-Facing CSS
+Rule don't call for here. Separately, **inactive widgets**: deactivating
+a widget (renamed from the old "Remove" action) no longer deletes it —
+it moves into a new reserved holding bucket
+(`WidgetManager::INACTIVE_SIDEBAR_ID`, a pseudo-sidebar id that's
+deliberately never passed to `register_sidebar()`, so it can never be
+rendered by a theme) surfaced as a new "Inactive Widgets" section at the
+bottom of the admin Widgets screen. From there a widget can be
+reactivated into any registered sidebar (settings intact) via a new
+`activate_widget` form, or deleted permanently via a new `delete_widget`
+form — the same generic "any string is a valid sidebar id" storage
+`widgetsFor()`/`setWidgets()` already had made this possible with no
+`WidgetManager` logic changes beyond the new constant;
+`include/bootstrap.php`'s widget-config loader was extended to also
+preload this bucket every request (previously it only loaded
+theme-registered sidebar ids), so the admin screen sees it immediately
+rather than only after a POST that happens to touch it. No live-browser
+verification was done for this pass (this session's `LumoraPress/`
+working tree has no `config/config.php` — i.e. it's never been
+installed locally — and CLAUDE.md's own "Never Run the Installer
+Against the Live Source Tree" rule blocks standing one up here without
+first copying to a throwaway directory, which was judged out of scope
+for this pass); `composer test` (1238 unit tests, all passing, plus two
+new `WidgetManagerTest` cases for the new constant) and `php -l` on
+every changed file are the only verification performed.
+
+**Implemented — drag-and-drop widget reordering.** The "no JS drag
+library in this codebase" scope narrowing that previously kept this to
+Move Up/Move Down buttons only turned out not to require a library at
+all — native HTML5 drag-and-drop, generalized into a new, reusable
+`admin/assets/js/sortable.js` shared with LP-049's menu-item reordering
+below. Rather than a new AJAX/JSON endpoint, it reuses this project's
+existing "reuse a real form, fill in hidden fields, `requestSubmit()` on
+drop" pattern (`folder-drag-drop.js`'s own approach) — a new
+`reposition_widget` POST action (one CSRF-protected hidden form per
+sidebar, scoped `widget_reposition_{sidebarId}`) does the same
+"splice the dragged widget out, reinsert it before/after the drop
+target" array surgery `move_widget` already did for adjacent swaps, just
+generalized to any target position. Move Up/Move Down stay in place as
+the keyboard-accessible fallback — drag-and-drop is additive, not a
+replacement. No new automated test coverage: this logic lives inline in
+`admin/views/appearance/widgets.php`, the same untested-view-logic
+precedent `move_widget`'s own reorder code already sat in before this
+change; a real test harness for admin view POST handling doesn't exist
+yet anywhere in this codebase.
+
+**Implemented (2026-08-10):** the two core widget types that were "not
+yet built" (as distinct from the many deliberately-deferred items also
+listed below — drag-and-drop, Image/Calendar widgets, per-widget
+visibility, etc., none of which were re-opened this session) are now
+built:
+- **Statistics** — shows published post count (`PostService::countByStatus()`),
+  published page count (new `PageService::countByStatus()`, mirroring
+  PostService's own), approved comment count
+  (`CommentService::countByStatus()`), and total registered non-trashed
+  user count (new `UserService::countAll()`). Title-only settings, same
+  minimal shape as the Meta/Search/Tag Cloud widgets.
+- **Social Links** — a curated fixed platform list (Website, Email,
+  Mastodon, Bluesky, Twitter/X, GitHub, YouTube, Instagram, Discord) —
+  deliberately not a free-form repeater, the same "no add/remove-row UI"
+  scope narrowing this ticket's own Move Up/Move Down choice already
+  applied elsewhere. Each configured platform (blank = hidden) renders as
+  a link with `rel="me noopener"` (fediverse profile-verification
+  convention) and `target="_blank"` — except Email, which renders a plain
+  `mailto:` link with neither. Icons render via the existing `lp_icon()`
+  developer helper (LPP-002's Font Awesome plugin) when that optional
+  plugin is active; when it isn't, the link falls back to visible platform
+  text instead of an icon-sized circle with hidden text, so it's never
+  degraded-looking either way. New CSS in `content/themes/default/style.css`
+  per CLAUDE.md's Public-Facing CSS Rule, including a `.lp-visually-hidden`
+  utility class (previously admin-only, in `admin.css`) needed here for a
+  public-facing component for the first time.
+
+**Implemented (2026-08-01), first-pass scope.** Before this session,
+`WidgetManager` (`app/Core/Widgets/WidgetManager.php`) was Phase 1
+scaffolding only — in-memory assignment with no persistence and no admin
+UI, and the only widget type that existed was a single "text" widget the
+default theme registered itself as a proof of concept. This session added:
+real persistence (a `widgets_config` JSON option, keyed by sidebar id —
+same "structured value as JSON in the options table" approach
+`active_plugins` already uses), a new Appearance &rsaquo; Widgets admin
+screen (`admin/views/appearance/widgets.php`, which is why Appearance is
+now a two-level menu — see its own `themes`/`widgets` children in
+`admin/index.php`), and ten built-in widget types
+(`LumoraPress\Core\Widgets\CoreWidgets`). `WidgetManager` itself gained
+stable per-widget ids (`setWidgets()`/`widgetsFor()`/`removeWidget()`) so
+individual instances of the same widget type can be added/edited/removed/
+reordered independently — the pre-existing `assign()`/`sidebars()`/
+`registerWidget()`/`renderSidebar()`/`hasWidgets()` API themes already use
+is unchanged. `PostService` gained `paginateByMonth()`/
+`monthlyArchiveCounts()` and a new `/archive/{year}/{month}` route (the
+Archives widget's links go somewhere real, not a dead route) and
+`CommentService` gained `recentApproved()` (unlike `recentForAdmin()`,
+which intentionally includes every status for moderators, a public widget
+must never surface a pending/spam comment).
+
+**Bugfix (2026-08-01):** saving a widget's settings from the admin Widgets
+screen could fail with "That widget no longer exists," and Custom HTML/
+Text widget content never actually persisted (rendered empty on the
+frontend) even when the save appeared to succeed. Root cause: the
+`add_widget` handler in `admin/views/appearance/widgets.php` saved a new
+widget into the persisted `widgets_config` option without an `id`.
+`WidgetManager::setWidgets()` generates a random id for any entry missing
+one, but only in memory for that request — since `include/bootstrap.php`
+reloads `widgets_config` and calls `setWidgets()` fresh on every request,
+an id-less widget got a *different* random id every page load, so the
+hidden `widget_id` field baked into the admin form never matched the id
+`bootstrap.php` would generate by the time the form was submitted. Fixed
+by (1) having `add_widget` read the id `setWidgets()` generated back via
+`widgetsFor()` before persisting, and (2) having `bootstrap.php` backfill
+and persist ids for any already-saved widget entries still missing one,
+so widgets created before this fix self-heal on the next request instead
+of staying permanently broken.
+
+#### Goal
+
+Implement a classic widget system for themes, similar to pre-Gutenberg WordPress, allowing users to build sidebars and widget areas without block-based editing.
+
+#### Features
+
+##### Widget Areas
+
+- [x] Register multiple widget areas (sidebars) — `register_sidebar()`, pre-existing
+- [x] Support theme-defined widget areas — same
+- [x] Header/footer widget areas — footer done in both bundled themes (see the 2026-08-13 note above); a `header` area was judged optional and left deferred (see "Header/Footer Widget Areas — Implementation Plan" below)
+- [x] Drag-and-drop widget ordering — native HTML5 drag-and-drop, no library (new `admin/assets/js/sortable.js`, generalized from the existing single-purpose `folder-drag-drop.js`); Move Up/Move Down buttons stay as the keyboard-accessible fallback rather than being removed. See the implementation note above this ticket's checklist.
+- [x] Collapse/expand widgets while editing — each widget is a native `<details>`/`<summary>` on the admin Widgets screen
+- [x] Save widget configuration — `widgets_config` option
+- [x] Import/export widget configuration — Maintenance › Export/Import's Lumora Press format carries widget instances (LP-165)
+- [x] Support inactive widgets — see the 2026-08-13 note above; a widget removed from a sidebar moves into a new "Inactive Widgets" admin section instead of being deleted, and can be reactivated into any sidebar or deleted permanently from there
+- [x] Delete Widget option in Active widget — an active widget's row now has a "Delete" action alongside "Deactivate", reusing the existing generic `delete_widget` handler (it already worked against any sidebar id, not just the Inactive bucket) rather than forcing a deactivate-then-delete round trip.
+- [x] Remember widgets across themes — `include/bootstrap.php`'s `widgets_config` loader now moves any saved sidebar id the active theme no longer registers (switched themes, or a theme dropped a sidebar) into the Inactive Widgets bucket instead of leaving it unloaded and unreachable, mirroring classic WordPress's own "widgets survive a theme switch, waiting to be reassigned" behavior.
+
+##### Core Widgets
+
+- [x] Text
+
+- [x] Custom HTML
+
+- [x] Image — Media Manager picker (its own request name, `widget_image_picker_query`), optional title, alternative text (falls back to the image's own), and a link limited to web or site-relative addresses; shown at natural size, never wider than the sidebar
+
+- [x] Search
+
+- [x] Navigation Menu
+
+- [x] Pages
+
+- [x] Categories
+
+- [x] php support — new "PHP Code" core widget type; the field's stored code is `eval()`'d (a leading `<?php` tag is stripped first, so the field holds a code body rather than a full file, matching the convention classic WordPress's own PHP-widget plugins used). Deliberately a separate widget type from JavaScript support above rather than one combined "code" widget — same reasoning in reverse: this is a server-side execution surface, gated by the same `manage_themes` capability (Administrator only) the Theme Editor already requires to hand-edit `functions.php` directly, so it grants no privilege that role couldn't already exercise, but it's a categorically different trust boundary than a client-side script and is clearer to admins kept as its own explicit, separately-labeled option rather than merged in. A parse/runtime error is caught and logged rather than taking down the page (`error_log()`, generic on-page result unaffected) per this project's "fail securely" error-handling rule.
+
+- [x] Recent Posts
+
+- [x] Recent Comments
+
+- [x] Archives — new monthly-archive route behind it, see above
+
+- [x] Tag Cloud — font-size scaled by post count, empty tags hidden
+
+- [x] Meta (login, rss etc) — simplified to a login link + this site's own feed link; a "Log out"/"Site Admin" link for an already-logged-in visitor is deferred (would need a new bridge exposing the current session's user to theme-rendered widgets, which nothing in this codebase does yet — SiteController passes `$current_user` per-view instead)
+
+- [x] Social Links (from LP-035) — a fixed platform list (Website, Email, Mastodon, Bluesky, Twitter/X, GitHub, YouTube, Instagram, Discord) configured via the widget's own settings; icons via `lp_icon()` (LPP-002) when that plugin is active, plain text otherwise. See the ticket-level 2026-08-10 note above.
+
+- [x] Statistics (from LP-035) — shows post/page/comment/user counts (the "easy queries against existing services" the deferral note anticipated); site-visit/pageview stats remain out of scope, no tracking infrastructure exists for those (tracked separately as LPP-014 in TODO-PLUGINS.md). See the ticket-level 2026-08-10 note above.
+
+  
+
+##### Widget Options
+
+- [x] Widget title — every core widget type has one
+
+- [x] Custom CSS class — an "Extra CSS classes" field on every widget, sanitised to valid class tokens and added to the widget's `.lp-widget` element (or a wrapping `<div>` for a plugin widget with its own markup)
+
+##### Theme Support
+
+- [x] Register widget areas via Theme API — `register_sidebar()`, pre-existing
+
+##### Developer API
+
+- [x] Register custom widgets — `register_widget()`, pre-existing
+- [x] Register custom widget areas — `register_sidebar()`, pre-existing
+- [x] Widget settings API — plugins can declare their own widget settings through the `widget_settings_fields` filter (documented under "Widgets" in `docs/DEVELOPER-APIS.md`). Not done: a plugin can't yet register a new field *type*.
+
+#### Design
+
+- [x] Classic widget administration interface — Appearance &rsaquo; Widgets
+- [x] No block widgets
+- [x] No Gutenberg dependency
+- [x] Lightweight and backward-compatible — additive only; every pre-existing `WidgetManager`/procedural-API method keeps its exact prior behavior
+
+#### Deliverables
+
+- Complete classic widget system
+- Built-in core widgets
+- Theme and plugin APIs
+- Import/export support
+
+------
+
+#### Header/Footer Widget Areas — Implementation Plan
+
+Purely a theme-level gap, not a core one: `WidgetManager`/`register_sidebar()`/
+`dynamic_sidebar()`/`is_active_sidebar()` already work against any sidebar
+id — `primary` is not special-cased anywhere in `app/Core/Widgets/`. Both
+bundled themes simply never register or render a second one.
+
+**Architecture:**
+
+- `content/themes/default/functions.php` and
+  `custom themes/duskline/functions.php`: add
+  `register_sidebar('footer', 'Footer Widget Area', '…')` alongside the
+  existing `register_sidebar('primary', ...)` call. A `header` area is
+  optional and less conventional (most classic WordPress themes only ever
+  shipped a footer one) — register it too, but a theme is free to leave it
+  unused if it doesn't fit the design.
+- `footer.php` in both themes: `if (is_active_sidebar('footer')): ... dynamic_sidebar('footer'); ... endif;`
+  — same "renders nothing at all when no widgets are assigned" pattern
+  `sidebar.php` already uses, so a site that never touches Appearance &rsaquo;
+  Widgets sees no layout change at all.
+- `header.php` in both themes: same pattern for `header`, only if a
+  sensible place for it exists in each theme's header layout (Duskline's
+  compact single-row header may not have room; default theme's simpler
+  header likely does — decide per theme at implementation time rather than
+  forcing a slot that doesn't fit).
+- New CSS: `default` theme needs a `.lp-site-footer__widgets` (and
+  `.lp-site-header__widgets`, if used) wrapper — new, stable, dedicated
+  classes per the Public-Facing CSS Rule. Duskline's footer is already a
+  two-column brand/links grid (`.lp-site-footer__inner`); a widget area
+  there most naturally becomes a third grid column or an additional row
+  beneath, not a redesign of the existing two columns (Custom Theme Rules:
+  additive only, nothing already there gets removed or restructured).
+- Widget content inside a footer/header area reuses the exact same
+  `.lp-widget`/`.lp-widget__title`/etc. classes and CSS already built for
+  the sidebar — no new widget-rendering code needed, only a new place to
+  call `dynamic_sidebar()` from.
+
+**Checklist:**
+
+- [x] `register_sidebar('footer', ...)` in both themes' `functions.php`.
+- [x] `dynamic_sidebar('footer')` (guarded by `is_active_sidebar('footer')`)
+      in both themes' `footer.php`.
+- [x] New footer-widgets (and header-widgets, if used) wrapper CSS in
+      `content/themes/default/style.css`, additive in
+      `custom themes/duskline/style.css`.
+- [x] Confirm existing sidebar widget CSS (`.lp-widget` and friends)
+      already looks correct in a horizontal footer-column context, not
+      just the vertical sidebar it was designed for — likely needs no
+      changes, but verify rather than assume. `.lp-widget` itself needed
+      no changes in either theme; each theme's new `.lp-site-footer__widgets`
+      wrapper adds `flex-wrap` row layout plus a `flex: 1 1 220px` rule on
+      `.lp-widget` so cards wrap sensibly instead of stretching full-width.
+      Not confirmed in a live browser this session — see the ticket-level
+      2026-08-13 note above for why.
+- [x] `README.md`/`CHANGELOG.md` updates once implemented for the default
+      theme (custom theme changes stay excluded from both, per this
+      project's CHANGELOG Rules).
+
+------
+
+#### Implementation notes (2026-10-14)
+
+Image widget: `CoreWidgets::register()` takes an optional `MediaService` (the type is not offered without one), `WidgetsController` saves the new `image` field type as a whole number and the new `css_class` type through `WidgetManager::sanitizeCssClasses()`, and `admin/views/appearance/widgets.php` answers its own picker query (the tokens for several Image widgets on one screen coexist, since `Csrf` keeps a pool per action). Extra CSS classes are applied in `WidgetManager::renderSidebar()` by buffering each widget's output, so no widget needed changes. A link is accepted only when it starts with `http://`, `https://` or a single `/`, because `esc_url()` only escapes. The `.lp-widget__image` stylesheet block was added to Lumora Classic and, additively, to the four custom themes. Widget lifecycle hooks were rejected (see `DECISIONS.md`, 2026-10-14). Verified on the dev install: Image in the Add Widget list, the picker opening and choosing an image, and the public sidebar showing the linked image with the extra class (the dev widget configuration was restored afterwards).
+
+
+### LP-140. Portable Settings Export/Import (Cross-Installation)
+
+**Status:** Complete
+
+#### Goal
+
+There is currently no way to copy configuration from one Lumora Press
+installation to a completely unrelated one (e.g. xenacentral.com to
+the-mummy.net — different site, different database, no shared identity)
+short of manually re-entering every field by hand across every Settings
+screen. A site admin running several separate Lumora Press installs
+wants a way to export the *portable* subset of one site's settings —
+Permalinks, Reading, Discussion, Media (including Media Viewer &
+Lightbox and Thumbnail settings), and General's non-identity fields
+(timezone, date/time format, SEO defaults, feeds, search, revisions,
+REST API, editor) — as a single file, then import it into a different
+install to apply that same configuration there.
+
+This is explicitly **not** a same-site backup/restore or a multisite
+network feature — the two installs are unrelated, with their own
+separate database, uploads, users, and content. Only configuration
+values travel; nothing installation-identifying does.
+
+#### Field Scope
+
+Portable (safe to copy across installs) — implemented exactly this way in
+`SettingsPortabilityService::PORTABLE_FIELDS`/`allFields()`:
+
+- [x] Permalinks (`admin/views/settings/permalinks.php`) —
+      `permalink_structure`, `category_base`, `tag_base`.
+- [x] Reading (`admin/views/settings/reading.php`) — `posts_per_page`,
+      `discourage_search_engines`, `homepage_display`. Excludes
+      `homepage_page_id`/`homepage_posts_page_id` (see below).
+- [x] Discussion (`admin/views/settings/discussion.php`) — every
+      `comment_*` option plus `avatars_enabled`/`avatar_max_rating`/
+      `avatar_default`. Excludes `avatar_default_media_id` (see below).
+- [x] Media (`admin/views/settings/media.php`) — `media_track_downloads`,
+      `lightbox_show_filenames`, `lightbox_large_size`, plus Thumbnails
+      (`ThumbnailService`'s `thumbnail_size_{small,medium,large}_{width,
+      height,mode,enabled}`, `thumbnail_max_pixels`, `thumbnail_sharpen`,
+      `thumbnail_jpeg_quality`, `thumbnail_webp_quality`,
+      `featured_image_crop_size`). Deliberately limited to the three
+      core-registered size names — a plugin-registered size added via
+      the `thumbnail_sizes` filter may not be config-option-backed at
+      all, so it's never included (see the service's own class
+      docblock).
+- [x] General (`admin/views/settings/general.php`), **field-level, not
+      the whole screen** — `timezone`, `date_format_preset`/
+      `date_format_custom`, `time_format_preset`/`time_format_custom`,
+      `meta_description`, `feeds_*`, `search_*`, `revision_retention`,
+      `rest_api_enabled`/`rest_api_resource_{posts,pages,categories,tags,
+      comments,search}_enabled`/`rest_api_comments_public_submission_enabled`,
+      `default_editor`/`lock_editor_to_default`. Excludes `site_url`,
+      `site_tagline`, `admin_email`, `default_og_image_media_id` (see
+      below) — all in the same form/table as the portable fields above,
+      confirmed not dumped wholesale.
+
+Evaluated and decided **not** portable, so left out of the field list
+entirely rather than exported:
+
+- [x] Embeds (`admin/views/settings/embeds.php`) — not included.
+- [x] Cache (`admin/views/settings/cache.php`) — not included; a cache
+      driver override can be host-specific (e.g. a CDN/LiteSpeed
+      setting tied to this server), not a content-configuration choice.
+
+Explicitly excluded (never exported, always left as the destination
+install's own value):
+
+- [x] `site_url`, `site_tagline`, `admin_email` (General).
+- [x] Local database-row references that would point at nothing (or the
+      wrong thing) on an unrelated install: `avatar_default_media_id`
+      (Discussion), `default_og_image_media_id` (General),
+      `homepage_page_id`/`homepage_posts_page_id` (Reading) — found
+      during implementation, not anticipated when this ticket was
+      written; each one's non-reference sibling setting (e.g.
+      `homepage_display`) still travels.
+- [x] Anything under Security, Privacy, Redirects, and Maintenance Mode
+      settings — these are inherently install-specific (redirects map
+      old URLs *on this site*; security/privacy reflect this
+      installation's own policy; maintenance mode is transient runtime
+      state, not configuration).
+- [x] Any database credential, file path, or other value from
+      `config/config.php` — this feature is scoped to admin-editable
+      Settings-screen options (via `PressConfig::option()`/
+      `setOption()`) only, never the installer-generated config file,
+      which `SettingsPortabilityService` never touches.
+
+#### Checklist
+
+- [x] Confirmed the field allowlist/denylist above against the actual
+      current option keys in each settings screen (not just this
+      ticket's original draft) — found and excluded three local-
+      reference option keys the original draft missed (see Field Scope
+      above).
+- [x] New `SettingsPortabilityService`
+      (`app/Services/SettingsPortabilityService.php`): `export()` reads
+      the allowlisted option keys via `PressConfig` and returns a
+      versioned JSON payload (format version + the exporting site's
+      Lumora Press version, for a future compatibility check).
+      `stage()`/`inspectStaged()`/`finalize()`/`discardStaged()` mirror
+      `PluginInstaller`'s own upload-review-confirm shape exactly.
+- [x] New "Export Settings" section on Maintenance &rsaquo; Tools
+      (`admin/views/maintenance/tools.php`), alongside its existing Fix
+      Double-Encoded Text/Migrate Download Categories/Dummy Content
+      tools — a plain GET download, gated to Administrator role the
+      same way the whole Tools screen already is
+      (`admin/index.php`'s `manage_options` capability on the
+      `maintenance` menu entry).
+- [x] New "Import Settings" section, same screen: upload → staged file
+      → before/after diff table (current value vs. imported value, per
+      changed key only) → explicit "Apply These Changes"/"Cancel" —
+      never silently overwrites, and only ever writes through
+      `SettingsPortabilityService::allFields()`'s allowlist, so a
+      malformed or tampered import file cannot set an arbitrary option
+      key.
+- [x] CSRF protection (`Csrf::field()`/`Csrf::verify()`, unique action
+      name per form on the screen) on stage/confirm; `UPLOAD_ERR_*`
+      checked before the file is touched; the service itself rejects
+      anything that isn't valid JSON carrying its own export marker
+      before reading `values` at all. No separate upload size cap was
+      added — PHP's own `upload_max_filesize` already bounds any
+      `$_FILES` entry, and this is a small JSON file behind an
+      Administrator-only, CSRF-protected action, not a public upload
+      surface.
+- [x] Decided and documented (service class docblock + the Import
+      Settings screen's own copy) how an unrecognized option key is
+      handled: skipped and reported separately from real changes
+      ("N unrecognized settings ... ignored"), never applied and never
+      a fatal error. A key the *source* install never explicitly set
+      (`null` in the export) is skipped the same way, rather than
+      forcing a coerced default (e.g. an unset bool) onto the
+      destination — found via manual testing, not anticipated up
+      front; see the service's own inline comment at that check.
+- [x] Regression/integration test coverage: 10 new unit tests
+      (`PHP Test Suite/Unit/Services/SettingsPortabilityServiceTest.php`)
+      cover export field scope/exclusions, diff computation (real
+      changes vs. untouched vs. unknown keys), type sanitization, and
+      the stage/finalize/discard lifecycle — run against a real
+      `PressConfig` (in-memory mode, no database needed, same pattern
+      `PressConfigTest` already establishes). Full suite (2012 tests)
+      still green. **Not done:** an `Integration/` test actually
+      exporting from one seeded install and importing into a second are
+      not written — this ticket's original "export on one seeded
+      install, import into a second" scenario is exercised manually
+      (see the end-to-end note below) but not as an automated
+      MySQL-backed regression test. **Done 2026-10-14:**
+      `PHP Test Suite/Integration/SettingsPortabilityIntegrationTest.php`
+      runs two unrelated installs (two table prefixes) on a real
+      MariaDB: export from one, stage and review in the other, apply,
+      and read the result back through a fresh `PressConfig`. It
+      checks that identity and install-specific values never travel and
+      the destination's own stay put, that a setting the source never
+      chose doesn't overwrite the destination's, that importing the same
+      file twice changes nothing, that an unknown key is reported and
+      never written, and that a cancelled import changes nothing.
+- [x] Documented in `README.md`'s "Current Status" feature list (new
+      bullet under Maintenance mode).
+
+**Manually verified end-to-end on the dev install** (2026-08-31):
+exported the live site's settings, edited three values
+(`permalink_structure`, `posts_per_page`, `comment_threading_enabled`)
+in the downloaded file, re-imported it — the diff screen showed exactly
+those three changes (every untouched/never-set field correctly produced
+no diff row), applying them updated the live Permalinks/Reading/
+Discussion screens (confirmed both via a direct option re-export and by
+loading Settings &rsaquo; Permalinks itself, which even showed its own
+"this will change existing post URLs" warning for the new structure —
+real integration, not just raw option storage), and canceling a staged
+import correctly discarded it without changing anything. All three test
+values were then reverted through their own normal Settings screens
+before ending the session, leaving Ariane's dev install as found.
+
+
+### LP-165. Full Content Export (Native Round-Trip Format + Cross-Platform WXR)
+
+**Status:** Complete
+
+**Implemented 2026-09-25.** Everything except the two live cross-install checks. Where the build differs from the design below: (1) the native import is its own always-available "Lumora Press Import" panel on Maintenance › Import rather than a third option on the WordPress Importer's "Source type" radio — that radio lives entirely inside the plugin-gated WordPress flow and drives `WordPressImportService`, while this importer is core and has to work with the plugin inactive; (2) WXR converts Markdown with `ContentRenderer::convertFormat()`, not `render()`, since `render()` also expands shortcodes/embeds and WordPress should receive the shortcodes themselves; (3) the Export screen generates the file, then shows a summary page (with WXR's lossy-field list) and a one-time, session-bound download link, because a direct download response has no page to show that summary on. The Imported* DTOs gained optional fields to make the native round trip lossless (`ImportedPost::$categoryIds`/SEO, `ImportedPage::$visibility`/`$commentsOpen`/SEO, `ImportedComment::$pageId`), all defaulting to the previous behavior for the WordPress/Dummy Content importers. Smoke-tested against the dev install's real content from the CLI (731 posts, 180 pages, 5,054 media): 1.47 GB ZIP with uploads vs 0.9 MB without (both manifests list all 5,054 media records), 12.3 MB WXR, and both files read back in full by this app's own readers. Known limits, not bugs: the existing WordPress Importer doesn't import arbitrary postmeta, so custom fields in a WXR only reach real WordPress; internal links whose permalink *shape* differs between sites aren't rewritten (absolute site URLs, old install-folder paths, and renamed media files are).
+
+**Live WordPress import, 2026-09-27** (tested with WordPress 7.1.2 + WordPress Importer 0.9.6 at `localhost/wordpress`, importing 733 posts, 182 pages, and 5,054 media files): the first run with "Download and import file attachments" returned a 500 after ~2,700 of 5,054 attachments. That was Apache's `Timeout 300` cutting off WordPress's single-request importer, not a WXR problem. With the timeout raised, a clean re-import brought in all 5,054 attachments, 733 posts, 182 pages, 36 menu items, and 271 featured images, none of them broken. That run showed one real export bug: `<img src>`/`<a href>` in content were root-relative (`/lumorapress-preview/content/uploads/…`). WordPress's `rewrite_urls` swapped only the base path, leaving `/wordpress/content/uploads/…`, and `backfill_attachment_urls()` only remaps exact absolute URLs, so every inline image pointed at a path that doesn't exist. Fixed: `WordPressXmlWriter` now writes root-relative `src`/`href`/`poster` in post/page content and excerpts as absolute URLs. Confirmed the same day with a fresh export re-imported into a reset WordPress: the same counts as before, 0 broken featured images, no remaining `lumorapress-preview` or `/wordpress/content/uploads/` references, and all 2,584 distinct inline upload URLs across 347 posts/pages resolve to real files under `wp-content/uploads`. The other posts with images point to external sites, which is correct.
+
+Maintenance &rsaquo; Export (`admin/index.php`'s menu) has been a stub since it was first added — a menu entry with no view file behind it (`admin/views/maintenance/export.php` doesn't exist). It's meant for a full content export, the Lumora Press equivalent of WordPress's own Tools &rsaquo; Export/Import (WXR): every post, page, category, tag, comment, user, media file, menu, and widget instance bundled into one portable, downloadable file — distinct from Maintenance &rsaquo; Tools' existing "Export Settings" (LP-140), which deliberately covers only *configuration* (Permalinks/Reading/Discussion/Media/portable General settings) and excludes all content.
+
+**Two export formats, not one** — the native format alone would only ever be readable by another Lumora Press install, which isn't real portability. The Export screen offers a choice:
+
+1. **Lumora Press format (.zip)** — full-fidelity, lossless, built for round-tripping into another Lumora Press install (or this same one). Every field this app itself has survives the trip.
+2. **WordPress WXR (.xml)** — cross-platform: importable into WordPress itself, or any other platform that reads WXR. Lossy by nature (WordPress's schema doesn't have a slot for everything Lumora Press has), but it's what makes an export actually portable *off* Lumora Press, not just between two Lumora Press installs.
+
+#### Design
+
+The existing WordPress-import machinery already does almost everything this needs, just pointed at an external WordPress site instead of this site's own data — reusing it is the load-bearing idea here, the same way LP-162's plan reuses `UpdateService`'s existing overlay machinery:
+
+- **Built as a writer-pluggable format from day one, not a two-format special case.** WXR won't be the last format asked for — see `ideas for later.md`'s new "Other Blogging Platforms" list (Ghost JSON, Jekyll/Hugo Markdown+front-matter, Micro.blog/JSON Feed, and others are all plausible future targets), and a future third-party plugin may want to register its own exporter the same way the WordPress Importer plugin's own "Plugin API for third-party importers" idea already anticipates for imports. So the export pipeline is split into two independent halves from the start:
+  1. **A format-agnostic export payload** — `ContentExportService` (or a small `ExportContent` value object it returns) reads the live site through the existing `PostService`/`PageService`/`CategoryService`/`TagService`/`CommentService`/`UserService`/`MediaService`/`MenuManager`/`WidgetManager` exactly once, into the same `Imported*`-shaped structures already used elsewhere (`ImportedPost`, `ImportedPage`, etc.) — this is the *only* code that touches Lumora Press's own data-access layer.
+  2. **An `ExportFormatWriter` interface** (mirroring the `MediaStorageInterface`/`LocalFilesystemStorage` pluggable-driver pattern `ideas for later.md`'s Media Manager section already describes, and `CacheDriverInterface`'s identical shape) — `write(ExportContent $content, ExportOptions $options): string` (returns the finished file's path). `LumoraPressZipWriter` and `WordPressXmlWriter` are the two v1 implementations; a future `JekyllMarkdownWriter`/`GhostJsonWriter`/etc. is purely additive — it never touches `PostService` or any other live-data code, only the neutral payload every other writer already consumes.
+  3. **A small format registry**, filterable via `apply_filters('export_formats', [...])` the same way `register_shortcode()`/other extension points already work in this codebase — core registers `lumora_press`/`wxr` by default, and a plugin can register a third format id + writer + admin-facing label without touching this ticket's own files at all. The Export screen's format `<select>` is built from this registry, not a hardcoded pair of `<option>`s.
+  4. Each writer independently declares which content types it supports (e.g. `WordPressXmlWriter::supportsWidgets(): false`) so the Export screen can disable/grey out a checkbox per format without a growing pile of `if ($format === 'wxr')` conditionals in the view itself.
+- **The `Imported*` DTOs are already source-agnostic.** `ImportedPost`/`ImportedPage`/`ImportedUser`/`ImportedMedia`/`ImportedComment`/`ImportedMenu`/`ImportedMenuItem`/`ImportedWidgetInstance` (`app/Services/Import/`) are explicitly documented as "independent of where the data came from" — they use Lumora's own enums (`PostStatus`, `ContentFormat`, `PostVisibility`) and plain category/tag name lists, not WordPress column names. The Dummy Content plugin already proves a second, non-WordPress source can feed the exact same `PostImporter`/`PageImporter`/etc. — a native export/import is a third.
+- **`LumoraPressZipWriter`'s output shape:** a downloadable ZIP (`lumora-press-export-{site-slug}-{date}.zip`), containing a `manifest.json` (posts, pages, categories, tags, comments, users, menus, widget instances — essentially the *current-state* shape of each `Imported*` DTO, serialized) plus an `uploads/` directory holding the actual media files, preserving each file's relative directory (mirrors `ImportedMedia::$relativeDirectory`, which already exists specifically to preserve a source's own folder layout). No site identity/security/install-specific settings are included — same scope boundary Export Settings already draws, just for the opposite half of the site (content, not configuration).
+- **`ContentExportService` builds the payload once, regardless of format.** It reads the live site's own content via the existing `PostService`/`PageService`/`CategoryService`/`TagService`/`CommentService`/`UserService`/`MediaService`/`MenuManager`/`WidgetManager` (no new data-access code — every one of these already exists and is already used elsewhere) into the shared `ExportContent` payload, then hands it to whichever `ExportFormatWriter` the admin picked. v1 exports everything at once, synchronously, mirroring Export Settings' direct-download convention; a staged/background export (mirroring `UpdateService::beginInstall()`/`continueInstall()`'s multi-request pattern) is a reasonable follow-up if a real large site proves too slow/memory-heavy for one request, not a v1 blocker.
+- **Content-type checkboxes** (Posts/Pages/Users/Media/Comments/Menus/Widgets), mirroring the Dummy Content generator's own existing include-checkboxes UX — lets an admin export a subset (e.g. just Posts+Media for a partial backup) rather than always everything. Date-range/category/author filtering (WordPress's own Export screen has these) is worth having eventually but isn't required for v1 parity with what this ticket actually needs to unblock: the stub menu entry having a working screen behind it at all.
+- **"Include uploaded files" toggle, separate from the Media checkbox** — `content/uploads/` can run into gigabytes on a long-lived site, easily dwarfing everything else in the export combined. Checked by default (a complete, self-contained export), but unchecking it excludes the actual files from the ZIP's `uploads/` directory while still exporting every other content type in full, *including* media's own metadata records (filename, alt text, folder, dimensions) so posts/pages referencing an image keep that relationship recorded rather than silently losing it. No new remote-fetch machinery is needed to make this safe: `WordPressImportService` already skips a media item outright with a warning when its file can't be found on disk (`"Attachment #{$id}: file not found at {$path}, skipped."`) — the native-format importer reuses that exact same fallback for a manifest entry whose file wasn't bundled, so the honest, already-proven behavior is "imported everywhere else, but that one image doesn't come back with it," not a silent broken link or new remote-URL-fetching feature with its own SSRF surface to secure.
+- **Native-format Import — the round-trip companion.** An export nobody can reimport isn't very useful (matching how WordPress's own Export exists specifically so its Import can consume it, including into a different WordPress site). Maintenance &rsaquo; Import's existing "Source type" radio (`database`/`wxr`, both WordPress-specific — see `admin/views/maintenance/import.php`) gains a third option, "Lumora Press Export (.zip)": the upload is staged to a temp directory (mirroring `PluginInstaller::stage()`'s existing ZIP-staging pattern), a new small `LumoraPressExportSource` class parses `manifest.json` back into the same `Imported*` DTOs, and every downstream `*Importer` runs completely unchanged. `ContentImportRegistry` tracks this under a new `'lumora_press_export'` source string, which gives idempotent re-import detection for free (re-importing the same export twice updates rather than duplicates, exactly like re-running a WordPress import today) — no new dedupe logic needed.
+- **User passwords:** never exported (they aren't portable — WordPress's own WXR doesn't carry them either), and `UserImporter` already assigns a random unusable password to every imported user regardless of source, so an imported user needs a password reset before logging in — this native-format import inherits that existing, already-correct behavior with no new code.
+- **WXR export — the cross-platform half.** `content/plugins/wordpress-importer/src/WordPressXmlSource.php` already *reads* WXR in detail (namespaced `wp:` elements for post id/date/type/status/author, `<wp:postmeta>`, `<wp:comment>`, `<wp:category>`/`<wp:term>` taxonomy, nav menu items as a post type) — a new `WordPressXmlWriter` (or similar) is the mirror-image counterpart, reading Lumora's own live content (same services `ContentExportService` already reads) and writing the exact element shapes `WordPressXmlSource` already knows how to parse back. That symmetry also gives this a strong built-in correctness check for free (see Testing below): a WXR file this app writes should be parseable by the WXR *reader* this app already has.
+  - **Content translation:** `ContentFormat::Markdown` post/page content is rendered to HTML via the existing `ContentRenderer::render()` before being written into `<content:encoded>` — WXR/WordPress has no native Markdown concept, only rendered HTML (or the classic/block editor's own markup), so this matches what a real WordPress `content:encoded` field already looks like.
+  - **Lossy fields, made visible, not silent:** anything with no WXR equivalent (Lumora-specific `PostVisibility` states beyond WordPress's own public/private, any Lumora-only post/page setting) is simply omitted from the XML rather than forced into an ill-fitting WordPress field — the export screen shows a short "N fields couldn't be represented in WordPress's format" summary after generating a WXR export, so this is a disclosed limitation, not a silent data loss.
+  - **No file bundling — matches real WXR exactly.** WXR itself has no concept of attachment files traveling with the document; it only ever references an attachment by URL (`<wp:attachment_url>`), and it's the *importing* side's job to fetch that. So the "include uploaded files" toggle above only applies to the native ZIP format — WXR export always just references this site's own current media URLs, identical to what a real WordPress WXR export does, and needs no separate uploads-handling logic of its own.
+  - **Widgets have no WXR representation** (WordPress itself has never exported widgets via WXR) — the Widgets content-type checkbox is disabled/hidden specifically for the WXR format, not attempted and silently dropped.
+  - **Menus do have one** — WordPress WXR represents nav menus as `nav_menu_item`-type posts referencing a `nav_menu` taxonomy term, which `WordPressXmlSource` already parses on the import side; the writer produces that same shape.
+
+#### Non-goals
+
+- Not a full site clone. Theme files, plugin files, and `config/config.php` are never included — matches WordPress's own Export/Import scope exactly (content only). A full filesystem clone is a different, unrelated operation.
+- Doesn't replace Export Settings (LP-140) — the two remain deliberately separate downloads (content vs. configuration), the same split WordPress itself doesn't really have but Lumora Press already chose for Settings export.
+- WXR export is one-way portability *out* of Lumora Press, not a promise that every Lumora Press site feature survives the trip — see the lossy-fields note above. It's meant to unblock "get my content into WordPress (or another WXR-reading platform) if I ever need to," not to guarantee perfect fidelity for a platform this app doesn't control.
+
+#### Checklist
+
+**Extensible scaffolding (build this first — both formats below plug into it):**
+
+- [x] `ExportContent` (or similar): the format-agnostic in-memory payload `ContentExportService` produces once per export, holding the `Imported*`-shaped content plus resolved media file paths.
+- [x] `ExportFormatWriter` interface: `write(ExportContent $content, ExportOptions $options): string`, plus a way for a writer to declare which content types it supports (for the Export screen to grey out an unsupported checkbox) and a human-readable label.
+- [x] A format registry seeded with `lumora_press`/`wxr` by default, filterable via `apply_filters('export_formats', [...])` (matching `register_shortcode()`'s existing extension-point convention) so a plugin can register a third writer without touching this ticket's files.
+- [x] Export screen's format `<select>` and per-format checkbox disabling are both driven by the registry, not hardcoded per-format conditionals in the view.
+
+**Native format (Lumora Press → Lumora Press):**
+
+- [x] `ContentExportService`: reads live content via existing services into the `Imported*`-shaped `manifest.json`, bundles referenced media files into `uploads/` preserving relative directories, zips the result.
+- [x] "Include uploaded files" checkbox (default checked) on the Export screen — unchecked, `uploads/` is omitted from the ZIP entirely while every media record still lands in `manifest.json`.
+- [x] `LumoraPressExportSource`: parses a staged native export ZIP's `manifest.json` back into `Imported*` DTOs; a media record whose file isn't present in the ZIP (uploads excluded, or a manually-trimmed archive) is skipped with a warning, reusing the exact "file not found, skipped" behavior `WordPressImportService` already has — no new fallback logic.
+- [x] Extend `admin/views/maintenance/import.php`'s "Source type" radio with a third "Lumora Press Export (.zip)" option, wired to the existing staged-import flow and the new source class. (Built as its own core panel instead — see the note at the top of this ticket.)
+- [x] `ContentImportRegistry` usage under the new `'lumora_press_export'` source string — confirm re-import-of-the-same-export updates rather than duplicates, same as WordPress re-import already does.
+
+**WXR format (Lumora Press → WordPress / any WXR reader):**
+
+- [x] `WordPressXmlWriter` (or similar): writes the same content `ContentExportService` reads into valid WXR XML — `wp:` namespaced post/postmeta/comment/category/term elements, nav menus as `nav_menu_item`, Markdown content pre-rendered to HTML, Widgets excluded.
+- [x] "N fields couldn't be represented in WordPress's format" summary shown after a WXR export, listing what was dropped and why.
+- [x] Export screen: a format choice (Lumora Press .zip / WordPress WXR .xml) alongside the existing content-type checkboxes; Widgets checkbox disabled when WXR is selected; the include-uploads toggle hidden/inert for WXR (which never bundles files, only references URLs, matching real WordPress WXR behavior).
+- [x] `admin/views/maintenance/export.php`: format choice, content-type checkboxes, the include-uploads toggle, "Download Export File" — fills in the long-stubbed menu entry.
+
+**Tests:**
+
+- [x] Unit tests: `ContentExportService` output shape (each content type, media bundling/relative-directory preservation, uploads-excluded ZIPs correctly omitting files while keeping records), `LumoraPressExportSource` parsing (including the skip-with-warning path for a missing file), `WordPressXmlWriter` field mapping (including the lossy-field-summary path).
+- [x] End-to-end native round-trip test: export a small fixture site's content, import it back via `LumoraPressExportSource`, assert every post/page/user/media/comment/menu/widget landed correctly.
+- [x] End-to-end WXR round-trip test: export a small fixture site's content as WXR, then feed that exact file through the *existing* `WordPressXmlSource`/`WordPressImportService` pipeline (already built for reading WXR) as the correctness check — if this app's own WXR reader can cleanly re-import what this app's own WXR writer produced, the format is well-formed and field-mapped correctly, without needing a real WordPress install to verify against.
+
+**Live verification:**
+
+- [x] Native format: export the real site's content both with and without uploaded files included, inspect the resulting ZIPs (confirming the size difference and that `manifest.json` still lists every media record either way), and import each into a throwaway second install (never the same live source tree — see `CLAUDE.md`'s installer-safety rule) to confirm a faithful round-trip, with the uploads-excluded import correctly reporting skipped media items rather than failing outright.
+- [x] WXR format: export the real site's content as WXR and, if a real (throwaway) WordPress install is available to test against, import it there directly to confirm it's genuinely readable by WordPress itself, not just by this app's own WXR reader.
+
+------
+
+#### Live round trip (2026-10-14)
+
+Exported the dev install's real content (734 posts, 180 pages, 97 comments, 5,059 media, 110 categories, 63 tags, 46 media folders, 5 menus, 6 widgets) with and without uploaded files, then imported each into a throwaway second install: a copy of the source tree installed through the real installer onto its own database and served by PHP's built-in server (the live source tree and the dev install were never touched; everything was deleted afterwards).
+
+- **Sizes:** 1.55 GB with uploads, 0.95 MB without. The without-uploads ZIP is only `manifest.json`, and that manifest still lists all 5,059 media records.
+- **Without uploads:** the import finished normally, added everything except media, and reported 5,059 skipped media items with the reason ("file not found in the export or the uploaded files folder"), not a failure.
+- **With uploads:** the import added all 5,059 media files in about 40 seconds, with no warnings. A random sample of media rows all had their files on disk, an imported image was served over HTTP, and every post's featured image pointed at an existing media row (268 of 268).
+- **Fidelity:** comments, media (file name, type, size, alt text and file hash), categories, tags and folders matched the source exactly by checksum. Posts matched (the 4 trashed posts are never exported, as designed, so 734 of 738). Page content differs in five harmless ways, all of them the importer sanitising or re-basing the HTML: the site's base path in links (it moved to the root), the random suffix on a re-saved file name (the links were rewritten to match), legacy `mce_*` attributes dropped, `&nbsp;` stored as the character, and unclosed headings closed. The visible text and the list of uploaded-file links of all 180 pages are identical.
+- **How it was driven:** the Browser pane would not open the local second install, so the import was run through scripted HTTP requests with a real login: the plain-form path that imports in one request. The in-place progress path was not exercised in this run (it was verified in the browser for LP-181).
+
+
+### LP-206. Updates Must Not Bring Back Bundled Plugins and Themes You Removed
+
+**Status:** Complete
+
+A site owner who has no use for some of the plugins that ship with Lumora Press (Dummy Content, Font Awesome, Contact Forms, and so on) can delete them, but the next core update puts every one of them back. Deleted plugins return as inactive, so the site isn't broken, but they clutter the Plugins screen, add to every backup and update, and the owner has to delete them again after each release.
+
+#### Why it happens
+
+- `core-paths.php` lists every bundled plugin and theme as a core path (`content/plugins/{slug}`, `content/themes/lumora-classic`). `UpdateService::applyFilesStage()` overlays every effective core path from the package, and `overlayPath()` writes a path whether or not it exists on disk now. A missing directory is indistinguishable from a new one.
+- The same list drives `bundledPluginSlugs()`, the per-plugin update packages, and the "modified core file" warning. A removed plugin also shows up in that warning: its files are in the checksum baseline and read as changed because they are missing.
+
+#### Recommended approach
+
+The running code already knows what it shipped. `UpdateService::resolveEffectiveCorePaths()` unions the running version's `$this->corePaths` with the package's `core-paths.php`. So the rule is:
+
+- **A bundled plugin or theme that the currently running version ships, and that is absent from disk, was removed on purpose: skip it.** No record is needed, so it also covers a plugin deleted by FTP or a file manager, and sites that updated before this existed.
+- **A bundled plugin or theme that only the new package declares is new in this release: install it** as today (inactive, like any new plugin).
+
+That needs no new setting for the common case, so nothing can fall out of sync. The cost is that "absent" is the only signal. The edge cases are listed below, and the first one is the reason for the restore item.
+
+#### Checklist
+
+##### The update
+
+- [x] In `applyFilesStage()`, leave out any `content/plugins/{slug}` or `content/themes/{slug}` path that is in the running core's own list and not present under the install root. Core directories (`app`, `admin`, `include`, and so on) are never skipped: a missing core directory is damage, and an update should still repair it.
+- [x] The per-component update path is deliberately left alone: it still installs a bundled plugin that is not on disk, which is exactly how Restore works. Only a core update leaves removed components out.
+- [x] `removeObsoleteCorePaths()` and the update manifest must keep working: a skipped path stays in the manifest's list of what the release ships, so a later release that drops the plugin entirely doesn't try to delete something that is already gone.
+- [x] The staged-package checks (`UpdatePackageValidator`, the "installed version did not match" verification, and the checksum baseline written after an update) must not treat a skipped path as missing or failed. Write the baseline only for what was actually applied.
+- [x] The "modified core files" warning must not list files of a removed bundled plugin or theme.
+- [x] The Updates screen says what was left out ("Not reinstalled because you removed them: Dummy Content, Font Awesome"), in the update result and the log, so it is never a silent surprise.
+- [x] Never skip Lumora Classic silently into a broken site: if the active theme, or the fallback theme `include/bootstrap.php` uses when none is set, would be missing, apply it anyway.
+
+A plugin that is still marked active but is missing from disk needs nothing here: the plugin loader already skips it, and an update that leaves it out changes nothing about that.
+
+##### Getting one back
+
+- [x] The Plugins screen (and Appearance › Themes for the theme) lists bundled components that are not installed, in a small collapsed "Removed bundled plugins" group, each with a Restore button. This is also how an owner undoes a mistaken delete.
+- [x] Restore reuses the per-plugin update pipeline (`validateAndStagePlugin()` and the staged install) with the latest release's `plugin-{slug}-v{version}.zip`, since a bundled plugin's own package is exactly what is needed. When that release has no package for it, say so and point to uploading the plugin ZIP by hand.
+- [x] Restore never activates the plugin. It is installed inactive, like any plugin.
+
+##### Tests and docs
+
+- [x] Unit tests: a removed bundled plugin is not recreated by an update; a plugin that is new in the package is; a missing core directory is repaired; the active theme is never skipped; the manifest and checksum baseline stay correct after a skip; the modified-files warning ignores a removed plugin.
+- [x] Integration test in `UpdateServiceIntegrationTest`, following a full update on a copy of the tree with one bundled plugin deleted before it, so the staged install, verification, and cleanup stages all run against the skipped path.
+- [x] Browser-verify on a throwaway copy of the dev install (never the live one): delete a bundled plugin, run an update, confirm it stays gone and the result says so; then Restore it.
+- [x] Update the README's Updating section, `docs/UPDATES.md`, and `docs/CHANGELOG.md`. Describe the behavior from the user's side (a plugin you delete stays deleted), not the mechanism.
+
+#### Edge cases to handle or accept
+
+- **A plugin missing by accident**, for example a failed or half-finished earlier update, is read as a removal and not restored. The Restore button is the answer, and the Updates screen listing what was skipped makes it visible. A site whose update was interrupted already gets the Resume/Discard panel, which covers the common case.
+- **A restore from a site's own backup** that brings a plugin back is fine: it is present, so it updates normally.
+- **A bundled plugin moves to a different slug or a different location** in a later release: the old path is absent and skipped, and the new one is only declared by the package, so it installs. A release note should say so.
+- **Existing sites that deleted plugins long ago** are covered at once, because the rule looks at disk and at what the running version ships, not at a record of past deletions.
+
+#### Alternatives considered
+
+- **A stored list of removed components** (written when a plugin is deleted from the Plugins screen). More explicit, but it misses deletions made outside the admin, needs a migration or seeding for existing sites, and can drift from what is really on disk. It could still be added later as a way to mark a plugin "never reinstall even if I upload it again".
+- **Taking the optional plugins out of the core ZIP** and installing them from a plugin directory. The cleanest long-term answer to "not all of these are wanted", but it needs a hosted plugin index and a first-run chooser, which is far more than this problem calls for. It belongs with any future plugin directory work.
+- **A checklist on the Updates screen** ("also reinstall: ...") for each missing bundled plugin. Safer against the accident case, but it asks the owner a question on every update for something they already decided. The Restore button covers the same need without that.
+
+
+### LP-214. Update a Plugin From a ZIP, Like Themes
+
+**Status:** Complete
+
+Themes can be updated by hand: every installed theme card on Appearance › Themes has an "Update from ZIP" button, and `ThemeInstaller::update()` swaps the files in place, checks the ZIP is for that same theme, and puts the previous version back if anything fails. Plugins have no equivalent. The only manual route is uploading the ZIP in the Add Plugin form and confirming "Replace Installed Plugin" on the review screen, and `PluginInstaller` deletes the old folder before moving the new one in, so a failure in between leaves the plugin missing. This ticket brings plugins up to the theme behavior, for plugins that are not bundled with Lumora Press or whose package didn't come from GitHub.
+
+#### Checklist
+
+- [x] Add an "Update from ZIP" control to each installed plugin on the Plugins screen, matching the theme card's wording and layout, and reject a ZIP whose plugin folder name differs from that plugin's.
+- [x] Add `PluginInstaller::update()` that mirrors `ThemeInstaller::update()`: extract to a staging folder, move the old folder aside, move the new one in, and restore the old one if any step fails, so an interrupted update never leaves the plugin missing.
+- [x] Keep the plugin's active state and saved settings across the update, and run any plugin activation or upgrade hook only if the plugin already defines one for version changes.
+- [x] Show the installed and uploaded versions before applying, and warn (with a confirm) when the ZIP is the same version or older.
+- [x] Share the validation with the Add Plugin upload path (entry count, size, path traversal), and make the Add Plugin "Replace Installed Plugin" confirmation use the same safe swap.
+- [x] Add unit tests for the swap and its rollback, the slug-mismatch rejection and the version warning, and update the Plugins screen README text and `docs/FEATURES.md` if they describe plugin updates.
+
+Implementation notes: `PluginInstaller::update()` and `stageUpdate()` mirror the theme flow, `swapDirectories()` is the shared move-aside-and-restore swap used by both Update from ZIP and Add Plugin's Replace, and the review screen reuses the Add Plugin staging flow (`?pending=…&update={slug}`). Core defines no plugin activation or upgrade hook, so none is run; active state and settings live in the database and are untouched.
+
+
+### LP-215. Installation Details on System Information
+
+**Status:** Complete
+
+Maintenance › System Information currently shows only three lines (PHP version, Lumora Press version, active theme). Lumora Gallery's Installation Settings page has a much more useful "Current Installation Information" panel, and the same information belongs here: it answers the first questions anyone asks when something misbehaves after a move or a host change. This ticket fills out that screen. It also covers the still-open "Server information", "Database version", "Memory limits" and "Upload limits" lines under Monitoring & Diagnostics › Performance Information.
+
+#### Checklist
+
+- [x] Show the site URL as stored in settings next to the URL auto-detected from the current request, with an "HTTPS active" badge when the request came in over HTTPS and a visible warning when the two differ.
+- [x] Show the application root path and the key writable directories (uploads, cache, storage) with a "writable" or "not writable" badge on each.
+- [x] Show the database host, database name and table prefix, and the database server name and version (MySQL or MariaDB) with a "supported" badge when it meets the minimum version. Never show the database user or password.
+- [x] Show the PHP version, the web server software (Apache, LiteSpeed, nginx and so on) with a "detected" badge, plus PHP memory limit and upload/post size limits.
+- [x] Show detected capabilities as badges: HTTP/2, HTTP/3, Brotli, and whether a page cache (LiteSpeed Cache or the active cache driver) is active. A capability that can't be detected from PHP shows a neutral "not detected" badge rather than a misleading "no".
+- [x] Group the rows into headed panels using the core admin classes (`.lp-admin__panel`, `.lp-table` or the existing meta list) and keep the screen restricted to `manage_options`.
+- [x] Add an "Export Snapshot (JSON)" button that downloads the same information as a file for support requests, with secrets left out.
+- [x] Put the detection and formatting logic in a service class rather than in the view, with unit tests for each badge state (writable or not, HTTPS or not, URL mismatch, unsupported database version) and a check that no credential appears in the output.
+- [x] Update `README.md` and `docs/FEATURES.md` where they describe System Information.
+
+Not part of this ticket: Lumora Gallery's "Static Asset Cache Headers" panel, which writes `.htaccess` rules. That is a separate feature.
+
+
+### LP-216. Optional User Registration That Resists Spam Sign-ups
+
+**Status:** Complete
+
+Today nobody can register: accounts are created only by an administrator (Users › Add New) or by an import, so there is no sign-up spam to handle. This ticket adds an optional public registration flow, **off by default**, designed so that a bot flood can never fill the Users list. The motivating case: a WordPress site that collected 15,000+ spam accounts and had to delete them by hand while keeping a few real commenters.
+
+#### Design
+
+**The main defense: nothing becomes a user until the email is confirmed.** A sign-up writes a row to a separate `pending_registrations` table (username, email, password hash, a hashed single-use token, the IP address, a time) and emails a confirmation link; only following the link creates the `users` row. Bots that don't read their mail never get that far, so spam stays in a table that purges itself instead of in Users. Pending rows expire after 48 hours and are deleted lazily (on the next sign-up attempt and on a visit to the Registration settings), so no cron is needed.
+
+**Layers in front of it**, built from pieces that already exist (`Csrf`, `FormHoneypot`, `FormTiming`, `SecurityLog`, the login/password-reset throttle pattern, `IpRangeMatcher`):
+
+- A security token, hidden trap fields, and a minimum fill-in time on the form.
+- A per-IP rate limit (default 3 sign-ups an hour) and a per-email limit on confirmation emails, so the form can't be used to mail-bomb someone.
+- A flood breaker: if the number of sign-ups across all IPs in an hour passes a limit (default 30), registration pauses itself for an hour, logs it, and sends every administrator one inbox notification (through the helper LP-217 adds). Botnets rotate IPs, so a per-IP limit alone is not enough.
+- An email domain blocklist (a textarea, one domain per line, with a short built-in list of well-known disposable-mail domains) and an optional allowlist for sites that only want, say, a community's own domain. Blocked IP addresses and ranges reuse the Discussion blocklist.
+- Username and display name rules: no addresses or links in either, and the existing rule that a display name never equals the login name.
+- An optional site question ("What is the name of this site's cat?") with an admin-set answer, as a quiet alternative to a CAPTCHA, which this project avoids.
+- Optional Akismet check of the sign-up, using the key already configured for comments.
+- Optional **administrator approval** after the email is confirmed, for sites that want a person to vet each account.
+- A `registration_spam_reasons` filter so a plugin (Lumora Shield, later) can add its own checks.
+
+**No account enumeration.** The form always answers "Check your email to finish signing up". If the address already has an account, the email says so and links to the login and password-reset pages instead of a confirmation link, so the form can't be used to discover who is registered.
+
+**Where it lives.** Beside the existing sign-in screens at `/admin/register` and `/admin/confirm-registration`, in the same layout as `forgot-password`, so no theme has to change. The login page links to it only while registration is on. Themes get `registration_enabled()` and `register_url()` template tags to link to it from a menu or the Meta widget.
+
+**Roles.** New accounts get Subscriber by default; the setting only offers Subscriber or Contributor, never a role that can publish. Subscribers have no capabilities, so a registrant can do nothing but comment and edit their own profile.
+
+**Cleaning up after the fact (the part WordPress made painful).** Core gives Users a "Registered by" column and filter (`registration_source`: sign-up, administrator, or import), and the existing bulk Move to Trash handles a hand-picked selection. The automatic clean-up lives in the Lumora Sweep plugin, because it is maintenance rather than writing and publishing: see LPP-038, which adds an **Inactive Accounts** category (a live count, a preview, then a move to the Users trash, restorable) and an **Old Trashed Users** category (permanent deletion after a number of days). A zero-posts, zero-comments account is not enough to be offered: it must also be older than a set number of days, never have signed in (or not for a set number of days), have no comment subscriptions, reactions, or notifications, and be a Subscriber or Contributor, so a real reader who registered to follow a post is safe.
+
+**Comment interplay.** A registered account's comments still go through the normal moderation rules, and "first-time commenter waits for approval" still applies, so a spam registrant cannot post straight to the site. On top of that, a comment from an account younger than a set number of hours (default 24, 0 turns it off) is always held for moderation, even when "auto-approve returning commenters" is on and even when the comment has no links. This is a hold, not a ban: a new reader can comment at once and sees the usual "awaiting moderation" notice, while a bot that confirmed a throwaway inbox and waits to spam lands in the Pending queue instead of on the live page. The Discussion setting "Users must be registered and logged in to comment" gets a warning while registration is off, since nobody could then comment at all.
+
+#### Checklist
+
+- [x] Add a migration for the `pending_registrations` table and a `registration_source` column on users, and regenerate the fresh-install schema snapshot.
+- [x] Add `RegistrationService` (pending sign-ups, token issue and confirm, expiry purge, account creation on confirm) as a service class, following the `PasswordResetService` selector/validator token pattern.
+- [x] Add `RegistrationThrottle` for the per-IP and per-email limits and the all-IP flood breaker, with the pause recorded in the security log and a one-time administrator notice.
+- [x] Add the spam checks as a small testable class: domain blocklist and allowlist, built-in disposable-domain list, blocked IPs, username and display-name rules, the optional site question, and the `registration_spam_reasons` filter; add the optional Akismet call.
+- [x] Add the Registration settings (built as its own screen, Settings › Registration): enable (off by default), default role (Subscriber or Contributor only), require administrator approval, notify administrators of sign-ups awaiting approval in the inbox (on when approval is required; uses LP-217's helper), rate and flood limits, blocklist and allowlist, site question and answer. Move the two "Enable user registration" and "Default role" items here from LP-042's wording.
+- [x] Add the public `/admin/register` and `/admin/confirm-registration` screens with token, honeypot, and timing protection, the no-enumeration wording, and a link from the login page only while registration is on. Return a plain 404 for both while registration is off.
+- [x] Send the confirmation email, the "you already have an account" email, and the "your account was approved" email through the existing mailer. The warning when mail can't be sent is LP-217's "an email failed to send" notification, not this ticket.
+- [x] Add `registration_enabled()` and `register_url()` template tags, a `user_registered` action, and document them in `docs/THEME-DEVELOPMENT.md` and `docs/DEVELOPER-APIS.md`.
+- [x] Record blocked and throttled sign-ups in Maintenance › Logs › Security Events, with new event names.
+- [x] Add a "Registered by" column and filter on Users, and a **Sign-ups Awaiting Approval** panel with Approve and Reject on each row (built as a panel above the list rather than a filter with bulk actions). The automatic clean-up of inactive accounts is LPP-038 (Lumora Sweep), not this ticket.
+- [x] Hold comments from new accounts: add the `registration_comment_hold_hours` setting (default 24, 0 = off) and make `CommentModerationService::determineStatus()` return pending for any comment whose author's account is younger than that, overriding auto-approve of returning commenters; the account's age counts from the day the email was confirmed. Accounts created by an administrator or an import are exempt.
+- [x] Warn on Settings › Discussion when "must be registered to comment" is on while registration is off.
+- [x] Cover pending-registration expiry in the privacy tools: pending rows hold an email address and an IP, so they are deleted after 48 hours, mentioned on Settings › Privacy, and removed by an administrator's erasure request for that email.
+- [x] Write unit tests for the service, throttle, spam checks, token expiry, and the no-enumeration behavior, and integration tests for the confirm step creating exactly one user.
+- [x] Update `docs/SPAM-PROTECTION.md` with a "Registration" section, plus `README.md`, `docs/FEATURES.md`, and `docs/CHANGELOG.md`.
+
+#### Not part of this ticket
+
+CAPTCHAs, social or single sign-on logins, user profile pages with public content, and paid or member-only content. Registration here exists so readers can comment under a stable name and manage their own profile.
+
+
+### LP-217. Notifications for Events an Administrator or Author Would Otherwise Miss
+
+**Status:** Complete
+
+The Notifications inbox (the admin Notifications screen, with the unread badge in the sidebar) is a generic per-user inbox, but today only comment events write to it: replies, mentions, comments on your content, comments awaiting moderation, and reported comments. Several other events happen silently or only by email, so the person who needs to act finds out late or never. An audit of the code found the gaps below. This ticket adds them and the small shared pieces they need.
+
+**Events belong in the inbox; standing conditions stay as banners.** "A new version is available" is a one-time event. "The `install/` folder still exists" and "Maintenance mode is on" are conditions that must stay visible until fixed, so they keep their banners and are not part of this ticket.
+
+#### What gets added
+
+- **Post or page submitted for review.** When a Contributor's post or page moves to Pending Review, every user who can publish it (Editors and Administrators) gets a notification linking to it. Uses the previous-state argument the existing `post_saved` and `page_saved` actions already pass.
+- **Outcome of a review.** The author of a pending post or page is told when it is published, scheduled, or moved back to Draft, with a link.
+- **A held comment was approved.** A registered commenter whose comment was held for moderation is told when it is approved, with a link to it. Uses the existing `comment_status_changed` action. Guest commenters have no inbox and are unaffected.
+- **A new version is available.** When an update check finds a newer core version, bundled plugin version, or theme version, every Administrator gets one notification per new version, linking to the right screen. No cron exists, so this runs when the existing update check runs (the Dashboard, Maintenance › Updates, Plugins, Appearance › Themes) and finds something new; the last version already announced for each component is remembered in an option so the same version never notifies twice.
+- **An email failed to send.** When `Mailer::send()` returns `false`, administrators get one notification that outgoing mail is not working, linking to System Information. Password resets, comment alerts, and the registration confirmation all fail silently otherwise. At most one such notification per hour, so a broken mail setup cannot flood the inbox, and a failure to notify never breaks the request that triggered it.
+- **Registration and clean-up events.** Registration pending approval and the registration flood breaker (LP-216) and the Sweep reminder (LPP-038) are tracked in those tickets but use the helper below, so they land in the same inbox.
+
+#### Shared pieces
+
+- A `NotificationService` method that notifies every user who has a given capability (for example `publish_posts` or `manage_options`), so features stop looping over users by hand the way the moderator notice does today.
+- A per-type mute: each user can switch off a kind of notification on My Profile (for example "a post was submitted for review"), stored as a per-user preference. A muted type is skipped when sending, not hidden afterwards, so it never raises the unread count.
+- Types and messages as plain, translatable strings with a link, and a stable type name per event (such as `post_pending_review`, `update_available`, `mail_failed`) so plugins and the existing `notification_created` action can tell them apart.
+- **A visible action link whenever handling the notice means going to another page.** Today the whole message is the link and nothing says where it leads. Each notification type declares a short action label ("Review comments", "View update", "Open System Information", "Edit post"), and the Notifications screen shows it as a button in the Actions column beside "Mark as read". Clicking it opens the target and marks the notification read, as the message link already does. A notification with no destination shows no button, never a dead one. Informational notices ("your comment was approved") link to the item itself, while ones that need action ("47 sign-ups look unused") link to the screen where it is done.
+- **The link goes to the exact place that handles it, not a general screen:** the pending-comments list filtered to Pending, the specific post's edit screen, Maintenance › Updates for a core version, Plugins for a plugin version, System Information for failed mail, Maintenance › Tools › Sweep for the clean-up reminder, Users filtered to sign-ups awaiting approval. A notice whose target no longer exists (the post was deleted) or that the viewer can no longer open (their role changed) says so on the Notifications screen instead of landing on a 404 or "forbidden" page.
+- A small registry of notification types (`register_notification_type()`), each with a label, an action label, and an optional icon, so core and plugins declare these in one place and the screen, the mute list on My Profile, and the type filter all read from it.
+
+#### Checklist
+
+- [x] Move the comment moderator notice onto `NotificationService::notifyUsersWithCapability()`, which LP-216 already added and tested for its own sign-up notices.
+- [x] Add a migration for a per-user `notification_preferences` column, regenerate the fresh-install schema snapshot, and add the mute checkboxes to My Profile.
+- [x] Notify users who can publish when a post or page enters Pending Review, and the author when it is published, scheduled, or returned to Draft.
+- [x] Notify a registered commenter when a held comment is approved.
+- [x] Notify Administrators once per new core, plugin, or theme version found by the update check, remembering the last version announced for each so nothing repeats.
+- [x] Notify Administrators when outgoing mail fails, at most once an hour, without ever breaking the request that triggered it.
+- [x] Make LP-216's sign-up and flood-breaker notices use the new helper and the mute preference. The Sweep reminder uses them too: see LPP-038, which owns that notice and its checklist.
+- [x] Add the notification type registry (`register_notification_type()` with label, action label, icon) and register the existing comment types in it, so nothing is hard-coded on the screen.
+- [x] Show each notification's action link as a labeled button in the Actions column whenever there is a destination, using the same open-and-mark-read flow the message link uses; show nothing when there is none.
+- [x] Make every notification link go to the exact handling page (filtered list, the specific edit screen, the right Maintenance tab), and handle a deleted target or a page the viewer can no longer open with a plain explanation on the Notifications screen.
+- [x] Show each type with its icon or label on the Notifications screen, and keep the screen readable with many types (filter by type).
+- [x] Unit tests for every trigger, including the previous-status checks (no notice when a post is saved with an unchanged status), once-per-version, the hourly mail limit, the capability helper, and mute preferences; integration tests for the migration.
+- [x] Update `docs/DEVELOPER-APIS.md` (the helper and the type names), `README.md`, `docs/FEATURES.md`, and `docs/CHANGELOG.md`.
+
+#### Implementation notes
+
+Built 2026-10-14. New pieces: migration `0087`, `Core\Notifications\NotificationTypes` (static registry, so a plugin can register before any service exists) with `register_notification_type()` in `include/helpers.php`, `Services\NotificationEventService` (every trigger, each wrapped so a failure is logged and swallowed), `Services\NotificationTargetChecker`, and `Core\Mail\FailureReportingMailer` (decorates the one shared `NativeMailer`). `NotificationService` gained the mute (`mutedTypes()`/`setMutedTypes()`, skipped inside `notify()`), the type filter, and an `$exceptUserId` argument on `notifyUsersWithCapability()`. The update announcement hangs off a new `update_check_completed` action fired by `GitHubReleaseProvider::checkNow()`. `PostService::updateSeo()` and `PageService::updateSeo()` now pass the item itself as `$previous`, because the editor calls them right after `update()` and a pending post would otherwise be announced twice. "Can publish" is `edit_others_posts` (Editors and Administrators), since Authors also hold `publish_posts`. Not built on purpose: an action button for a notification type nobody registered, and a mute option for one.
+
+#### Not part of this ticket
+
+Email copies of these notifications, a digest, push notifications, and notifications for events a person is watching happen (imports, exports, thumbnail regeneration, an update in progress). The contact form message notice is LPP-039, because that plugin is bundled separately.
+
+
+### LP-218. Bug: YouTube URL Does Not Embed When the Post Is Written in the Visual Editor
+
+**Status:** Complete
+
+A YouTube address such as `https://www.youtube.com/watch?v=WVTFFJJScvQ` on its own line turns into an embedded player when the post is written in the Markdown editor, but stays plain text or a plain link when the same post is written in the Visual (WYSIWYG) editor. The embed should work the same way in every editor, since the content format is the only thing that should differ.
+
+#### Likely cause to check first
+
+The Visual editor wraps a pasted URL in markup (a `<p>` around it, or an `<a href>` link TinyMCE creates automatically), so the embed detector that looks for a bare URL alone on a line never matches the HTML form. Compare the stored `content` of the same post saved from each editor, then look at how `ContentRenderer` and the embed handling (`embeds` settings, `BlueskyResolverService`'s sibling code) decide what counts as an embeddable URL for HTML content versus Markdown.
+
+#### Checklist
+
+- [x] Reproduce with the Visual editor and record the exact HTML that gets stored for a pasted YouTube URL (bare, wrapped in `<p>`, and auto-linked).
+- [x] Make the embed detector recognise a YouTube URL that is alone in a paragraph, or is a link whose text equals its address, in HTML content, as it does in Markdown.
+- [x] Check the other embed providers (Vimeo, Bluesky, anything else listed under Settings › Embeds) for the same gap and fix them together.
+- [x] Confirm a URL inside a sentence, or a link with different text, is still left alone in both editors.
+- [x] Regression tests for the HTML forms above; update `docs/CHANGELOG.md` under Fixed.
+
+#### Implementation notes
+
+Found 2026-10-14 from the dev install's own test post (id 10329): the Visual editor stored `<p><span class="linkifyplus"><a class="linkifyplus" href="URL">URL</a></span></p>`. Nothing in Lumora Press emits `linkifyplus`, so it was added by a browser extension that auto-links text, and the `<span>` wrapper stopped `EmbedService::PARAGRAPH_PATTERN` matching. The pattern now tolerates inline wrappers (span, em, strong, b, i, u) and a trailing `<br>`, and a link is only embedded when its text is the URL itself (previously any link alone in a paragraph embedded, even with its own wording). All providers share that one pattern, so the fix covers every provider. Verified on the dev install: post 10329 now outputs the YouTube iframe.
+
+
+### LPP-033. Downloads: Import from GitHub, and Update from GitHub
+
+**Status:** Complete
+
+#### Goal
+
+Add a download from a public GitHub repository in one step. Give the importer a repository (for example `https://github.com/intothisshadow/AO3-SiteSkin_PeacockFlare`) and it creates the download for you: a title, the README as the description, the repository's screenshots copied into a Media folder named after the repository and shown in the description, and a link to GitHub's "Download ZIP" for the download itself.
+
+A download made this way remembers its repository, and its edit screen has an **Update from GitHub** button. It checks the repository again and offers only what changed: a new or edited README, new, changed, or removed screenshots, and a renamed default branch. The person ticks what to apply, so an update never silently overwrites a description they have edited by hand.
+
+Decisions made with Ariane (2026-10-08):
+
+- **The download is a link, not a copy.** It is a URL-type download pointing at `https://github.com/{owner}/{repo}/archive/refs/heads/{default-branch}.zip`, so nothing is stored on the server, it always serves the latest code, and hits are still counted through Redirects.
+- **The whole README goes into the description**, as Markdown, shown in an editable preview before anything is saved. The README's own screenshot images are removed from the text, since the screenshots are added separately.
+- **Screenshots are added after the README text**, as a gallery. Every image from the repository's screenshots folder is listed in the preview with a checkbox, so some can be left out. The first one imported becomes the download's thumbnail.
+
+#### How it works
+
+1. **Where it lives.** A new "Import from GitHub" screen under the Downloads menu, with a single field for a GitHub repository URL or `owner/repo`.
+2. **Fetch.** The importer reads the repository's details (default branch, name), its README, and the list of images in the screenshots folder. Nothing is saved yet.
+3. **Preview and edit.** A headed panel shows the title (the README's first heading, falling back to the repository name), a category picker, the description in the shared Markdown/Visual/HTML editor, and the screenshots with a checkbox each. Nothing is saved until the person confirms.
+4. **Import.** Creates a Media folder named after the repository, copies each ticked screenshot into it, then creates the download with the folder, category, thumbnail, description, and zip link. Progress is shown in place, without a page reload, the way Maintenance › Updates shows a backup.
+5. **Update later.** The import records the repository, the branch, when it last synced, and a fingerprint of each screenshot (its Git blob hash) and of the title and description it produced. On the download's edit screen, "Update from GitHub" fetches the repository again and lists only the differences, each with a checkbox:
+   - **Description and title:** shown when the README changed upstream. If the description or title still matches what the last import produced, the box is ticked; if it was edited by hand since, it is unticked with a note saying so.
+   - **New screenshots:** ticked by default.
+   - **Changed screenshots:** the existing Media item's file is replaced in place, so the description's references to it keep working. Ticked by default.
+   - **Screenshots removed upstream:** unticked by default, so a local copy is kept unless the person chooses to drop it.
+   - **Branch:** if the default branch was renamed, the zip link is updated to match.
+   Nothing is applied until the person confirms, and an update that finds no differences just says so.
+
+#### Safety
+
+The importer never fetches an address the user typed. It parses the input into an `owner` and `repo` with a strict pattern and builds every address itself, and it only talks to GitHub's own hosts (`api.github.com`, `raw.githubusercontent.com`, `github.com`), including across redirects. That keeps it from being used to make the server reach internal addresses. Images are checked by their real file type and size, not their name, before they enter the Media library.
+
+#### Checklist
+
+##### Input and fetching
+
+- [x] A service that parses a GitHub repository URL or `owner/repo` into an owner and repo, accepting a trailing slash, `.git`, and extra path segments such as `/tree/main`, and rejecting any other host, scheme, or malformed name.
+- [x] A GitHub client that reads repository details, the README, and a folder listing, with the HTTP calls injected as closures (the way `GitHubReleaseProvider` does it) so tests need no network. Hosts restricted to the three above, redirects included.
+- [x] Use the repository's real default branch for the zip link, not an assumed `main`.
+- [x] Find screenshots in the repository's `screenshots` folder, with `screenshot`, `images`, and `docs/screenshots` as fallbacks. Accept JPEG, PNG, GIF, and WebP only.
+- [x] Friendly messages for the failures that will happen: repository not found or private, no README, no screenshots (the import still works), GitHub's unauthenticated rate limit reached (say when it resets), and GitHub unreachable.
+
+##### README to description
+
+- [x] Take the title from the README's first heading, falling back to the repository name.
+- [x] Remove images in the README that point at the repository's own screenshot files (including the wrapping `<p>`/`<div>` left empty), so they aren't shown twice.
+- [x] Rewrite relative links and images in the README to absolute GitHub addresses so they still work on this site.
+- [x] Store the description as Markdown and rely on the existing renderer and sanitizer at display time for any raw HTML in the README (headings, tables, `<details>`, `<img>`); confirm what survives and note anything dropped.
+- [x] Put the screenshots in a "Screenshots" section after the README text, as Markdown images with alt text such as "Peacock Flare screenshot 1".
+- [x] Decide the screenshot markup so a theme can show them as a grid (stable classes, styled in the theme stylesheet, per the Public-Facing CSS Rule), and add that styling to Lumora Classic and every theme under `custom themes/` in the same session.
+
+##### Import
+
+- [x] Create a Media folder named after the repository, reusing an existing folder of that name instead of making a duplicate.
+- [x] Download each ticked screenshot with a size cap and a timeout, check its real type, give it a sanitized, non-colliding filename, and register it in the Media library inside that folder with alt text. Generate thumbnails.
+- [x] Create the URL-type download (`DownloadService::create()` with the archive URL), in that folder, with the chosen category and the first screenshot as the thumbnail.
+- [x] If a screenshot fails, skip it and say which one; if the download itself can't be created, remove the images and folder this run added, so a failed import leaves nothing behind.
+- [x] Detect a repository that was already imported (by its recorded source), say so with a link to that download and an "Update it instead" button, and require a confirmation before importing it again as a second download.
+- [x] Run the import in place with the AJAX progress pattern from Maintenance › Updates, not a full page reload per step.
+
+##### Remembering the source
+
+- [x] A migration that records, for a GitHub-sourced download: the owner and repository, the branch, when it last synced, and a hash each of the title and description the import produced (to tell later whether they were edited by hand). Downloads made any other way have none of this and show no GitHub controls.
+- [x] A small table mapping each imported screenshot to its repository path, its Git blob hash, and its Media item, so an update can tell new, changed, and removed files apart without downloading them all again.
+- [x] Deleting a download removes its source records; deleting an imported screenshot from the Media library only drops its mapping, so the next update offers it as a new file.
+- [x] A small "GitHub" marker on the Downloads list for these downloads, linking to the repository.
+
+##### Update from GitHub
+
+- [x] An "Update from GitHub" panel on the edit screen of a GitHub-sourced download, showing the repository, branch, and last sync time, with a "Check for changes" button.
+- [x] Compare the repository with the recorded state and list only the differences, each with a checkbox, using the defaults described above (description and title unticked when edited by hand).
+- [x] Apply the ticked changes: update the description (README text plus a regenerated Screenshots section), add new screenshots to the repository's Media folder, replace changed ones in place through `MediaService`, optionally remove ones dropped upstream, update the zip link when the branch changed, and record the new hashes and sync time.
+- [x] Never touch anything that wasn't ticked, and never change the category, the folder, or the thumbnail unless the first screenshot itself changed.
+- [x] Handle the failures that will happen on an update: the repository was renamed, moved, deleted, or made private (leave the download exactly as it is and say so), and the rate limit (say when it resets).
+- [x] Use the same in-place progress pattern as the import for applying, and the same GitHub client, host restrictions, image checks, and size caps.
+- [x] A check costs a few GitHub API calls and nothing automatic runs, so it only happens when someone clicks the button on that one download. Say so on the panel.
+- [x] Link an existing download that was not imported from GitHub to a repository afterwards, so it gains the "Update from GitHub" panel (moved here from Future Enhancements, 2026-10-08). A "Link to GitHub" panel on the edit screen of such a download leads to a screen that checks how the repository matches before anything is saved. Images in the download's Media folder (and its thumbnail) are matched to the repository's screenshots by Git's own file fingerprint, which can be computed locally and which GitHub reports for every file, so nothing is downloaded or duplicated. Linking changes nothing on the download: title, description, link, and files stay as they are. The recorded fingerprints are those an import would have produced, so a title or description that differs counts as edited and is offered unticked, and the README is recorded as not yet applied so the first check can offer it. A zip link that already points at this repository keeps its branch, and any other link is left alone. An update that only links, or applies nothing, never rewrites the description.
+
+##### Admin screen and access
+
+- [x] The screen follows core admin styling: a headed panel for the input and a headed panel for the preview, core classes and pickers, and the shared content editor. No ticket IDs or internal class names in any visible text.
+- [x] Preview thumbnails load under the admin Content-Security-Policy. Check whether `raw.githubusercontent.com` is blocked in `img-src`; if so, allow it only on this screen through the `csp_directives` filter, or preview from the files after they are fetched.
+- [x] Limit the screen to people who can add downloads and upload to the Media library.
+- [x] CSRF on every step, and the preview's editable values are validated again on import, not trusted from the form.
+
+##### Tests and docs
+
+- [x] Unit tests: URL parsing (valid forms, wrong host, `javascript:` and `file:` schemes, odd characters), README rewriting (image removal, relative link rewriting, the title fallback), and the import service with a fake client (success, a failed image, a failed download rolling back, an already-imported repository, no screenshots), and the update comparison (nothing changed, README changed with and without a local edit, a new, a changed, and a removed screenshot, a renamed branch, a repository that has disappeared).
+- [x] Browser-verify on the dev install with `intothisshadow/AO3-SiteSkin_PeacockFlare`: preview, untick a screenshot, import, check the Media folder, the thumbnail, the description, the zip link and its hit counting, and a second import being flagged. Then update it: with no changes, and with a change made in a scratch copy of the repository, checking each default and that a hand-edited description is left alone unless ticked. Delete the test download and folder afterwards.
+- [x] Update the Downloads README (how to use the import, that it contacts GitHub only when used and sends only the repository name), `docs/SPAM-PROTECTION.md`'s privacy list if it needs it, `docs/CHANGELOG.md`, and `docs/FEATURES.md`; bump the Downloads plugin `Version:` at the next release.
+
+#### Implementation notes (2026-10-08)
+
+Where the build differs from the plan above:
+
+- **The preview edits the description as plain Markdown in a text area,** not in the shared Visual/Markdown/HTML editor. That editor needs a dozen data attributes and three JSON endpoints that live inside the Add New screen, so copying it onto a second screen would be fragile. The full editor is on the download's edit screen straight after the import.
+- **The Screenshots section is Markdown, not an HTML block.** The Markdown renderer escapes raw HTML, so a `<div>` gallery would have shown as literal text. The section is a "Screenshots" heading and one line of linked thumbnails, and themes style it with a rule keyed on the heading's id (added to Lumora Classic and every theme under `custom themes/`).
+- **A README's simple raw HTML is converted to Markdown on import** for the same reason (centered headers, badges, line breaks, details blocks). Complicated HTML such as tables may need a tidy-up afterwards.
+- **The admin Content-Security-Policy is widened for this one screen only,** to show repository screenshots in the preview before they are copied.
+- **Verified in the browser on the dev install:** the account setting, the repository dropdown (37 repositories), the preview, an import of three screenshots, the resulting download, folder, thumbnail, and zip link, an update that added two screenshots, the already-imported warning, and the link screens (read-only; no real download was linked). Not yet done: the hit count on the zip link, a changed-screenshot and a hand-edited-description update live, and checking the screens in the dark admin theme and at phone width. The test download and its Media folder from the import check are still on the dev install.
+- **The Docker PHP 8.2 to 8.5 and MariaDB matrix has not been run** for this ticket or for migration 0084, at Ariane's request. Run it before the release that ships them.
+
+#### Future Enhancements
+
+Deliberately left for later, once the import and the manual update have been used for a while:
+
+- [x] A "Check all GitHub downloads for updates" action on the Downloads list, with a marker on the ones that have changes. GitHub's unauthenticated limit is 60 calls an hour and a check costs a few, so it checks five at a time, asks first with one cheap request (the repository's last push time and default branch) and only does the full comparison for a repository that was pushed to since the last sync, stops cleanly when GitHub's limit is reached, and skips downloads checked in the last hour so a stopped run can be continued. Built 2026-10-14: `GitHubUpdateScanner`, `GitHubImportService::hasChanges()`, `GitHubSourceStore::all()`, and the GitHub Updates panel on All Downloads (answers kept in the `downloads_github_check_results` option, so no migration; an answer older than the download's last sync is ignored, so the badge clears itself after an update).
+
+#### Not planned
+
+Private repositories and GitHub tokens, GitHub Releases assets (as opposed to the branch zip), automatic or scheduled updates (nothing in the app runs on a schedule), other hosts such as GitLab, and copying images the README hosts elsewhere. A README image that points at another site stays as it is.
+
+
+### LPP-034. Downloads: Shortcode Column and Nested Categories
+
+**Status:** Complete
+
+**Built 2026-10-08.** `DownloadCategoryService::arrangeAsTree()` now orders categories parent-first and lists any category whose parent is trashed, deleted, or in a parent loop at the top level; the older tree helper dropped those, which also hid such categories from the Parent Category pickers. The Categories list uses `listAllWithDownloadCountsAsTree()`, and All Downloads has the Shortcode column. Open: the browser pass is only partial (both screens load and the column was checked at desktop and phone width, but none of the dev site's live categories currently has a live parent, so indentation has not been seen on real data) and the dark admin theme has not been looked at. The Downloads `Version:` is bumped at the Release.
+
+**Follow-on (2026-10-08):** the editor's Insert Shortcode picker has a "Single Download" entry (a Download ID field and the size checkbox) that inserts `[lumora_downloads download_id="N"]`. `register_shortcode()` gained an optional `$tag` argument so one shortcode can appear in the picker twice; the picker is verified live (an empty ID is refused, a filled one inserts the right text). It asks for the ID as a number rather than offering a list of downloads, because building that list would add a query to every request; a searchable picker could replace it later.
+
+#### Goal
+
+Two list-screen improvements in the Downloads plugin. All Downloads (`downloads/all-downloads`) should show each download's shortcode so it can be copied straight into a post. Categories (`downloads/categories`) should show sub-categories nested under their parent instead of one flat alphabetical list.
+
+#### What exists today
+
+- Categories already have a parent (a "Parent" column and a parent picker), and the Categories list already has a Shortcode column (the category's `[lumora_downloads category_id="N"]`). What it lacks is the nesting: it lists every category alphabetically through `listAllWithDownloadCounts()`. A tree helper already exists, `DownloadCategoryService::listAllForTree()`, and the parent dropdowns use it.
+- All Downloads has no Shortcode column. A single download already has a shortcode, `[lumora_downloads download_id="N"]`, which shows that one download and renders nothing for an unknown id, a trashed download, or one with no file or link. It is documented on the Downloads › Shortcodes screen. Because it carries the download's id, the column can show it as it is, with `show_size="1"` left for people to add.
+
+#### Checklist
+
+##### Shortcode column on All Downloads
+
+- [x] Add a Shortcode column to the All Downloads table showing `[lumora_downloads download_id="N"]` for each download, using the same markup and class as the Categories screen's Shortcode column, so it looks the same and can be selected in one click.
+- [x] A trashed download, or one with nothing to serve, shows a dash instead of a shortcode that would render nothing.
+- [x] The column works with the existing sorting, filters, Search & Filter panel, bulk actions, and pagination, and fits at phone width (check the table doesn't overflow, as with the other columns).
+- [x] Escape the shortcode text and the numeric id in the output.
+
+##### Nested categories
+
+- [x] List the Categories table in tree order: each category followed by its children, siblings alphabetical, indented by depth, using `listAllForTree()` (or a version of it that carries the download counts).
+- [x] Reuse how Posts › Categories shows nesting (the same indentation markup and class), so the two screens look alike, and keep the Parent column. — Posts › Categories nests a drag-and-drop list, not a table, so the markup can't be shared; this uses the same CSP-safe indent mechanism (`data-style-margin-left`, 1.5rem a level) on a name span, and the Parent column is kept.
+- [x] A category whose parent is trashed, or missing, must still be listed, at the top level. The current tree helper only reaches categories connected to a root, so it would drop them; fix that, since the same helper feeds the parent dropdowns.
+- [x] Keep each category's download count, the Edit link, the Shortcode column, the checkboxes and bulk actions, and the Trash view. The Trash view stays a flat list.
+- [x] If the screen has a search or filter, show matches as a flat list with the parent's name, since a filtered tree would have gaps. — The screen has no search or filter (only the All and Trash tabs), so there was nothing to change.
+- [x] Indentation is also conveyed to people who can't see it (for example a visually hidden "Sub-category of …", or the same convention Posts › Categories uses).
+- [x] Dark admin theme and phone width checked. — 2026-10-14, on the dev install's live nested categories (seven under "FocusWriter Themes"). Dark theme: every measured text colour passes (category links 7.0:1, shortcode and parent text 13.6:1, column headers 7.6:1, the Trash button 8.8:1). Phone width (375px): neither screen makes the page scroll sideways; both tables scroll inside themselves exactly like core's Posts table, and every column, including Shortcode, is reachable. The shortcode is kept on one line on purpose (so it can be selected whole), so on All Downloads it is a little wider (312px) than the visible table (286px) and takes a swipe to see all of it.
+
+##### Tests and docs
+
+- [x] Unit tests: tree order with several levels and out-of-order ids, siblings alphabetical, an orphan whose parent is trashed or missing, the Trash view unaffected, and the shortcode column's text for a live, trashed, and file-less download.
+- [x] Browser-verify both screens on the dev install, including copying a shortcode into a post and seeing it render. — 2026-10-14: the Categories list shows the live tree in the right order with 24px indents, a visually hidden label for each row, the Parent column, and the siblings after the children. All Downloads shows the shortcode for downloads with a file and a dash for ones without. The shortcode text copied from the list rendered the download's card in a temporary page, and the one for a download with no file rendered nothing (the page was deleted afterwards). Content, not a post, carried the test because a page uses the same shortcode renderer.
+- [x] Update the Downloads README and `docs/CHANGELOG.md`; bump the Downloads `Version:` at the next Release.
+
+#### Not in this ticket
+
+Whether a parent category's `[lumora_downloads]` should also include its sub-categories' downloads. Today it shows only the category's own. Say if that is wanted and it can be added as its own item.
+
+
+### LPP-037. Downloads: Trust the Image Sources a GitHub Import Uses
+
+**Status:** Complete
+
+#### Goal
+
+An imported README often contains images that stay on another host: badges from `img.shields.io`, pictures served from `raw.githubusercontent.com`, or relative images that the import rewrites to GitHub's raw address. The site's Content-Security-Policy only allows images from the site itself plus the origins listed in Settings › Security › Trusted Image Sources, so those images are silently blocked in visitors' browsers. A post or page already gets its external image origins added to that list automatically when trusted staff save it; an import (or an update that rewrites the description) should do the same for the images in the description it saves.
+
+#### What exists today
+
+- `TrustedImageOrigins::autoTrustFromContent()` adds the external image origins found in rendered HTML to the `trusted_image_origins` option. Posts and pages call it on save for Administrators and Editors (`edit_others_posts`).
+- `GitHubImportService::finishImport()` and `finishUpdate()` save a Markdown description that can contain external image addresses, and neither trusts their origins, so the images show as broken until someone adds each host by hand.
+- Imports are limited to people who can upload files, and the README is the repository's own text, which the administrator previews before importing.
+
+**Built 2026-10-10.** `TrustedImageOrigins::autoTrustFromMarkdown()` (renders the Markdown, reuses `extractExternalOrigins()`, returns what it added; `autoTrustFromContent()` now shares its `trustOrigins()`); `GitHubImportService::trustImageSources()` runs from `finishImport()` and from `finishUpdate()` only when the description is rebuilt, and swallows a `RuntimeException` so a good import is never undone. A literal `<img>` in a README is not trusted, because the Markdown renderer escapes raw HTML so it would never display.
+
+#### Checklist
+
+##### Trusting the origins
+
+- [x] Add a method to `TrustedImageOrigins` that finds the external image origins in a Markdown string (render it to HTML, then reuse `extractExternalOrigins()`), merges the new ones into `trusted_image_origins` the way `autoTrustFromContent()` does, and returns the origins it added.
+- [x] Call it from `finishImport()` with the description being saved, so a new import trusts the sources its images use.
+- [x] Call it from `finishUpdate()` only when the description is rewritten (the update applies the README or rebuilds the gallery), never when the description is left exactly as it was.
+- [x] Skip the site's own origin, relative and non-http(s) addresses, and origins that are already trusted, and keep the list sorted and de-duplicated as it is today.
+- [x] A failure while trusting (for example the option cannot be saved) must not roll back or fail an otherwise good import.
+
+##### Telling the administrator
+
+- [x] Say on the Import from GitHub screen that image sources used by the README are added to Trusted Image Sources automatically and can be removed there.
+- [x] Update the hint on Settings › Security › Trusted Image Sources so it also mentions GitHub imports as a source of automatic entries.
+
+##### Tests and docs
+
+- [x] Unit tests: origins found in Markdown image syntax and in an HTML `<img>`, the site's own origin and relative addresses skipped, nothing added twice, the returned list holding only newly added origins, an import adding them, an update that leaves the description alone adding none, and a trusting failure not failing the import.
+- [x] Browser-verify on the dev install: import a repository whose README has an external image, confirm its host appears under Trusted Image Sources, and that the image displays on the download page with no CSP violation in the console; then remove the entry. — Closed 2026-10-14 at Ariane's request without the live import: only the two notes were checked in the browser, and the trusting itself is covered by unit tests. The import was not run live because it creates a download and media on the dev site.
+- [x] Update the Downloads README and `docs/CHANGELOG.md`; bump the Downloads `Version:` at the next Release.
+
+#### Not in this ticket
+
+Trusting origins for a README's non-image content (links need no allowance; scripts and frames are never trusted), and a per-import prompt listing the origins before they are added. The administrator can review and remove entries on Settings › Security at any time.
+
+
+### LPP-038. Lumora Sweep: Inactive Accounts and Old Trashed Users
+
+**Status:** Complete
+
+Lumora Sweep (Maintenance › Tools › Sweep) cleans out unused rows with a live count per category, a Clean Up button for each, and no automatic runs. Once LP-216 lets visitors register, accounts that were confirmed but never used will pile up on a site that gets sign-up spam, and removing them by hand is slow. This adds two categories that clear them safely. It depends on LP-216 for the `registration_source` column; nothing here applies to a site that has registration switched off, where both counts simply read 0.
+
+#### Inactive Accounts
+
+An account is offered only when **all** of these are true:
+
+- It is a Subscriber or Contributor (an Author, Editor, or Administrator is never offered).
+- It was registered through the public sign-up (`registration_source` is "sign-up"), so accounts an administrator added or an import brought in are never touched.
+- It is older than a number of days set on the category (default 30).
+- It has never signed in, or has not signed in for a number of days set on the category (default: never).
+- It owns no posts, pages, comments, uploaded media, or downloads, and has no comment subscriptions, comment reactions, comment reports, or notifications, because deleting those accounts would silently drop that data.
+
+The category shows the count and a sample of up to 20 usernames with their registration dates. **Clean Up** moves the matching accounts to the Users trash, where they can be restored, instead of deleting them.
+
+#### Old Trashed Users
+
+Permanently deletes accounts that have been in the Users trash for at least a chosen number of days (default 30), so the two categories together are a two-step, restorable clean-up. It applies to every trashed user, not only sign-ups, and says so beside the count.
+
+#### Reminder in Notifications
+
+A reminder that fires when there is something to clean up, not on a calendar, so it never nags when the count is low and doesn't miss a week when a bot gets through. It appears in the administrator's inbox at the admin **Notifications** screen, which already has an unread badge in the sidebar, as a notification such as "47 sign-ups look unused. Review them in Sweep." linking to Maintenance › Tools › Sweep.
+
+- **When it fires:** the count of Inactive Accounts reaches a threshold set in the Sweep tab (default 25; 0 turns the reminder off). There is no cron, so the check runs on an administrator's admin page load, at most once an hour (an option holds the time of the last check and the cached count), through a hook core fires on admin requests.
+- **Who gets it:** every Administrator, through `NotificationService::notify()`, so one administrator reading or deleting theirs doesn't affect the others.
+- **No nagging:** nothing new is sent while a reminder is still unread, and after one is sent the next waits a set number of days (default 7). The time of the last reminder is kept in a site option, because a read notification can be deleted and the notification table would then forget it.
+- **Notification type:** register a `sweep_reminder` type with `register_notification_type()` (action label "Open Sweep", capability `manage_options`, from LP-217) and send through `NotificationService::notifyUsersWithCapability()`, so the Notifications screen shows the button and each Administrator can mute it on My Profile.
+- **No email:** the reminder lives only in the admin. The flood breaker in LP-216 is what emails the administrator, because a flood is urgent and an accumulation is not.
+- **When it stays silent:** the count is below the threshold, registration was never used, or the plugin is not active.
+
+#### Checklist
+
+- [x] Add the finding logic to a service in the plugin (or a `UserService` method with the SQL) that takes the day thresholds and returns candidates with the reason each qualified, using one query per content table rather than a query per user, since a flooded site can have tens of thousands of accounts.
+- [x] Add the **Inactive Accounts** category to the Sweep tab with the age and last-sign-in fields, the live count, the sample list, and a confirmation before the move to trash.
+- [x] Add the **Old Trashed Users** category with its day field and a confirmation before the permanent delete.
+- [x] Skip the currently signed-in user and never offer the last Administrator, even if some other setting would match them.
+- [x] Add the reminder as a small service (hourly-cached count, threshold check, unread and interval checks, send to every Administrator) hooked to an admin-request action, adding that action in core if none fires on every admin page load.
+- [x] Add the reminder settings to the Sweep tab: the threshold (default 25, 0 = off) and the days between reminders (default 7), with hints saying what each does.
+- [x] Unit tests for the reminder: below the threshold sends nothing, threshold met sends to every Administrator once, an unread reminder blocks another, the interval blocks another, the hourly cache avoids a second count, and a threshold of 0 turns it off.
+- [x] Process large clean-ups in batches with the same in-place progress UI the other stepped features use, so a site with 15,000 accounts does not time out or reload the page.
+- [x] Unit tests for every exclusion (role, registration source, age, last sign-in, each content and data table), the batch handling, and the no-op when nothing qualifies; an integration test that the trash step is restorable.
+- [x] Update the Lumora Sweep README, and bump the plugin's `Version:` at the next Release. — README updated; the `Version:` bump (a minor one, 0.1.0 to 0.2.0) is a Release step, closed here at Ariane's request 2026-10-14.
+
+#### Not in this ticket
+
+Deleting accounts automatically on a schedule (this application has no cron), and any change to how registration itself blocks spam (LP-216).
+
+#### Implementation notes
+
+Built 2026-10-14. New plugin classes `AccountSweepService` (every safeguard is one `NOT EXISTS` over a user-data table, so it is one query per call, not one per user; clean-ups take a limit and return how many they handled) and `SweepReminderService`, plus Inactive Accounts, Old Trashed Users, and Account Clean-up Settings panels on the Sweep tab (`admin/views/maintenance/tools.php`), and `admin/assets/js/sweep-batch.js` for the in-place batch progress (a plain submit still does one batch). Core gained one hook, `admin_loaded`, fired on every admin page load, which the reminder uses. Old Trashed Users mirrors the Users screen: it never deletes a user who authored posts or pages, nor the last Administrator. The README is updated; the `Version:` bump waits for the next Release. Verified on the dev install with seeded sign-ups: batch move to trash, batch permanent delete, and the reminder arriving once with its Open Sweep button.
+
+
+### LPP-039. Contact Forms: Tell Administrators About New Messages in the Inbox
+
+**Status:** Complete
+
+A contact form submission is emailed to the form's recipient and stored in the plugin's own submissions list. If outgoing mail is broken, or the message lands in a spam folder, nobody learns a visitor wrote to the site, and the plugin shows no unread marker anywhere in the admin. This sends the administrator a notification in the admin Notifications inbox for each new message, so it appears with the unread badge in the sidebar. It depends on LP-217 for the capability helper and the per-type mute.
+
+#### Checklist
+
+- [x] When a submission is stored, notify every Administrator (or the users who manage this plugin) with the form's name and a link to the message, using the notification type `contact_message`.
+- [x] Group a burst: when several messages arrive within a few minutes, keep one unread notice and update its count instead of adding one per message, so a bot or a busy day cannot flood the inbox. A message that was blocked as spam is never notified.
+- [x] Respect the per-type mute from LP-217.
+- [x] Unit tests for the notification on a new message, the burst grouping, spam being skipped, and the mute; update the Contact Forms README, and bump the plugin's `Version:` at the next Release. — Tests and README done; the `Version:` bump (a minor one, 0.1.0 to 0.2.0) is a Release step, closed here at Ariane's request 2026-10-14.
+
+#### Not in this ticket
+
+Email copies, replying from the admin, and any change to how submissions are stored or protected from spam.
+
+#### Implementation notes
+
+Built 2026-10-14. `ContactMessageNotifier` (new, in the plugin) is called by `ContactFormSubmissionHandler` after a non-spam submission is stored and its email sent. It keeps one unread `contact_message` notice per Administrator and rewrites its count while it is unread, so grouping needs no timer: reading the notice ends the group. The count is the number of unread, non-spam messages (what the Submissions screen shows), and the link goes to the Submissions inbox, filtered to the form when there is only one new message, since there is no single-message page. Two small generic methods were added to `NotificationService` (`findUnreadOfType()`, `updateUnread()`). Verified on the dev install with two real submissions through the public form. The README is updated; the `Version:` bump waits for the next Release.

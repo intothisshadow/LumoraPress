@@ -4,6 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-10-14
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Classic 0.7.0, Downloads 0.6.0, Lumora Sweep 0.2.0, and Contact Forms 0.2.0. Each can be updated on its own from its screen when a release carries its package.
+
 ### Fixed
 
 - Resetting a forgotten password accepted passwords of 8 characters while every other screen required 10, so a reset quietly bypassed the rule. All of them now use the same minimum length.
@@ -23,10 +29,8 @@ All notable changes to Lumora Press are documented in this file.
 - Notifications: each one that points somewhere now has a labeled button in the Actions column ("Review comments", "View update", "Review post", "Open System Information", and so on) that opens the exact page that handles it and marks the notification read. If that page no longer exists (a deleted post) or you can no longer open it, the screen says so instead of sending you to an error page. Each notification shows its kind with an icon, and the screen has a **Type** filter.
 - My Profile has a **Notifications** panel where each person can switch off any kind of notification they have no use for. A switched-off kind is skipped entirely, so it never raises the unread count.
 - Plugins: `register_notification_type()` declares a notification type with a label, icon, action button text, and the capability needed to open it, and `NotificationService::notifyUsersWithCapability()` notifies everyone who has a capability. A new `update_check_completed` action fires after every successful update check. See `docs/DEVELOPER-APIS.md`.
-
 - Lumora Sweep (Maintenance › Tools › Sweep) can now clear the accounts that pile up when public registration is on. **Inactive Accounts** lists sign-ups that were confirmed but never used (older than a number of days, never signed in or not lately, and with no posts, pages, comments, uploads, subscriptions, reactions, reports, or notifications) and moves them to the Users trash, where each can be restored. **Old Trashed Users** permanently deletes users trashed for at least a number of days, never one who wrote posts or pages, nor the last Administrator. Both run in batches with a progress bar. A **reminder** lands in every Administrator's Notifications inbox when the number of inactive accounts reaches a threshold (default 25), at most once a week by default and never while an earlier one is unread.- Contact Forms: a new, non-spam message now adds a notification to every Administrator's Notifications inbox, so it is noticed even if the email never arrives. While that notice is unread, later messages only update its count instead of adding more.
 - Plugins: a new `admin_loaded` action fires on every admin page load for small cached housekeeping, since there is no cron. See `docs/DEVELOPER-APIS.md`.
-
 - Downloads: All Downloads has a **GitHub Updates** panel with a **Check for Updates** button that asks GitHub, a few downloads at a time with a progress bar, which GitHub-sourced downloads have changed, and marks them with an **Update available** badge leading to the review screen (a repository that can no longer be read is marked **Repository unavailable**). Most checks need a single GitHub request, and if GitHub's hourly limit stops a long list, clicking again later carries on. Nothing runs automatically.
 - Appearance › Widgets has a new **Image** widget: pick a picture from the Media Manager, optionally give it a title, alternative text (the image's own saved alternative text is used when blank), and a link, and it shows at its natural size up to the width of the sidebar. Every widget also has an **Extra CSS classes** field, so a widget can be styled on its own from your theme or Custom CSS. Lumora Classic gained the small stylesheet rule the Image widget needs.
 - Settings › Security gained three panels. **Passwords** sets one minimum length (default 10, between 8 and 64) that now applies everywhere a password is chosen: adding or editing a user, signing up, and resetting a forgotten password. **Sign-in Sessions** sets how many idle minutes before a session expires (0 keeps your host's own setting, often only 24 minutes) and how many days "Remember Me" lasts (default 30). **Browser Security Headers** has an opt-in HSTS switch, for sites whose HTTPS is solid.

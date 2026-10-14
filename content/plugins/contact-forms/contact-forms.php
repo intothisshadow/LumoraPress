@@ -19,13 +19,13 @@ declare(strict_types=1);
  * Plugin Name: Contact Forms
  * Plugin URI: https://lumorapress.org/plugins/contact-forms
  * Description: Build simple contact forms from a fixed set of field types (Name, Email, Subject, Message, Text, Textarea, Checkbox, Select, File Upload), embed them anywhere with the [contact_form id="1"] shortcode, and read submissions from a dedicated admin screen. Optional Akismet/reCAPTCHA/Turnstile spam protection, off by default.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Tags: contact form, forms, spam protection
- * Requires at least: 0.7.0
+ * Requires at least: 0.24.0
  * Requires PHP: 8.2
  */
 

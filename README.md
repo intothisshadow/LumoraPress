@@ -4,7 +4,7 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
-**Current release**: 0.23.0
+**Current release**: 0.24.0
 
 ## Who is Lumora Press for?
 
@@ -60,7 +60,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Theme browser with live, whole-site preview
 - Theme Options / Customize screen — no CSS editing required
 - Custom CSS
-- Widgets and navigation menus, with nested submenus and menu items you can hide without deleting them
+- Widgets (including an Image widget) and navigation menus, with nested submenus and menu items you can hide without deleting them
 - Built-in theme file editor
 - Public light/dark mode toggle
 

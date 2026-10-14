@@ -18,14 +18,14 @@ declare(strict_types=1);
 /*
  * Plugin Name: Lumora Sweep
  * Plugin URI: https://lumorapress.org/plugins/lumora-sweep
- * Description: Database cleanup utility for excess revisions, old trashed posts/pages, old spam/trashed comments, and orphaned or duplicate post_meta rows, with an optional unused-categories/tags check. Manual, preview-before-delete, per category — a genuine maintenance convenience, not something core depends on.
- * Version: 0.1.0
+ * Description: Database cleanup utility for excess revisions, old trashed posts/pages, old spam/trashed comments, and orphaned or duplicate post_meta rows, with an optional unused-categories/tags check, plus never-used sign-up accounts and old trashed users, with an inbox reminder when they pile up. Manual, preview-before-delete, per category — a genuine maintenance convenience, not something core depends on.
+ * Version: 0.2.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Tags: maintenance, database, cleanup
- * Requires at least: 0.14.0
+ * Requires at least: 0.24.0
  * Requires PHP: 8.2
  */
 
