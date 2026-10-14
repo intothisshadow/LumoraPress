@@ -139,6 +139,29 @@ final class NotificationService
         );
     }
 
+    /**
+     * The user's newest unread notification of $type, for a feature that keeps one running notice
+     * up to date instead of adding another each time.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findUnreadOfType(int $userId, string $type): ?array
+    {
+        return $this->database->fetchOne(
+            'SELECT * FROM ' . $this->table() . ' WHERE user_id = :user_id AND type = :type AND read_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1',
+            ['user_id' => $userId, 'type' => substr($type, 0, 50)],
+        );
+    }
+
+    /** Rewrites an unread notification in place; a read one is left alone, so reading it ends the group. */
+    public function updateUnread(int $id, int $userId, string $message, string $url = ''): bool
+    {
+        return $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET message = :message, url = :url WHERE id = :id AND user_id = :user_id AND read_at IS NULL',
+            ['message' => mb_substr($message, 0, 500), 'url' => substr($url, 0, 2048), 'id' => $id, 'user_id' => $userId],
+        ) > 0;
+    }
+
     public function markRead(int $id, int $userId): bool
     {
         return $this->database->execute(

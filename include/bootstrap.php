@@ -1132,6 +1132,11 @@ if (in_array('contact-forms', $activePlugins, true)) {
         $kernel->mailer,
         $kernel->akismet,
         $kernel->config,
+        new \LumoraPress\Plugins\ContactForms\ContactMessageNotifier(
+            new \LumoraPress\Plugins\ContactForms\ContactSubmissionService($kernel->database, $tablePrefix),
+            $notificationService,
+            $kernel->users,
+        ),
     ))->handle($params));
 }
 

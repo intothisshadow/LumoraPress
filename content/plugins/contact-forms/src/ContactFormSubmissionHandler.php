@@ -40,6 +40,7 @@ final class ContactFormSubmissionHandler
         private readonly Mailer $mailer,
         private readonly AkismetClient $akismet,
         private readonly PressConfig $config,
+        private readonly ?ContactMessageNotifier $notifier = null,
     ) {
     }
 
@@ -118,6 +119,7 @@ final class ContactFormSubmissionHandler
 
         if (!$isSpam) {
             $this->sendNotification($form, $data);
+            $this->notifier?->notify($form);
         }
 
         $this->redirectWithSuccess($redirectTarget, $id);

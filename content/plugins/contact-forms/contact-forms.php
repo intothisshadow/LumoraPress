@@ -45,7 +45,17 @@ require_once __DIR__ . '/src/ContactFormUploadService.php';
 require_once __DIR__ . '/src/ReCaptchaClient.php';
 require_once __DIR__ . '/src/TurnstileClient.php';
 require_once __DIR__ . '/src/ContactFormShortcode.php';
+require_once __DIR__ . '/src/ContactMessageNotifier.php';
 require_once __DIR__ . '/src/ContactFormSubmissionHandler.php';
+
+register_notification_type(
+    ContactMessageNotifier::TYPE,
+    'Contact form message',
+    'Open inbox',
+    '📨',
+    'manage_options',
+    'A visitor sent a message through a contact form',
+);
 
 // No hook exists for a plugin to register its own public route, and a content_html
 // filter runs too late to safely redirect() after a POST — submissions need this
