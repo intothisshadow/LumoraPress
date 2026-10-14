@@ -37,6 +37,9 @@ final class SecurityLog
     public const EVENT_FORM_EXPIRED = 'form_expired';
     public const EVENT_COMMENT_RATE_LIMITED = 'comment_rate_limited';
     public const EVENT_LOGIN_LOCKOUT = 'login_lockout';
+    public const EVENT_REGISTRATION_BLOCKED = 'registration_blocked';
+    public const EVENT_REGISTRATION_RATE_LIMITED = 'registration_rate_limited';
+    public const EVENT_REGISTRATION_PAUSED = 'registration_paused';
 
     private const FILE_NAME = 'security.log';
     private const MAX_BYTES = 524288;

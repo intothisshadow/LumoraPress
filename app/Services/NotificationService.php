@@ -61,6 +61,26 @@ final class NotificationService
         $this->hooks?->doAction('notification_created', $userId, $type, $message, $url);
     }
 
+    /**
+     * Notifies every active user whose role grants $capability, each with their own copy so
+     * one person reading or deleting theirs never affects anyone else's.
+     *
+     * @return int how many users were notified
+     */
+    public function notifyUsersWithCapability(UserService $users, string $capability, string $type, string $message, string $url = ''): int
+    {
+        $count = 0;
+
+        foreach ($users->listAll() as $user) {
+            if ($user->can($capability)) {
+                $this->notify($user->id, $type, $message, $url);
+                ++$count;
+            }
+        }
+
+        return $count;
+    }
+
     public function unreadCount(int $userId): int
     {
         return (int) $this->database->fetchColumn(

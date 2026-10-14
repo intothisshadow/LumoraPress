@@ -76,6 +76,9 @@ $securityEventLabels = [
     'form_expired' => 'Comment form open too long',
     'comment_rate_limited' => 'Comment rate limit reached',
     'login_lockout' => 'Login lockout',
+    'registration_blocked' => 'Sign-up blocked as spam',
+    'registration_rate_limited' => 'Sign-up rate limit reached',
+    'registration_paused' => 'Sign-ups paused after a flood',
 ];
 
 $formatBytes = static function (int $bytes): string {

@@ -38,7 +38,29 @@ final class CommentModerationService
     public function __construct(
         private readonly PressConfig $config,
         private readonly CommentService $comments,
+        private readonly ?UserService $users = null,
     ) {
+    }
+
+    /**
+     * Whether $userId is a public sign-up still inside the "hold new accounts" window. Only
+     * sign-ups count: an account an administrator created or an import brought in is trusted
+     * by whoever added it.
+     */
+    private function isNewSignup(?int $userId): bool
+    {
+        $hours = (int) $this->config->option('registration_comment_hold_hours', '24');
+
+        if ($userId === null || $hours < 1 || $this->users === null) {
+            return false;
+        }
+
+        $user = $this->users->findById($userId);
+
+        return $user !== null
+            && $user->registrationSource === 'signup'
+            && $user->createdAt !== null
+            && $user->createdAt->getTimestamp() > time() - $hours * 3600;
     }
 
     /**
@@ -160,6 +182,13 @@ final class CommentModerationService
             && ($this->matchesKeywordList($this->disallowedKeywords(), $guestName, $guestEmail, $guestUrl, $content) || $this->matchesIpBlacklist($ipAddress))
         ) {
             return CommentStatus::Spam;
+        }
+
+        // A hold, not a block: the new reader can comment at once, but a bot that confirmed a
+        // throw-away inbox and waited lands in the pending queue even when returning
+        // commenters are normally auto-approved.
+        if (!$isTrustedModerator && $this->isNewSignup($userId)) {
+            return CommentStatus::Pending;
         }
 
         $manualApprovalForAll = $this->config->option('comment_moderation_manual_all', '0') === '1';

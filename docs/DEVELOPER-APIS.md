@@ -99,6 +99,13 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | `user_saved` | action | `?User $user` (reloaded) | [`UserService`](../app/Services/UserService.php): `update()`, `updateAvatar()`, and `restore()`. Not fired for password changes or last-active updates. Core uses it to purge the page cache, since a display name or avatar appears in bylines. |
 | `user_deleted` | action | `int $id` | `UserService::delete()` and `trash()`, only when a row was affected. |
 
+### Registration
+
+| Name | Type | Args | Fires in |
+|---|---|---|---|
+| `user_registered` | action | `User $user` | [`RegistrationService`](../app/Services/RegistrationService.php), right after a public sign-up becomes an account, whether by confirming the email or by an administrator's approval. Not fired for accounts an administrator adds or an import creates. |
+| `registration_spam_reasons` | filter | `array $reasons`, `array $context` (`username`, `email`, `display_name`, `ip_address`) | `RegistrationService::register()`, after the visitor's own mistakes are ruled out. Return the reasons array with any strings added to drop the sign-up silently: the visitor is told "Check your email" either way and the reasons are written to the security log, so a bot can't tune against them. Return `$reasons` unchanged to allow it. |
+
 ### Rendering / output
 
 | Name | Type | Args | Fires in |

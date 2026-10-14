@@ -211,6 +211,9 @@ $avatarDefaultMedia = $avatarDefaultMediaId > 0 ? $kernel->media->find($avatarDe
             <input type="checkbox" name="comment_require_registration" value="1" <?= $requireRegistration ? 'checked' : '' ?>>
             Users must be registered and logged in to comment
         </label>
+        <?php if ($requireRegistration && !$kernel->registration->isEnabled()): ?>
+            <span class="lp-field__hint">Sign-ups are off, so only existing users can comment. You can turn them on under <a href="<?= esc_url(admin_url('settings/registration')) ?>">Settings › Registration</a>.</span>
+        <?php endif; ?>
         <label class="lp-field--checkbox">
             <input type="checkbox" name="comment_cookies_consent_enabled" value="1" <?= $cookiesConsentEnabled ? 'checked' : '' ?>>
             Show a "Save my name and email in this browser" checkbox on the comment form

@@ -252,6 +252,9 @@ final class UserService
      * $registeredAt lets a bulk importer (e.g. a WordPress import)
      * preserve a source account's original registration date instead of
      * always stamping "now" — every other caller leaves it null.
+     *
+     * $registrationSource records how the account came to exist ('admin', 'signup', or
+     * 'import') so sign-up accounts can be told apart later.
      */
     public function create(
         string $username,
@@ -260,6 +263,24 @@ final class UserService
         UserRole $role,
         ?string $displayName = null,
         ?\DateTimeImmutable $registeredAt = null,
+        string $registrationSource = 'admin',
+    ): User {
+        return $this->createFromPasswordHash($username, $email, password_hash($password, PASSWORD_DEFAULT), $role, $displayName, $registeredAt, $registrationSource);
+    }
+
+    /**
+     * For a sign-up, where the password was hashed when the form was submitted and the
+     * account is only created once the email is confirmed, so the plain password is never
+     * kept in between.
+     */
+    public function createFromPasswordHash(
+        string $username,
+        string $email,
+        string $passwordHash,
+        UserRole $role,
+        ?string $displayName = null,
+        ?\DateTimeImmutable $registeredAt = null,
+        string $registrationSource = 'admin',
     ): User {
         $publishable = self::publishableDisplayName($displayName, $username);
 
@@ -267,15 +288,16 @@ final class UserService
         // is itself safe to publish covers the gap between the two statements.
         $id = $this->database->insertGetId(
             'INSERT INTO ' . $this->table() . '
-                (username, email, password_hash, display_name, role, created_at)
-             VALUES (:username, :email, :password_hash, :display_name, :role, :created_at)',
+                (username, email, password_hash, display_name, role, created_at, registration_source)
+             VALUES (:username, :email, :password_hash, :display_name, :role, :created_at, :registration_source)',
             [
                 'username' => $username,
                 'email' => $email,
-                'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                'password_hash' => $passwordHash,
                 'display_name' => $publishable ?? 'Member',
                 'role' => $role->value,
                 'created_at' => ($registeredAt ?? new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+                'registration_source' => in_array($registrationSource, ['admin', 'signup', 'import'], true) ? $registrationSource : 'admin',
             ],
         );
 
@@ -698,12 +720,18 @@ final class UserService
         ?UserRole $roleFilter = null,
         string $term = '',
         bool $trashedOnly = false,
+        ?string $sourceFilter = null,
     ): array {
         $page = max(1, $page);
         $perPage = max(1, $perPage);
 
         $conditions = [$trashedOnly ? 'trashed_at IS NOT NULL' : 'trashed_at IS NULL'];
         $params = [];
+
+        if ($sourceFilter !== null) {
+            $conditions[] = 'registration_source = :source';
+            $params['source'] = $sourceFilter;
+        }
 
         if ($roleFilter !== null) {
             $conditions[] = 'role = :role';
@@ -846,6 +874,8 @@ final class UserService
             folderTreeState: isset($row['folder_tree_state']) ? (string) $row['folder_tree_state'] : null,
             recentEmoji: isset($row['recent_emoji']) ? (string) $row['recent_emoji'] : null,
             recentSearches: isset($row['recent_searches']) ? (string) $row['recent_searches'] : null,
+            createdAt: isset($row['created_at']) ? new \DateTimeImmutable((string) $row['created_at']) : null,
+            registrationSource: isset($row['registration_source']) ? (string) $row['registration_source'] : 'admin',
         );
     }
 

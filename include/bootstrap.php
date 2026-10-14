@@ -58,6 +58,7 @@ use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
+use LumoraPress\Core\Security\RegistrationThrottle;
 use LumoraPress\Core\Security\RememberMeService;
 use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Security\SessionManager;
@@ -131,6 +132,7 @@ use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PluginVersionManifest;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
+use LumoraPress\Services\RegistrationService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\Search\SearchIndex;
 use LumoraPress\Services\Search\SearchResultCache;
@@ -610,7 +612,9 @@ add_action('category_saved', static fn (Category $category) => $searchVocabulary
 add_action('tag_saved', static fn (Tag $tag) => $searchVocabulary->addText($tag->name));
 add_action('footer_assets', [new SearchAssets($search, $auth), 'render']);
 $akismet = new AkismetClient($config, home_url());
-$commentModeration = new CommentModerationService($config, $comments);
+$commentModeration = new CommentModerationService($config, $comments, $users);
+$registrationThrottle = new RegistrationThrottle($database, $tablePrefix, $config);
+$registration = new RegistrationService($database, $tablePrefix, $config, $users, $mailer, new NotificationService($database, $tablePrefix, $hooks), $securityLog, $hooks, $akismet);
 $commentNotifications = new CommentNotificationService($config, $mailer, $users);
 $folders = new FolderService($database, $tablePrefix);
 $mediaUsage = new MediaUsageChecker($posts, $pages, $config, $hooks);
@@ -927,6 +931,8 @@ $kernel = new Kernel(
     shortcodes: $shortcodes,
     settingsPortability: $settingsPortability,
     localFonts: $localFonts,
+    registration: $registration,
+    registrationThrottle: $registrationThrottle,
 );
 
 // See ActiveKernel's own docblock for why this exists — plugin code that

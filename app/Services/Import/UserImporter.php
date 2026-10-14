@@ -44,7 +44,7 @@ final class UserImporter
         }
 
         $password = bin2hex(random_bytes(16));
-        $user = $this->users->create($data->username, $data->email, $password, $data->role, $data->displayName, $data->registeredAt);
+        $user = $this->users->create($data->username, $data->email, $password, $data->role, $data->displayName, $data->registeredAt, 'import');
 
         $this->registry->record($batchId, $source, 'user', $user->id, $data->externalId);
 

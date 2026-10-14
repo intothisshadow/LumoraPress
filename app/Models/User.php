@@ -75,6 +75,17 @@ final class User
          * (newest first), for the search box's "Recent searches" list.
          */
         public readonly ?string $recentSearches = null,
+        /**
+         * When the account was created. For a public sign-up that is the moment the
+         * email was confirmed (or the administrator approved it), because no user row
+         * exists before then.
+         */
+        public readonly ?\DateTimeImmutable $createdAt = null,
+        /**
+         * How the account came to exist: 'signup' (public registration), 'admin' (added
+         * by an administrator), or 'import'.
+         */
+        public readonly string $registrationSource = 'admin',
     ) {
     }
 

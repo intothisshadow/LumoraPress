@@ -111,6 +111,8 @@ if (isset($_GET['comment_gdpr_export'])) {
         $commentGdprError = 'Enter a valid email address to erase comment data.';
     } else {
         $commentGdprErasedCount = $kernel->comments->anonymizeByEmail($commentGdprEmail);
+        // A sign-up still waiting for confirmation or approval holds the same address.
+        $kernel->registration->deleteByEmail($commentGdprEmail);
 
         header('Location: ' . admin_url('settings/privacy') . '?comment_gdpr_erased=' . $commentGdprErasedCount);
         exit;
@@ -216,7 +218,7 @@ $installUuid = $installPingEnabled ? $kernel->installPing->getOrCreateUuid() : (
 
 <section class="lp-admin__panel">
     <h2>Comment Data Requests</h2>
-    <p class="lp-field__hint">Look up every comment posted under a given email address — whether left as a guest or by a signed-in account — for a GDPR-style data access or erasure request. Matching is case-insensitive.</p>
+    <p class="lp-field__hint">Look up every comment posted under a given email address — whether left as a guest or by a signed-in account — for a GDPR-style data access or erasure request. Matching is case-insensitive. Erasing also removes any sign-up for that address that is still waiting for confirmation or approval. Unconfirmed sign-ups hold the email address and IP address for 48 hours, and are then deleted automatically.</p>
 
     <form method="get" action="<?= esc_url(admin_url('settings/privacy')) ?>">
         <p class="lp-field">

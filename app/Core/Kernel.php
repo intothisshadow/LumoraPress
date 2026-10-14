@@ -32,6 +32,7 @@ use LumoraPress\Core\Security\LoginThrottle;
 use LumoraPress\Core\Security\PasswordResetService;
 use LumoraPress\Core\Security\PasswordResetThrottle;
 use LumoraPress\Core\Security\RememberMeService;
+use LumoraPress\Core\Security\RegistrationThrottle;
 use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Core\Security\SessionManager;
 use LumoraPress\Core\Shortcodes\ShortcodeManager;
@@ -69,6 +70,7 @@ use LumoraPress\Services\PermalinkService;
 use LumoraPress\Services\PluginInstaller;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\RedirectService;
+use LumoraPress\Services\RegistrationService;
 use LumoraPress\Services\RevisionService;
 use LumoraPress\Services\SearchService;
 use LumoraPress\Services\SettingsPortabilityService;
@@ -152,6 +154,8 @@ final class Kernel
         public readonly ShortcodeManager $shortcodes,
         public readonly SettingsPortabilityService $settingsPortability,
         public readonly LocalFontService $localFonts,
+        public readonly RegistrationService $registration,
+        public readonly RegistrationThrottle $registrationThrottle,
     ) {
     }
 }

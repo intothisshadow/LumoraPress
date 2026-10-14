@@ -304,6 +304,7 @@ final class CoreWidgets
             self::renderTitle($title);
             echo '<ul class="lp-widget__list">'
                 . '<li><a href="' . esc_url(admin_url('login')) . '">Log in</a></li>'
+                . (function_exists('registration_enabled') && registration_enabled() ? '<li><a href="' . esc_url(register_url()) . '">Sign up</a></li>' : '')
                 . '<li><a href="' . esc_url(home_url('feed')) . '">Entries RSS</a></li>'
                 . '<li><a href="' . esc_url(home_url('comments/feed')) . '">Comments RSS</a></li>'
                 . '</ul></section>';

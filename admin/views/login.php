@@ -59,6 +59,9 @@ if (!isset($kernel)) {
         </form>
         <p class="lp-login__links">
             <a href="<?= esc_url(admin_url('forgot-password')) ?>">Forgot password?</a>
+            <?php if ($kernel->registration->isEnabled()): ?>
+                &middot; <a href="<?= esc_url(admin_url('register')) ?>">Sign up</a>
+            <?php endif; ?>
         </p>
     </main>
 </body>

@@ -220,7 +220,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         header('Location: ' . admin_url('users') . '?status=trashed&deleted=1');
         exit;
-    } elseif ($form === 'bulk_action' && Csrf::verify('users_bulk_action', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    } elseif ($form === 'signup_approve' || $form === 'signup_reject') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $token = is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null;
+        $approving = $form === 'signup_approve';
+
+        if ($id > 0 && Csrf::verify(($approving ? 'signup_approve_' : 'signup_reject_') . $id, $token)) {
+            if ($approving) {
+                $approved = $kernel->registration->approve($id);
+                header('Location: ' . admin_url('users') . ($approved !== null ? '?signup_approved=1' : '?signup_gone=1'));
+                exit;
+            }
+
+            $kernel->registration->reject($id);
+            header('Location: ' . admin_url('users') . '?signup_rejected=1');
+            exit;
+        }
+
+        header('Location: ' . admin_url('users'));
+        exit;
+    } elseif ($form === 'bulk_action' && Csrf::verify('users_bulk_action',is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $bulkAction = (string) ($_POST['bulk_action'] ?? '');
         $ids = array_values(array_filter(array_map('intval', is_array($_POST['user_ids'] ?? null) ? $_POST['user_ids'] : [])));
         $isTrashView = ($_POST['status'] ?? '') === 'trashed';
@@ -328,6 +347,18 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
     <div class="lp-alert lp-alert--success">User permanently deleted.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['signup_approved'])): ?>
+    <div class="lp-alert lp-alert--success">Account approved. The person has been emailed.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['signup_rejected'])): ?>
+    <div class="lp-alert lp-alert--success">Sign-up rejected and removed. Nothing was sent to the address.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['signup_gone'])): ?>
+    <div class="lp-alert lp-alert--error">That sign-up could not be approved. It may have been handled already, or the username or email is now taken.</div>
+<?php endif; ?>
+
 <?php if (($_GET['error'] ?? null) === 'forbidden'): ?>
     <div class="lp-alert lp-alert--error">That user could not be found.</div>
 <?php endif; ?>
@@ -427,15 +458,61 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
     $isTrashView = ($_GET['status'] ?? '') === 'trashed';
     $termFilter = trim((string) ($_GET['q'] ?? ''));
     $roleFilter = UserRole::tryFrom((string) ($_GET['role'] ?? ''));
+    $sourceLabels = ['signup' => 'Sign-up', 'admin' => 'Administrator', 'import' => 'Import'];
+    $sourceFilter = isset($sourceLabels[(string) ($_GET['source'] ?? '')]) ? (string) $_GET['source'] : null;
     $pagination = $userService->paginateForAdmin(
         page: $page,
         roleFilter: $roleFilter,
         term: $termFilter,
         trashedOnly: $isTrashView,
+        sourceFilter: $sourceFilter,
     );
     $activeCount = $userService->paginateForAdmin(page: 1, perPage: 1)['total'];
     $trashedCount = $userService->countTrashed();
+    $awaitingSignups = $kernel->registration->awaitingApproval();
     ?>
+
+    <?php if ($awaitingSignups !== []): ?>
+        <section class="lp-admin__panel" id="pending-signups">
+            <h2>Sign-ups Awaiting Approval (<?= count($awaitingSignups) ?>)</h2>
+            <p class="lp-field__hint">These people confirmed their email address. Rejecting removes the sign-up without sending anything to the address.</p>
+            <table class="lp-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Username</th>
+                        <th scope="col">Display Name</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Signed up</th>
+                        <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($awaitingSignups as $signup): ?>
+                        <tr>
+                            <td><?= esc_html((string) $signup['username']) ?></td>
+                            <td><?= esc_html((string) $signup['display_name']) ?></td>
+                            <td><?= esc_html((string) $signup['email']) ?></td>
+                            <td><?= esc_html((string) $signup['created_at']) ?></td>
+                            <td class="lp-admin__row-actions">
+                                <form method="post" action="<?= esc_url(admin_url('users')) ?>" class="lp-admin__inline-form">
+                                    <?= Csrf::field('signup_approve_' . (int) $signup['id']) ?>
+                                    <input type="hidden" name="form" value="signup_approve">
+                                    <input type="hidden" name="id" value="<?= (int) $signup['id'] ?>">
+                                    <button type="submit" class="lp-button lp-button--link">Approve</button>
+                                </form>
+                                <form method="post" action="<?= esc_url(admin_url('users')) ?>" class="lp-admin__inline-form" data-lp-confirm="Reject this sign-up? Nothing will be sent to the address.">
+                                    <?= Csrf::field('signup_reject_' . (int) $signup['id']) ?>
+                                    <input type="hidden" name="form" value="signup_reject">
+                                    <input type="hidden" name="id" value="<?= (int) $signup['id'] ?>">
+                                    <button type="submit" class="lp-button lp-button--link lp-button--link--danger">Reject</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </section>
+    <?php endif; ?>
 
     <p class="lp-admin__filters">
         <a href="<?= esc_url(admin_url('users')) ?>" class="<?= !$isTrashView ? 'is-active' : '' ?>">All (<?= (int) $activeCount ?>)</a>
@@ -460,6 +537,15 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                             <option value="">All roles</option>
                             <?php foreach ($selectableRoles() as $roleOption): ?>
                                 <option value="<?= esc_attr($roleOption->value) ?>" <?= $roleFilter === $roleOption ? 'selected' : '' ?>><?= esc_html($roleOption->label()) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </p>
+                    <p class="lp-field">
+                        <label for="users-source-filter">Registered by</label>
+                        <select id="users-source-filter" name="source">
+                            <option value="">Anyone</option>
+                            <?php foreach ($sourceLabels as $sourceValue => $sourceLabel): ?>
+                                <option value="<?= esc_attr($sourceValue) ?>" <?= $sourceFilter === $sourceValue ? 'selected' : '' ?>><?= esc_html($sourceLabel) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </p>
@@ -514,6 +600,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                             <th scope="col">Display Name</th>
                             <th scope="col">Email</th>
                             <th scope="col">Role</th>
+                            <th scope="col">Registered by</th>
                             <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
@@ -539,6 +626,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                                 <td><?= esc_html($listedUser->displayName) ?></td>
                                 <td><?= esc_html($listedUser->email) ?></td>
                                 <td><span class="lp-status-badge lp-status-badge--role-<?= esc_attr($listedUser->role->value) ?>"><?= esc_html($listedUser->role->label()) ?></span></td>
+                                <td><?= esc_html($sourceLabels[$listedUser->registrationSource] ?? 'Administrator') ?></td>
                                 <td class="lp-admin__row-actions">
                                     <?php if ($isTrashView): ?>
                                         <?php $restoreFormId = 'user-restore-form-' . $listedUser->id; ?>

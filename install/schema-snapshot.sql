@@ -1,6 +1,6 @@
 -- Lumora Press schema snapshot. Generated; do not edit by hand.
 -- Regenerate with "PHP Test Suite/generate-schema-snapshot.sh" whenever a migration is added.
--- Through: 0085_neutralize_display_names_matching_username.sql
+-- Through: 0086_add_user_registration.sql
 -- >>>
 CREATE TABLE `{prefix}bluesky_embeds` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -389,6 +389,24 @@ CREATE TABLE `{prefix}password_reset_requests` (
   KEY `idx_attempted_at` (`attempted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- >>>
+CREATE TABLE `{prefix}pending_registrations` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `username` varchar(60) NOT NULL,
+  `email` varchar(191) NOT NULL,
+  `display_name` varchar(191) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `selector` varchar(24) NOT NULL,
+  `token_hash` varchar(64) NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'unconfirmed',
+  `ip_address` varchar(45) NOT NULL,
+  `created_at` datetime NOT NULL,
+  `expires_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_selector` (`selector`),
+  KEY `idx_email` (`email`),
+  KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- >>>
 CREATE TABLE `{prefix}posts` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `title` varchar(191) NOT NULL,
@@ -463,6 +481,16 @@ CREATE TABLE `{prefix}redirects` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_source_path` (`source_path`),
   KEY `idx_folder_id` (`folder_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- >>>
+CREATE TABLE `{prefix}registration_attempts` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `ip_address` varchar(45) NOT NULL,
+  `email` varchar(191) DEFAULT NULL,
+  `attempted_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ip_attempted` (`ip_address`,`attempted_at`),
+  KEY `idx_attempted_at` (`attempted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- >>>
 CREATE TABLE `{prefix}remember_tokens` (
@@ -582,6 +610,7 @@ CREATE TABLE `{prefix}users` (
   `folder_tree_state` longtext DEFAULT NULL,
   `recent_emoji` longtext DEFAULT NULL,
   `recent_searches` longtext DEFAULT NULL,
+  `registration_source` varchar(10) NOT NULL DEFAULT 'admin',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_username` (`username`),
   UNIQUE KEY `uniq_email` (`email`)

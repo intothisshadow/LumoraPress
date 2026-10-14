@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use LumoraPress\Core\Database\Migrator;
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Core\Security\FormHoneypot;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\SecurityLog;
 use LumoraPress\Models\ThemePreference;
@@ -128,6 +129,112 @@ if ($page === 'login') {
     }
 
     require __DIR__ . '/views/login.php';
+
+    return;
+}
+
+if ($page === 'register' || $page === 'confirm-registration') {
+    // Both screens answer as if they don't exist while sign-ups are off, so a site that
+    // doesn't offer registration gives a scanner nothing to probe.
+    if (!$kernel->registration->isEnabled()) {
+        http_response_code(404);
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Not Found</title></head><body><h1>Not Found</h1></body></html>';
+
+        return;
+    }
+
+    if ($kernel->auth->check()) {
+        header('Location: ' . admin_url());
+        exit;
+    }
+}
+
+if ($page === 'register') {
+    $registerErrors = [];
+    $registerSent = false;
+    $registerNotice = null;
+    $registerValues = ['username' => '', 'email' => '', 'display_name' => ''];
+    $clientIp = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $secondsPaused = $kernel->registrationThrottle->secondsPaused();
+    $secondsLocked = $kernel->registrationThrottle->secondsUntilIpUnlocked($clientIp);
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        $token = $_POST['csrf_token'] ?? null;
+        $registerValues = [
+            'username' => mb_substr(trim((string) ($_POST['username'] ?? '')), 0, 60),
+            'email' => mb_substr(trim((string) ($_POST['email'] ?? '')), 0, 191),
+            'display_name' => mb_substr(trim((string) ($_POST['display_name'] ?? '')), 0, 100),
+        ];
+
+        if (!Csrf::verify('registration', is_string($token) ? $token : null)) {
+            $registerErrors[] = 'Your session expired. Please try again.';
+        } elseif ($secondsPaused > 0) {
+            $registerNotice = 'Sign-ups are paused for a short while. Please try again later.';
+        } elseif ($secondsLocked > 0) {
+            $kernel->securityLog->record(SecurityLog::EVENT_REGISTRATION_RATE_LIMITED, $clientIp);
+            $registerNotice = sprintf('Too many sign-up attempts. Please try again in %d minute%s.', (int) ceil($secondsLocked / 60), ceil($secondsLocked / 60) === 1.0 ? '' : 's');
+        } else {
+            // Counted before anything else is checked, so probing with bad input costs a
+            // bot its allowance just as a real sign-up does.
+            $kernel->registrationThrottle->recordAttempt($clientIp, $registerValues['email'] === '' ? null : strtolower($registerValues['email']));
+
+            if ($kernel->registrationThrottle->tripIfFlooded()) {
+                $kernel->registration->announcePause($clientIp);
+            }
+
+            if ($kernel->registrationThrottle->secondsPaused() > 0) {
+                $registerNotice = 'Sign-ups are paused for a short while. Please try again later.';
+            } elseif (FormHoneypot::isTripped($_POST)) {
+                $kernel->securityLog->record(SecurityLog::EVENT_HONEYPOT, $clientIp, 'sign-up form');
+                $registerSent = true;
+            } elseif (!FormTiming::verify(is_string($_POST['form_time'] ?? null) ? $_POST['form_time'] : null, is_string($_POST['form_time_hmac'] ?? null) ? $_POST['form_time_hmac'] : null)) {
+                $kernel->securityLog->record(SecurityLog::EVENT_TOO_FAST, $clientIp, 'sign-up form');
+                $registerSent = true;
+            } else {
+                $result = $kernel->registration->register(
+                    [
+                        'username' => $registerValues['username'],
+                        'email' => $registerValues['email'],
+                        'display_name' => $registerValues['display_name'],
+                        'password' => (string) ($_POST['password'] ?? ''),
+                        'password_confirm' => (string) ($_POST['password_confirm'] ?? ''),
+                        'answer' => (string) ($_POST['registration_answer'] ?? ''),
+                    ],
+                    $clientIp,
+                    (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''),
+                );
+
+                $registerErrors = $result['errors'];
+                $registerSent = $result['status'] === \LumoraPress\Services\RegistrationService::RESULT_SENT;
+            }
+        }
+    } elseif ($secondsPaused > 0) {
+        $registerNotice = 'Sign-ups are paused for a short while. Please try again later.';
+    }
+
+    $registerQuestion = $kernel->registration->question();
+
+    require __DIR__ . '/views/register.php';
+
+    return;
+}
+
+if ($page === 'confirm-registration') {
+    $confirmToken = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+    $confirmState = $kernel->registration->peek($confirmToken) !== null ? 'ready' : 'invalid';
+
+    if ($confirmState === 'ready' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        // Confirming is a button press, not the act of opening the link, so a mail scanner that
+        // follows the link can't confirm the account on someone's behalf.
+        if (Csrf::verify('registration_confirm', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $outcome = $kernel->registration->confirm($confirmToken);
+            $confirmState = $outcome['status'] === \LumoraPress\Services\RegistrationService::CONFIRM_CREATED
+                ? 'created'
+                : ($outcome['status'] === \LumoraPress\Services\RegistrationService::CONFIRM_AWAITING_APPROVAL ? 'awaiting' : 'invalid');
+        }
+    }
+
+    require __DIR__ . '/views/confirm-registration.php';
 
     return;
 }
@@ -489,6 +596,7 @@ $menu = [
             'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
             'performance' => ['label' => 'Performance', 'icon' => '🚀', 'capability' => 'manage_options'],
+            'registration' => ['label' => 'Registration', 'icon' => '🪪', 'capability' => 'manage_options'],
             'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
             'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options'],
             'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],

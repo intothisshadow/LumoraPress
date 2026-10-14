@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 
+use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\Content\ActiveContentRenderer;
 use LumoraPress\Core\Http\CdnRewriter;
 use LumoraPress\Core\Theme\ActiveTheme;
@@ -80,6 +81,32 @@ if (!function_exists('the_font_stylesheets')) {
     function the_font_stylesheets(?array $urls = null): void
     {
         FontStylesheets::render($urls ?? font_stylesheet_urls());
+    }
+}
+
+if (!function_exists('registration_enabled')) {
+    /**
+     * Whether visitors can sign up (Settings › Registration). A theme checks this before
+     * showing a "Sign up" link, so it never advertises a form that answers "not found".
+     */
+    function registration_enabled(): bool
+    {
+        // No configuration yet (an early hook, or a test) means nothing is switched on.
+        try {
+            return ActiveConfig::instance()->option('users_can_register', '0') === '1';
+        } catch (\RuntimeException) {
+            return false;
+        }
+    }
+}
+
+if (!function_exists('register_url')) {
+    /**
+     * The sign-up form's address; only meaningful while registration_enabled() is true.
+     */
+    function register_url(): string
+    {
+        return admin_url('register');
     }
 }
 
