@@ -488,6 +488,7 @@ $menu = [
             ...($emojiPickerActive ? ['writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options']] : []),
             'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
+            'performance' => ['label' => 'Performance', 'icon' => '🚀', 'capability' => 'manage_options'],
             'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
             'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options'],
             'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],

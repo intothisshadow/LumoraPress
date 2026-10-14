@@ -167,8 +167,11 @@ Every function below is declared with a `function_exists()` guard, so a theme (o
 | `site_url(string $path = ''): string` | Root-relative URL under the site's base path. Use for any internal link. |
 | `home_url(string $path = ''): string` | Absolute URL (scheme + host + base path) — needed for RSS, outbound email, and canonical/OG tags, where a relative URL won't do. |
 | `admin_url(string $page = ''): string` | URL into `/admin`. |
-| `theme_url(string $path = ''): string` | URL to a file inside the *active* theme's own directory, cache-busted by file mtime — e.g. `theme_url('style.css')`. |
-| `core_asset_url(string $path = ''): string` | URL to a static file under the top-level `assets/` directory (framework-owned JS/CSS a theme may depend on). |
+| `theme_url(string $path = ''): string` | URL to a file inside the *active* theme's own directory, cache-busted by file mtime — e.g. `theme_url('style.css')`. Moves to the CDN address when the administrator sets one in Settings › Performance, so always build asset URLs with this rather than concatenating them. |
+| `core_asset_url(string $path = ''): string` | URL to a static file under the top-level `assets/` directory (framework-owned JS/CSS a theme may depend on). Follows the CDN address the same way as `theme_url()`. |
+| `the_font_stylesheets(?array $urls = null): void` | Prints the `<link>` tags for Google Fonts stylesheets, in `header.php` in place of hand-written `preconnect`/`stylesheet` tags. It serves the locally hosted copy when the administrator has downloaded one (adding a `preload` for the main fonts and no Google `preconnect`), and applies the font-display choice from Settings › Performance. With no argument it prints the addresses collected by the `font_stylesheet_urls` filter; pass an array of `https://fonts.googleapis.com/css2?...` URLs to name them directly. Anything that isn't a Google Fonts stylesheet address is skipped. |
+| `font_stylesheet_urls(): array` | The addresses the `font_stylesheet_urls` filter returns. A theme hooks that filter in `functions.php` to name the fonts it loads, which also lets Settings › Performance offer them for local hosting. |
+| `enqueue_script(string $handle, string $src, array $options = []): void` | Queues an external script. It prints on `footer_assets` (or `head_assets` with `'in_footer' => false`) after core's own scripts. Options: `deps` (handles that print first), `in_footer`, `defer`, `async`, `module` (each defaulting to the Settings › Performance choice, except `async`/`module`, which default to `false`), and `attributes` (extra attributes such as `crossorigin`). A queued handle is only printed once, a head script that depends on a footer script moves to the footer, and a module or async script never gets `defer`. Only external files are supported because the Content-Security-Policy blocks inline scripts. Requires the theme to fire `do_action('head_assets')` and `do_action('footer_assets')`. |
 | `canonical_url(): string` | The current request's self-referencing canonical URL, keeping only `?paged=`/`?q=` and dropping every other query param. |
 
 ### Media & images
@@ -482,6 +485,7 @@ The images are the download's thumbnail first, then every image found in its des
 <head>
     <meta charset="UTF-8">
     <title><?= esc_html(site_name()) ?></title>
+    <?php the_font_stylesheets(['https://fonts.googleapis.com/css2?family=Lora:wght@400..700&display=swap']); ?>
     <link rel="stylesheet" href="<?= esc_url(theme_url('style.css')) ?>">
     <style nonce="<?= esc_attr(csp_style_nonce()) ?>"><?= theme_options_css() ?></style>
     <?php do_action('head_assets'); ?>

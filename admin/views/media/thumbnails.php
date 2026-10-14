@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Services\ThumbnailService;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -107,6 +108,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
         $kernel->config->setOption('thumbnail_jpeg_quality', (string) max(0, min(100, (int) ($_POST['thumbnail_jpeg_quality'] ?? 82))));
         $kernel->config->setOption('thumbnail_webp_quality', (string) max(0, min(100, (int) ($_POST['thumbnail_webp_quality'] ?? 80))));
+        $kernel->config->setOption('thumbnail_webp', ($_POST['thumbnail_webp'] ?? '') === '1' && ThumbnailService::supportsWebp() ? '1' : '0');
+        $kernel->config->setOption('thumbnail_optimize', ($_POST['thumbnail_optimize'] ?? '') === '1' ? '1' : '0');
         $kernel->config->setOption('thumbnail_sharpen', ($_POST['thumbnail_sharpen'] ?? '') === '1' ? '1' : '0');
         $kernel->config->setOption('thumbnail_max_pixels', (string) max(1, (int) ($_POST['thumbnail_max_pixels'] ?? 25_000_000)));
         header('Location: ' . admin_url('media/thumbnails') . '?saved=1');
@@ -198,6 +201,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <label for="thumbnail-webp-quality">WebP quality (0&ndash;100)</label>
                 <input type="number" id="thumbnail-webp-quality" name="thumbnail_webp_quality" min="0" max="100" value="<?= esc_attr((string) $kernel->config->option('thumbnail_webp_quality', '80')) ?>">
             </p>
+
+            <div>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="thumbnail_webp" value="1" <?= $kernel->config->option('thumbnail_webp', '0') === '1' && ThumbnailService::supportsWebp() ? 'checked' : '' ?> <?= ThumbnailService::supportsWebp() ? '' : 'disabled' ?>>
+                    Save thumbnails of JPEG and PNG images as WebP
+                </label>
+                <span class="lp-field__hint">
+                    <?php if (ThumbnailService::supportsWebp()): ?>
+                        WebP files are usually much smaller, which makes pages load faster. Your original uploads are never changed, and GIFs stay as they are. Existing thumbnails keep their format until you regenerate them below.
+                    <?php else: ?>
+                        This server's PHP can't write WebP files, so the option is unavailable. Ask your host to enable WebP support in PHP's GD extension.
+                    <?php endif; ?>
+                </span>
+            </div>
+
+            <div>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="thumbnail_optimize" value="1" <?= $kernel->config->option('thumbnail_optimize', '1') !== '0' ? 'checked' : '' ?>>
+                    Optimize thumbnail file size
+                </label>
+                <span class="lp-field__hint">Saves JPEG thumbnails as progressive images and compresses PNG thumbnails as far as possible. The pictures look identical; the files are smaller. Applies to thumbnails generated from now on.</span>
+            </div>
 
             <label class="lp-field--checkbox">
                 <input type="checkbox" name="thumbnail_sharpen" value="1" <?= $kernel->config->option('thumbnail_sharpen', '0') === '1' ? 'checked' : '' ?>>

@@ -104,6 +104,12 @@ final class SettingsPortabilityService
         'thumbnail_sharpen' => 'bool',
         'thumbnail_jpeg_quality' => 'int',
         'thumbnail_webp_quality' => 'int',
+        'thumbnail_webp' => 'bool',
+        'thumbnail_optimize' => 'bool',
+        'perf_defer_js' => 'bool',
+        'perf_scripts_in_footer' => 'bool',
+        'perf_font_preload' => 'bool',
+        'perf_font_display' => 'string',
         'featured_image_crop_size' => 'string',
         'default_featured_image_on_pages' => 'bool',
         // General — portable subset only, see class docblock

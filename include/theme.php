@@ -16,7 +16,9 @@
 declare(strict_types=1);
 
 use LumoraPress\Core\Content\ActiveContentRenderer;
+use LumoraPress\Core\Http\CdnRewriter;
 use LumoraPress\Core\Theme\ActiveTheme;
+use LumoraPress\Core\Theme\FontStylesheets;
 use LumoraPress\Core\Theme\MediaViewer;
 use LumoraPress\Models\ContentFormat;
 
@@ -58,7 +60,38 @@ if (!function_exists('get_sidebar')) {
 if (!function_exists('theme_url')) {
     function theme_url(string $path = ''): string
     {
-        return ActiveTheme::instance()->themeUrl($path);
+        return CdnRewriter::rewrite(ActiveTheme::instance()->themeUrl($path));
+    }
+}
+
+if (!function_exists('the_font_stylesheets')) {
+    /**
+     * Prints the <link> tags for a theme's Google Fonts stylesheets, honouring the
+     * Settings > Performance font options (locally hosted copies, preloading,
+     * font-display). Call it once in header.php in place of hand-written <link> tags.
+     *
+     * Without an argument it prints the addresses collected by the 'font_stylesheet_urls'
+     * filter, which a theme's functions.php fills in; that same filter lets the
+     * Performance screen offer them for local hosting.
+     *
+     * @param array<int, string>|null $urls fonts.googleapis.com stylesheet URLs; empty and
+     *     foreign-host entries are skipped
+     */
+    function the_font_stylesheets(?array $urls = null): void
+    {
+        FontStylesheets::render($urls ?? font_stylesheet_urls());
+    }
+}
+
+if (!function_exists('font_stylesheet_urls')) {
+    /**
+     * @return array<int, string>
+     */
+    function font_stylesheet_urls(): array
+    {
+        $urls = apply_filters('font_stylesheet_urls', []);
+
+        return is_array($urls) ? array_values(array_filter($urls, 'is_string')) : [];
     }
 }
 

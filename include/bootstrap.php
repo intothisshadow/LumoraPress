@@ -36,8 +36,10 @@ use LumoraPress\Core\Errors\ErrorLogReader;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Hooks\Hooks;
 use LumoraPress\Core\Http\BasePath;
+use LumoraPress\Core\Http\CdnRewriter;
 use LumoraPress\Core\Http\MaintenanceGate;
 use LumoraPress\Core\Http\Router;
+use LumoraPress\Core\Http\TrustedProxies;
 use LumoraPress\Core\Mail\NativeMailer;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Kernel;
@@ -71,7 +73,9 @@ use LumoraPress\Core\Theme\ActiveTags;
 use LumoraPress\Core\Theme\ActiveTheme;
 use LumoraPress\Core\Theme\Authors;
 use LumoraPress\Core\Theme\FeaturedImages;
+use LumoraPress\Core\Theme\FontStylesheets;
 use LumoraPress\Core\Theme\FooterAssets;
+use LumoraPress\Core\Theme\ScriptQueue;
 use LumoraPress\Core\Theme\SearchAssets;
 use LumoraPress\Core\Theme\Permalinks;
 use LumoraPress\Core\Theme\SiteBranding;
@@ -114,6 +118,7 @@ use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\InstallPingService;
+use LumoraPress\Services\LocalFontService;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaPlayerShortcode;
 use LumoraPress\Services\MediaService;
@@ -177,6 +182,10 @@ $database = Database::connect(
 );
 
 $config->bindDatabase($database);
+
+// Must run before anything reads REMOTE_ADDR or HTTPS (site URL detection, secure
+// cookies, throttling), so the rest of the codebase sees the real visitor.
+$_SERVER = TrustedProxies::apply($_SERVER, TrustedProxies::parse((string) $config->option('trusted_proxies', '')));
 
 // The "timezone" DB option is only readable after bindDatabase() above,
 // so this must run after that call.
@@ -259,6 +268,20 @@ add_filter('csp_directives', static function (array $directives) use ($config): 
 
     return $directives;
 });
+
+// A configured CDN serves theme and core scripts, styles, images and fonts, which the
+// same-origin-only policy would otherwise block.
+CdnRewriter::set((string) $config->option('cdn_url', ''));
+
+if (CdnRewriter::origin() !== '') {
+    add_filter('csp_directives', static function (array $directives): array {
+        foreach (['script-src', 'style-src', 'img-src', 'font-src'] as $directive) {
+            $directives[$directive] = ($directives[$directive] ?? "'self'") . ' ' . CdnRewriter::origin();
+        }
+
+        return $directives;
+    });
+}
 
 // Set up before $plugins->loadActive() so a plugin's top-level file can
 // call register_shortcode() directly at load time — unlike CoreWidgets,
@@ -632,6 +655,26 @@ require LUMORA_ROOT . '/include/media-functions.php';
 // Awesome plugin's 'head_assets' hook.
 add_action('footer_assets', [FooterAssets::class, 'render']);
 
+// Enqueued scripts print after core's own, on the same two hooks.
+ScriptQueue::configure(
+    deferByDefault: $config->option('perf_defer_js', '1') !== '0',
+    footerByDefault: $config->option('perf_scripts_in_footer', '1') !== '0',
+);
+add_action('head_assets', [ScriptQueue::class, 'renderHead']);
+add_action('footer_assets', [ScriptQueue::class, 'renderFooter']);
+
+$localFonts = new LocalFontService(
+    config: $config,
+    fontsPath: LUMORA_ROOT . '/content/uploads/fonts',
+    fontsUrl: BasePath::get() . '/content/uploads/fonts',
+);
+FontStylesheets::configure(
+    fonts: $localFonts,
+    useLocal: $config->option('perf_font_local', '0') === '1',
+    preload: $config->option('perf_font_preload', '1') !== '0',
+    display: (string) $config->option('perf_font_display', 'swap'),
+);
+
 // Same bridge shape as FeaturedImages above, for the same reason
 // (themes have no route to UserService of their own).
 Authors::set($users);
@@ -883,6 +926,7 @@ $kernel = new Kernel(
     installPing: $installPing,
     shortcodes: $shortcodes,
     settingsPortability: $settingsPortability,
+    localFonts: $localFonts,
 );
 
 // See ActiveKernel's own docblock for why this exists — plugin code that

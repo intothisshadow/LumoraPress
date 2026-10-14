@@ -929,13 +929,14 @@ final class ThumbnailService
             $this->sharpen($canvas);
         }
 
-        $extension = strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION));
+        $outputMimeType = $this->outputMimeType($mimeType);
+        $extension = $outputMimeType === $mimeType ? strtolower(pathinfo((string) $media['file_path'], PATHINFO_EXTENSION)) : 'webp';
         $basename = pathinfo((string) $media['file_path'], PATHINFO_FILENAME);
         $directory = dirname((string) $media['file_path']);
         $relativePath = ($directory === '.' ? '' : $directory . '/') . "{$basename}-{$sizeName}.{$extension}";
         $destination = rtrim($this->uploadsPath, '/') . '/' . $relativePath;
 
-        $this->encode($canvas, $destination, $mimeType);
+        $this->encode($canvas, $destination, $outputMimeType);
 
         // Delete-then-insert rather than an upsert: a previous row may point at a differently-named file, and an UPDATE-only upsert would orphan it on disk. Also keeps this portable to SQLite.
         $existing = $this->database->fetchOne(
@@ -1094,14 +1095,41 @@ final class ThumbnailService
         return $rotated;
     }
 
+    /**
+     * Whether this PHP build can write WebP files at all; the setting is only offered, and
+     * only honoured, when it can.
+     */
+    public static function supportsWebp(): bool
+    {
+        return function_exists('imagewebp');
+    }
+
+    /**
+     * GIFs are left alone because GD would flatten an animation to its first frame.
+     */
+    private function outputMimeType(string $sourceMimeType): string
+    {
+        $convert = $this->config->option('thumbnail_webp', '0') === '1'
+            && self::supportsWebp()
+            && in_array($sourceMimeType, ['image/jpeg', 'image/png'], true);
+
+        return $convert ? 'image/webp' : $sourceMimeType;
+    }
+
     private function encode(GdImage $canvas, string $destination, string $mimeType, ?int $qualityOverride = null): void
     {
         $jpegQuality = $qualityOverride ?? max(0, min(100, (int) $this->config->option('thumbnail_jpeg_quality', '82')));
         $webpQuality = $qualityOverride ?? max(0, min(100, (int) $this->config->option('thumbnail_webp_quality', '80')));
+        $optimize = $this->config->option('thumbnail_optimize', '1') !== '0';
+
+        if ($optimize && $mimeType === 'image/jpeg') {
+            // A progressive JPEG usually comes out smaller and paints a rough image sooner on slow connections.
+            imageinterlace($canvas, true);
+        }
 
         $success = match ($mimeType) {
             'image/jpeg' => imagejpeg($canvas, $destination, $jpegQuality),
-            'image/png' => imagepng($canvas, $destination),
+            'image/png' => imagepng($canvas, $destination, $optimize ? 9 : -1),
             'image/gif' => imagegif($canvas, $destination),
             'image/webp' => function_exists('imagewebp') ? imagewebp($canvas, $destination, $webpQuality) : false,
             'image/avif' => function_exists('imageavif') ? imageavif($canvas, $destination) : false,

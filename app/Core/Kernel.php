@@ -59,6 +59,7 @@ use LumoraPress\Services\Import\PostImporter;
 use LumoraPress\Services\Import\UserImporter;
 use LumoraPress\Services\Import\WidgetImporter;
 use LumoraPress\Services\InstallPingService;
+use LumoraPress\Services\LocalFontService;
 use LumoraPress\Services\MediaImportService;
 use LumoraPress\Services\MediaService;
 use LumoraPress\Services\MediaStatsService;
@@ -150,6 +151,7 @@ final class Kernel
         public readonly InstallPingService $installPing,
         public readonly ShortcodeManager $shortcodes,
         public readonly SettingsPortabilityService $settingsPortability,
+        public readonly LocalFontService $localFonts,
     ) {
     }
 }

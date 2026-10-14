@@ -58,9 +58,10 @@ final class FooterAssets
              */
             ?>
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css">
-            <script src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js"></script>
-            <script src="<?= esc_url(core_asset_url('js/media-player.js')) ?>"></script>
             <?php
+            // Deferred scripts run in document order, so media-player.js still sees window.Plyr.
+            echo ScriptQueue::tag('https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js');
+            echo ScriptQueue::tag(core_asset_url('js/media-player.js'));
         }
 
         if (ScriptEmbeds::isUsed('twitter')) {
@@ -83,9 +84,7 @@ final class FooterAssets
 
         // Quote buttons, and in-place reactions/reports without a page reload.
         if (CommentExtras::isUsed()) {
-            ?>
-            <script src="<?= esc_url(core_asset_url('js/comments.js')) ?>"></script>
-            <?php
+            echo ScriptQueue::tag(core_asset_url('js/comments.js'));
         }
 
         if (show_back_to_top()) {
@@ -93,8 +92,8 @@ final class FooterAssets
             <button type="button" class="lp-back-to-top" data-lp-back-to-top aria-label="Back to top" hidden>
                 <span class="lp-back-to-top__icon" aria-hidden="true">&uarr;</span>
             </button>
-            <script src="<?= esc_url(core_asset_url('js/back-to-top.js')) ?>"></script>
             <?php
+            echo ScriptQueue::tag(core_asset_url('js/back-to-top.js'));
         }
 
         // lp_emoji_picker_button() (Emoji Picker plugin, LPP-006) already
@@ -102,9 +101,7 @@ final class FooterAssets
         // itself never appears without this — checked here rather than
         // loading the script unconditionally on every page.
         if (lp_emoji_picker_enabled()) {
-            ?>
-            <script src="<?= esc_url(core_asset_url('js/emoji-picker.js')) ?>"></script>
-            <?php
+            echo ScriptQueue::tag(core_asset_url('js/emoji-picker.js'));
         }
     }
 }

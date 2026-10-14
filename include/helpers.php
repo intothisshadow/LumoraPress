@@ -17,9 +17,11 @@ declare(strict_types=1);
 
 use LumoraPress\Core\ActiveEditorPreference;
 use LumoraPress\Core\Http\BasePath;
+use LumoraPress\Core\Http\CdnRewriter;
 use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\Security\CspNonce;
 use LumoraPress\Core\Theme\ActiveMaintenance;
+use LumoraPress\Core\Theme\ScriptQueue;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
 use LumoraPress\Models\ContentFormat;
@@ -129,13 +131,28 @@ if (!function_exists('core_asset_url')) {
         $base = BasePath::get() . '/assets';
 
         if ($path === '') {
-            return $base;
+            return CdnRewriter::rewrite($base);
         }
 
         $absolutePath = dirname(__DIR__) . '/assets/' . $path;
         $mtime = is_file($absolutePath) ? filemtime($absolutePath) : false;
 
-        return $base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : '');
+        return CdnRewriter::rewrite($base . '/' . $path . ($mtime !== false ? '?v=' . $mtime : ''));
+    }
+}
+
+if (!function_exists('enqueue_script')) {
+    /**
+     * Queues an external script for the public site. It is printed on `footer_assets`
+     * (or `head_assets` with `in_footer => false`), with `defer` added when
+     * Settings > Performance has deferring switched on. Safe to call from a plugin's
+     * main file or any hook that runs before the page's footer.
+     *
+     * @param array{deps?: array<int, string>, in_footer?: bool, defer?: bool, async?: bool, module?: bool, attributes?: array<string, string>} $options
+     */
+    function enqueue_script(string $handle, string $src, array $options = []): void
+    {
+        ScriptQueue::enqueue($handle, $src, $options);
     }
 }
 

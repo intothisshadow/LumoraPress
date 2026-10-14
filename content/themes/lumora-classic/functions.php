@@ -44,6 +44,20 @@ add_theme_support(
 register_nav_menu('social', 'Social Links Menu');
 register_nav_menu('secondary', 'Secondary Menu');
 
+// Read by header.php through the_font_stylesheets(), and by Settings > Performance when
+// offering fonts for local hosting.
+add_filter('font_stylesheet_urls', static function (array $urls): array {
+    if (theme_option('lumora_classic_load_fonts') !== '0') {
+        $urls[] = 'https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:wght@500..800&display=swap';
+    }
+
+    if (theme_option('google_fonts_url') !== '') {
+        $urls[] = (string) theme_option('google_fonts_url');
+    }
+
+    return $urls;
+});
+
 add_action('register_theme_options', function (\LumoraPress\Core\Theme\ThemeOptions $options): void {
     $options->registerSection(
         'lumora_classic',
