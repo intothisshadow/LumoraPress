@@ -4253,6 +4253,7 @@ summary.lp-media-views__chip::after {
 }
 
 [data-lp-github-progress] progress,
+[data-lp-github-check-progress] progress,
 [data-lp-sweep-progress] progress {
     display: block;
     width: 100%;

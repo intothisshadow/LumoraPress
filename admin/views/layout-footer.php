@@ -74,6 +74,7 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/update-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/sweep-batch.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/github-check.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/native-import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/geoip-import-continue.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/media-import-continue.js')) ?>" defer></script>

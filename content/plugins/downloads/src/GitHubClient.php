@@ -98,7 +98,10 @@ final class GitHubClient
     }
 
     /**
-     * @return array{name: string, description: string, defaultBranch: string}
+     * `pushedAt` is when anything was last pushed to the repository (any branch), as GitHub reports it,
+     * or an empty string when it did not say.
+     *
+     * @return array{name: string, description: string, defaultBranch: string, pushedAt: string}
      */
     public function fetchRepository(GitHubRepositoryRef $ref): array
     {
@@ -116,6 +119,7 @@ final class GitHubClient
             'name' => $data['name'],
             'description' => is_string($data['description'] ?? null) ? $data['description'] : '',
             'defaultBranch' => is_string($data['default_branch'] ?? null) && $data['default_branch'] !== '' ? $data['default_branch'] : 'main',
+            'pushedAt' => is_string($data['pushed_at'] ?? null) ? $data['pushed_at'] : '',
         ];
     }
 

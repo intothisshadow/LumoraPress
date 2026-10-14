@@ -58,10 +58,35 @@ final class GitHubSourceStore
     {
         $row = $this->database->fetchOne('SELECT * FROM ' . $this->sourcesTable() . ' WHERE download_id = :id', ['id' => $downloadId]);
 
-        if ($row === null) {
-            return null;
+        return $row === null ? null : $this->hydrate($row);
+    }
+
+    /**
+     * Every GitHub-sourced download, oldest first, for the bulk update check.
+     *
+     * @return array<int, array{ref: GitHubRepositoryRef, branch: string, titleHash: string, descriptionHash: string, readmeHash: string, syncedAt: string}> keyed by download id
+     */
+    public function all(): array
+    {
+        $sources = [];
+
+        foreach ($this->database->fetchAll('SELECT * FROM ' . $this->sourcesTable() . ' ORDER BY download_id ASC') as $row) {
+            $source = $this->hydrate($row);
+
+            if ($source !== null) {
+                $sources[(int) $row['download_id']] = $source;
+            }
         }
 
+        return $sources;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{ref: GitHubRepositoryRef, branch: string, titleHash: string, descriptionHash: string, readmeHash: string, syncedAt: string}|null
+     */
+    private function hydrate(array $row): ?array
+    {
         $ref = GitHubRepositoryRef::fromParts((string) $row['owner'], (string) $row['repo']);
 
         if ($ref === null) {

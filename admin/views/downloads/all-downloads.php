@@ -20,7 +20,9 @@ use LumoraPress\Plugins\Downloads\DownloadCategoryService;
 use LumoraPress\Plugins\Downloads\DownloadService;
 use LumoraPress\Plugins\Downloads\DownloadStatus;
 use LumoraPress\Plugins\Downloads\DownloadType;
+use LumoraPress\Plugins\Downloads\GitHubImportService;
 use LumoraPress\Plugins\Downloads\GitHubSourceStore;
+use LumoraPress\Plugins\Downloads\GitHubUpdateScanner;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -41,6 +43,28 @@ $downloads = new DownloadService(
 );
 
 $error = null;
+
+$githubStore = new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+$githubScanner = new GitHubUpdateScanner(GitHubImportService::fromKernel($kernel), $githubStore, $kernel->config);
+
+// The bulk update check: the page's script posts here once per small batch and gets JSON back.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === 'github_check_run' && ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch') {
+    // admin/index.php has already buffered the page shell; discard it so only JSON is sent.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    header('Content-Type: application/json');
+
+    if (!$currentUser->can('upload_files') || !Csrf::verify('github_check_run', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Not permitted. Reload the page and try again.', 'csrfToken' => Csrf::token('github_check_run')]);
+        exit;
+    }
+
+    echo json_encode($githubScanner->scanBatch((int) ($_POST['run_started'] ?? time())) + ['csrfToken' => Csrf::token('github_check_run')]);
+    exit;
+}
 
 // No dedicated Controller class — this plugin handles its own POST bodies
 // inline via DownloadService calls, its established convention.
@@ -126,8 +150,15 @@ $listFilters = ['term' => $termFilter, 'categoryId' => $categoryFilter, 'noFile'
 $pagination = $downloads->paginateForAdmin($page, statusFilter: $statusFilter, filters: $listFilters, orderBy: $orderBy, orderDir: $orderDir);
 
 // One query for the whole page of rows, to flag the ones imported from GitHub.
-$githubRepositories = (new GitHubSourceStore($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_')))
+$githubRepositories = $githubStore
     ->repositoriesForDownloads(array_map(static fn ($listedDownload): int => $listedDownload->id, $pagination['downloads']));
+
+$githubTotal = $githubScanner->total();
+$githubResults = $githubScanner->results();
+$canCheckGitHub = $githubTotal > 0 && $currentUser->can('upload_files');
+// A check skips downloads already answered in the last hour, so continuing after GitHub's limit
+// stopped one picks up where it left off instead of starting over.
+$githubRunStarted = time() - 3600;
 
 $statusCounts = [
     DownloadStatus::Live->value => $downloads->countByStatus(DownloadStatus::Live),
@@ -214,6 +245,33 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
     </details>
 </section>
 
+<?php if ($canCheckGitHub): ?>
+    <?php
+    $githubWithChanges = count(array_filter($githubResults, static fn (array $result): bool => $result['status'] === GitHubUpdateScanner::STATUS_CHANGES));
+    $githubUnavailable = count(array_filter($githubResults, static fn (array $result): bool => $result['status'] === GitHubUpdateScanner::STATUS_ERROR));
+    ?>
+    <section class="lp-admin__panel" data-lp-github-check>
+        <h2>GitHub Updates</h2>
+        <p class="lp-field__hint">
+            <?= (int) $githubTotal ?> download<?= $githubTotal === 1 ? ' was' : 's were' ?> imported from or linked to GitHub. Checking asks GitHub whether each repository changed since it was last synced, and marks the ones that did with an Update available badge. Nothing runs by itself, and nothing is changed by a check: each update is reviewed and applied from the download's own screen.
+            Without a GitHub access token (Downloads &rsaquo; Import from GitHub) GitHub allows only 60 requests an hour, and each download costs at least one, so a long list may stop part-way. Click again later to carry on; downloads checked in the last hour are skipped.
+        </p>
+        <?php if ($githubResults !== []): ?>
+            <p><?= (int) $githubWithChanges ?> with changes to review<?= $githubUnavailable > 0 ? ', ' . (int) $githubUnavailable . ' whose repository could not be read' : '' ?>, from the checks so far.</p>
+        <?php endif; ?>
+        <form method="post" action="<?= esc_url(admin_url('downloads/all-downloads')) ?>" data-lp-github-check-form data-lp-github-check-total="<?= (int) $githubTotal ?>">
+            <?= Csrf::field('github_check_run') ?>
+            <input type="hidden" name="form" value="github_check_run">
+            <input type="hidden" name="run_started" value="<?= (int) $githubRunStarted ?>">
+            <button type="submit" class="lp-button lp-button--secondary">Check for Updates</button>
+        </form>
+        <div data-lp-github-check-progress hidden>
+            <progress data-lp-github-check-bar max="1" value="0"></progress>
+            <p role="status" data-lp-github-check-status></p>
+        </div>
+    </section>
+<?php endif; ?>
+
 <section class="lp-admin__panel">
     <?php if ($pagination['downloads'] === []): ?>
         <p class="lp-admin__widget-placeholder"><?= $isTrashView ? 'Trash is empty.' : ($noFileFilter ? 'Every download has a file attached.' : 'No downloads yet.') ?></p>
@@ -278,6 +336,12 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <?php if (isset($githubRepositories[$listedDownload->id])): ?>
                                     <br>
                                     <a class="lp-status-badge" href="https://github.com/<?= esc_attr($githubRepositories[$listedDownload->id]) ?>" title="Imported from <?= esc_attr($githubRepositories[$listedDownload->id]) ?>">GitHub</a>
+                                    <?php $githubResult = $githubResults[$listedDownload->id] ?? null; ?>
+                                    <?php if (($githubResult['status'] ?? '') === GitHubUpdateScanner::STATUS_CHANGES): ?>
+                                        <a class="lp-status-badge lp-status-badge--warning" href="<?= esc_url(admin_url('downloads/import-github') . '?update=' . (int) $listedDownload->id) ?>">Update available</a>
+                                    <?php elseif (($githubResult['status'] ?? '') === GitHubUpdateScanner::STATUS_ERROR): ?>
+                                        <span class="lp-status-badge lp-status-badge--warning" title="<?= esc_attr($githubResult['message']) ?>">Repository unavailable</span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
                             <td><?= esc_html($listedDownload->categoryId !== null ? ($categoriesById[$listedDownload->categoryId]?->name ?? 'Uncategorized') : 'Uncategorized') ?></td>

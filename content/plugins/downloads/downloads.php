@@ -54,6 +54,7 @@ require_once __DIR__ . '/src/ReadmeTransformer.php';
 require_once __DIR__ . '/src/GitHubSourceStore.php';
 require_once __DIR__ . '/src/GitHubTokenStore.php';
 require_once __DIR__ . '/src/GitHubImportService.php';
+require_once __DIR__ . '/src/GitHubUpdateScanner.php';
 
 // Needs no Kernel services until content actually contains [lumora_downloads]
 // (it opens its own database connection then), so it's safe to construct here.

@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\Downloads;
 
 use InvalidArgumentException;
+use LumoraPress\Core\Kernel;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\TrustedImageOrigins;
 use LumoraPress\Models\ContentFormat;
@@ -49,6 +50,8 @@ final class GitHubImportService
 
     private const SNAPSHOT_MAX_ENTRIES = 5;
 
+    private const PUSH_MARGIN_SECONDS = 3600;
+
     /** A README larger than this isn't kept in the session, which is stored in the database. */
     private const SNAPSHOT_MAX_README_BYTES = 100_000;
 
@@ -72,9 +75,9 @@ final class GitHubImportService
      * update check) reads fresh; the step that follows it (import, link) reuses that read for a
      * few minutes, so one action costs GitHub's rate limit once instead of twice.
      *
-     * @return array{repo: array{name: string, description: string, defaultBranch: string}, readme: ?string, listing: array<int, array{path: string, name: string, sha: string, size: int}>}
+     * @return array{repo: array{name: string, description: string, defaultBranch: string, pushedAt: string}, readme: ?string, listing: array<int, array{path: string, name: string, sha: string, size: int}>}
      */
-    private function snapshot(GitHubRepositoryRef $ref, bool $fresh = false): array
+    private function snapshot(GitHubRepositoryRef $ref, bool $fresh = false, ?array $repo = null): array
     {
         $key = strtolower($ref->fullName());
         $cached = $_SESSION[self::SNAPSHOT_SESSION_KEY][$key] ?? null;
@@ -83,7 +86,7 @@ final class GitHubImportService
             return $cached['data'];
         }
 
-        $repo = $this->client->fetchRepository($ref);
+        $repo ??= $this->client->fetchRepository($ref);
         $readme = $this->client->fetchReadme($ref, $repo['defaultBranch']);
         $data = ['repo' => $repo, 'readme' => $readme, 'listing' => $this->client->listScreenshots($ref, $repo['defaultBranch'])];
 
@@ -222,7 +225,7 @@ final class GitHubImportService
      *
      * @return array<string, mixed>
      */
-    public function checkForUpdates(int $downloadId): array
+    public function checkForUpdates(int $downloadId, ?array $repo = null): array
     {
         $download = $this->downloads->findById($downloadId);
         $source = $this->store->find($downloadId);
@@ -232,7 +235,7 @@ final class GitHubImportService
         }
 
         $ref = $source['ref'];
-        ['repo' => $repo, 'readme' => $readme, 'listing' => $screenshotList] = $this->snapshot($ref, fresh: true);
+        ['repo' => $repo, 'readme' => $readme, 'listing' => $screenshotList] = $this->snapshot($ref, fresh: true, repo: $repo);
         $branch = $repo['defaultBranch'];
         $listing = $this->indexByPath($screenshotList);
         $mapped = [];
@@ -290,6 +293,58 @@ final class GitHubImportService
         $result['hasChanges'] = $result['branchChanged'] || $readmeChanged || $new !== [] || $changed !== [] || $removed !== [];
 
         return $result;
+    }
+
+    /**
+     * A cheap "is there anything to review?" for the bulk check. One call tells whether the default
+     * branch moved or anything was pushed since the last sync; only when something was does it spend
+     * the few extra calls of a full comparison. A download linked after the fact (its README never
+     * applied) always gets the full comparison, since its first README is still on offer.
+     *
+     * @throws GitHubImportException when GitHub can't be asked, or the repository is gone
+     * @throws InvalidArgumentException when the download has no GitHub source
+     */
+    public function hasChanges(int $downloadId): bool
+    {
+        $source = $this->store->find($downloadId);
+
+        if ($source === null) {
+            throw new InvalidArgumentException('This download was not imported from GitHub.');
+        }
+
+        $repo = $this->client->fetchRepository($source['ref']);
+
+        if ($repo['defaultBranch'] !== $source['branch'] || $source['readmeHash'] === '' || $repo['pushedAt'] === '') {
+            return $this->checkForUpdates($downloadId, $repo)['hasChanges'];
+        }
+
+        $pushedAt = strtotime($repo['pushedAt']);
+        $syncedAt = strtotime($source['syncedAt']);
+
+        // The margin covers a push that landed while the import or update was still copying files.
+        if ($pushedAt !== false && $syncedAt !== false && $pushedAt < $syncedAt - self::PUSH_MARGIN_SECONDS) {
+            return false;
+        }
+
+        return $this->checkForUpdates($downloadId, $repo)['hasChanges'];
+    }
+
+    public static function fromKernel(Kernel $kernel): self
+    {
+        $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
+        $downloads = new DownloadService($kernel->database, $tablePrefix, $kernel->media, $kernel->redirects, new DownloadCategoryService($kernel->database, $tablePrefix), $kernel->thumbnails, $kernel->mediaStats);
+
+        return new self(
+            new GitHubClient(token: (new GitHubTokenStore($kernel->config))->token()),
+            new GitHubSourceStore($kernel->database, $tablePrefix),
+            $downloads,
+            $kernel->media,
+            $kernel->folders,
+            $kernel->config,
+            $kernel->thumbnails,
+            LUMORA_ROOT . '/content/uploads',
+            sys_get_temp_dir(),
+        );
     }
 
     /**
