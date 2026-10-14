@@ -39,16 +39,13 @@ final class EmbedService
     private const DEFAULT_PROVIDERS = ['youtube', 'vimeo', 'soundcloud', 'spotify', 'codepen', 'twitter', 'bluesky', 'instagram'];
 
     /**
-     * Matches a bare URL as the entire content of a paragraph — the shape
-     * a Markdown/HTML-format post gets when an author pastes a link on
-     * its own line with no other text (MarkdownParser only autolinks a
-     * bare URL when it's wrapped in `<...>`; TinyMCE has no 'autolink'
-     * plugin enabled — see admin/assets/js/content-editor.js — so a bare
-     * paste normally stays as plain text, not an `<a>`). The `<a href>`
-     * alternative is a defensive fallback for a URL that did get
-     * autolinked some other way.
+     * Matches a URL as the entire content of a paragraph, either bare or as a link whose text
+     * is that same URL. Inline wrappers (span, em, strong...) around it are tolerated because
+     * the Visual editor, or a browser extension that auto-links text inside it, stores
+     * `<p><span><a href="u">u</a></span></p>`; Markdown never produces that shape.
+     * Groups: 1 = link href, 2 = link text, 3 = bare URL.
      */
-    private const PARAGRAPH_PATTERN = '#<p>\s*(?:<a\b[^>]*\bhref="([^"]*)"[^>]*>[^<]*</a>|(https?://[^\s<]+))\s*</p>#i';
+    private const PARAGRAPH_PATTERN = '#<p>\s*(?:<(?:span|em|strong|b|i|u)\b[^>]*>\s*)*(?:<a\b[^>]*\bhref="([^"]*)"[^>]*>([^<]*)</a>|(https?://[^\s<]+))(?:\s*<br\s*/?>)?\s*(?:</(?:span|em|strong|b|i|u)>\s*)*</p>#i';
 
     /**
      * Matches a bare URL as an entire line in Plain-format content, which
@@ -231,7 +228,12 @@ final class EmbedService
         }
 
         $html = (string) preg_replace_callback(self::PARAGRAPH_PATTERN, function (array $matches): string {
-            $url = $matches[1] !== '' ? $matches[1] : $matches[2];
+            $url = ($matches[1] ?? '') !== '' ? $matches[1] : ($matches[3] ?? '');
+
+            // A link with its own wording ("Watch this") is the author's text, not a bare URL.
+            if (($matches[1] ?? '') !== '' && !$this->linkTextIsTheUrl($matches[1], $matches[2] ?? '')) {
+                return $matches[0];
+            }
 
             return $this->buildEmbed($url) ?? $matches[0];
         }, $html);
@@ -302,6 +304,13 @@ final class EmbedService
         }
 
         return $directives;
+    }
+
+    private function linkTextIsTheUrl(string $href, string $text): bool
+    {
+        $normalize = static fn (string $value): string => rtrim(trim(html_entity_decode($value, ENT_QUOTES | ENT_HTML5)), '/');
+
+        return $normalize($text) === $normalize($href);
     }
 
     private function buildEmbed(string $rawUrl): ?string

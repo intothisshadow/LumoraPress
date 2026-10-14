@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- A video, music, or social-media address on its own line now embeds in posts written in the Visual editor, as it already did in Markdown. The Visual editor (or a browser extension that turns text into links) can store the address as a link inside a `<span>`, which the embed step did not recognise. A link with its own wording ("Watch this") is still left as a link.
 - A core update could fail at its last step and roll itself back on servers that cache PHP files (the version check read the old, cached copy of `version.php`). The update now reads the version file fresh.
 - Restoring a removed bundled plugin or theme now reports "Successfully restored Font Awesome 0.1.0." instead of "updated … from 0.0.0".
 - Installing on MySQL 5.6 or MariaDB 10.0 (the oldest supported database servers) failed during setup: one migration used a `SELECT` without a `FROM`, and the search-statistics table used a key longer than those servers allow. Both are fixed, and Lumora Press now runs on every database version listed under Requirements in the README. Search statistics now record queries up to 191 characters long instead of 200.
