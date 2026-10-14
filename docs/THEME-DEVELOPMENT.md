@@ -280,6 +280,8 @@ register_sidebar('homepage', 'Homepage Widget Area', 'Appears above the post lis
 
 It prints `<section class="lp-homepage-widgets" aria-label="Homepage widgets">` only on the genuine homepage (a null `$page_title`, so not the Posts page or an archive) and only on page 1, and nothing at all when the area is empty or was never registered. Style `.lp-homepage-widgets` in your stylesheet (Lumora Classic uses an auto-fit grid of widget cards).
 
+**Widget markup your stylesheet should cover.** Every core widget renders `<section class="lp-widget lp-widget--{type}">`, an optional `<h3 class="lp-widget__title">`, and its body (most put it in `.lp-widget__content`). The Image widget adds `.lp-widget--image` with `.lp-widget__image` (the `<img>`) and `.lp-widget__image-link` (the `<a>`, only when the widget has a link); give the image `max-width: 100%; height: auto` so it never overflows a narrow sidebar. An administrator can also give any widget extra CSS classes, which are added to its `.lp-widget` element (or, for a plugin widget with its own markup, to a wrapping `<div>`), so avoid selectors that assume the class list is exactly `lp-widget lp-widget--{type}`.
+
 ## Navigation menus
 
 Register in `functions.php`:

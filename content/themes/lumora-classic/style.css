@@ -1829,6 +1829,18 @@ a.lp-post-list__comments:focus {
 /* Core widgets: Pages, Categories, Recent Posts, Recent Comments, and
    Archives render a plain link list; Tag Cloud, Meta and Statistics reuse
    the same list/count building blocks. */
+/* Image widget: shown at its natural size, never wider than the sidebar. */
+.lp-widget__image-link {
+    display: block;
+}
+
+.lp-widget__image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+}
+
 .lp-widget__list {
     list-style: none;
     margin: 0;

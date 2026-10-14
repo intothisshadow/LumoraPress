@@ -129,8 +129,42 @@ final class WidgetManager
                 continue;
             }
 
+            ob_start();
             ($type['render'])($widget['settings']);
+            $html = (string) ob_get_clean();
+
+            echo self::withCssClasses($html, self::sanitizeCssClasses((string) ($widget['settings']['css_class'] ?? '')));
         }
+    }
+
+    /**
+     * Keeps only valid CSS class tokens, so the stored value can never carry quotes or markup
+     * into an attribute.
+     */
+    public static function sanitizeCssClasses(string $classes): string
+    {
+        $tokens = preg_split('/\s+/', trim($classes), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $valid = array_filter($tokens, static fn (string $token): bool => preg_match('/^-?[A-Za-z_][A-Za-z0-9_-]*$/', $token) === 1);
+
+        return implode(' ', array_unique($valid));
+    }
+
+    /**
+     * Adds the classes to the widget's own wrapper when it uses the standard
+     * `<section class="lp-widget ...">`, and otherwise wraps it, so a plugin widget with its
+     * own markup still gets the class.
+     */
+    private static function withCssClasses(string $html, string $classes): string
+    {
+        if ($classes === '' || trim($html) === '') {
+            return $html;
+        }
+
+        if (str_starts_with(ltrim($html), '<section class="lp-widget')) {
+            return (string) preg_replace('/^(\s*<section class="lp-widget[^"]*)"/', '$1 ' . $classes . '"', $html, 1);
+        }
+
+        return '<div class="' . $classes . '">' . $html . '</div>';
     }
 
     public function hasWidgets(string $sidebarId): bool

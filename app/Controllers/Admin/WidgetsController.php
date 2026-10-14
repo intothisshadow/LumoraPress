@@ -103,7 +103,12 @@ final class WidgetsController
 
                 foreach ($fields as $key => $type) {
                     $raw = $post['settings'][$key] ?? null;
-                    $settings[$key] = $type === 'checkbox' ? ($raw === '1' ? '1' : '0') : trim((string) $raw);
+                    $settings[$key] = match ($type) {
+                        'checkbox' => $raw === '1' ? '1' : '0',
+                        'image' => (string) max(0, (int) $raw),
+                        'css_class' => WidgetManager::sanitizeCssClasses((string) $raw),
+                        default => trim((string) $raw),
+                    };
                 }
 
                 $sidebarWidgets[$index]['settings'] = $settings;
@@ -387,6 +392,7 @@ final class WidgetsController
             'recent_comments' => [...$title, 'limit' => 'number'],
             'archives' => [...$title, 'limit' => 'number'],
             'tag_cloud', 'meta', 'statistics' => $title,
+            'image' => [...$title, 'media_id' => 'image', 'alt' => 'text', 'link' => 'text'],
             'social_links' => [
                 ...$title,
                 'website' => 'text',
@@ -417,7 +423,12 @@ final class WidgetsController
             }
         }
 
-        return $types !== [] ? $types : $coreTypes;
+        $types = $types !== [] ? $types : $coreTypes;
+
+        // Every widget can carry extra CSS classes, whether or not a plugin's field list names them.
+        $types['css_class'] = 'css_class';
+
+        return $types;
     }
 
     /**

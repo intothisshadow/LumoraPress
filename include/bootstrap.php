@@ -491,7 +491,7 @@ add_action('page_saved', static function (\LumoraPress\Models\Page $page) use ($
 
 // Core widget types need the services just constructed above, hence
 // registered here rather than alongside widgets.php earlier.
-CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users, $content);
+CoreWidgets::register($widgets, $posts, $pages, $categories, $tags, $comments, $users, $content, $media);
 
 // Persisted widget assignments — one JSON option keyed by sidebar id.
 $widgetsConfig = json_decode((string) $config->option('widgets_config', '{}'), true);

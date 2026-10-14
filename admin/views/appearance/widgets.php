@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\FeaturedImageDefaultsController;
 use LumoraPress\Controllers\Admin\WidgetsController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Widgets\WidgetManager;
@@ -52,6 +53,12 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
         'recent_comments' => [$titleField, ['key' => 'limit', 'label' => 'Number of comments to show', 'type' => 'number']],
         'archives' => [$titleField, ['key' => 'limit', 'label' => 'Number of months to show', 'type' => 'number']],
         'tag_cloud', 'meta', 'statistics' => [$titleField],
+        'image' => [
+            $titleField,
+            ['key' => 'media_id', 'label' => 'Image', 'type' => 'image'],
+            ['key' => 'alt', 'label' => 'Alternative text', 'type' => 'text', 'hint' => 'Describes the image for people who cannot see it. Leave blank to use the alternative text saved with the image in the Media Manager.'],
+            ['key' => 'link', 'label' => 'Link address', 'type' => 'text', 'hint' => 'Optional. Where clicking the image goes: a full web address or a path on this site.'],
+        ],
         'social_links' => [
             $titleField,
             ['key' => 'website', 'label' => 'Website URL', 'type' => 'text'],
@@ -69,8 +76,39 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
 
     // Lets a plugin-registered widget declare its own settings fields;
     // without a listener an unknown type only gets the Title field.
-    return (array) apply_filters('widget_settings_fields', $coreFields, $widgetType);
+    $fields = (array) apply_filters('widget_settings_fields', $coreFields, $widgetType);
+
+    // Every widget, core or plugin, can carry extra CSS classes for a theme or custom stylesheet to target.
+    if (!in_array('css_class', array_column($fields, 'key'), true)) {
+        $fields[] = ['key' => 'css_class', 'label' => 'Extra CSS classes', 'type' => 'text', 'hint' => 'Optional. Space-separated class names added to this widget, for styling it from your theme or Custom CSS.'];
+    }
+
+    return $fields;
 };
+
+// The Image widget's picker queries this page for JSON, under its own request name so it can't
+// invalidate the token of any other picker on the screen.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['form'] ?? null) === FeaturedImageDefaultsController::WIDGET_IMAGE_PICKER_CSRF_ACTION) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    $pickerResponse = (new FeaturedImageDefaultsController($kernel->config, $kernel->media, $kernel->thumbnails))->pickerQuery(
+        $_POST,
+        $currentUser->can('upload_files'),
+        is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null,
+        FeaturedImageDefaultsController::WIDGET_IMAGE_PICKER_CSRF_ACTION,
+    );
+    http_response_code($pickerResponse['status']);
+    header('Content-Type: application/json');
+    echo json_encode($pickerResponse['body']);
+    exit;
+}
+
+$widgetImageFolderTree = array_map(
+    static fn (array $row): array => ['id' => $row['folder']->id, 'name' => $row['folder']->name, 'depth' => $row['depth']],
+    $kernel->folders->listAllForTree(),
+);
 
 /**
  * Renders one widget's settings fields — shared by the per-sidebar list
@@ -79,7 +117,7 @@ $settingsFieldsFor = static function (string $widgetType) use ($kernel): array {
  * @param array{id: string, type: string, settings: array<string, mixed>} $widget
  * @param array<int, array{key: string, label: string, type: string, options?: array<string, string>, empty_label?: string, hint?: string}> $fields
  */
-$renderWidgetSettingsFields = static function (array $widget, array $fields): void {
+$renderWidgetSettingsFields = static function (array $widget, array $fields) use ($kernel, $widgetImageFolderTree): void {
     foreach ($fields as $field) {
         $fieldId = 'widget-' . $widget['id'] . '-' . $field['key'];
         $value = $widget['settings'][$field['key']] ?? '';
@@ -104,6 +142,28 @@ $renderWidgetSettingsFields = static function (array $widget, array $fields): vo
                     <input type="checkbox" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" value="1" <?= $value === '1' ? 'checked' : '' ?>>
                     <?= esc_html($field['label']) ?>
                 </label>
+            <?php elseif ($field['type'] === 'image'): ?>
+                <?php $pickedImage = ((int) $value) > 0 ? $kernel->media->find((int) $value) : null; ?>
+                <div
+                    class="lp-featured-image-picker"
+                    data-lp-featured-image-picker
+                    data-picker-url="<?= esc_url(admin_url('appearance/widgets')) ?>"
+                    data-picker-action="<?= esc_attr(FeaturedImageDefaultsController::WIDGET_IMAGE_PICKER_CSRF_ACTION) ?>"
+                    data-picker-csrf="<?= esc_attr(Csrf::token(FeaturedImageDefaultsController::WIDGET_IMAGE_PICKER_CSRF_ACTION)) ?>"
+                    data-media-folders="<?= esc_attr((string) json_encode($widgetImageFolderTree)) ?>"
+                    role="group"
+                    aria-label="<?= esc_attr($field['label']) ?>"
+                >
+                    <input type="hidden" id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]" data-picker-value value="<?= (int) ($pickedImage['id'] ?? 0) ?>">
+                    <span class="lp-featured-image-picker__chosen" data-picker-chosen>
+                        <?php if ($pickedImage !== null): ?>
+                            <img class="lp-featured-image-picker__chosen-thumb" src="<?= esc_url((string) ($kernel->thumbnails->url($pickedImage, 'small') ?? $kernel->media->url($pickedImage))) ?>" alt="">
+                            <?= esc_html((string) $pickedImage['file_name']) ?>
+                        <?php endif; ?>
+                    </span>
+                    <button type="button" class="lp-button lp-button--secondary" data-picker-trigger><?= $pickedImage !== null ? 'Replace&hellip;' : 'Choose from Media Manager&hellip;' ?></button>
+                    <button type="button" class="lp-button lp-button--link lp-button--link--danger" data-picker-remove <?= $pickedImage === null ? 'hidden' : '' ?>>Remove</button>
+                </div>
             <?php elseif ($field['type'] === 'select'): ?>
                 <select id="<?= esc_attr($fieldId) ?>" name="settings[<?= esc_attr($field['key']) ?>]">
                     <option value=""><?= esc_html((string) ($field['empty_label'] ?? '(None)')) ?></option>

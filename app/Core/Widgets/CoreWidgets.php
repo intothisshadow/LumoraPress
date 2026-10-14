@@ -24,6 +24,7 @@ use LumoraPress\Models\PostStatus;
 use LumoraPress\Services\CategoryService;
 use LumoraPress\Services\CommentService;
 use LumoraPress\Services\ContentRenderer;
+use LumoraPress\Services\MediaService;
 use LumoraPress\Services\PageService;
 use LumoraPress\Services\PostService;
 use LumoraPress\Services\TagService;
@@ -33,9 +34,9 @@ use LumoraPress\Services\UserService;
  * Registers Lumora Press's built-in widget types against a WidgetManager.
  * Themes remain free to register additional widget types of their own.
  *
- * No Image, Calendar, or external RSS Feed widget: those would need a
- * media picker UI, a full month-grid UI, or a server-side-request surface
- * this app doesn't otherwise expose.
+ * No Calendar or external RSS Feed widget: those would need a full
+ * month-grid UI or a server-side-request surface this app doesn't
+ * otherwise expose.
  */
 final class CoreWidgets
 {
@@ -68,6 +69,7 @@ final class CoreWidgets
         CommentService $comments,
         UserService $users,
         ContentRenderer $content,
+        ?MediaService $media = null,
     ): void {
         $widgets->registerWidget('text', 'Text/HTML', static function (array $settings) use ($content): void {
             $title = (string) ($settings['title'] ?? '');
@@ -122,6 +124,37 @@ final class CoreWidgets
 
             echo '</div></section>';
         });
+
+        // Needs the media service to look the picked image up; without one (a bare test setup) the
+        // type is simply not offered.
+        if ($media !== null) {
+            $widgets->registerWidget('image', 'Image', static function (array $settings) use ($media): void {
+                $title = (string) ($settings['title'] ?? '');
+                $item = ((int) ($settings['media_id'] ?? 0)) > 0 ? $media->find((int) $settings['media_id']) : null;
+
+                if ($item === null || !str_starts_with((string) ($item['mime_type'] ?? ''), 'image/')) {
+                    return;
+                }
+
+                // A blank override falls back to the image's own alt text, then to empty (decorative).
+                $alt = trim((string) ($settings['alt'] ?? '')) !== '' ? (string) $settings['alt'] : (string) ($item['alt_text'] ?? '');
+                $width = (int) ($item['width'] ?? 0);
+                $height = (int) ($item['height'] ?? 0);
+                $image = '<img class="lp-widget__image" src="' . esc_url($media->url($item)) . '" alt="' . esc_attr($alt) . '" loading="lazy"'
+                    . ($width > 0 && $height > 0 ? ' width="' . $width . '" height="' . $height . '"' : '') . '>';
+                $link = trim((string) ($settings['link'] ?? ''));
+
+                // Only web or site-relative links: esc_url() only escapes, so a javascript: or data: address must be refused here.
+                if (preg_match('#^(https?://|/(?!/))#i', $link) === 1) {
+                    $image = '<a class="lp-widget__image-link" href="' . esc_url($link) . '">' . $image . '</a>';
+                }
+
+                echo '<section class="lp-widget lp-widget--image">';
+                self::renderTitle($title);
+                echo '<div class="lp-widget__content">' . $image . '</div>';
+                echo '</section>';
+            });
+        }
 
         $widgets->registerWidget('search', 'Search', static function (array $settings): void {
             $title = (string) ($settings['title'] ?? '');
