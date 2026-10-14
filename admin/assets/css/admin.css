@@ -378,6 +378,11 @@ body.lp-admin-login {
     text-align: center;
 }
 
+/* The "!" makes a waiting item read as an alert, not just a number; screen readers get "unread" instead. */
+.lp-admin__nav-alert {
+    margin-left: 0.1rem;
+}
+
 /*
  * Top-level nav rows (LP-056) drop their icon and go uppercase to read as
  * section headings; only sub-nav rows (.lp-admin__nav-submenu) keep icons
