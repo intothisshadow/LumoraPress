@@ -993,8 +993,12 @@ final class UpdateService
                     }
 
                     $componentName = $scope === 'theme' ? ($state['theme_name'] ?? null) : ($state['plugin_name'] ?? null);
+                    // A restore has no installed version to update from, so "0.0.0" would read as nonsense.
+                    $componentMessage = $state['from_version'] === '0.0.0'
+                        ? "Successfully restored {$componentName} {$state['to_version']}."
+                        : "Successfully updated {$componentName} from {$state['from_version']} to {$state['to_version']}.";
                     $message = $componentSlug !== null
-                        ? "Successfully updated {$componentName} from {$state['from_version']} to {$state['to_version']}."
+                        ? $componentMessage
                         : "Successfully updated from {$state['from_version']} to {$state['to_version']}." . $this->skippedComponentsNote($state['skipped_components'] ?? []);
                     $this->logAttempt($state['from_version'], $state['to_version'], $state['source'], UpdateStatus::Success, $message, $state['files_backup_path'], $state['database_backup_path'], $state['performed_by_user_id']);
                     $this->fireAfterUpdateHook($state, UpdateStatus::Success);
@@ -1835,6 +1839,12 @@ final class UpdateService
 
     public function installedVersion(): string
     {
+        // An update rewrites this file moments after PHP last loaded it; opcache would otherwise keep
+        // serving the old version for its revalidation interval and fail the post-update check.
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($this->versionFilePath, true);
+        }
+
         $manifest = require $this->versionFilePath;
 
         return is_array($manifest) && is_string($manifest['version'] ?? null) ? $manifest['version'] : '0.0.0';
