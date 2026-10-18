@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening a notification could show a blank "403 Forbidden" page on hosts whose web application firewall blocks any address containing `?open=` (it is a known PHP-shell signature). Notification links now use `?notification=` instead.
+
 ## [0.24.0] — 2026-10-14
 
 ### Bundled versions

@@ -35,8 +35,10 @@ $screenUrl = admin_url('notifications') . ($screenQuery !== [] ? '?' . http_buil
 
 // Opening a notification is a plain link so it behaves like one (new tab,
 // copy link); marking your own notification read is harmless as a GET.
-if (isset($_GET['open'])) {
-    $openId = (int) $_GET['open'];
+// The parameter is deliberately not "open": common host WAF rulesets block any
+// URI containing "?open=" as a PHP-shell signature.
+if (isset($_GET['notification'])) {
+    $openId = (int) $_GET['notification'];
     $notification = $notifications->findForUser($openId, $currentUser->id);
     $notifications->markRead($openId, $currentUser->id);
     $target = $notification !== null ? (string) $notification['url'] : '';
@@ -187,7 +189,7 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
                             <?php endif; ?>
                             <?php if ($isUnread): ?><span class="lp-visually-hidden">Unread: </span><?php endif; ?>
                             <?php if ($hasDestination): ?>
-                                <a class="lp-notifications__message" href="<?= esc_url(admin_url('notifications') . '?open=' . (int) $notification['id']) ?>"><?= esc_html((string) $notification['message']) ?></a>
+                                <a class="lp-notifications__message" href="<?= esc_url(admin_url('notifications') . '?notification=' . (int) $notification['id']) ?>"><?= esc_html((string) $notification['message']) ?></a>
                             <?php else: ?>
                                 <span class="lp-notifications__message"><?= esc_html((string) $notification['message']) ?></span>
                             <?php endif; ?>
@@ -195,7 +197,7 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
                         <td class="lp-notifications__when"><time datetime="<?= esc_attr((new DateTimeImmutable((string) $notification['created_at']))->format(DATE_ATOM)) ?>"><?= esc_html(the_date(new DateTimeImmutable((string) $notification['created_at']))) ?> <?= esc_html(the_time(new DateTimeImmutable((string) $notification['created_at']))) ?></time></td>
                         <td class="lp-notifications__actions">
                             <?php if ($hasDestination && $typeInfo !== null && $typeInfo['actionLabel'] !== ''): ?>
-                                <a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('notifications') . '?open=' . (int) $notification['id']) ?>"><?= esc_html($typeInfo['actionLabel']) ?></a>
+                                <a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('notifications') . '?notification=' . (int) $notification['id']) ?>"><?= esc_html($typeInfo['actionLabel']) ?></a>
                             <?php elseif ($unavailableReason !== null): ?>
                                 <span class="lp-notifications__unavailable"><?= esc_html($unavailableReason) ?></span>
                             <?php endif; ?>
