@@ -25,6 +25,7 @@ use LumoraPress\Core\Theme\ScriptQueue;
 use LumoraPress\Core\Theme\SiteBranding;
 use LumoraPress\Core\Theme\ThemeOptionsBridge;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\UserRole;
 
 if (!function_exists('esc_html')) {
     function esc_html(string $value): string
@@ -153,6 +154,24 @@ if (!function_exists('enqueue_script')) {
     function enqueue_script(string $handle, string $src, array $options = []): void
     {
         ScriptQueue::enqueue($handle, $src, $options);
+    }
+}
+
+if (!function_exists('render_staff_badge')) {
+    /**
+     * A small role badge ("Administrator", "Editor") for the admin screens, or an empty string
+     * when $role is null or not a real role, so callers can print it unconditionally. The role
+     * name is text, never colour alone.
+     */
+    function render_staff_badge(UserRole|string|null $role): string
+    {
+        $role = is_string($role) ? UserRole::tryFrom($role) : $role;
+
+        if ($role === null || $role === UserRole::Guest) {
+            return '';
+        }
+
+        return ' <span class="lp-status-badge lp-status-badge--role-' . esc_attr($role->value) . ' lp-staff-badge">' . esc_html(__($role->label())) . '</span>';
     }
 }
 

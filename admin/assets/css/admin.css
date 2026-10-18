@@ -6720,6 +6720,13 @@ a.lp-button--link.lp-button--link--view:hover {
     font-weight: 600;
 }
 
+/* Marks a comment written by someone who can moderate. It reuses the role
+   colours of .lp-status-badge--role-*, which already follow light/dark mode. */
+.lp-staff-badge {
+    margin-left: 0.35rem;
+    vertical-align: middle;
+}
+
 .lp-notifications__type {
     display: block;
     margin-bottom: 0.15rem;

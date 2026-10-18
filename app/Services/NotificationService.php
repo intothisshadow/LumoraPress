@@ -41,7 +41,11 @@ final class NotificationService
     ) {
     }
 
-    public function notify(int $userId, string $type, string $message, string $url = ''): void
+    /**
+     * @param ?string $badge A role slug shown beside the message (a staff commenter). Stored as a
+     *                       snapshot so the inbox needs no per-row user lookup.
+     */
+    public function notify(int $userId, string $type, string $message, string $url = '', ?string $badge = null): void
     {
         $type = substr($type, 0, 50);
 
@@ -52,14 +56,16 @@ final class NotificationService
 
         $message = mb_substr($message, 0, 500);
         $url = substr($url, 0, 2048);
+        $badge = $badge === null || $badge === '' ? null : substr($badge, 0, 50);
 
         $this->database->execute(
-            'INSERT INTO ' . $this->table() . ' (user_id, type, message, url, created_at) VALUES (:user_id, :type, :message, :url, :created_at)',
+            'INSERT INTO ' . $this->table() . ' (user_id, type, message, url, badge, created_at) VALUES (:user_id, :type, :message, :url, :badge, :created_at)',
             [
                 'user_id' => $userId,
                 'type' => $type,
                 'message' => $message,
                 'url' => $url,
+                'badge' => $badge,
                 'created_at' => (new DateTimeImmutable())->format('Y-m-d H:i:s'),
             ],
         );
@@ -74,13 +80,13 @@ final class NotificationService
      * @param ?int $exceptUserId Skipped, usually the person whose own action triggered the notice.
      * @return int how many users were notified
      */
-    public function notifyUsersWithCapability(UserService $users, string $capability, string $type, string $message, string $url = '', ?int $exceptUserId = null): int
+    public function notifyUsersWithCapability(UserService $users, string $capability, string $type, string $message, string $url = '', ?int $exceptUserId = null, ?string $badge = null): int
     {
         $count = 0;
 
         foreach ($users->listAll() as $user) {
             if ($user->id !== $exceptUserId && $user->can($capability)) {
-                $this->notify($user->id, $type, $message, $url);
+                $this->notify($user->id, $type, $message, $url, $badge);
                 ++$count;
             }
         }

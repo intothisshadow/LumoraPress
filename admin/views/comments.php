@@ -323,7 +323,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
             <p class="lp-field">
                 <label>From</label>
-                <span><?= esc_html($editingComment->guestName) ?> &lt;<?= esc_html($editingComment->guestEmail) ?>&gt;</span>
+                <span><?= esc_html($editingComment->guestName) ?> &lt;<?= esc_html($editingComment->guestEmail) ?>&gt;<?= render_staff_badge($kernel->users->rolesWithCapability([$editingComment->userId], 'moderate_comments')[$editingComment->userId ?? 0] ?? null) ?></span>
             </p>
 
             <p class="lp-field">
@@ -341,7 +341,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
         <div class="lp-comment-reply-original">
             <p class="lp-comment-reply-original__meta">
-                <strong><?= esc_html($replyingTo->guestName) ?></strong>
+                <strong><?= esc_html($replyingTo->guestName) ?></strong><?= render_staff_badge($kernel->users->rolesWithCapability([$replyingTo->userId], 'moderate_comments')[$replyingTo->userId ?? 0] ?? null) ?>
                 &middot; <?= esc_html($replyingTo->createdAt->format('M j, Y')) ?>
                 <?php if ($replyContentTitle !== ''): ?>
                     &middot; on <a href="<?= esc_url($replyContentUrl) ?>"><?= esc_html($replyContentTitle) ?></a>
@@ -401,6 +401,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
         reportedOnly: $reportedOnly,
     );
     $reportSummaries = $commentReports->summariesFor(array_map(static fn (array $row): int => $row['comment']->id, $pagination['comments']));
+    $staffRoles = $kernel->users->rolesWithCapability(array_map(static fn (array $row): ?int => $row['comment']->userId, $pagination['comments']), 'moderate_comments');
     $reportedCount = $commentReports->reportedCommentCount();
     $allUsersForFilter = $kernel->users->listAll();
 
@@ -577,7 +578,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                                     <input type="checkbox" id="comment-select-<?= (int) $comment->id ?>" name="comment_ids[]" value="<?= (int) $comment->id ?>">
                                 </td>
                                 <td>
-                                    <?= esc_html($comment->guestName) ?><br>
+                                    <?= esc_html($comment->guestName) ?><?= render_staff_badge($staffRoles[$comment->userId ?? 0] ?? null) ?><br>
                                     <span class="lp-field__hint"><?= esc_html($comment->guestEmail) ?></span>
                                     <?php if ($comment->ipAddress !== null && $comment->ipAddress !== ''): ?>
                                         <br><span class="lp-field__hint"><?= esc_html($comment->ipAddress) ?></span>

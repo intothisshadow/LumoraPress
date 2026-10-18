@@ -4,6 +4,10 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Comments written by staff are now marked with a role badge ("Administrator", "Editor") in Comments (the list, the edit screen and the reply screen) and in the Notifications inbox, so your own replies stand out when you moderate. Staff means anyone whose role can moderate comments. A notification keeps the badge it had when it was created, so a later role change doesn't alter old notifications, and notifications from before this change have none. Includes a database migration.
+
 ### Fixed
 
 - Opening a notification could show a blank "403 Forbidden" page on hosts whose web application firewall blocks any address containing `?open=` (it is a known PHP-shell signature). Notification links now use `?notification=` instead.

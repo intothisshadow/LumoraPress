@@ -217,12 +217,24 @@ final class CommentFollowupService
         }
 
         unset($messages[$comment->userId ?? 0]);
+        $badge = $this->staffBadge($comment);
 
         foreach ($messages as $userId => [$type, $message]) {
             if ($userId > 0 && $this->users->findById($userId) !== null) {
-                $this->notifications->notify($userId, $type, $message, $link);
+                $this->notifications->notify($userId, $type, $message, $link, $badge);
             }
         }
+    }
+
+    /**
+     * The commenter's role slug when they are someone who can moderate comments, so the inbox can
+     * show that a staff member wrote it. Null for guests and everyone else.
+     */
+    private function staffBadge(Comment $comment): ?string
+    {
+        $user = $comment->userId !== null ? $this->users->findById($comment->userId) : null;
+
+        return $user !== null && $user->can('moderate_comments') ? $user->role->value : null;
     }
 
     /**
@@ -259,7 +271,7 @@ final class CommentFollowupService
 
     private function notifyEveryModerator(Comment $comment, string $type, string $message, string $url): void
     {
-        $this->notifications->notifyUsersWithCapability($this->users, 'moderate_comments', $type, $message, $url, $comment->userId);
+        $this->notifications->notifyUsersWithCapability($this->users, 'moderate_comments', $type, $message, $url, $comment->userId, $this->staffBadge($comment));
     }
 
     /**

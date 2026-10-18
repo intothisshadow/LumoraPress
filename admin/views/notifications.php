@@ -193,6 +193,7 @@ foreach ($subscriptions->activeForSubscriber($currentUser->id, $currentUser->ema
                             <?php else: ?>
                                 <span class="lp-notifications__message"><?= esc_html((string) $notification['message']) ?></span>
                             <?php endif; ?>
+                            <?= render_staff_badge(isset($notification['badge']) ? (string) $notification['badge'] : null) ?>
                         </td>
                         <td class="lp-notifications__when"><time datetime="<?= esc_attr((new DateTimeImmutable((string) $notification['created_at']))->format(DATE_ATOM)) ?>"><?= esc_html(the_date(new DateTimeImmutable((string) $notification['created_at']))) ?> <?= esc_html(the_time(new DateTimeImmutable((string) $notification['created_at']))) ?></time></td>
                         <td class="lp-notifications__actions">

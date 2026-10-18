@@ -62,6 +62,48 @@ final class UserService
         return $this->findByIdCache[$id] = ($row === null ? null : $this->hydrate($row));
     }
 
+    /**
+     * Roles of the given accounts that hold $capability, in one query, so a list of comments can
+     * flag its staff without a lookup per row. Accounts that don't exist or lack the capability
+     * are simply absent from the result.
+     *
+     * @param array<int, int|null> $userIds
+     * @return array<int, UserRole> user id => role
+     */
+    public function rolesWithCapability(array $userIds, string $capability): array
+    {
+        $ids = array_values(array_unique(array_filter($userIds, static fn (?int $id): bool => $id !== null && $id > 0)));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        // One named placeholder per id: real prepared statements reject a repeated name.
+        $params = [];
+        $placeholders = [];
+
+        foreach ($ids as $index => $id) {
+            $params['id' . $index] = $id;
+            $placeholders[] = ':id' . $index;
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT id, role FROM ' . $this->table() . ' WHERE id IN (' . implode(', ', $placeholders) . ')',
+            $params,
+        );
+        $roles = [];
+
+        foreach ($rows as $row) {
+            $role = UserRole::tryFrom((string) $row['role']);
+
+            if ($role !== null && $role->can($capability)) {
+                $roles[(int) $row['id']] = $role;
+            }
+        }
+
+        return $roles;
+    }
+
     public function findByUsername(string $username): ?User
     {
         $row = $this->database->fetchOne(

@@ -1,6 +1,6 @@
 -- Lumora Press schema snapshot. Generated; do not edit by hand.
 -- Regenerate with "PHP Test Suite/generate-schema-snapshot.sh" whenever a migration is added.
--- Through: 0087_add_notification_preferences_to_users.sql
+-- Through: 0088_add_badge_to_notifications.sql
 -- >>>
 CREATE TABLE `{prefix}bluesky_embeds` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -320,6 +320,7 @@ CREATE TABLE `{prefix}notifications` (
   `type` varchar(50) NOT NULL,
   `message` varchar(500) NOT NULL,
   `url` varchar(2048) NOT NULL DEFAULT '',
+  `badge` varchar(50) DEFAULT NULL,
   `read_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL,
   PRIMARY KEY (`id`),
