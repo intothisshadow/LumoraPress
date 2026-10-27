@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\VisitorStats;
 
 use LumoraPress\Core\Database\Database;
+use PDOException;
 
 /**
  * One row per (post_id, calendar day) — daily aggregation, not a
@@ -44,22 +45,26 @@ final class PostViewService
      */
     public function recordView(int $postId): void
     {
-        $today = date('Y-m-d');
-        $exists = ((int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE post_id = :post_id AND view_date = :view_date',
-            ['post_id' => $postId, 'view_date' => $today],
-        )) > 0;
+        $params = ['post_id' => $postId, 'view_date' => date('Y-m-d')];
+        $update = 'UPDATE ' . $this->table() . ' SET views = views + 1 WHERE post_id = :post_id AND view_date = :view_date';
 
-        if ($exists) {
-            $this->database->execute(
-                'UPDATE ' . $this->table() . ' SET views = views + 1 WHERE post_id = :post_id AND view_date = :view_date',
-                ['post_id' => $postId, 'view_date' => $today],
-            );
-        } else {
+        if ($this->database->execute($update, $params) > 0) {
+            return;
+        }
+
+        // Concurrent first views of the day can both miss the UPDATE; the
+        // loser's unique-key violation is retried as an UPDATE.
+        try {
             $this->database->execute(
                 'INSERT INTO ' . $this->table() . ' (post_id, view_date, views) VALUES (:post_id, :view_date, 1)',
-                ['post_id' => $postId, 'view_date' => $today],
+                $params,
             );
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            $this->database->execute($update, $params);
         }
     }
 

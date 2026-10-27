@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace LumoraPress\Plugins\VisitorStats;
 
 use LumoraPress\Core\Database\Database;
+use PDOException;
 use RuntimeException;
 use ZipArchive;
 
@@ -88,29 +89,32 @@ final class ViewStatsService
     }
 
     /**
-     * A portable check-then-insert/update, same reasoning as
-     * PostViewService::recordView() — SQLite-portable for unit tests,
-     * never a MySQL-only `ON DUPLICATE KEY UPDATE`.
+     * A portable update-then-insert, SQLite-portable for unit tests rather
+     * than a MySQL-only `ON DUPLICATE KEY UPDATE`. Two concurrent first
+     * hits of the day can both miss the UPDATE and race to INSERT, so the
+     * loser's unique-key violation (SQLSTATE 23000) is retried as an
+     * UPDATE instead of surfacing as an error.
      */
     private function upsertBreakdown(string $table, string $column, string $value): void
     {
-        $today = date('Y-m-d');
+        $params = ['view_date' => date('Y-m-d'), 'value' => $value];
+        $update = "UPDATE {$table} SET views = views + 1 WHERE view_date = :view_date AND {$column} = :value";
 
-        $exists = ((int) $this->database->fetchColumn(
-            "SELECT COUNT(*) FROM {$table} WHERE view_date = :view_date AND {$column} = :value",
-            ['view_date' => $today, 'value' => $value],
-        )) > 0;
+        if ($this->database->execute($update, $params) > 0) {
+            return;
+        }
 
-        if ($exists) {
-            $this->database->execute(
-                "UPDATE {$table} SET views = views + 1 WHERE view_date = :view_date AND {$column} = :value",
-                ['view_date' => $today, 'value' => $value],
-            );
-        } else {
+        try {
             $this->database->execute(
                 "INSERT INTO {$table} (view_date, {$column}, views) VALUES (:view_date, :value, 1)",
-                ['view_date' => $today, 'value' => $value],
+                $params,
             );
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            $this->database->execute($update, $params);
         }
     }
 

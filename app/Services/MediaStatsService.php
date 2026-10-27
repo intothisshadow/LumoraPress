@@ -19,6 +19,7 @@ namespace LumoraPress\Services;
 
 use DateTimeImmutable;
 use LumoraPress\Core\Database\Database;
+use PDOException;
 
 /**
  * Download counters for media — narrower than a full "views/plays" tracker, since every
@@ -36,31 +37,34 @@ final class MediaStatsService
     }
 
     /**
-     * A portable check-then-insert/update rather than a MySQL-only
+     * A portable update-then-insert rather than a MySQL-only
      * `ON DUPLICATE KEY UPDATE` (unlike PressConfig::setOption()'s use of
      * that idiom) — this keeps recordDownload() exercisable against the
      * PHP Test Suite's SQLite-backed unit tests, not just the MySQL/
-     * MariaDB integration suite. Two statements per call rather than one,
-     * a fine tradeoff for a low-volume, explicit-click write path.
+     * MariaDB integration suite.
      */
     public function recordDownload(int $mediaId): void
     {
-        $now = date('Y-m-d H:i:s');
-        $exists = ((int) $this->database->fetchColumn(
-            'SELECT COUNT(*) FROM ' . $this->table() . ' WHERE media_id = :media_id',
-            ['media_id' => $mediaId],
-        )) > 0;
+        $update = 'UPDATE ' . $this->table() . ' SET downloads = downloads + 1, last_downloaded_at = :now WHERE media_id = :media_id';
+        $params = ['now' => date('Y-m-d H:i:s'), 'media_id' => $mediaId];
 
-        if ($exists) {
-            $this->database->execute(
-                'UPDATE ' . $this->table() . ' SET downloads = downloads + 1, last_downloaded_at = :now WHERE media_id = :media_id',
-                ['now' => $now, 'media_id' => $mediaId],
-            );
-        } else {
+        if ($this->database->execute($update, $params) > 0) {
+            return;
+        }
+
+        // Concurrent first downloads can both miss the UPDATE; the loser's
+        // primary-key violation (SQLSTATE 23000) is retried as an UPDATE.
+        try {
             $this->database->execute(
                 'INSERT INTO ' . $this->table() . ' (media_id, downloads, last_downloaded_at) VALUES (:media_id, 1, :now)',
-                ['media_id' => $mediaId, 'now' => $now],
+                $params,
             );
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            $this->database->execute($update, $params);
         }
     }
 
