@@ -2285,6 +2285,18 @@ body.lp-admin-login {
 .lp-editor-media-dialog__search {
     flex: 1 1 220px;
     min-width: 0;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-field-bg);
+    color: var(--lp-admin-text);
+    font-size: 1rem;
+}
+
+.lp-editor-media-dialog__search:focus {
+    outline: none;
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
 }
 
 /*

@@ -13,6 +13,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The search box in the editors' Insert Icon, Insert Emoji, Insert Shortcode and media picker windows showed as a bright white box with black text in dark mode. It now uses the same colours and focus outline as other admin text boxes.
 - In dark mode, the Lumora Classic theme's buttons (Post Comment, Post Reply and the other `.lp-button` buttons) and its skip link showed white text on a pale teal background that was hard to read. They now use dark text there, via a new `--lp-on-accent` colour that stays white in light mode.
 - The Search widget's text box was invisible in the Lumora Classic theme (white text and border on a light sidebar card, left over from the dark header it was styled for). It now uses the theme's normal text box colours inside a widget.
 - On a phone, a download card in the Lumora Classic theme could run past its edge when a download's title had no spaces to break at, or when its description was a preformatted block. Both now wrap inside the card.
