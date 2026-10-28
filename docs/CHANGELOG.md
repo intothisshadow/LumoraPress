@@ -10,6 +10,8 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The error log now records the underlying cause of an error, such as "Too many connections" or "Access denied" behind "Unable to connect to the database.", so database and other wrapped failures can be diagnosed from Maintenance › Logs. The cause appears in the entry's Message column and is never shown to visitors.
+- Counting a visit or download no longer logs a "Duplicate entry" database error when two visitors arrive at the same moment, which affected the Visitor Stats breakdowns, per-post view counts and media download counts.
 - Opening a notification could show a blank "403 Forbidden" page on hosts whose web application firewall blocks any address containing `?open=` (it is a known PHP-shell signature). Notification links now use `?notification=` instead.
 
 ## [0.24.0] — 2026-10-14

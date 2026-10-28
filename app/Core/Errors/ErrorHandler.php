@@ -92,7 +92,7 @@ final class ErrorHandler
             "[%s] %s: %s in %s:%d\n%s\n\n",
             date('Y-m-d H:i:s'),
             $exception::class,
-            $exception->getMessage(),
+            $this->messageWithCauses($exception),
             $exception->getFile(),
             $exception->getLine(),
             $exception->getTraceAsString(),
@@ -103,6 +103,28 @@ final class ErrorHandler
         if (is_dir($this->logDirectory) && is_writable($this->logDirectory)) {
             error_log($entry, 3, $logFile);
         }
+    }
+
+    /**
+     * Wrapper exceptions such as DatabaseConnectionException deliberately carry
+     * a generic message, so the real reason (e.g. "Too many connections") only
+     * lives on the previous exception. Appending it to the single header line
+     * keeps it visible in the log viewer's Message column and parseable by
+     * ErrorLogReader; whitespace is collapsed so it can't split the entry.
+     */
+    private function messageWithCauses(Throwable $exception): string
+    {
+        $message = $exception->getMessage();
+
+        for ($previous = $exception->getPrevious(); $previous !== null; $previous = $previous->getPrevious()) {
+            $message .= sprintf(
+                ' [caused by %s: %s]',
+                $previous::class,
+                trim((string) preg_replace('/\s+/', ' ', $previous->getMessage())),
+            );
+        }
+
+        return $message;
     }
 
     private function render(Throwable $exception): void
