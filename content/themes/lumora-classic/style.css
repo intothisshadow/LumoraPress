@@ -437,6 +437,22 @@ body.lp-site {
     background: var(--lp-header-accent-hover);
 }
 
+/* In the Search widget the form sits on a light card, not the dark header
+   the input above is styled for, so it needs its own colours or the white
+   text and border disappear. */
+.lp-widget .lp-search-form__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    border-color: var(--lp-border);
+    background: var(--lp-bg);
+    color: var(--lp-text);
+}
+
+.lp-widget .lp-search-form__input::placeholder {
+    color: var(--lp-text-muted);
+}
+
 /* =========================================================
    Theme toggle
    ========================================================= */
