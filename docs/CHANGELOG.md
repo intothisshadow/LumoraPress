@@ -11,6 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- Under each public comment, Quote, Reply and Report now share one look and sit in the same row (Reply used to sit on its own line in a different font and colour), with a visible focus outline, readable contrast in light and dark mode, and larger tap targets on phones. An opened Reply form drops to its own line below the row. Themes that style comment actions should also give `.lp-comment__reply` a full-width line when open; the bundled Lumora Classic theme does this.
 - The Insert Icon, Insert Emoji and Font Color windows in the editors now say "Close" instead of "Cancel", with a one-line hint such as "Click an icon to insert it.", since picking an item inserts it straight away. Insert Shortcode gets a matching hint on its first step.
 - On a phone, the Visual / HTML editor showed only part of its toolbar (undo, redo and the block-format dropdown, running off the screen). The toolbar now wraps onto several rows so every button is reachable.
 - On a phone, the Pages and Categories lists ran off the right edge of the screen and used a lot of vertical space, and the All Posts list hid its Date and Actions columns behind a sideways swipe. Rows now wrap to fit the screen and are more compact, and the same compact card layout now applies to the Comments, Media (list view), Users, Tags, Categories, Downloads, Link Directory, Contact Forms and Redirects lists.

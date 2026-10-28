@@ -2209,15 +2209,14 @@ a.lp-post-list__comments:focus {
 }
 
 .lp-comment__reply {
-    margin-top: 0.5rem;
     font-size: 0.9rem;
 }
 
-.lp-comment__reply summary {
-    cursor: pointer;
-    color: var(--lp-accent);
-    font-family: var(--lp-font-ui);
-    font-size: 0.85rem;
+/* An opened Reply or Report form takes its own full-width line under the
+   action row instead of squeezing in beside the buttons. */
+.lp-comment__reply[open],
+.lp-comment-report[open] {
+    flex: 1 1 100%;
 }
 
 .lp-comment__reply .lp-comment-form {
@@ -2384,22 +2383,62 @@ a.lp-post-list__comments:focus {
     font-variant-numeric: tabular-nums;
 }
 
+/* One shared look for the text-style actions in .lp-comment__actions (Quote,
+   Reply, Report), so they read as a single row on the same baseline. The
+   reaction pills above are the only differently shaped controls. */
 .lp-comment__quote-button,
-.lp-comment-report > summary {
+.lp-comment-report > summary,
+.lp-comment__reply > summary {
     padding: 0;
     border: 0;
     background: none;
     color: var(--lp-text-muted);
-    font: inherit;
+    /* --lp-text-muted alone is under 4.5:1 on the light page background;
+       nudging it toward the body text colour fixes that in both modes. */
+    color: color-mix(in srgb, var(--lp-text-muted) 70%, var(--lp-text));
+    font-family: var(--lp-font-ui);
+    font-size: 0.85rem;
+    line-height: 1.5;
     cursor: pointer;
 }
 
 .lp-comment__quote-button:hover,
 .lp-comment__quote-button:focus-visible,
 .lp-comment-report > summary:hover,
-.lp-comment-report > summary:focus-visible {
+.lp-comment-report > summary:focus-visible,
+.lp-comment__reply > summary:hover,
+.lp-comment__reply > summary:focus-visible {
     color: var(--lp-accent);
     text-decoration: underline;
+}
+
+.lp-comment__quote-button:focus-visible,
+.lp-comment-report > summary:focus-visible,
+.lp-comment__reply > summary:focus-visible {
+    outline: 2px solid var(--lp-accent);
+    outline-offset: 2px;
+}
+
+/* Fingers need a bigger target than a 13px line of text. */
+@media (max-width: 782px) {
+    .lp-comment__quote-button,
+    .lp-comment-report > summary,
+    .lp-comment-reactions__button {
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* Stays a list-item so its disclosure marker survives; the line height
+       provides the tap target instead of flex centering. */
+    .lp-comment__reply > summary {
+        display: list-item;
+        line-height: 2.75rem;
+    }
+
+    .lp-comment__actions {
+        gap: 0 1rem;
+    }
 }
 
 .lp-comment-report > summary {

@@ -241,13 +241,13 @@ if (!function_exists('comment_list')) {
                             <?= comment_reaction_buttons($comment) ?>
                             <button type="button" class="lp-comment__quote-button" data-lp-comment-quote data-quote-author="<?= esc_attr($comment->guestName) ?>" data-quote-text="<?= esc_attr(comment_quotable_text($comment->content)) ?>" data-quote-target="comment-form-reply-<?= (int) $comment->id ?>-content" hidden><?= esc_html(__('Quote')) ?></button>
                             <?= comment_report_form($comment) ?>
+                            <?php if ($repliesOpen): ?>
+                                <details class="lp-comment__reply">
+                                    <summary>Reply</summary>
+                                    <?php comment_form($content, $currentUser, $guestFieldOptions, $comment->id, 'Post Reply'); ?>
+                                </details>
+                            <?php endif; ?>
                         </div>
-                        <?php if ($repliesOpen): ?>
-                            <details class="lp-comment__reply">
-                                <summary>Reply</summary>
-                                <?php comment_form($content, $currentUser, $guestFieldOptions, $comment->id, 'Post Reply'); ?>
-                            </details>
-                        <?php endif; ?>
                     </article>
                     <?php
                     $nextDepth = $depth < $maxDepth ? $depth + 1 : $depth;
