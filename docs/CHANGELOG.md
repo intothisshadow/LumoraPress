@@ -13,6 +13,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- In dark mode, the Lumora Classic theme's buttons (Post Comment, Post Reply and the other `.lp-button` buttons) and its skip link showed white text on a pale teal background that was hard to read. They now use dark text there, via a new `--lp-on-accent` colour that stays white in light mode.
 - The Search widget's text box was invisible in the Lumora Classic theme (white text and border on a light sidebar card, left over from the dark header it was styled for). It now uses the theme's normal text box colours inside a widget.
 - On a phone, a download card in the Lumora Classic theme could run past its edge when a download's title had no spaces to break at, or when its description was a preformatted block. Both now wrap inside the card.
 - Under each public comment, Quote, Reply and Report now share one look and sit in the same row (Reply used to sit on its own line in a different font and colour), with a visible focus outline, readable contrast in light and dark mode, and larger tap targets on phones. An opened Reply form drops to its own line below the row. Themes that style comment actions should also give `.lp-comment__reply` a full-width line when open; the bundled Lumora Classic theme does this.

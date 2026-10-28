@@ -28,6 +28,7 @@ Version: 0.7.0
     --lp-border: #d4dfdc;
     --lp-accent: #0f8b8d;
     --lp-accent-hover: #09696b;
+    --lp-on-accent: #fff;
     --lp-radius: 16px;
     --lp-max-width: 1180px;
     --lp-font-body: "Lora", Georgia, "Times New Roman", serif;
@@ -81,6 +82,7 @@ Version: 0.7.0
         --lp-border: #33434b;
         --lp-accent: #61d0c2;
         --lp-accent-hover: #8be1d5;
+        --lp-on-accent: #10252a;
         --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
         --lp-card-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
         --lp-header-ink: #0e141d;
@@ -110,6 +112,7 @@ Version: 0.7.0
     --lp-border: #33434b;
     --lp-accent: #61d0c2;
     --lp-accent-hover: #8be1d5;
+    --lp-on-accent: #10252a;
     --lp-surface-shadow: 0 16px 38px rgba(0, 0, 0, 0.24);
     --lp-card-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
     --lp-header-ink: #0e141d;
@@ -155,7 +158,7 @@ img {
     left: -9999px;
     top: 0;
     background: var(--lp-accent);
-    color: #fff;
+    color: var(--lp-on-accent);
     padding: 0.5em 1em;
     z-index: 100;
 }
@@ -2064,7 +2067,7 @@ a.lp-post-list__comments:focus {
     border: 0;
     border-radius: var(--lp-radius);
     background: var(--lp-accent);
-    color: #fff;
+    color: var(--lp-on-accent);
     cursor: pointer;
     text-decoration: none;
     font-family: var(--lp-font-ui);
@@ -2075,7 +2078,7 @@ a.lp-post-list__comments:focus {
 .lp-button:hover,
 .lp-button:focus {
     background: var(--lp-accent-hover);
-    color: #fff;
+    color: var(--lp-on-accent);
 }
 
 /* Outline variant for the less prominent action in a pair. An inset
@@ -2089,7 +2092,7 @@ a.lp-post-list__comments:focus {
 .lp-button--secondary:hover,
 .lp-button--secondary:focus {
     background: var(--lp-accent);
-    color: #fff;
+    color: var(--lp-on-accent);
 }
 
 /* =========================================================
