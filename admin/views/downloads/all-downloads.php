@@ -297,7 +297,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
-            <table class="lp-table">
+            <table class="lp-table lp-table--stacked">
                 <thead>
                     <tr>
                         <th scope="col">
@@ -322,8 +322,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <label class="lp-visually-hidden" for="download-select-<?= (int) $listedDownload->id ?>">Select "<?= esc_html($listedDownload->title) ?>"</label>
                                 <input type="checkbox" id="download-select-<?= (int) $listedDownload->id ?>" name="download_ids[]" value="<?= (int) $listedDownload->id ?>">
                             </td>
-                            <td><?= (int) $listedDownload->id ?></td>
-                            <td>
+                            <td class="lp-table__id"><?= (int) $listedDownload->id ?></td>
+                            <td class="lp-table__title">
                                 <?php if (!$isTrashView): ?>
                                     <a href="<?= esc_url(admin_url('downloads/add-new')) ?>?id=<?= (int) $listedDownload->id ?>"><?= esc_html($listedDownload->title) ?></a>
                                 <?php else: ?>

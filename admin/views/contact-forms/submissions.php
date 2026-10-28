@@ -301,7 +301,7 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
     <?php if ($items === []): ?>
         <p class="lp-admin__widget-placeholder">No submissions yet.</p>
     <?php else: ?>
-        <table class="lp-table">
+        <table class="lp-table lp-table--stacked">
             <thead>
                 <tr>
                     <th scope="col">Form</th>
@@ -317,7 +317,7 @@ $items = $submissions->listAll($formIdFilter > 0 ? $formIdFilter : null, $spamOn
                     <?php $submissionForm = $formsById[$submission->formId] ?? null; ?>
                     <tr class="<?= $submission->isRead ? '' : 'lp-table__row--unread' ?>">
                         <td><?= esc_html($submissionForm?->title ?? 'Deleted form') ?></td>
-                        <td>
+                        <td class="lp-table__title">
                             <?php foreach ($submission->data as $key => $value): ?>
                                 <?php $field = $submissionForm?->fieldByKey((string) $key); ?>
                                 <div>

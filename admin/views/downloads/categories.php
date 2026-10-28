@@ -286,7 +286,7 @@ if ($action === 'edit') {
                     </p>
                 <?php endif; ?>
 
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <?php if ($canDeleteCategories): ?>
@@ -319,8 +319,8 @@ if ($action === 'edit') {
                                         <input type="checkbox" id="download-category-select-<?= (int) $listedCategory->id ?>" name="category_ids[]" value="<?= (int) $listedCategory->id ?>">
                                     </td>
                                 <?php endif; ?>
-                                <td><?= (int) $listedCategory->id ?></td>
-                                <td>
+                                <td class="lp-table__id"><?= (int) $listedCategory->id ?></td>
+                                <td class="lp-table__title">
                                     <?php $depth = (int) ($row['depth'] ?? 0); ?>
                                     <span class="lp-download-categories__name"<?= $depth > 0 ? ' data-style-margin-left="' . ($depth * 1.5) . 'rem"' : '' ?>>
                                         <?php if ($depth > 0): ?>

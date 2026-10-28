@@ -285,7 +285,7 @@ if ($action === 'edit') {
                     </p>
                 <?php endif; ?>
 
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <?php if ($canDeleteCategories): ?>
@@ -315,8 +315,8 @@ if ($action === 'edit') {
                                         <input type="checkbox" id="link-directory-category-select-<?= (int) $listedCategory->id ?>" name="category_ids[]" value="<?= (int) $listedCategory->id ?>">
                                     </td>
                                 <?php endif; ?>
-                                <td><?= (int) $listedCategory->id ?></td>
-                                <td>
+                                <td class="lp-table__id"><?= (int) $listedCategory->id ?></td>
+                                <td class="lp-table__title">
                                     <?php if ($isTrashView): ?>
                                         <?= esc_html($listedCategory->name) ?>
                                     <?php else: ?>

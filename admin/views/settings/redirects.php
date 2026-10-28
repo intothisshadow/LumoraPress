@@ -108,7 +108,7 @@ $allRedirects = $redirects->listAll();
     <?php if ($allRedirects === []): ?>
         <p class="lp-admin__widget-placeholder">No redirects configured yet.</p>
     <?php else: ?>
-        <table class="lp-table">
+        <table class="lp-table lp-table--stacked">
             <thead>
                 <tr>
                     <th scope="col">From</th>
@@ -121,7 +121,7 @@ $allRedirects = $redirects->listAll();
             <tbody>
                 <?php foreach ($allRedirects as $redirect): ?>
                     <tr>
-                        <td><code>/<?= esc_html((string) $redirect['source_path']) ?></code></td>
+                        <td class="lp-table__title"><code>/<?= esc_html((string) $redirect['source_path']) ?></code></td>
                         <td><code><?= esc_html((string) $redirect['target_url']) ?></code></td>
                         <td><?= (int) $redirect['status_code'] ?></td>
                         <td><?= (int) $redirect['hit_count'] ?></td>

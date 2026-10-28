@@ -1205,7 +1205,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                         </div>
 
                         <?php if ($listView === 'list'): ?>
-                            <table class="lp-table">
+                            <table class="lp-table lp-table--stacked">
                                 <thead>
                                     <tr>
                                         <th scope="col"><span class="lp-visually-hidden">Select</span></th>
@@ -1223,7 +1223,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                                                 <label class="lp-visually-hidden" for="media-select-<?= (int) $item['id'] ?>">Select "<?= esc_html((string) $item['file_name']) ?>"</label>
                                                 <input type="checkbox" id="media-select-<?= (int) $item['id'] ?>" name="ids[]" value="<?= (int) $item['id'] ?>">
                                             </td>
-                                            <td>
+                                            <td class="lp-table__title">
                                                 <a class="lp-media-list__file" href="<?= esc_url(admin_url('media/media')) ?>?action=edit&id=<?= (int) $item['id'] ?>">
                                                     <?php if (str_starts_with((string) $item['mime_type'], 'image/')): ?>
                                                         <img class="lp-media-list__thumb" src="<?= esc_url((string) ($thumbnailService->url($item, 'small') ?? $mediaService->url($item))) ?>" alt="">

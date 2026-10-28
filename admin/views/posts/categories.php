@@ -449,7 +449,7 @@ if ($action === 'edit') {
                 <?php endif; ?>
 
                 <?php if (!$isTreeView): ?>
-                    <table class="lp-table">
+                    <table class="lp-table lp-table--stacked">
                         <thead>
                             <tr>
                                 <?php if ($canDeleteCategories): ?>
@@ -478,7 +478,7 @@ if ($action === 'edit') {
                                             <input type="checkbox" id="category-select-<?= (int) $listedCategory->id ?>" name="category_ids[]" value="<?= (int) $listedCategory->id ?>">
                                         </td>
                                     <?php endif; ?>
-                                    <td>
+                                    <td class="lp-table__title">
                                         <?php if ($isTrashView): ?>
                                             <?= esc_html($listedCategory->name) ?>
                                         <?php else: ?>

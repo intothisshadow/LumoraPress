@@ -62,7 +62,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <?php if ($allForms === []): ?>
         <p class="lp-admin__widget-placeholder">No contact forms yet.</p>
     <?php else: ?>
-        <table class="lp-table">
+        <table class="lp-table lp-table--stacked">
             <thead>
                 <tr>
                     <th scope="col">Title</th>
@@ -76,7 +76,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <tbody>
                 <?php foreach ($allForms as $listedForm): ?>
                     <tr>
-                        <td><a href="<?= esc_url(admin_url('contact-forms/add-new')) ?>?id=<?= (int) $listedForm->id ?>"><?= esc_html($listedForm->title) ?></a></td>
+                        <td class="lp-table__title"><a href="<?= esc_url(admin_url('contact-forms/add-new')) ?>?id=<?= (int) $listedForm->id ?>"><?= esc_html($listedForm->title) ?></a></td>
                         <td><?= esc_html($listedForm->recipientEmail) ?></td>
                         <td><?= count($listedForm->fields) ?></td>
                         <td>

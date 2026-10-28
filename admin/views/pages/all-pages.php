@@ -332,7 +332,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
             </p>
 
             <?php if (!$isNestedView): ?>
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <th scope="col">
@@ -355,7 +355,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                         <input type="checkbox" id="page-select-<?= (int) $listedPage->id ?>" name="page_ids[]" value="<?= (int) $listedPage->id ?>">
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td class="lp-table__title">
                                     <?php if (!$isTrashView && $canEditPage($listedPage)): ?>
                                         <a href="<?= esc_url(admin_url('pages/new')) ?>?id=<?= (int) $listedPage->id ?>" data-lp-quick-edit-title-link><?= esc_html($listedPage->title) ?></a>
                                     <?php else: ?>

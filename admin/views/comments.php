@@ -554,7 +554,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                     <button type="submit" class="lp-button lp-button--secondary">Apply</button>
                 </p>
 
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <th scope="col">
@@ -584,7 +584,7 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                                         <br><span class="lp-field__hint"><?= esc_html($comment->ipAddress) ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td class="lp-table__title">
                                     <a href="<?= esc_url(admin_url('comments')) ?>?action=edit&id=<?= (int) $comment->id ?>">
                                         <?= esc_html(mb_strimwidth($comment->content, 0, 80, '…')) ?>
                                     </a>

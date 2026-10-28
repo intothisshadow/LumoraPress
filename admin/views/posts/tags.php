@@ -446,7 +446,7 @@ if ($action === 'edit') {
                     </p>
                 <?php endif; ?>
 
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <?php if ($canDeleteTags): ?>
@@ -474,7 +474,7 @@ if ($action === 'edit') {
                                         <input type="checkbox" id="tag-select-<?= (int) $listedTag->id ?>" name="tag_ids[]" value="<?= (int) $listedTag->id ?>">
                                     </td>
                                 <?php endif; ?>
-                                <td>
+                                <td class="lp-table__title">
                                     <?php if ($isTrashView): ?>
                                         <?= esc_html($listedTag->name) ?>
                                     <?php else: ?>

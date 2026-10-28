@@ -208,7 +208,7 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
-            <table class="lp-table">
+            <table class="lp-table lp-table--stacked">
                 <thead>
                     <tr>
                         <th scope="col">
@@ -231,8 +231,8 @@ $sortLink = static function (string $column) use ($orderBy, $orderDir, $statusFi
                                 <label class="lp-visually-hidden" for="link-select-<?= (int) $listedLink->id ?>">Select "<?= esc_html($listedLink->title) ?>"</label>
                                 <input type="checkbox" id="link-select-<?= (int) $listedLink->id ?>" name="link_ids[]" value="<?= (int) $listedLink->id ?>">
                             </td>
-                            <td><?= (int) $listedLink->id ?></td>
-                            <td>
+                            <td class="lp-table__id"><?= (int) $listedLink->id ?></td>
+                            <td class="lp-table__title">
                                 <?php if (!$isTrashView): ?>
                                     <a href="<?= esc_url(admin_url('link-directory/add-new')) ?>?id=<?= (int) $listedLink->id ?>"><?= esc_html($listedLink->title) ?></a>
                                 <?php else: ?>

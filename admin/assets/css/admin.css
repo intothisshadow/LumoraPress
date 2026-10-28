@@ -5268,7 +5268,31 @@ select:focus {
         border-bottom: 1px solid var(--lp-admin-border);
     }
 
-    .lp-table--stacked thead th:not(:first-child) {
+    /* The header row keeps only what stays useful on a card list: the
+       select-all checkbox and any sort links. A header with neither is
+       dropped entirely. */
+    .lp-table--stacked thead th:not(:has(input, a)) {
+        display: none;
+    }
+
+    .lp-table--stacked thead:not(:has(input, a)) {
+        display: none;
+    }
+
+    /* Long URLs, shortcodes and paths must wrap inside the card instead of
+       stretching it past the screen. */
+    .lp-table.lp-table--stacked td {
+        max-width: 100%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .lp-table--stacked td code {
+        white-space: normal;
+    }
+
+    /* A bare ID number isn't worth a labelled card cell. */
+    .lp-table--stacked .lp-table__id {
         display: none;
     }
 

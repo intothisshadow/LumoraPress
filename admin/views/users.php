@@ -589,7 +589,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                     <button type="submit" class="lp-button lp-button--secondary">Apply</button>
                 </p>
 
-                <table class="lp-table">
+                <table class="lp-table lp-table--stacked">
                     <thead>
                         <tr>
                             <th scope="col">
@@ -616,7 +616,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                                     <?php endif; ?>
                                 </td>
                                 <td><img class="lp-user-avatar" src="<?= esc_url($avatarUrl($listedUser)) ?>" alt="" width="32" height="32"></td>
-                                <td>
+                                <td class="lp-table__title">
                                     <?php if (!$isTrashView): ?>
                                         <a href="<?= esc_url(admin_url('users')) ?>?action=edit&id=<?= (int) $listedUser->id ?>"><?= esc_html($listedUser->username) ?></a>
                                     <?php else: ?>

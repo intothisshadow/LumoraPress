@@ -11,7 +11,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Fixed
 
 - On a phone, the Visual / HTML editor showed only part of its toolbar (undo, redo and the block-format dropdown, running off the screen). The toolbar now wraps onto several rows so every button is reachable.
-- On a phone, the Pages and Categories lists ran off the right edge of the screen and used a lot of vertical space, and the All Posts list hid its Date and Actions columns behind a sideways swipe. Rows now wrap to fit the screen and are more compact.
+- On a phone, the Pages and Categories lists ran off the right edge of the screen and used a lot of vertical space, and the All Posts list hid its Date and Actions columns behind a sideways swipe. Rows now wrap to fit the screen and are more compact, and the same compact card layout now applies to the Comments, Media (list view), Users, Tags, Categories, Downloads, Link Directory, Contact Forms and Redirects lists.
 - The error log now records the underlying cause of an error, such as "Too many connections" or "Access denied" behind "Unable to connect to the database.", so database and other wrapped failures can be diagnosed from Maintenance › Logs. The cause appears in the entry's Message column and is never shown to visitors.
 - Counting a visit or download no longer logs a "Duplicate entry" database error when two visitors arrive at the same moment, which affected the Visitor Stats breakdowns, per-post view counts and media download counts.
 - Opening a notification could show a blank "403 Forbidden" page on hosts whose web application firewall blocks any address containing `?open=` (it is a known PHP-shell signature). Notification links now use `?notification=` instead.
