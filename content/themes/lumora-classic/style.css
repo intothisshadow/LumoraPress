@@ -2948,6 +2948,19 @@ a.lp-post-list__comments:focus {
     margin-top: 0.25em;
     color: var(--lp-text-muted);
     font-size: 0.95em;
+    overflow-wrap: anywhere;
+}
+
+/* A description that arrives as a preformatted block wraps inside the card
+   instead of running past its edge. */
+.lp-downloads-list__description pre,
+.lp-downloads-list__description code {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.lp-downloads-list__description pre {
+    max-width: 100%;
 }
 
 .lp-downloads-list__description p {
@@ -2998,6 +3011,7 @@ a.lp-post-list__comments:focus {
     font-family: var(--lp-font-heading);
     font-size: 1.15rem;
     line-height: 1.3;
+    overflow-wrap: anywhere;
 }
 
 .lp-download-card__media {
