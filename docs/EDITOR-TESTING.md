@@ -44,6 +44,7 @@ Open Posts › Add New and set the editor to Visual / HTML.
 
 ## Markdown editor
 
+- [ ] Spell checking uses the browser's own checker, as in the visual editor: misspelled words are underlined and right-click offers suggestions, in your language and with your personal dictionary. The editor runs CodeMirror in its contenteditable input mode for this, so also check caret movement with the arrow keys, Home and End, shift-selection, typing over a selection, undo, and typing with an input method (for example a Japanese or Chinese keyboard, or a phone's predictive keyboard) in current Firefox and Chromium on desktop and on a phone. No dictionary file should be requested from the CDN.
 - [ ] The toolbar buttons insert the expected syntax. Syntax with no button (`^sup^`, `~sub~`, `{.center}` after a paragraph) renders in the preview when typed by hand.
 - [ ] The preview matches the saved result, and the cursor-in-image Edit Image button works, including "Crop, Rotate or Flip…".
 

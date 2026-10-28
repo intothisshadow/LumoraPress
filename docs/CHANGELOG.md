@@ -11,13 +11,17 @@ All notable changes to Lumora Press are documented in this file.
 - Edit Image in the editors now has a "Change Image…" button that swaps the picture for another one from the Media Manager without re-inserting it. The caption, alignment and alt text stay, a link to the old picture follows the new one while a link to anywhere else stays as it was, the size resets to the new picture's own so a different shape isn't stretched, and in the Visual editor one undo restores the old picture. Works in both the Visual / HTML and Markdown editors.
 - Comments written by staff are now marked with a role badge ("Administrator", "Editor") in Comments (the list, the edit screen and the reply screen) and in the Notifications inbox, so your own replies stand out when you moderate. Staff means anyone whose role can moderate comments. A notification keeps the badge it had when it was created, so a later role change doesn't alter old notifications, and notifications from before this change have none. Includes a database migration.
 
+### Changed
+
+- The Markdown editor now uses your browser's own spell checker, like the Visual editor, instead of its built-in one. That checker only knew US English, so a post in another language was underlined throughout, and it downloaded a dictionary of about 250 KB on every page with the Markdown editor. Your browser's checker uses your language and personal dictionary and downloads nothing.
+
 ### Fixed
 
+- The "Post author" badge on a comment in the Lumora Classic theme was hard to read in light mode (3.5:1 contrast). It now uses the theme's darker accent.
 - The search box in the editors' Insert Icon, Insert Emoji, Insert Shortcode and media picker windows showed as a bright white box with black text in dark mode. It now uses the same colours and focus outline as other admin text boxes.
 - In dark mode, the Lumora Classic theme's buttons (Post Comment, Post Reply and the other `.lp-button` buttons) and its skip link showed white text on a pale teal background that was hard to read. They now use dark text there, via a new `--lp-on-accent` colour that stays white in light mode.
 - The Search widget's text box was invisible in the Lumora Classic theme (white text and border on a light sidebar card, left over from the dark header it was styled for). It now uses the theme's normal text box colours inside a widget.
 - On a phone, a download card in the Lumora Classic theme could run past its edge when a download's title had no spaces to break at, or when its description was a preformatted block. Both now wrap inside the card.
-- The "Post author" badge on a comment in the Lumora Classic theme was hard to read in light mode (3.5:1 contrast). It now uses the theme's darker accent.
 - Under each public comment, Quote, Reply and Report now share one look and sit in the same row (Reply used to sit on its own line in a different font and colour), with a visible focus outline, readable contrast in light and dark mode, and larger tap targets on phones. An opened Reply form drops to its own line below the row. Themes that style comment actions should also give `.lp-comment__reply` a full-width line when open; the bundled Lumora Classic theme does this.
 - The Insert Icon, Insert Emoji and Font Color windows in the editors now say "Close" instead of "Cancel", with a one-line hint such as "Click an icon to insert it.", since picking an item inserts it straight away. Insert Shortcode gets a matching hint on its first step.
 - On a phone, the Visual / HTML editor showed only part of its toolbar (undo, redo and the block-format dropdown, running off the screen). The toolbar now wraps onto several rows so every button is reachable.

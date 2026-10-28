@@ -3093,7 +3093,13 @@
                 // origin is one this app's CSP actually allows.
                 autoDownloadFontAwesome: false,
                 minHeight: editorHeightPx(container, 300) + 'px',
-                spellChecker: true,
+                // EasyMDE's own checker is US English only and downloads a
+                // dictionary; the browser's checker (the writer's language and
+                // personal dictionary) only reaches CodeMirror's text in
+                // contenteditable input mode.
+                spellChecker: false,
+                nativeSpellcheck: true,
+                inputStyle: 'contenteditable',
                 status: false,
                 uploadImage: true,
                 imageUploadFunction: function (file, onSuccess, onError) {
