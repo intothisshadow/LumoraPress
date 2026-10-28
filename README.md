@@ -87,7 +87,7 @@ For the complete feature list and implementation details, see [`docs/FEATURES.md
 
 | Requirement | Needed | Notes |
 | --- | --- | --- |
-| PHP | 8.2, 8.3, 8.4, or 8.5 (8.4 recommended) | |
+| PHP | 8.2, 8.3, 8.4, or 8.5 (8.5 recommended) | |
 | Database | MySQL 5.6.4+ or MariaDB 10.0.5+ (MySQL 8.4+ or MariaDB 10.11+ recommended) | The oldest versions with InnoDB `FULLTEXT` index support, which search uses. Lumora Press is tested on MySQL 5.6, 5.7, 8.0, 8.4, and 9.7, and on MariaDB 10.0, 10.4, 10.11, 11.4, and 11.8, and should install and run on all of them. Only database versions that their vendor still maintains are actively supported, though. If you have a problem on a version that has reached end of life, the advice will be to move to a currently supported release. Check the MySQL and MariaDB websites for which versions those are. |
 | PHP extensions | `pdo`, `pdo_mysql`, `session`, `json`, `zip` | `zip` is required only for the manual core-update, theme-install, and Lumora Press content export/import features. |
 | Web server | Apache with `mod_rewrite` | The shipped `.htaccess` files assume Apache. |
