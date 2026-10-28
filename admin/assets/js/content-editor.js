@@ -375,6 +375,16 @@
         });
     }
 
+    // One-line instruction for windows where clicking an item acts at once,
+    // so a lone Close button isn't mistaken for a missing OK step.
+    function pickHint(text) {
+        var hint = document.createElement('p');
+        hint.className = 'lp-field__hint lp-editor-media-dialog__hint';
+        hint.textContent = text;
+
+        return hint;
+    }
+
     function openMediaPicker(container, onSelect) {
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
         var pickerUrl = container.dataset.uploadUrl;
@@ -1883,10 +1893,11 @@
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
         closeButton.className = 'lp-button lp-editor-media-dialog__close';
-        closeButton.textContent = 'Cancel';
+        closeButton.textContent = 'Close';
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         dialog.appendChild(heading);
+        dialog.appendChild(pickHint('Click an icon to insert it.'));
         dialog.appendChild(searchInput);
         dialog.appendChild(status);
         dialog.appendChild(grid);
@@ -1965,7 +1976,7 @@
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
         closeButton.className = 'lp-button lp-editor-media-dialog__close';
-        closeButton.textContent = 'Cancel';
+        closeButton.textContent = 'Close';
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         var categoryList = recent.length > 0 ? [RECENT_LABEL].concat(categories) : categories;
@@ -2213,6 +2224,7 @@
         });
 
         dialog.appendChild(heading);
+        dialog.appendChild(pickHint('Click an emoji to insert it.'));
         dialog.appendChild(searchInput);
         dialog.appendChild(categoryNav);
         dialog.appendChild(status);
@@ -2303,14 +2315,18 @@
         var form = document.createElement('div');
         form.hidden = true;
 
+        var listHint = pickHint('Choose a shortcode to set its options, then insert it.');
+
         function showListStep() {
             list.hidden = false;
+            listHint.hidden = false;
             form.hidden = true;
             form.innerHTML = '';
         }
 
         function showFormStep(name) {
             list.hidden = true;
+            listHint.hidden = true;
             form.hidden = false;
             form.innerHTML = '';
 
@@ -2486,6 +2502,7 @@
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         dialog.appendChild(heading);
+        dialog.appendChild(listHint);
         dialog.appendChild(list);
         dialog.appendChild(form);
         dialog.appendChild(closeButton);
@@ -2630,9 +2647,10 @@
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
         closeButton.className = 'lp-button';
-        closeButton.textContent = 'Cancel';
+        closeButton.textContent = 'Close';
         closeButton.addEventListener('click', function () { dialog.close(); });
 
+        dialog.appendChild(pickHint('Click a color to apply it.'));
         dialog.appendChild(grid);
         dialog.appendChild(closeButton);
         dialog.addEventListener('close', function () { dialog.remove(); });

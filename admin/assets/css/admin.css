@@ -2491,6 +2491,15 @@ body.lp-admin-login {
     flex-shrink: 0;
 }
 
+/* One-line instruction under a pick-on-click window's heading. */
+.lp-editor-media-dialog__hint {
+    margin: 0 0 0.5rem;
+}
+
+.lp-editor-media-dialog__hint[hidden] {
+    display: none;
+}
+
 /* LP-075's Attachment Display Settings step (Size / Link To), shown after picking an image, before the grid. */
 .lp-editor-media-dialog__settings-actions {
     display: flex;

@@ -10,6 +10,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The Insert Icon, Insert Emoji and Font Color windows in the editors now say "Close" instead of "Cancel", with a one-line hint such as "Click an icon to insert it.", since picking an item inserts it straight away. Insert Shortcode gets a matching hint on its first step.
 - On a phone, the Visual / HTML editor showed only part of its toolbar (undo, redo and the block-format dropdown, running off the screen). The toolbar now wraps onto several rows so every button is reachable.
 - On a phone, the Pages and Categories lists ran off the right edge of the screen and used a lot of vertical space, and the All Posts list hid its Date and Actions columns behind a sideways swipe. Rows now wrap to fit the screen and are more compact, and the same compact card layout now applies to the Comments, Media (list view), Users, Tags, Categories, Downloads, Link Directory, Contact Forms and Redirects lists.
 - The error log now records the underlying cause of an error, such as "Too many connections" or "Access denied" behind "Unable to connect to the database.", so database and other wrapped failures can be diagnosed from Maintenance › Logs. The cause appears in the entry's Message column and is never shown to visitors.
