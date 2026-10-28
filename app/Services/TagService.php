@@ -743,6 +743,141 @@ final class TagService
     }
 
     /**
+     * One query for a whole page of posts, so a list showing each post's tags costs
+     * a single lookup instead of one tagsForPost() call per row. Trashed tags are
+     * excluded, as in tagsForPost().
+     *
+     * @param array<int, int> $postIds
+     * @return array<int, array<int, Tag>> tags keyed by post id, each ordered by name
+     */
+    public function tagsForPosts(array $postIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $postIds))));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT t.*, pt.post_id AS assigned_post_id FROM ' . $this->table() . ' t
+                INNER JOIN ' . $this->postTagsTable() . ' pt ON pt.tag_id = t.id
+             WHERE pt.post_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') AND t.trashed_at IS NULL
+             ORDER BY t.name ASC',
+            $ids,
+        );
+
+        $byPost = [];
+
+        foreach ($rows as $row) {
+            $byPost[(int) $row['assigned_post_id']][] = $this->hydrate($row);
+        }
+
+        return $byPost;
+    }
+
+    /**
+     * Adds tags to several posts without touching the tags they already have; a name
+     * that matches no tag creates one, as when typing it into a post's own tag box.
+     *
+     * @param array<int, int> $postIds
+     * @param array<int, string> $tagNames
+     * @return int how many post/tag pairs were newly added
+     */
+    public function bulkAddToPosts(array $postIds, array $tagNames): int
+    {
+        $tagIds = array_map(fn (string $name): int => $this->findOrCreateByName($name)->id, $this->cleanNames($tagNames));
+        $added = 0;
+
+        foreach (array_unique(array_map('intval', $postIds)) as $postId) {
+            foreach ($tagIds as $tagId) {
+                $exists = $this->database->fetchOne(
+                    'SELECT 1 FROM ' . $this->postTagsTable() . ' WHERE post_id = :post_id AND tag_id = :tag_id',
+                    ['post_id' => $postId, 'tag_id' => $tagId],
+                ) !== null;
+
+                if ($exists) {
+                    continue;
+                }
+
+                $this->database->execute(
+                    'INSERT INTO ' . $this->postTagsTable() . ' (post_id, tag_id) VALUES (:post_id, :tag_id)',
+                    ['post_id' => $postId, 'tag_id' => $tagId],
+                );
+                $added++;
+            }
+        }
+
+        $this->invalidateCaches();
+
+        return $added;
+    }
+
+    /**
+     * Removes tags from several posts. Unlike adding, a name that matches no tag is
+     * ignored rather than created, so a typo can't make a new tag just to remove it.
+     *
+     * @param array<int, int> $postIds
+     * @param array<int, string> $tagNames
+     * @return int how many post/tag pairs were removed
+     */
+    public function bulkRemoveFromPosts(array $postIds, array $tagNames): int
+    {
+        $tagIds = [];
+
+        foreach ($this->cleanNames($tagNames) as $name) {
+            $row = $this->database->fetchOne(
+                'SELECT id FROM ' . $this->table() . ' WHERE LOWER(name) = LOWER(:name)',
+                ['name' => $name],
+            );
+
+            if ($row !== null) {
+                $tagIds[] = (int) $row['id'];
+            }
+        }
+
+        $removed = 0;
+
+        foreach (array_unique(array_map('intval', $postIds)) as $postId) {
+            foreach ($tagIds as $tagId) {
+                $removed += $this->database->execute(
+                    'DELETE FROM ' . $this->postTagsTable() . ' WHERE post_id = :post_id AND tag_id = :tag_id',
+                    ['post_id' => $postId, 'tag_id' => $tagId],
+                );
+            }
+        }
+
+        $this->invalidateCaches();
+
+        return $removed;
+    }
+
+    /**
+     * Trims, drops blanks and de-duplicates case-insensitively, keeping the first spelling.
+     *
+     * @param array<int, string> $tagNames
+     * @return array<int, string>
+     */
+    private function cleanNames(array $tagNames): array
+    {
+        $seen = [];
+        $names = [];
+
+        foreach ($tagNames as $name) {
+            $trimmed = trim((string) $name);
+            $key = strtolower($trimmed);
+
+            if ($trimmed === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $names[] = $trimmed;
+        }
+
+        return $names;
+    }
+
+    /**
      * Clears every request-scoped cache — called by any method that changes a tag's stored
      * fields or its post assignments, so the next findById()/postCount() call reflects the
      * change instead of serving a stale memoized value. Mirrors

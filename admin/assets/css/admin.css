@@ -5323,6 +5323,17 @@ select:focus {
         min-width: 0;
         overflow-wrap: anywhere;
     }
+
+    /* A row's tags sit on their own line under the title; a row with none
+       doesn't spend a line on a placeholder dash. */
+    .lp-table.lp-table--stacked .lp-table__tags {
+        flex: 1 1 100%;
+        font-size: 0.85rem;
+    }
+
+    .lp-table.lp-table--stacked .lp-table__tags:has(.lp-table__none) {
+        display: none;
+    }
 }
 
 .lp-table th,
@@ -6635,6 +6646,11 @@ a.lp-button--link.lp-button--link--view:hover {
         min-width: 0;
         overflow-wrap: anywhere;
     }
+}
+
+/* Placeholder dash in a list cell with nothing to show (e.g. a post with no tags). */
+.lp-table__none {
+    opacity: 0.5;
 }
 
 /* Admin comment reply/edit: formatting toolbar above the textarea

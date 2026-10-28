@@ -266,6 +266,18 @@ final class PostsController
             return AdminActionResult::redirect(admin_url('posts/all-posts') . $statusSuffix);
         }
 
+        if (($bulkAction === 'add_tags' || $bulkAction === 'remove_tags') && $canEditPosts) {
+            $tagNames = array_map('trim', explode(',', (string) ($post['bulk_tags'] ?? '')));
+
+            if ($bulkAction === 'add_tags') {
+                $this->tags->bulkAddToPosts($editableIds, $tagNames);
+            } else {
+                $this->tags->bulkRemoveFromPosts($editableIds, $tagNames);
+            }
+
+            return AdminActionResult::redirect(admin_url('posts/all-posts') . $statusSuffix);
+        }
+
         if (($bulkAction === 'set_public' || $bulkAction === 'set_private') && $canPublish) {
             $this->posts->bulkSetVisibility($editableIds, $bulkAction === 'set_private' ? PostVisibility::Private : PostVisibility::Public);
 

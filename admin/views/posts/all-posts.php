@@ -136,6 +136,7 @@ $statusLinks = ['' => 'All (' . $allCount . ')', ...array_combine(
 $allUsersForFilter = $kernel->users->listAll();
 $allCategoriesForFilter = $kernel->categories->listAllForParentPicker();
 $allTagsForFilter = $kernel->tags->listAll();
+$tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTags): int => $listedPostForTags->id, $pagination['posts']));
 ?>
 
 <p class="lp-admin__filters">
@@ -236,6 +237,8 @@ $allTagsForFilter = $kernel->tags->listAll();
                         <?php if ($canDeletePosts): ?><option value="trash">Move to Trash</option><?php endif; ?>
                         <?php if ($canEditOthersPosts): ?><option value="change_author">Change author to&hellip;</option><?php endif; ?>
                         <option value="add_category">Add category&hellip;</option>
+                        <option value="add_tags">Add tags&hellip;</option>
+                        <option value="remove_tags">Remove tags&hellip;</option>
                         <option value="disable_commenting">Disable Commenting</option>
                         <option value="enable_commenting">Enable Commenting</option>
                     <?php endif; ?>
@@ -253,6 +256,8 @@ $allTagsForFilter = $kernel->tags->listAll();
                         <option value="<?= (int) $bulkCategoryOption['id'] ?>"><?= str_repeat('&nbsp;&nbsp;&nbsp;', $bulkCategoryOption['depth']) . esc_html($bulkCategoryOption['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <label class="lp-visually-hidden" for="posts-bulk-tags">Tags for Add tags or Remove tags</label>
+                <input type="text" id="posts-bulk-tags" name="bulk_tags" maxlength="500" placeholder="Tags, separated by commas">
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
@@ -264,6 +269,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                             <input type="checkbox" id="posts-select-all" data-lp-select-all="post_ids[]" data-lp-select-all-scope="table">
                         </th>
                         <th scope="col">Title</th>
+                        <th scope="col">Tags</th>
                         <th scope="col">Status</th>
                         <th scope="col">Date</th>
                         <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
@@ -283,6 +289,14 @@ $allTagsForFilter = $kernel->tags->listAll();
                                     <a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $listedPost->id ?>"><?= esc_html($listedPost->title) ?></a>
                                 <?php else: ?>
                                     <?= esc_html($listedPost->title) ?>
+                                <?php endif; ?>
+                            </td>
+                            <td class="lp-table__tags">
+                                <?php $rowTags = $tagsByPost[$listedPost->id] ?? []; ?>
+                                <?php if ($rowTags === []): ?>
+                                    <span class="lp-table__none">&mdash;</span>
+                                <?php else: ?>
+                                    <?php foreach ($rowTags as $rowTagIndex => $rowTag): ?><?= $rowTagIndex > 0 ? ', ' : '' ?><a href="<?= esc_url(admin_url('posts/all-posts') . '?tag=' . (int) $rowTag->id) ?>"><?= esc_html($rowTag->name) ?></a><?php endforeach; ?>
                                 <?php endif; ?>
                             </td>
                             <td>
