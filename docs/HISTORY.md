@@ -20730,3 +20730,216 @@ Email copies, replying from the admin, and any change to how submissions are sto
 #### Implementation notes
 
 Built 2026-10-14. `ContactMessageNotifier` (new, in the plugin) is called by `ContactFormSubmissionHandler` after a non-spam submission is stored and its email sent. It keeps one unread `contact_message` notice per Administrator and rewrites its count while it is unread, so grouping needs no timer: reading the notice ends the group. The count is the number of unread, non-spam messages (what the Submissions screen shows), and the link goes to the Submissions inbox, filtered to the form when there is only one new message, since there is no single-message page. Two small generic methods were added to `NotificationService` (`findUnreadOfType()`, `updateUnread()`). Verified on the dev install with two real submissions through the public form. The README is updated; the `Version:` bump waits for the next Release.
+
+## 0.25.0 (2026-10-28)
+
+### LP-201. Decide How the Markdown Editor Spell-Checks
+
+**Status:** Complete
+
+The visual editor now uses the browser's own spellcheck (your language, your personal dictionary, nothing to download). The Markdown editor still uses EasyMDE's built-in checker, which only knows US English. It downloads a dictionary of about 250 KB from the CDN on every page where Markdown is the editor, so it also marks every word of a post in another language as misspelled. This ticket is to decide what the Markdown editor should do, then do it.
+
+Options, with what each costs:
+
+- **Keep it as is.** No work, but non-English writers get false underlines and everyone pays the download.
+- **Use the browser's own spellcheck, as the visual editor does.** Matches the visual editor and drops the download. Browser spellcheck only reaches CodeMirror's text through its contenteditable input mode, which can change caret movement and input-method (IME) behavior, so this needs real testing on desktop and phone before it ships.
+- **Turn spellcheck off in the Markdown editor.** Simplest and lightest, but leaves Markdown writers with none.
+- **Let the site choose a dictionary language.** Keeps the built-in checker but needs a setting and a dictionary source for each language; the most work, and the least in keeping with the "lightweight" goal.
+
+### Checklist
+
+- [x] Choose an option. Decided 2026-10-28: use the browser's own spellcheck, as the Visual editor does.
+- [x] Implement it in `initMarkdownEditor()` (`admin/assets/js/content-editor.js`): `spellChecker: false`, `nativeSpellcheck: true` and `inputStyle: 'contenteditable'`, which is the mode that lets the browser reach CodeMirror's text.
+- [x] If the browser-spellcheck option is chosen: check caret movement, selection, and typing with an input method on desktop and a phone, in current Firefox and Chromium, and note the result in `docs/EDITOR-TESTING.md`. Checked 2026-10-28 in the in-app Chromium browser with real keystrokes: typing, arrow keys, shift-selection, typing over a selection, the Bold toolbar button on a selection and undo all behave, and the editing area has `spellcheck="true"`. Not checked: Firefox, a phone, typing with an input method, and the misspelling underline itself (this embedded browser showed none). The checklist item for those is in `docs/EDITOR-TESTING.md`. One caveat from the test tool, not a human: arrow keys sent in the same instant as typed text were dropped until the text had been committed. Marked complete by Ariane on 2026-10-28 with those cases still unchecked; they stay on the checklist in `docs/EDITOR-TESTING.md` for the next manual run.
+- [x] Confirm the dictionary download is gone from the network list, and update the CHANGELOG. No dictionary file is requested on the Markdown editor page (only the EasyMDE and Font Awesome files load); CHANGELOG updated under Changed.
+
+
+### LP-219. Staff Badge on Comments and Notifications
+
+**Status:** Complete
+
+The public comment list already marks staff: `comment_author_badge()` in `include/comment-functions.php` prints a "Post author" or role badge (`.lp-comment__role`) next to a signed-in user's name. The admin Comments screen and the Notifications inbox show nothing, so an Administrator's or Editor's own reply looks the same as a stranger's comment. Add a small badge to both screens so staff comments stand out when moderating and when reading what happened.
+
+A comment records who wrote it through `user_id` (kept for moderation, while the name and email are a snapshot at posting time), so the badge should come from the linked account's current role. A comment with no `user_id`, or whose account was deleted, gets no badge. Reuse the role label already used on the public side rather than inventing a second set of names.
+
+- [x] Decide which roles count as staff: every role that can moderate comments (decided). The badge shows the role name ("Administrator", "Editor"), matching the public badge. Use the moderate-comments capability to decide, not a hardcoded role list, so a role that gains or loses that capability follows automatically.
+- [x] Admin Comments list: show the badge beside the author name for comments whose `user_id` belongs to a staff account. Load the roles for the visible page in one query, not one per row (the list must stay fast with tens of thousands of comments).
+- [x] Admin Comments edit/reply screen: show the same badge where the author is displayed.
+- [x] Notifications inbox: a notification about a comment (new comment, reply, held for moderation) shows the badge when the commenter is staff. Decided: it is stored with the notification when it is created, so the inbox needs no lookup per row. The badge is a snapshot, like the commenter's name, and does not change if the role changes later. Add a column or a small field on the notification row (with a migration, and an update to the fresh-install schema snapshot at the next Release) rather than parsing it out of the message text, and have the inbox render it as the same styled badge. Notifications created before this change simply have no badge.
+- [x] Add the badge styling to the admin stylesheet with a stable class (reuse the `.lp-comment__role` look so it matches the public badge) and a dark-mode variant in the same change.
+- [x] Accessibility: the badge is text, not colour alone, and reads sensibly in a screen reader beside the name.
+- [x] Unit tests for the staff lookup (staff, non-staff, guest, deleted account), done as `UserService::rolesWithCapability()`, which resolves a whole page of comments in one query, plus tests that notifications store and pass on the badge.
+- [x] Browser-verify the Comments list, the edit screen, and the Notifications inbox, in light and dark mode.
+- [x] Update the CHANGELOG.
+
+
+### LP-220. Comment Action Buttons Match the Theme
+
+**Status:** Complete
+
+On the public comment list, the "Quote" and "Reply" controls under each comment don't look like they belong to the theme. In the test-site screenshot, "Quote" shows as a plain grey browser-default button (a border, a grey fill, and the system font) beside the theme-styled "▸ Reply" link, and the two sit on different baselines. Both are actions on a comment, so they should read as one consistent row in every theme. This ticket is for Lumora Classic, the bundled theme. The custom themes follow in LP-CUSTOM-001.
+
+What exists today: `comment_list()` in `include/comment-functions.php` prints the row as `.lp-comment__actions`, holding the reaction buttons, `.lp-comment__quote-button` (a `<button>`, hidden until JavaScript unhides it), the `.lp-comment__reply > summary` disclosure, and `.lp-comment-report > summary`. Lumora Classic already has rules for the quote button and the report summary (`padding: 0; border: 0; background: none`), so the first job is to find out why the screenshot's button is still unstyled: a stale theme copy on that site, a more specific rule winning, or a rule that never matches the markup.
+
+- [x] Reproduce the unstyled Quote button on the dev install and find the cause (stale copy, specificity, or markup mismatch) before changing any CSS. Record the cause in the ticket notes. Cause: Quote was not a browser-default button in Lumora Classic on the dev install; the real problem was that Quote (serif font, muted grey) and Reply (UI font, accent colour, on its own line below) had unrelated styles. The screenshot's unstyled button was most likely a stale or custom theme copy.
+- [x] Give Quote, Reply, Report and the reaction buttons one shared "comment action" look in `style.css`: same font size, weight, colour, spacing and vertical alignment, with a visible hover and `:focus-visible` state. Reply keeps its disclosure marker, Quote and Report don't grow one.
+- [x] Decide whether the actions look like text links (the current intent) or small pill buttons, and apply the choice to all of them. Quote and Reply must not differ from each other.
+- [x] Style the buttons inside the inline reply form (Post Reply, Cancel) with the theme's existing form-button class rather than the browser default, if they are currently unstyled.
+- [x] Add the dark-mode rules in the same change, and check keyboard focus order and contrast (4.5:1 for the text, 3:1 for the focus ring). Contrast measured 6.12:1 light and 10.29:1 dark. A visible focus outline was added; keyboard focus order was not tested.
+- [x] Check the row on a phone-width screen: the actions wrap cleanly and every control keeps a tap target of at least 44px. Measured 44px targets at 375px wide.
+- [x] Nested replies: the same row looks right on a reply, including the author's highlighted comment. Checked 2026-10-28 at 412px in light and dark: a nested post-author reply keeps Quote and Reply on one row, text and action contrast are at least 6:1, and the keyboard order is Quote then Reply per comment with a visible focus outline. What marks that reply is the "Post author" badge, which was 3.5:1 in light mode and now uses the theme's darker accent (5.55:1 light, 11.75:1 dark).
+- [x] Browser-verify a comment, a reply, and a staff reply in light and dark mode, then update `docs/THEME-DEVELOPMENT.md` with the class names a theme should style (`.lp-comment__actions` and its children). Docs done. Verified in light and dark: a comment, a nested post-author reply and an opened Reply form. The dev post has no separate staff-role comment; its role badge is the same element as the post-author badge, so it was not checked on its own.
+- [x] Update the CHANGELOG.
+
+
+### LP-221. Editors in the Admin Comment Reply
+
+**Status:** Complete
+
+Decision (2026-10-28): the light toolbar over plain text. The toolbar only inserts syntax the comment renderer already understands (Quote, a web address, @mention, Emoji), so nothing is stored differently and a guest comment stays escaped plain text.
+
+The admin Comments screen's reply form (`admin/views/comments.php`, `action=reply`) is a bare `<textarea>` ("Your reply"), and so is the edit-comment form. Posts and pages get the full editors (Visual, Markdown, HTML) from `admin/assets/js/content-editor.js`, so replying to a comment from the admin feels like a step down. Give the reply form, and the edit form beside it, a proper editing surface.
+
+The constraint to settle first: a comment is stored as plain text and rendered by `format_comment_content()` in `include/helpers.php`, which escapes everything, auto-links URLs, marks up `@mentions`, and turns `> ` lines into a blockquote. A Visual editor would write HTML, which that renderer would show as literal tags. A comment must never be able to carry raw HTML from a guest, so the answer can't be "store HTML for everyone." Pick one of the options below, then build it.
+
+- **Markdown-style toolbar over the plain text.** A toolbar (bold, italic, link, quote, list, emoji) that inserts the comment syntax the renderer already understands, with no stored-format change. Keeps comments portable and safe.
+- **Full editors, with a per-comment format.** Store a format on staff-written comments and sanitize their HTML on output (the same allowed-tag list used for post content). Most capable, but a new column, a migration, and a second rendering path to secure.
+- **Reuse the existing editors in their plain/Markdown modes only.** Smallest change; skips the Visual editor.
+
+- [x] Choose an option (decided 2026-10-28: light toolbar over plain text). If it needs a stored format, say how a guest comment stays plain text.
+- [x] Wire the chosen editor into the reply form and the edit-comment form, reusing the existing editor script and its load path (no second copy, and nothing inline, since the admin CSP blocks inline scripts).
+- [x] The editor follows the user's own preferred editor where it applies, and falls back to the plain textarea when JavaScript is off (the form must still submit). Not applicable to a plain-text toolbar. The toolbar is built by the script; the server sends a plain textarea in a POST form with a CSRF token and a submit button (read from the page source, not run with JavaScript actually disabled).
+- [x] The Emoji Picker plugin, when active, keeps working in the reply form.
+- [x] Server side: sanitize and validate whatever the editor submits exactly as the public comment form does; the `required` check, length limit, and CSRF token are unchanged. A reply posted through the admin renders identically on the public page.
+Preview: not needed with the chosen option, since the reply renders exactly as the plain text does today.
+- [x] Accessibility: the label stays associated with the editor, the toolbar is keyboard-operable, and focus lands in the editor on load (the textarea has `autofocus` today).
+- [x] Style the editor to match the admin look in light and dark mode, using the core admin classes. Light mode checked; dark mode checked at 412px on 2026-10-28 (toolbar buttons 11.9:1 contrast). The toolbar buttons are 26px tall, a small phone tap target.
+- [x] Unit tests for the new format or sanitizing path, and an integration test that an admin reply round-trips and renders safely, including a guest comment containing raw HTML staying escaped. Contract tests for the wiring; the existing renderer tests already cover guest HTML staying escaped; and an integration test (`CommentServiceIntegrationTest`) that a reply with a quote, link and mention round-trips unchanged and renders as markup while a guest's raw HTML stays escaped. Passed on PHP 8.5 with MariaDB; PHP 8.2 to 8.4 were not run.
+- [x] Browser-verify the reply and edit screens in light and dark mode, with JavaScript on and off. Reply screen verified in dark mode at 412px (Quote, Link and @ behave, no overflow); the edit screen in light mode earlier. JavaScript off was judged from the page source, not by disabling it.
+- [x] Update the README if the Comments screen is documented there, `docs/DEVELOPER-APIS.md` if a hook or filter is added, and the CHANGELOG.
+
+
+### LP-222. Tags On admin/posts/all-posts
+
+**Status:** Complete
+
+Show each post's tags on All Posts, and let the bulk actions add tags to, or remove tags from, the selected posts. Added as "Add tags…" and "Remove tags…" next to the existing "Add category…" action, with one text box for comma-separated tag names. Adding a name that matches no tag creates it, as in a post's own tag box; removing a name that matches no tag does nothing, so a typo can't create a tag.
+
+- [x] A Tags column on All Posts (including Trash) listing each post's tags as links that filter the list by that tag, loaded with one query for the whole page.
+- [x] "Add tags…" bulk action: keeps the tags a post already has, reuses existing tags case-insensitively, and creates new ones.
+- [x] "Remove tags…" bulk action: removes only the named tags and never creates one.
+- [x] Only posts the user can edit are changed, and the actions need the edit-posts permission, like the other bulk actions.
+- [x] The phone layout shows tags on their own line under the title, and spends no line on a post with none.
+- [x] Unit tests for the service methods and the controller (including editable-posts-only and the permission check).
+- [x] Browser-verify in dark mode and with the Tags column on a post with many tags. Checked 2026-10-28 at 412px in dark mode: 25 long tag names injected into one row wrap inside their cell with no page overflow. The dev posts have at most 3 tags, so the many-tags case was injected. The bulk add and remove submit was not re-run in dark mode; its controls render correctly there.
+- [x] Decide whether the same Tags column and bulk tags belong on All Pages, and whether the bulk text box should autocomplete existing tag names. Decided 2026-10-28: not on All Pages (pages have no tags); the bulk tags box now suggests existing tags as you type, reusing the post editor's tag box.
+
+
+
+
+### LP-223. Error Log Records the Underlying Cause of Wrapped Exceptions
+
+**Status:** Complete
+
+Found 2026-10-28: Maintenance › Logs showed a run of "Unable to connect to the database." entries with only a stack trace, giving no way to tell "Too many connections" from "Access denied" or a server outage. `Database::connect()` wraps the `PDOException` in a generic `DatabaseConnectionException`, and `ErrorHandler::log()` only wrote the outer message.
+
+- [x] `ErrorHandler::log()` appends each previous exception's class and message (whitespace collapsed to one line) to the entry's header, so the cause shows in the log viewer's Message column and `ErrorLogReader` still parses the entry.
+- [x] The public error page and debug output are unchanged: the cause is logged only, never rendered to visitors.
+- [x] Unit tests: previous message logged, chained causes and newline collapsing, no change when there is no previous exception, and public output never includes the cause.
+- [x] Browser-verify on the dev install that a forced connection failure shows the cause in Maintenance › Logs.
+
+
+### LP-224. Admin Lists Overflow and Waste Space on Phones
+
+**Status:** Complete
+
+Found 2026-10-28 on a phone: in Pages (and Posts), each row's drag handle, up/down arrows, checkbox, title and status badge don't fit the screen. The "Published" badge and the date/author columns run off the right edge, and long titles wrap onto three lines inside tall rows. Categories shows the same problem: the slug and post count are cut off. Compact these lists for narrow screens.
+
+- [x] Reproduce on the Pages, Posts and Categories lists at phone width (about 375–412px) and measure the overflowing element directly rather than relying on a `body.scrollWidth` check.
+- [x] Nothing in a list row runs off the screen: the status badge, slug, count and any other columns stay inside the panel, wrapping or moving under the title where needed.
+- [x] Tighten the rows: less padding, smaller handle, arrows and checkbox gutters, and no row taller than its content needs, so more rows fit on screen. Keep every control a usable tap target.
+- [x] Check the other admin list screens that share the same list markup (Comments, Media, Users, Tags, bundled plugin lists) at phone width, and fix them in the same change if they share the cause. Done: Comments, Media list view, Users, Tags, Categories and Pages (filtered views), Downloads, Link Directory, Contact Forms and Redirects now use the stacked card layout. Tables that are diagnostic or key/value data (Logs, Updates, Tools, Cache, Search, Performance, Notifications, Import) keep the swipeable table, since their columns need their headers.
+- [x] Light and dark mode, and the collapsed and expanded admin sidebar.
+- [x] Update `PHP Test Suite` where a test asserts the changed markup or classes; browser-verify on the dev install at phone width.
+
+
+### LP-225. Visual Editor Toolbar Is Cut Off on Phones
+
+**Status:** Complete
+
+Root cause: TinyMCE ignores `toolbar_mode` on touch devices and forces a single horizontally scrolling toolbar row, so most buttons were clipped off to the right. Fixed with `mobile: { toolbar_mode: 'wrap' }` in `content-editor.js`.
+
+Found 2026-10-28 on a phone: on the new post screen the Visual/HTML editor shows only the undo/redo buttons and the Paragraph dropdown, which runs off the right edge. The rest of the toolbar (bold, italic, lists, links, media and the mode switch) isn't reachable, so the editor looks like it only half loaded. The editor itself and the word count do appear.
+
+- [x] Reproduce on the dev install at phone width and check the browser console for script errors, to tell a failed load from a toolbar that overflows or is hidden.
+- [x] Every toolbar button is reachable on a phone: the toolbar wraps onto more than one row or scrolls horizontally, with no button clipped.
+- [x] The block-format dropdown and other wide controls fit the toolbar width instead of pushing it past the panel.
+- [x] Check the HTML and Markdown modes and the Excerpt field at phone width as well. Checked at 412px in dark mode: the Markdown toolbar wraps to four rows, the Visual toolbar to eight, the Source code dialog fits (Cancel and Save), and the Excerpt field fits its panel; no page overflow.
+- [x] Light and dark mode. Visual toolbar and Excerpt field measured at 412px in both: no button off-screen, no page overflow.
+
+
+### LP-226. Edit Image Can Swap In a Different Image
+
+**Status:** Complete
+
+Requested 2026-10-28: the Edit Image dialog changes an image's alt text, caption, alignment, link and size, but not which picture it shows. Today, switching to another image means deleting it and inserting a new one, which loses the alignment, caption and link. Add a "Change image" action to the dialog that opens the Media picker and swaps the file while keeping those settings. Applies to both editors: the Visual / HTML editor (the Edit Image toolbar button, the image's quick toolbar and double-click) and the Markdown editor (`openImageEditDialog()` in `content-editor.js` is shared by both).
+
+- [x] A "Change image" button in the Edit Image dialog opens the same Media Manager picker used by Insert Image, with its size choice.
+- [x] Picking a new image replaces the file in place and keeps the caption, alignment, link and alt text already set. Alt text should offer the new image's own alt only when the current one is empty.
+- [x] Width and height are reset to the new image's own size choice instead of carrying over the old image's dimensions, so a different aspect ratio isn't stretched.
+- [x] Works in the Visual / HTML editor, including an image wrapped in a link or caption, and in the Markdown editor, where the image's Markdown line is rewritten. Verified 2026-10-28: both editors with an image wrapped in a link, caption and alignment. This found that swapping an image linked to another page replaced that link with a link to the new file; a link now follows the new picture only when it pointed at the old picture's own file.
+- [x] Cancelling the picker leaves the image untouched; the change is one undo step in the Visual editor. Cancelling the picker verified in both editors (content unchanged, back to the Edit Image dialog); one undo restores the old picture in the Visual editor.
+- [x] Unit/contract tests for the new dialog control and the replace path; browser-verify both editors on the dev install, in light and dark mode and at phone width. Contract tests added. Both editors checked at 412px in dark mode (the dialog's button row ran past the dialog edge and now wraps) and earlier in light mode.
+- [x] Update the README or docs if the editor's image tools are documented there, and the CHANGELOG.
+
+
+### LP-227. Editor Pick-and-Insert Windows Show Only a "Cancel" Button
+
+**Status:** Complete
+
+Requested 2026-10-28: several editor windows, such as Insert Icon, show only a "Cancel" button at the bottom. Clicking an icon inserts it straight away and closes the window, so there is nothing to confirm, and a lone "Cancel" reads as if the window still needs an OK and that picking something does nothing until then. In `content-editor.js` this affects the windows whose first screen is pick-on-click: Insert Icon (`openIconPicker`), Insert Emoji (`openEmojiPicker`), Font Color (`openColorPicker`), the first screen of Insert Image/Media (`openMediaPicker`) and Insert Shortcode (`openShortcodePicker`), the latter two of which then continue to an Insert button on their settings step. Windows with a real Insert/Update/Add Link button next to Cancel are fine as they are.
+
+- [x] Decide the wording with Ariane (agreed 2026-10-28): the fix is to label the button "Close" on pick-on-click windows (as the Markdown Guide window already does) and keep "Cancel" only where a confirm button sits beside it, plus a one-line hint under the heading such as "Click an icon to insert it."
+- [x] Insert Icon, Insert Emoji and Font Color now say "Close" and carry a one-line hint, in both editors (they share these functions). Insert Shortcode gets its hint on the pick step only, and keeps "Cancel" because it continues to an Insert step. Insert Image/Media keeps "Cancel" for the same reason.
+- [x] Check the other editor windows for the same problem, including the folder, audio/video and file pickers, and any bundled plugin that adds an editor window. Checked all dialogs in `content-editor.js`: no other one is Cancel-only. Windows added by bundled plugins were not checked.
+- [x] Keep keyboard use intact: Escape still closes, focus lands on the first item, and the button stays reachable by Tab. Checked at 412px in both editors: Escape closes the Icon window and returns focus to the editor; focus lands on the first control (the search box, or the first colour swatch) in every window; the Close or Cancel button is among the tabbable controls. Tab order was read from the page, not walked key by key.
+- [x] Contract test for the labels; browser-verify each window in both editors, in light and dark mode and at phone width. Contract test added. Insert Icon, Insert Emoji, Insert Shortcode and Insert Image checked in both editors at 412px in dark mode and in light mode, all fitting with the right button labels; Font Color is TinyMCE's own swatch menu in the Visual editor and the core window in Markdown. The picker search box was white in dark mode and is now styled.
+- [x] Update the CHANGELOG, and any README or docs that describe these windows. CHANGELOG entries exist; no README or doc describes these windows' buttons, and `docs/EDITOR-TESTING.md`'s Change Image line now notes how links are kept.
+
+
+### LP-228. Download Cards Wrap Long Titles and Descriptions on Phones
+
+**Status:** Complete
+
+Reported 2026-10-28 from a phone: on a Downloads list, a card's title ran past the card's right edge and was cut off, and its description (shown in a monospace face) was cut off too. Two things can't wrap in Lumora Classic: a title with no break points (a real download on the dev install is called `FocusWriter-ThemeFANXenaWarriorPrincessSunlightonSteel`), and a description that arrives as a preformatted block, which keeps long lines unbroken.
+
+- [x] Download card titles, meta lines and descriptions break long words inside the card (`overflow-wrap: anywhere`), so an unbroken title no longer overflows.
+- [x] A preformatted or code block in a description wraps (`white-space: pre-wrap`) and stays within the card.
+- [x] Checked on the dev install at 412px in Lumora Classic with an unbroken 54-letter title and a long preformatted description: neither overflows after the change. The custom themes got the same fix separately.
+- [x] Browser-verify in dark mode, and with a real card whose description is a code block (the dev install's cards have no description, so a preformatted description was injected for the check).
+
+
+### LP-229. Search Widget Input Is Invisible in Lumora Classic
+
+**Status:** Complete
+
+Found 2026-10-28 while checking the sidebar Search widget's button: in Lumora Classic the input was styled only for the dark header (translucent white fill, white text and border), so on the widget's light card it disappeared and only the button showed.
+
+- [x] In a sidebar widget the input gets the theme's own colours (page background, text and border colours, muted placeholder), fills the row beside the button, and the header input is unchanged.
+- [x] Checked on the dev install in light mode: the input is visible and the header input keeps its translucent white look.
+- [x] Browser-verify in dark mode and at phone width.
+
+
+### LPP-040. Visitor Stats: Duplicate-Entry Error When Two Visitors Arrive at Once
+
+**Status:** Complete
+
+Found 2026-10-27 in Maintenance › Logs: `PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '2026-10-26-GB' for key 'idx_date_country'`, thrown from `ViewStatsService::upsertBreakdown()` via `recordCountry()` on a single-post page view. The daily counters did a `SELECT COUNT(*)` and then an `INSERT` or `UPDATE`, so two requests arriving on a day's first hit for the same country both saw "no row yet" and both inserted; the second one hit the unique key and logged an error. The same pattern exists in the referrer, browser and device counters (same method) and in the per-post view counter.
+
+- [x] `ViewStatsService::upsertBreakdown()` updates first and inserts only when no row was updated, retrying as an update if the insert hits a unique-key violation (SQLSTATE 23000), so the referrer, browser, device and country counters no longer log this error.
+- [x] `PostViewService::recordView()` gets the same update-first, retry-on-duplicate change.
+- [x] Existing Visitor Stats unit tests pass.
+- [x] `MediaStatsService::recordDownload()` (same pattern, primary key on `media_id`) gets the same update-first, retry-on-duplicate change.
+- [x] Regression tests for the lost-race path in `ViewStatsService`, `PostViewService` and `MediaStatsService`, using a `RaceLosingPdo` test helper that makes the first `UPDATE` match nothing while a competing row is inserted; they fail against the old code.
+- [x] Bump the Visitor Stats plugin `Version:` at the next Release (patch), and add the fix to its CHANGELOG entry. Done: Visitor Stats 0.1.0 to 0.1.1; the fix is in the 0.25.0 CHANGELOG entry.
+

@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: Visitor & Post View Statistics
  * Plugin URI: https://lumorapress.org/plugins/visitor-stats
  * Description: A local, privacy-respecting page-view counter for the Dashboard, with optional country/referrer/browser/device breakdowns — no third-party analytics service, no cookies/sessions, and no raw IP address, User-Agent string, or full referrer URL ever persisted. Off by default until configured in Settings.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later
