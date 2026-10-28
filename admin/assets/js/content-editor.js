@@ -778,8 +778,11 @@
      * @param {{url: string, onChanged: function(Object): void}=} pixelEdit When given, the dialog also
      *     offers crop/rotate/flip of the picture itself: `url` is the image's address in the content,
      *     onChanged receives the image editor's result ({item, replaced, previousItem, size}).
+     * @param {{pick: function(function(Object): void): void, onChanged: function(Object, Object): void}=} imageSwap
+     *     When given, the dialog also offers "Change Image…": `pick` opens the Media picker and calls
+     *     back with its payload; onChanged receives the settings currently shown plus that payload.
      */
-    function openImageEditDialog(current, onApply, pixelEdit) {
+    function openImageEditDialog(current, onApply, pixelEdit, imageSwap) {
         var dialog = document.createElement('dialog');
         dialog.className = 'lp-editor-media-dialog lp-editor-media-dialog--edit-image';
 
@@ -861,15 +864,19 @@
         updateButton.type = 'button';
         updateButton.className = 'lp-button lp-button--primary';
         updateButton.textContent = 'Update';
-        updateButton.addEventListener('click', function () {
-            onApply({
+        function readSettings() {
+            return {
                 alt: alt.input.value.trim(),
                 caption: captionInput.value.replace(/\s+/g, ' ').trim(),
                 align: align.select.value,
                 link: link.select.value,
                 widthSpec: widthField.spec(),
                 heightSpec: heightField.spec(),
-            });
+            };
+        }
+
+        updateButton.addEventListener('click', function () {
+            onApply(readSettings());
             dialog.close();
         });
 
@@ -897,6 +904,24 @@
                 });
             });
             actions.appendChild(pictureButton);
+        }
+
+        if (imageSwap) {
+            var changeButton = document.createElement('button');
+            changeButton.type = 'button';
+            changeButton.className = 'lp-button';
+            changeButton.textContent = 'Change Image…';
+            changeButton.addEventListener('click', function () {
+                // The settings are read now, so edits made in this window before
+                // choosing the new picture carry over to it.
+                var keep = readSettings();
+
+                imageSwap.pick(function (payload) {
+                    dialog.close();
+                    imageSwap.onChanged(keep, payload);
+                });
+            });
+            actions.appendChild(changeButton);
         }
 
         [alt.element, captionField, align.element, link.element, widthField.element, heightField.element, hint, actions].forEach(function (node) {
@@ -1057,7 +1082,7 @@
         editor.nodeChanged();
     }
 
-    function openTinyMceImageEditor(editor) {
+    function openTinyMceImageEditor(editor, container) {
         var img = editor.selection.getNode();
 
         if (!isEditableImage(img)) {
@@ -1073,7 +1098,55 @@
                 editor.focus();
                 applyTinyMcePixelEdit(editor, img, result);
             },
+        }, {
+            pick: function (done) { openMediaPicker(container, done); },
+            onChanged: function (settings, payload) {
+                editor.focus();
+                applyTinyMceImageSwap(editor, img, settings, payload);
+            },
         });
+    }
+
+    // Shows a different picture in the selected image, as one undo step. The dialog's settings are
+    // applied as usual; the size is then reset to the new picture's own, so a different aspect ratio
+    // isn't stretched, and a link to the file follows the new file.
+    function applyTinyMceImageSwap(editor, img, settings, payload) {
+        editor.undoManager.transact(function () {
+            applyTinyMceImage(editor, img, {
+                alt: settings.alt || payload.alt,
+                caption: settings.caption,
+                align: settings.align,
+                link: settings.link,
+                widthSpec: '',
+                heightSpec: '',
+            });
+
+            ['width', 'height', 'data-style-width', 'data-style-height'].forEach(function (name) {
+                img.removeAttribute(name);
+            });
+
+            var attributes = imageSizeAttributes('', '', payload.width, payload.height);
+            Object.keys(attributes).forEach(function (name) {
+                img.setAttribute(name, attributes[name]);
+            });
+
+            img.setAttribute('src', payload.url);
+            img.setAttribute('data-mce-src', payload.url);
+
+            var link = editor.dom.getParent(img, 'a');
+
+            if (link) {
+                var fileUrl = payload.linkUrl || payload.url;
+
+                link.setAttribute('href', fileUrl);
+                link.setAttribute('data-mce-href', fileUrl);
+                link.setAttribute('data-pswp-width', String(payload.linkWidth || payload.width || ''));
+                link.setAttribute('data-pswp-height', String(payload.linkHeight || payload.height || ''));
+            }
+        });
+
+        editor.selection.select(img);
+        editor.nodeChanged();
     }
 
     // Points the selected image (and a link to its file) at the edited picture, keeping its other
@@ -1154,7 +1227,7 @@
         return null;
     }
 
-    function openMarkdownImageEditor(cm) {
+    function openMarkdownImageEditor(cm, container) {
         var found = findMarkdownImageAtCursor(cm);
 
         if (found === null) {
@@ -1224,6 +1297,20 @@
                     widthSpec: specs.widthSpec,
                     heightSpec: specs.heightSpec,
                 }, entry.url, linkUrl);
+            },
+        }, {
+            pick: function (done) { openMediaPicker(container, done); },
+            onChanged: function (settings, payload) {
+                // An image that was linked to its file now links to the new file; the size is
+                // reset to the new picture's own.
+                writeImage({
+                    alt: settings.alt || payload.alt,
+                    caption: settings.caption,
+                    align: settings.align,
+                    link: settings.link,
+                    widthSpec: '',
+                    heightSpec: '',
+                }, payload.url, found.linkUrl !== null ? (payload.linkUrl || payload.url) : null);
             },
         });
     }
@@ -2849,7 +2936,7 @@
                 },
                 {
                     name: 'edit-image',
-                    action: function () { openMarkdownImageEditor(editor.codemirror); },
+                    action: function () { openMarkdownImageEditor(editor.codemirror, container); },
                     className: 'fa fa-pencil-square-o',
                     title: 'Edit Image (cursor inside an image)',
                 },
@@ -3451,7 +3538,7 @@
                             icon: 'edit-image',
                             tooltip: 'Edit Image',
                             onAction: function () {
-                                openTinyMceImageEditor(editor);
+                                openTinyMceImageEditor(editor, container);
                             },
                             onSetup: function (buttonApi) {
                                 var update = function () {
@@ -3469,7 +3556,7 @@
                         editor.on('dblclick', function (event) {
                             if (isEditableImage(event.target)) {
                                 editor.selection.select(event.target);
-                                openTinyMceImageEditor(editor);
+                                openTinyMceImageEditor(editor, container);
                             }
                         });
 

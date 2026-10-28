@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Edit Image in the editors now has a "Change Image…" button that swaps the picture for another one from the Media Manager without re-inserting it. The caption, alignment, link and alt text stay, the size resets to the new picture's own so a different shape isn't stretched, and in the Visual editor one undo restores the old picture. Works in both the Visual / HTML and Markdown editors.
 - Comments written by staff are now marked with a role badge ("Administrator", "Editor") in Comments (the list, the edit screen and the reply screen) and in the Notifications inbox, so your own replies stand out when you moderate. Staff means anyone whose role can moderate comments. A notification keeps the badge it had when it was created, so a later role change doesn't alter old notifications, and notifications from before this change have none. Includes a database migration.
 
 ### Fixed

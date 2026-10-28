@@ -26,6 +26,7 @@ Open Posts › Add New and set the editor to Visual / HTML.
 - [ ] Edit Image on a placed image changes its alt text, caption, alignment, link, and size, and one undo reverts the whole change.
 - [ ] "Edit Image…" on the picker's settings step opens the image editor dialog; saving a copy continues with the edited image.
 - [ ] "Crop, Rotate or Flip…" in the Edit Image dialog edits a placed image. Check the image and its link both point at the new picture, at the same size as before.
+- [ ] "Change Image…" in the Edit Image dialog opens the Media picker and swaps the picture in both editors. The caption, alignment, link and alt text stay, the size resets to the new picture's own, a link to the file follows the new file, cancelling the picker changes nothing, and one undo restores the old picture.
 - [ ] Insert File, Insert Audio, Insert Video, and Insert Folder each insert and render on the published post.
 - [ ] Insert/Edit Link (button and Ctrl/Cmd+K) can pick an existing post or page and can set a custom URL.
 
