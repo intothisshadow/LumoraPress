@@ -6637,6 +6637,25 @@ a.lp-button--link.lp-button--link--view:hover {
     }
 }
 
+/* Admin comment reply/edit: formatting toolbar above the textarea
+   (comment-editor.js). The span wrapper keeps the label/textarea markup a
+   plain field when the script doesn't run. */
+.lp-comment-editor {
+    display: block;
+}
+
+.lp-comment-editor__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.4rem;
+}
+
+.lp-comment-editor__button {
+    padding: 0.25rem 0.7rem;
+    font-size: 0.85rem;
+}
+
 /* Quick Edit (LP-009) — the Pages list's inline per-row edit form,
    swapped in for the normal row via quick-edit.js. */
 

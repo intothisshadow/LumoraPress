@@ -314,6 +314,23 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
     <div class="lp-alert lp-alert--success">Spam emptied.</div>
 <?php endif; ?>
 
+<?php
+// Data the comment editor's Emoji button needs; left off when the Emoji Picker
+// plugin is inactive, which hides the button.
+$commentEditorAttributes = static function () use ($kernel, $currentUser): string {
+    $attributes = 'data-lp-comment-editor';
+
+    if (lp_emoji_picker_enabled()) {
+        $attributes .= ' data-emoji-dataset="' . esc_attr((string) json_encode(lp_emoji_picker_data()['dataset'])) . '"'
+            . ' data-emoji-default-category="' . esc_attr(lp_emoji_picker_data()['defaultCategory']) . '"'
+            . ' data-emoji-recent="' . esc_attr((string) json_encode($kernel->users->getRecentEmoji($currentUser->id))) . '"'
+            . ' data-emoji-record-csrf="' . esc_attr(Csrf::token('emoji_picker_record_recent')) . '"'
+            . ' data-upload-url="' . esc_url(admin_url('posts/new')) . '"';
+    }
+
+    return $attributes;
+};
+?>
 <?php if ($action === 'edit'): ?>
     <section class="lp-admin__panel">
         <form method="post" action="<?= esc_url(admin_url('comments')) ?>">
@@ -328,7 +345,9 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
             <p class="lp-field">
                 <label for="comment-content">Comment</label>
-                <textarea id="comment-content" name="content" rows="6" required><?= esc_html($editingComment->content) ?></textarea>
+                <span class="lp-comment-editor" <?= $commentEditorAttributes() ?>>
+                    <textarea id="comment-content" name="content" rows="6" required><?= esc_html($editingComment->content) ?></textarea>
+                </span>
             </p>
 
             <button type="submit" class="lp-button lp-button--primary">Save Comment</button>
@@ -360,7 +379,9 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
             <p class="lp-field">
                 <label for="comment-reply-content">Your reply</label>
-                <textarea id="comment-reply-content" name="content" rows="6" required autofocus><?= esc_html((string) ($_POST['content'] ?? '')) ?></textarea>
+                <span class="lp-comment-editor" <?= $commentEditorAttributes() ?>>
+                    <textarea id="comment-reply-content" name="content" rows="6" required autofocus><?= esc_html((string) ($_POST['content'] ?? '')) ?></textarea>
+                </span>
                 <span class="lp-field__hint">Posted as <?= esc_html($currentUser->displayName) ?>, under this comment.<?= $replyingTo->status === CommentStatus::Pending ? ' Replying also approves this comment.' : '' ?></span>
             </p>
 

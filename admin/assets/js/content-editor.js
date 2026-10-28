@@ -375,6 +375,9 @@
         });
     }
 
+    // Lets the comment editor reuse the emoji window without a second copy.
+    window.lpOpenEmojiPicker = openEmojiPicker;
+
     // One-line instruction for windows where clicking an item acts at once,
     // so a lone Close button isn't mistaken for a missing OK step.
     function pickHint(text) {
