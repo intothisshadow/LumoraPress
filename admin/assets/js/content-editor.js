@@ -297,6 +297,20 @@
         }
     }
 
+    // True when a link points at the same uploaded file the image shows, whatever size of it the
+    // image displays. A link anywhere else (another page, another file) is the author's own.
+    function linksToOwnFile(linkUrl, imageUrl) {
+        function base(url) {
+            try {
+                return new URL(url, window.location.href).pathname.replace(/-(?:thumbnail|thumb|small|medium|large)(\.[a-z0-9]+)$/i, '$1');
+            } catch (error) {
+                return url;
+            }
+        }
+
+        return !!linkUrl && !!imageUrl && base(linkUrl) === base(imageUrl);
+    }
+
     // The size entry for the address that was edited, falling back to the original when the
     // edited copy has no thumbnail of that size (a small crop is never upscaled to one).
     function editedSizeEntry(item, sizeName) {
@@ -1114,6 +1128,10 @@
     // applied as usual; the size is then reset to the new picture's own, so a different aspect ratio
     // isn't stretched, and a link to the file follows the new file.
     function applyTinyMceImageSwap(editor, img, settings, payload) {
+        var previousLink = editor.dom.getParent(img, 'a');
+        var previousHref = previousLink ? previousLink.getAttribute('href') || '' : '';
+        var keepHref = previousHref !== '' && !linksToOwnFile(previousHref, img.getAttribute('src') || '');
+
         editor.undoManager.transact(function () {
             applyTinyMceImage(editor, img, {
                 alt: settings.alt || payload.alt,
@@ -1138,7 +1156,10 @@
 
             var link = editor.dom.getParent(img, 'a');
 
-            if (link) {
+            if (link && keepHref) {
+                link.setAttribute('href', previousHref);
+                link.setAttribute('data-mce-href', previousHref);
+            } else if (link) {
                 var fileUrl = payload.linkUrl || payload.url;
 
                 link.setAttribute('href', fileUrl);
@@ -1313,7 +1334,7 @@
                     link: settings.link,
                     widthSpec: '',
                     heightSpec: '',
-                }, payload.url, found.linkUrl !== null ? (payload.linkUrl || payload.url) : null);
+                }, payload.url, found.linkUrl !== null && linksToOwnFile(found.linkUrl, found.url) ? (payload.linkUrl || payload.url) : found.linkUrl);
             },
         });
     }
