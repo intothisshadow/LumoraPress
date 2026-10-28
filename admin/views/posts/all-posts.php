@@ -257,7 +257,9 @@ $tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTag
                     <?php endforeach; ?>
                 </select>
                 <label class="lp-visually-hidden" for="posts-bulk-tags">Tags for Add tags or Remove tags</label>
-                <input type="text" class="lp-bulk-tags" id="posts-bulk-tags" name="bulk_tags" maxlength="500" placeholder="Tags, separated by commas">
+                <span class="lp-tag-input lp-tag-input--bulk" data-lp-tag-input data-query-url="<?= esc_url(admin_url('posts/new')) ?>" data-query-csrf="<?= esc_attr(Csrf::token('tag_autocomplete_query')) ?>">
+                    <input type="text" class="lp-bulk-tags" id="posts-bulk-tags" name="bulk_tags" maxlength="500" placeholder="Tags, separated by commas">
+                </span>
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 

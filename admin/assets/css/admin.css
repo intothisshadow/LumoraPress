@@ -4875,6 +4875,14 @@ select:focus {
     position: relative;
 }
 
+/* In a bulk-action bar the widget sits inline beside the selects. */
+.lp-tag-input--bulk {
+    display: inline-block;
+    flex: 1 1 14rem;
+    min-width: 14rem;
+    max-width: 100%;
+}
+
 .lp-tag-input__box {
     display: flex;
     flex-wrap: wrap;
