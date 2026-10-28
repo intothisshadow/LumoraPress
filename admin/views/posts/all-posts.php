@@ -256,7 +256,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
-            <table class="lp-table">
+            <table class="lp-table lp-table--stacked">
                 <thead>
                     <tr>
                         <th scope="col">
@@ -278,7 +278,7 @@ $allTagsForFilter = $kernel->tags->listAll();
                                     <input type="checkbox" id="post-select-<?= (int) $listedPost->id ?>" name="post_ids[]" value="<?= (int) $listedPost->id ?>">
                                 <?php endif; ?>
                             </td>
-                            <td>
+                            <td class="lp-table__title">
                                 <?php if (!$isTrashView && $canEditPost($listedPost)): ?>
                                     <a href="<?= esc_url(admin_url('posts/new')) ?>?id=<?= (int) $listedPost->id ?>"><?= esc_html($listedPost->title) ?></a>
                                 <?php else: ?>

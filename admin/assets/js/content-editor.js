@@ -3202,6 +3202,11 @@
                     // additional rows instead, every button visible at
                     // a glance.
                     toolbar_mode: 'wrap',
+                    // TinyMCE ignores toolbar_mode on touch devices and
+                    // falls back to a single horizontally scrolling row,
+                    // which clips most buttons on a phone; the mobile
+                    // override keeps the wrapped layout there too.
+                    mobile: { toolbar_mode: 'wrap' },
                     // LP-168: clicking an image shows a small floating
                     // toolbar right next to it with only "Insert/Edit
                     // Link" (the same lumoraLink button/dialog the main

@@ -5245,6 +5245,53 @@ select:focus {
     }
 }
 
+/*
+ * Opt-in phone layout for list tables whose columns are short enough to
+ * wrap as a row (All Posts): each row becomes a compact card with the
+ * checkbox and title first and the status, date and actions wrapping
+ * underneath, so nothing needs a sideways swipe. The header row shrinks to
+ * just the select-all checkbox. Must follow the scrolling override above so
+ * display/overflow here win on source order.
+ */
+@media (max-width: 782px) {
+    .lp-table--stacked {
+        overflow: visible;
+    }
+
+    .lp-table--stacked thead tr,
+    .lp-table--stacked tbody tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.25rem 0.6rem;
+        padding: 0.45rem 0.6rem;
+        border-bottom: 1px solid var(--lp-admin-border);
+    }
+
+    .lp-table--stacked thead th:not(:first-child) {
+        display: none;
+    }
+
+    .lp-table--stacked thead,
+    .lp-table--stacked tbody {
+        display: block;
+    }
+
+    /* Doubled class so these beat the plain ".lp-table td" padding that
+       follows in source order. */
+    .lp-table.lp-table--stacked th,
+    .lp-table.lp-table--stacked td {
+        padding: 0;
+        border-bottom: 0;
+    }
+
+    .lp-table--stacked .lp-table__title {
+        flex: 1 1 8rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+}
+
 .lp-table th,
 .lp-table td {
     padding: 0.7rem 0.85rem;
@@ -6524,6 +6571,37 @@ a.lp-button--link.lp-button--link--view:hover {
 
 .lp-categories-tree__toggle[aria-expanded="true"] {
     transform: rotate(90deg);
+}
+
+/* Phone layout for the Pages and Categories tree rows. A single non-wrapping
+   flex row can't fit handle + arrows + checkbox + title + badge + actions, so
+   the title takes a minimum width and everything after it wraps to a second
+   line. The drag handle is dropped because touch screens use the Move
+   Up/Down arrows instead. */
+@media (max-width: 782px) {
+    .lp-pages-tree__item,
+    .lp-categories-tree__item {
+        flex-wrap: wrap;
+        gap: 0.2rem 0.5rem;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .lp-pages-tree__item .lp-drag-handle,
+    .lp-categories-tree__item .lp-drag-handle {
+        display: none;
+    }
+
+    .lp-pages-tree__item .lp-button,
+    .lp-categories-tree__item .lp-button {
+        padding: 0.2rem 0.6rem;
+    }
+
+    .lp-pages-tree__title,
+    .lp-categories-tree__title {
+        flex: 1 1 8rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
 }
 
 /* Quick Edit (LP-009) — the Pages list's inline per-row edit form,
