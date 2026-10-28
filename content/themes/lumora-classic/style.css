@@ -2313,7 +2313,7 @@ a.lp-post-list__comments:focus {
 
 .lp-comment__role--post-author {
     border-color: var(--lp-accent);
-    color: var(--lp-accent);
+    color: var(--lp-accent-hover);
 }
 
 .lp-comment__edited {
