@@ -257,7 +257,7 @@ $tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTag
                     <?php endforeach; ?>
                 </select>
                 <label class="lp-visually-hidden" for="posts-bulk-tags">Tags for Add tags or Remove tags</label>
-                <input type="text" id="posts-bulk-tags" name="bulk_tags" maxlength="500" placeholder="Tags, separated by commas">
+                <input type="text" class="lp-bulk-tags" id="posts-bulk-tags" name="bulk_tags" maxlength="500" placeholder="Tags, separated by commas">
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 

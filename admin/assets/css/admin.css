@@ -4504,6 +4504,24 @@ select {
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Bulk-bar text box (All Posts tags): same chrome as the selects beside it. */
+.lp-bulk-tags {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-field-bg);
+    color: var(--lp-admin-text);
+    font-size: 1rem;
+    min-width: 14rem;
+    max-width: 100%;
+}
+
+.lp-bulk-tags:focus {
+    outline: none;
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
 select:focus {
     outline: none;
     border-color: var(--lp-admin-accent);
