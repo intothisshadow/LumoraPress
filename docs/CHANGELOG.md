@@ -2,6 +2,12 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- A step-by-step tutorial for moving a WordPress site into Lumora Press, covering both the database and export-file routes, the checks to run before importing, and what to do afterward (`docs/MIGRATING-FROM-WORDPRESS.md`).
+
 ## [0.25.0] — 2026-10-28
 
 ### Bundled versions

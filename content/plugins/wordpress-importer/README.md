@@ -2,6 +2,8 @@
 
 Migrates an existing WordPress site into Lumora Press: users, categories, tags, media, pages, posts, comments, menus, and classic widgets — via a direct database connection or a WordPress WXR (`.xml`) export file, plus a local copy of the source site's `wp-content/uploads` folder.
 
+New to importing? Follow the step-by-step tutorial in `docs/MIGRATING-FROM-WORDPRESS.md` at the root of your Lumora Press install.
+
 ## What this plugin does
 
 - **Maintenance → Import → WordPress tab**: pick a "Source type" — a direct database connection (enter the source database's host/port/database name/username/password/table prefix) or a WordPress WXR (`.xml`) export file (enter a local filesystem path to it) — plus either way, a local filesystem path to the source site's `wp-content/uploads` folder, Test Connection, then Import. For a database connection, the database can be the WordPress site's own live server (point the host field at it directly) or a locally restored backup; either way, and for a WXR file too, the uploads folder must always be readable on this server's local filesystem, since nothing here fetches files remotely — a WXR export's own `<wp:attachment_url>` only records where a file used to live, not the file itself. If "Media (attachments)" is selected below, Preview/Start/Resume Import all refuse to run with an uploads folder path that isn't a real, readable directory.
