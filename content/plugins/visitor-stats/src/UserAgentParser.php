@@ -60,17 +60,33 @@ final class UserAgentParser
     }
 
     /**
+     * Crawlers, scrapers, link-preview fetchers and uptime monitors are not
+     * readers, so counting them inflates every number this plugin reports.
+     * An empty User-Agent is treated as a bot too: real browsers always send
+     * one. A deny-list can never be complete, so this catches the common
+     * self-identifying clients and nothing cleverer.
+     */
+    public function isBot(string $userAgent): bool
+    {
+        if (trim($userAgent) === '') {
+            return true;
+        }
+
+        return preg_match(
+            '/bot|crawl|spider|slurp|scrap|fetch|preview|monitor|uptime|validator|lighthouse|pingdom|headless'
+            . '|facebookexternalhit|curl\/|wget|libwww|python-requests|python-urllib|aiohttp|httpclient|go-http-client|java\//i',
+            $userAgent,
+        ) === 1;
+    }
+
+    /**
      * Checks for a bot/crawler signature first so a crawler's UA (which
      * often also matches "Mobile" or a real OS token) never gets
      * miscounted as a real visitor's device.
      */
     public function deviceType(string $userAgent): string
     {
-        if ($userAgent === '') {
-            return 'Bot/Unknown';
-        }
-
-        if (preg_match('/bot|crawl|spider|slurp|facebookexternalhit|bingpreview/i', $userAgent) === 1) {
+        if ($this->isBot($userAgent)) {
             return 'Bot/Unknown';
         }
 

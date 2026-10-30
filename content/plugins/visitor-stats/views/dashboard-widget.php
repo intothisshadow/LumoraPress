@@ -25,6 +25,18 @@ $topCountries = $viewStats->topCountries(7, 5);
 $topReferrers = $viewStats->topReferrers(7, 5);
 $topBrowsers = $viewStats->topBrowsers(7, 5);
 $topDevices = $viewStats->topDevices(7, 5);
+
+// Inline SVG rather than a charting library: 30 daily totals scaled into a
+// fixed viewBox, with the stroke styled from admin.css (the admin CSP
+// blocks inline style attributes).
+$trendDays = $postViews->dailyTotals(30);
+$trendTotal = array_sum(array_column($trendDays, 'views'));
+$trendMax = max(1, ...array_column($trendDays, 'views'));
+$trendPoints = [];
+
+foreach ($trendDays as $trendIndex => $trendDay) {
+    $trendPoints[] = round($trendIndex / (count($trendDays) - 1) * 120, 1) . ',' . round(30 - $trendDay['views'] / $trendMax * 28, 1);
+}
 ?>
 <section class="lp-admin__widget" data-lp-sortable-item data-lp-sortable-id="visitor_stats">
     <h2>
@@ -41,6 +53,14 @@ $topDevices = $viewStats->topDevices(7, 5);
         <li><span>This Month</span><span><?= (int) $totals['this_month'] ?></span></li>
         <li><span>All Time</span><span><?= (int) $totals['all_time'] ?></span></li>
     </ul>
+
+    <?php if ($trendTotal > 0): ?>
+        <svg class="lp-stats__sparkline" viewBox="0 0 120 32" preserveAspectRatio="none" role="img" aria-label="Daily views over the last 30 days, peaking at <?= (int) $trendMax ?> a day">
+            <polygon class="lp-stats__sparkline-area" points="0,30 <?= esc_attr(implode(' ', $trendPoints)) ?> 120,30"></polygon>
+            <polyline class="lp-stats__sparkline-line" points="<?= esc_attr(implode(' ', $trendPoints)) ?>"></polyline>
+        </svg>
+        <p class="lp-stats__sparkline-caption">Last 30 days</p>
+    <?php endif; ?>
 
     <p><a href="<?= esc_url(admin_url('visitor-stats/stats')) ?>">View full report &rsaquo;</a></p>
 

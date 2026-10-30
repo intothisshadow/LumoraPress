@@ -55,11 +55,18 @@ add_action('single_post_viewed', static function (Post $post, bool $isGuest): vo
         return;
     }
 
+    $userAgent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+    $userAgentParser = new UserAgentParser();
+
+    // Checked before any query so crawler traffic costs no database work.
+    if ($userAgentParser->isBot($userAgent)) {
+        return;
+    }
+
     $kernel = ActiveKernel::instance();
     $tablePrefix = (string) $kernel->config->get('table_prefix', 'lp_');
     $postViews = new PostViewService($kernel->database, $tablePrefix);
     $viewStats = new ViewStatsService($kernel->database, $tablePrefix, LUMORA_ROOT . '/storage/geoip/ranges.bin');
-    $userAgentParser = new UserAgentParser();
 
     $postViews->recordView($post->id);
 
@@ -69,7 +76,6 @@ add_action('single_post_viewed', static function (Post $post, bool $isGuest): vo
         $referrerHost === null || $referrerHost === '' || $referrerHost === $siteHost ? 'Direct / None' : $referrerHost,
     );
 
-    $userAgent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
     $viewStats->recordBrowser($userAgentParser->browser($userAgent));
     $viewStats->recordDevice($userAgentParser->deviceType($userAgent));
 
@@ -78,6 +84,52 @@ add_action('single_post_viewed', static function (Post $post, bool $isGuest): vo
     if ($countryCode !== null) {
         $viewStats->recordCountry($countryCode);
     }
+});
+
+/*
+ * Adds a "Views" column to Posts > All Posts. The page's post ids arrive
+ * with the columns filter so every row's total comes from one grouped
+ * query, held here until the per-row action fires.
+ */
+$visitorStatsListViews = [];
+
+add_filter('posts_list_columns', static function (array $columns, array $posts, User $currentUser) use (&$visitorStatsListViews): array {
+    if (!$currentUser->can('edit_posts') || ActiveConfig::instance()->option('track_post_views', '') !== '1') {
+        return $columns;
+    }
+
+    $kernel = ActiveKernel::instance();
+    $postViews = new PostViewService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+    $visitorStatsListViews = $postViews->totalsForPosts(array_map(static fn (Post $post): int => $post->id, $posts));
+
+    $columns['views'] = 'Views';
+
+    return $columns;
+});
+
+add_action('posts_list_column', static function (string $column, Post $post) use (&$visitorStatsListViews): void {
+    if ($column === 'views') {
+        echo (int) ($visitorStatsListViews[$post->id] ?? 0);
+    }
+});
+
+/*
+ * Adds an all-time "Views" line to the public Statistics widget, but only
+ * when the site owner opts in: publishing a traffic figure is a choice,
+ * not something activating a counter should do on its own.
+ */
+add_filter('statistics_widget_items', static function (array $stats): array {
+    $config = ActiveConfig::instance();
+
+    if ($config->option('track_post_views', '') !== '1' || $config->option('stats_widget_show_views', '') !== '1') {
+        return $stats;
+    }
+
+    $kernel = ActiveKernel::instance();
+    $postViews = new PostViewService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
+    $stats['Views'] = $postViews->siteWideTotals()['all_time'];
+
+    return $stats;
 });
 
 /*

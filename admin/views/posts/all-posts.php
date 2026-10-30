@@ -263,6 +263,11 @@ $tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTag
                 <button type="submit" class="lp-button lp-button--secondary">Apply</button>
             </p>
 
+            <?php
+            // Plugins get the whole page's posts up front so a column can
+            // fetch its data in one query instead of one per row.
+            $extraColumns = $isTrashView ? [] : apply_filters('posts_list_columns', [], $pagination['posts'], $currentUser);
+            ?>
             <table class="lp-table lp-table--stacked">
                 <thead>
                     <tr>
@@ -274,6 +279,9 @@ $tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTag
                         <th scope="col">Tags</th>
                         <th scope="col">Status</th>
                         <th scope="col">Date</th>
+                        <?php foreach ($extraColumns as $extraColumnId => $extraColumnLabel): ?>
+                            <th scope="col"><?= esc_html((string) $extraColumnLabel) ?></th>
+                        <?php endforeach; ?>
                         <th scope="col"><span class="lp-visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
@@ -307,6 +315,9 @@ $tagsByPost = $kernel->tags->tagsForPosts(array_map(static fn ($listedPostForTag
                                 </span>
                             </td>
                             <td><?= esc_html(($listedPost->publishedAt ?? $listedPost->updatedAt)->format('M j, Y')) ?></td>
+                            <?php foreach ($extraColumns as $extraColumnId => $extraColumnLabel): ?>
+                                <td class="lp-table__<?= esc_attr((string) $extraColumnId) ?>"><?php do_action('posts_list_column', (string) $extraColumnId, $listedPost); ?></td>
+                            <?php endforeach; ?>
                             <td class="lp-admin__row-actions">
                                 <?php if ($canEditPost($listedPost)): ?>
                                     <?php if ($isTrashView): ?>

@@ -353,6 +353,9 @@ final class CoreWidgets
                 'Users' => $users->countAll(),
             ];
 
+            /** @var array<string, int> $stats */
+            $stats = apply_filters('statistics_widget_items', $stats, $settings);
+
             echo '<section class="lp-widget lp-widget--statistics">';
             self::renderTitle($title);
             echo '<ul class="lp-widget__list lp-widget__stats">';

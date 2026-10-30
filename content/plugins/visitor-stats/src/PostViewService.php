@@ -76,6 +76,46 @@ final class PostViewService
         );
     }
 
+    /**
+     * All-time view totals for one page of posts in a single grouped query,
+     * so a list screen never issues one lookup per row. Posts with no rows
+     * are absent from the result, not zero-filled.
+     *
+     * @param array<int, int> $postIds
+     * @return array<int, int> post_id => views
+     */
+    public function totalsForPosts(array $postIds): array
+    {
+        $postIds = array_values(array_unique(array_map('intval', $postIds)));
+
+        if ($postIds === []) {
+            return [];
+        }
+
+        $params = [];
+        $placeholders = [];
+
+        foreach ($postIds as $index => $postId) {
+            $params['p' . $index] = $postId;
+            $placeholders[] = ':p' . $index;
+        }
+
+        $rows = $this->database->fetchAll(
+            'SELECT post_id, SUM(views) AS views FROM ' . $this->table() . '
+              WHERE post_id IN (' . implode(', ', $placeholders) . ')
+              GROUP BY post_id',
+            $params,
+        );
+
+        $totals = [];
+
+        foreach ($rows as $row) {
+            $totals[(int) $row['post_id']] = (int) $row['views'];
+        }
+
+        return $totals;
+    }
+
     public function viewsForLastDays(int $postId, int $days): int
     {
         return (int) $this->database->fetchColumn(

@@ -1201,6 +1201,32 @@ body.lp-admin-login {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
+.lp-stats__sparkline {
+    display: block;
+    width: 100%;
+    height: 3rem;
+    margin-top: 0.75rem;
+}
+
+.lp-stats__sparkline-line {
+    fill: none;
+    stroke: var(--lp-admin-accent);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.lp-stats__sparkline-area {
+    fill: var(--lp-admin-accent);
+    opacity: 0.12;
+}
+
+.lp-stats__sparkline-caption {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+}
+
 .lp-admin__widget h2 {
     margin-top: 0;
     font-size: 1rem;

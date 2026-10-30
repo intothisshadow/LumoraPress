@@ -47,6 +47,7 @@ $respondJson = static function (array $payload): never {
 
 if ($form === 'visitor_stats_settings' && Csrf::verify('visitor_stats_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('track_post_views', isset($_POST['track_post_views']) ? '1' : '0');
+    $kernel->config->setOption('stats_widget_show_views', isset($_POST['stats_widget_show_views']) ? '1' : '0');
 
     header('Location: ' . admin_url('visitor-stats/settings') . '?saved=1');
     exit;
@@ -180,6 +181,7 @@ if (isset($_GET['geoip_ready']) && $geoipBatchState === null && $error === null)
 }
 
 $trackPostViews = $kernel->config->option('track_post_views', '0') === '1';
+$statsWidgetShowViews = $kernel->config->option('stats_widget_show_views', '0') === '1';
 $geoipRangeCount = $viewStats->geoipRangeCount();
 $geoipImportedAt = $viewStats->geoipImportedAt();
 $geoipIsStale = $viewStats->geoipIsStale();
@@ -223,6 +225,20 @@ $geoipIsStale = $viewStats->geoipIsStale();
                 start being recorded. Also gates the country/referrer/
                 browser/device breakdowns below — there is no separate
                 opt-out for those alone.
+            </span>
+        </p>
+
+        <p class="lp-field">
+            <label class="lp-field--checkbox">
+                <input type="checkbox" name="stats_widget_show_views" value="1" <?= $statsWidgetShowViews ? 'checked' : '' ?>>
+                Show total views in the Statistics widget
+            </label>
+            <span class="lp-field__hint">
+                Adds an all-time "Views" line to the public Statistics
+                widget, next to Posts, Pages, Comments, and Users. Off by
+                default, since it makes your traffic figure visible to
+                every visitor. Search engines and other crawlers are
+                never counted as views.
             </span>
         </p>
 

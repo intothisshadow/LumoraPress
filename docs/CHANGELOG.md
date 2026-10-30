@@ -6,6 +6,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Visitor Stats: crawlers and other bots are no longer counted. Search-engine and social-preview crawlers, scrapers, uptime monitors, command-line HTTP clients, headless browsers and requests with no browser identification are skipped before anything is recorded, so views, Most Viewed and the browser and device breakdowns reflect readers. Views recorded before this change are left as they were.
+- Visitor Stats: All Posts has a Views column with each post's all-time total (shown while tracking is on), loaded for the whole page in one query. A new `posts_list_columns` filter and `posts_list_column` action let any plugin add a column there.
+- Visitor Stats: the Dashboard panel shows a 30-day trend line under the totals.
+- Visitor Stats: an optional "Show total views in the Statistics widget" setting adds an all-time Views line to the public Statistics widget. It is off by default. A new `statistics_widget_items` filter lets plugins add their own lines to that widget.
+
 - Media Manager: pin the folders you use most. "Pin to top" in a folder's menu adds it to a Pinned group above the folder tree (same rows and live counts, in the order you pinned them, hidden when nothing is pinned), and the folder shows a small pin in the tree. Pins are kept per person and a deleted folder simply drops out. A new migration adds the column.
 - Media Manager: drag files onto folders. In Thumbnails or List view, drag a file, or any checked selection, onto a folder, a pinned folder, or General Uploads to move it, with a "Moving 12 files" drag preview. "Move selected to…" stays as the keyboard route, and moves now refuse a folder that no longer exists.
 - Media Manager: "Jump to folder" filter above the folder tree. Typing narrows the tree as you go, shows each match's full path (so the several folders with the same name can be told apart), opens collapsed branches without changing your saved layout, and works with Arrow keys, Enter and Escape. With the box empty, your last five folders are listed. The older Search folders form remains for browsers without JavaScript.

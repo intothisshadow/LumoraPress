@@ -5,7 +5,9 @@ A local, privacy-respecting page-view counter for the Dashboard, with optional c
 ## What it does
 
 - Counts a "view" once per guest (logged-out) request to a single post. An already-logged-in visitor — including you, previewing your own post — never counts.
-- Shows a "Site Visitors" panel on the Dashboard: today / this week / this month / all-time totals, plus a Most Viewed (7 days) list.
+- Never counts crawlers and bots: search-engine and social-preview crawlers, scrapers, uptime monitors, command-line HTTP clients, headless browsers and requests with no browser identification are skipped. The list covers bots that identify themselves, so a crawler that pretends to be a browser can still be counted.
+- Shows a "Site Visitors" panel on the Dashboard: today / this week / this month / all-time totals, a 30-day trend line, plus a Most Viewed (7 days) list.
+- Adds a **Views** column to **Posts → All Posts** with each post's all-time total.
 - Adds a full **Visitor Stats → Stats** report page: the same totals, a Views Over Time chart you can switch between 7/30/90-day ranges, and Top Posts/Top Referrers/Top Countries/Browser/Device breakdowns for whichever range is selected.
 - Optionally breaks those views down by country, referring domain, browser, and device type.
 - Off by default. Activating this plugin does not start collecting data on its own — turn on **Visitor Stats → Settings → Track post views** first.
@@ -51,4 +53,5 @@ GeoLite2 data is © MaxMind, used under MaxMind's own GeoLite2 End User License 
 | Setting | Description |
 | --- | --- |
 | Track post views | Master toggle. Off by default. Also gates every breakdown below — there's no separate opt-out for those alone. |
+| Show total views in the Statistics widget | Optional. Adds an all-time "Views" line to the public Statistics widget. Off by default, since it makes your traffic figure visible to every visitor. Pages that are served from the page cache may show an older number until the cache refreshes. |
 | GeoLite2 CSV upload | Optional. See "Country breakdown" above. |
