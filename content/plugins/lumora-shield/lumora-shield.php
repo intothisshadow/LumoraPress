@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: Lumora Shield
  * Plugin URI: https://lumorapress.org/plugins/lumora-shield
  * Description: Optional hardening and spam-prevention features beyond core's own basics — Stop User Enumeration (an optional "hide every author archive entirely" setting; the underlying username-existence oracle itself is closed unconditionally in core), Monitoring (logs blocked enumeration attempts, with optional email alerts), Comment Analysis (content/behavioral spam heuristics feeding the existing comment_is_spam filter), and Contact Form Protection (the same content heuristics feeding the Contact Forms plugin's own contact_form_is_spam filter).
- * Version: 0.2.0
+ * Version: 0.3.0
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later

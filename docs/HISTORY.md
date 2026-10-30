@@ -20943,3 +20943,525 @@ Found 2026-10-27 in Maintenance › Logs: `PDOException: SQLSTATE[23000]: Integr
 - [x] Regression tests for the lost-race path in `ViewStatsService`, `PostViewService` and `MediaStatsService`, using a `RaceLosingPdo` test helper that makes the first `UPDATE` match nothing while a competing row is inserted; they fail against the old code.
 - [x] Bump the Visitor Stats plugin `Version:` at the next Release (patch), and add the fix to its CHANGELOG entry. Done: Visitor Stats 0.1.0 to 0.1.1; the fix is in the 0.25.0 CHANGELOG entry.
 
+
+## 1.0.0 (2026-10-30)
+
+### LP-192. Pinned Media Folders
+
+**Status:** Complete
+
+Builds on LP-191's sidebar. Each user can pin folders they use often, and pinned folders appear in a "Pinned" group at the top of the sidebar, above the full tree. That way a folder three levels down (e.g. `Lucy Lawless`, `Icons`) is one click away without expanding branches. Mockup D from the 2026-10-02 brainstorm.
+
+- [x] Store each user's pinned folders the same way collapsed folders are stored now (`UserService::getCollapsedMediaFolders()`/`setCollapsedMediaFolders()`): add matching get/set methods for pinned folder IDs, and drop IDs for folders that no longer exist when reading them.
+- [x] Add "Pin to top" / "Unpin" to LP-191's per-folder actions menu, as a CSRF-protected POST that also works without JavaScript.
+- [x] Render a "Pinned" group above the tree, in the user's pinned order, with the same row style and live counts. Hide the group entirely when nothing is pinned.
+- [x] Mark a pinned folder in the main tree as well (a subtle pin icon), so it's clear why it appears twice.
+- [x] Tests for the UserService get/set methods (including pruning deleted folder IDs) and for the pin/unpin handler's CSRF and permission checks.
+- [x] Browser-verify pin/unpin, that pins persist across sessions, and that they're kept separately per user.
+
+
+### LP-193. Drag Media Files Onto Folders
+
+**Status:** Complete
+
+At the moment you can only drag folders onto other folders (`folder-drag-drop.js`). To move files you have to select them and pick a destination from the "Move selected to…" bulk-action dropdown. This ticket lets you drag one or more selected files, in Thumbnails or List view, straight onto a folder in the sidebar (including LP-192's Pinned group) to move them there. The bulk-action dropdown stays as the keyboard-accessible fallback, the same way widget ordering kept Move Up/Move Down next to drag-and-drop.
+
+- [x] Make media items draggable in both the Thumbnails and List layouts. Dragging an item that's part of a checked selection moves the whole selection; dragging an unchecked item moves just that item.
+- [x] Highlight sidebar folder rows, "General uploads" (unassigned), and pinned rows as drop targets while dragging. Keep these clearly separate from the existing folder-reparenting drops, so dragging a file never reparents a folder and dragging a folder never moves files.
+- [x] Submit the drop through the existing bulk-move handler (`target_folder` + selected IDs + CSRF) rather than a new endpoint, then show the result with the usual flash message. A full page reload is acceptable, since the counts change.
+- [x] Show a drag preview with the number of files being moved ("Moving 12 files").
+- [x] Keep it native HTML5 drag-and-drop with no library, following `folder-drag-drop.js`/`sortable.js`.
+- [x] Tests: the bulk-move handler moving multiple IDs to a folder and to General uploads, rejecting invalid folder IDs, and rejecting bad CSRF tokens.
+- [x] Browser-verify single-file and multi-select drops in both layouts, drops onto pinned folders, and that folder reparenting still works.
+
+
+### LP-194. Jump-to-Folder Search
+
+**Status:** Complete
+
+With 30+ nested folders, finding one by scrolling the tree is slow, and the existing "Search folders" form (`folder_q`) needs a full page round trip. This ticket adds an instant "Jump to folder" filter in the sidebar header (mockup C's search behavior from the 2026-10-02 brainstorm, without moving the folders into a toolbar popover). Typing filters the already-rendered tree on the client. Each match shows its full path (`Star Trek DSC › 3.05 Die Trying`), and recently visited folders are listed when the box is empty and focused.
+
+- [x] Add a filter input at the top of the sidebar that hides non-matching folder rows as you type. Ancestors of a match stay visible, and collapsed branches containing a match are expanded temporarily without changing the saved collapse state.
+- [x] Show the full path for matches (from data already in the markup, e.g. a `data-folder-path` attribute rendered server-side), so identically named subfolders such as the several `Game of Thrones` folders can be told apart.
+- [x] Keyboard support: Arrow keys move through the matches, Enter opens the highlighted folder, and Escape clears the filter.
+- [x] Recent folders: the last ~5 folders visited, stored in `localStorage` (wrapped in try/catch, since it's only a per-browser convenience), shown when the input is focused and empty.
+- [x] Keep the server-side `folder_q` search as the no-JavaScript fallback. Once the client-side filter works, decide whether its visible form should be hidden when JavaScript is available.
+- [x] Browser-verify against the real library: partial matches, duplicate names told apart by their path, keyboard navigation, and that the saved collapse state isn't changed by filtering.
+
+
+### LP-230. Move Editor Settings from General to Writing
+
+**Status:** Complete
+
+The "Editor" panel (default editor, lock-to-default) currently sits at the bottom of Settings › General (`admin/views/settings/general.php`, `form=editor_settings`), but it is a writing preference, not a site-identity one. Move it to Settings › Writing (`admin/views/settings/writing.php`), next to the other authoring options such as the Emoji Picker panel. Behavior doesn't change; only where the panel lives and the URL it posts to.
+
+- [x] Move the `editor_settings` POST handler and the "Editor" panel (with its `<h2>` header bar) from `general.php` to `writing.php`, posting to `settings/writing`, and remove both from `general.php`.
+- [x] Keep the existing `editor_settings` CSRF action and the `EditorPreferences::saveSiteSettings()` call unchanged; confirm the capability check on Writing matches what General required for this form.
+- [x] Update every link or message that points at the old location (the hint text on My Profile and anywhere else that mentions Settings › General for the editor), and give any old bookmarked `settings/general#editor` anchor a sensible landing.
+- [x] Update `README.md`, `docs/CHANGELOG.md`, and any other doc that describes the Editor setting as living under General.
+- [x] Tests: update any existing test that posts `editor_settings` to `settings/general`, and add one that the Writing page saves the default editor and lock, rejects a bad CSRF token, and that General no longer handles the form.
+- [x] Browser-verify on Settings › Writing: saving the default editor, saving the lock, and the My Profile preference being disabled while locked. Confirm General no longer shows the panel.
+
+
+### LP-231. Admin Sidebar Mode as a Profile Preference
+
+**Status:** Complete
+
+The choice between the collapsed icon sidebar (with flyout submenus) and the classic full-width sidebar is currently remembered only per browser, in `localStorage` (`lpAdminSidebarMode`, `admin/assets/js/sidebar-mode.js`). Someone who uses several browsers or devices has to set it again on each one. Add a "Sidebar" option on My Profile that saves the choice on the account, so it follows the user everywhere. The toggle button in the sidebar stays as the quick way to switch.
+
+- [x] Add a per-user sidebar mode setting (Collapsed / Full width), stored on the account the same way other profile preferences are (see how `ThemePreference` and the editor preference are stored), with a migration if a new column is needed. A user who has never chosen keeps today's default (collapsed).
+- [x] Add a "Sidebar" field to My Profile (`admin/views/profile.php`) with a hint explaining it applies on every device, saved through the existing CSRF-protected profile form.
+- [x] Render the saved mode server-side on `<html>` (the `lp-admin-sidebar-expanded` class) in the admin layout header, so the page doesn't flash the wrong layout before JavaScript runs.
+- [x] Make the sidebar toggle button save the new mode to the account (a small CSRF-protected fetch POST, or a form fallback), keeping `localStorage` only as a fallback for when that save fails. Decide and document which wins if the two disagree (the account should).
+- [x] Update the toggle button's `aria-pressed`/label to start from the server-rendered state.
+- [x] Update `README.md`/`CHANGELOG.md` where the sidebar toggle is described.
+- [x] Tests: the profile handler saves and validates the value (rejecting anything but the two modes) and rejects a bad CSRF token, and the layout header renders the class for each saved mode.
+- [x] Browser-verify: changing it on My Profile, using the toggle button, persistence across a logout/login, and no layout flash on load.
+
+
+### LP-232. Media Folder Counts Show Only a Folder's Own Files
+
+**Status:** Complete
+
+Each folder's count badge in the Media Manager sidebar adds up the files in all of its subfolders (the roll-up from the original file-count badges), so a file sorted into a subfolder still counts in every parent. That doesn't match what opening the folder shows, which is only the files filed directly in it. Show each folder's own count instead, so sorting files into subfolders makes the parent's number go down. "All Files" still shows the whole library and "General Uploads" its own count.
+
+- [x] Show each folder's direct file count in the sidebar tree and the Pinned group, with no roll-up from subfolders.
+- [x] Remove the now-unused roll-up method and its tests, and correct the comments that describe it.
+- [x] Tests: the sidebar reads direct counts only (a parent with all its files moved into subfolders shows its own count), and the roll-up is gone.
+- [x] Browser-verify against the real library: a parent folder's badge equals the number of files its own page lists.
+
+
+### LPP-014. Visitor & Post View Statistics
+
+**Status:** Complete
+
+**2026-08-28:** populated from `TODO.md`'s LP-077 ("Visitor & Post View
+Statistics"). That ticket was originally scoped as a core Dashboard
+feature; once amended (same session) to add geo/referrer/browser/device
+breakdowns, Ariane decided the whole thing belongs as an optional plugin
+instead, so a webmaster who doesn't want any view tracking at all — not
+even the basic per-post counter — never has it installed in the first
+place, rather than needing to toggle it off. See `DECISIONS.md`. Nothing
+below has been built yet; checklist items are carried over unchanged
+from LP-077 except where noted.
+
+#### Philosophy
+
+A lightweight, local, privacy-respecting page-view counter for the
+Dashboard — the kind of "X views today, most-viewed posts this week"
+panel classic WordPress dashboards commonly showed via a simple stats
+plugin, not a full analytics platform. No unique-visitor tracking, no
+sessions/cookies, and no outbound requests to any third-party analytics
+service — see LP-006's "statistics, not analytics" boundary. If a site
+owner wants real traffic analytics (bounce rate, session paths, funnels),
+that remains the job of a self-hosted tool (Plausible, Fathom, GoAccess).
+
+Unlike LP-006 (which stayed in core because image/download stats have no
+optional-tradeoff shape — see `CLAUDE.md`'s "Security fixes: core vs.
+plugin" rule, which generalizes to any zero-downside-vs-genuine-tradeoff
+call), this feature is a genuine tradeoff: some site owners want it, some
+consider any visitor tracking at all — even fully local, aggregate-only,
+no-third-party tracking — unwanted overhead or a privacy stance they'd
+rather not take on by default. That makes it plugin-shaped, not
+core-shaped.
+
+Geo/referrer/browser/device breakdowns are in scope for this plugin (see
+their own section below) — this line was lifted from the ticket's
+original core-only scope specifically because a plugin's opt-in nature
+already answers the "is this still just statistics, not analytics"
+concern that kept breakdowns out of LP-006 and LP-077's original core
+scope: nobody gets breakdowns they didn't choose to install. The plugin
+still holds itself to **aggregate counts only, never per-visitor
+records** — no raw IP address, no raw User-Agent string, and no full
+referrer URL is ever persisted; see Privacy below for exactly what is
+resolved-then-discarded versus stored.
+
+#### Architecture Note
+
+LP-006 (Media Statistics) explicitly could **not** track image views:
+`MediaService::url()` returns a direct static file URL, so there is no
+PHP-mediated request to hook a counter into without adding a dedicated
+tracking route to every image render. A single post's view is different
+— `SiteController::singlePost()` already is a real, unavoidable PHP
+request (and, per its own docblock, is deliberately never opted into
+`CacheManager`'s HTTP page cache in the first place, because it renders
+a per-session CSRF comment form — see `markCacheableForGuests()`'s
+docblock) — so a view counter here adds one lightweight write to a
+request that was already hitting PHP, not a new hot path. Pages
+(`SiteController::page()`) are cacheable for guests and are excluded
+from v1 for the same reason LP-037's cache guidance exists: a page view
+counter would need to either fight the HTTP cache (defeating the point
+of caching it) or count on a cache MISS only (undercounting) — left as a
+Future Expansion item rather than solved half-way here.
+
+**Two minimal core hook additions this plugin depends on** (the hooks
+themselves are generic and no-op unless something listens, matching the
+`lumora_shield_enumeration_blocked` precedent Lumora Shield's own
+Monitoring feature already established — core doesn't gain any tracking
+logic of its own from adding them):
+
+- `do_action('single_post_viewed', $post, $isGuest)` fired from
+  `SiteController::singlePost()`, once per request, after the post is
+  resolved — the plugin's listener does the actual guest-only check and
+  recording; core doesn't need to know or care that view tracking exists.
+- A dashboard-widget registration hook in `admin/views/dashboard.php`
+  (none currently exists — every panel there is hardcoded core markup)
+  so this plugin — and any future plugin — can add its own Dashboard
+  panel without a core code change per plugin. Needs its own small design
+  pass (where in the existing panel grid a plugin-contributed widget
+  slots in, what data contract it's handed) since there's no precedent
+  for this in the codebase yet; scope that design decision to whichever
+  ticket implements it first, this one or a future one.
+
+The plugin ships its own database table(s) via a normal numbered core
+migration file (`install/migrations/00XX_*.sql`) — this codebase has no
+separate plugin-migration mechanism, and Lumora Shield's own
+`enumeration_attempts` table (migration `0055`) already sets the
+precedent of a plugin-owned table shipping through the same core
+migration sequence as everything else.
+
+#### Goal
+
+Give a site owner an at-a-glance sense of how much their published posts
+are actually being read, directly on the Dashboard, without any
+third-party tracking script or outbound network request — as an optional
+plugin a webmaster only installs if they want it at all.
+
+#### Data & Tracking
+
+- [x] A new `post_views` table: one row per (post_id, calendar day), with
+      a count column — daily aggregation, not a per-request log, so the
+      table stays small and bounded (`~365 rows/year` per post, not one
+      row per pageview) the same "store the rollup, not the event"
+      shape `media_stats` uses for downloads.
+- [x] `PostViewService::recordView(int $postId)` — a portable
+      check-then-insert/update (mirrors `MediaStatsService::
+      recordDownload()`'s SQLite-portable approach, not a MySQL-only
+      `ON DUPLICATE KEY UPDATE`) incrementing today's row for that post,
+      inserting one if today has no row yet. Called from the plugin's own
+      `single_post_viewed` listener, not from core directly.
+- [x] The listener only records when `$isGuest` is true — an
+      already-logged-in visitor (the author previewing, an editor
+      checking a post, an admin browsing their own site) never counts as
+      a "view."
+- [x] Gated behind the plugin's own `track_post_views` setting (its
+      settings screen) — **built default off, not default on as
+      originally written here**: unlike `media_track_downloads` (which
+      only counts an already-deliberate click), this collects data on
+      ordinary page views, so requiring one explicit "yes, track this"
+      click after activating stays consistent with this ticket's own
+      privacy-first framing, rather than a plugin silently starting to
+      collect data the moment it's activated.
+- [x] No bot filtering in v1 (a known simplification — see Future
+      Expansion).
+
+#### Geo / Referrer / Browser / Device Breakdowns
+
+- [x] Four new daily-aggregate breakdown tables, each shaped like
+      `post_views` (`view_date` + one dimension + a count column, upserted
+      the same check-then-insert/update way) rather than a per-request
+      log — site-wide, not per-post, since a per-post × per-dimension
+      cross product would grow unbounded:
+      - `view_stats_countries` (`view_date`, `country_code`, `count`)
+      - `view_stats_referrers` (`view_date`, `referrer_domain`, `count`)
+      - `view_stats_browsers` (`view_date`, `browser`, `count`)
+      - `view_stats_devices` (`view_date`, `device_type`, `count`)
+- [x] Geo: resolve the request IP to a country code via a local
+      lookup (no outbound request to any IP-geolocation API) at the
+      moment of the view; the raw IP is used only for that in-memory
+      lookup and is never written to any column, log, or session — only
+      the resolved `country_code` (or `null` if no lookup data has been
+      imported, in which case the countries table simply doesn't
+      accumulate rows). **Built as an admin-uploaded CSV import, not a
+      bundled `.mmdb` database** — see this ticket's Context/Architecture
+      note: a real MaxMind GeoLite2 database needs a free MaxMind
+      account and can't be bundled or fetched automatically, and a
+      hand-rolled binary `.mmdb` parser was real correctness risk for no
+      benefit. `ViewStatsService::importGeoCsv()` parses MaxMind's own
+      GeoLite2-Country **CSV** export (Blocks + Locations files, both
+      streamed with `fgetcsv()`, never loaded whole into memory) into a
+      flat `geoip_ranges` table, looked up via one indexed range query
+      per view. IPv4 only in v1.
+- [x] Referrer: read `HTTP_REFERER`, parse out the host only (discard
+      path/query/fragment), and bucket same-site referrers (this site's
+      own domain) out of the breakdown entirely — only external
+      referring domains are meaningful for this widget. No referrer
+      header present is its own bucket ("Direct / None"), not omitted.
+- [x] Browser/device: parse `HTTP_USER_AGENT` at request time into a
+      coarse browser family (Chrome/Firefox/Safari/Edge/Other) and
+      device type (Desktop/Mobile/Tablet/Bot-or-Unknown) using a small,
+      local pattern-matching helper (no third-party UA-parsing service
+      call) — the raw User-Agent string itself is never stored, only
+      the two resolved buckets.
+- [x] The plugin's `single_post_viewed` listener additionally upserts
+      today's row in all four breakdown tables alongside the per-post
+      `post_views` upsert, in the same request/transaction.
+
+#### PostViewService Queries
+
+- [x] Total views for a post (all-time)
+- [x] Views for a post over the last N days
+- [x] Site-wide totals: today / this week / this month / all-time
+- [x] Most-viewed posts over the last N days (a bounded, capped list —
+      same "quick, capped listing" precedent as `MediaStatsService::
+      mostDownloaded()`)
+- [x] Top countries / top referring domains / browser breakdown / device
+      breakdown over the last N days (each a bounded, capped list — same
+      shape as "Most-viewed posts" above, backed by the four breakdown
+      tables)
+
+#### Dashboard Widget
+
+- [x] A "Site Visitors" (or "Post Views") Dashboard panel, registered
+      through the new dashboard-widget hook (see Architecture Note):
+      today / this week / this month / all-time view counts, plus a
+      short "Most Viewed" list (last 7 days) linking each post to its
+      editor — mirrors LP-006's "Popular Downloads" widget's shape and
+      its `upload_files`-style capability gate (here, gated on
+      `edit_posts`), hidden entirely once there's no view data yet.
+- [x] A secondary "Breakdowns" area within the same panel showing the
+      last-7-days Top Countries / Top Referrers / Browser / Device lists
+      from the queries above — each list hidden independently if its
+      breakdown table has no rows yet (e.g. no geo database installed),
+      rather than the whole panel failing.
+- [x] Respects the `track_post_views` setting — hidden (not just empty)
+      when tracking is off, so the panel never implies data that was
+      never collected.
+
+#### Per-Post Display
+
+- [x] Total views shown on the admin Posts list as a Views column
+      (shown while tracking is on), loaded for the whole page in one
+      grouped query via the new `posts_list_columns`/`posts_list_column`
+      core hooks. The post edit sidebar was not built.
+
+#### Privacy
+
+- [x] Keep all statistics local — no outbound requests (including for
+      geo lookup, which must use a local database, not a hosted API),
+      no third-party script, no session/cookie storage.
+- [x] Never persist a raw IP address anywhere (row, log file, or
+      session) — it is used only in-memory for the one-shot country
+      lookup, then discarded. Never persist the raw `HTTP_USER_AGENT`
+      string — only the two resolved browser/device buckets. Never
+      persist a full referrer URL — only the referring host.
+- [x] All four breakdown tables store day-level aggregate counts only;
+      no table anywhere in this feature has a row that corresponds to a
+      single visitor or a single request, so no query against this data
+      can reconstruct an individual's activity.
+- [x] Document the plugin, its `track_post_views` setting, and that
+      geo/referrer/browser/device breakdowns share the same setting (no
+      separate opt-out for the breakdowns alone — if tracking is off,
+      none of it runs), in the plugin's own README/settings help text —
+      not in core's `README.md`, since this is no longer a core feature.
+- [x] Document the CSV import's source/license (MaxMind's own GeoLite2
+      End User License Agreement — the admin's own account, not
+      redistributed by this plugin) in the plugin's own README.
+
+#### Performance
+
+- [x] One upsert per guest post view, not a per-request-log write —
+      bounded table growth (see Data & Tracking above).
+- [x] The geo lookup and UA parse both run in-process against a small
+      local database/pattern set — no network call, no measurable latency
+      added to the single-post request this plugin piggybacks on.
+- [x] Dashboard widget's queries stay a handful of bounded, indexed
+      lookups (`post_id` + `view_date` index on `post_views`; `view_date`
+      index on each breakdown table), not a per-post query in a loop.
+
+ index on each breakdown table), not a per-post query in a loop.
+
+#### Future Expansion
+
+- [x] Basic bot/crawler filtering — `UserAgentParser::isBot()` (a deny-list of self-identifying crawlers, scrapers, monitors and HTTP clients, plus an empty User-Agent) is checked first in the `single_post_viewed` listener, so bots cost no database work and are never counted. Always on, with no setting, since a bot is never a reader.
+- [x] Fold a view-count stat into the Classic Widgets "Statistics" widget — new `statistics_widget_items` core filter; the plugin adds an all-time Views line behind its own opt-in `stats_widget_show_views` setting (off by default, since it publishes the traffic figure).
+- [x] Historical charts — the Stats page already had a Views Over Time chart; the Dashboard panel now has a 30-day inline-SVG trend line built from `PostViewService::dailyTotals()`.
+
+#### Success Criteria
+
+- A webmaster who doesn't want any view tracking never installs this
+  plugin and has none of it — no table, no hook listener, no Dashboard
+  panel, no per-request overhead.
+- A site owner who installs it can see, at a glance from the Dashboard,
+  roughly how much their site is being read, and a basic sense of where
+  from (country, referring site) and how (browser, device type).
+- No third-party service or outbound request is involved, including for
+  geo resolution.
+- No raw IP address, raw User-Agent string, or full referrer URL is ever
+  persisted — only resolved, aggregate, day-level counts.
+- Tracking can be fully disabled without uninstalling the plugin, in one
+  setting that covers both the view counts and the breakdowns.
+- Adding this does not measurably slow down single post page loads.
+
+**Implemented (2026-08-28).** New plugin at
+`content/plugins/visitor-stats/` (`PostViewService`, `ViewStatsService`,
+`UserAgentParser`), migration `0056_create_visitor_stats_tables.sql`
+(six tables), admin screen at `admin/views/visitor-stats/settings.php`
+(wired into `admin/index.php`'s `$menu` the same `{slug}Active`-gated
+way as Lumora Shield/Downloads/Contact Forms). Two new generic core
+hooks this plugin depends on, both documented in
+`docs/DEVELOPER-APIS.md`: `single_post_viewed` (`SiteController::
+singlePost()`) and `dashboard_widgets` (`admin/views/dashboard.php`,
+the first-ever plugin extension point for the Dashboard screen — no
+other admin screen has an equivalent hook yet, noted in that doc).
+`storage/geoip/` added alongside `storage/sessions|logs|cache` for the
+admin-uploaded GeoLite2 CSVs (denied by the existing top-level
+`storage/.htaccess`, so no new `.htaccess` was needed). New CSS:
+`.lp-admin__widget-subheading` in `admin.css` for the Dashboard panel's
+stacked breakdown lists. Covered by 31 new unit tests across
+`PostViewServiceTest`/`ViewStatsServiceTest`/`UserAgentParserTest`
+(SQLite-backed, including the Chrome-matches-Safari and
+bot-vs-real-device UA-parsing gotchas, and a real CSV-import round
+trip against hand-built fixture files); full suite green
+(`PHP Test Suite/TEST_LOG.md`). `core-paths.php` updated to list the
+new plugin directory — `CorePathsTest` caught this omission
+immediately, worth remembering as a standing checklist item for any
+future new bundled plugin/theme directory.
+
+**Fixed (2026-08-28):** the GeoLite2 CSV browser upload on Settings
+failed on real production data — `GeoLite2-Country-Blocks-IPv4.csv` is
+routinely 20MB+, and PHP's own `upload_max_filesize`/`post_max_size`
+(not something this screen can raise on its own; many hosts don't allow
+overriding it at all) commonly caps well below that. Added an
+alternative "Import From A Server Path" option, mirroring Media
+Manager's own FTP-upload-then-scan pattern (LP-041): the admin uploads
+both files to the server directly (FTP/SFTP, no PHP upload-size limit
+involved) and only supplies the containing directory — the two exact,
+hardcoded filenames are the only files ever read from it, so a
+free-form "arbitrary file path" disclosure risk never enters the
+picture regardless of which directory is given. Verified end-to-end
+against the dev install (a real directory + fixture CSVs, confirmed the
+range table populated correctly).
+
+**Added (2026-08-28), same follow-up:** even the server-path option
+still meant unzipping GeoLite2's own CSV download by hand first, and a
+plain browser upload of the still-sizable Blocks CSV could hit a
+request timeout on a slow connection, not just a size cap. Both import
+forms now accept MaxMind's `.zip` download directly — a new
+`ViewStatsService::extractGeoZip()` (PHP's `ZipArchive`, gated behind a
+clear error if that extension isn't enabled) matches the two needed
+entries by basename rather than a fixed path, since MaxMind nests them
+inside a dated subfolder (`GeoLite2-Country-CSV_YYYYMMDD/...`) that
+varies release to release, and stream-copies just those two entries to
+disk without ever writing the ZIP's own folder structure. The two
+already-unzipped CSVs remain supported as a fallback (a `<details>`
+disclosure on the upload form; the server-path form now accepts either
+a `.zip` file or a directory). Both import handlers also call
+`set_time_limit(0)` now, matching the WordPress Importer's own
+precedent for the same class of slow, one-time admin operation. 3 new
+unit tests (a real MaxMind-shaped fixture ZIP, a ZIP missing a required
+CSV, a non-ZIP file), plus a live end-to-end check on the dev install
+(a hand-built fixture ZIP uploaded through the real form, confirmed the
+range table populated and the extracted CSVs landed correctly).
+
+**Added (2026-09-04):** a full **Visitor Stats → Stats** report page
+(`admin/views/visitor-stats/stats.php`), separate from the Dashboard
+widget, modeled on Lumora Gallery's own Visitor Stats admin screen: four
+stat tiles (today / 7 days / 30 days / all-time), a 7/30/90-day range
+toggle, a "Views Over Time" bar chart (zero-filled per day, via new
+`PostViewService::dailyTotals()`), and Top Posts/Top Referrers/Top
+Countries/Browser/Device breakdowns for whichever range is selected —
+each independently hidden when its table has no rows yet, same as the
+Dashboard widget. Deliberately does **not** include a "Who Is Online"
+panel — Gallery's version needs live per-visitor session tracking, which
+directly conflicts with this ticket's own "aggregate counts only, never
+per-visitor records" privacy stance (see Philosophy above); reproducing
+it here would be a regression against that boundary, not a feature
+parity item. New menu child `visitor-stats/stats`, now this plugin's
+default landing page (`settings` remains reachable as a second child).
+Dashboard widget gained a "View full report" link to the new page. New
+CSS: `.lp-stats__*` in `admin.css` (stat tiles, range toggle, bar chart)
+— bar widths set via the existing `data-style-width` convention
+(`dynamic-style.js`), never inline `style=`, since the admin CSP's
+`style-src` has no `unsafe-inline`. 3 new unit tests for
+`dailyTotals()` (zero-fill, cross-post summing, range exclusion); full
+suite green.
+
+**Fixed (2026-08-28), same follow-up:** even with `set_time_limit(0)`
+lifting PHP's own execution cap, a real GeoLite2 import (~450k Blocks
+rows) still failed with a "Request Timeout" — confirmed the import
+itself was completing correctly server-side (the Status line already
+showed the full range count immediately after), so the failure was the
+webserver/proxy layer timing out the HTTP response before it could be
+delivered, not anything PHP-side. A single-request synchronous import
+is the wrong shape for this operation on a shared host regardless of
+PHP's own limits, so the import is now staged across multiple requests:
+`ViewStatsService::importGeoCsvBatch()` processes up to 20,000 Blocks
+rows per call using `fseek()`/`ftell()` to resume from an exact byte
+offset (stateless — no server-side session/job state, matching this
+codebase's existing "batch-per-request" precedent from
+`ThumbnailService::queueForBulkRegeneration()` and Media Import's own
+continue-loop). `importGeoCsv()` itself now just loops
+`importGeoCsvBatch()` internally, so every existing caller/test keeps
+working unchanged. On Settings, uploading/pointing at the CSVs no
+longer imports synchronously — it only resolves the files into
+`storage/geoip/` and redirects to a "ready" state; a `<form
+id="geoip-import-continue">` (reusing `thumbnail-bulk.js`'s existing
+`CONTINUE_FORM_IDS` auto-submit pattern, now including this form's id)
+then drives one batch per request, showing a running "N ranges loaded
+so far…" status and auto-advancing via JavaScript until done, with a
+plain "Continue Import" button as the no-JavaScript fallback. 3 new
+unit tests (multi-batch resumption, the exact-multiple-of-batch-size
+edge case, and the "only truncate the table on the first batch"
+invariant); full suite green. Verified live end-to-end against the dev
+install with a 45,000-row fixture (3 batches, confirmed the running
+count advanced 20,000 → 40,000 → 45,000 and the final range count
+matched exactly), then the test data was truncated from the dev
+database afterward.
+
+### LPP-036. Site Analytics Plugin
+
+**Status:** Complete
+
+#### Goal
+
+A bundled plugin, `site-analytics`, that adds a third-party traffic-statistics service to a site without anyone pasting code into the page. The administrator picks a provider and enters its site ID or domain; the plugin builds the tracking tag itself and widens the Content-Security-Policy for that provider's hosts only. This replaces LP-034's rejected "Analytics code field", "Additional scripts", and "Header HTML" settings: a free-form code box would make every install's CSP weaker, while a provider picker keeps the policy as tight as the provider needs.
+
+Visitor Stats (LPP-014) stays the built-in, cookie-free, no-third-party counter. This plugin is for people who want an external service (Plausible, Fathom, Matomo, Google Analytics) and accept that tradeoff.
+
+#### What exists today
+
+- Themes fire `do_action('head_assets')`, which is where the tag belongs, so no theme needs editing.
+- The site's CSP allows no inline scripts, so a provider whose snippet needs inline code (Google Analytics' `gtag('config', ...)`) has to be started from a small external script file carrying its settings in `data-*` attributes, the same way the media viewer gets its settings.
+- The `csp_directives` filter lets a plugin add script and connect hosts.
+- Per `CLAUDE.md`, a site-specific one-off belongs in `custom plugins/`; this is the generic version every install might want, so it is a bundled plugin.
+
+#### Checklist
+
+#### Providers and output
+
+- [x] Add a provider setting with: None (the default), Plausible, Fathom, Matomo, and Google Analytics 4. Each provider shows only its own fields (for example Plausible's domain and optional self-hosted script URL, Matomo's tracker URL and site ID, Google's measurement ID).
+- [x] Output the provider's tag on `head_assets` as an external `<script defer src=...>` with settings in `data-*` attributes, never an inline script, and nothing at all while the provider is None.
+- [x] For providers that need initialization code, ship a small plugin-owned script file that reads its settings from `data-*` attributes and starts the provider.
+- [x] Validate every field (domain, URL, ID formats) and allow only `https://` hosts; escape every value in the output.
+
+#### Content-Security-Policy
+
+- [x] Add only the selected provider's script and connect hosts to the policy through the `csp_directives` filter, and nothing while the provider is None.
+- [x] Show the hosts being allowed on the settings screen so an administrator can see exactly what the policy now permits.
+
+#### Privacy and control
+
+- [x] Option to skip tracking for signed-in users (on by default), so the author's own visits don't count.
+- [x] Honor the browser's Do Not Track and Global Privacy Control signals when the "Respect Do Not Track" option is on (on by default).
+- [x] Do not track the admin, the maintenance page, or the preview of an unpublished post.
+- [x] Add a note on the settings screen that Google Analytics sets cookies and may need a consent notice, while Plausible and Fathom are cookie-free; consent banners themselves are out of scope.
+
+#### Search engine verification tags
+
+- [x] Optional fields for the Google Search Console and Bing verification meta tags, output in the `<head>` with no inline script, since these are the other common reason people want to edit the header.
+
+#### Admin screen
+
+- [x] A Settings screen that follows core styling: a headed panel per section, core field classes, and an on/off switch for the skip-signed-in and Do Not Track options.
+- [x] The plugin itself makes no external requests; only visitors' browsers contact the chosen provider.
+
+#### Tests and docs
+
+- [x] Unit tests: the tag for each provider, nothing output for None, field validation rejecting non-https hosts and malformed IDs, the CSP additions per provider (and none for None), skipping signed-in users, and Do Not Track.
+- [x] Browser-verify with a provider selected that the tag appears, the CSP header allows its host, and the console shows no CSP violation; then with None that the page is unchanged.
+- [x] Plugin README (what each provider needs and what it allows through the CSP), `docs/CHANGELOG.md`, and `docs/DEVELOPER-APIS.md` if it adds any hook.
+
+#### Not in this ticket
+
+A free-form "paste any script or HTML" box (rejected: it would weaken the CSP on every install; a one-off belongs in a custom plugin). Consent banners. A traffic dashboard inside Lumora Press (Visitor Stats is the built-in counter).

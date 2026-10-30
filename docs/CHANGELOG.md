@@ -2,7 +2,11 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased]
+## [1.0.0] — 2026-10-30
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Shield 0.3.0, Visitor Stats 0.2.0, and the new Site Analytics 0.1.0. Each can be updated on its own from its screen when a release carries its package.
 
 ### Added
 

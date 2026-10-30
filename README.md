@@ -4,7 +4,7 @@ Lumora Press is a lightweight, self-hosted PHP blogging platform inspired by the
 
 > Sit down. Write. Publish.
 
-**Current release**: 0.25.0
+**Current release**: 1.0.0
 
 ## Who is Lumora Press for?
 
@@ -40,7 +40,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Email subscriptions to a post's or page's comments (with confirmation and unsubscribe links) and in-app notifications for signed-in users (replies, posts awaiting review, new versions, failing email, and more, each with a button to the page that handles it and a per-person mute)
 - Optional comment likes or emoji reactions, visitor reporting of comments, quoting, @mentions, role badges, and an "(edited)" marker
 - RSS, Atom, and JSON Feed (site-wide, per-category, per-tag, per-author, Pages, and comments)
-- Optional user registration, off by default and built to resist spam: accounts exist only after the emailed link is confirmed, with per-IP limits, a flood pause, disposable-email blocking, optional administrator approval, and a hold on new accounts' first comments (Settings &rsaquo; Registration)
+- Optional user registration, off by default and built to resist spam: accounts exist only after the emailed link is confirmed, with per-IP limits, a flood pause, disposable-email blocking, refusal of reserved names such as "support", optional administrator approval, and a hold on new accounts' first comments (Settings &rsaquo; Registration)
 - Performance settings: deferred scripts, Google Fonts hosted on your own site, reverse-proxy and CDN support, WebP thumbnails, and speed checks with recommendations (Settings &rsaquo; Performance)
 - Relevance-ranked search across posts, pages, categories, tags, and authors, with "exact phrase" and -word searches, filters (content type, category, tag, author, date range), sorting, results that update in place, title suggestions or live results as you type, recent and popular searches, "Did you mean?" spelling corrections, optional partial and fuzzy matching, and search statistics; content types, categories, and pages can be left out of search, posts can rank higher when their tags or categories match, repeated searches are answered from briefly saved results, and a Search Index panel checks the search indexes and rebuilds them, by hand or on a schedule (Settings &rsaquo; Search)
 
@@ -163,6 +163,27 @@ Nothing else in Lumora Press core sets a cookie. A theme or plugin you install m
 ## Themes & Plugins
 
 Themes are built from familiar, traditional PHP template files (`header.php`, `footer.php`, `single.php`, `page.php`, `archive.php`, `functions.php`, and friends) — no block editor, no `theme.json`, no Full Site Editing. Plugins use a classic hook API (`add_action()`/`do_action()`/`add_filter()`/`apply_filters()`).
+
+### Bundled plugins
+
+These ship with Lumora Press and are managed on the **Plugins** screen. Each has its own `README.md` in `content/plugins/`.
+
+| Plugin | What it does |
+| --- | --- |
+| Contact Forms | Build simple contact forms, embed them with a shortcode, and read submissions in an admin inbox. |
+| Downloads | Manage downloadable files and links by category, import them from GitHub, and show them anywhere with shortcodes. |
+| Dummy Content | A developer utility that generates placeholder users, posts, pages, media, and comments, removable in one click. |
+| Emoji Picker | A fast, fully offline emoji picker for the editor toolbar. |
+| Font Awesome | Font Awesome icons for themes and plugins, from a CDN or self-hosted, with an `[icon]` shortcode. |
+| Link Directory | An organized directory of links to other sites, shown with a shortcode or a Links widget. |
+| Lumora Gallery Shortcodes | Embed albums and images from separately installed Lumora Gallery sites into posts and pages (optional). |
+| Lumora Shield | Extra hardening and spam prevention for comments, contact forms, sign-ups, and author archives. |
+| Lumora Sweep | Preview-before-delete database cleanup for old revisions, trash, spam, and never-used sign-up accounts. |
+| Site Analytics | Add Plausible, Fathom, Matomo, or Google Analytics 4 by choosing a provider and entering its ID. |
+| Visitor Stats | A local, cookie-free page-view counter with Dashboard and Stats screens. |
+| WordPress Importer | Move an existing WordPress site's users, posts, pages, media, and comments into Lumora Press. |
+
+### Building themes and plugins
 
 - Building a theme: [`docs/THEME-DEVELOPMENT.md`](docs/THEME-DEVELOPMENT.md)
 - Building a plugin, or the hook/filter reference: [`docs/DEVELOPER-APIS.md`](docs/DEVELOPER-APIS.md)
