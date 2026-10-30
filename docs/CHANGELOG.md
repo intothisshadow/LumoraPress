@@ -13,6 +13,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Changed
 
+- The file count next to each Media Manager folder now shows only the files filed directly in that folder, not those in its subfolders, so sorting files into a subfolder lowers the parent's number and each count matches what opening the folder lists.
 - The Editor settings (default editor and the lock to it) moved from Settings &rsaquo; General to Settings &rsaquo; Writing, which now always appears in the Settings menu instead of only while the Emoji Picker plugin is active. The settings themselves are unchanged.
 
 - A step-by-step tutorial for moving a WordPress site into Lumora Press, covering both the database and export-file routes, the checks to run before importing, and what to do afterward (`docs/MIGRATING-FROM-WORDPRESS.md`).

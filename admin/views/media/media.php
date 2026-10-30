@@ -745,11 +745,9 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     $folderSearchTerm = trim((string) ($_GET['folder_q'] ?? ''));
     $folderTreeFolders = $folderSearchTerm !== '' ? $folderService->search($folderSearchTerm) : $allFolders;
 
-    // Sidebar file-count badges. directCountsByFolderId() is one grouped
-    // query; the cumulative roll-up (a folder's badge includes its
-    // subfolders' items) costs no further queries.
+    // Sidebar file-count badges: one grouped query. A folder's badge counts
+    // only files filed directly in it, matching what opening it lists.
     $mediaDirectCounts = $mediaService->directCountsByFolderId();
-    $mediaCumulativeCounts = $folderService->cumulativeCounts($mediaDirectCounts);
     $mediaTotalCount = $mediaService->countAll();
     $unassignedMediaCount = $mediaDirectCounts[0] ?? 0;
 
@@ -920,7 +918,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     /**
      * @param array<int, Folder> $treeFolders
      */
-    $renderFolderTree = function (array $treeFolders, ?int $parentId = null) use (&$renderFolderTree, $allFolders, $buildFolderOptions, $collectDescendantIds, $createFolderToken, $pinFolderToken, $pinnedFolderIds, $folderPaths, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
+    $renderFolderTree = function (array $treeFolders, ?int $parentId = null) use (&$renderFolderTree, $allFolders, $buildFolderOptions, $collectDescendantIds, $createFolderToken, $pinFolderToken, $pinnedFolderIds, $folderPaths, $currentFolderRaw, $mediaDirectCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
         $children = array_values(array_filter($treeFolders, static fn (Folder $f): bool => $f->parentId === $parentId));
 
         if ($children === []) {
@@ -931,7 +929,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
 
         foreach ($children as $folder) {
             $isActive = $currentFolderRaw === (string) $folder->id;
-            $folderCount = $mediaCumulativeCounts[$folder->id] ?? 0;
+            $folderCount = $mediaDirectCounts[$folder->id] ?? 0;
             $hasChildren = array_filter($treeFolders, static fn (Folder $f): bool => $f->parentId === $folder->id) !== [];
             $mediaUrl = esc_url(admin_url('media/media'));
             $folderName = esc_attr($folder->name);
@@ -1154,7 +1152,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                             <li class="lp-folder-tree__item<?= $currentFolderRaw === (string) $pinnedId ? ' is-active' : '' ?>">
                                 <div class="lp-folder-tree__row">
                                     <a class="lp-folder-tree__link" href="<?= esc_url(admin_url('media/media') . '?folder=' . $pinnedId) ?>" title="<?= esc_attr($folderPaths[$pinnedId] ?? $pinnedFolder->name) ?>" data-lp-media-drop-target data-folder-id="<?= (int) $pinnedId ?>"<?= $currentFolderRaw === (string) $pinnedId ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name"><?= esc_html($pinnedFolder->name) ?></span></a>
-                                    <span class="lp-folder-tree__count"><?= (int) ($mediaCumulativeCounts[$pinnedId] ?? 0) ?></span>
+                                    <span class="lp-folder-tree__count"><?= (int) ($mediaDirectCounts[$pinnedId] ?? 0) ?></span>
                                 </div>
                             </li>
                         <?php endforeach; ?>

@@ -302,46 +302,6 @@ final class FolderService
     }
 
     /**
-     * Rolls per-folder direct item counts up through the tree so each folder's badge
-     * reflects nested subfolders too. Built from one listAll() call, not descendantIds() per
-     * folder. Unassigned items (folder_id 0/null) are never rolled into any folder's total.
-     *
-     * @param array<int, int> $directCounts folder_id => direct item count
-     * @return array<int, int> folder_id => cumulative item count
-     */
-    public function cumulativeCounts(array $directCounts): array
-    {
-        $folders = $this->listAll();
-        $childrenByParent = [];
-
-        foreach ($folders as $folder) {
-            if ($folder->parentId !== null) {
-                $childrenByParent[$folder->parentId][] = $folder->id;
-            }
-        }
-
-        $cumulative = [];
-
-        $sumSubtree = function (int $id) use (&$sumSubtree, &$cumulative, $childrenByParent, $directCounts): int {
-            $total = $directCounts[$id] ?? 0;
-
-            foreach ($childrenByParent[$id] ?? [] as $childId) {
-                $total += $sumSubtree($childId);
-            }
-
-            return $cumulative[$id] = $total;
-        };
-
-        foreach ($folders as $folder) {
-            if (!isset($cumulative[$folder->id])) {
-                $sumSubtree($folder->id);
-            }
-        }
-
-        return $cumulative;
-    }
-
-    /**
      * @param array<string, mixed> $row
      */
     private function hydrate(array $row): Folder

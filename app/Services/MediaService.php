@@ -694,8 +694,8 @@ final class MediaService
 
     /**
      * Item counts grouped by folder_id in a single query, avoiding an N+1 per folder
-     * rendered. A folder with zero items is simply absent, not present with 0 —
-     * FolderService::directCountsByFolderId() fills in zeroes and rolls up to ancestors.
+     * rendered. A folder with zero items is simply absent, not present with 0, so
+     * callers read a missing key as 0.
      *
      * @return array<int, int> folder_id (or 0 for unassigned) => item count
      */
