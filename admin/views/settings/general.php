@@ -17,7 +17,6 @@
 
 use LumoraPress\Controllers\Admin\BrandingController;
 use LumoraPress\Core\Security\Csrf;
-use LumoraPress\Models\ContentFormat;
 
 if (!isset($kernel)) {
     http_response_code(403);
@@ -124,14 +123,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
     exit;
 } elseif ($form === 'revision_settings' && Csrf::verify('revision_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $kernel->config->setOption('revision_retention', (string) max(0, (int) ($_POST['revision_retention'] ?? 25)));
-
-    header('Location: ' . admin_url('settings/general') . '?saved=1');
-    exit;
-} elseif ($form === 'editor_settings' && Csrf::verify('editor_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
-    $defaultEditorInput = ContentFormat::tryFrom((string) ($_POST['default_editor'] ?? '')) ?? ContentFormat::Markdown;
-    $lockToDefaultInput = ($_POST['lock_editor_to_default'] ?? '') === '1';
-
-    $kernel->editorPreferences->saveSiteSettings($defaultEditorInput, $lockToDefaultInput);
 
     header('Location: ' . admin_url('settings/general') . '?saved=1');
     exit;
@@ -401,35 +392,6 @@ if ($form === 'site_settings' && Csrf::verify('site_settings', is_string($_POST[
             <input type="number" id="revision-retention" name="revision_retention" min="0" value="<?= esc_attr((string) $kernel->config->option('revision_retention', '25')) ?>">
             <span class="lp-field__hint">A new revision is saved automatically each time a post or page is updated. Set to 0 to keep every revision (unlimited).</span>
         </p>
-
-        <button type="submit" class="lp-button lp-button--primary">Save</button>
-    </form>
-</section>
-
-<section class="lp-admin__panel">
-    <h2>Editor</h2>
-    <form method="post" action="<?= esc_url(admin_url('settings/general')) ?>">
-        <?= Csrf::field('editor_settings') ?>
-        <input type="hidden" name="form" value="editor_settings">
-
-        <?php $currentDefaultEditor = $kernel->editorPreferences->defaultEditor(); ?>
-        <p class="lp-field">
-            <label for="default-editor">Default editor</label>
-            <select id="default-editor" name="default_editor">
-                <?php foreach ($kernel->editorPreferences->registeredEditors() as $editorOption): ?>
-                    <option value="<?= esc_attr($editorOption['value']) ?>" <?= $currentDefaultEditor->value === $editorOption['value'] ? 'selected' : '' ?>>
-                        <?= esc_html($editorOption['label']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <span class="lp-field__hint">The editor a brand-new post or page opens in, for any user who hasn't set their own preference on <a href="<?= esc_url(admin_url('profile')) ?>">My Profile</a>.</span>
-        </p>
-
-        <label class="lp-field--checkbox">
-            <input type="checkbox" name="lock_editor_to_default" value="1" <?= $kernel->editorPreferences->isLockedToDefault() ? 'checked' : '' ?>>
-            Lock every user to the default editor above (disables the per-user preference on My Profile)
-        </label>
-        <span class="lp-field__hint">Existing per-user preferences are kept, not deleted, while this is on &mdash; turning it back off restores them.</span>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>

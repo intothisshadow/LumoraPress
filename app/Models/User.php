@@ -86,6 +86,18 @@ final class User
          * by an administrator), or 'import'.
          */
         public readonly string $registrationSource = 'admin',
+        /**
+         * The admin sidebar layout this user saved, or null when they never
+         * chose one (the sidebar then follows the per-browser toggle, and
+         * defaults to collapsed).
+         */
+        public readonly ?SidebarMode $sidebarMode = null,
+        /**
+         * Raw JSON-encoded, ordered Media Manager folder ids this user
+         * pinned to the top of the sidebar. Kept undecoded here; see
+         * UserService::getPinnedMediaFolders().
+         */
+        public readonly ?string $pinnedMediaFolders = null,
     ) {
     }
 

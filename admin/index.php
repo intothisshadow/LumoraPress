@@ -20,6 +20,7 @@ use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\FormHoneypot;
 use LumoraPress\Core\Security\FormTiming;
 use LumoraPress\Core\Security\SecurityLog;
+use LumoraPress\Models\SidebarMode;
 use LumoraPress\Models\ThemePreference;
 use LumoraPress\Services\NotificationService;
 
@@ -393,6 +394,34 @@ if (
     exit;
 }
 
+// The sidebar toggle saves in the background, so this answers JSON (with a
+// fresh single-use token for the next click) instead of redirecting.
+if (
+    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+    && ($_POST['form'] ?? null) === 'sidebar_mode_toggle'
+) {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $requestedSidebarMode = SidebarMode::tryFrom((string) ($_POST['sidebar_mode'] ?? ''));
+
+    if (!Csrf::verify('sidebar_mode_toggle', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'csrf_token' => Csrf::token('sidebar_mode_toggle')]);
+        exit;
+    }
+
+    if ($requestedSidebarMode === null) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'csrf_token' => Csrf::token('sidebar_mode_toggle')]);
+        exit;
+    }
+
+    $kernel->users->updateSidebarMode($currentUser->id, $requestedSidebarMode);
+
+    echo json_encode(['ok' => true, 'csrf_token' => Csrf::token('sidebar_mode_toggle')]);
+    exit;
+}
+
 // Coarse "recently active" signal, stamped once per page load since there's
 // no DB-backed session table to derive it from.
 $kernel->users->touchLastActive($currentUser->id);
@@ -440,8 +469,8 @@ $contactFormsActive = in_array('contact-forms', $activePlugins, true);
 $visitorStatsActive = in_array('visitor-stats', $activePlugins, true);
 $galleryShortcodesActive = in_array('lumora-gallery-shortcodes', $activePlugins, true);
 $linkDirectoryActive = in_array('link-directory', $activePlugins, true);
-// Emoji Picker's settings screen is gated as a nested child (like Font
-// Awesome) since a single Settings screen is its entire admin footprint.
+// Settings > Writing is a core screen; this flag only gates the Emoji Picker
+// panel on it.
 $emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
 
 $notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->hooks);
@@ -598,7 +627,7 @@ $menu = [
             'search' => ['label' => 'Search', 'icon' => '🔍', 'capability' => 'manage_options'],
             'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options'],
             'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
-            ...($emojiPickerActive ? ['writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options']] : []),
+            'writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options'],
             'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options'],
             'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
             'performance' => ['label' => 'Performance', 'icon' => '🚀', 'capability' => 'manage_options'],

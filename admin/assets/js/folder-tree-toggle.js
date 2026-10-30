@@ -30,6 +30,11 @@
         }
 
         function persist() {
+            // The jump-to-folder filter opens branches temporarily; that must never be saved.
+            if (document.documentElement.hasAttribute('data-lp-folder-filter-active')) {
+                return;
+            }
+
             var url = root.dataset.lpFolderTreeStateUrl;
             var body = new URLSearchParams();
             body.set('form', 'save_folder_tree_state');

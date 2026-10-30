@@ -67,6 +67,8 @@ if (!isset($kernel)) {
 <script src="<?= esc_url(admin_asset_url('js/folder-drag-drop.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/folder-tree-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/media-folder-sidebar.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/media-file-drag-drop.js')) ?>" defer></script>
+<script src="<?= esc_url(admin_asset_url('js/media-folder-jump.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/sortable.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/category-tree-toggle.js')) ?>" defer></script>
 <script src="<?= esc_url(admin_asset_url('js/quick-edit.js')) ?>" defer></script>

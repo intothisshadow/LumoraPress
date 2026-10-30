@@ -46,6 +46,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 
 ### Media
 - Media library with virtual folders and metadata
+- Media Manager folder tools: pin the folders you use most to a "Pinned" group at the top of the sidebar, drag files (or a whole selection) from the Thumbnails or List view onto a folder to move them, and type in "Jump to folder" to find a folder by its full path, with your most recent folders listed when the box is empty
 - Featured images with manual cropping
 - Image editing: crop (with aspect-ratio presets), rotate, and flip, saved as a new copy or over the original, from the Media Manager or from a dialog wherever an image is chosen (the editors' Insert Image and Edit Image dialogs, featured images, category images)
 - Multi-file uploads with per-file progress

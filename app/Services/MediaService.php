@@ -524,6 +524,41 @@ final class MediaService
     }
 
     /**
+     * Reassigns several files at once (one query). Returns how many
+     * distinct ids were addressed; MySQL reports only changed rows, which
+     * would undercount files already in the target folder.
+     *
+     * @param array<int, int> $ids
+     */
+    public function moveMany(array $ids, ?int $folderId): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        $params = ['folder_id' => $folderId];
+        $placeholders = [];
+
+        foreach ($ids as $index => $id) {
+            $params['id' . $index] = $id;
+            $placeholders[] = ':id' . $index;
+        }
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET folder_id = :folder_id WHERE id IN (' . implode(', ', $placeholders) . ')',
+            $params,
+        );
+
+        foreach ($ids as $id) {
+            unset($this->findCache[$id]);
+        }
+
+        return count($ids);
+    }
+
+    /**
      * Video poster image and caption track are references to other media items, picked from
      * a <select> — no new upload path needed. Kept separate from updateMetadata() since
      * these fields are video-specific.

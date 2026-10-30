@@ -3678,6 +3678,147 @@ summary.lp-media-views__chip::after {
 }
 
 /*
+ * Files can be dragged from the grid or list onto a folder. While a file is
+ * being dragged every folder link that accepts it gets a faint outline; the
+ * one under the pointer gets the solid accent. Separate classes from the
+ * folder-reparenting is-drop-target keep the two drags apart.
+ */
+[data-lp-media-drag] {
+    cursor: grab;
+}
+
+[data-lp-media-drag]:active {
+    cursor: grabbing;
+}
+
+.lp-media-manager__sidebar.is-file-dragging [data-lp-media-drop-target] {
+    outline: 1px dashed var(--lp-admin-accent);
+    outline-offset: 1px;
+    border-radius: var(--lp-admin-radius);
+}
+
+.lp-media-manager__sidebar [data-lp-media-drop-target].is-file-drop-target {
+    outline: 2px solid var(--lp-admin-accent);
+    background: var(--lp-admin-chip-bg);
+}
+
+/* Off-screen element the browser snapshots as the drag image. */
+.lp-media-drag-preview {
+    position: fixed;
+    top: -100px;
+    left: -100px;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-accent);
+    color: var(--lp-admin-on-accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Pinned folders: a short group above the full tree, and a small pin on the same folder in the tree. */
+.lp-folder-pinned {
+    margin: 0 0 0.75rem;
+    padding: 0 0 0.5rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-folder-pinned__heading {
+    margin: 0 0 0.25rem;
+    padding: 0 0.35rem;
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.lp-folder-pinned[hidden] {
+    display: none;
+}
+
+.lp-folder-tree__pin {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    line-height: 1;
+    opacity: 0.55;
+}
+
+/*
+ * Jump to folder: the filter box, the recent-folders list under it, and the
+ * states its script puts on tree rows while filtering.
+ */
+.lp-folder-jump {
+    position: relative;
+    margin: 0 0 0.75rem;
+}
+
+.lp-folder-jump[hidden] {
+    display: none;
+}
+
+.lp-folder-jump__input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-field-bg);
+    color: var(--lp-admin-text);
+    font-size: 0.85rem;
+}
+
+.lp-folder-jump__input:focus {
+    outline: none;
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-focus-ring);
+}
+
+.lp-folder-jump__recent {
+    margin: 0.25rem 0 0;
+    padding: 0.25rem;
+    list-style: none;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-panel-bg);
+}
+
+.lp-folder-jump__recent[hidden] {
+    display: none;
+}
+
+.lp-folder-jump__recent a {
+    display: block;
+    padding: 0.25rem 0.4rem;
+    border-radius: var(--lp-admin-radius);
+    color: var(--lp-admin-text);
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.lp-folder-jump__recent a:hover,
+.lp-folder-jump__recent a.is-jump-current,
+.lp-folder-tree__link.is-jump-current {
+    background: var(--lp-admin-chip-bg);
+    color: var(--lp-admin-accent);
+}
+
+.lp-folder-tree__item.is-filtered-out {
+    display: none;
+}
+
+.lp-folder-tree__item.is-filter-ancestor > .lp-folder-tree__row {
+    opacity: 0.6;
+}
+
+.lp-folder-tree__path {
+    display: block;
+    color: var(--lp-admin-sidebar-fg-muted);
+    font-size: 0.7rem;
+    font-weight: 400;
+}
+
+/*
  * The subfolder expand/collapse chevron. It lives inside the <details>
  * that wraps the subfolder list, but is positioned into the item's left
  * gutter so it reads as the start of the folder's own row.

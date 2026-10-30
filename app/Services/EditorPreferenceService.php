@@ -75,7 +75,7 @@ final class EditorPreferenceService
      * hardcoded Markdown assumption — when the configured editor is
      * unregistered/disabled. A fresh install with no 'default_editor'
      * option set yet defaults to Markdown, so upgrading an existing site
-     * changes nothing until an administrator visits Settings > General.
+     * changes nothing until an administrator visits Settings > Writing.
      */
     public function defaultEditor(): ContentFormat
     {

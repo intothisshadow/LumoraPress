@@ -432,7 +432,7 @@ $avatarUrl = function (\LumoraPress\Models\User $target, int $size = 32) use ($k
                     <?php endforeach; ?>
                 </select>
                 <?php if ($editorLocked): ?>
-                    <span class="lp-field__hint">Every account is currently locked to the site default editor (Settings &rsaquo; General).</span>
+                    <span class="lp-field__hint">Every account is currently locked to the site default editor (Settings &rsaquo; Writing).</span>
                 <?php endif; ?>
             </p>
 

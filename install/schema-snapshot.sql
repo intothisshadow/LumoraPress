@@ -1,6 +1,6 @@
 -- Lumora Press schema snapshot. Generated; do not edit by hand.
 -- Regenerate with "PHP Test Suite/generate-schema-snapshot.sh" whenever a migration is added.
--- Through: 0088_add_badge_to_notifications.sql
+-- Through: 0090_add_pinned_media_folders_to_users.sql
 -- >>>
 CREATE TABLE `{prefix}bluesky_embeds` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -613,6 +613,8 @@ CREATE TABLE `{prefix}users` (
   `recent_searches` longtext DEFAULT NULL,
   `registration_source` varchar(10) NOT NULL DEFAULT 'admin',
   `notification_preferences` text DEFAULT NULL,
+  `sidebar_mode` varchar(10) DEFAULT NULL,
+  `pinned_media_folders` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_username` (`username`),
   UNIQUE KEY `uniq_email` (`email`)

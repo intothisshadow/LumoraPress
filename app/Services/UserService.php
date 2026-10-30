@@ -20,6 +20,7 @@ namespace LumoraPress\Services;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\SidebarMode;
 use LumoraPress\Models\ThemePreference;
 use LumoraPress\Models\User;
 use LumoraPress\Models\UserRole;
@@ -439,6 +440,16 @@ final class UserService
         unset($this->findByIdCache[$id]);
     }
 
+    public function updateSidebarMode(int $id, SidebarMode $mode): void
+    {
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET sidebar_mode = :sidebar_mode WHERE id = :id',
+            ['sidebar_mode' => $mode->value, 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+    }
+
     /**
      * The saved item order/collapse state for a sortable.js group, for
      * the given screen type. An empty 'order' means "nothing saved
@@ -553,6 +564,54 @@ final class UserService
         );
 
         unset($this->findByIdCache[$id]);
+    }
+
+    /**
+     * The folders this user pinned, in the order they pinned them. Ids
+     * missing from $existingFolderIds (a folder deleted since) are dropped
+     * so the sidebar never links to one; the stored list is cleaned up on
+     * the next pin or unpin.
+     *
+     * @param array<int, int> $existingFolderIds
+     * @return array<int, int>
+     */
+    public function getPinnedMediaFolders(int $id, array $existingFolderIds): array
+    {
+        $user = $this->findById($id);
+        $decoded = json_decode($user->pinnedMediaFolders ?? '[]', true);
+
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_intersect(array_unique(array_map('intval', $decoded)), $existingFolderIds));
+    }
+
+    /**
+     * Pinning an already-pinned folder keeps its position. Returns the
+     * resulting list.
+     *
+     * @param array<int, int> $existingFolderIds
+     * @return array<int, int>
+     */
+    public function setMediaFolderPinned(int $id, int $folderId, bool $pinned, array $existingFolderIds): array
+    {
+        $pinnedIds = $this->getPinnedMediaFolders($id, $existingFolderIds);
+
+        if ($pinned && in_array($folderId, $existingFolderIds, true) && !in_array($folderId, $pinnedIds, true)) {
+            $pinnedIds[] = $folderId;
+        } elseif (!$pinned) {
+            $pinnedIds = array_values(array_diff($pinnedIds, [$folderId]));
+        }
+
+        $this->database->execute(
+            'UPDATE ' . $this->table() . ' SET pinned_media_folders = :pinned_media_folders WHERE id = :id',
+            ['pinned_media_folders' => json_encode($pinnedIds), 'id' => $id],
+        );
+
+        unset($this->findByIdCache[$id]);
+
+        return $pinnedIds;
     }
 
     /**
@@ -918,6 +977,8 @@ final class UserService
             recentSearches: isset($row['recent_searches']) ? (string) $row['recent_searches'] : null,
             createdAt: isset($row['created_at']) ? new \DateTimeImmutable((string) $row['created_at']) : null,
             registrationSource: isset($row['registration_source']) ? (string) $row['registration_source'] : 'admin',
+            sidebarMode: isset($row['sidebar_mode']) ? SidebarMode::tryFrom((string) $row['sidebar_mode']) : null,
+            pinnedMediaFolders: isset($row['pinned_media_folders']) ? (string) $row['pinned_media_folders'] : null,
         );
     }
 

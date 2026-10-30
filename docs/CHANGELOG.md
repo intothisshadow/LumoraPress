@@ -6,6 +6,15 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Media Manager: pin the folders you use most. "Pin to top" in a folder's menu adds it to a Pinned group above the folder tree (same rows and live counts, in the order you pinned them, hidden when nothing is pinned), and the folder shows a small pin in the tree. Pins are kept per person and a deleted folder simply drops out. A new migration adds the column.
+- Media Manager: drag files onto folders. In Thumbnails or List view, drag a file, or any checked selection, onto a folder, a pinned folder, or General Uploads to move it, with a "Moving 12 files" drag preview. "Move selected to…" stays as the keyboard route, and moves now refuse a folder that no longer exists.
+- Media Manager: "Jump to folder" filter above the folder tree. Typing narrows the tree as you go, shows each match's full path (so the several folders with the same name can be told apart), opens collapsed branches without changing your saved layout, and works with Arrow keys, Enter and Escape. With the box empty, your last five folders are listed. The older Search folders form remains for browsers without JavaScript.
+- My Profile has a Sidebar setting (Collapsed or Full width) saved on your account, so the sidebar looks the same in every browser and device and loads without flashing the other layout. The sidebar's » button now saves to the account too. A new migration adds the column.
+
+### Changed
+
+- The Editor settings (default editor and the lock to it) moved from Settings &rsaquo; General to Settings &rsaquo; Writing, which now always appears in the Settings menu instead of only while the Emoji Picker plugin is active. The settings themselves are unchanged.
+
 - A step-by-step tutorial for moving a WordPress site into Lumora Press, covering both the database and export-file routes, the checks to run before importing, and what to do afterward (`docs/MIGRATING-FROM-WORDPRESS.md`).
 
 ## [0.25.0] — 2026-10-28

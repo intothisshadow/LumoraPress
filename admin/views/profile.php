@@ -18,6 +18,7 @@
 use LumoraPress\Core\Notifications\NotificationTypes;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Models\ContentFormat;
+use LumoraPress\Models\SidebarMode;
 use LumoraPress\Models\ThemePreference;
 
 if (!isset($kernel)) {
@@ -60,11 +61,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } elseif ($form === 'theme_preference' && Csrf::verify('theme_preference', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $selected = trim((string) ($_POST['theme_preference'] ?? ''));
         $preference = ThemePreference::tryFrom($selected);
+        $sidebarSelected = trim((string) ($_POST['sidebar_mode'] ?? ''));
+        $sidebarMode = $sidebarSelected === '' ? null : SidebarMode::tryFrom($sidebarSelected);
 
         if ($preference === null) {
             $error = 'Please choose a valid theme.';
+        } elseif ($sidebarSelected !== '' && $sidebarMode === null) {
+            $error = 'Please choose a valid sidebar layout.';
         } else {
             $kernel->users->updateThemePreference($currentUser->id, $preference);
+
+            if ($sidebarMode !== null) {
+                $kernel->users->updateSidebarMode($currentUser->id, $sidebarMode);
+            }
 
             header('Location: ' . admin_url('profile') . '?saved=1');
             exit;
@@ -115,6 +124,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <?php endforeach; ?>
             </select>
             <span class="lp-field__hint">"Follow System" matches your OS or browser's own light/dark setting.</span>
+        </p>
+
+        <p class="lp-field">
+            <label for="sidebar-mode">Sidebar</label>
+            <select id="sidebar-mode" name="sidebar_mode">
+                <?php if ($currentUser->sidebarMode === null): ?>
+                    <option value="" selected>Not set (collapsed unless you changed it in this browser)</option>
+                <?php endif; ?>
+                <?php foreach (SidebarMode::cases() as $sidebarOption): ?>
+                    <option value="<?= esc_attr($sidebarOption->value) ?>" <?= $currentUser->sidebarMode === $sidebarOption ? 'selected' : '' ?>>
+                        <?= esc_html($sidebarOption->label()) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <span class="lp-field__hint">Applies on every browser and device you sign in from. The &raquo; button at the bottom of the sidebar switches it quickly and saves the same setting.</span>
         </p>
 
         <button type="submit" class="lp-button lp-button--primary">Save</button>

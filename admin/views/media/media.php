@@ -15,6 +15,7 @@
 /** @var \LumoraPress\Core\Kernel $kernel */
 /** @var \LumoraPress\Models\User $currentUser */
 
+use LumoraPress\Controllers\Admin\MediaFoldersController;
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Theme\MediaViewer;
 use LumoraPress\Models\Folder;
@@ -30,6 +31,7 @@ $folderService = $kernel->folders;
 $usageChecker = $kernel->mediaUsage;
 $thumbnailService = $kernel->thumbnails;
 $mediaStats = $kernel->mediaStats;
+$mediaFolders = new MediaFoldersController($kernel->users, $folderService, $mediaService);
 
 $error = null;
 $warnUsages = null;
@@ -81,6 +83,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         echo json_encode(['success' => true, 'csrfToken' => Csrf::token('save_folder_tree_state')]);
         exit;
+    } elseif ($form === 'pin_media_folder') {
+        $pinResult = $mediaFolders->setPinned($_POST, $currentUser->id, $currentUser->can('upload_files'), $token, $backToList);
+
+        if ($pinResult->redirectUrl !== null) {
+            header('Location: ' . $pinResult->redirectUrl);
+            exit;
+        }
+
+        $error = $pinResult->errorMessage;
     } elseif ($form === 'edit_image_ajax') {
         // The image editor dialog used by the editors and image pickers on
         // other admin screens. Every response, error or not, carries the
@@ -281,14 +292,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($ids === []) {
             $error = 'Select at least one file first.';
         } elseif ($bulkActionType === 'move') {
-            $targetFolder = (int) ($_POST['target_folder'] ?? 0);
+            $moveResult = $mediaFolders->moveFiles($ids, (int) ($_POST['target_folder'] ?? 0));
 
-            foreach ($ids as $id) {
-                $mediaService->move($id, $targetFolder > 0 ? $targetFolder : null);
+            if (is_string($moveResult)) {
+                $error = $moveResult;
+            } else {
+                header('Location: ' . $backToList . (str_contains($backToList, '?') ? '&' : '?') . 'moved=' . $moveResult);
+                exit;
             }
-
-            header('Location: ' . $backToList . (str_contains($backToList, '?') ? '&' : '?') . 'moved=' . count($ids));
-            exit;
         } elseif ($bulkActionType === 'delete') {
             $deleted = 0;
             $skipped = [];
@@ -750,6 +761,31 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     $collapsedFolderIds = $kernel->users->getCollapsedMediaFolders($currentUser->id);
     $activeFolderAncestorIds = $currentFolderId !== null ? $folderService->ancestorIds($currentFolderId) : [];
 
+    // Full "Parent › Child" path per folder, rendered into the sidebar so the
+    // jump-to-folder filter can tell identically named subfolders apart.
+    $foldersById = [];
+
+    foreach ($allFolders as $pathFolder) {
+        $foldersById[$pathFolder->id] = $pathFolder;
+    }
+
+    $folderPaths = [];
+
+    foreach ($allFolders as $pathFolder) {
+        $pathParts = [$pathFolder->name];
+        $pathCursor = $pathFolder;
+
+        // The step cap only guards against a corrupted parent loop.
+        for ($step = 0; $pathCursor->parentId !== null && isset($foldersById[$pathCursor->parentId]) && $step < 50; $step++) {
+            $pathCursor = $foldersById[$pathCursor->parentId];
+            array_unshift($pathParts, $pathCursor->name);
+        }
+
+        $folderPaths[$pathFolder->id] = implode(' › ', $pathParts);
+    }
+
+    $pinnedFolderIds = $kernel->users->getPinnedMediaFolders($currentUser->id, array_keys($foldersById));
+
     // The built-in views and Smart Collections are unpaginated, capped
     // lists rather than folded into the regular query() below. "Unused"
     // and "Featured Images" only know about structured references
@@ -878,11 +914,13 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
     // Folder" form: each action's token pool holds only 30, so issuing one
     // per folder would evict earlier tokens on a large tree.
     $createFolderToken = Csrf::token('create_folder');
+    // Same reasoning for Pin/Unpin: one shared token, not one per folder.
+    $pinFolderToken = Csrf::token('pin_media_folder');
 
     /**
      * @param array<int, Folder> $treeFolders
      */
-    $renderFolderTree = function (array $treeFolders, ?int $parentId = null) use (&$renderFolderTree, $allFolders, $buildFolderOptions, $collectDescendantIds, $createFolderToken, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
+    $renderFolderTree = function (array $treeFolders, ?int $parentId = null) use (&$renderFolderTree, $allFolders, $buildFolderOptions, $collectDescendantIds, $createFolderToken, $pinFolderToken, $pinnedFolderIds, $folderPaths, $currentFolderRaw, $mediaCumulativeCounts, $collapsedFolderIds, $activeFolderAncestorIds): void {
         $children = array_values(array_filter($treeFolders, static fn (Folder $f): bool => $f->parentId === $parentId));
 
         if ($children === []) {
@@ -906,13 +944,29 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
 
             echo '<li class="lp-folder-tree__item' . ($isActive ? ' is-active' : '') . ($hasChildren ? ' has-children' : '') . '">';
             echo '<div class="lp-folder-tree__row">';
-            echo '<a class="lp-folder-tree__link" href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" title="' . $folderName . '" draggable="true" data-lp-folder-drag data-folder-id="' . (int) $folder->id . '"' . ($isActive ? ' aria-current="page"' : '') . '>';
-            echo '<span class="lp-folder-tree__name">' . esc_html($folder->name) . '</span></a>';
+            $isPinned = in_array($folder->id, $pinnedFolderIds, true);
+            echo '<a class="lp-folder-tree__link" href="' . esc_url(admin_url('media/media') . '?folder=' . $folder->id) . '" title="' . $folderName . '" draggable="true" data-lp-folder-drag data-lp-media-drop-target data-folder-id="' . (int) $folder->id . '" data-folder-path="' . esc_attr($folderPaths[$folder->id] ?? $folder->name) . '"' . ($isActive ? ' aria-current="page"' : '') . '>';
+            echo '<span class="lp-folder-tree__name">' . esc_html($folder->name) . '</span>';
+
+            if ($isPinned) {
+                echo '<span class="lp-folder-tree__pin" aria-hidden="true" title="Pinned">&#128204;</span><span class="lp-visually-hidden"> (pinned)</span>';
+            }
+
+            echo '</a>';
             echo '<span class="lp-folder-tree__count">' . (int) $folderCount . '</span>';
 
             echo '<details class="lp-folder-tree__actions" data-lp-dropdown>';
             echo '<summary class="lp-folder-tree__actions-toggle" aria-label="Actions for folder &ldquo;' . $folderName . '&rdquo;"><span aria-hidden="true">&hellip;</span></summary>';
             echo '<div class="lp-folder-tree__menu">';
+
+            echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form lp-folder-tree__menu-form--pin">';
+            echo '<input type="hidden" name="csrf_token" value="' . esc_attr($pinFolderToken) . '">';
+            echo '<input type="hidden" name="form" value="pin_media_folder">';
+            echo '<input type="hidden" name="id" value="' . (int) $folder->id . '">';
+            echo '<input type="hidden" name="pin" value="' . ($isPinned ? '0' : '1') . '">';
+            echo $currentFolderField;
+            echo '<button type="submit" class="lp-button lp-button--link">' . ($isPinned ? 'Unpin' : 'Pin to top') . '</button>';
+            echo '</form>';
 
             echo '<form method="post" action="' . $mediaUrl . '" class="lp-folder-tree__menu-form" data-lp-folder-move-form data-folder-id="' . (int) $folder->id . '">';
             echo '<input type="hidden" name="csrf_token" value="' . $renameToken . '">';
@@ -1033,7 +1087,14 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                 data-lp-folder-tree-state-url="<?= esc_url(admin_url('media/media')) ?>"
                 data-lp-folder-tree-state-csrf="<?= esc_attr(Csrf::token('save_folder_tree_state')) ?>"
             >Folders</h2>
-            <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-folder-search" role="search">
+            <?php // Revealed by media-folder-jump.js, which also hides the server-side search form below. ?>
+            <div class="lp-folder-jump" data-lp-folder-jump hidden>
+                <label for="folder-jump" class="lp-visually-hidden">Jump to folder</label>
+                <input type="search" id="folder-jump" class="lp-folder-jump__input" placeholder="Jump to folder&hellip;" autocomplete="off" aria-describedby="folder-jump-status" data-lp-folder-jump-input>
+                <ul class="lp-folder-jump__recent" data-lp-folder-jump-recent aria-label="Recent folders" hidden></ul>
+                <p class="lp-visually-hidden" id="folder-jump-status" role="status" aria-live="polite" data-lp-folder-jump-status></p>
+            </div>
+            <form method="get" action="<?= esc_url(admin_url('media/media')) ?>" class="lp-folder-search" role="search" data-lp-folder-search-form>
                 <label for="folder-q" class="lp-visually-hidden">Search folders</label>
                 <input type="search" id="folder-q" name="folder_q" value="<?= esc_attr($folderSearchTerm) ?>" placeholder="Search folders&hellip;">
                 <button type="submit" class="lp-button">Search</button>
@@ -1079,12 +1140,30 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                 </li>
                 <li class="lp-folder-tree__item<?= $currentFolderRaw === '0' ? ' is-active' : '' ?>">
                     <div class="lp-folder-tree__row">
-                        <a class="lp-folder-tree__link lp-folder-tree__link--unassigned" href="<?= esc_url(admin_url('media/media')) ?>?folder=0"<?= $currentFolderRaw === '0' ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name">General Uploads</span></a>
+                        <a class="lp-folder-tree__link lp-folder-tree__link--unassigned" href="<?= esc_url(admin_url('media/media')) ?>?folder=0" data-lp-media-drop-target data-folder-id="0"<?= $currentFolderRaw === '0' ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name">General Uploads</span></a>
                         <span class="lp-folder-tree__count"><?= (int) $unassignedMediaCount ?></span>
                     </div>
                 </li>
             </ul>
-            <?php $renderFolderTree($folderTreeFolders); ?>
+            <?php if ($pinnedFolderIds !== []): ?>
+                <section class="lp-folder-pinned" aria-labelledby="folder-pinned-heading">
+                    <h3 class="lp-folder-pinned__heading" id="folder-pinned-heading">Pinned</h3>
+                    <ul class="lp-folder-tree lp-folder-tree--pinned">
+                        <?php foreach ($pinnedFolderIds as $pinnedId): ?>
+                            <?php $pinnedFolder = $foldersById[$pinnedId]; ?>
+                            <li class="lp-folder-tree__item<?= $currentFolderRaw === (string) $pinnedId ? ' is-active' : '' ?>">
+                                <div class="lp-folder-tree__row">
+                                    <a class="lp-folder-tree__link" href="<?= esc_url(admin_url('media/media') . '?folder=' . $pinnedId) ?>" title="<?= esc_attr($folderPaths[$pinnedId] ?? $pinnedFolder->name) ?>" data-lp-media-drop-target data-folder-id="<?= (int) $pinnedId ?>"<?= $currentFolderRaw === (string) $pinnedId ? ' aria-current="page"' : '' ?>><span class="lp-folder-tree__name"><?= esc_html($pinnedFolder->name) ?></span></a>
+                                    <span class="lp-folder-tree__count"><?= (int) ($mediaCumulativeCounts[$pinnedId] ?? 0) ?></span>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </section>
+            <?php endif; ?>
+            <div data-lp-folder-tree-main>
+                <?php $renderFolderTree($folderTreeFolders); ?>
+            </div>
             </details>
         </aside>
 
@@ -1218,7 +1297,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                                 </thead>
                                 <tbody>
                                     <?php foreach ($items as $item): ?>
-                                        <tr>
+                                        <tr draggable="true" data-lp-media-drag data-media-id="<?= (int) $item['id'] ?>">
                                             <td>
                                                 <label class="lp-visually-hidden" for="media-select-<?= (int) $item['id'] ?>">Select "<?= esc_html((string) $item['file_name']) ?>"</label>
                                                 <input type="checkbox" id="media-select-<?= (int) $item['id'] ?>" name="ids[]" value="<?= (int) $item['id'] ?>">
@@ -1247,7 +1326,7 @@ if ($requestedListView === 'grid' || $requestedListView === 'list') {
                         <?php else: ?>
                             <div class="lp-media-grid">
                                 <?php foreach ($items as $item): ?>
-                                    <div class="lp-media-grid__item">
+                                    <div class="lp-media-grid__item" draggable="true" data-lp-media-drag data-media-id="<?= (int) $item['id'] ?>">
                                         <label class="lp-media-grid__select">
                                             <input type="checkbox" name="ids[]" value="<?= (int) $item['id'] ?>">
                                         </label>

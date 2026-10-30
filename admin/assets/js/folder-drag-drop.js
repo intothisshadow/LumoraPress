@@ -55,6 +55,11 @@
             form.requestSubmit();
         }
 
+        // A dragged file (media-file-drag-drop.js) moves files, never folders.
+        function isFileDrag(event) {
+            return Array.prototype.indexOf.call(event.dataTransfer.types || [], 'application/x-lumora-media') !== -1;
+        }
+
         links.forEach(function (link) {
             link.addEventListener('dragstart', function (event) {
                 event.dataTransfer.setData('text/plain', link.dataset.folderId);
@@ -62,6 +67,10 @@
             });
 
             link.addEventListener('dragover', function (event) {
+                if (isFileDrag(event)) {
+                    return;
+                }
+
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 link.classList.add('is-drop-target');
@@ -72,6 +81,10 @@
             });
 
             link.addEventListener('drop', function (event) {
+                if (isFileDrag(event)) {
+                    return;
+                }
+
                 event.preventDefault();
                 link.classList.remove('is-drop-target');
                 moveFolderTo(event.dataTransfer.getData('text/plain'), link.dataset.folderId);
@@ -82,6 +95,10 @@
 
         if (rootDrop) {
             rootDrop.addEventListener('dragover', function (event) {
+                if (isFileDrag(event)) {
+                    return;
+                }
+
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 rootDrop.classList.add('is-drop-target');
@@ -92,6 +109,10 @@
             });
 
             rootDrop.addEventListener('drop', function (event) {
+                if (isFileDrag(event)) {
+                    return;
+                }
+
                 event.preventDefault();
                 rootDrop.classList.remove('is-drop-target');
                 moveFolderTo(event.dataTransfer.getData('text/plain'), '0');

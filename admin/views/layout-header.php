@@ -21,6 +21,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\SidebarMode;
 use LumoraPress\Models\ThemePreference;
 
 if (!isset($kernel)) {
@@ -46,6 +47,16 @@ $isDarkPreference = $currentUser->themePreference === ThemePreference::Dark;
 $nextThemePreference = $isDarkPreference ? ThemePreference::Light : ThemePreference::Dark;
 $themeToggleLabel = $isDarkPreference ? 'Switch to light mode' : 'Switch to dark mode';
 
+// Rendered on <html> for the same no-flash reason as the color scheme. A null
+// mode means the account never chose, so sidebar-mode.js falls back to the
+// per-browser value; once saved, the account always wins.
+$sidebarExpanded = $currentUser->sidebarMode === SidebarMode::Expanded;
+$sidebarHtmlAttributes = ($sidebarExpanded ? ' class="lp-admin-sidebar-expanded"' : '')
+    . ($currentUser->sidebarMode !== null ? ' data-lp-sidebar-saved="1"' : '');
+$sidebarToggleLabel = $sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar';
+$sidebarToggleGlyph = $sidebarExpanded ? '&laquo;' : '&raquo;';
+$sidebarModeToken = Csrf::token('sidebar_mode_toggle');
+
 // Condensed sidebar counterparts of dashboard.php's own full-text alerts (LP-177) — same
 // visibility rules, so a screen other than Dashboard still surfaces them instead of only
 // showing on the one screen an admin might not be looking at.
@@ -63,7 +74,7 @@ $sidebarMaintenanceActive = $currentUser->can('manage_options') && $kernel->main
 $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
 ?>
 <!DOCTYPE html>
-<html lang="en"<?= $themeAttribute ?>>
+<html lang="en"<?= $themeAttribute ?><?= $sidebarHtmlAttributes ?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -96,7 +107,7 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
         <?php /* LP-154: same shared control row as the one right above .lp-admin__user below — see that one's comment. */ ?>
         <div class="lp-admin__sidebar-controls">
             <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
-            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle aria-pressed="false" aria-label="Expand sidebar">&raquo;</button>
+            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle data-lp-sidebar-mode-url="<?= esc_url(admin_url('dashboard')) ?>" data-lp-sidebar-mode-token="<?= esc_attr($sidebarModeToken) ?>" aria-pressed="<?= $sidebarExpanded ? 'true' : 'false' ?>" aria-label="<?= esc_attr($sidebarToggleLabel) ?>"><?= $sidebarToggleGlyph ?></button>
         </div>
         <div class="lp-admin__site-link">
             <a href="<?= esc_url(site_url()) ?>" target="_blank" rel="noopener">&larr; View Site</a>
@@ -144,7 +155,7 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
         <?php /* LP-151/LP-154: one shared row for LP-092's expand/collapse-all toggle (hidden in collapsed-sidebar mode; only makes sense in the expanded layout) and the sidebar-mode switch between collapsed/icon and classic full-width (always visible in both modes) — see admin.css's `.lp-admin__sidebar-controls`/`html:not(.lp-admin-sidebar-expanded)` rules and admin/assets/js/sidebar-mode.js. */ ?>
         <div class="lp-admin__sidebar-controls">
             <button type="button" class="lp-admin__nav-toggle-all" data-lp-nav-toggle-all aria-label="Expand all menu sections">&#8862;</button>
-            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle aria-pressed="false" aria-label="Expand sidebar">&raquo;</button>
+            <button type="button" class="lp-admin__sidebar-mode-toggle" data-lp-sidebar-mode-toggle data-lp-sidebar-mode-url="<?= esc_url(admin_url('dashboard')) ?>" data-lp-sidebar-mode-token="<?= esc_attr($sidebarModeToken) ?>" aria-pressed="<?= $sidebarExpanded ? 'true' : 'false' ?>" aria-label="<?= esc_attr($sidebarToggleLabel) ?>"><?= $sidebarToggleGlyph ?></button>
         </div>
         <div class="lp-admin__user">
             <div class="lp-admin__user-row">

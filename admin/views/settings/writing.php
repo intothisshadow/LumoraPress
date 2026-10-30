@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Settings > Writing > Emoji Picker screen, provided by the bundled Emoji Picker plugin (LPP-006).
+ * The admin Settings > Writing screen: the default and locked editor, plus the Emoji Picker plugin's panel when that plugin is active.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -16,6 +16,7 @@
 /** @var \LumoraPress\Models\User $currentUser */
 
 use LumoraPress\Core\Security\Csrf;
+use LumoraPress\Models\ContentFormat;
 use LumoraPress\Plugins\EmojiPicker\EmojiPickerService;
 
 if (!isset($kernel)) {
@@ -23,12 +24,23 @@ if (!isset($kernel)) {
     exit('Direct access is not permitted.');
 }
 
-// Only reachable while the plugin is active, so EmojiPickerService's
-// class is guaranteed to already be loaded.
-$service = EmojiPickerService::instance();
+// The plugin's class only exists while it is active, so its panel and
+// handler are skipped otherwise instead of fatalling.
+$emojiPickerEnabled = ($emojiPickerActive ?? false) && class_exists(EmojiPickerService::class);
+$service = $emojiPickerEnabled ? EmojiPickerService::instance() : null;
 $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
 
-if ($form === 'emoji_picker_settings' && Csrf::verify('emoji_picker_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+if ($form === 'editor_settings' && Csrf::verify('editor_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    $defaultEditorInput = ContentFormat::tryFrom((string) ($_POST['default_editor'] ?? '')) ?? ContentFormat::Markdown;
+    $lockToDefaultInput = ($_POST['lock_editor_to_default'] ?? '') === '1';
+
+    $kernel->editorPreferences->saveSiteSettings($defaultEditorInput, $lockToDefaultInput);
+
+    header('Location: ' . admin_url('settings/writing') . '?saved=1');
+    exit;
+}
+
+if ($service !== null && $form === 'emoji_picker_settings' && Csrf::verify('emoji_picker_settings', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $service->saveSettings([
         'enabled' => isset($_POST['enabled']),
         'wysiwyg' => isset($_POST['wysiwyg']),
@@ -41,8 +53,9 @@ if ($form === 'emoji_picker_settings' && Csrf::verify('emoji_picker_settings', i
     exit;
 }
 
-$settings = $service->settings();
-$categories = $service->categories();
+$settings = $service?->settings() ?? [];
+$categories = $service?->categories() ?? [];
+$currentDefaultEditor = $kernel->editorPreferences->defaultEditor();
 ?>
 <h1 class="lp-admin__title">Writing</h1>
 
@@ -50,55 +63,85 @@ $categories = $service->categories();
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
-<section class="lp-admin__panel">
-    <h2>Emoji Picker</h2>
-    <p class="lp-field__hint">
-        Adds an emoji picker button to the Post/Page/Downloads editor
-        toolbar — search or browse by category, with a per-user
-        recently-used list. Inserts a plain Unicode character, no images
-        or shortcodes, and never makes a network request once the editor
-        screen has loaded.
-    </p>
-
+<section class="lp-admin__panel" id="editor">
+    <h2>Editor</h2>
     <form method="post" action="<?= esc_url(admin_url('settings/writing')) ?>">
-        <?= Csrf::field('emoji_picker_settings') ?>
-        <input type="hidden" name="form" value="emoji_picker_settings">
+        <?= Csrf::field('editor_settings') ?>
+        <input type="hidden" name="form" value="editor_settings">
 
         <p class="lp-field">
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="enabled" value="1" <?= $settings['enabled'] ? 'checked' : '' ?>>
-                Enable the Emoji Picker
-            </label>
-        </p>
-
-        <fieldset class="lp-field">
-            <legend>Show the picker in</legend>
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="wysiwyg" value="1" <?= $settings['wysiwyg'] ? 'checked' : '' ?>>
-                Visual/HTML editor
-            </label>
-            <label class="lp-field--checkbox">
-                <input type="checkbox" name="markdown" value="1" <?= $settings['markdown'] ? 'checked' : '' ?>>
-                Markdown editor
-            </label>
-        </fieldset>
-
-        <p class="lp-field">
-            <label for="emoji-recent-limit">Recently-used emoji to remember</label>
-            <input type="number" id="emoji-recent-limit" name="recent_limit" min="0" max="100" value="<?= (int) $settings['recent_limit'] ?>">
-            <span class="lp-field__hint">Set to 0 to hide the Recently Used category entirely.</span>
-        </p>
-
-        <p class="lp-field">
-            <label for="emoji-default-category">Default category shown on open</label>
-            <select id="emoji-default-category" name="default_category">
-                <option value="">First available category</option>
-                <?php foreach ($categories as $category): ?>
-                    <option value="<?= esc_attr($category) ?>" <?= $settings['default_category'] === $category ? 'selected' : '' ?>><?= esc_html($category) ?></option>
+            <label for="default-editor">Default editor</label>
+            <select id="default-editor" name="default_editor">
+                <?php foreach ($kernel->editorPreferences->registeredEditors() as $editorOption): ?>
+                    <option value="<?= esc_attr($editorOption['value']) ?>" <?= $currentDefaultEditor->value === $editorOption['value'] ? 'selected' : '' ?>>
+                        <?= esc_html($editorOption['label']) ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
+            <span class="lp-field__hint">The editor a brand-new post or page opens in, for any user who hasn't set their own preference on <a href="<?= esc_url(admin_url('profile')) ?>">My Profile</a>.</span>
         </p>
 
-        <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+        <label class="lp-field--checkbox">
+            <input type="checkbox" name="lock_editor_to_default" value="1" <?= $kernel->editorPreferences->isLockedToDefault() ? 'checked' : '' ?>>
+            Lock every user to the default editor above (disables the per-user preference on My Profile)
+        </label>
+        <span class="lp-field__hint">Existing per-user preferences are kept, not deleted, while this is on &mdash; turning it back off restores them.</span>
+
+        <button type="submit" class="lp-button lp-button--primary">Save</button>
     </form>
 </section>
+
+<?php if ($service !== null): ?>
+    <section class="lp-admin__panel">
+        <h2>Emoji Picker</h2>
+        <p class="lp-field__hint">
+            Adds an emoji picker button to the Post/Page/Downloads editor
+            toolbar — search or browse by category, with a per-user
+            recently-used list. Inserts a plain Unicode character, no images
+            or shortcodes, and never makes a network request once the editor
+            screen has loaded.
+        </p>
+
+        <form method="post" action="<?= esc_url(admin_url('settings/writing')) ?>">
+            <?= Csrf::field('emoji_picker_settings') ?>
+            <input type="hidden" name="form" value="emoji_picker_settings">
+
+            <p class="lp-field">
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="enabled" value="1" <?= $settings['enabled'] ? 'checked' : '' ?>>
+                    Enable the Emoji Picker
+                </label>
+            </p>
+
+            <fieldset class="lp-field">
+                <legend>Show the picker in</legend>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="wysiwyg" value="1" <?= $settings['wysiwyg'] ? 'checked' : '' ?>>
+                    Visual/HTML editor
+                </label>
+                <label class="lp-field--checkbox">
+                    <input type="checkbox" name="markdown" value="1" <?= $settings['markdown'] ? 'checked' : '' ?>>
+                    Markdown editor
+                </label>
+            </fieldset>
+
+            <p class="lp-field">
+                <label for="emoji-recent-limit">Recently-used emoji to remember</label>
+                <input type="number" id="emoji-recent-limit" name="recent_limit" min="0" max="100" value="<?= (int) $settings['recent_limit'] ?>">
+                <span class="lp-field__hint">Set to 0 to hide the Recently Used category entirely.</span>
+            </p>
+
+            <p class="lp-field">
+                <label for="emoji-default-category">Default category shown on open</label>
+                <select id="emoji-default-category" name="default_category">
+                    <option value="">First available category</option>
+                    <?php foreach ($categories as $category): ?>
+                        <option value="<?= esc_attr($category) ?>" <?= $settings['default_category'] === $category ? 'selected' : '' ?>><?= esc_html($category) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </p>
+
+            <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+        </form>
+    </section>
+<?php endif; ?>
