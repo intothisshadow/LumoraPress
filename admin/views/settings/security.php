@@ -17,6 +17,7 @@
 use LumoraPress\Core\Security\Csrf;
 use LumoraPress\Core\Security\PasswordPolicy;
 use LumoraPress\Core\Security\TrustedImageOrigins;
+use LumoraPress\Core\Security\IpRangeMatcher;
 use LumoraPress\Plugins\LumoraShield\LumoraShieldService;
 
 if (!isset($kernel)) {
@@ -102,7 +103,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
 
-    // Four separate forms share this one handler — each needs its own CSRF
+    // Five separate forms share this one handler — each needs its own CSRF
     // action name (csrf_action tells verify() which one to check against),
     // since Csrf::field() overwrites the session's token per action name
     // and all four forms rendering on one page would otherwise leave only
@@ -112,21 +113,53 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         'lumora_shield_settings_monitoring',
         'lumora_shield_settings_comment_analysis',
         'lumora_shield_settings_contact_form',
+        'lumora_shield_settings_lists',
     ];
     $shieldCsrfAction = is_string($_POST['csrf_action'] ?? null) ? $_POST['csrf_action'] : '';
 
     if ($lumoraShieldActive && $form === 'lumora_shield_settings' && in_array($shieldCsrfAction, $shieldCsrfActions, true) && Csrf::verify($shieldCsrfAction, $token)) {
-        LumoraShieldService::instance()->saveSettings([
-            'hide_author_archives' => isset($_POST['hide_author_archives']),
-            'enable_logging' => isset($_POST['enable_logging']),
-            'log_retention_days' => max(1, (int) ($_POST['log_retention_days'] ?? 30)),
-            'notify_on_repeated_attempts' => isset($_POST['notify_on_repeated_attempts']),
-            'notify_threshold' => max(1, (int) ($_POST['notify_threshold'] ?? 10)),
-            'enable_comment_analysis' => isset($_POST['enable_comment_analysis']),
-            'enable_contact_form_analysis' => isset($_POST['enable_contact_form_analysis']),
-        ]);
+        $shieldService = LumoraShieldService::instance();
+        // Each form posts only its own fields (the older ones repeat the rest as hidden
+        // inputs), so everything is merged over what is stored rather than replacing it.
+        $shieldCurrent = $shieldService->settings();
+        $shieldDropped = 0;
 
-        header('Location: ' . admin_url('settings/security') . '?tab=lumora-shield&shield_saved=1');
+        if ($shieldCsrfAction === 'lumora_shield_settings_lists') {
+            $keepLines = static function (string $raw, callable $isValid) use (&$shieldDropped): string {
+                $kept = [];
+
+                foreach (IpRangeMatcher::parseList($raw) as $line) {
+                    if ($isValid($line)) {
+                        $kept[] = $line;
+                    } else {
+                        $shieldDropped++;
+                    }
+                }
+
+                return implode("\n", $kept);
+            };
+
+            $shieldService->saveSettings([
+                ...$shieldCurrent,
+                'trusted_ips' => $keepLines((string) ($_POST['trusted_ips'] ?? ''), static fn (string $rule): bool => IpRangeMatcher::isValidRule($rule)),
+                'trusted_emails' => $keepLines((string) ($_POST['trusted_emails'] ?? ''), static fn (string $entry): bool => filter_var($entry, FILTER_VALIDATE_EMAIL) !== false || preg_match('/^@?[a-z0-9-]+(\.[a-z0-9-]+)+$/i', $entry) === 1),
+                'block_disposable_email' => isset($_POST['block_disposable_email']),
+                'spam_username_keywords' => $keepLines((string) ($_POST['spam_username_keywords'] ?? ''), static fn (string $word): bool => mb_strlen($word) >= 3 && mb_strlen($word) <= 60),
+            ]);
+        } else {
+            $shieldService->saveSettings([
+                ...$shieldCurrent,
+                'hide_author_archives' => isset($_POST['hide_author_archives']),
+                'enable_logging' => isset($_POST['enable_logging']),
+                'log_retention_days' => max(1, (int) ($_POST['log_retention_days'] ?? 30)),
+                'notify_on_repeated_attempts' => isset($_POST['notify_on_repeated_attempts']),
+                'notify_threshold' => max(1, (int) ($_POST['notify_threshold'] ?? 10)),
+                'enable_comment_analysis' => isset($_POST['enable_comment_analysis']),
+                'enable_contact_form_analysis' => isset($_POST['enable_contact_form_analysis']),
+            ]);
+        }
+
+        header('Location: ' . admin_url('settings/security') . '?tab=lumora-shield&shield_saved=1' . ($shieldDropped > 0 ? '&shield_dropped=' . $shieldDropped : ''));
         exit;
     }
 }
@@ -180,6 +213,10 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
 
 <?php if (isset($_GET['shield_saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
+<?php endif; ?>
+
+<?php if ((int) ($_GET['shield_dropped'] ?? 0) > 0): ?>
+    <div class="lp-alert lp-alert--warning"><?= (int) $_GET['shield_dropped'] ?> line(s) were not valid and were left out.</div>
 <?php endif; ?>
 
 <div class="lp-tabs">
@@ -553,6 +590,50 @@ $activeTab = in_array($_GET['tab'] ?? '', array_keys($tabs), true) ? $_GET['tab'
                         <input type="checkbox" name="enable_contact_form_analysis" value="1" <?= $shieldSettings['enable_contact_form_analysis'] ? 'checked' : '' ?>>
                         Enable Contact Form Protection
                     </label>
+                </p>
+
+                <button type="submit" class="lp-button lp-button--primary">Save Settings</button>
+            </form>
+        </section>
+
+        <section class="lp-admin__panel">
+            <h2>Trusted Senders &amp; Sign-up Rules</h2>
+            <p class="lp-field__hint">
+                Keep regular commenters out of the Spam folder, and decide which
+                addresses and sign-up names Lumora Shield treats as spam. A
+                trusted sender skips every Lumora Shield check (Akismet and the
+                Discussion settings still apply).
+            </p>
+
+            <form method="post" action="<?= esc_url(admin_url('settings/security')) ?>?tab=lumora-shield">
+                <?= Csrf::field('lumora_shield_settings_lists') ?>
+                <input type="hidden" name="form" value="lumora_shield_settings">
+                <input type="hidden" name="csrf_action" value="lumora_shield_settings_lists">
+
+                <p class="lp-field">
+                    <label for="shield-trusted-ips">Trusted IP addresses</label>
+                    <textarea id="shield-trusted-ips" name="trusted_ips" rows="4"><?= esc_html((string) $shieldSettings['trusted_ips']) ?></textarea>
+                    <span class="lp-field__hint">One address or range (for example 203.0.113.0/24) per line. Lines starting with # are notes.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="shield-trusted-emails">Trusted email addresses and domains</label>
+                    <textarea id="shield-trusted-emails" name="trusted_emails" rows="4"><?= esc_html((string) $shieldSettings['trusted_emails']) ?></textarea>
+                    <span class="lp-field__hint">One per line: a full address (jane@example.com) or a domain (example.com, which also covers its subdomains). Use this for co-authors and regular commenters.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label class="lp-field--checkbox">
+                        <input type="checkbox" name="block_disposable_email" value="1" <?= $shieldSettings['block_disposable_email'] ? 'checked' : '' ?>>
+                        Send comments and contact form messages from disposable email services to Spam
+                    </label>
+                    <span class="lp-field__hint">Sign-ups from these services are already refused. This applies the same list to comments and contact forms; the message still reaches the Spam folder where you can restore it.</span>
+                </p>
+
+                <p class="lp-field">
+                    <label for="shield-spam-usernames">Spam words in sign-up names</label>
+                    <textarea id="shield-spam-usernames" name="spam_username_keywords" rows="5"><?= esc_html((string) $shieldSettings['spam_username_keywords']) ?></textarea>
+                    <span class="lp-field__hint">One word per line, 3 characters or more. A new sign-up whose username or display name contains one is dropped silently, so a bot can't learn what tripped it. Clear the box to switch this off.</span>
                 </p>
 
                 <button type="submit" class="lp-button lp-button--primary">Save Settings</button>

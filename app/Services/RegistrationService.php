@@ -345,6 +345,10 @@ final class RegistrationService
             $errors[] = 'Choose a username of 3 to 60 characters using letters, numbers, spaces, dots, dashes, or underscores.';
         }
 
+        if ($errors === [] && RegistrationSpamCheck::isReservedUsername($username)) {
+            $errors[] = 'That username is reserved. Please choose another.';
+        }
+
         if ($email === '' || strlen($email) > 191 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             $errors[] = 'Enter a valid email address.';
         }

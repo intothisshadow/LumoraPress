@@ -58,6 +58,18 @@ final class RegistrationSpamCheck
         'yopmail.fr', 'yopmail.net',
     ];
 
+    /**
+     * Names that read as the site's own staff or a system mailbox. Compared after dropping
+     * separators, so "sup-port" and "Support" are the same name. Administrator-style logins
+     * are handled separately by UserService::isGuessableAdministratorUsername().
+     *
+     * @var list<string>
+     */
+    private const RESERVED_USERNAMES = [
+        'support', 'staff', 'moderator', 'mod', 'system', 'sysadmin', 'siteadmin', 'postmaster',
+        'hostmaster', 'abuse', 'security', 'help', 'helpdesk', 'team', 'official', 'noreply',
+    ];
+
     /** A web address, an email address, or a name that ends like a domain. */
     private const LINK_PATTERN = '~(https?:|www\.|@|\.(com|net|org|ru|info|xyz|top|shop|biz|online|site|click)\b)~iu';
 
@@ -156,6 +168,29 @@ final class RegistrationSpamCheck
             && !UserService::isGuessableAdministratorUsername($username);
     }
 
+    /**
+     * A name nobody but the site's own people should sign up as. Kept apart from
+     * isAcceptableUsername() so the visitor can be told it is reserved instead of being
+     * shown the generic "letters and numbers" message.
+     */
+    public static function isReservedUsername(string $username): bool
+    {
+        $normalised = preg_replace('/[\s._\-]+/u', '', mb_strtolower($username)) ?? '';
+
+        return in_array($normalised, self::RESERVED_USERNAMES, true);
+    }
+
+    /**
+     * Whether an email address is at a known throw-away inbox service, using the same list
+     * sign-ups are checked against, so other plugins don't need a second copy.
+     */
+    public static function isDisposableEmail(string $email): bool
+    {
+        $domain = strtolower((string) substr(strrchr($email, '@') ?: '', 1));
+
+        return $domain !== '' && self::domainInList($domain, self::DISPOSABLE_DOMAINS);
+    }
+
     public static function isAcceptableDisplayName(string $displayName): bool
     {
         return mb_strlen($displayName) <= 100
@@ -170,6 +205,14 @@ final class RegistrationSpamCheck
      * @param list<string> $domains
      */
     private function domainMatches(string $domain, array $domains): bool
+    {
+        return self::domainInList($domain, $domains);
+    }
+
+    /**
+     * @param list<string> $domains
+     */
+    private static function domainInList(string $domain, array $domains): bool
     {
         foreach ($domains as $listed) {
             if ($domain === $listed || str_ends_with($domain, '.' . $listed)) {

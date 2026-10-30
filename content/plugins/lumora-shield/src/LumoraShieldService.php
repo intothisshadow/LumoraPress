@@ -19,6 +19,8 @@ namespace LumoraPress\Plugins\LumoraShield;
 
 use LumoraPress\Core\ActiveConfig;
 use LumoraPress\Core\ActiveKernel;
+use LumoraPress\Core\Security\IpRangeMatcher;
+use LumoraPress\Core\Security\RegistrationSpamCheck;
 use LumoraPress\Models\Comment;
 use LumoraPress\Models\CommentStatus;
 
@@ -40,6 +42,26 @@ final class LumoraShieldService
 {
     private const OPTION_KEY = 'lumora_shield_settings';
 
+    /** Display names for every rule a spam record can carry, shared by the log screen and the Dashboard panel. */
+    public const RULE_LABELS = [
+        'extremely_short' => 'Extremely short',
+        'extremely_long' => 'Extremely long',
+        'excessive_links' => 'Excessive links',
+        'excessive_uppercase' => 'Excessive uppercase',
+        'excessive_punctuation' => 'Excessive punctuation',
+        'repeated_phrase' => 'Repeated phrase',
+        'hidden_characters' => 'Hidden characters',
+        'mixed_scripts' => 'Mixed scripts',
+        'previous_spam_history' => 'Previous spam history',
+        'posting_frequency' => 'Posting frequency',
+        'duplicate_comment' => 'Duplicate comment',
+        'disposable_email' => 'Disposable email',
+        'spam_username' => 'Spam username',
+    ];
+
+    /** Starting point for the sign-up username list: words that almost only appear in spam accounts. */
+    private const DEFAULT_SPAM_USERNAME_KEYWORDS = "viagra\ncialis\ncasino\nescort\nporn\nbitcoin\npayday\npoker\nbetting";
+
     /** How old an enumeration_attempts row must be (in days) before cleanup() deletes it — enforced only when a cleanup roll actually fires, see recordEnumerationAttempt(). */
     private const CLEANUP_CHANCE = 20;
 
@@ -51,7 +73,7 @@ final class LumoraShieldService
     /** @var array<string, array<int, string>> rules that flagged a comment, keyed by commentKey() and held until comment_posted supplies the real comment ID and final status. */
     private array $pendingCommentRules = [];
 
-    /** @var array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool}|null */
+    /** @var array<string, bool|int|string>|null */
     private ?array $settingsCache = null;
 
     /** @var array<string, int> in-request-only, so a burst of attempts from one IP within a single process never emails more than once regardless of NOTIFY_COOLDOWN_SECONDS — the real cross-request cooldown is enforced by countEnumerationAttemptsForIp()'s own window query. */
@@ -67,7 +89,7 @@ final class LumoraShieldService
     }
 
     /**
-     * @return array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool}
+     * @return array<string, bool|int|string>
      */
     public function settings(): array
     {
@@ -90,6 +112,12 @@ final class LumoraShieldService
             'notify_threshold' => 10,
             'enable_comment_analysis' => true,
             'enable_contact_form_analysis' => true,
+            'trusted_ips' => '',
+            'trusted_emails' => '',
+            // On by default to match sign-ups, where core already refuses these
+            // addresses. It only sends a comment to Spam, never rejects it.
+            'block_disposable_email' => true,
+            'spam_username_keywords' => self::DEFAULT_SPAM_USERNAME_KEYWORDS,
         ];
 
         $settings = array_merge($defaults, is_array($decoded) ? $decoded : []);
@@ -102,13 +130,17 @@ final class LumoraShieldService
             'notify_threshold' => max(1, (int) $settings['notify_threshold']),
             'enable_comment_analysis' => (bool) $settings['enable_comment_analysis'],
             'enable_contact_form_analysis' => (bool) $settings['enable_contact_form_analysis'],
+            'trusted_ips' => (string) $settings['trusted_ips'],
+            'trusted_emails' => (string) $settings['trusted_emails'],
+            'block_disposable_email' => (bool) $settings['block_disposable_email'],
+            'spam_username_keywords' => (string) $settings['spam_username_keywords'],
         ];
 
         return $this->settingsCache;
     }
 
     /**
-     * @param array{hide_author_archives: bool, enable_logging: bool, log_retention_days: int, notify_on_repeated_attempts: bool, notify_threshold: int, enable_comment_analysis: bool, enable_contact_form_analysis: bool} $settings
+     * @param array<string, bool|int|string> $settings
      */
     public function saveSettings(array $settings): void
     {
@@ -147,13 +179,14 @@ final class LumoraShieldService
         }
 
         $result = (new CommentAnalyzer())->analyze($content, null, $guestEmail !== '' ? $guestEmail : null, $ipAddress);
+        $reasons = [...$result['reasons'], ...$this->emailReasons($guestEmail)];
 
-        if ($result['isSpam']) {
+        if ($reasons !== []) {
             // The comment row doesn't exist yet, so the record is written from comment_posted instead.
-            $this->pendingCommentRules[$this->commentKey($ipAddress, $content)] = $result['reasons'];
+            $this->pendingCommentRules[$this->commentKey($ipAddress, $content)] = $reasons;
         }
 
-        return $result['isSpam'];
+        return $reasons !== [];
     }
 
     /**
@@ -198,13 +231,13 @@ final class LumoraShieldService
             return $default;
         }
 
-        $reasons = (new CommentAnalyzer())->contentReasons(implode("\n", $data));
+        [$name, $email] = $this->contactIdentity($data);
+        $reasons = [...(new CommentAnalyzer())->contentReasons(implode("\n", $data)), ...$this->emailReasons($email)];
 
         if ($reasons === []) {
             return $default;
         }
 
-        [$name, $email] = $this->contactIdentity($data);
         $this->writeSpamEvent('contact_form', $reasons, 'spam', $ipAddress, $name, $email);
 
         return true;
@@ -214,17 +247,19 @@ final class LumoraShieldService
      * Dashboard figures: what Shield flagged recently, the worst offending IPs over the past
      * month, and how many comments are waiting in the moderation queue right now.
      *
-     * @return array{totals: array{today: int, this_week: int, this_month: int}, topIps: array<int, array{ipAddress: string, count: int}>, pendingComments: int}
+     * @return array{totals: array{today: int, this_week: int, this_month: int}, topIps: array<int, array{ipAddress: string, count: int}>, topRules: array<int, array{rule: string, count: int}>, pendingComments: int}
      */
     public function spamReport(): array
     {
         $totals = ['today' => 0, 'this_week' => 0, 'this_month' => 0];
         $topIps = [];
+        $topRules = [];
 
         try {
             $log = $this->spamLog();
             $totals = $log->totals();
             $topIps = $log->topIps(30, 5);
+            $topRules = $log->topRules(30, 5);
         } catch (\Throwable) {
             // A missing table (migration not yet run) must not take the Dashboard down with it.
         }
@@ -232,6 +267,7 @@ final class LumoraShieldService
         return [
             'totals' => $totals,
             'topIps' => $topIps,
+            'topRules' => $topRules,
             'pendingComments' => ActiveKernel::instance()->comments->countByStatus(CommentStatus::Pending),
         ];
     }
@@ -384,7 +420,91 @@ final class LumoraShieldService
      */
     private function isBypassed(string $source, string $ipAddress, string $email): bool
     {
+        if ($this->isTrusted($ipAddress, $email)) {
+            return true;
+        }
+
         return apply_filters('lumora_shield_bypass_analysis', false, $source, $ipAddress, $email) === true;
+    }
+
+    /**
+     * The administrator's own allowlist: an IP or range, an exact email address, or an email
+     * domain (subdomains included). A match skips Shield's checks entirely, which is how a
+     * regular commenter or co-author stops being flagged.
+     */
+    public function isTrusted(string $ipAddress, string $email): bool
+    {
+        $settings = $this->settings();
+
+        $ipRules = IpRangeMatcher::parseList($settings['trusted_ips']);
+
+        if ($ipRules !== [] && IpRangeMatcher::matches($ipAddress, $ipRules)) {
+            return true;
+        }
+
+        $email = strtolower(trim($email));
+        $domain = (string) substr(strrchr($email, '@') ?: '', 1);
+
+        foreach (IpRangeMatcher::parseList(strtolower($settings['trusted_emails'])) as $entry) {
+            $entry = ltrim($entry, '@');
+
+            if ($email !== '' && $email === $entry) {
+                return true;
+            }
+
+            if ($domain !== '' && !str_contains($entry, '@') && ($domain === $entry || str_ends_with($domain, '.' . $entry))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Addresses at throw-away inbox services use core's own sign-up list, so there is one copy
+     * to keep current.
+     *
+     * @return array<int, string>
+     */
+    private function emailReasons(string $email): array
+    {
+        if ($email !== '' && $this->settings()['block_disposable_email'] && RegistrationSpamCheck::isDisposableEmail($email)) {
+            return ['disposable_email'];
+        }
+
+        return [];
+    }
+
+    /**
+     * The `registration_spam_reasons` filter listener. Sign-ups are dropped silently, so a bot
+     * learns nothing about why, which is why the spam-word list lives here and not in core's
+     * visible errors. Matches inside the name, since spam names rarely stand alone
+     * ("best-casino-bonus").
+     *
+     * @param array<int, string> $reasons
+     * @param array{username?: string, email?: string, display_name?: string, ip_address?: string} $context
+     * @return array<int, string>
+     */
+    public function registrationSpamReasons(array $reasons, array $context): array
+    {
+        $settings = $this->settings();
+        $keywords = IpRangeMatcher::parseList($settings['spam_username_keywords']);
+
+        if ($keywords === [] || $this->isTrusted((string) ($context['ip_address'] ?? ''), (string) ($context['email'] ?? ''))) {
+            return $reasons;
+        }
+
+        $names = [(string) ($context['username'] ?? ''), (string) ($context['display_name'] ?? '')];
+
+        foreach ($keywords as $keyword) {
+            foreach ($names as $name) {
+                if ($name !== '' && mb_stripos($name, $keyword) !== false) {
+                    return [...$reasons, 'spam_username'];
+                }
+            }
+        }
+
+        return $reasons;
     }
 
     /**

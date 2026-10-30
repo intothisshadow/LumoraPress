@@ -49,6 +49,14 @@ final class CommentAnalyzer
     /** Zero-width and bidi-override characters — invisible-to-the-eye content used to smuggle text past keyword filters or disguise link destinations. */
     private const HIDDEN_CHARACTER_PATTERN = '/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]/u';
 
+    /**
+     * A Latin letter directly beside a Cyrillic one inside a single word. Real text switches
+     * script between words, so this is how look-alike letters are slipped past keyword filters
+     * ("pаypal" with a Cyrillic "а"). Greek is left out: Greek letters sit next to Latin ones in
+     * ordinary scientific writing.
+     */
+    private const MIXED_SCRIPT_PATTERN = '/(?:\p{Latin}\p{Cyrillic}|\p{Cyrillic}\p{Latin})/u';
+
     private const MIN_CONTENT_LENGTH = 3;
 
     private const MAX_CONTENT_LENGTH = 10000;
@@ -116,6 +124,10 @@ final class CommentAnalyzer
 
         if (preg_match(self::HIDDEN_CHARACTER_PATTERN, $content) === 1) {
             $reasons[] = 'hidden_characters';
+        }
+
+        if (preg_match(self::MIXED_SCRIPT_PATTERN, $content) === 1) {
+            $reasons[] = 'mixed_scripts';
         }
 
         return $reasons;

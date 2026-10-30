@@ -14,7 +14,7 @@
  */
 
 /**
- * @var array{totals: array{today: int, this_week: int, this_month: int}, topIps: array<int, array{ipAddress: string, count: int}>, pendingComments: int} $report
+ * @var array{totals: array{today: int, this_week: int, this_month: int}, topIps: array<int, array{ipAddress: string, count: int}>, topRules: array<int, array{rule: string, count: int}>, pendingComments: int} $report
  */
 ?>
 <section class="lp-admin__widget" data-lp-sortable-item data-lp-sortable-id="lumora_shield">
@@ -49,6 +49,17 @@
         <ul class="lp-admin__meta-list">
             <?php foreach ($report['topIps'] as $row): ?>
                 <li><span><code><?= esc_html($row['ipAddress']) ?></code></span><span><?= (int) $row['count'] ?></span></li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+
+    <h3 class="lp-admin__widget-subheading">Top Triggered Checks (30 Days)</h3>
+    <?php if ($report['topRules'] === []): ?>
+        <p class="lp-admin__widget-placeholder">Nothing flagged yet.</p>
+    <?php else: ?>
+        <ul class="lp-admin__meta-list">
+            <?php foreach ($report['topRules'] as $row): ?>
+                <li><span><?= esc_html(\LumoraPress\Plugins\LumoraShield\LumoraShieldService::RULE_LABELS[$row['rule']] ?? $row['rule']) ?></span><span><?= (int) $row['count'] ?></span></li>
             <?php endforeach; ?>
         </ul>
     <?php endif; ?>

@@ -113,18 +113,7 @@ $shieldReasonLabels = [
 $spamLimit = max(25, min(500, (int) ($_GET['spam_limit'] ?? 25)));
 $spamEvents = $lumoraShieldActive ? LumoraShieldService::instance()->recentSpamEvents($spamLimit) : [];
 
-$spamRuleLabels = [
-    'extremely_short' => 'Extremely short',
-    'extremely_long' => 'Extremely long',
-    'excessive_links' => 'Excessive links',
-    'excessive_uppercase' => 'Excessive uppercase',
-    'excessive_punctuation' => 'Excessive punctuation',
-    'repeated_phrase' => 'Repeated phrase',
-    'hidden_characters' => 'Hidden characters',
-    'previous_spam_history' => 'Previous spam history',
-    'posting_frequency' => 'Posting frequency',
-    'duplicate_comment' => 'Duplicate comment',
-];
+$spamRuleLabels = $lumoraShieldActive ? LumoraShieldService::RULE_LABELS : [];
 
 $spamSourceLabels = ['comment' => 'Comment', 'contact_form' => 'Contact form'];
 

@@ -104,7 +104,7 @@ Mirrors Post lifecycle exactly, including the same ambiguity:
 | Name | Type | Args | Fires in |
 |---|---|---|---|
 | `user_registered` | action | `User $user` | [`RegistrationService`](../app/Services/RegistrationService.php), right after a public sign-up becomes an account, whether by confirming the email or by an administrator's approval. Not fired for accounts an administrator adds or an import creates. |
-| `registration_spam_reasons` | filter | `array $reasons`, `array $context` (`username`, `email`, `display_name`, `ip_address`) | `RegistrationService::register()`, after the visitor's own mistakes are ruled out. Return the reasons array with any strings added to drop the sign-up silently: the visitor is told "Check your email" either way and the reasons are written to the security log, so a bot can't tune against them. Return `$reasons` unchanged to allow it. |
+| `registration_spam_reasons` | filter | `array $reasons`, `array $context` (`username`, `email`, `display_name`, `ip_address`) | `RegistrationService::register()`, after the visitor's own mistakes are ruled out. Return the reasons array with any strings added to drop the sign-up silently: the visitor is told "Check your email" either way and the reasons are written to the security log, so a bot can't tune against them. Return `$reasons` unchanged to allow it. Lumora Shield listens here to drop sign-ups whose username or display name contains a spam word. Names that must be refused with a visible message (reserved names such as "support") are handled in core's validation instead, since this hook is silent. |
 
 ### Rendering / output
 

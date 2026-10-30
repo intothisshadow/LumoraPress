@@ -102,6 +102,16 @@ add_filter(
 );
 
 /*
+ * Sign-up username spam words: core's registration screen runs this
+ * filter after its own checks and drops a flagged sign-up silently — see
+ * LumoraShieldService::registrationSpamReasons().
+ */
+add_filter(
+    'registration_spam_reasons',
+    static fn (array $reasons, array $context): array => $lumoraShield->registrationSpamReasons($reasons, $context),
+);
+
+/*
  * Dashboard panel with spam counts and the moderation queue. Gated on
  * moderate_comments, since it links into the comment queue, and the id is
  * registered under the same condition so the panel can be reordered.

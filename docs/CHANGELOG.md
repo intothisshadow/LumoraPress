@@ -6,6 +6,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Lumora Shield: a trusted-sender allowlist on Settings &rsaquo; Security &rsaquo; Lumora Shield. IP addresses, ranges, email addresses and email domains listed there skip every Shield check, so regular commenters and co-authors stop landing in Spam. Invalid lines are dropped on save with a notice.
+- Lumora Shield: comments and contact form messages from disposable email services (Mailinator and similar) are sent to Spam, using the same list that sign-ups already use. On by default, with a switch.
+- Lumora Shield: spam words in sign-up names. A new sign-up whose username or display name contains a listed word (a starter list is included and editable) is dropped silently.
+- Lumora Shield: a new check flags words that mix Latin and Cyrillic letters, the look-alike trick used to slip past keyword filters.
+- Lumora Shield: the Dashboard panel lists the five most frequent checks over 30 days, and the spam log and panel share one set of check names.
+- Sign-up now refuses reserved names such as "support", "staff" and "moderator", with a clear message, so nobody can pose as the site's own people.
 - Visitor Stats: crawlers and other bots are no longer counted. Search-engine and social-preview crawlers, scrapers, uptime monitors, command-line HTTP clients, headless browsers and requests with no browser identification are skipped before anything is recorded, so views, Most Viewed and the browser and device breakdowns reflect readers. Views recorded before this change are left as they were.
 - Visitor Stats: All Posts has a Views column with each post's all-time total (shown while tracking is on), loaded for the whole page in one query. A new `posts_list_columns` filter and `posts_list_column` action let any plugin add a column there.
 - Visitor Stats: the Dashboard panel shows a 30-day trend line under the totals.

@@ -124,6 +124,41 @@ final class SpamEventLog
         ], $rows);
     }
 
+    /**
+     * Which checks fired most over the last $days days. Counted in PHP because the rules are
+     * stored as one comma-separated column; the window is bounded by the log retention period,
+     * and the row cap keeps a flood from turning this into a large read.
+     *
+     * @return array<int, array{rule: string, count: int}>
+     */
+    public function topRules(int $days, int $limit = 5): array
+    {
+        $rows = $this->database->fetchAll(
+            'SELECT triggered_rules FROM ' . $this->table() . ' WHERE created_at >= :since ORDER BY created_at DESC LIMIT 5000',
+            ['since' => date('Y-m-d H:i:s', time() - ($days * 86400))],
+        );
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            foreach (explode(',', (string) $row['triggered_rules']) as $rule) {
+                if ($rule !== '') {
+                    $counts[$rule] = ($counts[$rule] ?? 0) + 1;
+                }
+            }
+        }
+
+        arsort($counts);
+
+        $top = [];
+
+        foreach (array_slice($counts, 0, max(1, $limit), true) as $rule => $count) {
+            $top[] = ['rule' => (string) $rule, 'count' => $count];
+        }
+
+        return $top;
+    }
+
     public function deleteOlderThan(int $retentionDays): void
     {
         $this->database->execute(
