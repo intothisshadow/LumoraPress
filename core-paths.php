@@ -35,6 +35,7 @@ return [
     'content/plugins/emoji-picker',
     'content/plugins/lumora-sweep',
     'content/plugins/link-directory',
+    'content/plugins/site-analytics',
     'index.php',
     'version.php',
     '.htaccess',

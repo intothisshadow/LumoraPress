@@ -472,6 +472,8 @@ $linkDirectoryActive = in_array('link-directory', $activePlugins, true);
 // Settings > Writing is a core screen; this flag only gates the Emoji Picker
 // panel on it.
 $emojiPickerActive = in_array('emoji-picker', $activePlugins, true);
+// Site Analytics adds a gated Analytics child to the core Settings menu.
+$siteAnalyticsActive = in_array('site-analytics', $activePlugins, true);
 
 $notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->hooks);
 
@@ -636,6 +638,7 @@ $menu = [
             'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options'],
             'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
             'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options'],
+            ...($siteAnalyticsActive ? ['analytics' => ['label' => 'Analytics', 'icon' => '📈', 'capability' => 'manage_options']] : []),
         ],
     ],
     'maintenance' => [

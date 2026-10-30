@@ -745,6 +745,7 @@ $updateCorePaths = is_file($corePathsFile) ? require $corePathsFile : [
     'content/plugins/wordpress-importer', 'content/plugins/downloads', 'content/plugins/contact-forms',
     'content/plugins/lumora-shield', 'content/plugins/visitor-stats', 'content/plugins/lumora-gallery-shortcodes',
     'content/plugins/emoji-picker', 'content/plugins/lumora-sweep', 'content/plugins/link-directory',
+    'content/plugins/site-analytics',
     'index.php', 'version.php', '.htaccess', 'README.md', 'LICENSE.md', 'docs', 'core-paths.php',
 ];
 

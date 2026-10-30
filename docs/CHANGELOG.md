@@ -6,6 +6,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Added
 
+- Site Analytics: a new bundled plugin that adds Plausible, Fathom, Matomo or Google Analytics 4 from Settings &rsaquo; Analytics, with no code to paste. The site's security policy is widened for only the chosen provider's hosts (listed on the screen), signed-in users and visitors who send Do Not Track or Global Privacy Control are skipped by default, and the admin, maintenance page and post previews are never counted. It also adds Google Search Console and Bing verification tags.
 - Lumora Shield: a trusted-sender allowlist on Settings &rsaquo; Security &rsaquo; Lumora Shield. IP addresses, ranges, email addresses and email domains listed there skip every Shield check, so regular commenters and co-authors stop landing in Spam. Invalid lines are dropped on save with a notice.
 - Lumora Shield: comments and contact form messages from disposable email services (Mailinator and similar) are sent to Spam, using the same list that sign-ups already use. On by default, with a switch.
 - Lumora Shield: spam words in sign-up names. A new sign-up whose username or display name contains a listed word (a starter list is included and editable) is dropped silently.
