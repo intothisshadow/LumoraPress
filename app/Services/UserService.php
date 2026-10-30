@@ -269,6 +269,17 @@ final class UserService
         return in_array(mb_strtolower(trim($username)), self::GUESSABLE_ADMINISTRATOR_USERNAMES, true);
     }
 
+    /**
+     * Made lazily with the running PHP's default cost, so its verify time tracks real hashes
+     * instead of a cost frozen into a constant.
+     */
+    private static function decoyHash(): string
+    {
+        static $hash = null;
+
+        return $hash ??= password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
+    }
+
     public function verifyCredentials(string $usernameOrEmail, string $password): ?User
     {
         $row = $this->database->fetchOne(
@@ -277,7 +288,15 @@ final class UserService
             ['identity1' => $usernameOrEmail, 'identity2' => $usernameOrEmail],
         );
 
-        if ($row === null || !password_verify($password, $row['password_hash'])) {
+        if ($row === null) {
+            // Hash against a throwaway so an unknown username costs the same time as a wrong
+            // password; an instant reply would tell an attacker which usernames exist.
+            password_verify($password, self::decoyHash());
+
+            return null;
+        }
+
+        if (!password_verify($password, $row['password_hash'])) {
             return null;
         }
 

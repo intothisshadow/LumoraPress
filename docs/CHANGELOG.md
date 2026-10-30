@@ -29,6 +29,10 @@ All notable changes to Lumora Press are documented in this file.
 
 - A step-by-step tutorial for moving a WordPress site into Lumora Press, covering both the database and export-file routes, the checks to run before importing, and what to do afterward (`docs/MIGRATING-FROM-WORDPRESS.md`).
 
+### Fixed
+
+- Logging in with a username that doesn't exist now takes as long as a wrong password. Before, the reply came back instantly, so how long the login page took to answer could reveal which usernames are real.
+
 ## [0.25.0] — 2026-10-28
 
 ### Bundled versions
