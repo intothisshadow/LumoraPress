@@ -63,6 +63,10 @@ final class SessionManager
             ini_set('session.gc_maxlifetime', (string) $this->maxLifetimeSeconds);
         }
 
+        // Without strict mode PHP adopts any well-formed session ID a client sends, which
+        // is what makes session fixation possible.
+        ini_set('session.use_strict_mode', '1');
+
         session_name($this->sessionName);
 
         session_set_cookie_params([

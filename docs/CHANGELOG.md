@@ -2,6 +2,16 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- PHP 8.6 compatibility: the database session store now provides the session ID and timestamp methods PHP 8.6 deprecates it for lacking and PHP 9.0 will require, so every request no longer logs two deprecation notices on 8.6. Sessions behave the same on PHP 8.2 to 8.5.
+
+### Security
+
+- Sessions now use PHP's strict mode: a session ID the site never issued is replaced with a fresh one instead of being accepted, which closes off session fixation.
+
 ## [1.0.0] — 2026-10-30
 
 ### Bundled versions

@@ -19,6 +19,8 @@ namespace LumoraPress\Core\Security;
 
 use LumoraPress\Core\Database\Database;
 use SessionHandlerInterface;
+use SessionIdInterface;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 /**
@@ -35,8 +37,12 @@ use Throwable;
  * a session read/write is infrastructure, not an auth decision, so a
  * transient database error should degrade to "no session this request"
  * rather than crash the page.
+ *
+ * The two extra interfaces are required by PHP 9.0 (PHP 8.6 already
+ * deprecates handlers without them) and give strict mode and lazy writes
+ * something to call.
  */
-final class DatabaseSessionHandler implements SessionHandlerInterface
+final class DatabaseSessionHandler implements SessionHandlerInterface, SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
     public function __construct(
         private readonly Database $database,
@@ -127,6 +133,48 @@ final class DatabaseSessionHandler implements SessionHandlerInterface
 
             return false;
         }
+    }
+
+    // session_create_id() would call straight back into this method, so the ID is built
+    // here: 128 random bits as 32 hex characters, the length PHP generates by default.
+    public function create_sid(): string
+    {
+        return bin2hex(random_bytes(16));
+    }
+
+    // Called by strict mode before an ID from the cookie is adopted; false makes PHP
+    // issue a fresh ID instead of trusting one an attacker may have chosen.
+    public function validateId(string $id): bool
+    {
+        try {
+            return $this->database->fetchColumn(
+                'SELECT 1 FROM ' . $this->table() . ' WHERE id = :id',
+                ['id' => $id],
+            ) !== null;
+        } catch (Throwable $exception) {
+            $this->logFailure($exception);
+
+            return false;
+        }
+    }
+
+    // Lazy writes call this instead of write() when the session data didn't change,
+    // so it must still refresh last_activity or an active visitor's session would
+    // be garbage-collected as idle.
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $this->database->execute(
+                'UPDATE ' . $this->table() . ' SET last_activity = :last_activity WHERE id = :id',
+                ['id' => $id, 'last_activity' => date('Y-m-d H:i:s')],
+            );
+        } catch (Throwable $exception) {
+            $this->logFailure($exception);
+
+            return false;
+        }
+
+        return true;
     }
 
     private function logFailure(Throwable $exception): void
