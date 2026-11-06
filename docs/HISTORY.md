@@ -21465,3 +21465,31 @@ Visitor Stats (LPP-014) stays the built-in, cookie-free, no-third-party counter.
 #### Not in this ticket
 
 A free-form "paste any script or HTML" box (rejected: it would weaken the CSP on every install; a one-off belongs in a custom plugin). Consent banners. A traffic dashboard inside Lumora Press (Visitor Stats is the built-in counter).
+
+## 1.0.1 (2026-11-06)
+
+## LP-233. Database Session Handler Deprecated on PHP 8.6
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Bug found testing on PHP 8.6.0RC4. `DatabaseSessionHandler` implements only `SessionHandlerInterface`, so PHP 8.6 deprecates registering it with `session_set_save_handler()` because it has no `create_sid()` or `validateId()` method, and warns that both will be required in PHP 9.0. The default (database) session store therefore logs two deprecations on every request. Implementing `SessionIdInterface` and `SessionUpdateTimestampHandlerInterface` fixes it on 8.2 through 8.6. `updateTimestamp()` matters beyond the warning: once the interface exists PHP's lazy write calls it instead of `write()` for an unchanged session, so it has to refresh `last_activity` or an idle-but-active session would expire early. `create_sid()` can't call `session_create_id()`, which would recurse back into the handler.
+
+- [x] `DatabaseSessionHandler` implements `SessionIdInterface` (`create_sid()`) and `SessionUpdateTimestampHandlerInterface` (`validateId()`, `updateTimestamp()`) with the same fail-safe logging as its other methods.
+- [x] `SessionManager` turns on `session.use_strict_mode`, so a session ID the store doesn't know is replaced instead of adopted (session fixation).
+- [x] Unit tests for the three new methods, including an unknown ID, a missing table, and `updateTimestamp()` refreshing `last_activity` without touching the data.
+- [x] Integration test on MySQL/MariaDB: `updateTimestamp()` succeeds when the timestamp doesn't change within the same second.
+- [x] Fix the test-only `ReflectionMethod::invokeArgs()` deprecation in `SiteControllerReadingSettingsIntegrationTest` (static methods are invoked with a `null` object).
+- [x] Full suite on PHP 8.2, 8.3, 8.4, 8.5 and 8.6 passes with no warnings or deprecations.
+
+
+## LP-234. Clearer Lumora Gallery Shortcode Names and a Blank Image ID Shortcode
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+The Insert Shortcode picker listed `[lumora_gallery_album]` as "Gallery Album", which reads like a picker for one album when the shortcode also covers folders, counts and specific images. Rename the Lumora Gallery entries so they're recognisable as a group, and add a picker entry that inserts `[lumora_gallery_album image_id=""]` with the attribute left empty, so image ids copied from the Gallery can be pasted straight in. The picker normally omits an empty attribute, so `ShortcodeField` gains an `alwaysInclude` flag.
+
+- [x] Picker entries renamed to "Lumora Gallery — Album" and "Lumora Gallery — Newest Images".
+- [x] New picker entry "Lumora Gallery — Images by ID" inserting `[lumora_gallery_album image_id=""]` (and, with the Gallery connection select, `gallery` only when non-default).
+- [x] `ShortcodeField::$alwaysInclude` keeps an attribute in the inserted text even when empty; the editor picker honours it.
+- [x] Unit tests, plugin README and Shortcodes docs updated.
+

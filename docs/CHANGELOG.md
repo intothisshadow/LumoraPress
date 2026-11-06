@@ -4,6 +4,12 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-11-06
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Lumora Gallery Shortcodes 0.5.0. It can be updated on its own from the Plugins screen when a release carries its package.
+
 ### Changed
 
 - The Insert Shortcode picker now lists the Lumora Gallery shortcodes as "Lumora Gallery — Album" and "Lumora Gallery — Newest Images" instead of the confusing "Gallery Album" and "Gallery — Newest Images".
