@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\ContactForms;
 
+use LumoraPress\Core\Database\ActiveDatabase;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\PressConfig;
 use LumoraPress\Core\Security\Csrf;
@@ -222,13 +223,7 @@ final class ContactFormShortcode
         }
 
         $configFile = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $configFile['db_host'],
-            database: (string) $configFile['db_name'],
-            username: (string) $configFile['db_user'],
-            password: (string) $configFile['db_password'],
-            port: (int) ($configFile['db_port'] ?? 3306),
-        );
+        $database = ActiveDatabase::forConfig($configFile);
         $tablePrefix = (string) $configFile['table_prefix'];
 
         $config = new PressConfig(LUMORA_ROOT . '/config/config.php');

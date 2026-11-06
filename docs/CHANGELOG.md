@@ -4,6 +4,11 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Search index rebuilds no longer fail on some hosts with "Cannot execute queries while other unbuffered queries are active"; the database connection now always buffers results and releases each single-row read straight away.
+- The Link Directory, Downloads, and Contact Forms shortcodes and widgets now reuse the page's existing database connection instead of opening a second one, which roughly halves connection use on pages that show them and avoids "already has more than 'max_user_connections' active connections" errors on shared hosting.
+
 ## [1.0.1] — 2026-11-06
 
 ### Bundled versions

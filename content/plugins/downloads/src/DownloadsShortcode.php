@@ -19,6 +19,7 @@ namespace LumoraPress\Plugins\Downloads;
 
 use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
+use LumoraPress\Core\Database\ActiveDatabase;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Hooks\HookManager;
 use LumoraPress\Core\Http\BasePath;
@@ -425,13 +426,7 @@ final class DownloadsShortcode
         }
 
         $config = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $config['db_host'],
-            database: (string) $config['db_name'],
-            username: (string) $config['db_user'],
-            password: (string) $config['db_password'],
-            port: (int) ($config['db_port'] ?? 3306),
-        );
+        $database = ActiveDatabase::forConfig($config);
         $tablePrefix = (string) $config['table_prefix'];
         $categories = new DownloadCategoryService($database, $tablePrefix);
         $media = new MediaService($database, $tablePrefix, LUMORA_ROOT . '/content/uploads', BasePath::get() . '/content/uploads');

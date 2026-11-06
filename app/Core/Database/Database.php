@@ -52,6 +52,10 @@ final class Database
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
+                // Some hosts' PDO builds default to unbuffered results, where one
+                // half-read result set blocks the next query (error 2014).
+                // The PDO::MYSQL_* constants are deprecated on 8.5; Pdo\Mysql exists from 8.4.
+                (class_exists(\Pdo\Mysql::class) ? \Pdo\Mysql::ATTR_USE_BUFFERED_QUERY : PDO::MYSQL_ATTR_USE_BUFFERED_QUERY) => true,
             ]);
         } catch (PDOException $exception) {
             throw new DatabaseConnectionException('Unable to connect to the database.', previous: $exception);
@@ -101,7 +105,9 @@ final class Database
      */
     public function fetchOne(string $sql, array $params = []): ?array
     {
-        $row = $this->query($sql, $params)->fetch();
+        $statement = $this->query($sql, $params);
+        $row = $statement->fetch();
+        $statement->closeCursor();
 
         return $row === false ? null : $row;
     }
@@ -111,7 +117,9 @@ final class Database
      */
     public function fetchColumn(string $sql, array $params = []): mixed
     {
-        $value = $this->query($sql, $params)->fetchColumn();
+        $statement = $this->query($sql, $params);
+        $value = $statement->fetchColumn();
+        $statement->closeCursor();
 
         return $value === false ? null : $value;
     }

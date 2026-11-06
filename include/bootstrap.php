@@ -30,6 +30,7 @@ use LumoraPress\Core\Cache\NullCacheDriver;
 use LumoraPress\Core\Content\ActiveContentRenderer;
 use LumoraPress\Core\Content\HtmlSanitizer;
 use LumoraPress\Core\Content\MarkdownParser;
+use LumoraPress\Core\Database\ActiveDatabase;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Core\Errors\ErrorHandler;
 use LumoraPress\Core\Errors\ErrorLogReader;
@@ -188,6 +189,7 @@ $database = Database::connect(
 );
 
 $config->bindDatabase($database);
+ActiveDatabase::set($database);
 
 // Must run before anything reads REMOTE_ADDR or HTTPS (site URL detection, secure
 // cookies, throttling), so the rest of the codebase sees the real visitor.

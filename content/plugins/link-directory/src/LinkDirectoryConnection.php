@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Plugins\LinkDirectory;
 
+use LumoraPress\Core\Database\ActiveDatabase;
 use LumoraPress\Core\Database\Database;
 use LumoraPress\Services\MediaService;
 
@@ -33,13 +34,7 @@ final class LinkDirectoryConnection
     public static function open(): array
     {
         $config = require LUMORA_ROOT . '/config/config.php';
-        $database = Database::connect(
-            host: (string) $config['db_host'],
-            database: (string) $config['db_name'],
-            username: (string) $config['db_user'],
-            password: (string) $config['db_password'],
-            port: (int) ($config['db_port'] ?? 3306),
-        );
+        $database = ActiveDatabase::forConfig($config);
 
         return [$database, (string) $config['table_prefix']];
     }
