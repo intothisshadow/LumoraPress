@@ -62,7 +62,7 @@ final class ShortcodeManager
      * here rather than duplicated across posts/new.php, pages/new.php,
      * and downloads/add-new.php, the three views that each need it.
      *
-     * @return array<string, array{label: string, tag: string, fields: array<int, array{name: string, label: string, type: string, default: string, required: bool, choices: array<string, string>, help: string}>}>
+     * @return array<string, array{label: string, tag: string, fields: array<int, array{name: string, label: string, type: string, default: string, required: bool, choices: array<string, string>, help: string, alwaysInclude: bool}>}>
      */
     public function toArray(): array
     {
@@ -79,6 +79,7 @@ final class ShortcodeManager
                         'required' => $field->required,
                         'choices' => $field->choices,
                         'help' => $field->help,
+                        'alwaysInclude' => $field->alwaysInclude,
                     ],
                     $shortcode['fields'],
                 ),

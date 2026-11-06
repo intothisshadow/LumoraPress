@@ -4,6 +4,14 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The Insert Shortcode picker now lists the Lumora Gallery shortcodes as "Lumora Gallery — Album" and "Lumora Gallery — Newest Images" instead of the confusing "Gallery Album" and "Gallery — Newest Images".
+
+### Added
+
+- Insert Shortcode picker: a new "Lumora Gallery — Images by ID" entry inserts `[lumora_gallery_album image_id=""]` with the ids left blank, so image ids copied from the Gallery can be pasted straight in.
+
 ### Fixed
 
 - PHP 8.6 compatibility: the database session store now provides the session ID and timestamp methods PHP 8.6 deprecates it for lacking and PHP 9.0 will require, so every request no longer logs two deprecation notices on 8.6. Sessions behave the same on PHP 8.2 to 8.5.

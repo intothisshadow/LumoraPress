@@ -175,6 +175,8 @@ register_shortcode('lumora_downloads_single', 'Single Download', [
 ], 'lumora_downloads');
 ```
 
+`ShortcodeField` also takes `alwaysInclude: true`, which keeps the attribute in the inserted text even when it's empty or equal to its default. The picker normally omits those, so use it for a blank slot the author fills in afterwards, as the Lumora Gallery Shortcodes plugin's "Images by ID" entry does to insert `[lumora_gallery_album image_id=""]`.
+
 A plugin whose fields need database-backed choices (a live list of Folders or Download categories, say) can't call `register_shortcode()` directly from its own top-level file — plugin main files load before Kernel exists (see "Discovery & loading" below). Hook the `register_shortcodes` action instead:
 
 | Name | Type | Args | Fires in |

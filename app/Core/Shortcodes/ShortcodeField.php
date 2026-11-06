@@ -27,6 +27,8 @@ namespace LumoraPress\Core\Shortcodes;
  * when its value equals $default — an admin who never touches a field
  * gets the same minimal `[shortcode]` text they'd have typed by hand,
  * not every optional attribute spelled out at its default value.
+ * $alwaysInclude overrides that for a field whose empty attribute is the
+ * point, such as a blank slot the author pastes ids into.
  */
 final class ShortcodeField
 {
@@ -41,6 +43,7 @@ final class ShortcodeField
         public readonly bool $required = false,
         public readonly array $choices = [],
         public readonly string $help = '',
+        public readonly bool $alwaysInclude = false,
     ) {
     }
 }

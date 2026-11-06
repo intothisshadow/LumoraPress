@@ -20,6 +20,8 @@ Only public albums and approved images are ever shown — this plugin has no con
 
 Available to whoever can already edit the post/page a shortcode is typed into — no separate role/capability gate, the same as every other shortcode in Lumora Press.
 
+In the editor's Insert Shortcode picker these appear as **Lumora Gallery — Album**, **Lumora Gallery — Images by ID** and **Lumora Gallery — Newest Images**. Images by ID inserts `[lumora_gallery_album image_id=""]` with the ids left blank, ready for you to paste image ids between the quotes.
+
 **Lumora Gallery &rsaquo; Shortcodes** in the admin has the full attribute reference and copy-paste examples for both shortcodes.
 
 ## Settings

@@ -95,12 +95,18 @@ add_action('register_shortcodes', static function () use ($gallerySettings): voi
 
     $galleryField = new ShortcodeField('gallery', 'Gallery', ShortcodeFieldType::Select, default: $defaultSlug ?? '', choices: $galleryChoices);
 
-    register_shortcode('lumora_gallery_album', 'Gallery Album', [
+    register_shortcode('lumora_gallery_album', 'Lumora Gallery — Album', [
         $galleryField,
         new ShortcodeField('album_id', 'Album', ShortcodeFieldType::Select, required: true, choices: $albumChoices),
     ]);
 
-    register_shortcode('lumora_gallery_newest', 'Gallery — Newest Images', [
+    // Inserts the album shortcode with an empty image_id so ids copied from the Gallery can be pasted in.
+    register_shortcode('lumora_gallery_images', 'Lumora Gallery — Images by ID', [
+        $galleryField,
+        new ShortcodeField('image_id', 'Image IDs', ShortcodeFieldType::Text, help: 'Optional. Leave empty to paste ids into the inserted shortcode afterwards, e.g. 4,9,12.', alwaysInclude: true),
+    ], 'lumora_gallery_album');
+
+    register_shortcode('lumora_gallery_newest', 'Lumora Gallery — Newest Images', [
         $galleryField,
         new ShortcodeField('count', 'Number of images', ShortcodeFieldType::Number, default: '10'),
     ]);

@@ -77,6 +77,9 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
     <p class="lp-field__hint">Specific images, in the order given:</p>
     <pre><code>[lumora_gallery_album image_id="4,9,12"]</code></pre>
 
+    <p class="lp-field__hint">The editor's Insert Shortcode picker offers <strong>Lumora Gallery &mdash; Images by ID</strong>, which inserts this with the ids left blank so you can paste them in:</p>
+    <pre><code>[lumora_gallery_album image_id=""]</code></pre>
+
     <p class="lp-field__hint">Just the thumbnails, no title or "View album" link:</p>
     <pre><code>[lumora_gallery_album album_id="12" no_album_info="1"]</code></pre>
 </section>

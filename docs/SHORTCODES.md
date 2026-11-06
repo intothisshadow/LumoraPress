@@ -121,7 +121,7 @@ Shows up in the picker as **Contact Form**. **Contact Forms &rsaquo; All Forms**
 
 ### `[lumora_gallery_album]` / `[lumora_gallery_newest]` — Lumora Gallery Shortcodes plugin
 
-Only works with a separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) site configured on **Lumora Gallery Shortcodes &rsaquo; Settings**. Both shortcodes show up in the picker with their most common attribute; the rest are typeable by hand. **Lumora Gallery Shortcodes &rsaquo; Shortcodes** in the admin has the full reference with copy-paste examples.
+Only works with a separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) site configured on **Lumora Gallery Shortcodes &rsaquo; Settings**. They show up in the picker as **Lumora Gallery — Album**, **Lumora Gallery — Images by ID** (inserts `[lumora_gallery_album image_id=""]` with the ids left blank so you can paste them in) and **Lumora Gallery — Newest Images**; the other attributes are typeable by hand. **Lumora Gallery Shortcodes &rsaquo; Shortcodes** in the admin has the full reference with copy-paste examples.
 
 `[lumora_gallery_album]` has three variants, checked in this order:
 

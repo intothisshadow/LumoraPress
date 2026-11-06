@@ -2574,7 +2574,7 @@
                     // other field type gets for free.
                     var defaultValue = entry.field.type === 'checkbox' ? (entry.field.default || '0') : (entry.field.default || '');
 
-                    if (value === '' || value === defaultValue) {
+                    if (!entry.field.alwaysInclude && (value === '' || value === defaultValue)) {
                         return;
                     }
 
