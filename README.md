@@ -142,7 +142,7 @@ Lumora Press includes an opt-in, off-by-default mechanism to anonymously count a
 
 - **Off by default.** Nothing is ever sent unless you explicitly enable **Anonymous install ping** in Settings &rsaquo; Privacy.
 - **What is sent, and nothing else:**
-  - A randomly generated install ID, created the first time the feature is enabled. It has no relationship to your domain, content, admin account, or any other data — there is no way to trace it back to your specific site from the ping alone.
+  - A randomly generated install ID, created the first time the feature is enabled. It has no relationship to your domain, content, admin account, or any other data — there is no way to trace it back to your specific site from the ping alone. Each site address gets its own ID: if you restore a backup or copy the install to a different address, it gets a new ID there instead of being counted as the original site. A hash of the address stays on your server and is never sent.
   - Your installed Lumora Press version.
   - Your PHP version.
 - **What is never sent:** your domain or site title, admin email, post/page/comment content, visitor data, or anything else.

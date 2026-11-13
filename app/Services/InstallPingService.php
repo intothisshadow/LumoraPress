@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace LumoraPress\Services;
 
+use LumoraPress\Core\Http\SiteUrl;
 use LumoraPress\Core\PressConfig;
 use Throwable;
 
@@ -55,8 +56,18 @@ final class InstallPingService
     /** Option key — Unix timestamp of the last ping attempt (sent or failed). */
     private const OPT_LAST_SENT_AT = 'install_ping_last_sent_at';
 
+    /**
+     * Option key — hash of the site address the install ID was issued for.
+     * Kept local and never sent; it only lets a copied install notice it now
+     * lives at a different address.
+     */
+    private const OPT_ADDRESS_HASH = 'install_uuid_address_hash';
+
     /** @var callable(string, string): int */
     private $transport;
+
+    /** @var callable(): string */
+    private $siteAddress;
 
     /**
      * @param string $endpoint Overridable for tests; real callers always use the default.
@@ -64,14 +75,18 @@ final class InstallPingService
      *     override for testing — receives the endpoint URL and the raw JSON
      *     payload, returns the HTTP status code (or throws on a
      *     transport-level failure). Defaults to a stream-context POST.
+     * @param null|callable(): string $siteAddress Source of the configured
+     *     site address; defaults to the address resolved at bootstrap.
      */
     public function __construct(
         private readonly PressConfig $config,
         private readonly string $version,
         private readonly string $endpoint = self::ENDPOINT,
         ?callable $transport = null,
+        ?callable $siteAddress = null,
     ) {
         $this->transport = $transport ?? $this->defaultTransport(...);
+        $this->siteAddress = $siteAddress ?? SiteUrl::get(...);
     }
 
     // ── Public API ───────────────────────────────────────────────────
@@ -83,9 +98,9 @@ final class InstallPingService
 
     /**
      * Returns the persisted install UUID, generating and persisting a new
-     * one on first call if none exists yet. Generated once and reused for
-     * the lifetime of the installation, including across a later
-     * disable/re-enable.
+     * one on first call if none exists yet. Reused across a later
+     * disable/re-enable, and replaced only when the site address changes
+     * (see refreshUuidForSiteAddress()).
      */
     public function getOrCreateUuid(): string
     {
@@ -146,6 +161,8 @@ final class InstallPingService
      */
     public function sendPing(): void
     {
+        $this->refreshUuidForSiteAddress();
+
         $payload = (string) json_encode([
             'install_uuid' => $this->getOrCreateUuid(),
             'version' => $this->version,
@@ -178,6 +195,40 @@ final class InstallPingService
     }
 
     // ── Internal ─────────────────────────────────────────────────────
+
+    /**
+     * A restored backup or copied folder keeps the original install ID, so two
+     * sites would be counted as one. Issuing a fresh ID when the site address
+     * differs from the one the ID was issued for keeps one ID per site. An
+     * install that has no recorded address yet (first ping, or one upgraded
+     * from before this check) keeps its ID and just records the address.
+     */
+    private function refreshUuidForSiteAddress(): void
+    {
+        $address = strtolower(rtrim(trim(($this->siteAddress)()), '/'));
+
+        // An unresolved address can't tell sites apart; leave the ID alone.
+        if ($address === '') {
+            return;
+        }
+
+        $hash = hash('sha256', $address);
+        $stored = trim((string) $this->config->option(self::OPT_ADDRESS_HASH, ''));
+
+        if ($stored === $hash) {
+            return;
+        }
+
+        try {
+            if ($stored !== '') {
+                $this->config->setOption(self::OPT_UUID, self::generateUuidV4());
+            }
+
+            $this->config->setOption(self::OPT_ADDRESS_HASH, $hash);
+        } catch (Throwable) {
+            // Non-fatal — the check simply runs again on the next ping.
+        }
+    }
 
     private static function generateUuidV4(): string
     {

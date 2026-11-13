@@ -16,6 +16,7 @@ All notable changes to Lumora Press are documented in this file.
 
 ### Fixed
 
+- The anonymous install ping now keeps one install ID per site address. A backup restored on another host, or a copied install folder, gets a new ID instead of being counted as the original site. Nothing new is sent; a hash of the address stays on the server.
 - Search index rebuilds no longer fail on some hosts with "Cannot execute queries while other unbuffered queries are active"; the database connection now always buffers results and releases each single-row read straight away.
 - The Link Directory, Downloads, and Contact Forms shortcodes and widgets now reuse the page's existing database connection instead of opening a second one, which roughly halves connection use on pages that show them and avoids "already has more than 'max_user_connections' active connections" errors on shared hosting.
 
