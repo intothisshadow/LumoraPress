@@ -10,6 +10,10 @@
     --lp-admin-sidebar-bg: #28232f;
     --lp-admin-sidebar-fg: #f0edf3;
     --lp-admin-sidebar-fg-muted: #bab3c6;
+    /* Submenu group headings: a light lavender that reads on the dark sidebar in both modes. */
+    --lp-admin-sidebar-heading: #b697e6;
+    /* Top-level section names: a sky blue, distinct from the lavender group headings. */
+    --lp-admin-sidebar-main: #8ec5f5;
     --lp-admin-accent: #7b4bb8;
     --lp-admin-switch-on: #5cc98b;
     --lp-admin-accent-hover: #5f378f;
@@ -399,6 +403,24 @@ body.lp-admin-login {
     font-size: 0.85rem;
 }
 
+/* Includes :visited because the base link rule sets its own colour there, which would otherwise win for pages already opened. */
+.lp-admin__nav > ul > li.lp-admin__nav-item > a,
+.lp-admin__nav > ul > li.lp-admin__nav-item > a:visited,
+.lp-admin__nav > ul > li.lp-admin__nav-item > .lp-admin__nav-parent-row > a,
+.lp-admin__nav > ul > li.lp-admin__nav-item > .lp-admin__nav-parent-row > a:visited {
+    color: var(--lp-admin-sidebar-main);
+}
+
+/* Hover, focus and the current page stay white, as they were before sections got their own colour. */
+.lp-admin__nav > ul > li.lp-admin__nav-item > a:hover,
+.lp-admin__nav > ul > li.lp-admin__nav-item > a:focus,
+.lp-admin__nav > ul > li.lp-admin__nav-item.is-active > a,
+.lp-admin__nav > ul > li.lp-admin__nav-item > .lp-admin__nav-parent-row > a:hover,
+.lp-admin__nav > ul > li.lp-admin__nav-item > .lp-admin__nav-parent-row > a:focus,
+.lp-admin__nav > ul > li.lp-admin__nav-item.is-active > .lp-admin__nav-parent-row > a {
+    color: #fff;
+}
+
 .lp-admin__nav > ul > li > a > .lp-admin__nav-icon,
 .lp-admin__nav > ul > li > .lp-admin__nav-parent-row > a > .lp-admin__nav-icon {
     display: none;
@@ -533,7 +555,7 @@ body.lp-admin-login {
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    opacity: 0.6;
+    color: var(--lp-admin-sidebar-heading);
 }
 
 .lp-admin__breadcrumbs {
