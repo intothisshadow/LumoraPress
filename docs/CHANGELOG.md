@@ -2,7 +2,11 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased]
+## [1.1.0] — 2026-11-13
+
+### Bundled versions
+
+- Bundled components with new versions in this release: Contact Forms 0.2.1, Downloads 0.6.1, Link Directory 0.2.1, Lumora Gallery Shortcodes 0.5.1, and WordPress Importer 1.1.4. Each can be updated on its own from the Plugins screen when a release carries its package.
 
 ### Changed
 

@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: Link Directory
  * Plugin URI: https://lumorapress.org/plugins/link-directory
  * Description: An admin-organized directory of links to other sites — a title, category/sub-category, URL, thumbnail, optional 100×50 link button, and description per entry. Show a category's links, or every category and its link count, anywhere with the [lumora_link_directory] shortcode, or list links in a sidebar or footer with the Links widget.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later

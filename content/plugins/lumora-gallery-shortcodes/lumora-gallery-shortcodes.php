@@ -19,7 +19,7 @@ declare(strict_types=1);
  * Plugin Name: Lumora Gallery Shortcodes
  * Plugin URI: https://lumorapress.org/plugins/lumora-gallery-shortcodes
  * Description: Embed albums/images from one or more separately-installed Lumora Gallery sites into Lumora Press posts and pages — whole albums, the newest N images from an album, specific images, or the newest N images across an entire gallery. Thumbnails open the real full-size image in the same PhotoSwipe lightbox every other gallery in Lumora Press uses. Entirely optional: Lumora Gallery is never required for Lumora Press to work.
- * Version: 0.5.0
+ * Version: 0.5.1
  * Author: Lumora Press
  * Author URI: https://lumorapress.org
  * License: GPL-3.0-or-later

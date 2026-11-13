@@ -21493,3 +21493,66 @@ The Insert Shortcode picker listed `[lumora_gallery_album]` as "Gallery Album", 
 - [x] `ShortcodeField::$alwaysInclude` keeps an attribute in the inserted text even when empty; the editor picker honours it.
 - [x] Unit tests, plugin README and Shortcodes docs updated.
 
+
+## 1.1.0 (2026-11-13)
+
+## LP-235. Install ping: one install ID per site, and a test that settings export leaves it out
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Found while building the same feature for Lumora Fiction. `InstallPingService` keeps one random `install_uuid` for the life of the installation, so a backup restored on a second host, or a copied install folder, reports under the same ID as the original and the install-tracking-server counts one site where there are two. Settings export is already safe, since `SettingsPortabilityService` exports only the fields listed in `PORTABLE_FIELDS` and nothing under Privacy is in it, but no test holds that line.
+
+- [x] Tie the ID to the site address: next to `install_uuid` store a hash of the configured site address, compare it just before a ping is sent, and when it differs make a new ID and store the new hash; the hash stays local and is never sent, so the payload keeps exactly `install_uuid`, `version` and `php_version`; a restore on the same address keeps its ID, and a moved domain counting as a new install is accepted for an anonymous counter
+- [x] Regression test: exporting settings never contains `install_ping_enabled` or `install_uuid`, and importing a file that carries both keys writes neither
+- [x] Tests for the address check: an unchanged address keeps the ID, a changed address makes a new one, and the hash is never in the payload
+- [x] Documented: the README's install ping section (one ID per site address), `docs/CHANGELOG.md`
+
+## LP-236. Settings menu: group the long submenu and merge overlapping screens
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Settings had 16 flat submenu entries, too many to scan. The submenu is now split into labelled purpose groups, Cache folded into Performance as a tab, and Maintenance Mode moved under Maintenance, where it belongs as an operational switch. Redirects stays under Settings.
+
+- [x] Submenu groups: Site (General, Reading, Writing, Media, Embeds), Content & URLs (Permalinks, Redirects, Search, Discussion), People & Privacy (Registration, Privacy, Security), Performance & Traffic (Performance, plus Analytics while its plugin is active); a child's optional `group` key in the admin menu array drives a non-clickable heading in the sidebar, with styles for the expanded sidebar and the collapsed flyout
+- [x] Settings › Cache becomes a Cache tab on Settings › Performance (tabs: Speed, Cache); each tab keeps its own form, notices, and purge actions, and saves land back on the same tab
+- [x] Settings › Maintenance Mode moves to Maintenance › Maintenance Mode; the Dashboard toggle, the sidebar alert, and the theme-preview bar's "Back to settings" link point at the new address
+- [x] Old addresses keep working: `settings/cache` redirects to `settings/performance?tab=cache`, `settings/maintenance-mode` to `maintenance/maintenance-mode`
+- [x] Lumora Gallery moves from its own top-level menu entry to Plugins › Lumora Gallery (Settings and Shortcodes tabs), beside a new "Installed Plugins" child that stays served at `/plugins`, so existing links and form posts keep working; old `lumora-gallery-shortcodes/*` addresses redirect
+- [x] Tests: a contract test for the grouping, the moves, the redirects, and the sidebar markup; existing menu and panel-header tests updated for the moved views
+- [x] Documented: `docs/CHANGELOG.md`, `docs/FEATURES.md`, `docs/DEVELOPER-APIS.md`
+
+## LP-237. Admin menu: merge related screens into tab sets and sections
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Follow-up to LP-236. Several top-level sections have sibling screens that are really one task (importing and exporting, uploading and importing media, custom CSS and the theme editor, a user list and your own profile). Those pages run stepped or AJAX flows that post back to their own address, so they are joined by a tab strip of links between real pages, not by loading several views into one page. Every old address keeps working.
+
+- [x] Menu mechanism: a child entry may be `hidden` (routable but not in the sidebar) and may list `tabs`; the active child's tab strip is drawn above the page title, the sidebar highlights the owning entry, and the parent link goes to the first child the user may open
+- [x] Maintenance: Import and Export become one "Import / Export" entry with Import and Export tabs
+- [x] Appearance: Custom CSS and Theme Editor become one "Code" entry with two tabs; Reset Theme Options leaves the menu and becomes a button on Customize (the page stays, with a way back)
+- [x] Media Manager: Upload and Import from Server become tabs of the Media entry, next to the library
+- [x] Users: Users becomes a section with "All Users" and "My Profile" children; My Profile moves to `users/profile` (old `profile` address redirects) and stays open to every signed-in role
+- [x] Tests for the new menu keys and redirects; documented in `docs/CHANGELOG.md` and `docs/DEVELOPER-APIS.md`
+
+## LP-238. Content Tools menu section, and Visitor Stats under Dashboard
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Downloads, Link Directory and Contact Forms each take a top-level sidebar slot between Media and Comments. They become one "Content Tools" section with a heading per tool. The sidebar gains no third level: the three tools stay routable at their current addresses, hidden from the top level, and the Content Tools entries link to them, so no view or plugin URL moves. Visitor Stats moves under Dashboard.
+
+- [x] Menu mechanism: a sidebar-only section whose children point at existing routes (`route`), with the section open and the child highlighted while one of those routes is showing
+- [x] Content Tools section with Downloads (All Downloads, Add New, Import from GitHub, Categories), Link Directory (All Links, Add New, Categories, Export / Import) and Contact Forms (All Forms, Add New, Submissions, Settings) under group headings, each shown only while its plugin is active
+- [x] Dashboard becomes a section with Overview and Visitor Stats children; Visitor Stats keeps Stats and Settings as tabs
+- [x] Old top-level entries stay routable so every plugin link and form post keeps working
+- [x] Tests for the section, its visibility rules, and the Dashboard children; documented in `docs/CHANGELOG.md` and `docs/DEVELOPER-APIS.md`
+
+## LP-239. One Shortcodes reference page, grouped by plugin
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Media Manager, Downloads, Link Directory and Lumora Gallery each had their own "Shortcodes" reference screen. They become tabs of a single Posts › Shortcodes page, where a writer looks them up. Tabs for a plugin's shortcodes appear only while that plugin is active.
+
+- [x] New Posts › Shortcodes page with a tab per source: Media, Downloads, Link Directory, Lumora Gallery
+- [x] The four old reference screens leave their menus; their addresses redirect to the matching tab
+- [x] Lumora Gallery drops its Shortcodes tab and becomes the Settings screen alone; links to the old screens (Plugins screen action links, Insert Shortcode reference, READMEs, in-page notices) point to the new page
+- [x] Tests for the page, the redirects, and the removed menu entries; documented in `docs/CHANGELOG.md`, `docs/DEVELOPER-APIS.md`, and the affected plugin READMEs
