@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Lumora Gallery Shortcodes > Settings screen, provided by the bundled Lumora Gallery Shortcodes plugin (LPP-015).
+ * The admin Plugins > Lumora Gallery screen, provided by the bundled Lumora Gallery Shortcodes plugin: Gallery connection settings.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -94,7 +94,7 @@ if ($form === 'lumora_gallery_shortcodes_connection' && Csrf::verify('lumora_gal
             $showForm = true;
             $formValues = [...$formValues, ...$existingConnection];
         } else {
-            header('Location: ' . admin_url('lumora-gallery-shortcodes/settings') . '?saved=1');
+            header('Location: ' . admin_url('plugins/lumora-gallery') . '?saved=1');
             exit;
         }
     }
@@ -153,12 +153,12 @@ if ($form === 'lumora_gallery_shortcodes_connection' && Csrf::verify('lumora_gal
         $error = 'Can\'t delete the only Gallery connection — add another one first if you want to replace it.';
     } else {
         $service->deleteConnection($slug);
-        header('Location: ' . admin_url('lumora-gallery-shortcodes/settings') . '?deleted=1');
+        header('Location: ' . admin_url('plugins/lumora-gallery') . '?deleted=1');
         exit;
     }
 } elseif ($form === 'lumora_gallery_shortcodes_make_default' && Csrf::verify('lumora_gallery_shortcodes_make_default', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $service->setDefaultConnection((string) ($_POST['slug'] ?? ''));
-    header('Location: ' . admin_url('lumora-gallery-shortcodes/settings') . '?default_set=1');
+    header('Location: ' . admin_url('plugins/lumora-gallery') . '?default_set=1');
     exit;
 }
 
@@ -169,7 +169,7 @@ if ($form === 'lumora_gallery_shortcodes_connection' && Csrf::verify('lumora_gal
 $showPasswordPlaceholder = $existingConnection !== null && $existingConnection['db_password'] !== '' && $formValues['db_password'] === $existingConnection['db_password'];
 $defaultSlug = $service->defaultConnection();
 ?>
-<h1 class="lp-admin__title">Lumora Gallery Shortcodes</h1>
+<h1 class="lp-admin__title">Lumora Gallery</h1>
 
 <?php if (isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
@@ -234,9 +234,9 @@ $defaultSlug = $service->defaultConnection();
                         <td><?= $connection['db_host'] !== '' ? esc_html($connection['db_host'] . ' / ' . $connection['db_name']) : '—' ?></td>
                         <td><?= $service->isConfigured($slug) ? 'Configured' : 'Incomplete' ?></td>
                         <td>
-                            <a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings') . '?edit=' . rawurlencode($slug)) ?>">Edit</a>
+                            <a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('plugins/lumora-gallery') . '?edit=' . rawurlencode($slug)) ?>">Edit</a>
                             <?php if ($slug !== $defaultSlug): ?>
-                                <form class="lp-admin__inline-form" method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>">
+                                <form class="lp-admin__inline-form" method="post" action="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>">
                                     <?= Csrf::field('lumora_gallery_shortcodes_make_default') ?>
                                     <input type="hidden" name="form" value="lumora_gallery_shortcodes_make_default">
                                     <input type="hidden" name="slug" value="<?= esc_attr($slug) ?>">
@@ -244,7 +244,7 @@ $defaultSlug = $service->defaultConnection();
                                 </form>
                             <?php endif; ?>
                             <?php if (count($service->connections()) > 1): ?>
-                                <form class="lp-admin__inline-form" method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>" data-lp-confirm="<?= esc_attr('Delete the "' . $connectionLabel . '" Gallery connection? Shortcodes using gallery="' . $slug . '" will render nothing afterward.') ?>">
+                                <form class="lp-admin__inline-form" method="post" action="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>" data-lp-confirm="<?= esc_attr('Delete the "' . $connectionLabel . '" Gallery connection? Shortcodes using gallery="' . $slug . '" will render nothing afterward.') ?>">
                                     <?= Csrf::field('lumora_gallery_shortcodes_delete_connection') ?>
                                     <input type="hidden" name="form" value="lumora_gallery_shortcodes_delete_connection">
                                     <input type="hidden" name="slug" value="<?= esc_attr($slug) ?>">
@@ -258,12 +258,12 @@ $defaultSlug = $service->defaultConnection();
         </table>
     <?php endif; ?>
 
-    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings') . '?add=1') ?>">Add Connection</a></p>
+    <p><a class="lp-button lp-button--primary" href="<?= esc_url(admin_url('plugins/lumora-gallery') . '?add=1') ?>">Add Connection</a></p>
 </section>
 <?php else: ?>
 <section class="lp-admin__panel">
     <h2><?= $isEditingExisting ? 'Edit Connection' : 'Add Connection' ?></h2>
-    <p><a href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>">&larr; Back to connections</a></p>
+    <p><a href="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>">&larr; Back to connections</a></p>
 
     <h3>Auto-detect from config.php</h3>
 
@@ -279,7 +279,7 @@ $defaultSlug = $service->defaultConnection();
         shortcut, not a requirement.
     </p>
 
-    <form method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>">
         <?= Csrf::field('detect_gallery_config') ?>
         <input type="hidden" name="form" value="detect_gallery_config">
         <input type="hidden" name="context_slug" value="<?= esc_attr($contextSlug) ?>">
@@ -316,7 +316,7 @@ $defaultSlug = $service->defaultConnection();
         : null;
     ?>
     <?php if ($galleryConfigDiscovered === null): ?>
-        <p><a class="lp-button" href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>?<?= $contextSlug !== '' ? 'edit=' . esc_attr($contextSlug) : 'add=1' ?>&amp;discover_gallery_config=1#gallery-config-path">Discover config.php</a></p>
+        <p><a class="lp-button" href="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>?<?= $contextSlug !== '' ? 'edit=' . esc_attr($contextSlug) : 'add=1' ?>&amp;discover_gallery_config=1#gallery-config-path">Discover config.php</a></p>
     <?php elseif ($galleryConfigDiscovered === []): ?>
         <p class="lp-admin__widget-placeholder">
             No sibling directory next to this install (<code><?= esc_html(dirname(LUMORA_ROOT)) ?></code>)
@@ -328,7 +328,7 @@ $defaultSlug = $service->defaultConnection();
         <ul class="lp-import-scan__list">
             <?php foreach ($galleryConfigDiscovered as $candidate): ?>
                 <li>
-                    <form method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>" class="lp-admin__inline-form">
+                    <form method="post" action="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>" class="lp-admin__inline-form">
                         <input type="hidden" name="csrf_token" value="<?= esc_attr($discoveredGalleryConfigToken) ?>">
                         <input type="hidden" name="form" value="detect_gallery_config_discovered">
                         <input type="hidden" name="context_slug" value="<?= esc_attr($contextSlug) ?>">
@@ -350,7 +350,7 @@ $defaultSlug = $service->defaultConnection();
 
     <h3>Connection</h3>
 
-    <form method="post" action="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>">
         <?= Csrf::field('lumora_gallery_shortcodes_connection') ?>
         <input type="hidden" name="form" value="lumora_gallery_shortcodes_connection">
         <input type="hidden" name="context_slug" value="<?= esc_attr($contextSlug) ?>">

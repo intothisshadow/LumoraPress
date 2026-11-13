@@ -13,7 +13,7 @@
  * @since 0.5.0
  */
 /** @var \LumoraPress\Core\Kernel $kernel */
-/** @var array<string, array{label: string, icon: string, capability: string|null, default_child?: string, children?: array<string, array{label: string, icon: string, capability: string|null}>}> $menu */
+/** @var array<string, array{label: string, icon: string, capability: string|null, default_child?: string, children?: array<string, array{label: string, icon: string, capability: string|null, group?: string}>}> $menu */
 /** @var string $page */
 /** @var string|null $subpage */
 /** @var array{label: string, capability: string|null} $activeEntry */
@@ -95,7 +95,7 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
             </a>
         <?php endif; ?>
         <?php if ($sidebarMaintenanceActive): ?>
-            <a class="lp-alert lp-alert--warning lp-admin__sidebar-alert" href="<?= esc_url(admin_url('settings/maintenance-mode')) ?>" title="Visitors currently see the maintenance page instead of the site. Turn it off from Settings &rsaquo; Maintenance Mode or the Dashboard.">
+            <a class="lp-alert lp-alert--warning lp-admin__sidebar-alert" href="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>" title="Visitors currently see the maintenance page instead of the site. Turn it off from Maintenance &rsaquo; Maintenance Mode or the Dashboard.">
                 Maintenance mode is <strong>ON</strong>
             </a>
         <?php endif; ?>
@@ -114,15 +114,46 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
         </div>
         <nav class="lp-admin__nav" aria-label="Admin menu">
             <ul>
+                <?php
+                // A hidden tab page highlights the entry that owns it.
+                $effectiveSub = $activeEntry['tab_parent'] ?? $subpage;
+                $effectiveRoute = $effectiveSub !== null ? "{$page}/{$effectiveSub}" : $page;
+                $canSee = static fn (array $entry): bool => $entry['capability'] === null || $currentUser->can($entry['capability']);
+                $childUrl = static fn (string $parentSlug, string $childSlug, array $child): string => admin_url($child['route'] ?? "{$parentSlug}/{$childSlug}");
+                ?>
                 <?php foreach ($menu as $slug => $item): ?>
-                    <?php if ($item['capability'] !== null && !$currentUser->can($item['capability'])) {
+                    <?php if (!empty($item['hidden']) || !$canSee($item)) {
                         continue;
                     } ?>
-                    <?php $isParentActive = $slug === $page; ?>
+                    <?php
+                    $isParentActive = $slug === $page;
+                    $parentHref = null;
+                    $firstVisibleHref = null;
+
+                    foreach ($item['children'] ?? [] as $childSlug => $child) {
+                        if (isset($child['route']) && strtok($child['route'], '/') === $page) {
+                            $isParentActive = true;
+                        }
+
+                        if ($firstVisibleHref === null && empty($child['hidden']) && $canSee($child)) {
+                            $firstVisibleHref = $childUrl($slug, $childSlug, $child);
+                        }
+
+                        if ($childSlug === ($item['default_child'] ?? null) && $canSee($child)) {
+                            $parentHref = $childUrl($slug, $childSlug, $child);
+                        }
+                    }
+
+                    $parentHref ??= $firstVisibleHref;
+
+                    if (isset($item['children']) && $parentHref === null) {
+                        continue;
+                    }
+                    ?>
                     <?php if (isset($item['children'])): ?>
                         <li class="lp-admin__nav-item lp-admin__nav-item--parent<?= $isParentActive ? ' is-active is-open' : '' ?>" data-menu-slug="<?= esc_attr($slug) ?>">
                             <span class="lp-admin__nav-parent-row">
-                                <a href="<?= esc_url(admin_url("{$slug}/{$item['default_child']}")) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span></a>
+                                <a href="<?= esc_url((string) $parentHref) ?>" title="<?= esc_attr($item['label']) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($item['icon']) ?></span><span class="lp-admin__nav-label"><?= esc_html($item['label']) ?></span></a>
                                 <button
                                     type="button"
                                     class="lp-admin__nav-toggle"
@@ -134,12 +165,18 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
                                 </button>
                             </span>
                             <ul class="lp-admin__nav-submenu" id="lp-admin-submenu-<?= esc_attr($slug) ?>">
+                                <?php $currentGroup = null; ?>
                                 <?php foreach ($item['children'] as $childSlug => $child): ?>
-                                    <?php if ($child['capability'] !== null && !$currentUser->can($child['capability'])) {
+                                    <?php if (!empty($child['hidden']) || !$canSee($child)) {
                                         continue;
                                     } ?>
-                                    <li class="lp-admin__nav-item<?= $isParentActive && $childSlug === $subpage ? ' is-active' : '' ?>">
-                                        <a href="<?= esc_url(admin_url("{$slug}/{$childSlug}")) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($child['icon']) ?></span><?= esc_html($child['label']) ?></a>
+                                    <?php if (isset($child['group']) && $child['group'] !== $currentGroup): ?>
+                                        <?php $currentGroup = $child['group']; ?>
+                                        <li class="lp-admin__nav-group-label"><?= esc_html($currentGroup) ?></li>
+                                    <?php endif; ?>
+                                    <?php $childActive = isset($child['route']) ? $child['route'] === $effectiveRoute : ($slug === $page && $childSlug === $effectiveSub); ?>
+                                    <li class="lp-admin__nav-item<?= $childActive ? ' is-active' : '' ?>">
+                                        <a href="<?= esc_url($childUrl($slug, $childSlug, $child)) ?>"><span class="lp-admin__nav-icon" aria-hidden="true"><?= esc_html($child['icon']) ?></span><?= esc_html($child['label']) ?></a>
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
@@ -198,5 +235,17 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
                         </li>
                     <?php endforeach; ?>
                 </ol>
+            </nav>
+        <?php endif; ?>
+        <?php
+        // Sibling pages that are really one task are joined by a strip of links, since each runs its own stepped or posted flow.
+        $tabOwnerSlug = $activeEntry['tab_parent'] ?? ($subpage ?? null);
+        $tabStrip = $tabOwnerSlug !== null ? ($menu[$page]['children'][$tabOwnerSlug]['tabs'] ?? null) : null;
+        ?>
+        <?php if (is_array($tabStrip)): ?>
+            <nav class="lp-admin__tabstrip" aria-label="Section pages">
+                <?php foreach ($tabStrip as $tabSlug => $tabLabel): ?>
+                    <a class="lp-admin__tabstrip-link" href="<?= esc_url(admin_url("{$page}/{$tabSlug}")) ?>"<?= $tabSlug === $subpage ? ' aria-current="page"' : '' ?>><?= esc_html($tabLabel) ?></a>
+                <?php endforeach; ?>
             </nav>
         <?php endif; ?>

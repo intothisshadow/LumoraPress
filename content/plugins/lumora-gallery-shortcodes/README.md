@@ -2,7 +2,7 @@
 
 Embed albums and images from one or more separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) sites into Lumora Press posts and pages.
 
-This is an **optional integration plugin**. Lumora Press remains fully functional with it deactivated, and Lumora Gallery is never required or assumed installed. Lumora Gallery has no API of its own, so this plugin reads its database directly, read-only, via one or more separately-configured connections entered on its own Settings screen (Lumora Gallery &rsaquo; Settings). No changes to a Lumora Gallery installation are required for this half of the integration.
+This is an **optional integration plugin**. Lumora Press remains fully functional with it deactivated, and Lumora Gallery is never required or assumed installed. Lumora Gallery has no API of its own, so this plugin reads its database directly, read-only, via one or more separately-configured connections entered on its own Settings screen (Plugins &rsaquo; Lumora Gallery &rsaquo; Settings). No changes to a Lumora Gallery installation are required for this half of the integration.
 
 ## Shortcodes
 
@@ -22,11 +22,11 @@ Available to whoever can already edit the post/page a shortcode is typed into �
 
 In the editor's Insert Shortcode picker these appear as **Lumora Gallery — Album**, **Lumora Gallery — Images by ID** and **Lumora Gallery — Newest Images**. Images by ID inserts `[lumora_gallery_album image_id=""]` with the ids left blank, ready for you to paste image ids between the quotes.
 
-**Lumora Gallery &rsaquo; Shortcodes** in the admin has the full attribute reference and copy-paste examples for both shortcodes.
+**Posts &rsaquo; Shortcodes** (the Lumora Gallery tab) in the admin has the full attribute reference and copy-paste examples for both shortcodes.
 
 ## Settings
 
-Lumora Gallery &rsaquo; Settings lists every configured Gallery connection, with Edit/Delete/"Make Default" actions and an "Add Connection" button — configure one per separately-installed Gallery site you want to embed from. Each connection needs:
+Plugins &rsaquo; Lumora Gallery &rsaquo; Settings lists every configured Gallery connection, with Edit/Delete/"Make Default" actions and an "Add Connection" button — configure one per separately-installed Gallery site you want to embed from. Each connection needs:
 
 - A label (shown in this list and in the Insert Shortcode picker's Gallery field) — its slug, used by a shortcode's own `gallery="..."` attribute, is derived from the label when the connection is first created and never changes afterward.
 - The Gallery database's host, port, name, username, password, and table prefix.

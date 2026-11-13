@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Settings > Maintenance Mode screen (LP-033).
+ * The admin Maintenance > Maintenance Mode screen.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -149,7 +149,7 @@ if ($form === 'maintenance_settings' && Csrf::verify('maintenance_settings', is_
 
     do_action('maintenance_mode_toggled', $enabled);
 
-    header('Location: ' . admin_url('settings/maintenance-mode') . '?saved=1' . ($ignoredWhitelistLines !== [] ? '&ignored=' . count($ignoredWhitelistLines) : ''));
+    header('Location: ' . admin_url('maintenance/maintenance-mode') . '?saved=1' . ($ignoredWhitelistLines !== [] ? '&ignored=' . count($ignoredWhitelistLines) : ''));
     exit;
 } elseif ($form === 'maintenance_toggle' && Csrf::verify('maintenance_toggle', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
     $enabled = $kernel->config->option('maintenance_mode_enabled', '0') === '0';
@@ -181,7 +181,7 @@ $pickerFolders = array_map(
 $colorPattern = '#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})';
 $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 ?>
-<form method="post" action="<?= esc_url(admin_url('settings/maintenance-mode')) ?>">
+<form method="post" action="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>">
     <?= Csrf::field('maintenance_settings') ?>
     <input type="hidden" name="form" value="maintenance_settings">
 
@@ -226,7 +226,7 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
                 class="lp-content-editor"
                 data-lp-content-editor
                 data-format="<?= esc_attr($messageFormat->value) ?>"
-                data-upload-url="<?= esc_url(admin_url('settings/maintenance-mode')) ?>"
+                data-upload-url="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>"
                 data-convert-csrf="<?= esc_attr(Csrf::token('convert_content')) ?>"
                 data-editor-config="<?= esc_attr(lp_markdown_editor_config()) ?>"
                 data-wysiwyg-config="<?= esc_attr(lp_wysiwyg_editor_config()) ?>"
@@ -291,7 +291,7 @@ $yourIp = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
             <div
                 class="lp-featured-image-picker"
                 data-lp-featured-image-picker
-                data-picker-url="<?= esc_url(admin_url('settings/maintenance-mode')) ?>"
+                data-picker-url="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>"
                 data-picker-action="<?= esc_attr(FeaturedImageDefaultsController::MAINTENANCE_BACKGROUND_PICKER_CSRF_ACTION) ?>"
                 data-picker-csrf="<?= esc_attr(Csrf::token(FeaturedImageDefaultsController::MAINTENANCE_BACKGROUND_PICKER_CSRF_ACTION)) ?>"
                 data-media-folders="<?= esc_attr((string) json_encode($pickerFolders)) ?>"

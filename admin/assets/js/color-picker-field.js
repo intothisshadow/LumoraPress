@@ -7,7 +7,7 @@
  * hex digits); the swatch is only a picker for it. No inline handlers or
  * styles, which the admin Content-Security-Policy blocks.
  *
- * Markup contract (see admin/views/settings/maintenance-mode.php):
+ * Markup contract (see admin/views/maintenance/maintenance-mode.php):
  *   <span data-lp-color-field data-color-default="#1a1a2e">
  *     <input type="color" data-lp-color-swatch>
  *     <input type="text" data-lp-color-text>

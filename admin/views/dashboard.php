@@ -99,7 +99,7 @@ $pluginWidgetsRendered = false;
     <div class="lp-alert lp-alert--warning">
         Maintenance mode is currently <strong>ON</strong> — visitors see the maintenance page
         instead of the site.
-        <form method="post" action="<?= esc_url(admin_url('settings/maintenance-mode')) ?>" class="lp-admin__inline-form">
+        <form method="post" action="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>" class="lp-admin__inline-form">
             <?= Csrf::field('maintenance_toggle') ?>
             <input type="hidden" name="form" value="maintenance_toggle">
             <button type="submit" class="lp-button">Turn Off Maintenance Mode</button>
@@ -107,7 +107,7 @@ $pluginWidgetsRendered = false;
     </div>
 <?php elseif ($currentUser->can('manage_options')): ?>
     <div class="lp-admin__panel lp-admin__panel--maintenance-toggle">
-        <form method="post" action="<?= esc_url(admin_url('settings/maintenance-mode')) ?>" class="lp-admin__inline-form">
+        <form method="post" action="<?= esc_url(admin_url('maintenance/maintenance-mode')) ?>" class="lp-admin__inline-form">
             <?= Csrf::field('maintenance_toggle') ?>
             <input type="hidden" name="form" value="maintenance_toggle">
             <button type="submit" class="lp-button">Turn On Maintenance Mode</button>

@@ -4,6 +4,16 @@ All notable changes to Lumora Press are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The Settings menu is easier to scan: its entries are now split under small headings (Site, Content & URLs, People & Privacy, Performance & Traffic). Settings › Cache is now a Cache tab on Settings › Performance, and Maintenance Mode has moved to Maintenance › Maintenance Mode. Old bookmarks to either page redirect to the new location.
+- Lumora Gallery no longer has its own top-level menu entry. Its connection settings now sit under Plugins › Lumora Gallery, next to "Installed Plugins".
+- Related admin screens are joined by tabs instead of separate menu entries: Maintenance › Import / Export, Appearance › Code (Custom CSS and Theme Editor), and the Media Manager's Library, Upload, and Import from Server. Reset Theme Options is now a button on Customize.
+- Users is now a section with "All Users" and "My Profile" (My Profile moved to `users/profile`).
+- Downloads, Link Directory, and Contact Forms now share one "Content Tools" section in the sidebar, and Visitor Stats sits under Dashboard.
+- The four separate "Shortcodes" reference screens (Media Manager, Downloads, Link Directory, Lumora Gallery) are now one Posts › Shortcodes page with a tab for each.
+- Every old address redirects or still works, so bookmarks and links keep working.
+
 ### Fixed
 
 - Search index rebuilds no longer fail on some hosts with "Cannot execute queries while other unbuffered queries are active"; the database connection now always buffers results and releases each single-row read straight away.

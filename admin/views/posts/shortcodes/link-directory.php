@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Link Directory > Shortcodes screen (LPP-026): documents [lumora_link_directory] for site admins.
+ * The Link Directory tab of Posts > Shortcodes: documents [lumora_link_directory] for site admins.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -29,8 +29,6 @@ $linkCategories = new LinkDirectoryCategoryService($kernel->database, (string) $
 $allLinkCategories = $linkCategories->listAll();
 $exampleCategory = $allLinkCategories[0] ?? null;
 ?>
-<h1 class="lp-admin__title">Link Directory &mdash; Shortcodes</h1>
-
 <section class="lp-admin__panel">
     <h2><code>[lumora_link_directory]</code></h2>
     <p class="lp-field__hint">

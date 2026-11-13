@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Media Manager > Shortcodes screen: documents the shortcodes built into core, and points to the ones plugins provide.
+ * The Media tab of Posts > Shortcodes: documents the shortcodes built into core, and points to the ones plugins provide.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -29,8 +29,6 @@ if (!isset($kernel)) {
 $exampleFolder = $kernel->folders->listAll()[0] ?? null;
 $exampleFolderId = (int) ($exampleFolder->id ?? 1);
 ?>
-<h1 class="lp-admin__title">Media Manager &mdash; Shortcodes</h1>
-
 <p class="lp-field__hint">
     A shortcode is a short tag in square brackets you type into a post or page to show something the editor can't
     write for you. The Media buttons in the Visual and Markdown editors fill these in for you; this page lists what
@@ -96,13 +94,13 @@ $exampleFolderId = (int) ($exampleFolder->id ?? 1);
             <li><span><code>[contact_form id="1"]</code></span><span>A contact form from the Contact Forms plugin. The <code>id</code> is the form's number; every form's ready-to-copy shortcode is listed on <a href="<?= esc_url(admin_url('contact-forms/all-forms')) ?>">Contact Forms &rsaquo; All Forms</a>.</span></li>
         <?php endif; ?>
         <?php if ($downloadsActive ?? false): ?>
-            <li><span><code>[lumora_downloads]</code>, <code>[lumora_recent_downloads]</code></span><span>Lists of downloads, from the Downloads plugin. See <a href="<?= esc_url(admin_url('downloads/shortcodes')) ?>">Downloads &rsaquo; Shortcodes</a>.</span></li>
+            <li><span><code>[lumora_downloads]</code>, <code>[lumora_recent_downloads]</code></span><span>Lists of downloads, from the Downloads plugin. See the <a href="<?= esc_url(admin_url('posts/shortcodes') . '?tab=downloads') ?>">Downloads tab</a>.</span></li>
         <?php endif; ?>
         <?php if ($linkDirectoryActive ?? false): ?>
-            <li><span><code>[lumora_link_directory]</code></span><span>A list of links, from the Link Directory plugin. See <a href="<?= esc_url(admin_url('link-directory/shortcodes')) ?>">Link Directory &rsaquo; Shortcodes</a>.</span></li>
+            <li><span><code>[lumora_link_directory]</code></span><span>A list of links, from the Link Directory plugin. See the <a href="<?= esc_url(admin_url('posts/shortcodes') . '?tab=link-directory') ?>">Link Directory tab</a>.</span></li>
         <?php endif; ?>
         <?php if ($galleryShortcodesActive ?? false): ?>
-            <li><span><code>[lumora_gallery_album]</code>, <code>[lumora_gallery_newest]</code></span><span>Albums and newest images from a Lumora Gallery install, from the Lumora Gallery Shortcodes plugin. See <a href="<?= esc_url(admin_url('lumora-gallery-shortcodes/shortcodes')) ?>">Lumora Gallery &rsaquo; Shortcodes</a>.</span></li>
+            <li><span><code>[lumora_gallery_album]</code>, <code>[lumora_gallery_newest]</code></span><span>Albums and newest images from a Lumora Gallery install, from the Lumora Gallery Shortcodes plugin. See the <a href="<?= esc_url(admin_url('posts/shortcodes') . '?tab=lumora-gallery') ?>">Lumora Gallery tab</a>.</span></li>
         <?php endif; ?>
     </ul>
 </section>

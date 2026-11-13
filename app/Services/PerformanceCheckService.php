@@ -203,7 +203,7 @@ final class PerformanceCheckService
     private function httpCaching(): array
     {
         if ($this->config->option('cache_enabled', '1') === '0') {
-            return $this->check('http-caching', 'HTTP caching', self::STATUS_WARNING, 'Switched off.', 'Turn HTTP caching back on under Settings › Cache so visitors and CDNs can reuse pages.');
+            return $this->check('http-caching', 'HTTP caching', self::STATUS_WARNING, 'Switched off.', 'Turn HTTP caching back on under Settings › Performance › Cache so visitors and CDNs can reuse pages.');
         }
 
         $driver = $this->cacheDriver === 'null' ? 'cache headers only' : $this->cacheDriver . ' driver active';

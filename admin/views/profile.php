@@ -54,7 +54,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } else {
                 $kernel->users->updateEditorPreference($currentUser->id, $format);
 
-                header('Location: ' . admin_url('profile') . '?saved=1');
+                header('Location: ' . admin_url('users/profile') . '?saved=1');
                 exit;
             }
         }
@@ -75,7 +75,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $kernel->users->updateSidebarMode($currentUser->id, $sidebarMode);
             }
 
-            header('Location: ' . admin_url('profile') . '?saved=1');
+            header('Location: ' . admin_url('users/profile') . '?saved=1');
             exit;
         }
     } elseif ($form === 'notification_preferences' && Csrf::verify('notification_preferences', is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -92,7 +92,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         $notifications->setMutedTypes($currentUser->id, array_values($muted));
 
-        header('Location: ' . admin_url('profile') . '?saved=1');
+        header('Location: ' . admin_url('users/profile') . '?saved=1');
         exit;
     }
 }
@@ -110,7 +110,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <section class="lp-admin__panel">
     <h2>Appearance</h2>
 
-    <form method="post" action="<?= esc_url(admin_url('profile')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('users/profile')) ?>">
         <?= Csrf::field('theme_preference') ?>
         <input type="hidden" name="form" value="theme_preference">
 
@@ -156,7 +156,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         </p>
     <?php endif; ?>
 
-    <form method="post" action="<?= esc_url(admin_url('profile')) ?>">
+    <form method="post" action="<?= esc_url(admin_url('users/profile')) ?>">
         <?= Csrf::field('editor_preference') ?>
         <input type="hidden" name="form" value="editor_preference">
 
@@ -181,7 +181,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <section class="lp-admin__panel">
         <h2>Notifications</h2>
 
-        <form method="post" action="<?= esc_url(admin_url('profile')) ?>">
+        <form method="post" action="<?= esc_url(admin_url('users/profile')) ?>">
             <?= Csrf::field('notification_preferences') ?>
             <input type="hidden" name="form" value="notification_preferences">
 

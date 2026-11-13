@@ -835,7 +835,7 @@ foreach ((array) apply_filters('cache_drivers', []) as $driverSlug => $pluginCac
 
 // Automatic detection prefers LiteSpeed, then the first plugin driver that
 // reports itself available, and otherwise falls back to the inert Null
-// driver. Settings > Cache can force a specific one where detection guesses
+// driver. Settings > Performance > Cache can force a specific one where detection guesses
 // wrong; a forced driver that no longer exists (its plugin was deactivated)
 // also falls back to Null rather than breaking the site.
 $cacheDriverOverride = (string) $config->option('cache_driver', 'auto');

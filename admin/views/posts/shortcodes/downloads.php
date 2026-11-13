@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Downloads > Shortcodes screen (LPP-009): documents [lumora_downloads] for site admins.
+ * The Downloads tab of Posts > Shortcodes: documents [lumora_downloads] for site admins.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -30,8 +30,6 @@ $downloadCategories = new DownloadCategoryService($kernel->database, (string) $k
 $allDownloadCategories = $downloadCategories->listAll();
 $exampleCategory = $allDownloadCategories[0] ?? null;
 ?>
-<h1 class="lp-admin__title">Downloads &mdash; Shortcodes</h1>
-
 <section class="lp-admin__panel">
     <h2><code>[lumora_downloads]</code></h2>
     <p class="lp-field__hint">

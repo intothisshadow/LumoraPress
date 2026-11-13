@@ -76,7 +76,7 @@ Shows up in the editor's Insert Shortcode picker as **Icon**, with a searchable 
 
 ### `[lumora_downloads]` — Downloads plugin
 
-Shows up in the picker twice: **Downloads from Category**, and **Single Download**, which asks for a download's id (the ID column on **Downloads &rsaquo; All Downloads**, which also has a Shortcode column with each one ready to copy) and inserts `[lumora_downloads download_id="…"]`. Three variants, checked in this order: a single download by id, the newest N downloads (optionally filtered to a category), or every download in a category. **Downloads &rsaquo; Shortcodes** in the admin has a live reference built from your site's own categories.
+Shows up in the picker twice: **Downloads from Category**, and **Single Download**, which asks for a download's id (the ID column on **Downloads &rsaquo; All Downloads**, which also has a Shortcode column with each one ready to copy) and inserts `[lumora_downloads download_id="…"]`. Three variants, checked in this order: a single download by id, the newest N downloads (optionally filtered to a category), or every download in a category. **Posts &rsaquo; Shortcodes** (the Downloads tab) in the admin has a live reference built from your site's own categories.
 
 | Attribute | Required | Description |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ Shows up in the picker as **Contact Form**. **Contact Forms &rsaquo; All Forms**
 
 ### `[lumora_gallery_album]` / `[lumora_gallery_newest]` — Lumora Gallery Shortcodes plugin
 
-Only works with a separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) site configured on **Lumora Gallery Shortcodes &rsaquo; Settings**. They show up in the picker as **Lumora Gallery — Album**, **Lumora Gallery — Images by ID** (inserts `[lumora_gallery_album image_id=""]` with the ids left blank so you can paste them in) and **Lumora Gallery — Newest Images**; the other attributes are typeable by hand. **Lumora Gallery Shortcodes &rsaquo; Shortcodes** in the admin has the full reference with copy-paste examples.
+Only works with a separately-installed [Lumora Gallery](https://coding.unloved-heart.net/scripts/lumoragallery) site configured on **Plugins &rsaquo; Lumora Gallery**. They show up in the picker as **Lumora Gallery — Album**, **Lumora Gallery — Images by ID** (inserts `[lumora_gallery_album image_id=""]` with the ids left blank so you can paste them in) and **Lumora Gallery — Newest Images**; the other attributes are typeable by hand. **Posts &rsaquo; Shortcodes** (the Lumora Gallery tab) in the admin has the full reference with copy-paste examples.
 
 `[lumora_gallery_album]` has three variants, checked in this order:
 

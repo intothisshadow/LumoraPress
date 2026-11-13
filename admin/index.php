@@ -478,7 +478,19 @@ $siteAnalyticsActive = in_array('site-analytics', $activePlugins, true);
 $notifications = new NotificationService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'), $kernel->hooks);
 
 $menu = [
-    'dashboard' => ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
+    // With Visitor Stats active the Dashboard becomes a section; /dashboard is
+    // still the Overview, so every existing link and form post keeps working.
+    'dashboard' => $visitorStatsActive ? [
+        'label' => 'Dashboard',
+        'icon' => '📊',
+        'capability' => null,
+        'default_child' => 'overview',
+        'index_child' => 'overview',
+        'children' => [
+            'overview' => ['label' => 'Overview', 'icon' => '📊', 'capability' => null, 'view' => 'dashboard.php'],
+            'visitor-stats' => ['label' => 'Visitor Stats', 'icon' => '📈', 'capability' => 'manage_options', 'route' => 'visitor-stats/stats'],
+        ],
+    ] : ['label' => 'Dashboard', 'icon' => '📊', 'capability' => null],
     // Every signed-in role has an inbox; 'count' is shown beside the label.
     'notifications' => ['label' => 'Notifications', 'icon' => '📣', 'capability' => null, 'count' => $notifications->unreadCount($currentUser->id)],
     'posts' => [
@@ -491,6 +503,7 @@ $menu = [
             'new' => ['label' => 'New Post', 'icon' => '🆕', 'capability' => 'edit_posts'],
             'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'edit_posts'],
             'tags' => ['label' => 'Tags', 'icon' => '🏷️', 'capability' => 'edit_posts'],
+            'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'edit_posts'],
         ],
     ],
     'pages' => [
@@ -509,16 +522,46 @@ $menu = [
         'capability' => 'upload_files',
         'default_child' => 'media',
         'children' => [
-            'media' => ['label' => 'Media', 'icon' => '🖼️', 'capability' => 'upload_files'],
-            'upload' => ['label' => 'Upload', 'icon' => '⬆️', 'capability' => 'upload_files'],
-            'import' => ['label' => 'Import from Server', 'icon' => '📥', 'capability' => 'upload_files'],
+            'media' => ['label' => 'Media', 'icon' => '🖼️', 'capability' => 'upload_files', 'tabs' => ['media' => 'Library', 'upload' => 'Upload', 'import' => 'Import from Server']],
+            'upload' => ['label' => 'Upload', 'icon' => '⬆️', 'capability' => 'upload_files', 'hidden' => true, 'tab_parent' => 'media'],
+            'import' => ['label' => 'Import from Server', 'icon' => '📥', 'capability' => 'upload_files', 'hidden' => true, 'tab_parent' => 'media'],
             'thumbnails' => ['label' => 'Thumbnails', 'icon' => '🔲', 'capability' => 'upload_files'],
-            'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
         ],
     ],
+    // One sidebar section for the three content plugins. It has no routes of
+    // its own: each child links to a screen the plugin already serves.
+    ...(($downloadsActive || $linkDirectoryActive || $contactFormsActive) ? [
+        'content-tools' => [
+            'label' => 'Content Tools',
+            'icon' => '🗃️',
+            'capability' => null,
+            'sidebar_only' => true,
+            'children' => [
+                ...($downloadsActive ? [
+                    'downloads-all' => ['label' => 'All Downloads', 'icon' => '📋', 'capability' => 'upload_files', 'route' => 'downloads/all-downloads', 'group' => 'Downloads'],
+                    'downloads-add' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files', 'route' => 'downloads/add-new', 'group' => 'Downloads'],
+                    'downloads-github' => ['label' => 'Import from GitHub', 'icon' => '🐙', 'capability' => 'upload_files', 'route' => 'downloads/import-github', 'group' => 'Downloads'],
+                    'downloads-categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files', 'route' => 'downloads/categories', 'group' => 'Downloads'],
+                ] : []),
+                ...($linkDirectoryActive ? [
+                    'links-all' => ['label' => 'All Links', 'icon' => '📋', 'capability' => 'upload_files', 'route' => 'link-directory/all-links', 'group' => 'Link Directory'],
+                    'links-add' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files', 'route' => 'link-directory/add-new', 'group' => 'Link Directory'],
+                    'links-categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files', 'route' => 'link-directory/categories', 'group' => 'Link Directory'],
+                    'links-export-import' => ['label' => 'Export / Import', 'icon' => '📤', 'capability' => 'upload_files', 'route' => 'link-directory/export-import', 'group' => 'Link Directory'],
+                ] : []),
+                ...($contactFormsActive ? [
+                    'forms-all' => ['label' => 'All Forms', 'icon' => '📋', 'capability' => 'manage_options', 'route' => 'contact-forms/all-forms', 'group' => 'Contact Forms'],
+                    'forms-add' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'manage_options', 'route' => 'contact-forms/add-new', 'group' => 'Contact Forms'],
+                    'forms-submissions' => ['label' => 'Submissions', 'icon' => '📬', 'capability' => 'manage_options', 'route' => 'contact-forms/submissions', 'group' => 'Contact Forms'],
+                    'forms-settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options', 'route' => 'contact-forms/settings', 'group' => 'Contact Forms'],
+                ] : []),
+            ],
+        ],
+    ] : []),
     ...($downloadsActive ? [
         'downloads' => [
             'label' => 'Downloads',
+            'hidden' => true,
             'icon' => '⬇️',
             'capability' => 'upload_files',
             'default_child' => 'all-downloads',
@@ -527,13 +570,13 @@ $menu = [
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
                 'import-github' => ['label' => 'Import from GitHub', 'icon' => '🐙', 'capability' => 'upload_files'],
                 'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
-                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
             ],
         ],
     ] : []),
     ...($linkDirectoryActive ? [
         'link-directory' => [
             'label' => 'Link Directory',
+            'hidden' => true,
             'icon' => '🔗',
             'capability' => 'upload_files',
             'default_child' => 'all-links',
@@ -541,26 +584,14 @@ $menu = [
                 'all-links' => ['label' => 'All Links', 'icon' => '📋', 'capability' => 'upload_files'],
                 'add-new' => ['label' => 'Add New', 'icon' => '🆕', 'capability' => 'upload_files'],
                 'categories' => ['label' => 'Categories', 'icon' => '📁', 'capability' => 'upload_files'],
-                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'upload_files'],
                 'export-import' => ['label' => 'Export / Import', 'icon' => '📤', 'capability' => 'upload_files'],
-            ],
-        ],
-    ] : []),
-    ...($galleryShortcodesActive ? [
-        'lumora-gallery-shortcodes' => [
-            'label' => 'Lumora Gallery',
-            'icon' => '🖼️',
-            'capability' => 'manage_options',
-            'default_child' => 'settings',
-            'children' => [
-                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
-                'shortcodes' => ['label' => 'Shortcodes', 'icon' => '📖', 'capability' => 'manage_options'],
             ],
         ],
     ] : []),
     ...($contactFormsActive ? [
         'contact-forms' => [
             'label' => 'Contact Forms',
+            'hidden' => true,
             'icon' => '✉️',
             'capability' => 'manage_options',
             'default_child' => 'all-forms',
@@ -575,12 +606,13 @@ $menu = [
     ...($visitorStatsActive ? [
         'visitor-stats' => [
             'label' => 'Visitor Stats',
+            'hidden' => true,
             'icon' => '📈',
             'capability' => 'manage_options',
             'default_child' => 'stats',
             'children' => [
-                'stats' => ['label' => 'Stats', 'icon' => '📈', 'capability' => 'manage_options'],
-                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options'],
+                'stats' => ['label' => 'Stats', 'icon' => '📈', 'capability' => 'manage_options', 'tabs' => ['stats' => 'Stats', 'settings' => 'Settings']],
+                'settings' => ['label' => 'Settings', 'icon' => '⚙️', 'capability' => 'manage_options', 'hidden' => true, 'tab_parent' => 'stats'],
             ],
         ],
     ] : []),
@@ -595,9 +627,10 @@ $menu = [
             'customize' => ['label' => 'Customize', 'icon' => '🎛️', 'capability' => 'manage_themes'],
             'widgets' => ['label' => 'Widgets', 'icon' => '🧩', 'capability' => 'manage_themes'],
             'menus' => ['label' => 'Menus', 'icon' => '🧭', 'capability' => 'manage_themes'],
-            'custom-css' => ['label' => 'Custom CSS', 'icon' => '🎨', 'capability' => 'manage_themes'],
-            'reset' => ['label' => 'Reset Theme Options', 'icon' => '♻️', 'capability' => 'manage_themes'],
-            'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes'],
+            'custom-css' => ['label' => 'Code', 'icon' => '💻', 'capability' => 'manage_themes', 'tabs' => ['custom-css' => 'Custom CSS', 'editor' => 'Theme Editor']],
+            'editor' => ['label' => 'Theme Editor', 'icon' => '💻', 'capability' => 'manage_themes', 'hidden' => true, 'tab_parent' => 'custom-css'],
+            // Reached from a button on Customize rather than the sidebar.
+            'reset' => ['label' => 'Reset Theme Options', 'icon' => '♻️', 'capability' => 'manage_themes', 'hidden' => true, 'tab_parent' => 'customize'],
             ...($fontAwesomeActive ? ['font-awesome' => ['label' => 'Font Awesome', 'icon' => '🅰️', 'capability' => 'manage_themes']] : []),
         ],
     ],
@@ -607,7 +640,19 @@ $menu = [
     // note on .lp-admin__nav-icon in admin.css) — 📦 is more visually
     // distinct there and still isn't reused by any other top-level or
     // child entry in this array.
-    'plugins' => ['label' => 'Plugins', 'icon' => '📦', 'capability' => 'manage_plugins'],
+    'plugins' => [
+        'label' => 'Plugins',
+        'icon' => '📦',
+        'capability' => 'manage_plugins',
+        'default_child' => 'installed',
+        // Served at /plugins itself so every existing link and form POST to
+        // that address keeps working instead of being redirected.
+        'index_child' => 'installed',
+        'children' => [
+            'installed' => ['label' => 'Installed Plugins', 'icon' => '📦', 'capability' => 'manage_plugins', 'view' => 'plugins.php'],
+            ...($galleryShortcodesActive ? ['lumora-gallery' => ['label' => 'Lumora Gallery', 'icon' => '🖼️', 'capability' => 'manage_options']] : []),
+        ],
+    ],
     'settings' => [
         'label' => 'Settings',
         // LP-154: no U+FE0F variation selector, unlike every other ⚙️ in
@@ -623,22 +668,20 @@ $menu = [
         'capability' => 'manage_options',
         'default_child' => 'general',
         'children' => [
-            'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options'],
-            'permalinks' => ['label' => 'Permalinks', 'icon' => '🔗', 'capability' => 'manage_options'],
-            'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options'],
-            'search' => ['label' => 'Search', 'icon' => '🔍', 'capability' => 'manage_options'],
-            'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options'],
-            'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options'],
-            'writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options'],
-            'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options'],
-            'cache' => ['label' => 'Cache', 'icon' => '⚡', 'capability' => 'manage_options'],
-            'performance' => ['label' => 'Performance', 'icon' => '🚀', 'capability' => 'manage_options'],
-            'registration' => ['label' => 'Registration', 'icon' => '🪪', 'capability' => 'manage_options'],
-            'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options'],
-            'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options'],
-            'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
-            'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options'],
-            ...($siteAnalyticsActive ? ['analytics' => ['label' => 'Analytics', 'icon' => '📈', 'capability' => 'manage_options']] : []),
+            'general' => ['label' => 'General', 'icon' => '🔧', 'capability' => 'manage_options', 'group' => 'Site'],
+            'reading' => ['label' => 'Reading', 'icon' => '📖', 'capability' => 'manage_options', 'group' => 'Site'],
+            'writing' => ['label' => 'Writing', 'icon' => '✍️', 'capability' => 'manage_options', 'group' => 'Site'],
+            'media' => ['label' => 'Media', 'icon' => '🗂️', 'capability' => 'manage_options', 'group' => 'Site'],
+            'embeds' => ['label' => 'Embeds', 'icon' => '▶️', 'capability' => 'manage_options', 'group' => 'Site'],
+            'permalinks' => ['label' => 'Permalinks', 'icon' => '🔗', 'capability' => 'manage_options', 'group' => 'Content & URLs'],
+            'redirects' => ['label' => 'Redirects', 'icon' => '↪️', 'capability' => 'manage_options', 'group' => 'Content & URLs'],
+            'search' => ['label' => 'Search', 'icon' => '🔍', 'capability' => 'manage_options', 'group' => 'Content & URLs'],
+            'discussion' => ['label' => 'Discussion', 'icon' => '💬', 'capability' => 'manage_options', 'group' => 'Content & URLs'],
+            'registration' => ['label' => 'Registration', 'icon' => '🪪', 'capability' => 'manage_options', 'group' => 'People & Privacy'],
+            'privacy' => ['label' => 'Privacy', 'icon' => '🔏', 'capability' => 'manage_options', 'group' => 'People & Privacy'],
+            'security' => ['label' => 'Security', 'icon' => '🔒', 'capability' => 'manage_options', 'group' => 'People & Privacy'],
+            'performance' => ['label' => 'Performance', 'icon' => '🚀', 'capability' => 'manage_options', 'group' => 'Performance & Traffic'],
+            ...($siteAnalyticsActive ? ['analytics' => ['label' => 'Analytics', 'icon' => '📈', 'capability' => 'manage_options', 'group' => 'Performance & Traffic']] : []),
         ],
     ],
     'maintenance' => [
@@ -648,17 +691,27 @@ $menu = [
         'default_child' => 'updates',
         'children' => [
             'updates' => ['label' => 'Updates', 'icon' => '🔔', 'capability' => 'manage_options'],
-            'import' => ['label' => 'Import', 'icon' => '📥', 'capability' => 'manage_options'],
-            'export' => ['label' => 'Export', 'icon' => '📤', 'capability' => 'manage_options'],
+            'import' => ['label' => 'Import / Export', 'icon' => '📥', 'capability' => 'manage_options', 'tabs' => ['import' => 'Import', 'export' => 'Export']],
+            'export' => ['label' => 'Export', 'icon' => '📤', 'capability' => 'manage_options', 'hidden' => true, 'tab_parent' => 'import'],
             'tools' => ['label' => 'Tools', 'icon' => '🪛', 'capability' => 'manage_options'],
+            'maintenance-mode' => ['label' => 'Maintenance Mode', 'icon' => '🚧', 'capability' => 'manage_options'],
             'system-information' => ['label' => 'System Information', 'icon' => '🖥️', 'capability' => 'manage_options'],
             'logs' => ['label' => 'Logs', 'icon' => '📋', 'capability' => 'manage_options'],
         ],
     ],
-    'users' => ['label' => 'Users', 'icon' => '👥', 'capability' => 'manage_users'],
-    // No capability requirement: every authenticated role manages their
-    // own editor preference here.
-    'profile' => ['label' => 'My Profile', 'icon' => '🙍', 'capability' => null],
+    // The section itself is open to every signed-in role because My Profile
+    // is; the user list below it still needs manage_users.
+    'users' => [
+        'label' => 'Users',
+        'icon' => '👥',
+        'capability' => null,
+        'default_child' => 'all-users',
+        'index_child' => 'all-users',
+        'children' => [
+            'all-users' => ['label' => 'All Users', 'icon' => '👥', 'capability' => 'manage_users', 'view' => 'users.php'],
+            'profile' => ['label' => 'My Profile', 'icon' => '🙍', 'capability' => null, 'view' => 'profile.php'],
+        ],
+    ],
 ];
 
 // Preserves bookmarked/linked URLs from before these were children of
@@ -668,6 +721,7 @@ $legacyRedirects = [
     'tools' => 'maintenance/tools',
     'categories' => 'posts/categories',
     'tags' => 'posts/tags',
+    'profile' => 'users/profile',
 ];
 
 if ($subpage === null && isset($legacyRedirects[$page])) {
@@ -682,6 +736,13 @@ if ($subpage === null && isset($legacyRedirects[$page])) {
 $legacyRouteRedirects = [
     'lumora-shield/settings' => 'settings/security?tab=lumora-shield',
     'lumora-shield/logs' => 'maintenance/logs#enumeration-attempts',
+    'settings/cache' => 'settings/performance?tab=cache',
+    'settings/maintenance-mode' => 'maintenance/maintenance-mode',
+    'lumora-gallery-shortcodes/settings' => 'plugins/lumora-gallery',
+    'lumora-gallery-shortcodes/shortcodes' => 'posts/shortcodes?tab=lumora-gallery',
+    'media/shortcodes' => 'posts/shortcodes?tab=media',
+    'downloads/shortcodes' => 'posts/shortcodes?tab=downloads',
+    'link-directory/shortcodes' => 'posts/shortcodes?tab=link-directory',
 ];
 
 if (isset($legacyRouteRedirects["{$page}/{$subpage}"])) {
@@ -696,17 +757,38 @@ if (!array_key_exists($page, $menu)) {
 $menuEntry = $menu[$page];
 $breadcrumbs = [['label' => 'Dashboard', 'url' => admin_url('dashboard')]];
 
+// A sidebar-only section has no screen of its own; send the visitor to the
+// first screen they are allowed to open.
+if (!empty($menuEntry['sidebar_only'])) {
+    foreach ($menuEntry['children'] as $sectionChild) {
+        if ($sectionChild['capability'] === null || $currentUser->can($sectionChild['capability'])) {
+            header('Location: ' . admin_url($sectionChild['route']));
+            exit;
+        }
+    }
+
+    $page = 'dashboard';
+    $menuEntry = $menu['dashboard'];
+}
+
 if (isset($menuEntry['children'])) {
+    if ($subpage === null && isset($menuEntry['index_child'])) {
+        $subpage = $menuEntry['index_child'];
+    }
+
     if ($subpage === null || !array_key_exists($subpage, $menuEntry['children'])) {
         header('Location: ' . admin_url("{$page}/{$menuEntry['default_child']}"));
         exit;
     }
 
     $activeEntry = $menuEntry['children'][$subpage];
-    $viewFile = __DIR__ . "/views/{$page}/{$subpage}.php";
+    $viewFile = __DIR__ . '/views/' . ($activeEntry['view'] ?? "{$page}/{$subpage}.php");
 
-    $breadcrumbs[] = ['label' => $menuEntry['label'], 'url' => admin_url("{$page}/{$menuEntry['default_child']}")];
-    $breadcrumbs[] = ['label' => $activeEntry['label'], 'url' => null];
+    // The Dashboard section's Overview is the Dashboard itself, so it needs no extra crumbs.
+    if (($activeEntry['view'] ?? null) !== 'dashboard.php') {
+        $breadcrumbs[] = ['label' => $menuEntry['label'], 'url' => admin_url("{$page}/{$menuEntry['default_child']}")];
+        $breadcrumbs[] = ['label' => $activeEntry['label'], 'url' => null];
+    }
 } else {
     $activeEntry = $menuEntry;
     $viewFile = __DIR__ . "/views/{$page}.php";

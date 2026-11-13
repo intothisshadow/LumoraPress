@@ -441,6 +441,8 @@ $renderFeaturedImageDefaults = function () use ($kernel, $currentUser, $featured
 ?>
 <h1 class="lp-admin__title">Appearance</h1>
 
+<p><a class="lp-button lp-button--secondary" href="<?= esc_url(admin_url('appearance/reset')) ?>">Reset Theme Options</a></p>
+
 <?php if (isset($_GET['saved']) && $error === null): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>

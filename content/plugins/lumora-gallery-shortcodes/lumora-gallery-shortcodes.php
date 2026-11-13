@@ -112,11 +112,11 @@ add_action('register_shortcodes', static function () use ($gallerySettings): voi
     ]);
 });
 
-// LP-166: this plugin's own top-level menu (Settings + Shortcodes) is the
-// only place its functionality lives, so both children are worth a
-// one-click link from the Plugins screen.
+// The connection settings live on Plugins > Lumora Gallery and the
+// reference on Posts > Shortcodes, so both get a one-click link from the
+// Plugins screen.
 add_filter('plugin_action_links_lumora-gallery-shortcodes', static fn (array $links): array => [
     ...$links,
-    ['label' => 'Settings', 'url' => admin_url('lumora-gallery-shortcodes/settings')],
-    ['label' => 'Shortcodes', 'url' => admin_url('lumora-gallery-shortcodes/shortcodes')],
+    ['label' => 'Settings', 'url' => admin_url('plugins/lumora-gallery')],
+    ['label' => 'Shortcodes', 'url' => admin_url('posts/shortcodes') . '?tab=lumora-gallery'],
 ]);

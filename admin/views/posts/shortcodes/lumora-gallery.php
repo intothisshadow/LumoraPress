@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Lumora Gallery Shortcodes > Shortcodes screen (LPP-015): documents [lumora_gallery_album]/[lumora_gallery_newest] for site admins.
+ * The Lumora Gallery tab of Posts > Shortcodes: documents [lumora_gallery_album]/[lumora_gallery_newest] for site admins.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -27,13 +27,11 @@ if (!isset($kernel)) {
 // an obviously-a-placeholder id/name.
 $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
 ?>
-<h1 class="lp-admin__title">Lumora Gallery Shortcodes &mdash; Shortcodes</h1>
-
 <?php if (!$configured): ?>
     <div class="lp-alert lp-alert--warning">
         No Gallery database connection is configured yet — both shortcodes
         below will render nothing until you set one up on
-        <a href="<?= esc_url(admin_url('lumora-gallery-shortcodes/settings')) ?>">Lumora Gallery Shortcodes &rsaquo; Settings</a>.
+        <a href="<?= esc_url(admin_url('plugins/lumora-gallery')) ?>">Plugins &rsaquo; Lumora Gallery</a>.
     </div>
 <?php endif; ?>
 
@@ -50,7 +48,7 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
-        <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug (see Lumora Gallery Shortcodes &rsaquo; Settings). Omit it to use whichever connection is marked Default — only needed when more than one Gallery site is configured.</span></li>
+        <li><span><code>gallery</code></span><span>Which configured Gallery connection to read from, by its slug (see Plugins &rsaquo; Lumora Gallery). Omit it to use whichever connection is marked Default — only needed when more than one Gallery site is configured.</span></li>
         <li><span><code>album_id</code></span><span>An album's exact numeric ID, from the connected Gallery site's own database. Give more than one, comma-separated (e.g. <code>"12,7,15"</code>), to combine images from several albums into one block — always from the same <code>gallery</code> connection.</span></li>
         <li><span><code>folder</code></span><span>An album's folder path instead of its ID (e.g. <code>"xena/season-1"</code>). Ignored when <code>album_id</code> is also given.</span></li>
         <li><span><code>count</code></span><span>Show the newest <em>N</em> images instead of every image — newest first. With a single <code>album_id</code>/<code>folder</code>, the newest N in that album; with multiple <code>album_id</code>s, the newest N across all of them combined.</span></li>
@@ -117,8 +115,8 @@ $configured = (new GallerySettingsService())->hasAnyConfiguredConnection();
     <p class="lp-field__hint">
         With only one Gallery connection configured, every example above
         works exactly as shown — <code>gallery</code> never needs to be
-        written. Once a second connection exists (see Lumora Gallery
-        Shortcodes &rsaquo; Settings), add <code>gallery="{slug}"</code>
+        written. Once a second connection exists (see Plugins
+        &rsaquo; Lumora Gallery), add <code>gallery="{slug}"</code>
         to either shortcode to say which connection to read from; a
         shortcode that omits it always falls back to whichever
         connection is marked Default.

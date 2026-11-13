@@ -176,7 +176,7 @@ final class MaintenanceGate
         $bar = '<div class="lp-theme-preview-bar" role="status">'
             . '<link rel="stylesheet" href="' . htmlspecialchars(admin_asset_url('css/theme-preview-bar.css'), ENT_QUOTES, 'UTF-8') . '">'
             . '<span class="lp-theme-preview-bar__label"><strong>Preview</strong> &mdash; this is what visitors see while maintenance mode is on. Nothing here has been saved.</span>'
-            . '<a class="lp-theme-preview-bar__exit" href="' . htmlspecialchars(admin_url('settings/maintenance-mode'), ENT_QUOTES, 'UTF-8') . '">Back to settings</a>'
+            . '<a class="lp-theme-preview-bar__exit" href="' . htmlspecialchars(admin_url('maintenance/maintenance-mode'), ENT_QUOTES, 'UTF-8') . '">Back to settings</a>'
             . '</div>';
 
         echo preg_replace('/(<body\b[^>]*>)/i', '$1' . $bar, $html, 1) ?? $html;

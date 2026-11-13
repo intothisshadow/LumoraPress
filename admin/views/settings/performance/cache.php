@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The admin Settings > Cache screen (LP-037): cache driver configuration.
+ * The Cache tab of Settings > Performance: cache driver configuration.
  *
  * @package LumoraPress
  * @subpackage Admin
@@ -25,6 +25,7 @@ if (!isset($kernel)) {
 }
 
 $cache = $kernel->cache;
+$cacheUrl = admin_url('settings/performance') . '?tab=cache';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $form = is_string($_POST['form'] ?? null) ? $_POST['form'] : '';
@@ -50,21 +51,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $exclusions = is_string($_POST['cache_exclusions'] ?? null) ? implode("\n", CacheExclusions::parse(mb_substr($_POST['cache_exclusions'], 0, 5000))) : '';
         $kernel->config->setOption('cache_exclusions', $exclusions);
 
-        header('Location: ' . admin_url('settings/cache') . '?saved=1');
+        header('Location: ' . $cacheUrl . '&saved=1');
         exit;
     }
 
     if ($form === 'purge_all' && Csrf::verify('purge_all', $token)) {
         $cache->purgeAll();
 
-        header('Location: ' . admin_url('settings/cache') . '?purged=1');
+        header('Location: ' . $cacheUrl . '&purged=1');
         exit;
     }
 
     if ($form === 'purge_home' && Csrf::verify('purge_home', $token)) {
         $cache->purgeUrl(BasePath::get() . '/');
 
-        header('Location: ' . admin_url('settings/cache') . '?purged=1');
+        header('Location: ' . $cacheUrl . '&purged=1');
         exit;
     }
 
@@ -81,9 +82,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // The edge cache keys on the full URL path, so a subdirectory
             // install's base path is always part of what gets purged.
             $cache->purgeUrl(BasePath::get() . BasePath::stripFrom($path));
-            header('Location: ' . admin_url('settings/cache') . '?purged=1');
+            header('Location: ' . $cacheUrl . '&purged=1');
         } else {
-            header('Location: ' . admin_url('settings/cache') . '?purge_invalid=1');
+            header('Location: ' . $cacheUrl . '&purge_invalid=1');
         }
 
         exit;
@@ -103,17 +104,17 @@ $exclusionsValue = (string) $kernel->config->option('cache_exclusions', '');
 // Plugins can add their own rows (e.g. a CDN's connection status) here.
 $extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], $cache), static fn ($value, $label): bool => is_string($label) && is_scalar($value), ARRAY_FILTER_USE_BOTH);
 ?>
-<h1 class="lp-admin__title">Cache</h1>
-
-<?php if (isset($_GET['saved'])): ?>
+<?php // Query-string notices belong to whichever tab the redirect named, so the other tab never shows a stale one. ?>
+<?php $showNotices = $activeTab === 'cache'; ?>
+<?php if ($showNotices && isset($_GET['saved'])): ?>
     <div class="lp-alert lp-alert--success">Saved.</div>
 <?php endif; ?>
 
-<?php if (isset($_GET['purged'])): ?>
+<?php if ($showNotices && isset($_GET['purged'])): ?>
     <div class="lp-alert lp-alert--success">Cache purged.</div>
 <?php endif; ?>
 
-<?php if (isset($_GET['purge_invalid'])): ?>
+<?php if ($showNotices && isset($_GET['purge_invalid'])): ?>
     <div class="lp-alert lp-alert--error">That isn't a page on this site. Enter a path such as <code>/about</code>, or a full address on this site.</div>
 <?php endif; ?>
 
@@ -161,7 +162,7 @@ $extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], 
     </div>
 <?php endif; ?>
 
-<form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+<form method="post" action="<?= esc_url($cacheUrl) ?>">
     <?= Csrf::field('cache_settings') ?>
     <input type="hidden" name="form" value="cache_settings">
 
@@ -243,19 +244,19 @@ $extraDiagnostics = array_filter((array) apply_filters('cache_diagnostics', [], 
 <section class="lp-admin__panel">
     <h2>Manual Purge</h2>
     <p>Purges immediately, whether or not a driver is active — harmless with the Null driver (nothing to purge), and clears LiteSpeed's cache instantly when it is.</p>
-    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>" data-lp-confirm="Purge the entire cache?">
+    <form method="post" action="<?= esc_url($cacheUrl) ?>" data-lp-confirm="Purge the entire cache?">
         <?= Csrf::field('purge_all') ?>
         <input type="hidden" name="form" value="purge_all">
         <button type="submit" class="lp-button lp-button--danger">Purge Entire Cache</button>
     </form>
 
-    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+    <form method="post" action="<?= esc_url($cacheUrl) ?>">
         <?= Csrf::field('purge_home') ?>
         <input type="hidden" name="form" value="purge_home">
         <button type="submit" class="lp-button lp-button--secondary">Purge Homepage</button>
     </form>
 
-    <form method="post" action="<?= esc_url(admin_url('settings/cache')) ?>">
+    <form method="post" action="<?= esc_url($cacheUrl) ?>">
         <?= Csrf::field('purge_url') ?>
         <input type="hidden" name="form" value="purge_url">
         <p class="lp-field">

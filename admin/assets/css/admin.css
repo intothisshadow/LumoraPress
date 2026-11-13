@@ -499,6 +499,43 @@ body.lp-admin-login {
     font-size: 0.88rem;
 }
 
+/* Link tabs joining sibling admin pages that each run their own flow. */
+.lp-admin__tabstrip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--lp-admin-border);
+}
+
+.lp-admin__tabstrip-link {
+    padding: 0.5rem 1rem;
+    border-radius: var(--lp-admin-radius) var(--lp-admin-radius) 0 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.lp-admin__tabstrip-link:hover,
+.lp-admin__tabstrip-link:focus-visible {
+    background: var(--lp-admin-panel-bg);
+}
+
+.lp-admin__tabstrip-link[aria-current="page"] {
+    font-weight: 600;
+    background: var(--lp-admin-panel-bg);
+    box-shadow: inset 0 -2px 0 currentColor;
+}
+
+/* Non-clickable heading that splits a long submenu (Settings) into purpose groups. */
+.lp-admin__nav-group-label {
+    padding: 0.7rem 1rem 0.2rem 2rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+}
+
 .lp-admin__breadcrumbs {
     display: inline-flex;
     margin-bottom: 1.5rem;
@@ -911,6 +948,10 @@ body.lp-admin-login {
     }
 
     html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-submenu .lp-admin__nav-item a {
+        padding-left: 1rem;
+    }
+
+    html:not(.lp-admin-sidebar-expanded) .lp-admin__nav-group-label {
         padding-left: 1rem;
     }
 }

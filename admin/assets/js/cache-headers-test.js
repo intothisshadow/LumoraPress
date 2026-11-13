@@ -1,5 +1,5 @@
 /**
- * Settings > Cache "Test Cache Headers" panel: requests the homepage without
+ * Settings > Performance > Cache "Test Cache Headers" panel: requests the homepage without
  * cookies, then repeats the request with the returned ETag to confirm the
  * server answers 304. Results are written with textContent only, so header
  * values can never be interpreted as markup.
