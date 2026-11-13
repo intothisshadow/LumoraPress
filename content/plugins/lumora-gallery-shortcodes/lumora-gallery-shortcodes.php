@@ -75,17 +75,22 @@ add_filter('content_html', static fn (string $html): string => $galleryShortcode
  * "typeable by hand" carve-out as the variants above.
  */
 add_action('register_shortcodes', static function () use ($gallerySettings): void {
-    $albumChoices = [];
     $defaultSlug = $gallerySettings->defaultConnection();
-    $database = $defaultSlug !== null ? $gallerySettings->connect($defaultSlug) : null;
+    // Opening the Gallery connection and listing albums waits until the picker needs them.
+    $albumChoices = static function () use ($gallerySettings, $defaultSlug): array {
+        $choices = [];
+        $database = $defaultSlug !== null ? $gallerySettings->connect($defaultSlug) : null;
 
-    if ($database !== null) {
-        $query = new GalleryQueryService($database, $gallerySettings->connection($defaultSlug)['table_prefix']);
+        if ($database !== null) {
+            $query = new GalleryQueryService($database, $gallerySettings->connection($defaultSlug)['table_prefix']);
 
-        foreach ($query->listAlbums() as $album) {
-            $albumChoices[(string) $album['id']] = $album['title'] !== '' ? $album['title'] : $album['folder'];
+            foreach ($query->listAlbums() as $album) {
+                $choices[(string) $album['id']] = $album['title'] !== '' ? $album['title'] : $album['folder'];
+            }
         }
-    }
+
+        return $choices;
+    };
 
     $galleryChoices = [];
 

@@ -66,11 +66,15 @@ add_filter('content_html', static fn (string $html): string => $nextGenGallerySh
 // 'register_shortcodes' rather than calling register_shortcode() directly.
 // Only [sdm_show_dl_from_category] is covered; the other two are typed by hand.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel) use ($downloadsShortcode): void {
-    $folderChoices = [];
+    $folderChoices = static function () use ($kernel, $downloadsShortcode): array {
+        $choices = [];
 
-    foreach ($kernel->folders->listAll() as $folder) {
-        $folderChoices[$downloadsShortcode->slugify($folder->name)] = $folder->name;
-    }
+        foreach ($kernel->folders->listAll() as $folder) {
+            $choices[$downloadsShortcode->slugify($folder->name)] = $folder->name;
+        }
+
+        return $choices;
+    };
 
     register_shortcode('sdm_show_dl_from_category', 'Downloads from Category (Imported)', [
         new ShortcodeField('category_slug', 'Category', ShortcodeFieldType::Select, required: true, choices: $folderChoices, help: 'A Media folder — matched by its slugified name, the same way the imported content itself does.'),

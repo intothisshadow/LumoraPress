@@ -68,11 +68,15 @@ add_filter('content_html', static fn (string $html): string => $contactFormShort
 // so this hooks 'register_shortcodes' rather than calling register_shortcode() directly.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
     $formsService = new ContactFormService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
-    $formChoices = [];
+    $formChoices = static function () use ($formsService): array {
+        $choices = [];
 
-    foreach ($formsService->listAll() as $form) {
-        $formChoices[(string) $form->id] = $form->title;
-    }
+        foreach ($formsService->listAll() as $form) {
+            $choices[(string) $form->id] = $form->title;
+        }
+
+        return $choices;
+    };
 
     register_shortcode('contact_form', 'Contact Form', [
         new ShortcodeField('id', 'Form', ShortcodeFieldType::Select, required: true, choices: $formChoices),

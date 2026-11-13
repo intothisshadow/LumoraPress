@@ -77,7 +77,7 @@ final class ShortcodeManager
                         'type' => $field->type->value,
                         'default' => $field->default,
                         'required' => $field->required,
-                        'choices' => $field->choices,
+                        'choices' => $field->resolvedChoices(),
                         'help' => $field->help,
                         'alwaysInclude' => $field->alwaysInclude,
                     ],

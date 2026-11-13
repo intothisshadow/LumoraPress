@@ -108,13 +108,21 @@ add_action('media_deleted', static function (int $mediaId): void {
 // hooks 'register_shortcodes' rather than calling register_shortcode() directly.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
     $categoryService = new DownloadCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
-    $categoryChoices = [];
+    $categoryChoices = static function () use ($categoryService): array {
+        static $choices = null;
 
-    foreach ($categoryService->listAll() as $category) {
-        $categoryChoices[(string) $category->id] = $category->name;
-    }
+        if ($choices === null) {
+            $choices = [];
 
-    register_shortcode('lumora_downloads', 'Downloads from Category', [
+            foreach ($categoryService->listAll() as $category) {
+                $choices[(string) $category->id] = $category->name;
+            }
+        }
+
+        return $choices;
+    };
+
+    register_shortcode('lumora_downloads','Downloads from Category', [
         new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, required: true, choices: $categoryChoices),
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);
@@ -132,7 +140,7 @@ add_action('register_shortcodes', static function (mixed $registry, Kernel $kern
     ], 'lumora_downloads');
 
     register_shortcode('lumora_recent_downloads', 'Recent Downloads', [
-        new ShortcodeField('category_id', 'Category (optional)', ShortcodeFieldType::Select, choices: ['' => 'Every category'] + $categoryChoices),
+        new ShortcodeField('category_id', 'Category (optional)', ShortcodeFieldType::Select, choices: static fn (): array => ['' => 'Every category'] + $categoryChoices()),
         new ShortcodeField('per_page', 'Downloads per page', ShortcodeFieldType::Number, default: '10'),
         new ShortcodeField('show_size', 'Show file size', ShortcodeFieldType::Checkbox, default: '0'),
     ]);

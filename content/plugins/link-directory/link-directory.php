@@ -57,11 +57,15 @@ add_filter('content_html', static fn (string $html): string => $linkDirectorySho
 // hooks 'register_shortcodes' rather than calling register_shortcode() directly.
 add_action('register_shortcodes', static function (mixed $registry, Kernel $kernel): void {
     $categoryService = new LinkDirectoryCategoryService($kernel->database, (string) $kernel->config->get('table_prefix', 'lp_'));
-    $categoryChoices = ['' => '(every category, with counts)'];
+    $categoryChoices = static function () use ($categoryService): array {
+        $choices = ['' => '(every category, with counts)'];
 
-    foreach ($categoryService->listAll() as $category) {
-        $categoryChoices[(string) $category->id] = $category->name;
-    }
+        foreach ($categoryService->listAll() as $category) {
+            $choices[(string) $category->id] = $category->name;
+        }
+
+        return $choices;
+    };
 
     register_shortcode('lumora_link_directory', 'Link Directory', [
         new ShortcodeField('category_id', 'Category', ShortcodeFieldType::Select, choices: $categoryChoices, help: 'Leave blank to list every category with its link count instead of one category\'s links.'),

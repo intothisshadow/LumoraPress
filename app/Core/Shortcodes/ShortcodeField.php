@@ -33,7 +33,9 @@ namespace LumoraPress\Core\Shortcodes;
 final class ShortcodeField
 {
     /**
-     * @param array<string, string> $choices value => label, Select only
+     * @param array<string, string>|\Closure(): array<string, string> $choices value => label, Select only.
+     *        A closure defers database-backed lookups until the editor picker actually needs them,
+     *        so front-end requests never pay for an admin-only dropdown.
      */
     public function __construct(
         public readonly string $name,
@@ -41,9 +43,17 @@ final class ShortcodeField
         public readonly ShortcodeFieldType $type = ShortcodeFieldType::Text,
         public readonly string $default = '',
         public readonly bool $required = false,
-        public readonly array $choices = [],
+        public readonly array|\Closure $choices = [],
         public readonly string $help = '',
         public readonly bool $alwaysInclude = false,
     ) {
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function resolvedChoices(): array
+    {
+        return $this->choices instanceof \Closure ? ($this->choices)() : $this->choices;
     }
 }
