@@ -2325,6 +2325,19 @@ body.lp-admin-login {
     border-radius: var(--lp-admin-radius) !important;
 }
 
+/* TinyMCE's configured height covers its toolbar too. On a phone the wrapped toolbar fills
+   almost all of it, so the editor grows to fit the toolbar and the writing area keeps a
+   usable minimum. !important is needed to beat the height TinyMCE sets inline. */
+@media (max-width: 782px) {
+    .tox-tinymce {
+        height: auto !important;
+    }
+
+    .tox-tinymce .tox-edit-area {
+        min-height: 300px;
+    }
+}
+
 /*
  * LP-115: enlarged from 640px and given a fixed header/scrolling-grid
  * split (the same shape .lp-menus-add-panel__list's scrollable list
