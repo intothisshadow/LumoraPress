@@ -7,6 +7,7 @@ All notable changes to Lumora Press are documented in this file.
 ### Added
 
 - Insert several images or files at once in the post and page editors. In the Insert Image window, "Select Several" lets you click images (or Shift-click a range) to select them, shows how many are selected with a Clear button, and numbers each image in the order it will be inserted. One Insert button then asks for a shared Size, Link To, and Alignment and adds every image in that order, each keeping its own alt text and caption, as one undoable step in the Visual editor. Images uploaded from inside the window join the selection. Insert File is now a list of checkboxes that inserts one link per ticked file in the order ticked. Picking a single image or file works as before.
+- Several selected images can instead be inserted as one gallery: the Insert Image window's new "Insert As" choice ("Separate images" or "One gallery") inserts a `[lumora_folder_gallery]` shortcode with an `ids` list of the chosen images, in the order selected, with a Size and Link To. The shortcode now accepts `ids` (a hand-picked, ordered list of Media image IDs) as an alternative to `folder_id`, and the Posts › Shortcodes reference describes it.
 
 ### Fixed
 

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Renders the `[lumora_folder_gallery]` shortcode as a row of thumbnails for every image in a Media folder.
+ * Renders the `[lumora_folder_gallery]` shortcode as a row of thumbnails for every image in a Media folder, or for an explicit `ids` list.
  *
  * @package LumoraPress
  * @subpackage Services
@@ -77,16 +77,22 @@ final class FolderGalleryShortcode
      */
     private function renderOne(array $attributes): string
     {
+        $imageIds = $this->parseIds($attributes['ids'] ?? '');
         $folderId = (int) ($attributes['folder_id'] ?? 0);
 
-        if ($folderId <= 0) {
+        // An explicit `ids` list wins over a folder, so a hand-picked set can't be widened by mistake.
+        if ($imageIds === [] && $folderId <= 0) {
             return '';
         }
 
-        $folder = $this->folders->findById($folderId);
+        $folder = null;
 
-        if ($folder === null) {
-            return '';
+        if ($imageIds === []) {
+            $folder = $this->folders->findById($folderId);
+
+            if ($folder === null) {
+                return '';
+            }
         }
 
         $link = $attributes['link'] ?? 'none';
@@ -101,13 +107,61 @@ final class FolderGalleryShortcode
             $size = 'small';
         }
 
-        $items = $this->media->query(['folderIds' => [$folder->id], 'type' => 'image'], self::MAX_IMAGES)['items'];
+        $items = $folder === null
+            ? $this->imagesById($imageIds)
+            : $this->media->query(['folderIds' => [$folder->id], 'type' => 'image'], self::MAX_IMAGES)['items'];
 
         if ($items === []) {
             return '';
         }
 
         return $this->renderGallery($items, $link, $size);
+    }
+
+    /**
+     * The listed images in the order given. An id that no longer exists, or is not an image, is skipped
+     * rather than leaving a broken tile.
+     *
+     * @param array<int, int> $ids
+     * @return array<int, array<string, mixed>>
+     */
+    private function imagesById(array $ids): array
+    {
+        $byId = [];
+
+        foreach ($this->media->findMany($ids) as $row) {
+            if (str_starts_with((string) ($row['mime_type'] ?? ''), 'image/')) {
+                $byId[(int) $row['id']] = $row;
+            }
+        }
+
+        $ordered = [];
+
+        foreach ($ids as $id) {
+            if (isset($byId[$id])) {
+                $ordered[] = $byId[$id];
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * @return array<int, int> positive, de-duplicated ids in the order written, capped at MAX_IMAGES
+     */
+    private function parseIds(string $raw): array
+    {
+        $ids = [];
+
+        foreach (explode(',', $raw) as $piece) {
+            $piece = trim($piece);
+
+            if (ctype_digit($piece) && (int) $piece > 0) {
+                $ids[(int) $piece] = (int) $piece;
+            }
+        }
+
+        return array_slice(array_values($ids), 0, self::MAX_IMAGES);
     }
 
     /**

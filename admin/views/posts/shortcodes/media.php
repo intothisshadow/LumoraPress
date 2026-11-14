@@ -45,7 +45,8 @@ $exampleFolderId = (int) ($exampleFolder->id ?? 1);
 
     <h3>Attributes</h3>
     <ul class="lp-admin__meta-list lp-admin__meta-list--attributes">
-        <li><span><code>folder_id</code></span><span>The folder's numeric ID (required); the Insert Folder button fills it in for you. A folder that doesn't exist, or has no images, shows nothing.</span></li>
+        <li><span><code>folder_id</code></span><span>The folder's numeric ID; the Insert Folder button fills it in for you. Required unless <code>ids</code> is given. A folder that doesn't exist, or has no images, shows nothing.</span></li>
+        <li><span><code>ids</code></span><span>A hand-picked list of Media image IDs separated by commas, shown in the order written, instead of a whole folder. Select several images in Insert Image and choose "One gallery" to build it. An ID that was deleted, or isn't an image, is skipped. When both <code>ids</code> and <code>folder_id</code> are given, <code>ids</code> is used.</span></li>
         <li><span><code>size</code></span><span>The thumbnail size: <code>small</code> (default), <code>medium</code>, <code>large</code> or <code>full</code>.</span></li>
         <li><span><code>link</code></span><span><code>none</code> (default) shows plain thumbnails; <code>full</code> makes each one open the full-size image in the lightbox.</span></li>
     </ul>
@@ -53,6 +54,7 @@ $exampleFolderId = (int) ($exampleFolder->id ?? 1);
     <h3>Examples</h3>
     <pre><code>[lumora_folder_gallery folder_id="<?= $exampleFolderId ?>"]</code></pre>
     <pre><code>[lumora_folder_gallery folder_id="<?= $exampleFolderId ?>" size="medium" link="full"]</code></pre>
+    <pre><code>[lumora_folder_gallery ids="12,15,20" size="medium" link="full"]</code></pre>
 </section>
 
 <section class="lp-admin__panel">

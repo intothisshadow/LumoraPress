@@ -453,9 +453,18 @@
         });
     }
 
+    // The shortcode that shows the chosen Media images, in the order given, as one gallery.
+    function buildGalleryShortcode(items, choices) {
+        var size = SIZE_ORDER.indexOf(choices.size) !== -1 ? choices.size : 'small';
+
+        return '[lumora_folder_gallery ids="' + items.map(function (item) { return item.id; }).join(',')
+            + '" size="' + size + '" link="' + (choices.link === 'file' ? 'full' : 'none') + '"]';
+    }
+
     // options.multiple adds a "Select Several" mode that inserts every chosen image in the
     // order selected (onSelect runs once per image). options.group wraps that run so an editor
-    // can make it one undo step. Without options the picker works exactly as a single pick.
+    // can make it one undo step. options.insertGallery(shortcode) offers "Insert As: One gallery"
+    // for a multi-selection. Without options the picker works exactly as a single pick.
     function openMediaPicker(container, onSelect, options) {
         var multiple = !!(options && options.multiple);
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
@@ -876,7 +885,8 @@
 
             var intro = document.createElement('p');
             intro.className = 'lp-field__hint';
-            intro.textContent = 'Inserting ' + items.length + ' images in the order selected. These settings apply to all of them; each keeps its own alt text and caption.';
+            var introText = 'Inserting ' + items.length + ' images in the order selected. These settings apply to all of them; each keeps its own alt text and caption.';
+            intro.textContent = introText;
 
             var sizePairs = SIZE_ORDER.filter(function (name) {
                 return items.some(function (item) { return item.sizes && item.sizes[name]; });
@@ -890,14 +900,45 @@
             rememberSelectChoice(sizeField.select, 'lp-editor-image-size');
             rememberSelectChoice(linkField.select, 'lp-editor-image-link');
 
+            // A gallery lays the images out itself, so alignment and captions do not apply to it.
+            var canGallery = !!(options && typeof options.insertGallery === 'function');
+            var modeField = simpleSelectField('Insert As', [['images', 'Separate images'], ['gallery', 'One gallery']]);
+            var insertButton = document.createElement('button');
+
+            function isGallery() {
+                return canGallery && modeField.select.value === 'gallery';
+            }
+
+            function refreshMode() {
+                alignField.element.hidden = isGallery();
+                insertButton.textContent = isGallery() ? 'Insert Gallery' : 'Insert ' + items.length + ' Images';
+                intro.textContent = isGallery()
+                    ? 'The ' + items.length + ' images are inserted as one gallery, in the order selected, shown as a grid of thumbnails.'
+                    : introText;
+            }
+
+            modeField.select.addEventListener('change', function () {
+                // Full-size originals make a heavy gallery, so switching to one starts at Thumbnail.
+                if (isGallery() && sizeField.select.value === 'full') {
+                    sizeField.select.value = 'small';
+                }
+
+                refreshMode();
+            });
+
             var actions = document.createElement('div');
             actions.className = 'lp-editor-media-dialog__settings-actions';
 
-            var insertButton = document.createElement('button');
             insertButton.type = 'button';
             insertButton.className = 'lp-button lp-button--primary';
-            insertButton.textContent = 'Insert ' + items.length + ' Images';
             insertButton.addEventListener('click', function () {
+                if (isGallery()) {
+                    options.insertGallery(buildGalleryShortcode(items, { size: sizeField.select.value, link: linkField.select.value }));
+                    dialog.close();
+
+                    return;
+                }
+
                 var payloads = buildBatchPayloads(items, {
                     size: sizeField.select.value,
                     link: linkField.select.value,
@@ -924,10 +965,16 @@
             actions.appendChild(backButton);
 
             settings.appendChild(intro);
+
+            if (canGallery) {
+                settings.appendChild(modeField.element);
+            }
+
             settings.appendChild(sizeField.element);
             settings.appendChild(linkField.element);
             settings.appendChild(alignField.element);
             settings.appendChild(actions);
+            refreshMode();
         }
 
         function showSettingsStep(item) {
@@ -3343,6 +3390,7 @@
                         }, {
                             multiple: true,
                             group: function (run) { editor.codemirror.operation(run); },
+                            insertGallery: function (shortcode) { editor.codemirror.replaceSelection(shortcode); },
                         });
                     },
                     className: 'fa fa-photo',
@@ -3965,6 +4013,7 @@
                                 }, {
                                     multiple: true,
                                     group: function (run) { editor.undoManager.transact(run); },
+                                    insertGallery: function (shortcode) { editor.focus(); editor.insertContent(shortcode); },
                                 });
                             },
                         });
