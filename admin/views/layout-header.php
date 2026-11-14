@@ -80,6 +80,9 @@ $sidebarPluginAlerts = apply_filters('admin_sidebar_alerts', [], $currentUser);
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= esc_html($activeEntry['label']) ?> &lsaquo; Lumora Press</title>
     <link rel="stylesheet" href="<?= esc_url(admin_asset_url('css/admin.css')) ?>">
+    <?php if ($currentUser->sidebarMode === null): ?>
+        <script src="<?= esc_url(admin_asset_url('js/sidebar-init.js')) ?>"></script>
+    <?php endif; ?>
 </head>
 <body class="lp-admin">
 <a class="lp-skip-link" href="#lp-admin-content">Skip to content</a>
