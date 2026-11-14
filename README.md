@@ -51,6 +51,7 @@ Developers familiar with classic WordPress will find the overall structure famil
 - Image editing: crop (with aspect-ratio presets), rotate, and flip, saved as a new copy or over the original, from the Media Manager or from a dialog wherever an image is chosen (the editors' Insert Image and Edit Image dialogs, featured images, category images)
 - Multi-file uploads with per-file progress
 - FTP media import
+- Insert several images or files in one go: "Select Several" in the Insert Image window (click or Shift-click, inserted in the order selected) and checkboxes in the Insert File window
 - Image captions, added while inserting an image in either editor and shown under the image, in the lightbox, and under featured images
 - Image lightbox viewer
 - Audio and video player, embeddable in post/page content

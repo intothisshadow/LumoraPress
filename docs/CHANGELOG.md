@@ -2,6 +2,18 @@
 
 All notable changes to Lumora Press are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Insert several images or files at once in the post and page editors. In the Insert Image window, "Select Several" lets you click images (or Shift-click a range) to select them, shows how many are selected with a Clear button, and numbers each image in the order it will be inserted. One Insert button then asks for a shared Size, Link To, and Alignment and adds every image in that order, each keeping its own alt text and caption, as one undoable step in the Visual editor. Images uploaded from inside the window join the selection. Insert File is now a list of checkboxes that inserts one link per ticked file in the order ticked. Picking a single image or file works as before.
+
+### Fixed
+
+- The Visual editor now keeps a usable writing area on phones: its wrapped toolbar no longer uses up the whole editor height.
+- Lumora Classic's header image is capped on phones, so a tall header image height set for desktop no longer crops a wide image down to a sliver.
+- An account with no saved sidebar choice no longer flashes the collapsed sidebar before it expands.
+
 ## [1.1.0] — 2026-11-13
 
 ### Bundled versions

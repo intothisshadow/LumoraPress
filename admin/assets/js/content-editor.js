@@ -402,7 +402,62 @@
         return hint;
     }
 
-    function openMediaPicker(container, onSelect) {
+    // A labelled <select> row from [value, label] pairs, for settings steps built in script.
+    function simpleSelectField(labelText, pairs) {
+        var field = document.createElement('p');
+        field.className = 'lp-field';
+        var label = document.createElement('label');
+        label.textContent = labelText;
+        var select = document.createElement('select');
+
+        pairs.forEach(function (pair) {
+            var option = document.createElement('option');
+            option.value = pair[0];
+            option.textContent = pair[1];
+            select.appendChild(option);
+        });
+
+        field.appendChild(label);
+        field.appendChild(select);
+
+        return { element: field, select: select };
+    }
+
+    // One image payload per chosen item for a multi-insert. A size an item doesn't have falls
+    // back to its full size, and the caption is the item's own, as a single insert pre-fills it.
+    // Per-image width/height are left out because one value rarely suits several pictures.
+    function buildBatchPayloads(items, choices) {
+        return items.map(function (item, index) {
+            var sizes = item.sizes || {};
+            var sizeName = sizes[choices.size] ? choices.size : 'full';
+            var chosen = sizes[sizeName] || { url: item.url, width: 0, height: 0 };
+            var full = sizes.full || { url: item.url, width: 0, height: 0 };
+            var linked = choices.link === 'file';
+
+            return {
+                url: chosen.url,
+                width: chosen.width,
+                height: chosen.height,
+                size: sizeName,
+                align: choices.align,
+                alt: item.alt || item.name,
+                widthSpec: '',
+                heightSpec: '',
+                caption: (item.caption || '').replace(/\s+/g, ' ').trim(),
+                linkUrl: linked ? full.url : null,
+                linkWidth: linked ? full.width : 0,
+                linkHeight: linked ? full.height : 0,
+                batchIndex: index,
+                batchSize: items.length,
+            };
+        });
+    }
+
+    // options.multiple adds a "Select Several" mode that inserts every chosen image in the
+    // order selected (onSelect runs once per image). options.group wraps that run so an editor
+    // can make it one undo step. Without options the picker works exactly as a single pick.
+    function openMediaPicker(container, onSelect, options) {
+        var multiple = !!(options && options.multiple);
         var folders = JSON.parse(container.dataset.mediaFolders || '[]');
         var pickerUrl = container.dataset.uploadUrl;
         var pickerCsrf = container.dataset.mediaPickerCsrf;
@@ -442,11 +497,52 @@
         uploadInput.type = 'file';
         uploadInput.accept = 'image/*';
         uploadInput.hidden = true;
+        uploadInput.multiple = multiple;
         uploadLabel.appendChild(uploadInput);
+
+        var selectToggle = document.createElement('button');
+        selectToggle.type = 'button';
+        selectToggle.className = 'lp-button lp-button--secondary lp-editor-media-dialog__select-toggle';
+        selectToggle.textContent = 'Select Several';
+        selectToggle.setAttribute('aria-pressed', 'false');
 
         header.appendChild(searchInput);
         header.appendChild(folderSelect);
         header.appendChild(uploadLabel);
+
+        if (multiple) {
+            header.appendChild(selectToggle);
+        }
+
+        // Count, clear and insert controls for a multi-selection. Hidden until Select Several is on.
+        var selectionBar = document.createElement('div');
+        selectionBar.className = 'lp-editor-media-dialog__selection';
+        selectionBar.hidden = true;
+
+        var selectionCount = document.createElement('span');
+        selectionCount.className = 'lp-editor-media-dialog__selection-count';
+        selectionCount.setAttribute('role', 'status');
+
+        var selectionHint = document.createElement('span');
+        selectionHint.className = 'lp-field__hint lp-editor-media-dialog__selection-hint';
+        selectionHint.textContent = 'Click images to select them; Shift-click selects a range. They are inserted in the order selected.';
+
+        var clearSelectionButton = document.createElement('button');
+        clearSelectionButton.type = 'button';
+        clearSelectionButton.className = 'lp-button';
+        clearSelectionButton.textContent = 'Clear';
+
+        var insertSelectionButton = document.createElement('button');
+        insertSelectionButton.type = 'button';
+        insertSelectionButton.className = 'lp-button lp-button--primary';
+
+        selectionBar.appendChild(selectionCount);
+        selectionBar.appendChild(clearSelectionButton);
+        selectionBar.appendChild(insertSelectionButton);
+        selectionBar.appendChild(selectionHint);
+
+        var selection = { active: false, items: [], anchorId: null };
+        var tiles = [];
 
         var status = document.createElement('p');
         status.className = 'lp-editor-media-dialog__status';
@@ -484,16 +580,143 @@
                 button.title = item.name + ' — ' + window.lpFileMeta.describe(item);
             }
 
-            button.addEventListener('click', function () {
-                showSettingsStep(item);
+            // Shows this tile's place in the selection order while selecting several.
+            var badge = document.createElement('span');
+            badge.className = 'lp-editor-media-dialog__order';
+            badge.setAttribute('aria-hidden', 'true');
+            badge.hidden = true;
+            button.appendChild(badge);
+
+            tiles.push({ button: button, item: item, badge: badge });
+
+            button.addEventListener('click', function (event) {
+                if (!selection.active) {
+                    showSettingsStep(item);
+
+                    return;
+                }
+
+                if (event.shiftKey && selection.anchorId !== null) {
+                    selectRange(item);
+                } else {
+                    toggleSelected(item);
+                }
+
+                selection.anchorId = item.id;
+                refreshSelection();
             });
 
             grid.appendChild(button);
         }
 
+        function selectedIndex(item) {
+            for (var i = 0; i < selection.items.length; i += 1) {
+                if (selection.items[i].id === item.id) {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        function toggleSelected(item) {
+            var index = selectedIndex(item);
+
+            if (index === -1) {
+                selection.items.push(item);
+            } else {
+                selection.items.splice(index, 1);
+            }
+        }
+
+        // Adds every loaded tile between the last-clicked one and this one, in grid order.
+        function selectRange(item) {
+            var from = -1;
+            var to = -1;
+
+            tiles.forEach(function (tile, index) {
+                if (tile.item.id === selection.anchorId) {
+                    from = index;
+                }
+
+                if (tile.item.id === item.id) {
+                    to = index;
+                }
+            });
+
+            if (from === -1 || to === -1) {
+                toggleSelected(item);
+
+                return;
+            }
+
+            var step = from <= to ? 1 : -1;
+
+            for (var i = from; i !== to + step; i += step) {
+                if (selectedIndex(tiles[i].item) === -1) {
+                    selection.items.push(tiles[i].item);
+                }
+            }
+        }
+
+        function refreshSelection() {
+            var count = selection.items.length;
+
+            selectionCount.textContent = count === 1 ? '1 image selected' : count + ' images selected';
+            clearSelectionButton.disabled = count === 0;
+            insertSelectionButton.disabled = count === 0;
+            insertSelectionButton.textContent = count > 1 ? 'Insert ' + count + ' Images' : 'Insert';
+
+            tiles.forEach(function (tile) {
+                var index = selectedIndex(tile.item);
+
+                tile.button.classList.toggle('is-selected', index !== -1);
+
+                if (selection.active) {
+                    tile.button.setAttribute('aria-pressed', index !== -1 ? 'true' : 'false');
+                } else {
+                    tile.button.removeAttribute('aria-pressed');
+                }
+
+                tile.badge.hidden = index === -1;
+                tile.badge.textContent = index === -1 ? '' : String(index + 1);
+            });
+        }
+
+        function setSelecting(on) {
+            selection.active = on;
+            selection.anchorId = null;
+
+            if (!on) {
+                selection.items = [];
+            }
+
+            selectToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+            selectionBar.hidden = !on;
+            dialog.classList.toggle('is-selecting', on);
+            refreshSelection();
+        }
+
+        selectToggle.addEventListener('click', function () { setSelecting(!selection.active); });
+
+        clearSelectionButton.addEventListener('click', function () {
+            selection.items = [];
+            selection.anchorId = null;
+            refreshSelection();
+        });
+
+        insertSelectionButton.addEventListener('click', function () {
+            if (selection.items.length === 1) {
+                showSettingsStep(selection.items[0]);
+            } else if (selection.items.length > 1) {
+                showBatchSettingsStep();
+            }
+        });
+
         function showGridStep() {
             settings.hidden = true;
             header.hidden = false;
+            selectionBar.hidden = !selection.active;
             grid.hidden = false;
             status.hidden = state.loaded !== 0;
             loadMoreButton.hidden = state.loaded >= state.total;
@@ -506,6 +729,7 @@
                 state.page = 1;
                 state.loaded = 0;
                 grid.innerHTML = '';
+                tiles = [];
             }
 
             status.textContent = 'Loading…';
@@ -544,6 +768,7 @@
 
                     var items = json.items || [];
                     items.forEach(renderItem);
+                    refreshSelection();
                     state.loaded += items.length;
                     state.total = json.total || 0;
 
@@ -584,30 +809,131 @@
         });
 
         uploadInput.addEventListener('change', function () {
-            var file = uploadInput.files[0];
+            var files = Array.prototype.slice.call(uploadInput.files);
 
-            if (!file) {
+            if (files.length === 0) {
                 return;
             }
 
             uploadLabel.classList.add('is-uploading');
 
-            uploadFile(container, file)
-                .then(function (json) {
-                    showSettingsStep(json.item);
-                })
-                .catch(function (error) {
-                    window.alert(error.message || 'Upload failed.');
-                })
-                .finally(function () {
-                    uploadLabel.classList.remove('is-uploading');
-                    uploadInput.value = '';
+            // One at a time: each upload response carries the single-use token the next one needs.
+            var uploaded = [];
+            var failures = [];
+
+            (multiple ? files : files.slice(0, 1)).reduce(function (chain, file) {
+                return chain.then(function () {
+                    return uploadFile(container, file)
+                        .then(function (json) { uploaded.push(json.item); })
+                        .catch(function (error) { failures.push(error.message || 'Upload failed.'); });
                 });
+            }, Promise.resolve()).then(function () {
+                if (failures.length > 0) {
+                    window.alert(failures.length === 1 ? failures[0] : failures.length + ' uploads failed. ' + failures[0]);
+                }
+
+                if (uploaded.length === 0) {
+                    return;
+                }
+
+                // A lone upload goes straight to its settings, as it always has. Several join
+                // the selection so they can be inserted together without leaving the picker.
+                if (uploaded.length === 1 && !selection.active) {
+                    showSettingsStep(uploaded[0]);
+
+                    return;
+                }
+
+                if (!selection.active) {
+                    setSelecting(true);
+                }
+
+                uploaded.forEach(function (item) {
+                    if (selectedIndex(item) === -1) {
+                        selection.items.push(item);
+                    }
+                });
+                refreshSelection();
+                fetchPage(true);
+            }).then(function () {
+                uploadLabel.classList.remove('is-uploading');
+                uploadInput.value = '';
+            });
         });
+
+        // Shared Size / Link / Alignment for every selected image. Each image keeps its own
+        // alt text and caption.
+        function showBatchSettingsStep() {
+            var items = selection.items.slice();
+
+            settings.innerHTML = '';
+            header.hidden = true;
+            selectionBar.hidden = true;
+            grid.hidden = true;
+            status.hidden = true;
+            loadMoreButton.hidden = true;
+            settings.hidden = false;
+
+            var intro = document.createElement('p');
+            intro.className = 'lp-field__hint';
+            intro.textContent = 'Inserting ' + items.length + ' images in the order selected. These settings apply to all of them; each keeps its own alt text and caption.';
+
+            var sizePairs = SIZE_ORDER.filter(function (name) {
+                return items.some(function (item) { return item.sizes && item.sizes[name]; });
+            }).map(function (name) { return [name, SIZE_LABELS[name]]; });
+
+            var sizeField = simpleSelectField('Size', sizePairs);
+            var linkField = simpleSelectField('Link To', [['none', 'None'], ['file', 'Media File']]);
+            var alignField = simpleSelectField('Alignment', [['alignnone', 'None'], ['alignleft', 'Left'], ['aligncenter', 'Center'], ['alignright', 'Right']]);
+
+            sizeField.select.value = 'full';
+            rememberSelectChoice(sizeField.select, 'lp-editor-image-size');
+            rememberSelectChoice(linkField.select, 'lp-editor-image-link');
+
+            var actions = document.createElement('div');
+            actions.className = 'lp-editor-media-dialog__settings-actions';
+
+            var insertButton = document.createElement('button');
+            insertButton.type = 'button';
+            insertButton.className = 'lp-button lp-button--primary';
+            insertButton.textContent = 'Insert ' + items.length + ' Images';
+            insertButton.addEventListener('click', function () {
+                var payloads = buildBatchPayloads(items, {
+                    size: sizeField.select.value,
+                    link: linkField.select.value,
+                    align: alignField.select.value,
+                });
+                var run = function () { payloads.forEach(function (payload) { onSelect(payload); }); };
+
+                if (options && typeof options.group === 'function') {
+                    options.group(run);
+                } else {
+                    run();
+                }
+
+                dialog.close();
+            });
+
+            var backButton = document.createElement('button');
+            backButton.type = 'button';
+            backButton.className = 'lp-button';
+            backButton.textContent = 'Back';
+            backButton.addEventListener('click', showGridStep);
+
+            actions.appendChild(insertButton);
+            actions.appendChild(backButton);
+
+            settings.appendChild(intro);
+            settings.appendChild(sizeField.element);
+            settings.appendChild(linkField.element);
+            settings.appendChild(alignField.element);
+            settings.appendChild(actions);
+        }
 
         function showSettingsStep(item) {
             settings.innerHTML = '';
             header.hidden = true;
+            selectionBar.hidden = true;
             grid.hidden = true;
             status.hidden = true;
             loadMoreButton.hidden = true;
@@ -772,6 +1098,7 @@
         closeButton.addEventListener('click', function () { dialog.close(); });
 
         dialog.appendChild(header);
+        dialog.appendChild(selectionBar);
         dialog.appendChild(status);
         dialog.appendChild(grid);
         dialog.appendChild(loadMoreButton);
@@ -1502,6 +1829,12 @@
         fileField.appendChild(fileLabelEl);
         fileField.appendChild(fileSelect);
 
+        // Files can be inserted several at a time: a checkbox list replaces the dropdown, and
+        // the files are inserted in the order they were ticked. Audio and video stay single.
+        var severalFiles = type === 'file';
+        var picked = [];
+        var fileList = null;
+
         var actions = document.createElement('div');
         actions.className = 'lp-editor-media-dialog__settings-actions';
 
@@ -1510,7 +1843,59 @@
         insertButton.className = 'lp-button lp-button--primary';
         insertButton.textContent = 'Insert';
         insertButton.disabled = items.length === 0;
+
+        function updateInsertButton() {
+            insertButton.disabled = picked.length === 0;
+            insertButton.textContent = picked.length > 1 ? 'Insert ' + picked.length + ' Files' : 'Insert';
+        }
+
+        if (severalFiles && items.length > 0) {
+            fileList = document.createElement('fieldset');
+            fileList.className = 'lp-editor-media-dialog__file-list';
+
+            var legend = document.createElement('legend');
+            legend.textContent = labels.field + 's: tick one or more';
+            fileList.appendChild(legend);
+
+            items.forEach(function (item) {
+                var row = document.createElement('label');
+                row.className = 'lp-editor-media-dialog__file-option';
+                var box = document.createElement('input');
+                box.type = 'checkbox';
+                box.value = String(item.id);
+                box.addEventListener('change', function () {
+                    picked = picked.filter(function (existing) { return existing.id !== item.id; });
+
+                    if (box.checked) {
+                        picked.push(item);
+                    }
+
+                    updateInsertButton();
+                });
+                var optionMeta = window.lpFileMeta.describe(item);
+                row.appendChild(box);
+                row.appendChild(document.createTextNode(' ' + (optionMeta !== '' ? item.name + ' (' + optionMeta + ')' : item.name)));
+                fileList.appendChild(row);
+            });
+
+            updateInsertButton();
+        }
+
         insertButton.addEventListener('click', function () {
+            if (severalFiles) {
+                var chosenFiles = picked.map(function (item) { return { id: item.id, name: item.name || '', url: item.url || '' }; });
+
+                if (chosenFiles.length === 0) {
+                    return;
+                }
+
+                // The first file's fields stay at the top level, as a single pick always had them.
+                onInsert({ id: chosenFiles[0].id, name: chosenFiles[0].name, url: chosenFiles[0].url, items: chosenFiles });
+                dialog.close();
+
+                return;
+            }
+
             var id = parseInt(fileSelect.value, 10) || 0;
             var chosen = items.filter(function (item) { return item.id === id; })[0] || {};
             onInsert({ id: id, name: chosen.name || '', url: chosen.url || '' });
@@ -1534,7 +1919,7 @@
             status.textContent = labels.empty;
             dialog.appendChild(status);
         } else {
-            dialog.appendChild(fileField);
+            dialog.appendChild(fileList || fileField);
         }
 
         dialog.appendChild(actions);
@@ -2952,7 +3337,12 @@
                             // an explicit width/height are trailing {…} markers —
                             // see buildMarkdownImage().
                             var inserted = buildMarkdownImage(payload);
-                            cm.replaceSelection(payload.caption ? '\n\n' + inserted + '\n\n' : inserted);
+                            // Each image of a multi-insert becomes its own paragraph.
+                            var separator = payload.batchIndex > 0 && !payload.caption ? '\n\n' : '';
+                            cm.replaceSelection(payload.caption ? '\n\n' + inserted + '\n\n' : separator + inserted);
+                        }, {
+                            multiple: true,
+                            group: function (run) { editor.codemirror.operation(run); },
                         });
                     },
                     className: 'fa fa-photo',
@@ -3001,9 +3391,15 @@
                     action: function () {
                         openMediaPlayerPicker(container, 'file', function (payload) {
                             var cm = editor.codemirror;
-                            // Square brackets in a file name would end the link text early.
-                            var label = cm.getSelection() || payload.name.replace(/[\[\]]/g, '');
-                            cm.replaceSelection('[' + label + '](' + payload.url + ')');
+                            var selectedText = cm.getSelection();
+                            // Square brackets in a file name would end the link text early. Selected
+                            // text labels the first file only; several files become one paragraph each.
+                            var links = payload.items.map(function (file, index) {
+                                var label = (index === 0 && selectedText) || file.name.replace(/[\[\]]/g, '');
+
+                                return '[' + label + '](' + file.url + ')';
+                            });
+                            cm.replaceSelection(links.join('\n\n'));
                         });
                     },
                     className: 'fa fa-file-text-o',
@@ -3537,8 +3933,14 @@
                                             + '<figcaption>' + escapeHtmlAttr(payload.caption) + '</figcaption></figure>';
                                     };
 
+                                    // Each image of a multi-insert after the first becomes its own
+                                    // paragraph (a captioned one is already a block).
+                                    var asBlock = function (html) {
+                                        return payload.batchIndex > 0 && !payload.caption ? '<p>' + html + '</p>' : html;
+                                    };
+
                                     if (!payload.linkUrl) {
-                                        editor.insertContent(withCaption(image));
+                                        editor.insertContent(asBlock(withCaption(image)));
 
                                         return;
                                     }
@@ -3559,7 +3961,10 @@
                                         + ' data-pswp-caption="' + escapeHtmlAttr(payload.caption || payload.alt) + '"'
                                         + '>' + image + '</a>';
 
-                                    editor.insertContent(withCaption(link));
+                                    editor.insertContent(asBlock(withCaption(link)));
+                                }, {
+                                    multiple: true,
+                                    group: function (run) { editor.undoManager.transact(run); },
                                 });
                             },
                         });
@@ -3627,7 +4032,12 @@
                             onAction: function () {
                                 openMediaPlayerPicker(container, 'file', function (payload) {
                                     var selected = editor.selection.getContent({ format: 'text' });
-                                    editor.insertContent('<a href="' + escapeHtmlAttr(payload.url) + '">' + escapeHtmlAttr(selected || payload.name) + '</a>');
+                                    // Selected text labels the first file only; several files are
+                                    // joined with line breaks inside one insert.
+                                    var links = payload.items.map(function (file, index) {
+                                        return '<a href="' + escapeHtmlAttr(file.url) + '">' + escapeHtmlAttr((index === 0 && selected) || file.name) + '</a>';
+                                    });
+                                    editor.insertContent(links.join('<br>'));
                                 });
                             },
                         });

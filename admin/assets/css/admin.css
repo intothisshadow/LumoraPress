@@ -7226,6 +7226,76 @@ a.lp-button--link.lp-button--link--view:hover {
     color: var(--lp-admin-sidebar-fg-muted);
 }
 
+/* Select Several mode in the Insert Image picker: count/clear/insert bar, selected tiles with
+   their order number, and the checkbox list in the Insert File picker. */
+.lp-editor-media-dialog__selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin: 0 0 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    background: var(--lp-admin-bg);
+}
+
+.lp-editor-media-dialog__selection[hidden] {
+    display: none;
+}
+
+.lp-editor-media-dialog__selection-count {
+    font-weight: 600;
+}
+
+.lp-editor-media-dialog__selection-hint {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
+.lp-editor-media-dialog__select-toggle[aria-pressed="true"] {
+    border-color: var(--lp-admin-accent);
+    color: var(--lp-admin-accent);
+}
+
+.lp-editor-media-dialog__item.is-selected {
+    border-color: var(--lp-admin-accent);
+    box-shadow: 0 0 0 3px var(--lp-admin-accent);
+}
+
+.lp-editor-media-dialog__order {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    min-width: 1.5rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: var(--lp-admin-accent);
+    color: var(--lp-admin-bg);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.lp-editor-media-dialog__order[hidden] {
+    display: none;
+}
+
+.lp-editor-media-dialog__file-list {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lp-admin-border);
+    border-radius: var(--lp-admin-radius);
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.lp-editor-media-dialog__file-option {
+    display: block;
+    padding: 0.3rem 0;
+}
+
 /* File size/dimensions caption shared by the Media pickers (admin/assets/js/file-meta.js). */
 .lp-editor-media-dialog__item,
 .lp-featured-image-picker-dialog__item {
