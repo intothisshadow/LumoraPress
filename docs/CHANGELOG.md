@@ -2,7 +2,11 @@
 
 All notable changes to Lumora Press are documented in this file.
 
-## [Unreleased]
+## [1.2.0] — 2026-11-14
+
+### Bundled versions
+
+- Bundled components with new versions in this release: the Lumora Classic theme 0.8.1. It can be updated on its own from the Themes screen when a release carries its package.
 
 ### Added
 

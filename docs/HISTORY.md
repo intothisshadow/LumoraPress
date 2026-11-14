@@ -21556,3 +21556,38 @@ Media Manager, Downloads, Link Directory and Lumora Gallery each had their own "
 - [x] The four old reference screens leave their menus; their addresses redirect to the matching tab
 - [x] Lumora Gallery drops its Shortcodes tab and becomes the Settings screen alone; links to the old screens (Plugins screen action links, Insert Shortcode reference, READMEs, in-page notices) point to the new page
 - [x] Tests for the page, the redirects, and the removed menu entries; documented in `docs/CHANGELOG.md`, `docs/DEVELOPER-APIS.md`, and the affected plugin READMEs
+
+## 1.2.0 (2026-11-14)
+
+## LP-240. Editors: insert several images or files at once
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+Today the post/page editors insert one image or file per trip through the Media picker, so a post with a dozen images means a dozen round trips. Let the picker select several items and insert them all in one go, in every editor mode (Visual, Markdown, HTML). Items should land in the order they were selected.
+
+Implemented 2026-11-14 in `admin/assets/js/content-editor.js` and `admin.css`. The Insert Image picker gains an opt-in "Select Several" mode (`openMediaPicker(container, onSelect, {multiple, group})`): tiles toggle on click, Shift-click selects a range, each selected tile shows its order number, and a bar shows the count with Clear and Insert. One shared Size / Link To / Alignment step (`buildBatchPayloads()`) then calls `onSelect` once per image with `batchIndex`/`batchSize`, wrapped in `cm.operation()` (Markdown) or one `undoManager.transact()` (Visual). Insert File became a checkbox list (files only; audio and video stay single) passing `payload.items`. The edit and swap pickers stay single-select. The HTML editor is the Visual editor's source-code mode, so it shares the Visual path. Browser-verified on the dev install in Visual and Markdown: selection order, range select, one-step undo, single insert unchanged, file links, and a two-file upload joining the selection (test files deleted afterwards). Tests: `PHP Test Suite/Unit/EditorMultiInsertContractTest.php` (the picker is browser script, so these are source contract checks).
+
+- [x] Media picker used by the editors allows selecting multiple items (click to toggle, Shift-click for a range, and keyboard-accessible), with a visible count and a clear-selection control
+- [x] One "Insert" action adds every selected item at the cursor: images as images, other files as links, each following the same markup/size/alignment/link defaults a single insert uses today
+- [x] Works in the Visual (TinyMCE), Markdown (EasyMDE) and HTML editors, and for both the post and page editors
+- [x] Upload tab: files uploaded from inside the picker can be selected and inserted together without leaving it
+- [x] Single-item insert behaves exactly as before; no change for authors who pick one file
+- [x] Respects upload/media capabilities, escapes alt text and titles, and keeps CSP-compliant markup (no inline scripts or styles)
+- [x] Styling in the admin stylesheet, dark mode and narrow-screen layout included
+- [x] Unit tests for the multi-insert markup builder; browser-verify in all three editors
+- [x] Documented in `docs/CHANGELOG.md` and the README's editor section
+
+Inserting the selected images as a gallery grid or a single gallery shortcode moved to LP-241, since it is a separate decision from the plain multi-insert.
+
+## LP-241. Editors: insert selected images as a gallery
+
+**Status:** Complete — pending migration to HISTORY.md at next Release
+
+LP-240 inserts several selected images as separate images. Let the same selection optionally be inserted as one gallery instead.
+
+Implemented 2026-11-14. The Lumora Gallery plugin's "Images by ID" shortcode reads a separately installed Lumora Gallery site, not Media Manager items, so it cannot take this selection. Core's `[lumora_folder_gallery]` gained an `ids="12,15,20"` attribute instead (`FolderGalleryShortcode`: explicit order kept, missing or non-image IDs skipped, capped at 200, `ids` wins over `folder_id`). The batch step of the Insert Image picker has an "Insert As" choice (Separate images / One gallery) that hides Alignment, starts the size at Thumbnail, and calls `options.insertGallery(shortcode)`, supplied by both editors. Because the shortcode is core, the option is always available, so the plugin-inactive condition below no longer applies. Browser-verified in Markdown and Visual on the dev install; the public render is covered by unit tests, not checked on the live page. Note: in the in-app browser pane the picker dialogs are not removed from the page after closing (the `close` event does not arrive there), with the pre-LP-240 script too, so it is a pane quirk.
+
+- [x] Decide the output: a shortcode listing the chosen image IDs, or a grid of ordinary images
+- [x] The batch settings step offers "Insert as gallery" with the gallery's own options (size, link)
+- [x] Works in the Visual and Markdown editors
+- [x] Tests and documentation
