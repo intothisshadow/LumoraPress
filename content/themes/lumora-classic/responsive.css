@@ -30,6 +30,15 @@
         padding: 1.15rem 1rem 1rem;
     }
 
+    /* A tall desktop image height crops a wide banner down to a sliver of its subject on a
+       portrait phone, so the height is capped relative to the viewport width. A smaller
+       value from the Header image height option still wins. */
+    .lp-site-header__image {
+        height: min(var(--lp-header-image-height, 56vw), 56vw);
+        min-height: 180px;
+        max-height: 320px;
+    }
+
     .lp-site-header__image-wrap + .lp-site-header__inner {
         margin-top: -3.25rem;
         border-radius: 14px 14px 0 0;
